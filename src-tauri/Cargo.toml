@@ -1,0 +1,65 @@
+[package]
+name = "conduit"
+version = "0.1.0"
+description = "Conduit — AI 原生终端（基于 Tauri + xterm.js）"
+authors = ["Conduit"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "terax_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.9"
+base64 = "0.22"
+log = "0.4"
+# Conduit 新增（§3.7 底座 / agent harness / git）
+tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+which = "6"
+git2 = "0.19"   # 默认 vendored libgit2：读 status/diff/ahead-behind + baseline 指纹
+ignore = "0.4"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+grep-matcher = "0.1"
+globset = "0.4"
+tauri-plugin-log = "2"
+tauri-plugin-os = "2"
+tauri-plugin-store = "2"
+tauri-plugin-process = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = [
+	"apple-native",
+] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = [
+	"windows-native",
+] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-autostart = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+panic = "abort"
+strip = true
