@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+  @keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.6)}}
+  @keyframes toastIn{0%{opacity:0;transform:translateY(-8px)}100%{opacity:1;transform:translateY(0)}}
+  @keyframes fadeIn{0%{opacity:0}100%{opacity:1}}
+  @keyframes sheetIn{0%{opacity:0;transform:translate(-50%,-6px) scale(.985)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
+  .conv:hover{background:rgba(128,128,128,0.07);}
+  .hit{cursor:pointer;}
+  .hit:hover{background:#f0eff2;}
+</style>
+</helmet>
+<div style="height:100vh;width:100vw;background:#ffffff;display:flex;flex-direction:column;font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;overflow:hidden;">
+  <!-- titlebar -->
+  <div style="height:48px;flex:none;background:#fbfbfc;border-bottom:1px solid #ededf0;display:flex;align-items:center;padding:0 14px;gap:14px;">
+    <div style="display:flex;gap:8px;">
+      <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57;"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#febc2e;"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#28c840;"></span>
+    </div>
+    <div onClick="{{ toggleSidebar }}" title="折叠侧边栏" class="hit" style="display:flex;align-items:center;justify-content:center;width:28px;height:24px;border-radius:7px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="#71717a" stroke-width="1.2"/><line x1="6" y1="2.5" x2="6" y2="13.5" stroke="#71717a" stroke-width="1.2"/><rect x="2.8" y="4" width="2" height="8" rx="0.5" fill="#c2683c" opacity="0.3"/></svg>
+    </div>
+    <div style="display:flex;gap:4px;align-items:flex-end;">
+      <div onClick="{{ sel_auth }}" class="hit" style="position:relative;font-size:12px;color:#27272a;padding:7px 13px 8px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:7px;">
+        <sc-if value="{{ is_auth }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;background:#fff;border:1px solid #e6e6e9;border-top:2px solid #c2683c;border-bottom:none;border-radius:8px 8px 0 0;"></div></sc-if>
+        <span style="position:relative;">orbit</span><span style="position:relative;font-size:11px;color:#a1a1aa;">⎇ main</span>
+      </div>
+      <div onClick="{{ sel_webhook }}" class="hit" style="position:relative;font-size:12px;color:#71717a;padding:7px 12px 8px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:6px;">
+        <sc-if value="{{ is_webhook }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:#fff;border:1px solid #e6e6e9;border-top:2px solid #c2683c;border-bottom:none;border-radius:8px 8px 0 0;"></div></sc-if>
+        <span style="position:relative;">orbit</span><span style="position:relative;font-size:11px;color:#c4c4cc;">⎇ pay/idem</span>
+      </div>
+      <div onClick="{{ sel_build }}" class="hit" style="position:relative;font-size:12px;color:#71717a;padding:7px 12px 8px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:6px;">
+        <sc-if value="{{ is_build }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:#fff;border:1px solid #e6e6e9;border-top:2px solid #c2683c;border-bottom:none;border-radius:8px 8px 0 0;"></div></sc-if>
+        <span style="position:relative;">web</span><span style="position:relative;font-size:11px;color:#c4c4cc;">⎇ main</span>
+      </div>
+      <sc-if value="{{ isExtra }}" hint-placeholder-val="{{ false }}">
+      <div style="position:relative;font-size:12px;color:#27272a;padding:7px 13px 8px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:7px;">
+        <div style="position:absolute;inset:0;background:#fff;border:1px solid #e6e6e9;border-top:2px solid #c2683c;border-bottom:none;border-radius:8px 8px 0 0;"></div>
+        <span style="position:relative;">{{ activeShortDir }}</span><span style="position:relative;font-size:11px;color:#a1a1aa;">⎇ {{ activeBranch }}</span>
+      </div>
+      </sc-if>
+      <div onClick="{{ openAgent }}" class="hit" style="font-size:14px;color:#c4c4cc;padding:7px 9px 8px;border-radius:7px;">+</div>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+      <div onClick="{{ togglePanel }}" title="审查视图" class="hit" style="display:flex;align-items:center;justify-content:center;gap:2px;width:28px;height:24px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;">
+        <span style="color:#2f9e7a;">+</span><span style="color:#e0556b;">−</span>
+      </div>
+      <div onClick="{{ toggleNotif }}" class="hit" style="position:relative;display:flex;align-items:center;justify-content:center;width:28px;height:24px;border-radius:7px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2c-2.2 0-3.6 1.6-3.6 3.7 0 3.1-1.1 4-1.1 4h9.4s-1.1-.9-1.1-4C11.6 3.6 10.2 2 8 2z" stroke="#71717a" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.7 12.2a1.4 1.4 0 0 0 2.6 0" stroke="#71717a" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span style="position:absolute;top:-5px;right:-6px;min-width:14px;height:14px;padding:0 3px;border-radius:100px;background:#e0556b;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:1.5px solid #fbfbfc;">2</span>
+      </div>
+    </div>
+  </div>
+  <!-- body -->
+  <div style="flex:1;display:flex;min-height:0;position:relative;">
+    <!-- sidebar -->
+    <sc-if value="{{ sidebar }}" hint-placeholder-val="{{ true }}">
+    <div style="width:272px;flex:none;background:#f7f7f8;border-right:1px solid #ededf0;display:flex;flex-direction:column;">
+      <div style="padding:14px 14px 10px;">
+        <div style="display:flex;align-items:stretch;background:#ffffff;border:1px solid #e6e6e9;border-radius:9px;overflow:hidden;">
+          <div class="hit" style="flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:8px 11px;color:#3f3f46;font-size:13px;font-weight:600;">
+            <span style="display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;color:#71717a;">+</span>新建终端
+            <span style="margin-left:auto;font-size:11px;color:#b4b4bc;">⌘T</span>
+          </div>
+          <div style="width:1px;background:#ededf0;"></div>
+          <div onClick="{{ openAgent }}" class="hit" style="display:flex;align-items:center;gap:6px;padding:8px 12px;color:#c2683c;font-size:13px;font-weight:600;white-space:nowrap;">
+            <span style="font-size:12px;">✦</span>Agent
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;background:#efeff1;border-radius:8px;padding:7px 10px;color:#a1a1aa;font-size:12.5px;">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="#a1a1aa" stroke-width="1.4"/><line x1="8.6" y1="8.6" x2="11.5" y2="11.5" stroke="#a1a1aa" stroke-width="1.4" stroke-linecap="round"/></svg>
+          搜索会话
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:4px 10px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:13px 8px 7px;">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="flex:none;"><path d="M1.5 3.5c0-.6.4-1 1-1h2.6c.3 0 .6.1.8.4l.6.7c.2.3.5.4.8.4h4.4c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1H2.5c-.6 0-1-.4-1-1V3.5z" stroke="#b4b4bc" stroke-width="1.1"/></svg>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:#52525b;">~/orbit</span>
+          <span style="font-size:10px;color:#b4b4bc;background:#efeff1;border-radius:100px;padding:1px 7px;">3</span>
+        </div>
+        <div onClick="{{ sel_auth }}" class="conv" style="position:relative;padding:10px 11px;border-radius:9px;margin-bottom:2px;cursor:pointer;">
+          <sc-if value="{{ is_auth }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;border-radius:9px;background:#fff;border:1px solid #e6e6e9;border-left:3px solid #c2683c;box-shadow:0 1px 2px rgba(0,0,0,0.03);"></div></sc-if>
+          <div style="position:relative;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:22px;height:22px;flex:none;border-radius:6px;background:#fbeadf;border:1px solid #f1d6c6;color:#c2683c;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CC</span>
+              <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#27272a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">修复不稳定的鉴权测试</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:7px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a1a1aa;flex:none;white-space:nowrap;">⎇ main</span>
+              <span style="display:flex;align-items:center;gap:5px;flex:none;font-size:10.5px;color:#c2683c;"><span style="width:6px;height:6px;border-radius:50%;background:#c2683c;animation:pulseDot 1.3s ease-in-out infinite;"></span>运行中</span>
+              <span style="margin-left:auto;flex:none;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10px;color:#c2683c;">12s</span>
+            </div>
+            <div style="margin-top:7px;height:3px;border-radius:100px;background:#f0eae6;overflow:hidden;"><div style="width:38%;height:100%;border-radius:100px;background:#c2683c;"></div></div>
+          </div>
+        </div>
+        <div onClick="{{ sel_webhook }}" class="conv" style="position:relative;padding:10px 11px;border-radius:9px;margin-bottom:2px;cursor:pointer;">
+          <sc-if value="{{ is_webhook }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border-radius:9px;background:#fff;border:1px solid #e6e6e9;border-left:3px solid #c2683c;box-shadow:0 1px 2px rgba(0,0,0,0.03);"></div></sc-if>
+          <div style="position:relative;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:22px;height:22px;flex:none;border-radius:6px;background:#dff2ea;border:1px solid #c6e7d9;color:#2f9e7a;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CX</span>
+              <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#3f3f46;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">重构支付 webhook</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:7px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a1a1aa;flex:none;white-space:nowrap;">⎇ pay/idem</span>
+              <span style="display:flex;align-items:center;gap:5px;flex:none;font-size:10.5px;color:#c2683c;"><span style="width:6px;height:6px;border-radius:50%;background:#c2683c;animation:pulseDot 1.3s ease-in-out infinite;"></span>运行中</span>
+              <span style="margin-left:auto;flex:none;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10px;color:#c2683c;">1m 04s</span>
+            </div>
+            <div style="margin-top:7px;height:3px;border-radius:100px;background:#f0eae6;overflow:hidden;"><div style="width:64%;height:100%;border-radius:100px;background:#c2683c;"></div></div>
+          </div>
+        </div>
+        <div onClick="{{ sel_regex }}" class="conv" style="position:relative;padding:10px 11px;border-radius:9px;margin-bottom:2px;cursor:pointer;">
+          <sc-if value="{{ is_regex }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border-radius:9px;background:#fff;border:1px solid #e6e6e9;border-left:3px solid #c2683c;box-shadow:0 1px 2px rgba(0,0,0,0.03);"></div></sc-if>
+          <div style="position:relative;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:22px;height:22px;flex:none;border-radius:6px;background:#dff2ea;border:1px solid #c6e7d9;color:#2f9e7a;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CX</span>
+              <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#3f3f46;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">解释这段正则</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:7px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a1a1aa;flex:none;white-space:nowrap;">⎇ main</span>
+              <span style="display:flex;align-items:center;gap:5px;flex:none;font-size:10.5px;color:#9aa0a6;font-family:'JetBrains Mono',monospace;"><span style="width:6px;height:6px;border-radius:50%;background:#cfcfd4;"></span>exit 0</span>
+              <span style="margin-left:auto;flex:none;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10px;color:#b4b4bc;">0.4s</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:13px 8px 7px;">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="flex:none;"><path d="M1.5 3.5c0-.6.4-1 1-1h2.6c.3 0 .6.1.8.4l.6.7c.2.3.5.4.8.4h4.4c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1H2.5c-.6 0-1-.4-1-1V3.5z" stroke="#b4b4bc" stroke-width="1.1"/></svg>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:#52525b;">~/web</span>
+          <span style="font-size:10px;color:#b4b4bc;background:#efeff1;border-radius:100px;padding:1px 7px;">1</span>
+        </div>
+        <div onClick="{{ sel_build }}" class="conv" style="position:relative;padding:10px 11px;border-radius:9px;margin-bottom:2px;cursor:pointer;">
+          <sc-if value="{{ is_build }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border-radius:9px;background:#fff;border:1px solid #e6e6e9;border-left:3px solid #c2683c;box-shadow:0 1px 2px rgba(0,0,0,0.03);"></div></sc-if>
+          <div style="position:relative;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:22px;height:22px;flex:none;border-radius:6px;background:#fbeadf;border:1px solid #f1d6c6;color:#c2683c;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CC</span>
+              <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#3f3f46;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">构建为什么这么慢</span>
+              <span style="width:7px;height:7px;flex:none;border-radius:50%;background:#2f9e7a;box-shadow:0 0 0 3px rgba(47,158,122,0.16);"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:7px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a1a1aa;flex:none;white-space:nowrap;">⎇ main</span>
+              <span style="display:flex;align-items:center;gap:5px;flex:none;font-size:10.5px;color:#2f9e7a;font-weight:600;font-family:'JetBrains Mono',monospace;"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.6L4.3 8L9 2.8" stroke="#2f9e7a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>刚完成</span>
+              <span style="margin-left:auto;flex:none;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10px;color:#b4b4bc;">38s</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:13px 8px 7px;">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="flex:none;"><path d="M1.5 3.5c0-.6.4-1 1-1h2.6c.3 0 .6.1.8.4l.6.7c.2.3.5.4.8.4h4.4c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1H2.5c-.6 0-1-.4-1-1V3.5z" stroke="#b4b4bc" stroke-width="1.1"/></svg>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:#52525b;">~/infra</span>
+          <span style="font-size:10px;color:#b4b4bc;background:#efeff1;border-radius:100px;padding:1px 7px;">1</span>
+        </div>
+        <div onClick="{{ sel_docker }}" class="conv" style="position:relative;padding:10px 11px;border-radius:9px;margin-bottom:2px;cursor:pointer;">
+          <sc-if value="{{ is_docker }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border-radius:9px;background:#fff;border:1px solid #e6e6e9;border-left:3px solid #c2683c;box-shadow:0 1px 2px rgba(0,0,0,0.03);"></div></sc-if>
+          <div style="position:relative;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:22px;height:22px;flex:none;border-radius:6px;background:#e4e9fb;border:1px solid #cfd9f5;color:#4f6ef0;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CU</span>
+              <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#3f3f46;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Dockerfile 多阶段构建</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:7px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a1a1aa;flex:none;white-space:nowrap;">⎇ deploy</span>
+              <span style="display:flex;align-items:center;gap:5px;flex:none;font-size:10.5px;color:#9aa0a6;font-family:'JetBrains Mono',monospace;"><span style="width:6px;height:6px;border-radius:50%;background:#cfcfd4;"></span>exit 0</span>
+              <span style="margin-left:auto;flex:none;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10px;color:#b4b4bc;">1m 12s</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div onClick="{{ openSettings }}" class="hit" style="border-top:1px solid #ededf0;padding:9px 14px;display:flex;align-items:center;gap:8px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="#71717a" stroke-width="1.2"/><path d="M8 1.5v1.6M8 12.9v1.6M14.5 8h-1.6M3.1 8H1.5M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1M12.6 12.6l-1.1-1.1M4.5 4.5L3.4 3.4" stroke="#71717a" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span style="font-size:11.5px;color:#52525b;">设置</span>
+        <span style="margin-left:auto;font-size:11px;color:#c4c4cc;">5 个会话</span>
+      </div>
+    </div>
+    </sc-if>
+    <!-- main terminal -->
+    <div style="position:relative;flex:1;display:flex;flex-direction:column;min-width:0;background:#ffffff;">
+      <sc-if value="{{ notif }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;top:12px;right:14px;z-index:5;width:286px;background:rgba(255,255,255,0.92);backdrop-filter:blur(20px);border:1px solid #e6e6e9;border-radius:13px;box-shadow:0 16px 40px rgba(20,20,30,0.18);overflow:hidden;animation:toastIn .3s ease;">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 13px;border-bottom:1px solid #f1f1f3;">
+          <span style="font-size:12.5px;font-weight:700;color:#27272a;">通知中心</span>
+          <span style="font-size:10px;color:#e0556b;background:#fdecef;border-radius:100px;padding:1px 7px;font-weight:600;">2 未读</span>
+          <span onClick="{{ toggleNotif }}" class="hit" style="margin-left:auto;font-size:11px;color:#a1a1aa;border-radius:5px;padding:2px 6px;">全部已读</span>
+        </div>
+        <div style="display:flex;gap:10px;padding:11px 13px;background:#fdf4f5;border-left:3px solid #e0556b;">
+          <span style="width:26px;height:26px;flex:none;border-radius:7px;background:#fbe1e5;display:flex;align-items:center;justify-content:center;"><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M3.5 3.5l6 6M9.5 3.5l-6 6" stroke="#e0556b" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+          <div style="min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12.5px;font-weight:600;color:#27272a;">测试失败</span><span style="margin-left:auto;font-size:10.5px;color:#b4b4bc;">刚刚</span></div>
+            <div style="font-size:11.5px;color:#71717a;margin-top:2px;line-height:1.45;"><span style="font-family:'JetBrains Mono',monospace;color:#52525b;">orbit ⎇ main</span> · login.test.ts <span style="font-family:'JetBrains Mono',monospace;color:#e0556b;">expected 401</span></div>
+            <div style="display:flex;gap:7px;margin-top:7px;"><span class="hit" style="font-size:11.5px;color:#fff;background:#e0556b;border-radius:7px;padding:3px 10px;">查看日志</span><span class="hit" style="font-size:11.5px;color:#71717a;border:1px solid #e6e6e9;border-radius:7px;padding:3px 10px;">重跑</span></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;padding:11px 13px;border-top:1px solid #f1f1f3;">
+          <span style="width:26px;height:26px;flex:none;border-radius:7px;background:#e8f6ef;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.2L5.6 10L11.5 3.4" stroke="#2f9e7a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div style="min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12.5px;font-weight:600;color:#27272a;">构建完成</span><span style="margin-left:auto;font-size:10.5px;color:#b4b4bc;">1m</span></div>
+            <div style="font-size:11.5px;color:#71717a;margin-top:2px;line-height:1.45;"><span style="font-family:'JetBrains Mono',monospace;color:#52525b;">web ⎇ main</span> · vite build <span style="font-family:'JetBrains Mono',monospace;color:#2f9e7a;">exit 0 · 38s</span></div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+      <!-- terminal stream: auth (rich) -->
+      <sc-if value="{{ is_auth }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;padding:20px 24px;font-size:13px;line-height:1.85;color:#27272a;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;">
+        <div style="display:flex;gap:8px;"><span style="color:#2563eb;">~/orbit</span><span style="color:#a1a1aa;">on</span><span style="color:#16a34a;">⎇ main</span><span style="color:#dc2626;">✗</span></div>
+        <div><span style="color:#16a34a;">❯</span> git status</div>
+        <div style="color:#71717a;">Changes not staged for commit:</div>
+        <div style="color:#71717a;">&nbsp;&nbsp;modified:&nbsp;&nbsp; <span style="color:#dc2626;">src/auth/session.ts</span></div>
+        <div style="color:#71717a;">&nbsp;&nbsp;modified:&nbsp;&nbsp; <span style="color:#dc2626;">src/api/webhook.ts</span></div>
+        <div style="height:10px;"></div>
+        <div><span style="color:#16a34a;">❯</span> npm test auth</div>
+        <div><span style="color:#16a34a;font-weight:600;">PASS</span> <span style="color:#71717a;">src/auth/session.test.ts</span></div>
+        <div><span style="color:#dc2626;font-weight:600;">FAIL</span> <span style="color:#71717a;">src/auth/login.test.ts</span></div>
+        <div style="color:#a1a1aa;">&nbsp;&nbsp;● login › rejects expired token</div>
+        <div style="height:14px;"></div>
+        <div style="border-left:2px solid #c2683c;padding:2px 0 2px 14px;margin:2px 0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-family:-apple-system,system-ui,sans-serif;"><span style="width:18px;height:18px;border-radius:5px;background:#fbeadf;border:1px solid #f1d6c6;color:#c2683c;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CC</span><span style="color:#27272a;font-weight:600;font-size:12.5px;">Claude Code</span><span style="color:#c2683c;font-size:11.5px;">· 修复不稳定的鉴权测试</span></div>
+          <div style="color:#3f3f46;line-height:1.7;font-family:-apple-system,system-ui,sans-serif;font-size:13px;max-width:520px;">问题在 <span style="color:#27272a;background:#f4f4f5;padding:1px 5px;border-radius:4px;">session.ts:42</span> 的过期判断用了 <span style="color:#dc2626;">≤</span>，刚好过期的 token 仍会通过。改成 <span style="color:#16a34a;">&lt;</span> 即可，右侧是 diff。</div>
+          <div style="display:flex;gap:8px;margin-top:9px;font-family:-apple-system,system-ui,sans-serif;">
+            <span class="hit" style="font-size:12px;color:#ffffff;background:#27272a;border-radius:7px;padding:5px 12px;">应用补丁</span>
+            <span onClick="{{ togglePanel }}" class="hit" style="font-size:12px;color:#71717a;border:1px solid #e6e6e9;border-radius:7px;padding:5px 12px;">查看 diff</span>
+          </div>
+        </div>
+        <div style="height:14px;"></div>
+        <div style="display:flex;gap:8px;align-items:center;"><span style="color:#16a34a;">❯</span><span style="color:#27272a;">apply the fix</span><span style="display:inline-block;width:8px;height:16px;background:#27272a;animation:blink 1.1s steps(1) infinite;"></span></div>
+      </div>
+      </sc-if>
+      <!-- terminal stream: generic -->
+      <sc-if value="{{ notAuth }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:20px 24px;font-size:13px;line-height:1.85;color:#27272a;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;">
+        <div style="display:flex;gap:8px;"><span style="color:#2563eb;">{{ activeDir }}</span><span style="color:#a1a1aa;">on</span><span style="color:#16a34a;">⎇ {{ activeBranch }}</span></div>
+        <div><span style="color:#16a34a;">❯</span> {{ activeCmd }}</div>
+        <div style="height:8px;"></div>
+        <div style="border-left:2px solid #c2683c;padding:2px 0 2px 14px;margin:2px 0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-family:-apple-system,system-ui,sans-serif;"><span style="width:18px;height:18px;border-radius:5px;background:#fbeadf;border:1px solid #f1d6c6;color:#c2683c;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">{{ activeAgent }}</span><span style="color:#27272a;font-weight:600;font-size:12.5px;">{{ activeAgentName }}</span><span style="color:#c2683c;font-size:11.5px;">· {{ activeTitle }}</span></div>
+          <div style="color:#3f3f46;line-height:1.7;font-family:-apple-system,system-ui,sans-serif;font-size:13px;max-width:520px;">{{ activeReply }}</div>
+        </div>
+        <div style="height:14px;"></div>
+        <div style="display:flex;gap:8px;align-items:center;"><span style="color:#16a34a;">❯</span><span style="display:inline-block;width:8px;height:16px;background:#27272a;animation:blink 1.1s steps(1) infinite;"></span></div>
+      </div>
+      </sc-if>
+      <div style="height:30px;flex:none;background:#fbfbfc;border-top:1px solid #ededf0;display:flex;align-items:center;padding:0 16px;gap:16px;font-size:11.5px;color:#71717a;font-family:'JetBrains Mono',ui-monospace,monospace;">
+        <span style="color:#2563eb;">{{ activeDir }}</span>
+        <span>⎇ {{ activeBranch }}</span>
+        <span style="margin-left:auto;">node 20.11</span>
+        <span>UTF-8</span>
+        <span>14:23</span>
+      </div>
+    </div>
+    <!-- diff panel -->
+    <sc-if value="{{ panel }}" hint-placeholder-val="{{ true }}">
+    <div style="width:300px;flex:none;background:#f7f7f8;border-left:1px solid #ededf0;display:flex;flex-direction:column;">
+      <div style="height:40px;flex:none;border-bottom:1px solid #ededf0;display:flex;align-items:center;padding:0 14px;gap:8px;">
+        <span style="font-size:12.5px;font-weight:600;color:#3f3f46;">改动</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a1a1aa;">⎇ {{ activeBranch }}</span>
+        <span style="margin-left:auto;font-size:11px;color:#b4b4bc;white-space:nowrap;font-family:'JetBrains Mono',monospace;">{{ diffSummary }}</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:10px 10px;display:flex;flex-direction:column;gap:8px;">
+        <sc-if value="{{ isClean }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;padding:40px 20px;text-align:center;">
+          <span style="width:42px;height:42px;border-radius:11px;background:#eef1ef;display:flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10.5L8 14.5L16 5.5" stroke="#9aa0a6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div style="font-size:13px;font-weight:600;color:#52525b;">工作区干净</div>
+          <div style="font-size:11.5px;color:#a1a1aa;font-family:'JetBrains Mono',monospace;">git status · 无未提交改动</div>
+        </div>
+        </sc-if>
+        <sc-if value="{{ isWebhookPanel }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#ffffff;border:1px solid #e6e6e9;border-radius:9px;display:flex;align-items:center;gap:8px;padding:9px 10px;">
+          <span style="width:14px;height:14px;flex:none;border-radius:4px;background:#dff2ea;color:#2f9e7a;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">M</span>
+          <span style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#27272a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">src/api/webhook.ts</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;"><span style="color:#2f9e7a;">+18</span> <span style="color:#e0556b;">−4</span></span>
+          <span style="font-size:12px;color:#c4c4cc;">▸</span>
+        </div>
+        <div style="background:#ffffff;border:1px solid #e6e6e9;border-radius:9px;display:flex;align-items:center;gap:8px;padding:9px 10px;">
+          <span style="width:14px;height:14px;flex:none;border-radius:4px;background:#e8f6ef;color:#2f9e7a;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">A</span>
+          <span style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#52525b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">src/api/webhook.test.ts</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;"><span style="color:#2f9e7a;">+9</span> <span style="color:#e0556b;">−0</span></span>
+          <span style="font-size:12px;color:#c4c4cc;">▸</span>
+        </div>
+        </sc-if>
+        <sc-if value="{{ is_auth }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#ffffff;border:1px solid #e6e6e9;border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,0.03);overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f1f3;">
+            <span style="width:14px;height:14px;flex:none;border-radius:4px;background:#fbeadf;color:#c2683c;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">M</span>
+            <span style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#27272a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">src/auth/session.ts</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;"><span style="color:#2f9e7a;">+2</span> <span style="color:#e0556b;">−2</span></span>
+          </div>
+          <div style="padding:8px 10px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;">
+            <div style="color:#b4b4bc;">@@ -40,4 +40,4 @@ isExpired()</div>
+            <div style="color:#71717a;padding:0 6px;margin:0 -6px;">&nbsp;&nbsp;const now = Date.now();</div>
+            <div style="background:#fcebec;color:#c0414e;padding:0 6px;margin:0 -6px;">−&nbsp;if (now &lt;= token.exp)</div>
+            <div style="background:#e8f6ef;color:#1f8a5b;padding:0 6px;margin:0 -6px;">+&nbsp;if (now &lt; token.exp)</div>
+            <div style="color:#71717a;padding:0 6px;margin:0 -6px;">&nbsp;&nbsp;&nbsp;&nbsp;return false;</div>
+          </div>
+        </div>
+        <div style="background:#ffffff;border:1px solid #e6e6e9;border-radius:9px;display:flex;align-items:center;gap:8px;padding:9px 10px;">
+          <span style="width:14px;height:14px;flex:none;border-radius:4px;background:#dff2ea;color:#2f9e7a;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">M</span>
+          <span style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#52525b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">src/api/webhook.ts</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;"><span style="color:#2f9e7a;">+18</span> <span style="color:#e0556b;">−4</span></span>
+          <span style="font-size:12px;color:#c4c4cc;">▸</span>
+        </div>
+        <div style="background:#ffffff;border:1px solid #e6e6e9;border-radius:9px;display:flex;align-items:center;gap:8px;padding:9px 10px;">
+          <span style="width:14px;height:14px;flex:none;border-radius:4px;background:#dff2ea;color:#2f9e7a;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">M</span>
+          <span style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#52525b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">src/auth/login.test.ts</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;"><span style="color:#2f9e7a;">+6</span> <span style="color:#e0556b;">−0</span></span>
+          <span style="font-size:12px;color:#c4c4cc;">▸</span>
+        </div>
+        </sc-if>
+      </div>
+      <sc-if value="{{ hasChanges }}" hint-placeholder-val="{{ true }}">
+      <div style="border-top:1px solid #ededf0;padding:11px 12px;background:#fbfbfc;">
+        <div style="background:#ffffff;border:1px solid #e6e6e9;border-radius:8px;padding:8px 10px;font-size:12px;color:#3f3f46;line-height:1.4;">{{ commitMsg }}<span style="display:inline-block;width:7px;height:14px;background:#c2683c;margin-left:1px;vertical-align:-2px;animation:blink 1.1s steps(1) infinite;"></span></div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:9px;">
+          <span class="hit" style="flex:1;text-align:center;font-size:12px;font-weight:600;color:#52525b;background:#efeff1;border:1px solid #e6e6e9;border-radius:7px;padding:8px;">提交</span>
+          <span class="hit" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;font-size:12px;font-weight:600;color:#ffffff;background:#27272a;border-radius:7px;padding:8px;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9.5V2.5M6 2.5L3 5.5M6 2.5L9 5.5" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>提交并推送</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:10.5px;color:#a1a1aa;">
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M3 5.5h5M8 5.5L5.8 3.3M8 5.5L5.8 7.7" stroke="#a1a1aa" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span style="font-family:'JetBrains Mono',monospace;">origin/{{ activeBranch }}</span><span>· 领先 0 · 落后 0</span>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+    <!-- New Agent overlay -->
+    <sc-if value="{{ isAgent }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOverlay }}" style="position:absolute;inset:0;z-index:20;background:rgba(20,20,28,0.34);backdrop-filter:blur(2px);animation:fadeIn .2s ease;"></div>
+    <div style="position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:21;width:520px;background:#ffffff;border:1px solid #e6e6e9;border-radius:14px;box-shadow:0 30px 80px rgba(20,20,30,0.4);overflow:hidden;animation:sheetIn .24s ease;">
+      <div style="padding:20px 22px 16px;border-bottom:1px solid #f1f1f3;">
+        <div style="font-size:16px;font-weight:700;color:#27272a;">新建 Agent</div>
+        <div style="font-size:12.5px;color:#8a867c;margin-top:3px;">选择工作目录与 agent，在该会话中开始协作。</div>
+      </div>
+      <div style="padding:18px 22px;">
+        <div style="font-size:12px;font-weight:600;color:#52525b;margin-bottom:8px;">工作目录</div>
+        <div class="hit" style="display:flex;align-items:center;gap:10px;background:#f7f7f8;border:1px solid #e6e6e9;border-radius:9px;padding:10px 12px;">
+          <svg width="15" height="15" viewBox="0 0 14 14" fill="none" style="flex:none;"><path d="M1.5 3.5c0-.6.4-1 1-1h2.6c.3 0 .6.1.8.4l.6.7c.2.3.5.4.8.4h4.4c.6 0 1 .4 1 1v5.6c0 .6-.4 1-1 1H2.5c-.6 0-1-.4-1-1V3.5z" stroke="#c2683c" stroke-width="1.1"/></svg>
+          <span style="flex:1;font-family:'JetBrains Mono',monospace;font-size:13px;color:#27272a;">~/orbit</span>
+          <span style="font-size:11px;color:#a1a1aa;">最近</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5L6 7.5L9 4.5" stroke="#a1a1aa" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#52525b;margin:18px 0 8px;">Agent</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div onClick="{{ pickCC }}" class="hit" style="display:flex;align-items:center;gap:11px;border:1px solid {{ ccBorder }};background:{{ ccBg }};border-radius:10px;padding:11px 13px;">
+            <span style="width:30px;height:30px;flex:none;border-radius:7px;background:#fbeadf;border:1px solid #f1d6c6;color:#c2683c;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CC</span>
+            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:600;color:#27272a;">Claude Code</div><div style="font-size:11.5px;color:#8a867c;margin-top:1px;">擅长多文件重构与测试修复</div></div>
+            <sc-if value="{{ isCC }}" hint-placeholder-val="{{ true }}"><span style="width:18px;height:18px;border-radius:50%;background:#c2683c;display:flex;align-items:center;justify-content:center;"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.6L4.3 8L9 2.8" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></sc-if>
+            <sc-if value="{{ notCC }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:50%;border:1.5px solid #d4d4d8;"></span></sc-if>
+          </div>
+          <div onClick="{{ pickCX }}" class="hit" style="display:flex;align-items:center;gap:11px;border:1px solid {{ cxBorder }};background:{{ cxBg }};border-radius:10px;padding:11px 13px;">
+            <span style="width:30px;height:30px;flex:none;border-radius:7px;background:#dff2ea;border:1px solid #c6e7d9;color:#2f9e7a;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CX</span>
+            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:600;color:#3f3f46;">Codex</div><div style="font-size:11.5px;color:#a1a1aa;margin-top:1px;">快速脚本与一次性任务</div></div>
+            <sc-if value="{{ isCX }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:50%;background:#c2683c;display:flex;align-items:center;justify-content:center;"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.6L4.3 8L9 2.8" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></sc-if>
+            <sc-if value="{{ notCX }}" hint-placeholder-val="{{ true }}"><span style="width:18px;height:18px;border-radius:50%;border:1.5px solid #d4d4d8;"></span></sc-if>
+          </div>
+          <div onClick="{{ pickCU }}" class="hit" style="display:flex;align-items:center;gap:11px;border:1px solid {{ cuBorder }};background:{{ cuBg }};border-radius:10px;padding:11px 13px;">
+            <span style="width:30px;height:30px;flex:none;border-radius:7px;background:#e4e9fb;border:1px solid #cfd9f5;color:#4f6ef0;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">CU</span>
+            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:600;color:#3f3f46;">Cursor</div><div style="font-size:11.5px;color:#a1a1aa;margin-top:1px;">编辑器内联协作</div></div>
+            <sc-if value="{{ isCU }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:50%;background:#c2683c;display:flex;align-items:center;justify-content:center;"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.6L4.3 8L9 2.8" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></sc-if>
+            <sc-if value="{{ notCU }}" hint-placeholder-val="{{ true }}"><span style="width:18px;height:18px;border-radius:50%;border:1.5px solid #d4d4d8;"></span></sc-if>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 22px;border-top:1px solid #f1f1f3;background:#fbfbfc;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#a1a1aa;white-space:nowrap;flex:none;">⎇ main · zsh</span>
+        <span onClick="{{ closeOverlay }}" class="hit" style="margin-left:auto;font-size:13px;color:#52525b;border:1px solid #e6e6e9;border-radius:8px;padding:8px 16px;">取消</span>
+        <span onClick="{{ closeOverlay }}" class="hit" style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#fff;background:#27272a;border-radius:8px;padding:8px 16px;">创建 Agent <span style="font-family:'JetBrains Mono',monospace;font-size:11px;opacity:0.7;">⌘⏎</span></span>
+      </div>
+    </div>
+    </sc-if>
+    <!-- Settings overlay -->
+    <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOverlay }}" style="position:absolute;inset:0;z-index:20;background:rgba(20,20,28,0.34);backdrop-filter:blur(2px);animation:fadeIn .2s ease;"></div>
+    <div style="position:absolute;top:52px;left:50%;transform:translateX(-50%);z-index:21;width:600px;background:#ffffff;border:1px solid #e6e6e9;border-radius:14px;box-shadow:0 30px 80px rgba(20,20,30,0.4);overflow:hidden;animation:sheetIn .24s ease;">
+      <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #f1f1f3;">
+        <span style="font-size:15px;font-weight:700;color:#27272a;">设置</span>
+        <div style="display:flex;gap:4px;margin-left:6px;">
+          <span style="font-size:12px;font-weight:600;color:#27272a;background:#f0eff2;border-radius:7px;padding:4px 11px;">外观</span>
+          <span style="font-size:12px;color:#71717a;padding:4px 11px;">字体</span>
+          <span style="font-size:12px;color:#71717a;padding:4px 11px;">Agents</span>
+          <span style="font-size:12px;color:#71717a;padding:4px 11px;">快捷键</span>
+        </div>
+        <span onClick="{{ closeOverlay }}" class="hit" style="margin-left:auto;display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;color:#a1a1aa;">✕</span>
+      </div>
+      <div style="padding:20px 22px;">
+        <div style="font-size:12px;font-weight:600;color:#52525b;margin-bottom:12px;">主题</div>
+        <div style="display:flex;gap:12px;">
+          <div onClick="{{ themeL }}" class="hit" style="width:160px;border-radius:10px;padding:6px;">
+            <div style="position:relative;height:96px;border-radius:8px;border:1px solid #e6e6e9;background:#ffffff;overflow:hidden;">
+              <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;border-radius:8px;border:2px solid #c2683c;z-index:1;"></div></sc-if>
+              <div style="height:16px;background:#fbfbfc;border-bottom:1px solid #ededf0;"></div>
+              <div style="display:flex;height:80px;"><div style="width:42px;background:#f7f7f8;border-right:1px solid #ededf0;"></div><div style="flex:1;padding:8px;display:flex;flex-direction:column;gap:5px;"><div style="height:5px;width:70%;border-radius:3px;background:#e4e4e7;"></div><div style="height:5px;width:50%;border-radius:3px;background:#efe1d9;"></div></div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:8px;padding-left:2px;">
+              <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}"><span style="width:15px;height:15px;border-radius:50%;border:1.5px solid #c2683c;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:7px;border-radius:50%;background:#c2683c;"></span></span></sc-if>
+              <sc-if value="{{ notLight }}" hint-placeholder-val="{{ false }}"><span style="width:15px;height:15px;border-radius:50%;border:1.5px solid #d4d4d8;"></span></sc-if>
+              <span style="font-size:13px;font-weight:600;color:#27272a;">浅色</span>
+            </div>
+          </div>
+          <div onClick="{{ themeD }}" class="hit" style="width:160px;border-radius:10px;padding:6px;">
+            <div style="position:relative;height:96px;border-radius:8px;border:1px solid #e6e6e9;background:#1b1b1d;overflow:hidden;">
+              <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border-radius:8px;border:2px solid #c2683c;z-index:1;"></div></sc-if>
+              <div style="height:16px;background:#202022;border-bottom:1px solid #2a2a2d;"></div>
+              <div style="display:flex;height:80px;"><div style="width:42px;background:#161617;border-right:1px solid #262628;"></div><div style="flex:1;padding:8px;display:flex;flex-direction:column;gap:5px;"><div style="height:5px;width:70%;border-radius:3px;background:#34343a;"></div><div style="height:5px;width:50%;border-radius:3px;background:#4a3119;"></div></div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:8px;padding-left:2px;">
+              <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}"><span style="width:15px;height:15px;border-radius:50%;border:1.5px solid #c2683c;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:7px;border-radius:50%;background:#c2683c;"></span></span></sc-if>
+              <sc-if value="{{ notDark }}" hint-placeholder-val="{{ true }}"><span style="width:15px;height:15px;border-radius:50%;border:1.5px solid #d4d4d8;"></span></sc-if>
+              <span style="font-size:13px;color:#52525b;">深色</span>
+            </div>
+          </div>
+          <div onClick="{{ themeS }}" class="hit" style="width:160px;border-radius:10px;padding:6px;">
+            <div style="position:relative;height:96px;border-radius:8px;border:1px solid #e6e6e9;overflow:hidden;display:flex;">
+              <sc-if value="{{ isSystem }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border-radius:8px;border:2px solid #c2683c;z-index:1;"></div></sc-if>
+              <div style="width:50%;background:#fff;"><div style="height:16px;background:#fbfbfc;border-bottom:1px solid #ededf0;"></div><div style="padding:8px;display:flex;flex-direction:column;gap:5px;"><div style="height:5px;width:80%;border-radius:3px;background:#e4e4e7;"></div></div></div>
+              <div style="width:50%;background:#1b1b1d;"><div style="height:16px;background:#202022;border-bottom:1px solid #2a2a2d;"></div><div style="padding:8px;display:flex;flex-direction:column;gap:5px;"><div style="height:5px;width:80%;border-radius:3px;background:#34343a;"></div></div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:8px;padding-left:2px;">
+              <sc-if value="{{ isSystem }}" hint-placeholder-val="{{ false }}"><span style="width:15px;height:15px;border-radius:50%;border:1.5px solid #c2683c;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:7px;border-radius:50%;background:#c2683c;"></span></span></sc-if>
+              <sc-if value="{{ notSystem }}" hint-placeholder-val="{{ true }}"><span style="width:15px;height:15px;border-radius:50%;border:1.5px solid #d4d4d8;"></span></sc-if>
+              <span style="font-size:13px;color:#52525b;">跟随系统</span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#52525b;margin:24px 0 12px;">强调色</div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <span style="width:28px;height:28px;border-radius:50%;background:#c2683c;box-shadow:0 0 0 2px #fff,0 0 0 4px #c2683c;"></span>
+          <span style="width:28px;height:28px;border-radius:50%;background:#4f6ef0;"></span>
+          <span style="width:28px;height:28px;border-radius:50%;background:#2f9e7a;"></span>
+          <span style="width:28px;height:28px;border-radius:50%;background:#8b5cf6;"></span>
+          <span style="width:28px;height:28px;border-radius:50%;background:#52525b;"></span>
+          <span style="margin-left:6px;font-size:12.5px;color:#a1a1aa;font-family:'JetBrains Mono',monospace;white-space:nowrap;">#C2683C · Terracotta</span>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#52525b;margin:24px 0 12px;">终端</div>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <span style="font-size:13px;color:#3f3f46;width:96px;flex:none;">光标样式</span>
+          <div style="display:flex;background:#efeff1;border-radius:8px;padding:3px;gap:2px;">
+            <span style="font-size:12.5px;color:#27272a;background:#fff;border-radius:6px;padding:5px 14px;box-shadow:0 1px 2px rgba(0,0,0,0.06);">竖条</span>
+            <span style="font-size:12.5px;color:#71717a;padding:5px 14px;">方块</span>
+            <span style="font-size:12.5px;color:#71717a;padding:5px 14px;">下划线</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;padding:14px 22px;border-top:1px solid #f1f1f3;background:#fbfbfc;">
+        <span style="font-size:11.5px;color:#a1a1aa;">更改即时生效</span>
+        <span onClick="{{ closeOverlay }}" class="hit" style="margin-left:auto;font-size:13px;font-weight:600;color:#fff;background:#27272a;border-radius:8px;padding:8px 18px;">完成</span>
+      </div>
+    </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { active:'auth', sidebar:true, panel:true, overlay:null, notif:false, pick:'CC', theme:'light' };
+  S = {
+    auth:{title:'修复不稳定的鉴权测试',dir:'~/orbit',branch:'main',agent:'CC',name:'Claude Code',cmd:'npm test auth',reply:'测试期望 401 但拿到 200，已定位到 session.ts:42 的过期判断。',changes:true,summary:'3 文件 · +26 −6',commit:'fix(auth): use < for token expiry'},
+    webhook:{title:'重构支付 webhook',dir:'~/orbit',branch:'pay/idem',agent:'CX',name:'Codex',cmd:'vitest --watch',reply:'正在为 Stripe webhook 加幂等键，重试事件不会重复扣款。',changes:true,summary:'2 文件 · +27 −4',commit:'feat(pay): idempotency keys'},
+    regex:{title:'解释这段正则',dir:'~/orbit',branch:'main',agent:'CX',name:'Codex',cmd:'node scratch.js',reply:'逐个捕获组讲解了命名后行断言的写法。'},
+    build:{title:'构建为什么这么慢',dir:'~/web',branch:'main',agent:'CC',name:'Claude Code',cmd:'vite build --profile',reply:'冷启动主要耗在约 1.2k 个 barrel 文件导入，建议精简 re-export。'},
+    docker:{title:'Dockerfile 多阶段构建',dir:'~/infra',branch:'deploy',agent:'CU',name:'Cursor',cmd:'docker build -t orbit .',reply:'把构建依赖移到 builder 阶段，最终镜像从 410MB 降到 88MB。'},
+  };
+  renderVals() {
+    const k = this.state.active, s = this.S[k], p = this.state.pick;
+    const r = {
+      sidebar:this.state.sidebar, panel:this.state.panel, notif:this.state.notif,
+      isAgent:this.state.overlay==='agent', isSettings:this.state.overlay==='settings',
+      activeTitle:s.title, activeDir:s.dir, activeBranch:s.branch, activeCmd:s.cmd,
+      activeAgent:s.agent, activeAgentName:s.name, activeReply:s.reply,
+      hasChanges:!!s.changes, isClean:!s.changes, diffSummary:s.summary||'', commitMsg:s.commit||'',
+      isWebhookPanel:k==='webhook',
+      isExtra:(k==='regex'||k==='docker'), activeShortDir:s.dir.replace('~/',''),
+      isCC:p==='CC', isCX:p==='CX', isCU:p==='CU', notCC:p!=='CC', notCX:p!=='CX', notCU:p!=='CU',
+      ccBorder:p==='CC'?'#f1d6c6':'#e6e6e9', ccBg:p==='CC'?'#fbf6f2':'#ffffff',
+      cxBorder:p==='CX'?'#f1d6c6':'#e6e6e9', cxBg:p==='CX'?'#fbf6f2':'#ffffff',
+      cuBorder:p==='CU'?'#f1d6c6':'#e6e6e9', cuBg:p==='CU'?'#fbf6f2':'#ffffff',
+      toggleSidebar:()=>this.setState(x=>({sidebar:!x.sidebar})),
+      togglePanel:()=>this.setState(x=>({panel:!x.panel})),
+      toggleNotif:()=>this.setState(x=>({notif:!x.notif})),
+      openAgent:()=>this.setState({overlay:'agent'}),
+      openSettings:()=>this.setState({overlay:'settings'}),
+      closeOverlay:()=>this.setState({overlay:null}),
+      pickCC:()=>this.setState({pick:'CC'}), pickCX:()=>this.setState({pick:'CX'}), pickCU:()=>this.setState({pick:'CU'}),
+      isLight:this.state.theme==='light', isDark:this.state.theme==='dark', isSystem:this.state.theme==='system',
+      notLight:this.state.theme!=='light', notDark:this.state.theme!=='dark', notSystem:this.state.theme!=='system',
+      themeL:()=>this.setState({theme:'light'}), themeD:()=>this.setState({theme:'dark'}), themeS:()=>this.setState({theme:'system'}),
+    };
+    Object.keys(this.S).forEach(id => {
+      r['is_'+id] = k===id;
+      r['sel_'+id] = () => this.setState({active:id});
+    });
+    r.notAuth = k!=='auth';
+    return r;
+  }
+}
+</script>
+</body>
+</html>
