@@ -1,766 +1,159 @@
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import {
-  AgentRunBridge,
-  AiInputBar,
-  AiMiniWindow,
-  getAllKeys,
-  hasAnyKey,
-  SelectionAskAi,
-  useChatStore,
-} from "@/modules/ai";
-import { AiInputBarConnect } from "@/modules/ai/components/AiInputBar";
-import { AiComposerProvider } from "@/modules/ai/lib/composer";
-import { useAgentsStore } from "@/modules/ai/store/agentsStore";
-import { useSnippetsStore } from "@/modules/ai/store/snippetsStore";
-import {
-  AiDiffStack,
-  EditorStack,
-  NewEditorDialog,
-  type EditorPaneHandle,
-} from "@/modules/editor";
-import { FileExplorer } from "@/modules/explorer";
-import {
-  Header,
-  type SearchInlineHandle,
-  type SearchTarget,
-} from "@/modules/header";
-import { PreviewStack, type PreviewPaneHandle } from "@/modules/preview";
-import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
-import { usePreferencesStore } from "@/modules/settings/preferences";
-import { onKeysChanged } from "@/modules/settings/store";
-import {
-  ShortcutsDialog,
-  useGlobalShortcuts,
-  type ShortcutHandlers,
-} from "@/modules/shortcuts";
-import { StatusBar } from "@/modules/statusbar";
-import { useTabs, useWorkspaceCwd } from "@/modules/tabs";
-import { TerminalStack, type TerminalPaneHandle } from "@/modules/terminal";
-import { ThemeProvider } from "@/modules/theme";
-import { UpdaterDialog } from "@/modules/updater";
-import { homeDir } from "@tauri-apps/api/path";
-import type { SearchAddon } from "@xterm/addon-search";
-import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PanelImperativeHandle } from "react-resizable-panels";
+// Conduit — 三栏静态外壳（M2）
+// 替换 terax 原 App，组合 src/ui/ 下各组件
+// M3 将接入真实 xterm.js + PTY + Agent
 
-function sameOrigin(a: string, b: string): boolean {
-  try {
-    const ua = new URL(a);
-    const ub = new URL(b);
-    return ua.host === ub.host && ua.protocol === ub.protocol;
-  } catch {
-    return a === b;
-  }
-}
+import { useState } from "react";
+import { Titlebar } from "@/ui/Titlebar";
+import { Sidebar } from "@/ui/Sidebar";
+import { TerminalArea } from "@/ui/TerminalArea";
+import { DiffPanel } from "@/ui/DiffPanel";
+import { NotifCenter } from "@/ui/NotifCenter";
+import { NewAgent } from "@/ui/overlays/NewAgent";
+import { Settings } from "@/ui/overlays/Settings";
+import { MOCK_SESSIONS, MOCK_NOTIFICATIONS } from "@/ui/mockData";
+import type { AgentType, OverlayType, ThemeType } from "@/ui/types";
 
 export default function App() {
-  const {
-    tabs,
-    activeId,
-    setActiveId,
-    newTab,
-    openFileTab,
-    newPreviewTab,
-    openAiDiffTab,
-    setAiDiffStatus,
-    closeTab,
-    updateTab,
-    selectByIndex,
-  } = useTabs();
+  // ── UI 状态（对照设计稿 State Management） ──
+  const [activeSessionId, setActiveSessionId] = useState<string>(MOCK_SESSIONS[0].id);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [panelVisible, setPanelVisible] = useState(true);
+  const [overlay, setOverlay] = useState<OverlayType>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [agentPick, setAgentPick] = useState<AgentType>("CC");
+  const [theme, setTheme] = useState<ThemeType>("light");
 
-  const searchAddons = useRef<Map<number, SearchAddon>>(new Map());
-  const [activeSearchAddon, setActiveSearchAddon] =
-    useState<SearchAddon | null>(null);
-  const searchInlineRef = useRef<SearchInlineHandle | null>(null);
-  const terminalRefs = useRef<Map<number, TerminalPaneHandle>>(new Map());
-  const editorRefs = useRef<Map<number, EditorPaneHandle>>(new Map());
-  const previewRefs = useRef<Map<number, PreviewPaneHandle>>(new Map());
-  const detectedUrls = useRef<Map<number, string>>(new Map());
-  const [activeDetectedUrl, setActiveDetectedUrl] = useState<string | null>(
-    null,
-  );
-  const [activeEditorHandle, setActiveEditorHandle] =
-    useState<EditorPaneHandle | null>(null);
-  const sidebarRef = useRef<PanelImperativeHandle | null>(null);
-  const toggleSidebar = useCallback(() => {
-    const p = sidebarRef.current;
-    if (!p) return;
-    if (p.getSize().asPercentage <= 0) p.expand();
-    else p.collapse();
-  }, []);
+  // ── 会话数据（M2 静态，M3 换成 Zustand store）──
+  const sessions = MOCK_SESSIONS;
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
 
-  const [home, setHome] = useState<string | null>(null);
-  useEffect(() => {
-    homeDir()
-      .then(setHome)
-      .catch(() => setHome(null));
-  }, []);
+  // 未读通知数
+  const unreadCount = MOCK_NOTIFICATIONS.length;
 
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [newEditorOpen, setNewEditorOpen] = useState(false);
-  const miniOpen = useChatStore((s) => s.mini.open);
-  const openMini = useChatStore((s) => s.openMini);
-  const focusInput = useChatStore((s) => s.focusInput);
-  const openPanel = useChatStore((s) => s.openPanel);
-  const panelOpen = useChatStore((s) => s.panelOpen);
-  const apiKeys = useChatStore((s) => s.apiKeys);
-  const setApiKeys = useChatStore((s) => s.setApiKeys);
-  const setSelectedModelId = useChatStore((s) => s.setSelectedModelId);
-  const setLive = useChatStore((s) => s.setLive);
-  const respondToApproval = useChatStore((s) => s.respondToApproval);
-  const hasComposer = hasAnyKey(apiKeys);
+  // ── 响应式：<900px 隐右栏、<720px 隐侧栏（通过媒体 class 处理）──
+  // M2 以纯 state 控制，M3 可加 ResizeObserver 联动
 
-  const [keysLoaded, setKeysLoaded] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const reload = () => {
-      void getAllKeys().then((keys) => {
-        if (!alive) return;
-        setApiKeys(keys);
-        setKeysLoaded(true);
-      });
-    };
-    reload();
-    const unlistenP = onKeysChanged(reload);
-    return () => {
-      alive = false;
-      void unlistenP.then((fn) => fn());
-    };
-  }, [setApiKeys]);
-
-  // Hydrate the cross-window preference store and mirror the default model
-  // into chatStore so the dropdown reflects what the user picked in Settings.
-  const initPrefs = usePreferencesStore((s) => s.init);
-  const prefDefaultModel = usePreferencesStore((s) => s.defaultModelId);
-  const prefsHydrated = usePreferencesStore((s) => s.hydrated);
-  useEffect(() => {
-    void initPrefs();
-  }, [initPrefs]);
-  useEffect(() => {
-    if (!prefsHydrated) return;
-    setSelectedModelId(prefDefaultModel);
-  }, [prefsHydrated, prefDefaultModel, setSelectedModelId]);
-
-  const hydrateSessions = useChatStore((s) => s.hydrateSessions);
-  useEffect(() => {
-    void hydrateSessions();
-    void useAgentsStore.getState().hydrate();
-    void useSnippetsStore.getState().hydrate();
-  }, [hydrateSessions]);
-
-  const activeTab = tabs.find((t) => t.id === activeId);
-  const isTerminalTab = activeTab?.kind === "terminal";
-  const isEditorTab = activeTab?.kind === "editor";
-  const isPreviewTab = activeTab?.kind === "preview";
-  const isAiDiffTab = activeTab?.kind === "ai-diff";
-
-  // When an AI diff is approved (write_file applied to disk), reload any
-  // open editor tabs for that path so the user sees the new content. We
-  // track which approvalIds we've already handled to fire the reload only
-  // once per applied diff.
-  const appliedDiffsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    for (const t of tabs) {
-      if (t.kind !== "ai-diff") continue;
-      if (t.status !== "approved") continue;
-      if (appliedDiffsRef.current.has(t.approvalId)) continue;
-      appliedDiffsRef.current.add(t.approvalId);
-      for (const e of tabs) {
-        if (e.kind !== "editor") continue;
-        if (e.path !== t.path) continue;
-        editorRefs.current.get(e.id)?.reload();
-      }
-    }
-  }, [tabs]);
-
-  const { explorerRoot, inheritedCwdForNewTab } = useWorkspaceCwd(
-    activeTab,
-    tabs,
-    home,
-  );
-
-  useEffect(() => {
-    setActiveSearchAddon(searchAddons.current.get(activeId) ?? null);
-    setActiveEditorHandle(editorRefs.current.get(activeId) ?? null);
-    setActiveDetectedUrl(detectedUrls.current.get(activeId) ?? null);
-  }, [activeId]);
-
-  const handleDetectedLocalUrl = useCallback(
-    (id: number, url: string) => {
-      detectedUrls.current.set(id, url);
-      if (id === activeId) setActiveDetectedUrl(url);
-    },
-    [activeId],
-  );
-
-  // Suppress the chip once a preview tab already targets the detected URL —
-  // avoids prompting users to re-open a tab they already have.
-  const detectedPreviewUrl = useMemo(() => {
-    if (!isTerminalTab || !activeDetectedUrl) return null;
-    const alreadyOpen = tabs.some(
-      (t) => t.kind === "preview" && sameOrigin(t.url, activeDetectedUrl),
-    );
-    return alreadyOpen ? null : activeDetectedUrl;
-  }, [isTerminalTab, activeDetectedUrl, tabs]);
-
-  const handleSearchReady = useCallback(
-    (id: number, addon: SearchAddon) => {
-      searchAddons.current.set(id, addon);
-      if (id === activeId) setActiveSearchAddon(addon);
-    },
-    [activeId],
-  );
-
-  const disposeTab = useCallback(
-    (id: number) => {
-      searchAddons.current.delete(id);
-      terminalRefs.current.delete(id);
-      editorRefs.current.delete(id);
-      previewRefs.current.delete(id);
-      detectedUrls.current.delete(id);
-      closeTab(id);
-    },
-    [closeTab],
-  );
-
-  const handleClose = useCallback(
-    (id: number) => {
-      const t = tabs.find((x) => x.id === id);
-      if (t?.kind === "editor" && t.dirty) {
-        const ok = window.confirm(
-          `"${t.title}" has unsaved changes. Close anyway?`,
-        );
-        if (!ok) return;
-      }
-      disposeTab(id);
-    },
-    [tabs, disposeTab],
-  );
-
-  const cycleTab = useCallback(
-    (delta: 1 | -1) => {
-      if (tabs.length < 2) return;
-      const idx = tabs.findIndex((t) => t.id === activeId);
-      const nextIdx = (idx + delta + tabs.length) % tabs.length;
-      setActiveId(tabs[nextIdx].id);
-    },
-    [tabs, activeId, setActiveId],
-  );
-
-  const captureActiveSelection = useCallback((): string | null => {
-    const t = tabs.find((x) => x.id === activeId);
-    if (!t) return null;
-    if (t.kind === "terminal") {
-      return terminalRefs.current.get(activeId)?.getSelection() ?? null;
-    }
-    if (t.kind === "editor") {
-      return editorRefs.current.get(activeId)?.getSelection() ?? null;
-    }
-    return null;
-  }, [tabs, activeId]);
-
-  const togglePanelAndFocus = useCallback(() => {
-    if (!hasComposer) {
-      void openSettingsWindow("models");
-      return;
-    }
-    if (panelOpen) {
-      useChatStore.getState().closePanel();
-    } else {
-      openPanel();
-      focusInput(null);
-    }
-  }, [hasComposer, panelOpen, openPanel, focusInput]);
-
-  const attachSelection = useChatStore((s) => s.attachSelection);
-
-  const handleAttachFileToAgent = useCallback(
-    (path: string) => {
-      if (!hasComposer) {
-        void openSettingsWindow("models");
-        return;
-      }
-      // Dispatch a window event the composer listens for. Same pattern as
-      // selections — keeps file-explorer decoupled from the AI module.
-      window.dispatchEvent(
-        new CustomEvent<string>("terax:ai-attach-file", { detail: path }),
-      );
-      openPanel();
-      focusInput(null);
-    },
-    [hasComposer, openPanel, focusInput],
-  );
-
-  const askFromSelection = useCallback(() => {
-    if (!hasComposer) {
-      void openSettingsWindow("models");
-      return;
-    }
-    const selection = captureActiveSelection();
-    if (!selection || !selection.trim()) {
-      focusInput(null);
-      return;
-    }
-    const source: "terminal" | "editor" =
-      activeTab?.kind === "editor" ? "editor" : "terminal";
-    attachSelection(selection, source);
-  }, [
-    hasComposer,
-    captureActiveSelection,
-    focusInput,
-    attachSelection,
-    activeTab,
-  ]);
-
-  const [askPopup, setAskPopup] = useState<{ x: number; y: number } | null>(
-    null,
-  );
-
-  useEffect(() => {
-    const isInsideAi = (t: EventTarget | null) => {
-      const el = t as HTMLElement | null;
-      if (!el) return false;
-      return !!(
-        el.closest("[data-selection-ask-ai]") ||
-        el.closest("[data-ai-input-bar]") ||
-        el.closest("[data-ai-mini-window]")
-      );
-    };
-
-    const onDown = (e: MouseEvent) => {
-      if (isInsideAi(e.target)) return;
-      setAskPopup(null);
-    };
-    const onUp = (e: MouseEvent) => {
-      if (isInsideAi(e.target)) return;
-      // Defer one tick so xterm/CodeMirror finalize the selection.
-      setTimeout(() => {
-        const text = captureActiveSelection();
-        if (text && text.trim().length > 0) {
-          setAskPopup({ x: e.clientX, y: e.clientY });
-        } else {
-          setAskPopup(null);
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        overflow: "hidden",
+        fontFamily: "var(--font-ui)",
+        background: "var(--c-bg-white)",
+      }}
+    >
+      {/* 全局动画样式（光标闪烁/呼吸/弹层入场） */}
+      <style>{`
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
         }
-      }, 0);
-    };
-
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("mouseup", onUp);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("mouseup", onUp);
-    };
-  }, [captureActiveSelection]);
-
-  const onAskFromSelection = useCallback(() => {
-    askFromSelection();
-    setAskPopup(null);
-  }, [askFromSelection]);
-
-  const openNewTab = useCallback(() => {
-    newTab(inheritedCwdForNewTab());
-  }, [newTab, inheritedCwdForNewTab]);
-
-  const sendCd = useCallback(
-    (path: string) => {
-      const term = terminalRefs.current.get(activeId);
-      if (!term) return;
-      const quoted = path.includes(" ")
-        ? `'${path.replace(/'/g, `'\\''`)}'`
-        : path;
-      term.write(`cd ${quoted}\n`);
-      term.focus();
-    },
-    [activeId],
-  );
-
-  const cdInNewTab = useCallback(
-    (path: string) => {
-      const id = newTab(path);
-      setTimeout(() => {
-        const t = terminalRefs.current.get(id);
-        if (!t) return;
-        const quoted = path.includes(" ")
-          ? `'${path.replace(/'/g, `'\\''`)}'`
-          : path;
-        t.write(`cd ${quoted}\n`);
-        t.focus();
-      }, 80);
-    },
-    [newTab],
-  );
-
-  const handleOpenFile = useCallback(
-    (path: string) => {
-      openFileTab(path);
-    },
-    [openFileTab],
-  );
-
-  const handlePathRenamed = useCallback(
-    (from: string, to: string) => {
-      for (const t of tabs) {
-        if (t.kind !== "editor") continue;
-        if (t.path === from) {
-          const i = to.lastIndexOf("/");
-          updateTab(t.id, { path: to, title: i === -1 ? to : to.slice(i + 1) });
-        } else if (t.path.startsWith(`${from}/`)) {
-          const suffix = t.path.slice(from.length);
-          const newPath = `${to}${suffix}`;
-          const i = newPath.lastIndexOf("/");
-          updateTab(t.id, {
-            path: newPath,
-            title: i === -1 ? newPath : newPath.slice(i + 1),
-          });
+        @keyframes pulseDot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.8); }
         }
-      }
-    },
-    [tabs, updateTab],
-  );
-
-  const handlePathDeleted = useCallback(
-    (path: string) => {
-      for (const t of tabs) {
-        if (t.kind !== "editor") continue;
-        if (t.path === path || t.path.startsWith(`${path}/`)) {
-          disposeTab(t.id);
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-      }
-    },
-    [tabs, disposeTab],
-  );
+        @keyframes sheetIn {
+          from { opacity: 0; transform: translate(-50%, -52%); }
+          to   { opacity: 1; transform: translate(-50%, -50%); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        /* 响应式：<900px 隐右栏、<720px 隐侧栏 */
+        @media (max-width: 900px) {
+          .conduit-panel { display: none !important; }
+        }
+        @media (max-width: 720px) {
+          .conduit-sidebar { display: none !important; }
+        }
+      `}</style>
 
-  const activeFilePath = activeTab?.kind === "editor" ? activeTab.path : null;
+      {/* 标题栏 */}
+      <Titlebar
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        sidebarVisible={sidebarVisible}
+        panelVisible={panelVisible}
+        notifOpen={notifOpen}
+        unreadCount={unreadCount}
+        onToggleSidebar={() => setSidebarVisible((v) => !v)}
+        onTogglePanel={() => setPanelVisible((v) => !v)}
+        onToggleNotif={() => setNotifOpen((v) => !v)}
+        onSelectSession={setActiveSessionId}
+        onNewAgent={() => setOverlay("agent")}
+      />
 
-  const openPreviewTab = useCallback(
-    (url: string) => {
-      const id = newPreviewTab(url);
-      // Focus the address bar if the URL is empty so the user can type.
-      if (!url) {
-        setTimeout(() => previewRefs.current.get(id)?.focusAddressBar(), 0);
-      }
-      return id;
-    },
-    [newPreviewTab],
-  );
-
-  const shortcutHandlers = useMemo<ShortcutHandlers>(
-    () => ({
-      "tab.new": openNewTab,
-      "tab.newPreview": () => openPreviewTab(""),
-      "tab.newEditor": () => setNewEditorOpen(true),
-      "tab.close": () => handleClose(activeId),
-      "tab.next": () => cycleTab(1),
-      "tab.prev": () => cycleTab(-1),
-      "tab.selectByIndex": (e) => selectByIndex(parseInt(e.key, 10) - 1),
-      "search.focus": () => searchInlineRef.current?.focus(),
-      "ai.toggle": togglePanelAndFocus,
-      "ai.askSelection": askFromSelection,
-      "shortcuts.open": () => setShortcutsOpen((v) => !v),
-      "sidebar.toggle": toggleSidebar,
-    }),
-    [
-      activeId,
-      cycleTab,
-      handleClose,
-      openNewTab,
-      openPreviewTab,
-      selectByIndex,
-      togglePanelAndFocus,
-      askFromSelection,
-      toggleSidebar,
-    ],
-  );
-
-  useGlobalShortcuts(shortcutHandlers);
-
-  const registerTerminalHandle = useCallback(
-    (id: number, h: TerminalPaneHandle | null) => {
-      if (h) terminalRefs.current.set(id, h);
-      else terminalRefs.current.delete(id);
-    },
-    [],
-  );
-
-  const registerEditorHandle = useCallback(
-    (id: number, h: EditorPaneHandle | null) => {
-      if (h) editorRefs.current.set(id, h);
-      else editorRefs.current.delete(id);
-      if (id === activeId) setActiveEditorHandle(h);
-    },
-    [activeId],
-  );
-
-  const registerPreviewHandle = useCallback(
-    (id: number, h: PreviewPaneHandle | null) => {
-      if (h) previewRefs.current.set(id, h);
-      else previewRefs.current.delete(id);
-    },
-    [],
-  );
-
-  const handlePreviewUrl = useCallback(
-    (id: number, url: string) => updateTab(id, { url }),
-    [updateTab],
-  );
-
-  const handleTerminalCwd = useCallback(
-    (id: number, cwd: string) => updateTab(id, { cwd }),
-    [updateTab],
-  );
-
-  const handleEditorDirty = useCallback(
-    (id: number, dirty: boolean) => updateTab(id, { dirty }),
-    [updateTab],
-  );
-
-  const searchTarget = useMemo<SearchTarget>(() => {
-    if (isTerminalTab && activeSearchAddon)
-      return { kind: "terminal", addon: activeSearchAddon };
-    if (isEditorTab && activeEditorHandle)
-      return { kind: "editor", handle: activeEditorHandle };
-    return null;
-  }, [isTerminalTab, isEditorTab, activeSearchAddon, activeEditorHandle]);
-
-  const activeCwd =
-    activeTab?.kind === "terminal" ? (activeTab.cwd ?? null) : null;
-
-  useEffect(() => {
-    const findCwd = () => {
-      const active = tabs.find((x) => x.id === activeId);
-      if (active?.kind === "terminal" && active.cwd) return active.cwd;
-      for (let i = tabs.length - 1; i >= 0; i--) {
-        const t = tabs[i];
-        if (t.kind === "terminal" && t.cwd) return t.cwd;
-      }
-      return explorerRoot ?? home ?? null;
-    };
-
-    setLive({
-      getCwd: findCwd,
-      getTerminalContext: () => {
-        const t = tabs.find((x) => x.id === activeId);
-        if (t?.kind !== "terminal") return null;
-        return terminalRefs.current.get(activeId)?.getBuffer(300) ?? null;
-      },
-      injectIntoActivePty: (text) => {
-        const t = tabs.find((x) => x.id === activeId);
-        if (t?.kind !== "terminal") return false;
-        const term = terminalRefs.current.get(activeId);
-        if (!term) return false;
-        term.write(text);
-        term.focus();
-        return true;
-      },
-      getWorkspaceRoot: () => explorerRoot ?? home ?? null,
-      getActiveFile: () => {
-        const t = tabs.find((x) => x.id === activeId);
-        return t?.kind === "editor" ? t.path : null;
-      },
-      openPreview: (url: string) => {
-        openPreviewTab(url);
-        return true;
-      },
-    });
-  }, [setLive, activeId, tabs, explorerRoot, home, openPreviewTab]);
-
-  const shell = (
-    <ThemeProvider>
-      <TooltipProvider>
-        <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
-          <Header
-            tabs={tabs}
-            activeId={activeId}
-            onSelect={setActiveId}
-            onNew={openNewTab}
-            onNewPreview={() => openPreviewTab("")}
-            onNewEditor={() => setNewEditorOpen(true)}
-            onClose={handleClose}
-            onToggleSidebar={toggleSidebar}
-            onOpenShortcuts={() => setShortcutsOpen(true)}
-            onOpenSettings={() => void openSettingsWindow()}
-            searchTarget={searchTarget}
-            searchRef={searchInlineRef}
-          />
-
-          <main className="flex min-h-0 flex-1 flex-col">
-            <ResizablePanelGroup
-              orientation="horizontal"
-              className="min-h-0 flex-1"
-            >
-              <ResizablePanel
-                id="sidebar"
-                panelRef={sidebarRef}
-                defaultSize="225px"
-                minSize="130px"
-                maxSize="450px"
-                collapsible
-                collapsedSize={0}
-              >
-                <div className="h-full border-r border-border/60 bg-card">
-                  <FileExplorer
-                    rootPath={explorerRoot}
-                    onOpenFile={handleOpenFile}
-                    onPathRenamed={handlePathRenamed}
-                    onPathDeleted={handlePathDeleted}
-                    onRevealInTerminal={cdInNewTab}
-                    onAttachToAgent={handleAttachFileToAgent}
-                  />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="relative min-h-0 flex-1">
-                    <div
-                      className={cn(
-                        "absolute inset-0 px-3 pt-2 pb-2",
-                        !isTerminalTab && "invisible pointer-events-none",
-                      )}
-                      aria-hidden={!isTerminalTab}
-                    >
-                      <TerminalStack
-                        tabs={tabs}
-                        activeId={activeId}
-                        registerHandle={registerTerminalHandle}
-                        onSearchReady={handleSearchReady}
-                        onCwd={handleTerminalCwd}
-                        onDetectedLocalUrl={handleDetectedLocalUrl}
-                      />
-                    </div>
-                    <div
-                      className={cn(
-                        "absolute inset-0 px-3 pt-2 pb-2",
-                        !isEditorTab && "invisible pointer-events-none",
-                      )}
-                      aria-hidden={!isEditorTab}
-                    >
-                      <EditorStack
-                        tabs={tabs}
-                        activeId={activeId}
-                        registerHandle={registerEditorHandle}
-                        onDirtyChange={handleEditorDirty}
-                        onCloseTab={disposeTab}
-                      />
-                    </div>
-                    <div
-                      className={cn(
-                        "absolute inset-0 px-3 pt-2 pb-2",
-                        !isPreviewTab && "invisible pointer-events-none",
-                      )}
-                      aria-hidden={!isPreviewTab}
-                    >
-                      <PreviewStack
-                        tabs={tabs}
-                        activeId={activeId}
-                        registerHandle={registerPreviewHandle}
-                        onUrlChange={handlePreviewUrl}
-                      />
-                    </div>
-                    <div
-                      className={cn(
-                        "absolute inset-0 px-3 pt-2 pb-2",
-                        !isAiDiffTab && "invisible pointer-events-none",
-                      )}
-                      aria-hidden={!isAiDiffTab}
-                    >
-                      <AiDiffStack
-                        tabs={tabs}
-                        activeId={activeId}
-                        onAccept={(id) => respondToApproval(id, true)}
-                        onReject={(id) => respondToApproval(id, false)}
-                      />
-                    </div>
-                  </div>
-
-                  {keysLoaded ? (
-                    <motion.div
-                      data-ai-input-bar
-                      initial={false}
-                      animate={{
-                        height: panelOpen ? "auto" : 0,
-                        opacity: panelOpen ? 1 : 0,
-                      }}
-                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="overflow-hidden"
-                      aria-hidden={!panelOpen}
-                    >
-                      {hasComposer ? (
-                        <AiInputBar />
-                      ) : (
-                        <AiInputBarConnect
-                          onAdd={() => void openSettingsWindow("models")}
-                        />
-                      )}
-                    </motion.div>
-                  ) : null}
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </main>
-
-          <StatusBar
-            cwd={activeCwd}
-            filePath={activeFilePath}
-            home={home}
-            onCd={sendCd}
-            onOpenMini={openMini}
-            hasComposer={hasComposer}
-            detectedPreviewUrl={detectedPreviewUrl}
-            onOpenPreview={() => {
-              if (detectedPreviewUrl) openPreviewTab(detectedPreviewUrl);
-            }}
-          />
-
-          {hasComposer ? (
-            <AgentRunBridge
-              openAiDiffTab={openAiDiffTab}
-              setAiDiffStatus={setAiDiffStatus}
+      {/* 主体三栏 */}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          overflow: "hidden",
+          minHeight: 0,
+        }}
+      >
+        {/* 侧边栏（可折叠） */}
+        {sidebarVisible && (
+          <div className="conduit-sidebar">
+            <Sidebar
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={setActiveSessionId}
+              onNewAgent={() => setOverlay("agent")}
+              onOpenSettings={() => setOverlay("settings")}
             />
-          ) : null}
+          </div>
+        )}
 
-          <AnimatePresence>
-            {miniOpen && hasComposer ? <AiMiniWindow key="ai-mini" /> : null}
-            {askPopup ? (
-              <SelectionAskAi
-                key="ask-ai-popup"
-                x={askPopup.x}
-                y={askPopup.y}
-                onAsk={onAskFromSelection}
-                onDismiss={() => setAskPopup(null)}
-              />
-            ) : null}
-          </AnimatePresence>
+        {/* 终端中栏 */}
+        <TerminalArea
+          session={activeSession}
+          onViewDiff={() => setPanelVisible(true)}
+        />
 
-          <ShortcutsDialog
-            open={shortcutsOpen}
-            onOpenChange={setShortcutsOpen}
-          />
+        {/* 审查/diff 面板（可折叠） */}
+        {panelVisible && (
+          <div className="conduit-panel">
+            <DiffPanel session={activeSession} />
+          </div>
+        )}
+      </div>
 
-          <NewEditorDialog
-            open={newEditorOpen}
-            onOpenChange={setNewEditorOpen}
-            rootPath={explorerRoot ?? home}
-            onCreated={(path) => openFileTab(path)}
-          />
+      {/* 通知中心下拉 */}
+      {notifOpen && (
+        <NotifCenter
+          notifications={MOCK_NOTIFICATIONS}
+          onClose={() => setNotifOpen(false)}
+        />
+      )}
 
-          <UpdaterDialog />
-        </div>
-      </TooltipProvider>
-    </ThemeProvider>
+      {/* 弹层：新建 Agent */}
+      {overlay === "agent" && (
+        <NewAgent
+          initialAgent={agentPick}
+          onClose={() => setOverlay(null)}
+          onCreate={(agent) => {
+            setAgentPick(agent);
+            setOverlay(null);
+          }}
+        />
+      )}
+
+      {/* 弹层：设置 */}
+      {overlay === "settings" && (
+        <Settings
+          theme={theme}
+          onThemeChange={(t) => setTheme(t)}
+          onClose={() => setOverlay(null)}
+        />
+      )}
+    </div>
   );
-
-  // Mount the composer provider whenever any provider has a key — independent
-  // of panelOpen — so toggling the panel never re-mounts terminals/editors.
-  if (hasComposer) {
-    return <AiComposerProvider>{shell}</AiComposerProvider>;
-  }
-  return shell;
 }
