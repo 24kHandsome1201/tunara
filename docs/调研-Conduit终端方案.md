@@ -24,8 +24,12 @@
 
 Conduit 是一个 **AI 原生终端**，不是普通终端：
 
-- **侧边栏不是文件树**，而是**按工作目录分组的会话列表**，每个会话挂一个 AI agent（CC=Claude Code / CX=Codex / CU=Cursor）。
-- **主区是真实终端流**，AI 的回复**内联**渲染在终端里（带「应用补丁 / 查看 diff」按钮）。
+- **侧边栏不是文件树**，而是**按工作目录分组的会话列表**，每个会话挂一个 AI agent。
+  - ⚠️ **原型历史信息**：设计稿原型标注三家 agent（CC=Claude Code / CX=Codex / CU=Cursor）。**实际范围以 D2 为准：只接 CC + CX，砍掉 CU**（详见《调研-三大难点深入.md》决策记录）。
+- **主区呈现真实终端流 + AI 回复**（原型把 AI 回复画成「内联」在终端流里，带「应用补丁 / 查看 diff」按钮）。
+  - ⚠️ **原型历史信息（两处需以决策为准）**：
+    1. **「应用补丁」按钮**：D1 已决定 agent 直接写盘，不做「先产出 patch 再 apply」。按钮语义降级为「已应用 ✓ / 查看 diff / 丢弃本轮改动」。
+    2. **「AI 回复内联渲染在终端里」不能直译为「把 React 组件插进 xterm buffer」**：xterm.js 有自己的 scrollback / selection / resize 模型，与 DOM block 是两套体系，不能仅靠一个 `InlineAgentBlock.tsx` 混排。本项目的渲染取舍见 §1.3 末「渲染模型取舍」。
 - **右栏是跟随当前会话的 diff / 审查面板**，底部可直接 commit & push。
 
 这意味着工程范围 = 真实终端 + 会话编排 + AI 集成 + Git 集成。设计稿只规定「呈现」，不含后端逻辑。
@@ -61,6 +65,15 @@ Conduit 是一个 **AI 原生终端**，不是普通终端：
 - 侧边栏（272px）与审查面板（300px）**均可隐藏**（标题栏左按钮 / 右侧 `+−` 按钮）。
 - 弹层（新建 Agent 520px / 设置 600px）为绝对定位居中 sheet + 半透明遮罩 + blur。
 
+**响应式策略（窄窗口下保护终端主区）**：三栏固定宽在窄窗口会把终端主区压到不可用。规则：
+- **以 xterm 最小列宽为硬约束**：主区至少保留 **80 columns**（约 80×单字符宽 + 左右 padding）。低于阈值时**优先自动隐藏右栏（审查面板），再隐藏侧栏**，而不是继续压缩终端。
+- 参考断点：`<900px` 自动隐藏右栏；`<720px` 再自动隐藏侧栏。隐藏后仍可由标题栏按钮手动唤出（手动优先级高于自动）。
+
+**渲染模型取舍（关键，对应 §1.2 的「内联」说明）**：xterm buffer 与 React DOM 不能天然混排，必须先选定 transcript 架构。本项目的决策（与《实施文档》《调研-三大难点深入》一致）：
+- **MVP**：**agent 会话用独立的 React transcript 视图**（打字机正文 + toolUse/fileChange 折叠块），**不伪装成 xterm**；**shell 会话仍用 terax 的 xterm 接线**。两类会话由 `kind: 'shell'|'agent'` 分流渲染——既贴近设计稿的「终端主区视觉」（复用字体/背景/提示符风格），又不必把 React 组件硬塞进 xterm buffer。
+- **目标形态（二期 / 风险项）**：外层 React 虚拟列表承载 shell block + agent block，xterm 只负责「当前交互块」。这最接近原型「终端流中内联 AI 块」的观感，但**代价明显更高**：shell 历史要 block 化（靠 OSC 133 切命令边界）、跨 block 的滚动 / 选择 / 复制都要自实现、**xterm 接线不能再直接照搬 terax**。故不进 MVP。
+- **验收（无论哪种形态都要覆盖）**：长输出滚动流畅、文本选择与复制正确、切走再切回会话历史恢复、resize 后块位置不错乱。
+
 ### 1.4 Design Tokens（实现时直接抄成 CSS 变量）
 
 **颜色**
@@ -73,7 +86,9 @@ Conduit 是一个 **AI 原生终端**，不是普通终端：
 - **shell 专属配色**（刻意区别于 UI 灰阶）：路径蓝 `#2563eb` · 提示符`❯`/PASS 绿 `#16a34a` · 错误/FAIL 红 `#dc2626`
 - diff：删 底`#fcebec`/字`#c0414e` · 增 底`#e8f6ef`/字`#1f8a5b`
 
-**字体**：UI 用 `-apple-system, system-ui`；所有终端/代码/路径/分支/快捷键用 `'JetBrains Mono'`（400/500/600/700，Google Fonts）。尺寸：标题16 / 区块13.5 / 正文13 / 次要12–12.5 / meta 10.5–11.5 / 角标9。
+**字体**：UI 用 `-apple-system, system-ui`；所有终端/代码/路径/分支/快捷键用 `'JetBrains Mono'`（400/500/600/700）。尺寸：标题16 / 区块13.5 / 正文13 / 次要12–12.5 / meta 10.5–11.5 / 角标9。
+- **引入方式统一为离线包 `@fontsource/jetbrains-mono`**（与《实施文档》一致），**不走 Google Fonts**——避免首次启动断网时字体闪烁或退化到系统等宽字体。
+- **视觉验收**：无网络环境下首次启动，终端/代码区字体即为 JetBrains Mono，**不闪、不退化**。
 
 **圆角**：按钮/输入 7–8；卡片/标签 9；弹层 14；角标 6；胶囊 100px。
 **间距**：卡内 padding 10–11；区栏 padding 14；gap 8–10。
@@ -102,9 +117,9 @@ state = {
 // 每个会话的数据形状（原型里是静态 mock，生产要换成真实数据）
 session = {
   id, title, dir, branch,
-  agent: 'CC'|'CX'|'CU',
+  agent: 'CC'|'CX'|'CU',              // ⚠️ 原型历史信息：生产以 D2 为准，只有 'CC'|'CX'（CU 已砍）
   status: 'running'|'fresh'|'done',  // 对应：呼吸点 / 勾「刚完成」/ 灰点 exit 0
-  cmd, reply,                         // 内联 AI 块内容
+  cmd, reply,                         // AI 回复内容（生产中 agent 会话走独立 React transcript，见 §1.3）
   changes: bool, summary, commit,     // diff 面板：摘要 + commit 建议
 }
 ```
@@ -118,7 +133,14 @@ session = {
 
 - **会话切换**：点侧栏卡 / 点 Tab → 更新激活高亮 + 终端流 + 状态栏 path/branch + 审查面板。**始终恰好一个 Tab 激活**；点击不在固定 Tab 中的历史会话时，动态生成一个高亮 Tab（HTML `isExtra` 逻辑）。
 - **新建终端**：即时，无弹层（侧栏「+新建终端」/ `⌘T`）。
-- **新建 Agent**：弹层（侧栏「✦Agent」/ Tab 区 `+`），选目录 + 选 agent。
+- **新建 Agent**：弹层（侧栏「✦Agent」/ Tab 区 `+`），选目录 + 选 agent + **填初始 prompt**。
+  - ⚠️ **原型只画了「选目录 + 选 agent」，缺 prompt 输入**，但真实数据流需要 prompt（`spawnAgent(agent, prompt, cwd, …)`）。补齐：
+    - **prompt 来源**：弹层内 **textarea 为主**（创建即带首条指令）；可选「用终端当前输入 / 选中文本」预填。
+    - **快捷键**：`⌘⏎` 提交创建。
+    - **空 prompt 校验**：prompt 为空时禁用创建按钮（或创建后进入「待输入」态，不立即 spawn）。
+    - **目录默认值**：默认填**最近使用目录**。
+  - ⚠️ **agent 选项以 D2 为准**：只展示 **CC / CX 两张卡**；原型的 **CU 卡移除或灰置「暂不支持」**。
+- **「应用补丁」交互（原型历史信息）**：D1 下 agent 直接写盘，终端内 / 审查面板中原「应用补丁」改为 **「已应用 ✓ / 查看 diff / 丢弃本轮改动」**；其中「丢弃本轮改动」只回滚 agent 本轮改动（baseline diff），不动用户启动前的已有改动。
 - **折叠侧边栏**：标题栏左按钮。
 - **审查面板开关**：标题栏 `+−` 或终端内「查看 diff」。
 - **通知中心**：铃铛开关，失败项（红，持久）+ 完成项（绿），角标计数 = 未读数。
@@ -163,7 +185,13 @@ session = {
 | 文件搜索/grep | ✅ `fs_search` / `fs_grep` / `fs_glob`（ignore + ripgrep 库） | `fs/grep.rs` |
 | 自定义标题栏（macOS） | ✅ `TitleBarStyle::Overlay` | `lib.rs` + `WindowControls.tsx` |
 | xterm + WebGL/fit/search/links | ✅ | `useTerminalSession.ts` |
-| AI 内联渲染组件 | ✅ `ai-elements/`（message/code-block/reasoning…）+ `@ai-sdk/anthropic` | `components/ai-elements/` |
+| AI 内联渲染组件 | ⚠️ 仅作 UI 借鉴 `ai-elements/`（message/code-block/reasoning…）；**不解决「终端流中嵌 React AI 块」** | `components/ai-elements/` |
+
+> ⚠️ **复用边界（重要，避免误判）**：terax「能直接用」的结论**严格限定为 PTY / IPC / xterm 接线**（多会话、背压、shell 集成、cwd/命令边界跟踪）——这是真正白送的部分。它**不包含**：
+> - **block 化终端**（把 shell 历史切成可独立操作的命令块）；
+> - **AI inline transcript**（在终端流中混排 React AI 回复块）。
+>
+> terax 的 xterm 适合做「真实 shell 面板」；但「AI 回复内联在终端里」是 Conduit 特有需求，xterm + DOM 混排不能自动得到（见 §1.3 渲染模型取舍）。MVP 用「agent 独立 React transcript + shell 用 terax xterm」绕开，目标形态（block 虚拟列表）属二期，届时 xterm 接线需另做。`ai-elements` 仅作为 transcript 视图的 UI 借鉴，非现成方案。
 
 ### 2.3 terax 后端核心实现（带评注）
 
@@ -282,6 +310,19 @@ tauri-plugin-{log,os,store,process} = "2"
 | P1 | §2.2 「生产级」表述 | terax 是 0 star 新项目，建议把「生产级」改为「实现质量较高，但需本项目 smoke 验证」。最少补测 `yes`/大文件输出、resize、中文宽字符、OSC 7/133、HMR/drop kill、窗口关闭后子进程清理。 |
 | P2 | §2.5 前端依赖 | 若最终统一走三家 CLI，`@ai-sdk/*` 不应成为 MVP 硬依赖。建议把 terax 的 `ai-elements` 视为可借鉴 UI 组件，SDK 依赖标成可裁剪项，避免引入第二套云 API 接入路径。 |
 | P2 | §1.3 布局尺寸 | 三栏固定宽在窄窗口会压缩终端主区。建议补一个最小宽度/响应式策略：例如 `<900px` 自动隐藏右栏，`<720px` 自动隐藏侧栏，保证 xterm 可用宽度。 |
+
+### 3.5 第二轮补充审阅意见（2026-06-18）— 已处理
+
+> 角色：对设计交接稿与后续技术决策做一致性 review。下表含每条的**处理结果**；正文已同步，避免实现者按原型走错方向。
+
+| 优先级 | 位置 | 修改意见 | 处理结果 |
+|---|---|---|---|
+| P0 | §1.2 / §1.3 / §1.6 终端内联 AI | “AI 回复内联渲染在终端里”未说明 React 组件如何插入 xterm buffer；xterm 与 DOM block 是两套模型，不能仅靠 `InlineAgentBlock.tsx` 解决。建议补 MVP 渲染取舍并补滚动/选择复制/切会话恢复/resize 验收。 | ✅ **已采纳**：§1.2 标注「内联」不能直译为「插进 xterm buffer」；§1.3 新增「渲染模型取舍」——**MVP = agent 独立 React transcript + shell 用 terax xterm；目标形态 = 外层 block 虚拟列表（二期/风险项，xterm 接线需另做）**，并列出四项验收 |
+| P1 | §1.6 / §1.7 / State Management | 原型仍保留 CU 与「应用补丁」语义，与 D1/D2 冲突。建议统一标为“原型历史信息”，写清 CU 不进 MVP、「应用补丁」改为“已应用/查看 diff/丢弃本轮改动”。 | ✅ **已采纳**：§1.2 / §1.6 / §1.5 数据形状均加「原型历史信息」标注；§1.6 交互清单写明只展示 CC/CX、CU 移除或灰置，「应用补丁」改为「已应用 ✓ / 查看 diff / 丢弃本轮改动」 |
+| P1 | §1.6 新建 Agent | 交互只写“选目录 + 选 agent”，缺 prompt 来源。建议补 prompt 输入来源、空 prompt 校验、⌘⏎、最近目录默认值。 | ✅ **已采纳**：§1.6「新建 Agent」补 prompt 来源（textarea 为主，可用终端输入/选中文本预填）、`⌘⏎` 提交、空 prompt 校验、默认最近目录 |
+| P1 | §2.2 terax 复用 | 需明确复用边界：terax xterm 适合真实 shell 面板，但不解决“终端流中嵌 React AI 块”。建议把“终端核心可直接用”限定为 PTY/IPC/xterm 接线，不含 block 化终端/AI inline transcript。 | ✅ **已采纳**：§2.2 表内「AI 内联渲染组件」一行改为「仅作 UI 借鉴」，并新增「复用边界」说明框——白送范围严格限定 PTY/IPC/xterm 接线，不含 block 化终端与 AI inline transcript |
+| P2 | §1.4 字体 | 本稿写 Google Fonts，实施稿已改离线包。建议统一 `@fontsource/jetbrains-mono`，并把“无网络首次启动字体不闪/不退化”加入视觉验收。 | ✅ **已采纳**：§1.4 字体引入统一为离线包 `@fontsource/jetbrains-mono`，去掉 Google Fonts 字样，新增「断网首启不闪/不退化」视觉验收 |
+| P2 | §1.3 布局尺寸 | 需补 xterm 最小列宽目标（如主区至少 80 columns）；低于阈值优先隐藏右栏再隐藏侧栏，而非继续压缩终端。 | ✅ **已采纳**：§1.3「响应式策略」以 **xterm 最小 80 columns 为硬约束**，`<900px` 先隐右栏、`<720px` 再隐侧栏，手动优先级高于自动 |
 
 ---
 
