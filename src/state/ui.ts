@@ -100,7 +100,7 @@ export const useUIStore = create<UIState>()((set, get) => {
       persist();
     },
     addNotification: (n) =>
-      set((s) => ({ notifications: [n, ...s.notifications] })),
+      set((s) => ({ notifications: [n, ...s.notifications].slice(0, 100) })),
     clearNotification: (id) =>
       set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),
     clearAllNotifications: () => set({ notifications: [] }),
