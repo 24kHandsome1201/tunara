@@ -6,9 +6,12 @@ import { type Notification } from "./types";
 interface NotifCenterProps {
   notifications: Notification[];
   onClose: () => void;
+  onClear?: (id: string) => void;
+  onClearAll?: () => void;
+  onSelect?: (sessionId: string) => void;
 }
 
-export function NotifCenter({ notifications, onClose }: NotifCenterProps) {
+export function NotifCenter({ notifications, onClose, onClear, onClearAll, onSelect }: NotifCenterProps) {
   return (
     <>
       {/* 遮罩（点外部关闭） */}
@@ -56,6 +59,24 @@ export function NotifCenter({ notifications, onClose }: NotifCenterProps) {
           >
             通知
           </span>
+          {notifications.length > 0 && onClearAll && (
+            <button
+              onClick={onClearAll}
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: "var(--fs-secondary)",
+                color: "var(--c-text-4)",
+                marginLeft: "auto",
+                marginRight: 8,
+                padding: "2px 6px",
+                borderRadius: "var(--r-btn)",
+              }}
+            >
+              清除全部
+            </button>
+          )}
           <button
             onClick={onClose}
             style={{
@@ -68,12 +89,7 @@ export function NotifCenter({ notifications, onClose }: NotifCenterProps) {
               padding: "2px 4px",
               borderRadius: "var(--r-btn)",
             }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--c-bg-hover)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            }}
+            className="hover-bg"
           >
             ✕
           </button>
@@ -96,13 +112,21 @@ export function NotifCenter({ notifications, onClose }: NotifCenterProps) {
             notifications.map((n) => (
               <div
                 key={n.id}
+                onClick={() => {
+                  if (n.sessionId && onSelect) {
+                    onSelect(n.sessionId);
+                    onClose();
+                  }
+                }}
                 style={{
                   display: "flex",
                   alignItems: "flex-start",
                   gap: 10,
                   padding: "10px 14px",
                   borderBottom: "1px solid var(--c-border-1)",
+                  cursor: n.sessionId && onSelect ? "pointer" : "default",
                 }}
+                className={n.sessionId && onSelect ? "hover-bg" : undefined}
               >
                 {/* 类型图标 */}
                 <div
@@ -163,6 +187,29 @@ export function NotifCenter({ notifications, onClose }: NotifCenterProps) {
                   >
                     失败
                   </span>
+                )}
+
+                {/* 清除按钮 */}
+                {onClear && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClear(n.id);
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      color: "var(--c-text-5)",
+                      padding: "2px 4px",
+                      borderRadius: "var(--r-btn)",
+                      flexShrink: 0,
+                    }}
+                    className="hover-bg"
+                  >
+                    ✕
+                  </button>
                 )}
               </div>
             ))

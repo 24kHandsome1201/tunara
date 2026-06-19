@@ -2,13 +2,15 @@
 // 含：顶部分段按钮 / 搜索框 / 会话分组列表 / 底部设置+会话数
 
 import { SessionCard } from "./SessionCard";
-import { groupSessionsByDir } from "./mockData";
-import { type Session } from "./types";
+import { groupByDir, type Session } from "./types";
+
+import { useState } from "react";
 
 interface SidebarProps {
   sessions: Session[];
   activeSessionId: string;
   onSelectSession: (id: string) => void;
+  onNewTerminal: () => void;
   onNewAgent: () => void;
   onOpenSettings: () => void;
 }
@@ -86,16 +88,25 @@ export function Sidebar({
   sessions,
   activeSessionId,
   onSelectSession,
+  onNewTerminal,
   onNewAgent,
   onOpenSettings,
 }: SidebarProps) {
-  const groups = groupSessionsByDir(sessions);
+  const [search, setSearch] = useState("");
+  const filtered = search.trim()
+    ? sessions.filter(
+        (s) =>
+          s.title.toLowerCase().includes(search.toLowerCase()) ||
+          s.dir.toLowerCase().includes(search.toLowerCase()),
+      )
+    : sessions;
+  const groups = groupByDir(filtered);
 
   return (
     <div
       style={{
         width: "var(--w-sidebar)",
-        background: "var(--c-bg-2)",
+        background: "var(--c-bg-2-glass)",
         borderRight: "1px solid var(--c-border-1)",
         display: "flex",
         flexDirection: "column",
@@ -116,6 +127,7 @@ export function Sidebar({
         >
           {/* 左段：新建终端（即时，无弹层） */}
           <button
+            onClick={onNewTerminal}
             style={{
               flex: 1,
               padding: "7px 10px",
@@ -127,12 +139,7 @@ export function Sidebar({
               justifyContent: "center",
               gap: 5,
             }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--c-bg-hover)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            }}
+            className="hover-bg"
           >
             <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>
               + 新建终端
@@ -166,12 +173,7 @@ export function Sidebar({
               justifyContent: "center",
               gap: 4,
             }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--c-accent-bg-light)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            }}
+            className="hover-accent-bg"
           >
             <span style={{ fontSize: 11, color: "var(--c-accent)" }}>✦</span>
             <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-accent)" }}>
@@ -194,14 +196,21 @@ export function Sidebar({
           }}
         >
           <SearchIcon />
-          <span
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索会话"
             style={{
+              flex: 1,
+              border: "none",
+              background: "transparent",
+              outline: "none",
               fontSize: "var(--fs-body)",
-              color: "var(--c-text-5)",
+              color: "var(--c-text-primary)",
+              fontFamily: "var(--font-ui)",
             }}
-          >
-            搜索会话
-          </span>
+          />
         </div>
       </div>
 
@@ -214,7 +223,7 @@ export function Sidebar({
         }}
         className="no-scrollbar"
       >
-        {Array.from(groups.entries()).map(([dir, groupSessions]) => (
+        {Object.entries(groups).map(([dir, groupSessions]) => (
           <div key={dir} style={{ marginBottom: 8 }}>
             <DirGroupHeader dir={dir} count={groupSessions.length} />
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -253,12 +262,7 @@ export function Sidebar({
             padding: "3px 6px",
             borderRadius: "var(--r-btn)",
           }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--c-bg-hover)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-          }}
+          className="hover-bg"
         >
           <GearIcon />
           <span style={{ fontSize: "var(--fs-body)", color: "var(--c-text-4)" }}>设置</span>

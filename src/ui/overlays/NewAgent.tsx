@@ -3,10 +3,13 @@
 
 import { useState } from "react";
 import { type AgentType } from "../types";
+import { AgentBadge } from "../SessionCard";
 
 interface NewAgentProps {
   /** 初始选中的 agent */
   initialAgent?: AgentType;
+  /** 初始工作目录（默认取当前会话目录） */
+  defaultDir?: string;
   onClose: () => void;
   onCreate: (agent: AgentType, dir: string, prompt: string) => void;
 }
@@ -37,55 +40,15 @@ const AGENT_CARDS: AgentCardDef[] = [
   },
 ];
 
-/** agent 角标（弹层用） */
-function AgentBadgeInner({ agent, disabled }: { agent: AgentType; disabled?: boolean }) {
-  const styles: Record<AgentType, React.CSSProperties> = {
-    CC: {
-      background: disabled ? "var(--c-bg-3)" : "var(--c-agent-cc-bg)",
-      border: `1px solid ${disabled ? "var(--c-border-2)" : "var(--c-agent-cc-border)"}`,
-      color: disabled ? "var(--c-text-5)" : "var(--c-agent-cc-text)",
-    },
-    CX: {
-      background: disabled ? "var(--c-bg-3)" : "var(--c-agent-cx-bg)",
-      border: `1px solid ${disabled ? "var(--c-border-2)" : "var(--c-agent-cx-border)"}`,
-      color: disabled ? "var(--c-text-5)" : "var(--c-agent-cx-text)",
-    },
-    CU: {
-      background: "var(--c-bg-3)",
-      border: "1px solid var(--c-border-2)",
-      color: "var(--c-text-5)",
-    },
-  };
 
-  return (
-    <div
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: "var(--r-badge)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 10,
-        fontWeight: 700,
-        fontFamily: "var(--font-mono)",
-        flexShrink: 0,
-        ...styles[agent],
-      }}
-    >
-      {agent}
-    </div>
-  );
-}
-
-export function NewAgent({ initialAgent = "CC", onClose, onCreate }: NewAgentProps) {
+export function NewAgent({ initialAgent = "CC", defaultDir = "~", onClose, onCreate }: NewAgentProps) {
   const [agentPick, setAgentPick] = useState<AgentType>(initialAgent);
-  const [dir] = useState("~/orbit");
+  const [dir, setDir] = useState(defaultDir || "~");
   const [prompt, setPrompt] = useState("");
 
   function handleCreate() {
-    if (!prompt.trim()) return;
-    onCreate(agentPick, dir, prompt);
+    if (!prompt.trim() || !dir.trim()) return;
+    onCreate(agentPick, dir.trim(), prompt);
     onClose();
   }
 
@@ -175,35 +138,27 @@ export function NewAgent({ initialAgent = "CC", onClose, onCreate }: NewAgentPro
                 border: "1px solid var(--c-border-2)",
                 borderRadius: "var(--r-input)",
                 background: "var(--c-bg-white)",
-                cursor: "pointer",
               }}
             >
               {/* 文件夹图标（琥珀色） */}
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
-              <span
+              <input
+                value={dir}
+                onChange={(e) => setDir(e.target.value)}
+                placeholder="~/projects/my-app"
+                spellCheck={false}
                 style={{
                   flex: 1,
+                  border: "none",
+                  outline: "none",
+                  background: "transparent",
                   fontSize: "var(--fs-body)",
                   fontFamily: "var(--font-mono)",
                   color: "var(--c-text-primary)",
                 }}
-              >
-                {dir}
-              </span>
-              <span
-                style={{
-                  fontSize: "var(--fs-secondary)",
-                  color: "var(--c-text-5)",
-                  marginRight: 4,
-                }}
-              >
-                最近
-              </span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              />
             </div>
           </div>
 
@@ -243,7 +198,7 @@ export function NewAgent({ initialAgent = "CC", onClose, onCreate }: NewAgentPro
                       width: "100%",
                     }}
                   >
-                    <AgentBadgeInner agent={card.id} disabled={card.disabled} />
+                    <AgentBadge agent={card.id} size={28} disabled={card.disabled} />
 
                     <div style={{ flex: 1 }}>
                       <div
@@ -311,7 +266,7 @@ export function NewAgent({ initialAgent = "CC", onClose, onCreate }: NewAgentPro
                 marginBottom: 6,
               }}
             >
-              初始 Prompt（可选）
+              初始 Prompt
             </div>
             <textarea
               value={prompt}
@@ -343,15 +298,19 @@ export function NewAgent({ initialAgent = "CC", onClose, onCreate }: NewAgentPro
               justifyContent: "space-between",
             }}
           >
-            {/* 左侧 branch·shell 提示 */}
+            {/* 左侧目录提示 */}
             <span
               style={{
                 fontSize: "var(--fs-meta)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: 220,
               }}
             >
-              ⎇ main · zsh
+              {dir || "未选择目录"}
             </span>
 
             {/* 右侧按钮组 */}
@@ -373,6 +332,7 @@ export function NewAgent({ initialAgent = "CC", onClose, onCreate }: NewAgentPro
               </button>
               <button
                 onClick={handleCreate}
+                disabled={!prompt.trim() || !dir.trim()}
                 style={{
                   padding: "7px 16px",
                   borderRadius: "var(--r-btn)",
@@ -381,7 +341,8 @@ export function NewAgent({ initialAgent = "CC", onClose, onCreate }: NewAgentPro
                   color: "#fff",
                   fontSize: "var(--fs-body)",
                   fontWeight: 500,
-                  cursor: "pointer",
+                  cursor: !prompt.trim() || !dir.trim() ? "not-allowed" : "pointer",
+                  opacity: !prompt.trim() || !dir.trim() ? 0.4 : 1,
                   display: "flex",
                   alignItems: "center",
                   gap: 6,

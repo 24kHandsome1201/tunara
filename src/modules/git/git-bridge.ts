@@ -1,0 +1,52 @@
+// Git 前端桥（实施文档 §4.3 / §3.4）
+//
+// invoke 封装：git_status / git_diff / git_ahead_behind / git_commit / git_push。
+// 与后端 git/mod.rs + git/commit.rs 的命令契约对齐。
+
+import { invoke } from "@tauri-apps/api/core";
+
+export interface FileChange {
+  path: string;
+  status: string;
+  added: number;
+  removed: number;
+}
+
+export interface StatusResult {
+  branch: string;
+  files: FileChange[];
+  summary: string;
+}
+
+export type FileDiff =
+  | { kind: "text"; path: string; patch: string; truncated: boolean; totalLines: number }
+  | { kind: "binary"; path: string }
+  | { kind: "tooLarge"; path: string; bytes: number }
+  | { kind: "metadataOnly"; path: string; change: string };
+
+export type RemoteState =
+  | { state: "ok"; upstream: string; ahead: number; behind: number }
+  | { state: "noUpstream"; branch: string }
+  | { state: "detached"; oid: string }
+  | { state: "unborn" }
+  | { state: "unknown"; message: string };
+
+export function gitStatus(repoPath: string): Promise<StatusResult> {
+  return invoke<StatusResult>("git_status", { repoPath });
+}
+
+export function gitDiff(repoPath: string, file: string): Promise<FileDiff> {
+  return invoke<FileDiff>("git_diff", { repoPath, file });
+}
+
+export function gitAheadBehind(repoPath: string): Promise<RemoteState> {
+  return invoke<RemoteState>("git_ahead_behind", { repoPath });
+}
+
+export function gitCommit(repoPath: string, message: string): Promise<string> {
+  return invoke<string>("git_commit", { repoPath, message });
+}
+
+export function gitPush(repoPath: string): Promise<void> {
+  return invoke("git_push", { repoPath });
+}

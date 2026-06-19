@@ -16,7 +16,7 @@ async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Res
         if let Some(t) = tab.as_deref().filter(|s| !s.is_empty()) {
             // emit() serializes via JSON — no string-escape footgun, unlike
             // eval() with format!(). Frontend listens via Tauri event API.
-            let _ = window.emit("terax:settings-tab", t);
+            let _ = window.emit("conduit:settings-tab", t);
         }
         return Ok(());
     }
@@ -70,10 +70,22 @@ pub fn run() {
         .manage(shell::ShellState::default())
         .manage(secrets::SecretsState::default())
         .manage(ResolverState::default())
+        .manage(modules::agent::AgentState::default())
         .setup(|app| {
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_bin 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
             resolver.init_login_path();
+
+            // M6：macOS 毛玻璃（§3.6）
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                    let _ = apply_vibrancy(&window, NSVisualEffectMaterial::Sidebar, None, None);
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -110,6 +122,18 @@ pub fn run() {
             modules::resolver::resolve_bin,
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
+            // Conduit 新增（§3.3 agent harness）
+            modules::agent::agent_spawn,
+            modules::agent::agent_cancel,
+            modules::agent::agent_max_concurrent,
+            modules::agent::agent_discard_changes,
+            modules::agent::preflight::agent_preflight,
+            // Conduit 新增（§3.4 git 集成）
+            modules::git::git_status,
+            modules::git::git_diff,
+            modules::git::git_ahead_behind,
+            modules::git::commit::git_commit,
+            modules::git::commit::git_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

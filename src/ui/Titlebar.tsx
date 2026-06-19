@@ -19,6 +19,7 @@ interface TitlebarProps {
   onTogglePanel: () => void;
   onToggleNotif: () => void;
   onSelectSession: (id: string) => void;
+  onCloseSession: (id: string) => void;
   onNewAgent: () => void;
 }
 
@@ -55,16 +56,35 @@ export function Titlebar({
   onTogglePanel,
   onToggleNotif,
   onSelectSession,
+  onCloseSession,
   onNewAgent,
 }: TitlebarProps) {
-  // 找出在标题栏显示的 Tab（取前5个已有会话）
-  const tabSessions = sessions.slice(0, 5);
+  const tabSessions = sessions;
+
+  const dirCounts = new Map<string, number>();
+  tabSessions.forEach((s) => {
+    if (s.kind === "shell") {
+      const label = s.dir.split("/").pop() ?? s.dir;
+      dirCounts.set(label, (dirCounts.get(label) ?? 0) + 1);
+    }
+  });
+  const shellCounters = new Map<string, number>();
+  function tabLabel(s: Session): string {
+    if (s.kind === "agent") return s.title;
+    const base = s.dir.split("/").pop() ?? s.dir;
+    if ((dirCounts.get(base) ?? 0) > 1) {
+      const idx = (shellCounters.get(base) ?? 0) + 1;
+      shellCounters.set(base, idx);
+      return `${base} (${idx})`;
+    }
+    return base;
+  }
 
   return (
     <div
       style={{
         height: "var(--h-titlebar)",
-        background: "var(--c-bg-1)",
+        background: "var(--c-bg-1-glass)",
         borderBottom: "1px solid var(--c-border-1)",
         display: "flex",
         alignItems: "center",
@@ -101,25 +121,22 @@ export function Titlebar({
           marginRight: 6,
           WebkitAppRegion: "no-drag",
         } as DragStyle}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "var(--c-bg-hover)";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-        }}
+        className="hover-bg"
       >
         <PanelLeftIcon />
       </button>
 
-      {/* Tab 区 — 紧贴折叠按钮右侧 */}
+      {/* Tab 区 — 紧贴折叠按钮右侧，可横向滚动 */}
       <div
+        className="no-scrollbar"
         style={{
           display: "flex",
           alignItems: "flex-end",
           height: "100%",
           gap: 0,
           flex: 1,
-          overflow: "hidden",
+          overflowX: "auto",
+          overflowY: "hidden",
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
@@ -166,7 +183,7 @@ export function Titlebar({
                   fontFamily: "var(--font-ui)",
                 }}
               >
-                {s.dir.split("/").pop() ?? s.dir}
+                {tabLabel(s)}
               </span>
               <span
                 style={{
@@ -176,6 +193,37 @@ export function Titlebar({
                 }}
               >
                 ⎇ {s.branch.length > 14 ? s.branch.slice(0, 14) + "…" : s.branch}
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                title="关闭"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCloseSession(s.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.stopPropagation();
+                    onCloseSession(s.id);
+                  }
+                }}
+                style={{
+                  width: 15,
+                  height: 15,
+                  borderRadius: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  lineHeight: 1,
+                  color: "var(--c-text-5)",
+                  flexShrink: 0,
+                  marginLeft: 1,
+                }}
+                className="hover-close"
+              >
+                ×
               </span>
             </button>
           );
@@ -200,12 +248,7 @@ export function Titlebar({
             color: "var(--c-text-4)",
             flexShrink: 0,
           }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--c-bg-hover)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-          }}
+          className="hover-bg"
         >
           +
         </button>
@@ -223,7 +266,7 @@ export function Titlebar({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
-        {/* 审查面板开关 +/− */}
+        {/* 审查面板开关 */}
         <button
           onClick={onTogglePanel}
           title={panelVisible ? "隐藏审查面板" : "显示审查面板"}
@@ -237,19 +280,13 @@ export function Titlebar({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            fontWeight: 700,
-            color: panelVisible ? "var(--c-error)" : "var(--c-success)",
           }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--c-bg-hover)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-          }}
+          className="hover-bg"
         >
-          {panelVisible ? "−" : "+"}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#71717a" strokeWidth="1.2" />
+            <rect x="9" y="1.5" width="5.5" height="13" rx="2" fill={panelVisible ? "#71717a" : "none"} fillOpacity="0.3" stroke="#71717a" strokeWidth="1.2" />
+          </svg>
         </button>
 
         {/* 铃铛 + 未读角标 */}
@@ -268,12 +305,7 @@ export function Titlebar({
             justifyContent: "center",
             position: "relative",
           }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--c-bg-hover)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-          }}
+          className="hover-bg"
         >
           <BellIcon />
           {unreadCount > 0 && (

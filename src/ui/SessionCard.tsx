@@ -1,7 +1,7 @@
 // SessionCard — 侧边栏会话卡片
 // 展示 agent 角标、标题、branch/状态/时长 meta 行、运行中进度条
 
-import { type Session } from "./types";
+import { type Session, type SessionStatus, deriveStatus, deriveDuration } from "./types";
 
 interface SessionCardProps {
   session: Session;
@@ -10,25 +10,25 @@ interface SessionCardProps {
 }
 
 /** 22×22 agent 角标，按 CC/CX/CU 三种配色 */
-function AgentBadge({ agent, size = 22 }: { agent: "CC" | "CX" | "CU"; size?: number }) {
+export function AgentBadge({ agent, size = 22, disabled }: { agent?: "CC" | "CX" | "CU"; size?: number; disabled?: boolean }) {
+  if (!agent) return null;
   const styles: Record<"CC" | "CX" | "CU", React.CSSProperties> = {
     CC: {
-      background: "var(--c-agent-cc-bg)",
-      border: "1px solid var(--c-agent-cc-border)",
-      color: "var(--c-agent-cc-text)",
+      background: disabled ? "var(--c-bg-3)" : "var(--c-agent-cc-bg)",
+      border: `1px solid ${disabled ? "var(--c-border-2)" : "var(--c-agent-cc-border)"}`,
+      color: disabled ? "var(--c-text-5)" : "var(--c-agent-cc-text)",
     },
     CX: {
-      background: "var(--c-agent-cx-bg)",
-      border: "1px solid var(--c-agent-cx-border)",
-      color: "var(--c-agent-cx-text)",
+      background: disabled ? "var(--c-bg-3)" : "var(--c-agent-cx-bg)",
+      border: `1px solid ${disabled ? "var(--c-border-2)" : "var(--c-agent-cx-border)"}`,
+      color: disabled ? "var(--c-text-5)" : "var(--c-agent-cx-text)",
     },
     CU: {
-      background: "var(--c-agent-cu-bg)",
-      border: "1px solid var(--c-agent-cu-border)",
-      color: "var(--c-agent-cu-text)",
+      background: "var(--c-bg-3)",
+      border: "1px solid var(--c-border-2)",
+      color: "var(--c-text-5)",
     },
   };
-  const labels: Record<"CC" | "CX" | "CU", string> = { CC: "CC", CX: "CX", CU: "CU" };
 
   return (
     <div
@@ -46,13 +46,13 @@ function AgentBadge({ agent, size = 22 }: { agent: "CC" | "CX" | "CU"; size?: nu
         ...styles[agent],
       }}
     >
-      {labels[agent]}
+      {agent}
     </div>
   );
 }
 
 /** 状态点/勾：运行中(橘+呼吸)/刚完成(绿勾)/done(灰点) */
-function StatusIndicator({ status }: { status: Session["status"] }) {
+function StatusIndicator({ status }: { status: SessionStatus }) {
   if (status === "running") {
     return (
       <span
@@ -89,7 +89,7 @@ function StatusIndicator({ status }: { status: Session["status"] }) {
 }
 
 /** 状态文字标签 */
-function StatusLabel({ status }: { status: Session["status"] }) {
+function StatusLabel({ status }: { status: SessionStatus }) {
   if (status === "running") {
     return (
       <span
@@ -132,6 +132,9 @@ function StatusLabel({ status }: { status: Session["status"] }) {
 }
 
 export function SessionCard({ session, active, onClick }: SessionCardProps) {
+  const status = deriveStatus(session);
+  const duration = deriveDuration(session);
+
   return (
     <div
       role="button"
@@ -212,8 +215,8 @@ export function SessionCard({ session, active, onClick }: SessionCardProps) {
         >
           ⎇ {session.branch}
         </span>
-        <StatusIndicator status={session.status} />
-        <StatusLabel status={session.status} />
+        <StatusIndicator status={status} />
+        <StatusLabel status={status} />
         <span
           style={{
             fontSize: "var(--fs-meta-sm)",
@@ -223,12 +226,12 @@ export function SessionCard({ session, active, onClick }: SessionCardProps) {
             whiteSpace: "nowrap",
           }}
         >
-          {session.duration}
+          {duration}
         </span>
       </div>
 
-      {/* 运行中进度条 */}
-      {session.status === "running" && (
+      {/* 运行中不定进度条 */}
+      {status === "running" && (
         <div
           style={{
             marginTop: 6,
@@ -241,10 +244,10 @@ export function SessionCard({ session, active, onClick }: SessionCardProps) {
           <div
             style={{
               height: "100%",
-              width: `${session.progress ?? 40}%`,
+              width: "40%",
               background: "var(--c-accent)",
               borderRadius: 2,
-              transition: "width 0.5s ease",
+              animation: "indeterminate 1.4s ease-in-out infinite",
             }}
           />
         </div>
@@ -253,4 +256,3 @@ export function SessionCard({ session, active, onClick }: SessionCardProps) {
   );
 }
 
-export { AgentBadge };

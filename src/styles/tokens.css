@@ -18,8 +18,11 @@
 
   /* ── 面/底 ── */
   --c-bg-white: #ffffff;
+  --c-bg-white-glass: rgba(255, 255, 255, 0.78);
   --c-bg-1: #fbfbfc;
+  --c-bg-1-glass: rgba(251, 251, 252, 0.72);
   --c-bg-2: #f7f7f8;
+  --c-bg-2-glass: rgba(247, 247, 248, 0.65);
   --c-bg-3: #efeff1;
   --c-bg-hover: #f0eff2;
 
@@ -97,3 +100,70 @@
   --w-panel: 300px;
   --h-statusbar: 30px;
 }
+
+/* ── Dark mode ── */
+.dark {
+  --c-accent: #e09070;
+  --c-accent-bg-light: #3a2a20;
+  --c-accent-bg-soft: #2e231c;
+  --c-accent-border: #5a3e2e;
+
+  --c-text-primary: #e4e4e7;
+  --c-text-2: #d4d4d8;
+  --c-text-3: #a1a1aa;
+  --c-text-4: #71717a;
+  --c-text-5: #52525b;
+  --c-text-6: #3f3f46;
+  --c-text-7: #27272a;
+
+  --c-bg-white: #18181b;
+  --c-bg-white-glass: rgba(24, 24, 27, 0.78);
+  --c-bg-1: #1e1e22;
+  --c-bg-1-glass: rgba(30, 30, 34, 0.72);
+  --c-bg-2: #222226;
+  --c-bg-2-glass: rgba(34, 34, 38, 0.65);
+  --c-bg-3: #2a2a2e;
+  --c-bg-hover: #2e2e34;
+
+  --c-border-1: #2a2a2e;
+  --c-border-2: #333338;
+  --c-border-3: #27272b;
+
+  --c-success: #4ade80;
+  --c-success-bg: #1a2e22;
+  --c-success-bg-light: #1e3328;
+  --c-error: #f87171;
+  --c-error-bg: #2e1a1a;
+  --c-error-bg-light: #3a2020;
+  --c-warning: #fbbf24;
+
+  --c-agent-cc-bg: #3a2a20;
+  --c-agent-cc-border: #5a3e2e;
+  --c-agent-cc-text: #e09070;
+  --c-agent-cx-bg: #1a2e22;
+  --c-agent-cx-border: #2a4a36;
+  --c-agent-cx-text: #4ade80;
+  --c-agent-cu-bg: #1e2240;
+  --c-agent-cu-border: #2e3460;
+  --c-agent-cu-text: #818cf8;
+
+  --c-shell-path: #60a5fa;
+  --c-shell-prompt: #4ade80;
+  --c-shell-error: #f87171;
+
+  --c-diff-del-bg: #2e1a1a;
+  --c-diff-del-text: #f87171;
+  --c-diff-add-bg: #1a2e22;
+  --c-diff-add-text: #4ade80;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-overlay: 0 30px 80px rgba(0, 0, 0, 0.6);
+  --shadow-notif: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+.hover-bg { background: transparent; }
+.hover-bg:hover { background: var(--c-bg-hover); }
+.hover-close { background: transparent; color: var(--c-text-5); }
+.hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
+.hover-accent-bg { background: transparent; }
+.hover-accent-bg:hover { background: var(--c-accent-bg-light); }

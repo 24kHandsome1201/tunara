@@ -1,5 +1,8 @@
-# 设计稿原始压缩包（内容已解压到 _unzipped_design/，无需版本化二进制）
+# 设计资产（不进源码仓库）
 *.zip
+_unzipped_design/
+terax-icon.png
+pnpm-lock.yaml
 
 # macOS
 .DS_Store

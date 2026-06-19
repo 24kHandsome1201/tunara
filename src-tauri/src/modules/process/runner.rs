@@ -9,7 +9,6 @@
 //! ```
 
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -126,19 +125,36 @@ impl TimeoutPolicy {
     }
 }
 
-/// 可克隆的取消令牌。
-#[derive(Clone, Default)]
-pub struct CancelToken(Arc<AtomicBool>);
+/// 可克隆的取消令牌（基于 watch channel，无需轮询）。
+#[derive(Clone)]
+pub struct CancelToken {
+    tx: Arc<tokio::sync::watch::Sender<bool>>,
+    rx: tokio::sync::watch::Receiver<bool>,
+}
+
+impl Default for CancelToken {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CancelToken {
     pub fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(false)))
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        Self { tx: Arc::new(tx), rx }
     }
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        let _ = self.tx.send(true);
     }
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        *self.rx.borrow()
+    }
+    pub async fn cancelled(&mut self) {
+        while !*self.rx.borrow_and_update() {
+            if self.rx.changed().await.is_err() {
+                return;
+            }
+        }
     }
 }
 
@@ -212,33 +228,25 @@ where
         tokio::pin!(wall);
 
         let idle_dur = policy.idle;
+        let mut cancel = policy.cancel;
         let end = loop {
-            // 每轮重置 idle 计时
             let idle = async {
                 match idle_dur {
                     Some(d) => tokio::time::sleep(d).await,
                     None => std::future::pending::<()>().await,
                 }
             };
-            // 轮询取消（轻量）
-            if policy.cancel.is_cancelled() {
-                break StreamEnd::Cancelled;
-            }
             tokio::select! {
                 line = lines.next_line() => match line {
                     Ok(Some(l)) => { on_line(l); }
                     _ => {
-                        // EOF / 读错误：正常退出路径，下面 wait 取真实状态
                         let success = child.wait().await.map(|s| s.success()).unwrap_or(false);
                         break StreamEnd::Exited { success };
                     }
                 },
                 _ = idle => { break StreamEnd::Timeout; }
                 _ = &mut wall => { break StreamEnd::Timeout; }
-                // 取消信号的及时性由 100ms tick 兜底
-                _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                    if policy.cancel.is_cancelled() { break StreamEnd::Cancelled; }
-                }
+                _ = cancel.cancelled() => { break StreamEnd::Cancelled; }
             }
         };
 
