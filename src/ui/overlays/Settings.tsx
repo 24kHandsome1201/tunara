@@ -205,7 +205,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {activeTab === "Agents" && (
             <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
-              {[{ code: "CC", name: "Claude Code" }, { code: "CX", name: "Codex" }].map(({ code, name }) => {
+              {[{ code: "CC", name: "Claude Code" }, { code: "CX", name: "Codex" }, { code: "AM", name: "Amp" }].map(({ code, name }) => {
                 const cli = resolvedClis.find((c) => c.name === code);
                 const pf = preflights[code];
                 return (

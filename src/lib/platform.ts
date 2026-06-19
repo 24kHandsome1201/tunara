@@ -1,6 +1,6 @@
 import { platform } from "@tauri-apps/plugin-os";
 
-const PLATFORM = (() => {
+export const PLATFORM = (() => {
   try {
     return platform();
   } catch {

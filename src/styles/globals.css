@@ -156,10 +156,11 @@ html[data-chrome="borderless"] body {
 html[data-chrome="borderless"] #root,
 html[data-chrome="borderless"] #settings-root {
   height: 100%;
+  box-sizing: border-box;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: var(--background);
+  border: 1px solid var(--c-border-2);
+  background: var(--c-bg-white);
 }
 
 /*

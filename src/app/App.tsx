@@ -6,13 +6,12 @@ import { Sidebar } from "@/ui/Sidebar";
 import { MainArea } from "@/ui/MainArea";
 import { DiffPanel } from "@/ui/DiffPanel";
 import { NotifCenter } from "@/ui/NotifCenter";
-import { NewAgent } from "@/ui/overlays/NewAgent";
 import { Settings } from "@/ui/overlays/Settings";
+import { NewAgent } from "@/ui/overlays/NewAgent";
 import { useSessionsStore, createSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { spawnAgent, preflightAgent, cancelAgent } from "@/modules/agent/agent-bridge";
-import { loadSessions, saveSessions } from "@/state/persist";
-import type { AgentCode, AgentEvent } from "@/ui/types";
+import { cancelAgent } from "@/modules/agent/agent-bridge";
+import { loadSessions } from "@/state/persist";
 
 function lightenForDark(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -43,7 +42,7 @@ function lightenForDark(hex: string): string {
 
 export default function App() {
   // ── Zustand stores ──
-  const { sessions, activeSessionId, addSession, removeSession, setActive, applyEvent, appendReplyChunk, updateSession } =
+  const { sessions, activeSessionId, addSession, removeSession, setActive, updateSession } =
     useSessionsStore();
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const panelVisible = useUIStore((s) => s.panelVisible);
@@ -52,56 +51,17 @@ export default function App() {
   const notifications = useUIStore((s) => s.notifications);
   const theme = useUIStore((s) => s.theme);
   const accent = useUIStore((s) => s.accent);
-  const agentPick = useUIStore((s) => s.agentPick);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const togglePanel = useUIStore((s) => s.togglePanel);
   const toggleNotif = useUIStore((s) => s.toggleNotif);
   const setOverlay = useUIStore((s) => s.setOverlay);
-  const setAgentPick = useUIStore((s) => s.setAgentPick);
-  const addNotification = useUIStore((s) => s.addNotification);
   const clearNotification = useUIStore((s) => s.clearNotification);
   const clearAllNotifications = useUIStore((s) => s.clearAllNotifications);
 
-  // ── chunk + rAF 打字机（§4.4 修 P2-14）──
-  const pendingChunks = useRef<Map<string, string>>(new Map());
-  const rafId = useRef<number | null>(null);
-  const flushChunks = useCallback(() => {
-    rafId.current = null;
-    pendingChunks.current.forEach((chunk, sid) => {
-      if (chunk) appendReplyChunk(sid, chunk);
-    });
-    pendingChunks.current.clear();
-  }, [appendReplyChunk]);
-
-  const handleAgentEvent = useCallback(
-    (sessionId: string, ev: AgentEvent) => {
-      if (ev.kind === "delta") {
-        const prev = pendingChunks.current.get(sessionId) ?? "";
-        pendingChunks.current.set(sessionId, prev + ev.text);
-        if (rafId.current == null) {
-          rafId.current = requestAnimationFrame(flushChunks);
-        }
-      } else {
-        applyEvent(sessionId, ev);
-        if (ev.kind === "done" || ev.kind === "failed") {
-          const store = useSessionsStore.getState();
-          saveSessions(store.sessions);
-          store.refreshGit(sessionId); // 终态后刷新 diff 面板
-          const session = store.sessions.find((s) => s.id === sessionId);
-          const title = session?.title ?? "Agent";
-          if (ev.kind === "failed") {
-            addNotification({ id: crypto.randomUUID(), type: "error", message: ev.message, sessionTitle: title, sessionId });
-          } else if (ev.kind === "done" && ev.ok) {
-            addNotification({ id: crypto.randomUUID(), type: "success", message: "已完成", sessionTitle: title, sessionId });
-          }
-        }
-      }
-    },
-    [applyEvent, flushChunks, addNotification],
-  );
-
-  // M7 启动时加载持久化的已结束会话 + 若无会话则自动创建 shell
+  const initRef = useRef(false);
   useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
     loadSessions().then((restored) => {
       for (const s of restored) addSession(s);
       if (restored.length === 0 && useSessionsStore.getState().sessions.length === 0) {
@@ -215,19 +175,19 @@ export default function App() {
         onToggleNotif={toggleNotif}
         onSelectSession={setActive}
         onCloseSession={closeSession}
-        onNewAgent={() => setOverlay("agent")}
+        onOpenSettings={() => setOverlay("settings")}
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
         {sidebarVisible && (
-          <div className="conduit-sidebar">
+          <div className="conduit-sidebar" style={{ display: "flex", minHeight: 0, overflow: "hidden" }}>
             <Sidebar
               sessions={sessions}
               activeSessionId={activeSessionId ?? ""}
               onSelectSession={setActive}
               onNewTerminal={newTerminal}
+              onCloseSession={closeSession}
               onNewAgent={() => setOverlay("agent")}
-              onOpenSettings={() => setOverlay("settings")}
             />
           </div>
         )}
@@ -238,6 +198,27 @@ export default function App() {
             activeSessionId={activeSessionId ?? ""}
             onViewDiff={() => {
               if (!panelVisible) togglePanel();
+            }}
+            onAgentDetected={(sessionId, agent) => {
+              const AGENT_NAMES: Record<string, string> = { CC: "Claude Code", CX: "Codex", AM: "Amp", GM: "Gemini", CP: "Copilot", CR: "Cursor", DR: "Droid", OC: "OpenCode", PI: "Pi", AG: "Auggie" };
+              updateSession(sessionId, { agent, title: AGENT_NAMES[agent] ?? agent });
+            }}
+            onCommandDetected={(sessionId, command) => {
+              updateSession(sessionId, { lastCommand: command });
+            }}
+            onCwd={(sessionId, cwd) => {
+              const session = useSessionsStore.getState().sessions.find((s) => s.id === sessionId);
+              const cwdChanged = session?.dir !== cwd;
+              const lastCommand = session?.lastCommand?.trim() ?? "";
+              updateSession(sessionId, {
+                dir: cwd,
+                ...(cwdChanged && /^(?:cd|pushd|popd)(?:\s|$)/.test(lastCommand)
+                  ? { lastCommand: undefined }
+                  : {}),
+              });
+            }}
+            onShellTitle={(sessionId, shellTitle) => {
+              updateSession(sessionId, { shellTitle });
             }}
           />
         )}
@@ -259,37 +240,21 @@ export default function App() {
         />
       )}
 
+      {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
       {overlay === "agent" && (
         <NewAgent
-          initialAgent={agentPick}
           defaultDir={activeSession?.dir ?? "~"}
           onClose={() => setOverlay(null)}
-          onCreate={(agent: string, dir: string, prompt: string) => {
-            const agentCode = agent as AgentCode;
-            setAgentPick(agentCode);
-            setOverlay(null);
-            const session = createSession("agent", dir, {
-              agent: agentCode,
-              title: prompt.slice(0, 40) || `${agentCode} 会话`,
+          onCreate={(agent, dir, prompt) => {
+            const s = createSession("agent", dir, {
+              agent,
+              title: prompt.slice(0, 60),
               prompt,
             });
-            addSession(session);
-            preflightAgent(agentCode)
-              .then((pf) => {
-                if (!pf.installed || !pf.loggedIn) {
-                  applyEvent(session.id, { kind: "failed", message: pf.hint ?? `${agentCode} 未安装或未登录` });
-                  return;
-                }
-                spawnAgent(agentCode, prompt, dir, undefined, (ev) => handleAgentEvent(session.id, ev))
-                  .then((procId) => updateSession(session.id, { procId }))
-                  .catch((err) => applyEvent(session.id, { kind: "failed", message: String(err) }));
-              })
-              .catch((err) => applyEvent(session.id, { kind: "failed", message: String(err) }));
+            addSession(s);
           }}
         />
       )}
-
-      {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
     </div>
   );
 }

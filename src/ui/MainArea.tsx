@@ -9,9 +9,13 @@ interface MainAreaProps {
   sessions: Session[];
   activeSessionId: string;
   onViewDiff: () => void;
+  onAgentDetected?: (sessionId: string, agent: import("./types").AgentCode) => void;
+  onCommandDetected?: (sessionId: string, command: string) => void;
+  onCwd?: (sessionId: string, cwd: string) => void;
+  onShellTitle?: (sessionId: string, title: string) => void;
 }
 
-export function MainArea({ sessions, activeSessionId, onViewDiff }: MainAreaProps) {
+export function MainArea({ sessions, activeSessionId, onViewDiff, onAgentDetected, onCommandDetected, onCwd, onShellTitle }: MainAreaProps) {
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
 
   return (
@@ -35,7 +39,14 @@ export function MainArea({ sessions, activeSessionId, onViewDiff }: MainAreaProp
               {s.kind === "agent" ? (
                 <AgentView session={s} onViewDiff={onViewDiff} />
               ) : (
-                <TerminalView dir={s.dir} active={isActive} />
+                <TerminalView
+                  dir={s.dir}
+                  active={isActive}
+                  onAgentCommandSubmitted={onAgentDetected ? (agent) => onAgentDetected(s.id, agent) : undefined}
+                  onCommandDetected={onCommandDetected ? (cmd) => onCommandDetected(s.id, cmd) : undefined}
+                  onCwd={onCwd ? (cwd) => onCwd(s.id, cwd) : undefined}
+                  onShellTitle={onShellTitle ? (title) => onShellTitle(s.id, title) : undefined}
+                />
               )}
             </div>
           );

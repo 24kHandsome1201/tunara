@@ -1,5 +1,5 @@
 // overlays/NewAgent — 新建 Agent 弹层（520px sheet）
-// 含：选目录 / CC·CX 可选 / CU 灰置"暂不支持" / ⌘⏎ 创建
+// 含：选目录 / Claude Code / ⌘⏎ 创建
 
 import { useState } from "react";
 import { type AgentType } from "../types";
@@ -22,22 +22,16 @@ interface AgentCardDef {
 }
 
 const AGENT_CARDS: AgentCardDef[] = [
-  {
-    id: "CC",
-    name: "Claude Code",
-    desc: "Anthropic 官方 CLI，支持多轮对话与自动写盘",
-  },
-  {
-    id: "CX",
-    name: "Codex",
-    desc: "OpenAI Codex CLI，快速代码生成与补丁应用",
-  },
-  {
-    id: "CU",
-    name: "Cursor",
-    desc: "暂不支持",
-    disabled: true,
-  },
+  { id: "CC", name: "Claude Code", desc: "Anthropic 官方 CLI，支持多轮对话与自动写盘" },
+  { id: "CX", name: "Codex", desc: "OpenAI CLI agent，支持代码生成与终端操作" },
+  { id: "AM", name: "Amp", desc: "Sourcegraph 代码智能 agent，深度代码理解" },
+  { id: "GM", name: "Gemini", desc: "Google Gemini CLI，多模态代码理解与生成" },
+  { id: "CP", name: "Copilot", desc: "GitHub Copilot CLI，代码建议与终端辅助" },
+  { id: "CR", name: "Cursor", desc: "Cursor Agent CLI，智能代码编辑" },
+  { id: "DR", name: "Droid", desc: "Droid CLI agent，自动化开发流程" },
+  { id: "OC", name: "OpenCode", desc: "OpenCode 终端 agent，开源代码助手" },
+  { id: "PI", name: "Pi", desc: "Pi AI agent，对话式编程助手" },
+  { id: "AG", name: "Auggie", desc: "Auggie agent，代码审查与修复" },
 ];
 
 

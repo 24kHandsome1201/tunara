@@ -14,7 +14,7 @@ interface AgentViewProps {
   onViewDiff: () => void;
 }
 
-const AGENT_NAMES: Record<string, string> = { CC: "Claude Code", CX: "Codex" };
+const AGENT_NAMES: Record<string, string> = { CC: "Claude Code", CX: "Codex", AM: "Amp" };
 
 function ToolChip({ block }: { block: Extract<AgentBlock, { type: "toolUse" }> }) {
   return (

@@ -1,9 +1,5 @@
-// Sidebar — 左侧边栏（272px）
-// 含：顶部分段按钮 / 搜索框 / 会话分组列表 / 底部设置+会话数
-
 import { SessionCard } from "./SessionCard";
-import { groupByDir, type Session } from "./types";
-
+import { groupByDir, deriveTitle, type Session } from "./types";
 import { useState } from "react";
 
 interface SidebarProps {
@@ -11,11 +7,10 @@ interface SidebarProps {
   activeSessionId: string;
   onSelectSession: (id: string) => void;
   onNewTerminal: () => void;
-  onNewAgent: () => void;
-  onOpenSettings: () => void;
+  onCloseSession?: (id: string) => void;
+  onNewAgent?: () => void;
 }
 
-/** 搜索放大镜 SVG */
 function SearchIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -25,7 +20,6 @@ function SearchIcon() {
   );
 }
 
-/** 文件夹 SVG */
 function FolderIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b4b4bc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -34,17 +28,6 @@ function FolderIcon() {
   );
 }
 
-/** 齿轮 SVG */
-function GearIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-
-/** 目录分组头 */
 function DirGroupHeader({ dir, count }: { dir: string; count: number }) {
   return (
     <div
@@ -67,7 +50,6 @@ function DirGroupHeader({ dir, count }: { dir: string; count: number }) {
       >
         {dir}
       </span>
-      {/* 计数胶囊 */}
       <span
         style={{
           fontSize: "var(--fs-badge)",
@@ -89,16 +71,20 @@ export function Sidebar({
   activeSessionId,
   onSelectSession,
   onNewTerminal,
+  onCloseSession,
   onNewAgent,
-  onOpenSettings,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
-  const filtered = search.trim()
-    ? sessions.filter(
-        (s) =>
-          s.title.toLowerCase().includes(search.toLowerCase()) ||
-          s.dir.toLowerCase().includes(search.toLowerCase()),
-      )
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? sessions.filter((s) => {
+        const { primary, subtitle } = deriveTitle(s);
+        return (
+          primary.toLowerCase().includes(q) ||
+          subtitle.toLowerCase().includes(q) ||
+          s.dir.toLowerCase().includes(q)
+        );
+      })
     : sessions;
   const groups = groupByDir(filtered);
 
@@ -114,25 +100,46 @@ export function Sidebar({
         overflow: "hidden",
       }}
     >
-      {/* 顶部分段按钮 */}
-      <div style={{ padding: "10px 12px 8px" }}>
-        <div
+      {/* 顶部按钮行 */}
+      <div style={{ padding: "10px 12px 4px", display: "flex", gap: 6 }}>
+        <button
+          onClick={onNewTerminal}
           style={{
-            display: "flex",
-            background: "var(--c-bg-white)",
+            flex: 1,
+            padding: "7px 10px",
             border: "1px solid var(--c-border-2)",
             borderRadius: "var(--r-card)",
-            overflow: "hidden",
+            background: "var(--c-bg-white)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
           }}
+          className="hover-bg"
         >
-          {/* 左段：新建终端（即时，无弹层） */}
+          <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>
+            + 终端
+          </span>
+          <span
+            style={{
+              fontSize: "var(--fs-badge)",
+              color: "var(--c-text-5)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            ⌘T
+          </span>
+        </button>
+        {onNewAgent && (
           <button
-            onClick={onNewTerminal}
+            onClick={onNewAgent}
             style={{
               flex: 1,
               padding: "7px 10px",
-              border: "none",
-              background: "transparent",
+              border: "1px solid var(--c-border-2)",
+              borderRadius: "var(--r-card)",
+              background: "var(--c-bg-white)",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
@@ -142,49 +149,23 @@ export function Sidebar({
             className="hover-bg"
           >
             <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>
-              + 新建终端
+              + Agent
             </span>
             <span
               style={{
                 fontSize: "var(--fs-badge)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
-                marginLeft: 2,
               }}
             >
-              ⌘T
+              ⌘N
             </span>
           </button>
-
-          {/* 分隔线 */}
-          <div style={{ width: 1, background: "var(--c-border-1)", flexShrink: 0 }} />
-
-          {/* 右段：✦ Agent（打开弹层） */}
-          <button
-            onClick={onNewAgent}
-            style={{
-              flex: 1,
-              padding: "7px 10px",
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-            }}
-            className="hover-accent-bg"
-          >
-            <span style={{ fontSize: 11, color: "var(--c-accent)" }}>✦</span>
-            <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-accent)" }}>
-              Agent
-            </span>
-          </button>
-        </div>
+        )}
       </div>
 
       {/* 搜索框 */}
-      <div style={{ padding: "0 12px 8px" }}>
+      <div style={{ padding: "8px 12px" }}>
         <div
           style={{
             background: "var(--c-bg-3)",
@@ -214,7 +195,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* 会话列表（按目录分组，可滚动） */}
+      {/* 会话列表 */}
       <div
         style={{
           flex: 1,
@@ -224,15 +205,16 @@ export function Sidebar({
         className="no-scrollbar"
       >
         {Object.entries(groups).map(([dir, groupSessions]) => (
-          <div key={dir} style={{ marginBottom: 8 }}>
+          <div key={dir} style={{ marginBottom: 6 }}>
             <DirGroupHeader dir={dir} count={groupSessions.length} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {groupSessions.map((s) => (
                 <SessionCard
                   key={s.id}
                   session={s}
                   active={s.id === activeSessionId}
                   onClick={() => onSelectSession(s.id)}
+                  onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
                 />
               ))}
             </div>
@@ -240,36 +222,18 @@ export function Sidebar({
         ))}
       </div>
 
-      {/* 底部：设置 + 会话数 */}
+      {/* 底部：会话数 */}
       <div
         style={{
           borderTop: "1px solid var(--c-border-1)",
-          padding: "10px 14px",
+          padding: "8px 14px",
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          justifyContent: "flex-end",
         }}
       >
-        <button
-          onClick={onOpenSettings}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            padding: "3px 6px",
-            borderRadius: "var(--r-btn)",
-          }}
-          className="hover-bg"
-        >
-          <GearIcon />
-          <span style={{ fontSize: "var(--fs-body)", color: "var(--c-text-4)" }}>设置</span>
-        </button>
         <span
           style={{
-            marginLeft: "auto",
             fontSize: "var(--fs-secondary)",
             color: "var(--c-text-5)",
           }}

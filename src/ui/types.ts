@@ -1,10 +1,9 @@
 // Conduit UI 共用类型定义（M3：加入事实字段 + agent 事件契约）
 
-/** Agent 类型：CC=Claude Code, CX=Codex */
-export type AgentCode = "CC" | "CX";
+/** Agent 类型 */
+export type AgentCode = "CC" | "CX" | "AM" | "GM" | "CP" | "CR" | "DR" | "OC" | "PI" | "AG" | "DV";
 
-/** 兼容 M2 组件（CU=Cursor 暂不支持，UI 灰置） */
-export type AgentType = AgentCode | "CU";
+export type AgentType = AgentCode;
 
 /** 会话类别：shell=真实终端, agent=AI agent */
 export type SessionKind = "shell" | "agent";
@@ -68,6 +67,10 @@ export interface Session {
   error?: string;
   costUsd?: number;
   updatedAt: number;
+
+  // ── 动态标题源（Warp 风格瀑布推导） ──
+  lastCommand?: string;
+  shellTitle?: string;
 
   // ── git 改动 ──
   changes?: {
@@ -133,6 +136,69 @@ export function deriveDuration(s: Session): string {
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min}m`;
   return `${Math.floor(min / 60)}h${min % 60}m`;
+}
+
+const AGENT_NAMES: Record<string, string> = {
+  CC: "Claude Code",
+  CX: "Codex",
+  AM: "Amp",
+  GM: "Gemini",
+  CP: "Copilot",
+  CR: "Cursor",
+  DR: "Droid",
+  OC: "OpenCode",
+  PI: "Pi",
+  AG: "Auggie",
+};
+
+function shortDir(dir: string): string {
+  if (dir === "~") return "~";
+  const parts = dir.replace(/^~\//, "").replace(/\/+$/, "").split("/");
+  return parts[parts.length - 1] || dir;
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+export function deriveTitle(s: Session): { primary: string; subtitle: string; isCommand: boolean } {
+  let primary: string;
+  let isCommand = false;
+
+  if (s.kind === "agent") {
+    if (s.prompt) {
+      primary = truncate(s.prompt.replace(/\n/g, " ").trim(), 60);
+    } else {
+      primary = s.agent ? (AGENT_NAMES[s.agent] ?? s.agent) : "Agent";
+    }
+  } else {
+    if (s.runState === "running" && s.lastCommand) {
+      primary = s.lastCommand;
+      isCommand = true;
+    } else if (s.shellTitle && s.shellTitle !== s.dir && s.shellTitle !== shortDir(s.dir)) {
+      primary = s.shellTitle;
+    } else if (s.lastCommand) {
+      primary = s.lastCommand;
+      isCommand = true;
+    } else {
+      primary = s.title || "New session";
+    }
+  }
+
+  const dirLabel = shortDir(s.dir);
+  const parts: string[] = [];
+  if (s.branch) parts.push(`⎇ ${s.branch}`);
+  parts.push(dirLabel);
+  if (s.changes?.files.length) {
+    const added = s.changes.files.reduce((a, f) => a + f.added, 0);
+    const removed = s.changes.files.reduce((a, f) => a + f.removed, 0);
+    const diffParts: string[] = [];
+    if (added > 0) diffParts.push(`+${added}`);
+    if (removed > 0) diffParts.push(`-${removed}`);
+    if (diffParts.length) parts.push(diffParts.join(" "));
+  }
+
+  return { primary, subtitle: parts.join(" · "), isCommand };
 }
 
 /** 按 dir 归组（设计稿侧栏分段） */

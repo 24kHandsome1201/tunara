@@ -2,7 +2,7 @@
 // 含：红绿灯占位 / 折叠侧栏按钮 / Tab 区 / 审查开关 / 铃铛+角标
 // data-tauri-drag-region 只放可拖拽空白区，所有交互元素不带该属性
 
-import { type Session } from "./types";
+import { type Session, deriveTitle } from "./types";
 
 /** Tauri 拖拽区 CSS 扩展（WebkitAppRegion 不在标准 CSSProperties 中） */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,7 +20,7 @@ interface TitlebarProps {
   onToggleNotif: () => void;
   onSelectSession: (id: string) => void;
   onCloseSession: (id: string) => void;
-  onNewAgent: () => void;
+  onOpenSettings: () => void;
 }
 
 /** 面板折叠 SVG 图标 */
@@ -31,6 +31,16 @@ function PanelLeftIcon() {
       <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#71717a" strokeWidth="1.2" />
       {/* 左栏小块（琥珀色半透明填充） */}
       <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="#c2683c" fillOpacity="0.3" />
+    </svg>
+  );
+}
+
+/** 齿轮 SVG */
+function GearIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }
@@ -57,34 +67,20 @@ export function Titlebar({
   onToggleNotif,
   onSelectSession,
   onCloseSession,
-  onNewAgent,
+  onOpenSettings,
 }: TitlebarProps) {
   const tabSessions = sessions;
 
-  const dirCounts = new Map<string, number>();
-  tabSessions.forEach((s) => {
-    if (s.kind === "shell") {
-      const label = s.dir.split("/").pop() ?? s.dir;
-      dirCounts.set(label, (dirCounts.get(label) ?? 0) + 1);
-    }
-  });
-  const shellCounters = new Map<string, number>();
   function tabLabel(s: Session): string {
-    if (s.kind === "agent") return s.title;
-    const base = s.dir.split("/").pop() ?? s.dir;
-    if ((dirCounts.get(base) ?? 0) > 1) {
-      const idx = (shellCounters.get(base) ?? 0) + 1;
-      shellCounters.set(base, idx);
-      return `${base} (${idx})`;
-    }
-    return base;
+    const { primary } = deriveTitle(s);
+    return primary.length > 24 ? primary.slice(0, 24) + "…" : primary;
   }
 
   return (
     <div
       style={{
         height: "var(--h-titlebar)",
-        background: "var(--c-bg-1-glass)",
+        background: "var(--c-bg-1)",
         borderBottom: "1px solid var(--c-border-1)",
         display: "flex",
         alignItems: "center",
@@ -94,44 +90,44 @@ export function Titlebar({
       } as DragStyle}
       data-tauri-drag-region
     >
-      {/* 红绿灯占位区（titleBarStyle Overlay 时系统红绿灯浮在这里） */}
+      {/* 左侧区：macOS 原生红绿灯由窗口层渲染，这里只留出避让空间 */}
       <div
         style={{
-          width: 72,
-          flexShrink: 0,
-          WebkitAppRegion: "no-drag",
-        } as DragStyle}
-      />
-
-      {/* 折叠侧栏按钮 */}
-      <button
-        onClick={onToggleSidebar}
-        title="折叠侧边栏"
-        style={{
-          width: 28,
-          height: 24,
-          borderRadius: "var(--r-btn)",
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
           flexShrink: 0,
-          marginRight: 6,
+          height: "100%",
+          boxSizing: "border-box",
           WebkitAppRegion: "no-drag",
         } as DragStyle}
-        className="hover-bg"
       >
-        <PanelLeftIcon />
-      </button>
+        <div style={{ width: 96, flexShrink: 0 }} />
+        <button
+          onClick={onToggleSidebar}
+          title="折叠侧边栏"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: "var(--r-btn)",
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          className="hover-bg"
+        >
+          <PanelLeftIcon />
+        </button>
+      </div>
 
       {/* Tab 区 — 紧贴折叠按钮右侧，可横向滚动 */}
       <div
         className="no-scrollbar"
         style={{
           display: "flex",
-          alignItems: "flex-end",
+          alignItems: "center",
           height: "100%",
           gap: 0,
           flex: 1,
@@ -147,31 +143,29 @@ export function Titlebar({
               key={s.id}
               onClick={() => onSelectSession(s.id)}
               style={{
-                padding: "7px 13px 8px",
-                borderRadius: "8px 8px 0 0",
-                border: isActive ? "1px solid var(--c-border-2)" : "1px solid transparent",
-                borderBottom: isActive ? "1px solid var(--c-bg-white)" : "none",
-                background: isActive ? "var(--c-bg-white)" : "transparent",
+                padding: "5px 13px",
+                borderRadius: "var(--r-btn)",
+                border: "none",
+                background: isActive ? "var(--c-bg-hover)" : "transparent",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: 5,
                 flexShrink: 0,
                 position: "relative",
-                marginBottom: isActive ? -1 : 0,
               }}
             >
-              {/* 激活标签顶部 2px 橘色线 */}
+              {/* 激活标签底部 2px 橘色线 */}
               {isActive && (
                 <div
                   style={{
                     position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
+                    bottom: 0,
+                    left: 4,
+                    right: 4,
                     height: 2,
                     background: "var(--c-accent)",
-                    borderRadius: "8px 8px 0 0",
+                    borderRadius: 1,
                   }}
                 />
               )}
@@ -229,14 +223,26 @@ export function Titlebar({
           );
         })}
 
-        {/* + 新建 Agent 按钮 */}
+      </div>
+
+      {/* 右侧簇：设置 + 审查开关 + 铃铛 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          paddingRight: 14,
+          flexShrink: 0,
+          WebkitAppRegion: "no-drag",
+        } as DragStyle}
+      >
+        {/* 设置 */}
         <button
-          onClick={onNewAgent}
-          title="新建 Agent"
+          onClick={onOpenSettings}
+          title="设置 ⌘,"
           style={{
             width: 28,
-            height: 24,
-            marginBottom: 4,
+            height: 28,
             borderRadius: "var(--r-btn)",
             border: "none",
             background: "transparent",
@@ -244,35 +250,19 @@ export function Titlebar({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 16,
-            color: "var(--c-text-4)",
-            flexShrink: 0,
           }}
           className="hover-bg"
         >
-          +
+          <GearIcon />
         </button>
-      </div>
 
-      {/* 右侧簇：审查开关 + 铃铛 */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginLeft: "auto",
-          paddingRight: 16,
-          flexShrink: 0,
-          WebkitAppRegion: "no-drag",
-        } as DragStyle}
-      >
         {/* 审查面板开关 */}
         <button
           onClick={onTogglePanel}
           title={panelVisible ? "隐藏审查面板" : "显示审查面板"}
           style={{
             width: 28,
-            height: 24,
+            height: 28,
             borderRadius: "var(--r-btn)",
             border: "none",
             background: "transparent",
@@ -295,7 +285,7 @@ export function Titlebar({
           title="通知中心"
           style={{
             width: 28,
-            height: 24,
+            height: 28,
             borderRadius: "var(--r-btn)",
             border: "none",
             background: "transparent",
