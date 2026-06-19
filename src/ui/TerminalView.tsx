@@ -15,6 +15,7 @@ interface TerminalViewProps {
   dir: string;
   active: boolean;
   onAgentCommandSubmitted?: (agent: AgentCode) => void;
+  onAgentExited?: () => void;
   onCommandDetected?: (command: string) => void;
   onCwd?: (cwd: string) => void;
   onShellTitle?: (title: string) => void;
@@ -52,6 +53,23 @@ function isDarkTheme(theme: ThemeType): boolean {
   return false;
 }
 
+const NOISE_COMMANDS = new Set([
+  "ls", "ll", "la", "l", "dir",
+  "cd", "pushd", "popd",
+  "pwd", "whoami", "hostname",
+  "cat", "head", "tail", "less", "more", "bat",
+  "clear", "reset", "cls",
+  "echo", "printf", "true", "false",
+  "exit", "logout",
+  "history", "which", "where", "type", "file",
+  "source", ".", "export", "unset", "alias", "unalias",
+]);
+
+function isMeaningfulCommand(command: string): boolean {
+  const cmd = command.split(/\s+/)[0]?.toLowerCase() ?? "";
+  return !NOISE_COMMANDS.has(cmd);
+}
+
 function detectAgentCommand(commandLine: string): AgentCode | null {
   const cmd = cleanTerminalText(commandLine).trim().split(/\s+/)[0]?.toLowerCase() ?? "";
   if (cmd === "claude") return "CC";
@@ -72,6 +90,7 @@ export function TerminalView({
   dir,
   active,
   onAgentCommandSubmitted,
+  onAgentExited,
   onCommandDetected,
   onCwd,
   onShellTitle,
@@ -83,6 +102,8 @@ export function TerminalView({
   const initRef = useRef(false);
   const onAgentCommandSubmittedRef = useRef(onAgentCommandSubmitted);
   onAgentCommandSubmittedRef.current = onAgentCommandSubmitted;
+  const onAgentExitedRef = useRef(onAgentExited);
+  onAgentExitedRef.current = onAgentExited;
   const onCommandDetectedRef = useRef(onCommandDetected);
   onCommandDetectedRef.current = onCommandDetected;
   const onCwdRef = useRef<TerminalViewProps["onCwd"]>(undefined);
@@ -133,13 +154,34 @@ export function TerminalView({
       }
 
       cleanups.push(
-        registerCwdHandler(term, (cwd) => onCwdRef.current?.(cwd)),
+        registerCwdHandler(term, (cwd) => {
+          onCwdRef.current?.(cwd);
+          // OSC 7 from shell after agent exit → fallback for shells without OSC 133
+          if (hasAgent) {
+            hasAgent = false;
+            resetLastAgent?.();
+            onAgentExitedRef.current?.();
+          }
+        }),
       );
       const titleDisposable = term.onTitleChange((title) => {
         const clean = cleanTerminalText(title);
         if (clean) onShellTitleRef.current?.(clean);
       });
       cleanups.push(() => titleDisposable.dispose());
+
+      // OSC 133;A = shell prompt marker → agent has exited, back to shell
+      let hasAgent = false;
+      let resetLastAgent: (() => void) | null = null;
+      const promptDisposable = term.parser.registerOscHandler(133, (data) => {
+        if (data.startsWith("A") && hasAgent) {
+          hasAgent = false;
+          resetLastAgent?.();
+          onAgentExitedRef.current?.();
+        }
+        return true;
+      });
+      cleanups.push(() => promptDisposable.dispose());
 
       const cwd = dir === "~" ? undefined : dir;
       let pty;
@@ -169,14 +211,16 @@ export function TerminalView({
 
       let inputBuffer = "";
       let lastSubmittedAgent: AgentCode | null = null;
+      resetLastAgent = () => { lastSubmittedAgent = null; };
       const submitCommandBuffer = () => {
         const trimmed = cleanTerminalText(inputBuffer).trim();
-        if (trimmed) {
+        if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
           onCommandDetectedRef.current?.(trimmed);
         }
         const agent = detectAgentCommand(inputBuffer);
         if (agent && agent !== lastSubmittedAgent) {
           lastSubmittedAgent = agent;
+          hasAgent = true;
           onAgentCommandSubmittedRef.current?.(agent);
         }
         inputBuffer = "";
