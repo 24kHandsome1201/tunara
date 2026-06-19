@@ -64,6 +64,7 @@ function detectAgentCommand(commandLine: string): AgentCode | null {
   if (cmd === "opencode") return "OC";
   if (cmd === "pi") return "PI";
   if (cmd === "auggie") return "AG";
+  if (cmd === "devin") return "DV";
   return null;
 }
 

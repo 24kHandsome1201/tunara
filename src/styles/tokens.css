@@ -71,6 +71,9 @@
   --c-agent-ag-bg: #f0f0f0;
   --c-agent-ag-border: #d8d8d8;
   --c-agent-ag-text: #333333;
+  --c-agent-dv-bg: #ddf0fb;
+  --c-agent-dv-border: #b0daf5;
+  --c-agent-dv-text: #0294DE;
 
   /* ── Shell 终端专属配色 ── */
   --c-shell-path: #2563eb;
@@ -109,6 +112,11 @@
   --sp-section-pad: 14px;
   --sp-gap-main: 8px;
   --sp-gap-lg: 10px;
+
+  /* ── 按钮 ── */
+  --c-btn-primary-bg: #27272a;
+  --c-btn-primary-text: #ffffff;
+  --c-radio-ring: #d4d4d8;
 
   /* ── 阴影 ── */
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -188,6 +196,13 @@
   --c-agent-ag-bg: #2a2a2e;
   --c-agent-ag-border: #3e3e42;
   --c-agent-ag-text: #d4d4d8;
+  --c-agent-dv-bg: #1a2a38;
+  --c-agent-dv-border: #2a3e50;
+  --c-agent-dv-text: #5bc0f8;
+
+  --c-btn-primary-bg: #e4e4e7;
+  --c-btn-primary-text: #18181b;
+  --c-radio-ring: #52525b;
 
   --c-shell-path: #60a5fa;
   --c-shell-prompt: #4ade80;
@@ -203,8 +218,8 @@
   --shadow-notif: 0 16px 40px rgba(0, 0, 0, 0.4);
 }
 
-.hover-bg { background: transparent; }
-.hover-bg:hover { background: var(--c-bg-hover); }
+.hover-bg { background: transparent; color: var(--c-text-4); }
+.hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
 .hover-close { background: transparent; color: var(--c-text-5); }
 .hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
 .hover-accent-bg { background: transparent; }

@@ -138,7 +138,7 @@ export function deriveDuration(s: Session): string {
   return `${Math.floor(min / 60)}h${min % 60}m`;
 }
 
-const AGENT_NAMES: Record<string, string> = {
+export const AGENT_NAMES: Record<string, string> = {
   CC: "Claude Code",
   CX: "Codex",
   AM: "Amp",
@@ -149,6 +149,7 @@ const AGENT_NAMES: Record<string, string> = {
   OC: "OpenCode",
   PI: "Pi",
   AG: "Auggie",
+  DV: "Devin",
 };
 
 function shortDir(dir: string): string {

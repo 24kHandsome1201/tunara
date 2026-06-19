@@ -2,6 +2,7 @@
 // 含：红绿灯占位 / 折叠侧栏按钮 / Tab 区 / 审查开关 / 铃铛+角标
 // data-tauri-drag-region 只放可拖拽空白区，所有交互元素不带该属性
 
+import { useState } from "react";
 import { type Session, deriveTitle } from "./types";
 
 /** Tauri 拖拽区 CSS 扩展（WebkitAppRegion 不在标准 CSSProperties 中） */
@@ -11,9 +12,7 @@ type DragStyle = React.CSSProperties & { WebkitAppRegion?: string; [key: string]
 interface TitlebarProps {
   sessions: Session[];
   activeSessionId: string;
-  sidebarVisible: boolean;
   panelVisible: boolean;
-  notifOpen: boolean;
   unreadCount: number;
   onToggleSidebar: () => void;
   onTogglePanel: () => void;
@@ -27,10 +26,8 @@ interface TitlebarProps {
 function PanelLeftIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      {/* 外框 */}
-      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#71717a" strokeWidth="1.2" />
-      {/* 左栏小块（琥珀色半透明填充） */}
-      <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="#c2683c" fillOpacity="0.3" />
+      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="var(--c-accent)" fillOpacity="0.3" />
     </svg>
   );
 }
@@ -38,7 +35,7 @@ function PanelLeftIcon() {
 /** 齿轮 SVG */
 function GearIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
@@ -48,19 +45,66 @@ function GearIcon() {
 /** 铃铛 SVG */
 function BellIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     </svg>
   );
 }
 
+function TabButton({ session, isActive, label, onSelect, onClose }: { session: Session; isActive: boolean; label: string; onSelect: () => void; onClose: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        padding: "5px 13px",
+        borderRadius: "var(--r-btn)",
+        border: "none",
+        background: isActive ? "var(--c-bg-hover)" : "transparent",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        flexShrink: 0,
+        position: "relative",
+      }}
+    >
+      {isActive && (
+        <div style={{ position: "absolute", bottom: 0, left: 4, right: 4, height: 2, background: "var(--c-accent)", borderRadius: 1 }} />
+      )}
+      <span style={{ fontSize: 12, fontWeight: 500, color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)", fontFamily: "var(--font-ui)" }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 11, color: isActive ? "var(--c-text-5)" : "var(--c-text-7)", fontFamily: "var(--font-mono)" }}>
+        ⎇ {session.branch.length > 14 ? session.branch.slice(0, 14) + "…" : session.branch}
+      </span>
+      {hovered && (
+        <span
+          role="button"
+          tabIndex={0}
+          title="关闭"
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onClose(); } }}
+          style={{
+            width: 15, height: 15, borderRadius: 4, display: "flex", alignItems: "center",
+            justifyContent: "center", fontSize: 13, lineHeight: 1, flexShrink: 0, marginLeft: 1,
+          }}
+          className="hover-close"
+        >
+          ×
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function Titlebar({
   sessions,
   activeSessionId,
-  sidebarVisible: _sidebarVisible,
   panelVisible,
-  notifOpen: _notifOpen,
   unreadCount,
   onToggleSidebar,
   onTogglePanel,
@@ -136,92 +180,16 @@ export function Titlebar({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
-        {tabSessions.map((s) => {
-          const isActive = s.id === activeSessionId;
-          return (
-            <button
-              key={s.id}
-              onClick={() => onSelectSession(s.id)}
-              style={{
-                padding: "5px 13px",
-                borderRadius: "var(--r-btn)",
-                border: "none",
-                background: isActive ? "var(--c-bg-hover)" : "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                flexShrink: 0,
-                position: "relative",
-              }}
-            >
-              {/* 激活标签底部 2px 橘色线 */}
-              {isActive && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: 0,
-                    left: 4,
-                    right: 4,
-                    height: 2,
-                    background: "var(--c-accent)",
-                    borderRadius: 1,
-                  }}
-                />
-              )}
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)",
-                  fontFamily: "var(--font-ui)",
-                }}
-              >
-                {tabLabel(s)}
-              </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: isActive ? "var(--c-text-5)" : "var(--c-text-7)",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                ⎇ {s.branch.length > 14 ? s.branch.slice(0, 14) + "…" : s.branch}
-              </span>
-              <span
-                role="button"
-                tabIndex={0}
-                title="关闭"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseSession(s.id);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.stopPropagation();
-                    onCloseSession(s.id);
-                  }
-                }}
-                style={{
-                  width: 15,
-                  height: 15,
-                  borderRadius: 4,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 13,
-                  lineHeight: 1,
-                  color: "var(--c-text-5)",
-                  flexShrink: 0,
-                  marginLeft: 1,
-                }}
-                className="hover-close"
-              >
-                ×
-              </span>
-            </button>
-          );
-        })}
+        {tabSessions.map((s) => (
+          <TabButton
+            key={s.id}
+            session={s}
+            isActive={s.id === activeSessionId}
+            label={tabLabel(s)}
+            onSelect={() => onSelectSession(s.id)}
+            onClose={() => onCloseSession(s.id)}
+          />
+        ))}
 
       </div>
 
@@ -274,8 +242,8 @@ export function Titlebar({
           className="hover-bg"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="#71717a" strokeWidth="1.2" />
-            <rect x="9" y="1.5" width="5.5" height="13" rx="2" fill={panelVisible ? "#71717a" : "none"} fillOpacity="0.3" stroke="#71717a" strokeWidth="1.2" />
+            <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
+            <rect x="9" y="1.5" width="5.5" height="13" rx="2" fill={panelVisible ? "currentColor" : "none"} fillOpacity="0.3" stroke="currentColor" strokeWidth="1.2" />
           </svg>
         </button>
 

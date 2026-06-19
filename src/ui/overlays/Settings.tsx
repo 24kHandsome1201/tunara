@@ -1,7 +1,7 @@
 // overlays/Settings — 设置弹层（600px）
 // 外观（主题/强调色/光标）、字体（字号）均接入 ui store 并实时生效。
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ThemeType } from "../types";
 import { useUIStore, type CursorStyle } from "@/state/ui";
 import { getMaxConcurrent, resolveAllBins, preflightAgent, type ResolvedCommand, type Preflight } from "@/modules/agent/agent-bridge";
@@ -36,7 +36,7 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px" }}>
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontWeight: selected ? 600 : 400 }}>{label}</span>
-        <div style={{ width: 14, height: 14, borderRadius: "50%", border: selected ? `5px solid var(--c-accent)` : "1.5px solid #d4d4d8" }} />
+        <div style={{ width: 14, height: 14, borderRadius: "50%", border: selected ? `5px solid var(--c-accent)` : "1.5px solid var(--c-radio-ring)" }} />
       </div>
     </button>
   );
@@ -92,6 +92,8 @@ export function Settings({ onClose }: SettingsProps) {
   const setFontSize = useUIStore((s) => s.setFontSize);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { sheetRef.current?.focus(); }, []);
   const [maxConcurrent, setMaxConcurrent] = useState(4);
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[]>([]);
   const [preflights, setPreflights] = useState<Record<string, Preflight>>({});
@@ -114,6 +116,7 @@ export function Settings({ onClose }: SettingsProps) {
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,0.34)", backdropFilter: "blur(4px)", zIndex: 200, animation: "fadeIn 0.2s ease" }} />
       <div
+        ref={sheetRef}
         tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Escape") onClose(); }}
         style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn 0.24s ease", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
@@ -205,7 +208,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {activeTab === "Agents" && (
             <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
-              {[{ code: "CC", name: "Claude Code" }, { code: "CX", name: "Codex" }, { code: "AM", name: "Amp" }].map(({ code, name }) => {
+              {[{ code: "CC", name: "Claude Code" }, { code: "CX", name: "Codex" }, { code: "AM", name: "Amp" }, { code: "GM", name: "Gemini" }, { code: "CP", name: "Copilot" }, { code: "CR", name: "Cursor" }, { code: "DR", name: "Droid" }, { code: "OC", name: "OpenCode" }, { code: "PI", name: "Pi" }, { code: "AG", name: "Auggie" }, { code: "DV", name: "Devin" }].map(({ code, name }) => {
                 const cli = resolvedClis.find((c) => c.name === code);
                 const pf = preflights[code];
                 return (
@@ -227,6 +230,7 @@ export function Settings({ onClose }: SettingsProps) {
             <div>
               {[
                 { key: "⌘T", desc: "新建终端" },
+                { key: "⌘N", desc: "新建 Agent" },
                 { key: "⌘⏎", desc: "创建 Agent（弹层内）" },
                 { key: "⌘W", desc: "关闭当前 Tab" },
                 { key: "⌘,", desc: "打开设置" },
@@ -244,7 +248,7 @@ export function Settings({ onClose }: SettingsProps) {
         {/* 底部 */}
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>更改即时生效</span>
-          <button onClick={onClose} style={{ padding: "7px 20px", borderRadius: "var(--r-btn)", border: "none", background: "#27272a", color: "#fff", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>
+          <button onClick={onClose} style={{ padding: "7px 20px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>
             完成
           </button>
         </div>

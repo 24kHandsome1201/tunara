@@ -20,6 +20,7 @@ export function NotifCenter({ notifications, onClose, onClear, onClearAll, onSel
         style={{
           position: "fixed",
           inset: 0,
+          background: "rgba(20,20,28,0.08)",
           zIndex: 100,
         }}
       />

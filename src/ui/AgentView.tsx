@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AgentBadge } from "./SessionCard";
-import { type Session, type AgentBlock, deriveStatus } from "./types";
+import { type Session, type AgentBlock, deriveStatus, AGENT_NAMES } from "./types";
 import { cancelAgent, discardAgentChanges } from "@/modules/agent/agent-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -13,8 +13,6 @@ interface AgentViewProps {
   session: Session;
   onViewDiff: () => void;
 }
-
-const AGENT_NAMES: Record<string, string> = { CC: "Claude Code", CX: "Codex", AM: "Amp" };
 
 function ToolChip({ block }: { block: Extract<AgentBlock, { type: "toolUse" }> }) {
   return (
@@ -280,8 +278,8 @@ export function AgentView({ session, onViewDiff }: AgentViewProps) {
               padding: "6px 12px",
               borderRadius: "var(--r-btn)",
               border: "none",
-              background: "#27272a",
-              color: "#fff",
+              background: "var(--c-btn-primary-bg)",
+              color: "var(--c-btn-primary-text)",
               fontSize: "var(--fs-secondary)",
               fontWeight: 500,
               cursor: "pointer",

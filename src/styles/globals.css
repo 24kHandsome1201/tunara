@@ -221,6 +221,18 @@ html[data-chrome="borderless"] #settings-root {
   display: none !important;
 }
 
+/* Conduit animations */
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sheetIn { from { opacity: 0; transform: translate(-50%, -52%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+
+/* Conduit responsive */
+@media (max-width: 900px) { .conduit-panel { display: none !important; } }
+@media (max-width: 720px) { .conduit-sidebar { display: none !important; } }
+
 .no-scrollbar-deep,
 .no-scrollbar-deep * {
   scrollbar-width: none !important;

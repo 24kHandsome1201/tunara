@@ -12,34 +12,7 @@ import { useSessionsStore, createSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { cancelAgent, preflightAgent, spawnAgent } from "@/modules/agent/agent-bridge";
 import { loadSessions, saveSessions } from "@/state/persist";
-import type { AgentCode, AgentEvent } from "@/ui/types";
-
-function lightenForDark(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-    else if (max === g) h = ((b - r) / d + 2) / 6;
-    else h = ((r - g) / d + 4) / 6;
-  }
-  l = Math.min(0.75, l + 0.15);
-  const hue2rgb = (p: number, q: number, t: number) => {
-    if (t < 0) t += 1; if (t > 1) t -= 1;
-    if (t < 1/6) return p + (q - p) * 6 * t;
-    if (t < 1/2) return q;
-    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-    return p;
-  };
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  const toHex = (v: number) => Math.round(v * 255).toString(16).padStart(2, "0");
-  return `#${toHex(hue2rgb(p, q, h + 1/3))}${toHex(hue2rgb(p, q, h))}${toHex(hue2rgb(p, q, h - 1/3))}`;
-}
+import { AGENT_NAMES, type AgentCode, type AgentEvent } from "@/ui/types";
 
 export default function App() {
   // ── Zustand stores ──
@@ -130,12 +103,10 @@ export default function App() {
     applyDark(theme === "dark");
   }, [theme]);
 
-  // ── 强调色应用（暗色模式自动提亮） ──
+  // ── 强调色应用（暗色 accent 由 tokens.css .dark 控制） ──
   useEffect(() => {
-    const isDark = theme === "dark" || (theme === "system" && (window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false));
-    const effective = isDark ? lightenForDark(accent) : accent;
-    document.documentElement.style.setProperty("--c-accent", effective);
-  }, [accent, theme]);
+    document.documentElement.style.setProperty("--c-accent", accent);
+  }, [accent]);
 
   // ── 操作：新建终端 / 关闭会话 ──
   const newTerminal = useCallback(() => {
@@ -168,6 +139,9 @@ export default function App() {
       if (k === "t") {
         e.preventDefault();
         newTerminal();
+      } else if (k === "n") {
+        e.preventDefault();
+        useUIStore.getState().setOverlay("agent");
       } else if (k === "w") {
         e.preventDefault();
         const id = useSessionsStore.getState().activeSessionId;
@@ -199,23 +173,10 @@ export default function App() {
         background: "var(--c-bg-white-glass)",
       }}
     >
-      <style>{`
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-        @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
-        @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes sheetIn { from { opacity: 0; transform: translate(-50%, -52%); } to { opacity: 1; transform: translate(-50%, -50%); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
-        @media (max-width: 900px) { .conduit-panel { display: none !important; } }
-        @media (max-width: 720px) { .conduit-sidebar { display: none !important; } }
-      `}</style>
-
       <Titlebar
         sessions={sessions}
         activeSessionId={activeSessionId ?? ""}
-        sidebarVisible={sidebarVisible}
         panelVisible={panelVisible}
-        notifOpen={notifOpen}
         unreadCount={unreadCount}
         onToggleSidebar={toggleSidebar}
         onTogglePanel={togglePanel}
@@ -247,7 +208,6 @@ export default function App() {
               if (!panelVisible) togglePanel();
             }}
             onAgentDetected={(sessionId, agent) => {
-              const AGENT_NAMES: Record<string, string> = { CC: "Claude Code", CX: "Codex", AM: "Amp", GM: "Gemini", CP: "Copilot", CR: "Cursor", DR: "Droid", OC: "OpenCode", PI: "Pi", AG: "Auggie" };
               updateSession(sessionId, { agent, title: AGENT_NAMES[agent] ?? agent });
             }}
             onCommandDetected={(sessionId, command) => {

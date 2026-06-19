@@ -255,13 +255,13 @@ export function DiffPanel({ session }: DiffPanelProps) {
       {/* 底部：git 仓库且（有改动或可推送）时显示 */}
       {!notGit && !loading && (hasChanges || ahead > 0) && (
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "10px 12px", flexShrink: 0 }}>
-          <input
-            type="text"
+          <textarea
             value={commitMsg}
             onChange={(e) => setCommitMsg(e.target.value)}
             placeholder={hasChanges ? "提交说明…" : "无未提交改动"}
             disabled={!hasChanges || busy}
-            style={{ width: "100%", background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-input)", padding: "7px 10px", fontSize: "var(--fs-body)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", outline: "none", boxSizing: "border-box", marginBottom: 8, opacity: hasChanges ? 1 : 0.6 }}
+            rows={2}
+            style={{ width: "100%", background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-input)", padding: "7px 10px", fontSize: "var(--fs-body)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", outline: "none", boxSizing: "border-box", marginBottom: 8, opacity: hasChanges ? 1 : 0.6, resize: "vertical", lineHeight: 1.5 }}
           />
           <div style={{ display: "flex", gap: 6 }}>
             <button
@@ -274,7 +274,7 @@ export function DiffPanel({ session }: DiffPanelProps) {
             <button
               onClick={() => handleCommit(true)}
               disabled={!canPush}
-              style={{ flex: 1, padding: "7px 10px", borderRadius: "var(--r-btn)", border: "none", background: "#27272a", color: "#fff", fontSize: "var(--fs-body)", fontWeight: 500, cursor: canPush ? "pointer" : "default", opacity: canPush ? 1 : 0.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+              style={{ flex: 1, padding: "7px 10px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: canPush ? "pointer" : "default", opacity: canPush ? 1 : 0.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="19" x2="12" y2="5" />

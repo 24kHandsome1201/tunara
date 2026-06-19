@@ -1,7 +1,7 @@
 // overlays/NewAgent — 新建 Agent 弹层（520px sheet）
 // 含：选目录 / Claude Code / ⌘⏎ 创建
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type AgentType } from "../types";
 import { AgentBadge } from "../SessionCard";
 
@@ -32,6 +32,7 @@ const AGENT_CARDS: AgentCardDef[] = [
   { id: "OC", name: "OpenCode", desc: "OpenCode 终端 agent，开源代码助手", disabled: true },
   { id: "PI", name: "Pi", desc: "Pi AI agent，对话式编程助手", disabled: true },
   { id: "AG", name: "Auggie", desc: "Auggie agent，代码审查与修复", disabled: true },
+  { id: "DV", name: "Devin", desc: "Cognition AI 云端编程 agent，全自主开发", disabled: true },
 ];
 
 
@@ -39,6 +40,8 @@ export function NewAgent({ initialAgent = "CC", defaultDir = "~", onClose, onCre
   const [agentPick, setAgentPick] = useState<AgentType>(initialAgent);
   const [dir, setDir] = useState(defaultDir || "~");
   const [prompt, setPrompt] = useState("");
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { sheetRef.current?.focus(); }, []);
 
   function handleCreate() {
     if (!prompt.trim() || !dir.trim()) return;
@@ -73,6 +76,8 @@ export function NewAgent({ initialAgent = "CC", defaultDir = "~", onClose, onCre
 
       {/* Sheet */}
       <div
+        ref={sheetRef}
+        tabIndex={0}
         onKeyDown={handleKeyDown}
         style={{
           position: "fixed",
@@ -80,6 +85,7 @@ export function NewAgent({ initialAgent = "CC", defaultDir = "~", onClose, onCre
           left: "50%",
           transform: "translate(-50%, -50%)",
           width: 520,
+          outline: "none",
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
@@ -168,7 +174,7 @@ export function NewAgent({ initialAgent = "CC", defaultDir = "~", onClose, onCre
             >
               Agent
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }} className="no-scrollbar">
               {AGENT_CARDS.map((card) => {
                 const isSelected = agentPick === card.id && !card.disabled;
                 return (
@@ -238,7 +244,7 @@ export function NewAgent({ initialAgent = "CC", defaultDir = "~", onClose, onCre
                           borderRadius: "50%",
                           border: isSelected
                             ? "5px solid var(--c-accent)"
-                            : "1.5px solid #d4d4d8",
+                            : "1.5px solid var(--c-radio-ring)",
                           flexShrink: 0,
                           background: isSelected ? "var(--c-accent-bg-soft)" : "transparent",
                         }}
@@ -331,8 +337,8 @@ export function NewAgent({ initialAgent = "CC", defaultDir = "~", onClose, onCre
                   padding: "7px 16px",
                   borderRadius: "var(--r-btn)",
                   border: "none",
-                  background: "#27272a",
-                  color: "#fff",
+                  background: "var(--c-btn-primary-bg)",
+                  color: "var(--c-btn-primary-text)",
                   fontSize: "var(--fs-body)",
                   fontWeight: 500,
                   cursor: !prompt.trim() || !dir.trim() ? "not-allowed" : "pointer",
