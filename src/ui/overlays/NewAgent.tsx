@@ -24,14 +24,14 @@ interface AgentCardDef {
 const AGENT_CARDS: AgentCardDef[] = [
   { id: "CC", name: "Claude Code", desc: "Anthropic 官方 CLI，支持多轮对话与自动写盘" },
   { id: "CX", name: "Codex", desc: "OpenAI CLI agent，支持代码生成与终端操作" },
-  { id: "AM", name: "Amp", desc: "Sourcegraph 代码智能 agent，深度代码理解" },
-  { id: "GM", name: "Gemini", desc: "Google Gemini CLI，多模态代码理解与生成" },
-  { id: "CP", name: "Copilot", desc: "GitHub Copilot CLI，代码建议与终端辅助" },
-  { id: "CR", name: "Cursor", desc: "Cursor Agent CLI，智能代码编辑" },
-  { id: "DR", name: "Droid", desc: "Droid CLI agent，自动化开发流程" },
-  { id: "OC", name: "OpenCode", desc: "OpenCode 终端 agent，开源代码助手" },
-  { id: "PI", name: "Pi", desc: "Pi AI agent，对话式编程助手" },
-  { id: "AG", name: "Auggie", desc: "Auggie agent，代码审查与修复" },
+  { id: "AM", name: "Amp", desc: "可在真实终端中自动识别；prompt 式新建暂未接后端 harness", disabled: true },
+  { id: "GM", name: "Gemini", desc: "Google Gemini CLI，多模态代码理解与生成", disabled: true },
+  { id: "CP", name: "Copilot", desc: "GitHub Copilot CLI，代码建议与终端辅助", disabled: true },
+  { id: "CR", name: "Cursor", desc: "Cursor Agent CLI，智能代码编辑", disabled: true },
+  { id: "DR", name: "Droid", desc: "Droid CLI agent，自动化开发流程", disabled: true },
+  { id: "OC", name: "OpenCode", desc: "OpenCode 终端 agent，开源代码助手", disabled: true },
+  { id: "PI", name: "Pi", desc: "Pi AI agent，对话式编程助手", disabled: true },
+  { id: "AG", name: "Auggie", desc: "Auggie agent，代码审查与修复", disabled: true },
 ];
 
 

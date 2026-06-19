@@ -10,8 +10,9 @@ import { Settings } from "@/ui/overlays/Settings";
 import { NewAgent } from "@/ui/overlays/NewAgent";
 import { useSessionsStore, createSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { cancelAgent } from "@/modules/agent/agent-bridge";
-import { loadSessions } from "@/state/persist";
+import { cancelAgent, preflightAgent, spawnAgent } from "@/modules/agent/agent-bridge";
+import { loadSessions, saveSessions } from "@/state/persist";
+import type { AgentCode, AgentEvent } from "@/ui/types";
 
 function lightenForDark(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -42,7 +43,7 @@ function lightenForDark(hex: string): string {
 
 export default function App() {
   // ── Zustand stores ──
-  const { sessions, activeSessionId, addSession, removeSession, setActive, updateSession } =
+  const { sessions, activeSessionId, addSession, removeSession, setActive, applyEvent, appendReplyChunk, updateSession } =
     useSessionsStore();
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const panelVisible = useUIStore((s) => s.panelVisible);
@@ -55,8 +56,53 @@ export default function App() {
   const togglePanel = useUIStore((s) => s.togglePanel);
   const toggleNotif = useUIStore((s) => s.toggleNotif);
   const setOverlay = useUIStore((s) => s.setOverlay);
+  const addNotification = useUIStore((s) => s.addNotification);
   const clearNotification = useUIStore((s) => s.clearNotification);
   const clearAllNotifications = useUIStore((s) => s.clearAllNotifications);
+
+  const pendingChunks = useRef<Map<string, string>>(new Map());
+  const rafId = useRef<number | null>(null);
+  const flushChunks = useCallback(() => {
+    rafId.current = null;
+    pendingChunks.current.forEach((chunk, sid) => {
+      if (chunk) appendReplyChunk(sid, chunk);
+    });
+    pendingChunks.current.clear();
+  }, [appendReplyChunk]);
+
+  const persistCurrentSessions = useCallback(() => {
+    void saveSessions(useSessionsStore.getState().sessions);
+  }, []);
+
+  const handleAgentEvent = useCallback(
+    (sessionId: string, ev: AgentEvent) => {
+      if (ev.kind === "delta") {
+        const prev = pendingChunks.current.get(sessionId) ?? "";
+        pendingChunks.current.set(sessionId, prev + ev.text);
+        if (rafId.current == null) {
+          rafId.current = requestAnimationFrame(flushChunks);
+        }
+        return;
+      }
+
+      applyEvent(sessionId, ev);
+      if (ev.kind === "done" || ev.kind === "failed") {
+        const store = useSessionsStore.getState();
+        void saveSessions(store.sessions);
+        store.refreshGit(sessionId);
+        const session = store.sessions.find((s) => s.id === sessionId);
+        const title = session?.title ?? "Agent";
+        addNotification({
+          id: crypto.randomUUID(),
+          type: ev.kind === "failed" || (ev.kind === "done" && !ev.ok) ? "error" : "success",
+          message: ev.kind === "failed" ? ev.message : ev.ok ? "已完成" : "执行失败",
+          sessionTitle: title,
+          sessionId,
+        });
+      }
+    },
+    [addNotification, applyEvent, flushChunks],
+  );
 
   const initRef = useRef(false);
   useEffect(() => {
@@ -109,8 +155,9 @@ export default function App() {
       if (useSessionsStore.getState().sessions.length === 0) {
         addSession(createSession("shell", "~", { title: "终端" }));
       }
+      persistCurrentSessions();
     },
-    [addSession, removeSession],
+    [addSession, persistCurrentSessions, removeSession],
   );
 
   // ── 全局快捷键 ──
@@ -246,12 +293,27 @@ export default function App() {
           defaultDir={activeSession?.dir ?? "~"}
           onClose={() => setOverlay(null)}
           onCreate={(agent, dir, prompt) => {
+            const agentCode = agent as AgentCode;
             const s = createSession("agent", dir, {
-              agent,
+              agent: agentCode,
               title: prompt.slice(0, 60),
               prompt,
             });
             addSession(s);
+            preflightAgent(agentCode)
+              .then((pf) => {
+                if (!pf.installed || !pf.loggedIn) {
+                  handleAgentEvent(s.id, {
+                    kind: "failed",
+                    message: pf.hint ?? `${agentCode} 未安装或未登录`,
+                  });
+                  return;
+                }
+                spawnAgent(agentCode, prompt, dir, undefined, (ev) => handleAgentEvent(s.id, ev))
+                  .then((procId) => updateSession(s.id, { procId }))
+                  .catch((err) => handleAgentEvent(s.id, { kind: "failed", message: String(err) }));
+              })
+              .catch((err) => handleAgentEvent(s.id, { kind: "failed", message: String(err) }));
           }}
         />
       )}

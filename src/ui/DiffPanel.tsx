@@ -190,7 +190,7 @@ export function DiffPanel({ session }: DiffPanelProps) {
     setBusy(true);
     try {
       if (hasChanges) {
-        await gitCommit(repoPath, commitMsg.trim());
+        await gitCommit(repoPath, commitMsg.trim(), files.map((file) => file.path));
       }
       if (push) {
         await gitPush(repoPath);
@@ -284,7 +284,7 @@ export function DiffPanel({ session }: DiffPanelProps) {
             </button>
           </div>
           <div style={{ marginTop: 7, fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", textAlign: "center" }}>
-            {remoteLabel(remote, branch)}
+            {hasChanges ? `将提交 ${files.length} 个文件 · ` : ""}{remoteLabel(remote, branch)}
           </div>
         </div>
       )}

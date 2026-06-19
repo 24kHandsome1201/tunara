@@ -35,13 +35,41 @@ async fn run_git(resolver: &ResolverState, repo_path: &str, args: &[&str]) -> Re
         .map_err(|e| e.to_string())
 }
 
+async fn run_git_owned(
+    resolver: &ResolverState,
+    repo_path: &str,
+    args: Vec<String>,
+) -> Result<String, String> {
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_git(resolver, repo_path, &refs).await
+}
+
+fn git_add_args(files: &[String]) -> Result<Vec<String>, String> {
+    if files.is_empty() {
+        return Err("没有选择要提交的文件".into());
+    }
+    let mut args = Vec::with_capacity(files.len() + 2);
+    args.push("add".into());
+    args.push("--".into());
+    for file in files {
+        let trimmed = file.trim();
+        if trimmed.is_empty() {
+            return Err("提交文件路径不能为空".into());
+        }
+        args.push(trimmed.to_string());
+    }
+    Ok(args)
+}
+
 #[tauri::command]
 pub async fn git_commit(
     resolver: tauri::State<'_, ResolverState>,
     repo_path: String,
     message: String,
+    files: Vec<String>,
 ) -> Result<String, String> {
-    run_git(&resolver, &repo_path, &["add", "-A"]).await?;
+    let add_args = git_add_args(&files)?;
+    run_git_owned(&resolver, &repo_path, add_args).await?;
     run_git(&resolver, &repo_path, &["commit", "-m", &message]).await
 }
 
@@ -51,4 +79,26 @@ pub async fn git_push(
     repo_path: String,
 ) -> Result<(), String> {
     run_git(&resolver, &repo_path, &["push"]).await.map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::git_add_args;
+
+    #[test]
+    fn git_add_args_uses_explicit_pathspecs_only() {
+        let args = git_add_args(&["src/main.ts".into(), "docs/readme.md".into()]).unwrap();
+        assert_eq!(args, vec!["add", "--", "src/main.ts", "docs/readme.md"]);
+        assert!(!args.iter().any(|arg| arg == "-A" || arg == "."));
+    }
+
+    #[test]
+    fn git_add_args_rejects_empty_selection() {
+        assert!(git_add_args(&[]).is_err());
+    }
+
+    #[test]
+    fn git_add_args_rejects_blank_path() {
+        assert!(git_add_args(&["src/main.ts".into(), "  ".into()]).is_err());
+    }
 }

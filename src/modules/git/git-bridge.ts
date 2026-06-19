@@ -43,8 +43,8 @@ export function gitAheadBehind(repoPath: string): Promise<RemoteState> {
   return invoke<RemoteState>("git_ahead_behind", { repoPath });
 }
 
-export function gitCommit(repoPath: string, message: string): Promise<string> {
-  return invoke<string>("git_commit", { repoPath, message });
+export function gitCommit(repoPath: string, message: string, files: string[]): Promise<string> {
+  return invoke<string>("git_commit", { repoPath, message, files });
 }
 
 export function gitPush(repoPath: string): Promise<void> {
