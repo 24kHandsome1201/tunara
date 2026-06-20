@@ -1,86 +1,86 @@
-// 会话终态持久化（实施文档 §4.2 修 P2-16 / D5）
-//
-// 用 tauri-plugin-store 存事实字段(runState/completedAt/error/resultSummary/unread)。
-// 只持久化已结束的会话——running 的不存（重启后不会错显 running）。
-// UI 的 fresh/done 由事实字段派生，不持久化 status。
-
 import { load } from "@tauri-apps/plugin-store";
 import type { Session } from "@/ui/types";
 
 const STORE_FILE = "conduit-sessions.json";
 const SESSIONS_KEY = "sessions";
+const ACTIVE_KEY = "activeSessionId";
+const UI_LAYOUT_KEY = "uiLayout";
 
 type PersistedSession = Pick<
   Session,
-  | "id"
-  | "kind"
-  | "agent"
-  | "agentSessionId"
-  | "title"
-  | "dir"
-  | "branch"
-  | "prompt"
-  | "runState"
-  | "startedAt"
-  | "completedAt"
-  | "unread"
-  | "result"
-  | "error"
-  | "costUsd"
-  | "updatedAt"
+  "id" | "title" | "dir" | "branch" | "agent" | "updatedAt"
 >;
 
-function toPersistedSession(s: Session): PersistedSession | null {
-  // 只持久化已结束的会话
-  if (s.runState === "running" || s.runState === "idle") return null;
+interface PersistedUILayout {
+  sidebarVisible: boolean;
+  panelVisible: boolean;
+}
+
+function toPersistedSession(s: Session): PersistedSession {
   return {
     id: s.id,
-    kind: s.kind,
-    agent: s.agent,
-    agentSessionId: s.agentSessionId,
     title: s.title,
     dir: s.dir,
     branch: s.branch,
-    prompt: s.prompt,
-    runState: s.runState,
-    startedAt: s.startedAt,
-    completedAt: s.completedAt,
-    unread: s.unread,
-    result: s.result,
-    error: s.error,
-    costUsd: s.costUsd,
+    agent: s.agent,
     updatedAt: s.updatedAt,
   };
 }
 
 function fromPersistedSession(p: PersistedSession): Session {
-  return {
-    ...p,
-    reply: "",
-    blocks: [],
-  };
+  return { ...p, runState: "idle" };
 }
 
-export async function saveSessions(sessions: Session[]): Promise<void> {
+export async function saveSessions(
+  sessions: Session[],
+  activeSessionId?: string | null,
+): Promise<void> {
   try {
     const store = await load(STORE_FILE, { defaults: {} });
-    const persisted = sessions
-      .map(toPersistedSession)
-      .filter((s): s is PersistedSession => s !== null);
+    const persisted = sessions.map(toPersistedSession);
     await store.set(SESSIONS_KEY, persisted);
+    if (activeSessionId !== undefined) {
+      await store.set(ACTIVE_KEY, activeSessionId);
+    }
     await store.save();
   } catch {
-    // store 不可用（非 Tauri 环境 / 权限问题）时静默忽略
+    // store unavailable
   }
 }
 
-export async function loadSessions(): Promise<Session[]> {
+export async function loadSessions(): Promise<{
+  sessions: Session[];
+  activeSessionId: string | null;
+}> {
   try {
     const store = await load(STORE_FILE, { defaults: {} });
     const persisted = await store.get<PersistedSession[]>(SESSIONS_KEY);
-    if (!persisted) return [];
-    return persisted.map(fromPersistedSession);
+    const activeId = await store.get<string | null>(ACTIVE_KEY);
+    if (!persisted) return { sessions: [], activeSessionId: null };
+    return {
+      sessions: persisted.map(fromPersistedSession),
+      activeSessionId: activeId ?? null,
+    };
   } catch {
-    return [];
+    return { sessions: [], activeSessionId: null };
+  }
+}
+
+export async function saveUILayout(layout: PersistedUILayout): Promise<void> {
+  try {
+    const store = await load(STORE_FILE, { defaults: {} });
+    await store.set(UI_LAYOUT_KEY, layout);
+    await store.save();
+  } catch {
+    // store unavailable
+  }
+}
+
+export async function loadUILayout(): Promise<PersistedUILayout | null> {
+  try {
+    const store = await load(STORE_FILE, { defaults: {} });
+    return (await store.get<PersistedUILayout>(UI_LAYOUT_KEY)) ?? null;
+  } catch {
+    return null;
   }
 }

@@ -31,6 +31,7 @@ export function createSession(
     title: opts?.title ?? "终端",
     dir,
     branch: opts?.branch ?? "",
+    runState: "idle" as const,
     updatedAt: Date.now(),
   };
 }
@@ -63,7 +64,12 @@ export const useSessionsStore = create<SessionsState>()((set) => ({
       gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
     })),
 
-  markRead: (_id) => set(() => ({})),
+  markRead: (id) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, unread: false } : s,
+      ),
+    })),
 
   updateSession: (id, patch) =>
     set((state) => ({

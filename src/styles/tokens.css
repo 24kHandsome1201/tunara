@@ -125,9 +125,12 @@
 
   /* ── 尺寸 ── */
   --h-titlebar: 48px;
+  --h-titlebar-control: 24px;
+  --w-titlebar-control: 28px;
+  --h-titlebar-tab: 36px;
   --w-sidebar: 272px;
   --w-panel: 300px;
-  --h-statusbar: 30px;
+  --h-statusbar: 26px;
 }
 
 /* ── Dark mode ── */
@@ -224,3 +227,37 @@
 .hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
 .hover-accent-bg { background: transparent; }
 .hover-accent-bg:hover { background: var(--c-accent-bg-light); }
+
+.tab-close { opacity: 0; pointer-events: none; }
+.tab-btn[data-active="false"]:hover { background: var(--c-bg-hover) !important; }
+.tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
+
+.session-card:hover { background: var(--c-bg-hover); }
+.session-card-close { opacity: 0; pointer-events: none; }
+.session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
+
+/* ── Utility classes ── */
+
+/* Text */
+.text-mono    { font-family: var(--font-mono); }
+.text-body    { font-size: var(--fs-body); color: var(--c-text-primary); }
+.text-meta    { font-size: var(--fs-meta); color: var(--c-text-5); font-family: var(--font-mono); }
+.text-badge   { font-size: var(--fs-badge); font-weight: 700; font-family: var(--font-mono); }
+.text-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Layout */
+.flex-center  { display: flex; align-items: center; justify-content: center; }
+.flex-col     { display: flex; flex-direction: column; }
+
+/* Button */
+.btn-icon {
+  width: 24px; height: 24px; border-radius: var(--r-btn); border: none;
+  background: transparent; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+}
+
+/* Panel */
+.panel-header {
+  height: var(--h-titlebar); border-bottom: 1px solid var(--c-border-1);
+  display: flex; align-items: center; padding: 0 14px; gap: 8px; flex-shrink: 0;
+}
