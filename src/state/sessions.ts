@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Session, AgentCode } from "@/ui/types";
-import { AGENT_NAMES } from "@/ui/types";
+import { AGENT_NAMES, isPromptLikeShellTitle } from "@/ui/types";
+import { initialAgentActivity, isAgentShellTitle, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { useUIStore } from "./ui";
 
 interface SessionsState {
@@ -19,9 +20,9 @@ interface SessionsState {
   clearCloseConfirmation: (id: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode) => void;
+  handleAgentReady: (id: string) => void;
+  handleAgentBusy: (id: string) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
-  handleAgentTurnDone: (id: string) => void;
-  handleAgentResumed: (id: string) => void;
   handleCommandDetected: (id: string, command: string) => void;
   handleCommandFinished: (id: string, exitCode: number) => void;
   handleCwdChange: (id: string, cwd: string) => void;
@@ -48,6 +49,7 @@ export function createSession(
   return {
     id,
     agent: opts?.agent,
+    agentActivity: opts?.agent ? initialAgentActivity(opts.agent) : undefined,
     title: opts?.title ?? "终端",
     dir,
     branch: opts?.branch ?? "",
@@ -130,10 +132,39 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleAgentDetected: (id, agent) => {
     get().updateSession(id, {
       agent,
+      agentActivity: initialAgentActivity(agent),
       title: AGENT_NAMES[agent] ?? agent,
-      runState: "running",
+      runState: "idle",
       startedAt: Date.now(),
       completedAt: undefined,
+      lastCommand: undefined,
+      shellTitle: undefined,
+      suppressShellTitle: false,
+    });
+  },
+
+  handleAgentReady: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session?.agent) return;
+    const isActive = get().activeSessionId === id;
+    get().updateSession(id, {
+      agentActivity: "idle",
+      runState: "idle",
+      completedAt: Date.now(),
+      ...(!isActive ? { unread: true } : {}),
+    });
+    get().refreshGit(id);
+  },
+
+  handleAgentBusy: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session?.agent || session.agentActivity === "running") return;
+    get().updateSession(id, {
+      agentActivity: "running",
+      runState: "idle",
+      startedAt: Date.now(),
+      completedAt: undefined,
+      unread: false,
     });
   },
 
@@ -141,9 +172,13 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = get().activeSessionId === id;
     get().updateSession(id, {
       agent: undefined,
+      agentActivity: undefined,
       title: "终端",
       lastCommand: undefined,
-      runState: exitCode === 0 ? "done" : "failed",
+      lastExitCode: exitCode,
+      shellTitle: undefined,
+      suppressShellTitle: true,
+      runState: "idle",
       completedAt: Date.now(),
       ...(!isActive ? { unread: true } : {}),
     });
@@ -151,14 +186,22 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   handleCommandDetected: (id, command) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (session?.agent || isPromptLikeShellTitle(command)) return;
     get().updateSession(id, {
       lastCommand: command,
       runState: "running",
       startedAt: Date.now(),
+      suppressShellTitle: false,
     });
   },
 
   handleCommandFinished: (id, exitCode) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (session?.agent || !session?.lastCommand) {
+      get().updateSession(id, { lastExitCode: exitCode });
+      return;
+    }
     const isActive = get().activeSessionId === id;
     get().updateSession(id, {
       lastExitCode: exitCode,
@@ -167,27 +210,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       ...(!isActive ? { unread: true } : {}),
     });
     get().refreshGit(id);
-  },
-
-  handleAgentTurnDone: (id) => {
-    const isActive = get().activeSessionId === id;
-    get().updateSession(id, {
-      runState: "done",
-      completedAt: Date.now(),
-      ...(!isActive ? { unread: true } : {}),
-    });
-    get().refreshGit(id);
-  },
-
-  handleAgentResumed: (id) => {
-    const session = get().sessions.find((s) => s.id === id);
-    if (!session?.agent || session.runState === "running") return;
-    get().updateSession(id, {
-      runState: "running",
-      startedAt: Date.now(),
-      completedAt: undefined,
-      unread: false,
-    });
   },
 
   handleCwdChange: (id, cwd) => {
@@ -203,6 +225,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   handleShellTitle: (id, title) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (session?.agent || session?.suppressShellTitle || isAgentShellTitle(title) || isPromptLikeShellTitle(title)) return;
     get().updateSession(id, { shellTitle: title });
   },
 
@@ -248,7 +272,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   closeSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
-    if (session?.runState === "running") {
+    if (session && isSessionBusy(session)) {
       const lastConfirm = get().closeConfirmations[id] ?? 0;
       if (Date.now() - lastConfirm > 3_000) {
         set((state) => ({

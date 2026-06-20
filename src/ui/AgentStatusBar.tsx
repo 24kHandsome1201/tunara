@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { type Session, AGENT_NAMES } from "./types";
 import { AgentBadge } from "./agents";
+import { isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
 
 interface AgentStatusBarProps {
   session: Session;
@@ -9,30 +10,36 @@ interface AgentStatusBarProps {
 export function AgentStatusBar({ session }: AgentStatusBarProps) {
   const [visible, setVisible] = useState(false);
   const [fading, setFading] = useState(false);
+  const [lastAgent, setLastAgent] = useState(session.agent);
 
-  const isRunning = session.runState === "running" && !!session.agent;
-  const isDone = (session.runState === "done" || session.runState === "failed") && !session.agent;
+  const agentCode = session.agent ?? lastAgent;
+  const isBusy = !!session.agent && isAgentActivityBusy(session.agentActivity);
+  const isStarting = session.agentActivity === "starting";
+  const isIdleAfterBusy = visible && !!session.agent && session.agentActivity === "idle";
 
   useEffect(() => {
-    if (isRunning) {
+    if (session.agent) setLastAgent(session.agent);
+  }, [session.agent]);
+
+  useEffect(() => {
+    if (isBusy) {
       setVisible(true);
       setFading(false);
-    } else if (visible && isDone) {
+    } else if (isIdleAfterBusy) {
       setFading(true);
       const timer = setTimeout(() => {
         setVisible(false);
         setFading(false);
       }, 3000);
       return () => clearTimeout(timer);
-    } else if (!isRunning && !isDone) {
+    } else if (!session.agent) {
       setVisible(false);
       setFading(false);
     }
-  }, [isRunning, isDone, visible]);
+  }, [isBusy, isIdleAfterBusy, session.agent]);
 
-  if (!visible) return null;
+  if (!visible || !agentCode) return null;
 
-  const agentCode = session.agent;
   const fileCount = session.changes?.files.length ?? 0;
 
   return (
@@ -63,9 +70,9 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         {agentCode ? (AGENT_NAMES[agentCode] ?? agentCode) : ""}
       </span>
       <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>·</span>
-      <span style={{ fontSize: "var(--fs-meta)", color: isRunning ? "var(--c-accent)" : "var(--c-text-5)", fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 4 }}>
-        {isRunning ? "运行中" : "已完成"}
-        {isRunning && (
+      <span style={{ fontSize: "var(--fs-meta)", color: isBusy ? "var(--c-accent)" : "var(--c-text-5)", fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 4 }}>
+        {isBusy ? (isStarting ? "加载中" : "运行中") : "已完成"}
+        {isBusy && (
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)" }} />
         )}
       </span>

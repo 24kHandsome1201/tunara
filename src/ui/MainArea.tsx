@@ -6,6 +6,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
+import { isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
 
 interface MainAreaProps {
   sessions: Session[];
@@ -149,7 +150,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
             <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
               {AGENT_NAMES[active.agent] ?? active.agent}
-              {active.runState === "running" && (
+              {isAgentActivityBusy(active.agentActivity) && (
                 <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0 }} />
               )}
             </span>
