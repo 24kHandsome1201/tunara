@@ -12,6 +12,9 @@ use tauri::ipc::Channel;
 pub use session::PtyEvent;
 use session::Session;
 
+use super::agent::hooks::HookListenerState;
+use super::agent::wrapper;
+
 pub struct PtyState {
     sessions: RwLock<HashMap<u32, Arc<Session>>>,
     logical_sessions: RwLock<HashMap<String, u32>>,
@@ -59,6 +62,7 @@ impl PtyState {
 #[tauri::command]
 pub fn pty_open(
     state: tauri::State<PtyState>,
+    hooks_state: tauri::State<HookListenerState>,
     logical_session_id: Option<String>,
     cols: u16,
     rows: u16,
@@ -91,7 +95,16 @@ pub fn pty_open(
         }
     }
 
-    let (session, _) = session::spawn(cols, rows, cwd, on_event).map_err(|e| {
+    let sock = hooks_state.sock_path();
+    let (session, _) = session::spawn(
+        cols,
+        rows,
+        cwd,
+        on_event,
+        logical_session_id.as_deref(),
+        if sock.is_empty() { None } else { Some(sock) },
+    )
+    .map_err(|e| {
         log::error!("pty_open failed: {e}");
         e
     })?;
@@ -182,11 +195,23 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
         .write()
         .expect("pty sessions lock poisoned")
         .remove(&id);
-    state
-        .logical_sessions
-        .write()
-        .expect("pty logical sessions lock poisoned")
-        .retain(|_, session_id| *session_id != id);
+    let removed_logical: Option<String> = {
+        let mut ls = state
+            .logical_sessions
+            .write()
+            .expect("pty logical sessions lock poisoned");
+        let key = ls
+            .iter()
+            .find(|(_, sid)| **sid == id)
+            .map(|(k, _)| k.clone());
+        if let Some(ref k) = key {
+            ls.remove(k);
+        }
+        key
+    };
+    if let Some(ref lid) = removed_logical {
+        wrapper::cleanup_hooks_settings(lid);
+    }
     if let Some(s) = session {
         if let Err(e) = s.killer.lock().expect("pty killer lock poisoned").kill() {
             // Non-fatal: the child may already have exited on its own (e.g. the

@@ -53,6 +53,8 @@ pub fn spawn(
     rows: u16,
     cwd: Option<String>,
     on_event: Channel<PtyEvent>,
+    session_id: Option<&str>,
+    sock_path: Option<&str>,
 ) -> Result<(Arc<Session>, PtySize), String> {
     let pty_system = native_pty_system();
     let size = PtySize {
@@ -63,7 +65,7 @@ pub fn spawn(
     };
     let pair = pty_system.openpty(size).map_err(|e| e.to_string())?;
 
-    let cmd = shell_init::build_command(cwd)?;
+    let cmd = shell_init::build_command(cwd, session_id, sock_path)?;
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
 
