@@ -6,9 +6,9 @@ import "./styles/globals.css";
 
 import ReactDOM from "react-dom/client";
 import App from "./app/App";
-import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/platform";
 
-if (USE_CUSTOM_WINDOW_CONTROLS) {
+const isLinux = navigator.userAgent.includes("Linux");
+if (isLinux) {
   document.documentElement.dataset.chrome = "borderless";
 }
 
