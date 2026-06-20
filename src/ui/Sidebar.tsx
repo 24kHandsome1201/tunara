@@ -6,9 +6,8 @@ interface SidebarProps {
   sessions: Session[];
   activeSessionId: string;
   onSelectSession: (id: string) => void;
-  onNewTerminal: () => void;
+  onNewTerminal?: () => void;
   onCloseSession?: (id: string) => void;
-  onNewAgent?: () => void;
 }
 
 function SearchIcon() {
@@ -72,7 +71,6 @@ export function Sidebar({
   onSelectSession,
   onNewTerminal,
   onCloseSession,
-  onNewAgent,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
@@ -100,40 +98,10 @@ export function Sidebar({
         overflow: "hidden",
       }}
     >
-      {/* 顶部按钮行 */}
-      <div style={{ padding: "10px 12px 4px", display: "flex", gap: 6 }}>
-        <button
-          onClick={onNewTerminal}
-          style={{
-            flex: 1,
-            padding: "7px 10px",
-            border: "1px solid var(--c-border-2)",
-            borderRadius: "var(--r-card)",
-            background: "var(--c-bg-white)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 5,
-          }}
-          className="hover-bg"
-        >
-          <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>
-            + 终端
-          </span>
-          <span
-            style={{
-              fontSize: "var(--fs-badge)",
-              color: "var(--c-text-5)",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            ⌘T
-          </span>
-        </button>
-        {onNewAgent && (
+      {onNewTerminal && (
+        <div style={{ padding: "10px 12px 4px", display: "flex", gap: 6 }}>
           <button
-            onClick={onNewAgent}
+            onClick={onNewTerminal}
             style={{
               flex: 1,
               padding: "7px 10px",
@@ -149,7 +117,7 @@ export function Sidebar({
             className="hover-bg"
           >
             <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>
-              + Agent
+              + 终端
             </span>
             <span
               style={{
@@ -158,11 +126,11 @@ export function Sidebar({
                 fontFamily: "var(--font-mono)",
               }}
             >
-              ⌘N
+              ⌘T
             </span>
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 搜索框 */}
       <div style={{ padding: "8px 12px" }}>

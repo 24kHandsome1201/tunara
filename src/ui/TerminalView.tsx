@@ -15,8 +15,9 @@ interface TerminalViewProps {
   dir: string;
   active: boolean;
   onAgentCommandSubmitted?: (agent: AgentCode) => void;
-  onAgentExited?: () => void;
+  onAgentExited?: (exitCode: number) => void;
   onCommandDetected?: (command: string) => void;
+  onCommandFinished?: (exitCode: number) => void;
   onCwd?: (cwd: string) => void;
   onShellTitle?: (title: string) => void;
 }
@@ -92,6 +93,7 @@ export function TerminalView({
   onAgentCommandSubmitted,
   onAgentExited,
   onCommandDetected,
+  onCommandFinished,
   onCwd,
   onShellTitle,
 }: TerminalViewProps) {
@@ -106,6 +108,8 @@ export function TerminalView({
   onAgentExitedRef.current = onAgentExited;
   const onCommandDetectedRef = useRef(onCommandDetected);
   onCommandDetectedRef.current = onCommandDetected;
+  const onCommandFinishedRef = useRef(onCommandFinished);
+  onCommandFinishedRef.current = onCommandFinished;
   const onCwdRef = useRef<TerminalViewProps["onCwd"]>(undefined);
   const onShellTitleRef = useRef<TerminalViewProps["onShellTitle"]>(undefined);
   onCwdRef.current = onCwd;
@@ -153,6 +157,14 @@ export function TerminalView({
         // WebGL unavailable, canvas fallback
       }
 
+      // OSC 133 shell integration:
+      // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
+      let hasAgent = false;
+      let resetLastAgent: (() => void) | null = null;
+      let osc133Active = false;
+      let promptEndRow = -1;
+      let lastExitCode = 0;
+
       cleanups.push(
         registerCwdHandler(term, (cwd) => {
           onCwdRef.current?.(cwd);
@@ -160,7 +172,7 @@ export function TerminalView({
           if (hasAgent) {
             hasAgent = false;
             resetLastAgent?.();
-            onAgentExitedRef.current?.();
+            onAgentExitedRef.current?.(lastExitCode);
           }
         }),
       );
@@ -170,14 +182,49 @@ export function TerminalView({
       });
       cleanups.push(() => titleDisposable.dispose());
 
-      // OSC 133;A = shell prompt marker → agent has exited, back to shell
-      let hasAgent = false;
-      let resetLastAgent: (() => void) | null = null;
+      const extractCommandFromBuffer = (): string => {
+        const cursorY = term.buffer.active.cursorY + term.buffer.active.baseY;
+        const parts: string[] = [];
+        for (let row = promptEndRow; row <= cursorY; row++) {
+          const line = term.buffer.active.getLine(row);
+          if (line) {
+            const text = line.translateToString(true);
+            parts.push(text);
+          }
+        }
+        return cleanTerminalText(parts.join(" ")).trim();
+      };
+
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
-        if (data.startsWith("A") && hasAgent) {
-          hasAgent = false;
-          resetLastAgent?.();
-          onAgentExitedRef.current?.();
+        const marker = data.charAt(0);
+        if (marker === "A") {
+          if (hasAgent) {
+            hasAgent = false;
+            resetLastAgent?.();
+            onAgentExitedRef.current?.(lastExitCode);
+          }
+          osc133Active = true;
+        } else if (marker === "B") {
+          promptEndRow = term.buffer.active.cursorY + term.buffer.active.baseY;
+        } else if (marker === "C") {
+          if (osc133Active && promptEndRow >= 0) {
+            const cmd = extractCommandFromBuffer();
+            if (cmd) {
+              if (!hasAgent && isMeaningfulCommand(cmd)) {
+                onCommandDetectedRef.current?.(cmd);
+              }
+              const agent = detectAgentCommand(cmd);
+              if (agent) {
+                hasAgent = true;
+                onAgentCommandSubmittedRef.current?.(agent);
+              }
+            }
+          }
+          osc133Active = false;
+        } else if (marker === "D") {
+          const exitCode = parseInt(data.slice(2), 10) || 0;
+          lastExitCode = exitCode;
+          onCommandFinishedRef.current?.(exitCode);
         }
         return true;
       });
@@ -212,7 +259,9 @@ export function TerminalView({
       let inputBuffer = "";
       let lastSubmittedAgent: AgentCode | null = null;
       resetLastAgent = () => { lastSubmittedAgent = null; };
+      // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = () => {
+        if (osc133Active) { inputBuffer = ""; return; }
         const trimmed = cleanTerminalText(inputBuffer).trim();
         if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
           onCommandDetectedRef.current?.(trimmed);

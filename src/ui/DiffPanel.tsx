@@ -1,23 +1,18 @@
-// DiffPanel — 右侧审查/diff 面板（300px）
-// 接通真实 git：status / diff / ahead-behind / commit / push（modules/git/git-bridge）。
-
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { type Session } from "./types";
 import {
   gitStatus,
   gitDiff,
   gitAheadBehind,
-  gitCommit,
-  gitPush,
   type FileChange,
   type FileDiff,
   type RemoteState,
 } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
-import { useUIStore } from "@/state/ui";
 
 interface DiffPanelProps {
   session: Session;
+  onClose?: () => void;
 }
 
 function MiniDiff({ diff }: { diff?: FileDiff }) {
@@ -37,8 +32,9 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
   return (
     <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar">
       {lines.map((line, i) => {
-        const isAdd = line.startsWith("+");
-        const isDel = line.startsWith("-");
+        const isHunk = line.startsWith("@@") || line.startsWith("---") || line.startsWith("+++");
+        const isAdd = !isHunk && line.startsWith("+");
+        const isDel = !isHunk && line.startsWith("-");
         return (
           <div
             key={i}
@@ -73,18 +69,38 @@ function FileStatusBadge({ status }: { status: string }) {
   );
 }
 
-function EmptyState({ title, sub }: { title: string; sub: string }) {
+function EmptyClean() {
   return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10, padding: 20 }}>
-      <div style={{ width: 42, height: 42, borderRadius: "var(--r-input)", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9aa0a6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="20 6 9 17 4 12" />
+    <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      <span style={{ fontSize: 11.5, color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>工作区干净</span>
+    </div>
+  );
+}
+
+function EmptyNotGit({ path }: { path: string }) {
+  return (
+    <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
         </svg>
+        <span style={{ fontSize: 11.5, color: "var(--c-text-4)" }}>非 Git 仓库</span>
       </div>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 4 }}>{title}</div>
-        <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{sub}</div>
-      </div>
+      <span style={{ fontSize: 10, color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: 19 }}>{path}</span>
+    </div>
+  );
+}
+
+function EmptyLoading() {
+  return (
+    <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite", flexShrink: 0 }} />
+      <span style={{ fontSize: 11, color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>git status</span>
     </div>
   );
 }
@@ -93,7 +109,7 @@ function remoteLabel(remote: RemoteState | null, branch: string): string {
   if (!remote) return "";
   switch (remote.state) {
     case "ok":
-      return `${remote.upstream} · 领先 ${remote.ahead} · 落后 ${remote.behind}`;
+      return `${remote.upstream} · ↑${remote.ahead} ↓${remote.behind}`;
     case "noUpstream":
       return `${remote.branch} · 无上游`;
     case "detached":
@@ -105,12 +121,10 @@ function remoteLabel(remote: RemoteState | null, branch: string): string {
   }
 }
 
-export function DiffPanel({ session }: DiffPanelProps) {
+export function DiffPanel({ session, onClose }: DiffPanelProps) {
   const repoPath = session.dir;
   const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
-  const refreshGit = useSessionsStore((s) => s.refreshGit);
   const updateSession = useSessionsStore((s) => s.updateSession);
-  const addNotification = useUIStore((s) => s.addNotification);
 
   const [files, setFiles] = useState<FileChange[]>([]);
   const [branch, setBranch] = useState(session.branch || "");
@@ -120,17 +134,7 @@ export function DiffPanel({ session }: DiffPanelProps) {
   const [loading, setLoading] = useState(true);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
-  const [commitMsg, setCommitMsg] = useState("");
-  const [busy, setBusy] = useState(false);
 
-  const notify = useCallback(
-    (type: "error" | "success", message: string) => {
-      addNotification({ id: crypto.randomUUID(), type, message, sessionTitle: session.title, sessionId: session.id });
-    },
-    [addNotification, session.title, session.id],
-  );
-
-  // 拉取 status + ahead/behind（会话切换 / nonce bump 时）
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -165,6 +169,14 @@ export function DiffPanel({ session }: DiffPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoPath, session.id, nonce]);
 
+  useEffect(() => {
+    if (session.runState !== "running") return;
+    const timer = setInterval(() => {
+      useSessionsStore.getState().refreshGit(session.id);
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [session.runState, session.id]);
+
   async function toggleFile(path: string) {
     if (expandedFile === path) {
       setExpandedFile(null);
@@ -175,55 +187,56 @@ export function DiffPanel({ session }: DiffPanelProps) {
       try {
         const d = await gitDiff(repoPath, path);
         setDiffs((prev) => ({ ...prev, [path]: d }));
-      } catch (e) {
-        notify("error", `读取 diff 失败：${String(e)}`);
+      } catch {
+        // diff load failed silently
       }
     }
   }
 
   const hasChanges = files.length > 0;
-  const ahead = remote?.state === "ok" ? remote.ahead : 0;
-  const canCommit = hasChanges && commitMsg.trim().length > 0 && !busy;
-  const canPush = (canCommit || (!hasChanges && ahead > 0)) && !busy;
-
-  async function handleCommit(push: boolean) {
-    setBusy(true);
-    try {
-      if (hasChanges) {
-        await gitCommit(repoPath, commitMsg.trim(), files.map((file) => file.path));
-      }
-      if (push) {
-        await gitPush(repoPath);
-      }
-      setCommitMsg("");
-      refreshGit(session.id);
-      notify("success", push ? "已提交并推送" : "已提交");
-    } catch (e) {
-      notify("error", `${push ? "推送" : "提交"}失败：${String(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div style={{ width: "var(--w-panel)", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-      {/* 头部 */}
-      <div style={{ height: 40, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 14px", gap: 8, flexShrink: 0 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--c-text-primary)" }}>改动</span>
-        <span style={{ fontSize: 11.5, color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "—"}</span>
+      <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 6, flexShrink: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-primary)" }}>改动</span>
+        <span style={{ fontSize: 11, color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "—"}</span>
         {hasChanges && summary && (
-          <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
+          <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
+        )}
+        {onClose && (
+          <button
+            onClick={onClose}
+            title="关闭面板 ⌘⇧\"
+            style={{
+              marginLeft: hasChanges && summary ? 6 : "auto",
+              width: "var(--h-titlebar-control)",
+              height: "var(--h-titlebar-control)",
+              borderRadius: "var(--r-btn)",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+            className="hover-bg"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         )}
       </div>
 
-      {/* 体 */}
       <div style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar">
         {loading ? (
-          <EmptyState title="读取中…" sub="git status" />
+          <EmptyLoading />
         ) : notGit ? (
-          <EmptyState title="非 Git 仓库" sub={repoPath} />
+          <EmptyNotGit path={repoPath} />
         ) : !hasChanges ? (
-          <EmptyState title="工作区干净" sub="git status · 无未提交改动" />
+          <EmptyClean />
         ) : (
           <div style={{ padding: "8px" }}>
             {files.map((file) => {
@@ -232,8 +245,8 @@ export function DiffPanel({ session }: DiffPanelProps) {
                 <div key={file.path} style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 4, overflow: "hidden" }}>
                   <button
                     onClick={() => toggleFile(file.path)}
-                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
                     className="hover-bg"
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
                   >
                     <FileStatusBadge status={file.status} />
                     <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
@@ -252,39 +265,10 @@ export function DiffPanel({ session }: DiffPanelProps) {
         )}
       </div>
 
-      {/* 底部：git 仓库且（有改动或可推送）时显示 */}
-      {!notGit && !loading && (hasChanges || ahead > 0) && (
-        <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "10px 12px", flexShrink: 0 }}>
-          <textarea
-            value={commitMsg}
-            onChange={(e) => setCommitMsg(e.target.value)}
-            placeholder={hasChanges ? "提交说明…" : "无未提交改动"}
-            disabled={!hasChanges || busy}
-            rows={2}
-            style={{ width: "100%", background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-input)", padding: "7px 10px", fontSize: "var(--fs-body)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", outline: "none", boxSizing: "border-box", marginBottom: 8, opacity: hasChanges ? 1 : 0.6, resize: "vertical", lineHeight: 1.5 }}
-          />
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={() => handleCommit(false)}
-              disabled={!canCommit}
-              style={{ flex: 1, padding: "7px 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-3)", color: "var(--c-text-2)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: canCommit ? "pointer" : "default", opacity: canCommit ? 1 : 0.5 }}
-            >
-              {busy ? "处理中…" : "提交"}
-            </button>
-            <button
-              onClick={() => handleCommit(true)}
-              disabled={!canPush}
-              style={{ flex: 1, padding: "7px 10px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: canPush ? "pointer" : "default", opacity: canPush ? 1 : 0.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="19" x2="12" y2="5" />
-                <polyline points="5 12 12 5 19 12" />
-              </svg>
-              {hasChanges ? "提交并推送" : "推送"}
-            </button>
-          </div>
-          <div style={{ marginTop: 7, fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", textAlign: "center" }}>
-            {hasChanges ? `将提交 ${files.length} 个文件 · ` : ""}{remoteLabel(remote, branch)}
+      {!notGit && !loading && (
+        <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "4px 12px", flexShrink: 0 }}>
+          <div style={{ fontSize: 10, color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {remoteLabel(remote, branch)}
           </div>
         </div>
       )}
