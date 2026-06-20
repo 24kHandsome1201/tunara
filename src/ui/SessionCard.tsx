@@ -2,9 +2,14 @@ import { useEffect } from "react";
 import { type Session, type RunState, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 
-function StatusDot({ runState, isAgent }: { runState: RunState; isAgent: boolean }) {
-  if (runState === "idle" || runState === "done") return null;
-  const color = runState === "running" ? "var(--c-accent)" : "var(--c-error)";
+function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
+  const showDone = (runState === "done" || runState === "failed") && unread;
+  if (runState === "idle" || ((runState === "done" || runState === "failed") && !unread)) return null;
+  const color = runState === "running"
+    ? "var(--c-accent)"
+    : showDone && runState === "done"
+      ? "var(--c-success)"
+      : "var(--c-error)";
   return (
     <span
       style={{
@@ -16,7 +21,7 @@ function StatusDot({ runState, isAgent }: { runState: RunState; isAgent: boolean
         borderRadius: "50%",
         background: color,
         border: "2px solid var(--c-bg-white)",
-        animation: runState === "running" && !isAgent ? "pulseDot 1.3s ease-in-out infinite" : undefined,
+        animation: runState === "running" ? "pulseDot 1.3s ease-in-out infinite" : undefined,
       }}
     />
   );
@@ -48,7 +53,7 @@ function SessionIcon({ session }: { session: Session }) {
             </span>
           )}
         </div>
-        <StatusDot runState={session.runState} isAgent={true} />
+        <StatusDot runState={session.runState} unread={session.unread} />
       </div>
     );
   }
@@ -72,12 +77,12 @@ function SessionIcon({ session }: { session: Session }) {
           <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
       </div>
-      <StatusDot runState={session.runState} isAgent={false} />
+      <StatusDot runState={session.runState} unread={session.unread} />
     </div>
   );
 }
 
-function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolean }) {
+function StatusMark({ runState }: { runState: RunState }) {
   if (runState === "done") {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -88,7 +93,7 @@ function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolea
   if (runState === "running") {
     return (
       <span style={{ width: 13, height: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: isAgent ? undefined : "pulseDot 1.2s ease infinite" }} />
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.2s ease infinite" }} />
       </span>
     );
   }
@@ -190,6 +195,21 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         />
       )}
 
+      {session.unread && (
+        <span
+          style={{
+            position: "absolute",
+            right: 8,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: session.runState === "failed" ? "var(--c-error)" : "var(--c-accent)",
+          }}
+        />
+      )}
+
       {onClose && (
         <span
           role="button"
@@ -226,11 +246,11 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatusMark runState={session.runState} isAgent={!!session.agent} />
+            <StatusMark runState={session.runState} />
             <span
               style={{
                 fontSize: "var(--fs-body)",
-                fontWeight: 600,
+                fontWeight: session.unread ? 700 : 600,
                 color: "var(--c-text-primary)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -282,7 +302,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         </div>
       </div>
 
-      {session.runState === "running" && !session.agent && (
+      {session.runState === "running" && session.agent && (
         <div
           style={{
             marginTop: 8,

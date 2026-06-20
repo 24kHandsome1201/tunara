@@ -1,5 +1,6 @@
 mod modules;
 
+use modules::agent::hooks::HookListenerState;
 use modules::resolver::ResolverState;
 use modules::{fs, pty};
 use tauri::Manager;
@@ -30,12 +31,16 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<pty::PtyState>().close_all();
+                window.state::<HookListenerState>().shutdown();
             }
         })
         .setup(|app| {
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_bin 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
             resolver.init_login_path();
+
+            let hook_listener = modules::agent::hooks::start_listener(app.handle().clone());
+            app.manage(hook_listener);
 
             // M6：macOS 毛玻璃（§3.6）
             #[cfg(target_os = "macos")]

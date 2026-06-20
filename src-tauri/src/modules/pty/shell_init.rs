@@ -51,12 +51,22 @@ impl Shell {
     }
 }
 
-pub fn build_command(cwd: Option<String>) -> Result<CommandBuilder, String> {
+pub fn build_command(
+    cwd: Option<String>,
+    session_id: Option<&str>,
+    sock_path: Option<&str>,
+) -> Result<CommandBuilder, String> {
     let (shell, shell_path) = Shell::detect();
     let mut cmd = CommandBuilder::new(&shell_path);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("CONDUIT_TERMINAL", "1");
+    if let Some(sid) = session_id {
+        cmd.env("CONDUIT_SESSION_ID", sid);
+    }
+    if let Some(sp) = sock_path {
+        cmd.env("CONDUIT_HOOKS_SOCK", sp);
+    }
 
     let resolved_cwd = cwd
         .map(PathBuf::from)

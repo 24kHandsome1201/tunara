@@ -20,6 +20,8 @@ interface SessionsState {
 
   handleAgentDetected: (id: string, agent: AgentCode) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
+  handleAgentTurnDone: (id: string) => void;
+  handleAgentResumed: (id: string) => void;
   handleCommandDetected: (id: string, command: string) => void;
   handleCommandFinished: (id: string, exitCode: number) => void;
   handleCwdChange: (id: string, cwd: string) => void;
@@ -94,6 +96,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       return {
         activeSessionId: id,
         launchedSessionIds: { ...state.launchedSessionIds, [id]: true },
+        sessions: state.sessions.map((s) =>
+          s.id === id && s.unread ? { ...s, unread: false } : s,
+        ),
       };
     }),
 
@@ -133,12 +138,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   handleAgentExited: (id, exitCode) => {
+    const isActive = get().activeSessionId === id;
     get().updateSession(id, {
       agent: undefined,
       title: "终端",
       lastCommand: undefined,
       runState: exitCode === 0 ? "done" : "failed",
       completedAt: Date.now(),
+      ...(!isActive ? { unread: true } : {}),
     });
     get().refreshGit(id);
   },
@@ -152,12 +159,35 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   handleCommandFinished: (id, exitCode) => {
+    const isActive = get().activeSessionId === id;
     get().updateSession(id, {
       lastExitCode: exitCode,
       runState: exitCode === 0 ? "done" : "failed",
       completedAt: Date.now(),
+      ...(!isActive ? { unread: true } : {}),
     });
     get().refreshGit(id);
+  },
+
+  handleAgentTurnDone: (id) => {
+    const isActive = get().activeSessionId === id;
+    get().updateSession(id, {
+      runState: "done",
+      completedAt: Date.now(),
+      ...(!isActive ? { unread: true } : {}),
+    });
+    get().refreshGit(id);
+  },
+
+  handleAgentResumed: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session?.agent || session.runState === "running") return;
+    get().updateSession(id, {
+      runState: "running",
+      startedAt: Date.now(),
+      completedAt: undefined,
+      unread: false,
+    });
   },
 
   handleCwdChange: (id, cwd) => {

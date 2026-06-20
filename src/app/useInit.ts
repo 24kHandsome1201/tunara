@@ -4,6 +4,7 @@ import { useUIStore } from "@/state/ui";
 import { loadSessions, saveSessions, loadUILayout, saveUILayout } from "@/state/persist";
 import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 
 export function useInit() {
   const addSession = useSessionsStore((s) => s.addSession);
@@ -71,6 +72,8 @@ export function useInit() {
           await saveUILayout({ sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible });
         }),
     );
+
+    unlistens.push(startHooksListener());
 
     const onWindowFocus = () => {
       const activeId = useSessionsStore.getState().activeSessionId;

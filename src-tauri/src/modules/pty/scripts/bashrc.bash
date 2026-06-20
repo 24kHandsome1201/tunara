@@ -61,4 +61,25 @@ if [ -z "$__CONDUIT_HOOKS_LOADED" ]; then
 
   _conduit_precmd
 fi
+
+# Agent wrapper: intercept hookable agents, inject --settings for lifecycle hooks
+if [ -n "$CONDUIT_HOOKS_SOCK" ] && [ -n "$CONDUIT_SESSION_ID" ]; then
+  _conduit_agent_run() {
+    local real_bin="$1"; shift
+    local sid="$CONDUIT_SESSION_ID"
+    local sock="$CONDUIT_HOOKS_SOCK"
+    local f="/tmp/conduit-agent-${sid}.json"
+    cat > "$f" <<CONDUIT_EOF
+{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"printf '{\"event\":\"stop\",\"session\":\"${sid}\"}' | nc -U ${sock}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\"}' | nc -U ${sock}"}]}]}}
+CONDUIT_EOF
+    command "$real_bin" --settings "$f" "$@"
+    local ret=$?
+    rm -f "$f" 2>/dev/null
+    return $ret
+  }
+  claude() { _conduit_agent_run claude "$@"; }
+  codex() { _conduit_agent_run codex "$@"; }
+  droid() { _conduit_agent_run droid "$@"; }
+  devin() { _conduit_agent_run devin "$@"; }
+fi
 :
