@@ -10,14 +10,15 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
   const setSplitRatio = useUIStore((s) => s.setSplitRatio);
   const dragging = useRef(false);
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
       e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
       dragging.current = true;
       const container = containerRef.current;
       if (!container) return;
 
-      const onMouseMove = (ev: MouseEvent) => {
+      const onPointerMove = (ev: PointerEvent) => {
         if (!dragging.current || !container) return;
         const rect = container.getBoundingClientRect();
         const ratio =
@@ -27,18 +28,19 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
         setSplitRatio(ratio);
       };
 
-      const onMouseUp = () => {
+      const onPointerUp = (ev: PointerEvent) => {
         dragging.current = false;
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
+        (ev.target as HTMLElement).releasePointerCapture(ev.pointerId);
+        document.removeEventListener("pointermove", onPointerMove);
+        document.removeEventListener("pointerup", onPointerUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       };
 
       document.body.style.cursor = mode === "horizontal" ? "col-resize" : "row-resize";
       document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+      document.addEventListener("pointermove", onPointerMove);
+      document.addEventListener("pointerup", onPointerUp);
     },
     [mode, containerRef, setSplitRatio],
   );
@@ -47,7 +49,8 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
 
   return (
     <div
-      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
+      className={`split-handle ${isHorizontal ? "split-handle-h" : "split-handle-v"}`}
       style={{
         position: "relative",
         zIndex: 10,
@@ -61,11 +64,13 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
       }}
     >
       <div
+        className="split-handle-line"
         style={{
           ...(isHorizontal
             ? { width: 1, height: "100%" }
             : { height: 1, width: "100%" }),
           background: "var(--c-border-1)",
+          transition: `background var(--duration-fast) ease, ${isHorizontal ? "width" : "height"} var(--duration-fast) ease`,
         }}
       />
     </div>

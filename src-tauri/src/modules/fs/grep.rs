@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -52,7 +51,7 @@ pub fn fs_grep(
     if pattern.is_empty() {
         return Err("empty pattern".into());
     }
-    let root_path = PathBuf::from(&root);
+    let root_path = super::expand_tilde(&root);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }
@@ -170,7 +169,7 @@ pub fn fs_glob(
     if pattern.is_empty() {
         return Err("empty pattern".into());
     }
-    let root_path = PathBuf::from(&root);
+    let root_path = super::expand_tilde(&root);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }

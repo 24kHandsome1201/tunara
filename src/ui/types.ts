@@ -25,6 +25,8 @@ export interface Session {
   lastExitCode?: number;
   shellTitle?: string;
 
+  pendingInput?: string;
+
   // ── git 改动 ──
   changes?: {
     files: ChangedFile[];
@@ -49,6 +51,14 @@ export type OverlayType = null | "settings" | "command-palette";
 
 /** 主题 */
 export type ThemeType = "light" | "dark" | "system";
+
+/** 终端配色主题 */
+export type TerminalThemeName = "default" | "catppuccin" | "tokyo-night" | "one-dark" | "solarized";
+
+export const AGENT_CLI: Record<string, string> = {
+  CC: "claude", CX: "codex", AM: "amp", GM: "gemini", CP: "copilot",
+  CR: "cursor", DR: "droid", OC: "opencode", PI: "pi", AG: "auggie", DV: "devin",
+};
 
 export const AGENT_NAMES: Record<string, string> = {
   CC: "Claude Code",
@@ -103,6 +113,12 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
   }
 
   return { primary, subtitle: parts.join(" · "), isCommand };
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** 按 dir 归组（设计稿侧栏分段） */

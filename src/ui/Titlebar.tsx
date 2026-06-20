@@ -44,7 +44,7 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
       style={{
         height: "var(--h-titlebar-tab)",
         padding: "7px 13px 8px",
-        borderRadius: "8px 8px 0 0",
+        borderRadius: "var(--r-input) var(--r-input) 0 0",
         border: isActive ? "1px solid var(--c-border-2)" : "1px solid transparent",
         borderBottomColor: isActive ? "var(--c-bg-white)" : "transparent",
         background: isActive ? "var(--c-bg-white)" : "transparent",
@@ -69,7 +69,7 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
           borderRadius: "2px 2px 0 0",
         }} />
       )}
-      <span style={{ fontSize: 12, fontWeight: 500, color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)", fontFamily: "var(--font-ui)" }}>
+      <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 500, color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)", fontFamily: "var(--font-ui)" }}>
         {label}
       </span>
       <span
@@ -81,10 +81,13 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
         className="tab-close hover-close"
         style={{
           width: 16, height: 16, borderRadius: 4, display: "flex", alignItems: "center",
-          justifyContent: "center", fontSize: 12, lineHeight: 1, flexShrink: 0,
+          justifyContent: "center", flexShrink: 0,
         }}
       >
-        ×
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
       </span>
     </button>
   );

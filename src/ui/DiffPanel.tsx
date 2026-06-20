@@ -13,24 +13,25 @@ import { useSessionsStore } from "@/state/sessions";
 interface DiffPanelProps {
   session: Session;
   onClose?: () => void;
+  embedded?: boolean;
 }
 
 function MiniDiff({ diff }: { diff?: FileDiff }) {
   if (!diff) {
-    return <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--c-text-5)" }}>加载中…</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>加载中…</div>;
   }
   if (diff.kind === "binary") {
-    return <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--c-text-5)" }}>二进制文件</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>二进制文件</div>;
   }
   if (diff.kind === "tooLarge") {
-    return <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--c-text-5)" }}>文件过大（{Math.round(diff.bytes / 1024)} KB），未展开</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>文件过大（{Math.round(diff.bytes / 1024)} KB），未展开</div>;
   }
   if (diff.kind === "metadataOnly") {
-    return <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--c-text-5)" }}>仅元数据变更（{diff.change}）</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>仅元数据变更（{diff.change}）</div>;
   }
   const lines = diff.patch.split("\n");
   return (
-    <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar">
+    <div style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar">
       {lines.map((line, i) => {
         const isHunk = line.startsWith("@@") || line.startsWith("---") || line.startsWith("+++");
         const isAdd = !isHunk && line.startsWith("+");
@@ -75,7 +76,7 @@ function EmptyClean() {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
         <polyline points="20 6 9 17 4 12" />
       </svg>
-      <span style={{ fontSize: 11.5, color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>工作区干净</span>
+      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>工作区干净</span>
     </div>
   );
 }
@@ -89,9 +90,9 @@ function EmptyNotGit({ path }: { path: string }) {
           <line x1="12" y1="8" x2="12" y2="12" />
           <line x1="12" y1="16" x2="12.01" y2="16" />
         </svg>
-        <span style={{ fontSize: 11.5, color: "var(--c-text-4)" }}>非 Git 仓库</span>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>非 Git 仓库</span>
       </div>
-      <span style={{ fontSize: 10, color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: 19 }}>{path}</span>
+      <span style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: 19 }}>{path}</span>
     </div>
   );
 }
@@ -100,7 +101,7 @@ function EmptyLoading() {
   return (
     <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite", flexShrink: 0 }} />
-      <span style={{ fontSize: 11, color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>git status</span>
+      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>git status</span>
     </div>
   );
 }
@@ -121,7 +122,7 @@ function remoteLabel(remote: RemoteState | null, branch: string): string {
   }
 }
 
-export function DiffPanel({ session, onClose }: DiffPanelProps) {
+export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const repoPath = session.dir;
   const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
   const updateSession = useSessionsStore((s) => s.updateSession);
@@ -195,40 +196,52 @@ export function DiffPanel({ session, onClose }: DiffPanelProps) {
 
   const hasChanges = files.length > 0;
 
+  const outerStyle = embedded
+    ? { display: "flex", flexDirection: "column" as const, flex: 1, overflow: "hidden", minHeight: 0 }
+    : { width: "var(--w-panel)", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column" as const, flexShrink: 0, overflow: "hidden" };
+
   return (
-    <div style={{ width: "var(--w-panel)", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-      <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 6, flexShrink: 0 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-primary)" }}>改动</span>
-        <span style={{ fontSize: 11, color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "—"}</span>
-        {hasChanges && summary && (
-          <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
-        )}
-        {onClose && (
-          <button
-            onClick={onClose}
-            title="关闭面板 ⌘⇧\"
-            style={{
-              marginLeft: hasChanges && summary ? 6 : "auto",
-              width: "var(--h-titlebar-control)",
-              height: "var(--h-titlebar-control)",
-              borderRadius: "var(--r-btn)",
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-            className="hover-bg"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        )}
-      </div>
+    <div style={outerStyle}>
+      {!embedded && (
+        <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)" }}>改动</span>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "—"}</span>
+          {hasChanges && summary && (
+            <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              title="关闭面板 ⌘⇧\"
+              style={{
+                marginLeft: hasChanges && summary ? 6 : "auto",
+                width: "var(--h-titlebar-control)",
+                height: "var(--h-titlebar-control)",
+                borderRadius: "var(--r-btn)",
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+              className="hover-bg"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
+      {embedded && hasChanges && summary && (
+        <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0, display: "flex", alignItems: "center" }}>
+          <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)" }}>{summary}</span>
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar">
         {loading ? (
@@ -250,12 +263,12 @@ export function DiffPanel({ session, onClose }: DiffPanelProps) {
                   >
                     <FileStatusBadge status={file.status} />
                     <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
-                      {file.path.split("/").pop() ?? file.path}
+                      {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
                     </span>
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
                       +{file.added} −{file.removed}
                     </span>
-                    <span style={{ fontSize: 10, color: "var(--c-text-5)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s ease", flexShrink: 0 }}>▸</span>
+                    <span style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease", flexShrink: 0 }}>▸</span>
                   </button>
                   {isExpanded && <MiniDiff diff={diffs[file.path]} />}
                 </div>
@@ -267,7 +280,7 @@ export function DiffPanel({ session, onClose }: DiffPanelProps) {
 
       {!notGit && !loading && (
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "4px 12px", flexShrink: 0 }}>
-          <div style={{ fontSize: 10, color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {remoteLabel(remote, branch)}
           </div>
         </div>

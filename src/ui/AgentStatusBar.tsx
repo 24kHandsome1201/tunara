@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { type Session, AGENT_NAMES } from "./types";
-import { AgentBadge } from "./SessionCard";
+import { AgentBadge } from "./agents";
 
 interface AgentStatusBarProps {
   session: Session;
@@ -66,7 +66,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       <span style={{ fontSize: "var(--fs-meta)", color: isRunning ? "var(--c-accent)" : "var(--c-text-5)", fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 4 }}>
         {isRunning ? "运行中" : "已完成"}
         {isRunning && (
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.2s ease infinite" }} />
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)" }} />
         )}
       </span>
       {fileCount > 0 && (

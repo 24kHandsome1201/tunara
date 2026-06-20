@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type ThemeType } from "../types";
+import { type ThemeType, type TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle } from "@/state/ui";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -73,7 +73,7 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
       {options.map((opt) => (
         <button
           key={opt.id} onClick={() => onChange(opt.id)}
-          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: opt.id === value ? "var(--r-btn)" : 0, background: opt.id === value ? "var(--c-bg-white)" : "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", boxShadow: opt.id === value ? "var(--shadow-card)" : "none", transition: "all 0.15s ease" }}
+          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: opt.id === value ? "var(--r-btn)" : 0, background: opt.id === value ? "var(--c-bg-white)" : "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", boxShadow: opt.id === value ? "var(--shadow-card)" : "none", transition: "all var(--duration-fast) ease" }}
         >
           {opt.label}
         </button>
@@ -100,6 +100,8 @@ export function Settings({ onClose }: SettingsProps) {
   const setAccent = useUIStore((s) => s.setAccent);
   const setCursorStyle = useUIStore((s) => s.setCursorStyle);
   const setFontSize = useUIStore((s) => s.setFontSize);
+  const terminalTheme = useUIStore((s) => s.terminalTheme);
+  const setTerminalTheme = useUIStore((s) => s.setTerminalTheme);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -116,15 +118,20 @@ export function Settings({ onClose }: SettingsProps) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,0.34)", backdropFilter: "blur(4px)", zIndex: 200, animation: "fadeIn 0.2s ease" }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", backdropFilter: "var(--backdrop-blur)", zIndex: 200, animation: "fadeIn var(--duration-normal) ease" }} />
       <div
         ref={sheetRef} tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Escape") onClose(); }}
-        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn 0.24s ease", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
+        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn var(--duration-normal) ease", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
         <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>设置</span>
-            <button onClick={onClose} style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", fontSize: 16, color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }} className="hover-bg">✕</button>
+            <button onClick={onClose} style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }} className="hover-bg">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
           </div>
           <div style={{ display: "inline-flex", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: 3, gap: 2 }}>
             {TABS.map((tab) => (
@@ -161,12 +168,49 @@ export function Settings({ onClose }: SettingsProps) {
                 <div style={SECTION_LABEL}>终端光标样式</div>
                 <CursorStylePicker value={cursorStyle} onChange={setCursorStyle} />
               </div>
-              <div>
+              <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>字号</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>−</button>
                   <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)" }}>{fontSize}px</span>
                   <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>+</button>
+                </div>
+              </div>
+              <div>
+                <div style={SECTION_LABEL}>终端配色</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {([
+                    { id: "default" as TerminalThemeName, label: "默认", bg: "#18181b", fg: "#e4e4e7" },
+                    { id: "catppuccin" as TerminalThemeName, label: "Catppuccin", bg: "#1e1e2e", fg: "#cdd6f4" },
+                    { id: "tokyo-night" as TerminalThemeName, label: "Tokyo Night", bg: "#1a1b26", fg: "#c0caf5" },
+                    { id: "one-dark" as TerminalThemeName, label: "One Dark", bg: "#282c34", fg: "#abb2bf" },
+                    { id: "solarized" as TerminalThemeName, label: "Solarized", bg: "#002b36", fg: "#839496" },
+                  ]).map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTerminalTheme(t.id)}
+                      style={{
+                        width: 100,
+                        border: terminalTheme === t.id ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)",
+                        borderRadius: "var(--r-card)",
+                        padding: 0,
+                        cursor: "pointer",
+                        background: "transparent",
+                        overflow: "hidden",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div style={{ height: 36, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 2 }}>
+                        {[7, 5, 6].map((w, i) => (
+                          <div key={i} style={{ height: 2, width: `${w * 10}%`, borderRadius: 1, background: t.fg, opacity: 0.5 }} />
+                        ))}
+                      </div>
+                      <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-primary)", fontWeight: terminalTheme === t.id ? 600 : 400 }}>{t.label}</span>
+                        {terminalTheme === t.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)" }} />}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -194,7 +238,7 @@ export function Settings({ onClose }: SettingsProps) {
                     onClick={() => setShowMore(!showMore)}
                     style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", padding: "4px 0", display: "flex", alignItems: "center", gap: 4 }}
                   >
-                    <span style={{ fontSize: 10, transform: showMore ? "rotate(90deg)" : "none", transition: "transform 0.15s ease" }}>▸</span>
+                    <span style={{ fontSize: "var(--fs-meta-sm)", transform: showMore ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease" }}>▸</span>
                     更多 agent（{notInstalled.length}）
                   </button>
                   {showMore && notInstalled.map(({ code, name }) => (

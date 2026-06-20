@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -41,7 +40,7 @@ pub struct FileStat {
 
 #[tauri::command]
 pub fn fs_read_file(path: String) -> Result<ReadResult, String> {
-    let p = PathBuf::from(&path);
+    let p = super::expand_tilde(&path);
     let meta = std::fs::metadata(&p).map_err(|e| {
         log::debug!("fs_read_file stat({}) failed: {e}", p.display());
         e.to_string()
@@ -77,7 +76,7 @@ pub fn fs_read_file(path: String) -> Result<ReadResult, String> {
 /// Prevents partial writes from leaving a half-saved file on crash/power loss.
 #[tauri::command]
 pub fn fs_write_file(path: String, content: String) -> Result<(), String> {
-    let target = PathBuf::from(&path);
+    let target = super::expand_tilde(&path);
     let parent = target
         .parent()
         .ok_or_else(|| "path has no parent".to_string())?;
@@ -116,12 +115,12 @@ pub fn fs_write_file(path: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn fs_stat(path: String) -> Result<FileStat, String> {
-    let p = PathBuf::from(&path);
-    let meta = std::fs::metadata(&p).map_err(|e| e.to_string())?;
-    let kind = if meta.is_dir() {
-        StatKind::Dir
-    } else if meta.file_type().is_symlink() {
+    let p = super::expand_tilde(&path);
+    let meta = std::fs::symlink_metadata(&p).map_err(|e| e.to_string())?;
+    let kind = if meta.file_type().is_symlink() {
         StatKind::Symlink
+    } else if meta.is_dir() {
+        StatKind::Dir
     } else {
         StatKind::File
     };

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { deriveTitle, type Session } from "../types";
+import { deriveTitle, type Session, AGENT_NAMES, AGENT_CLI } from "../types";
 import { useSessionsStore, createSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { invoke } from "@tauri-apps/api/core";
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -27,6 +28,17 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const setActive = useSessionsStore((s) => s.setActive);
   const ui = useUIStore;
 
+  const [installedAgents, setInstalledAgents] = useState<{ code: string; name: string }[]>([]);
+  useEffect(() => {
+    invoke<{ name: string; path: string | null }[]>("resolve_all_bins")
+      .then((bins) => {
+        setInstalledAgents(
+          bins.filter((b) => b.path).map((b) => ({ code: b.name, name: AGENT_NAMES[b.name] ?? b.name })),
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
 
@@ -49,9 +61,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘T",
       section: "操作",
       action: () => {
-        const st = useSessionsStore.getState();
-        const active = st.sessions.find((s: Session) => s.id === st.activeSessionId);
-        useSessionsStore.getState().addSession(createSession(active?.dir ?? "~", { title: "终端" }));
+        useSessionsStore.getState().newTerminal();
         onClose();
       },
     });
@@ -78,13 +88,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘D",
       section: "操作",
       action: () => {
-        const st = useSessionsStore.getState();
-        const uiState = ui.getState();
-        if (uiState.split.mode !== "single") { onClose(); return; }
-        const active = st.sessions.find((s: Session) => s.id === st.activeSessionId);
-        const newSess = createSession(active?.dir ?? "~", { title: "终端" });
-        useSessionsStore.getState().addSession(newSess);
-        uiState.splitHorizontal(newSess.id);
+        if (ui.getState().split.mode !== "single") { onClose(); return; }
+        useSessionsStore.getState().splitWithNewSession("horizontal");
         onClose();
       },
     });
@@ -95,13 +100,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘⇧D",
       section: "操作",
       action: () => {
-        const st = useSessionsStore.getState();
-        const uiState = ui.getState();
-        if (uiState.split.mode !== "single") { onClose(); return; }
-        const active = st.sessions.find((s: Session) => s.id === st.activeSessionId);
-        const newSess = createSession(active?.dir ?? "~", { title: "终端" });
-        useSessionsStore.getState().addSession(newSess);
-        uiState.splitVertical(newSess.id);
+        if (ui.getState().split.mode !== "single") { onClose(); return; }
+        useSessionsStore.getState().splitWithNewSession("vertical");
         onClose();
       },
     });
@@ -114,8 +114,23 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       action: () => { ui.getState().setOverlay("settings"); },
     });
 
+    for (const agent of installedAgents) {
+      const cli = AGENT_CLI[agent.code] ?? agent.code.toLowerCase();
+      cmds.push({
+        id: `launch-${agent.code}`,
+        label: `新建 ${agent.name} 终端`,
+        section: "启动 Agent",
+        action: () => {
+          const st = useSessionsStore.getState();
+          const active = st.sessions.find((s: Session) => s.id === st.activeSessionId);
+          useSessionsStore.getState().addSession(createSession(active?.dir ?? "~", { title: agent.name, pendingInput: cli }));
+          onClose();
+        },
+      });
+    }
+
     return cmds;
-  }, [sessions, activeSessionId, setActive, onClose, ui]);
+  }, [sessions, activeSessionId, setActive, onClose, ui, installedAgents]);
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -169,8 +184,9 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         onClick={onClose}
         style={{
           position: "fixed", inset: 0, zIndex: 999,
-          background: "rgba(0,0,0,0.25)",
-          animation: "fadeIn 0.12s ease",
+          background: "var(--backdrop-color)",
+          backdropFilter: "var(--backdrop-blur)",
+          animation: "fadeIn var(--duration-fast) ease",
         }}
       />
       <div
@@ -191,7 +207,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          animation: "sheetIn 0.18s ease",
+          animation: "sheetIn var(--duration-normal) ease",
         }}
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)" }}>
@@ -239,7 +255,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                       padding: "7px 16px",
                       cursor: "pointer",
                       background: isSelected ? "var(--c-bg-hover)" : "transparent",
-                      borderRadius: 6,
+                      borderRadius: "var(--r-badge)",
                       margin: "0 6px",
                     }}
                   >

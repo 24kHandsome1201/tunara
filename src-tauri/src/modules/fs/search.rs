@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use ignore::WalkBuilder;
 use serde::Serialize;
 
@@ -29,7 +27,7 @@ pub fn fs_search(
         return Ok(Vec::new());
     }
     let cap = limit.unwrap_or(200).min(1000);
-    let root_path = PathBuf::from(&root);
+    let root_path = super::expand_tilde(&root);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
     }

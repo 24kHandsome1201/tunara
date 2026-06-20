@@ -25,6 +25,7 @@
         "visible": true
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https:"
     }

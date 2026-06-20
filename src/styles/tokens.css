@@ -108,10 +108,24 @@
   --r-pill: 100px;
 
   /* ── 间距 ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
   --sp-card-pad: 10px 11px;
   --sp-section-pad: 14px;
   --sp-gap-main: 8px;
   --sp-gap-lg: 10px;
+
+  /* ── 动画时长 ── */
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+
+  /* ── 遮罩 ── */
+  --backdrop-color: rgba(20, 20, 28, 0.3);
+  --backdrop-blur: blur(4px);
 
   /* ── 按钮 ── */
   --c-btn-primary-bg: #27272a;
@@ -221,20 +235,29 @@
   --shadow-notif: 0 16px 40px rgba(0, 0, 0, 0.4);
 }
 
-.hover-bg { background: transparent; color: var(--c-text-4); }
+.hover-bg { background: transparent; color: var(--c-text-4); transition: background var(--duration-fast) ease, color var(--duration-fast) ease; }
 .hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-close { background: transparent; color: var(--c-text-5); }
+.hover-bg:active { opacity: 0.8; }
+.hover-close { background: transparent; color: var(--c-text-5); transition: background var(--duration-fast) ease, color var(--duration-fast) ease; }
 .hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
+.hover-close:active { opacity: 0.8; }
 .hover-accent-bg { background: transparent; }
 .hover-accent-bg:hover { background: var(--c-accent-bg-light); }
+.hover-text-3:hover { color: var(--c-text-3); }
 
 .tab-close { opacity: 0; pointer-events: none; }
 .tab-btn[data-active="false"]:hover { background: var(--c-bg-hover) !important; }
 .tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
 
+.split-handle:hover .split-handle-line { background: var(--c-accent) !important; }
+.split-handle-h:hover .split-handle-line { width: 3px !important; }
+.split-handle-v:hover .split-handle-line { height: 3px !important; }
+
 .session-card:hover { background: var(--c-bg-hover); }
 .session-card-close { opacity: 0; pointer-events: none; }
 .session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
+
+.sidebar-search:focus-within { border-color: var(--c-accent) !important; }
 
 /* ── Utility classes ── */
 

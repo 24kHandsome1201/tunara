@@ -2,57 +2,28 @@
 // 每个 shell 会话拥有独立、常驻的 PTY/xterm 实例,切 tab 时用 display 隐藏而非销毁,
 // 因此后台终端的输出与运行中的进程会保留。读取设置（字号/光标/主题）并实时生效。
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { SearchAddon } from "@xterm/addon-search";
 import { openPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore, type CursorStyle } from "@/state/ui";
-import { type AgentCode, type ThemeType } from "./types";
+import { type AgentCode } from "./types";
+import { getTerminalTheme } from "@/styles/terminalTheme";
+import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
+import { useSessionsStore } from "@/state/sessions";
 
 interface TerminalViewProps {
+  sessionId: string;
   dir: string;
   active: boolean;
-  onAgentCommandSubmitted?: (agent: AgentCode) => void;
-  onAgentExited?: (exitCode: number) => void;
-  onCommandDetected?: (command: string) => void;
-  onCommandFinished?: (exitCode: number) => void;
-  onCwd?: (cwd: string) => void;
-  onShellTitle?: (title: string) => void;
+  pendingInput?: string;
+  onPendingInputConsumed?: () => void;
 }
 
 const FONT_FAMILY = '"JetBrains Mono", SFMono-Regular, Menlo, monospace';
-
-const LIGHT_THEME = {
-  background: "#ffffff",
-  foreground: "#27272a",
-  cursor: "#27272a",
-  cursorAccent: "#ffffff",
-  selectionBackground: "#c2683c44",
-  black: "#27272a", red: "#ef4444", green: "#22c55e", yellow: "#eab308",
-  blue: "#3b82f6", magenta: "#a855f7", cyan: "#06b6d4", white: "#e4e4e7",
-  brightBlack: "#52525b", brightRed: "#f87171", brightGreen: "#4ade80", brightYellow: "#facc15",
-  brightBlue: "#60a5fa", brightMagenta: "#c084fc", brightCyan: "#22d3ee", brightWhite: "#fafafa",
-};
-
-const DARK_THEME = {
-  background: "#18181b",
-  foreground: "#e4e4e7",
-  cursor: "#e4e4e7",
-  cursorAccent: "#18181b",
-  selectionBackground: "#e0907066",
-  black: "#3f3f46", red: "#f87171", green: "#4ade80", yellow: "#facc15",
-  blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#e4e4e7",
-  brightBlack: "#52525b", brightRed: "#fca5a5", brightGreen: "#86efac", brightYellow: "#fde047",
-  brightBlue: "#93c5fd", brightMagenta: "#d8b4fe", brightCyan: "#67e8f9", brightWhite: "#fafafa",
-};
-
-function isDarkTheme(theme: ThemeType): boolean {
-  if (theme === "dark") return true;
-  if (theme === "system") return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
-  return false;
-}
 
 const NOISE_COMMANDS = new Set([
   "ls", "ll", "la", "l", "dir",
@@ -88,36 +59,33 @@ function detectAgentCommand(commandLine: string): AgentCode | null {
 }
 
 export function TerminalView({
+  sessionId,
   dir,
   active,
-  onAgentCommandSubmitted,
-  onAgentExited,
-  onCommandDetected,
-  onCommandFinished,
-  onCwd,
-  onShellTitle,
+  pendingInput,
+  onPendingInputConsumed,
 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
   const initRef = useRef(false);
-  const onAgentCommandSubmittedRef = useRef(onAgentCommandSubmitted);
-  onAgentCommandSubmittedRef.current = onAgentCommandSubmitted;
-  const onAgentExitedRef = useRef(onAgentExited);
-  onAgentExitedRef.current = onAgentExited;
-  const onCommandDetectedRef = useRef(onCommandDetected);
-  onCommandDetectedRef.current = onCommandDetected;
-  const onCommandFinishedRef = useRef(onCommandFinished);
-  onCommandFinishedRef.current = onCommandFinished;
-  const onCwdRef = useRef<TerminalViewProps["onCwd"]>(undefined);
-  const onShellTitleRef = useRef<TerminalViewProps["onShellTitle"]>(undefined);
-  onCwdRef.current = onCwd;
-  onShellTitleRef.current = onShellTitle;
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchOpenRef = useRef(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const pendingInputRef = useRef(pendingInput);
+  pendingInputRef.current = pendingInput;
+  const onPendingInputConsumedRef = useRef(onPendingInputConsumed);
+  onPendingInputConsumedRef.current = onPendingInputConsumed;
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
 
   const theme = useUIStore((s) => s.theme);
   const fontSize = useUIStore((s) => s.fontSize);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
+  const terminalTheme = useUIStore((s) => s.terminalTheme);
 
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
@@ -134,11 +102,11 @@ export function TerminalView({
         fontFamily: FONT_FAMILY,
         fontSize,
         lineHeight: 1.05,
-        theme: isDarkTheme(theme) ? DARK_THEME : LIGHT_THEME,
+        theme: getTerminalTheme(theme, terminalTheme),
         cursorBlink: true,
         cursorStyle: cursorStyle as CursorStyle,
         cursorInactiveStyle: "outline",
-        scrollback: 5_000,
+        scrollback: 3_000,
         allowProposedApi: true,
       });
       termRef.current = term;
@@ -157,6 +125,26 @@ export function TerminalView({
         // WebGL unavailable, canvas fallback
       }
 
+      const searchAddon = new SearchAddon();
+      term.loadAddon(searchAddon);
+      searchAddonRef.current = searchAddon;
+
+      term.attachCustomKeyEventHandler((e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "f" && e.type === "keydown") {
+          searchOpenRef.current = true;
+          setSearchOpen(true);
+          return false;
+        }
+        if (e.key === "Escape" && e.type === "keydown" && searchOpenRef.current) {
+          searchOpenRef.current = false;
+          setSearchOpen(false);
+          setSearchQuery("");
+          searchAddon.clearDecorations();
+          return false;
+        }
+        return true;
+      });
+
       // OSC 133 shell integration:
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
       let hasAgent = false;
@@ -167,18 +155,18 @@ export function TerminalView({
 
       cleanups.push(
         registerCwdHandler(term, (cwd) => {
-          onCwdRef.current?.(cwd);
+          useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
           // OSC 7 from shell after agent exit → fallback for shells without OSC 133
           if (hasAgent) {
             hasAgent = false;
             resetLastAgent?.();
-            onAgentExitedRef.current?.(lastExitCode);
+            useSessionsStore.getState().handleAgentExited(sessionIdRef.current, lastExitCode);
           }
         }),
       );
       const titleDisposable = term.onTitleChange((title) => {
         const clean = cleanTerminalText(title);
-        if (clean) onShellTitleRef.current?.(clean);
+        if (clean) useSessionsStore.getState().handleShellTitle(sessionIdRef.current, clean);
       });
       cleanups.push(() => titleDisposable.dispose());
 
@@ -201,7 +189,7 @@ export function TerminalView({
           if (hasAgent) {
             hasAgent = false;
             resetLastAgent?.();
-            onAgentExitedRef.current?.(lastExitCode);
+            useSessionsStore.getState().handleAgentExited(sessionIdRef.current, lastExitCode);
           }
           osc133Active = true;
         } else if (marker === "B") {
@@ -211,12 +199,12 @@ export function TerminalView({
             const cmd = extractCommandFromBuffer();
             if (cmd) {
               if (!hasAgent && isMeaningfulCommand(cmd)) {
-                onCommandDetectedRef.current?.(cmd);
+                useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
               }
               const agent = detectAgentCommand(cmd);
               if (agent) {
                 hasAgent = true;
-                onAgentCommandSubmittedRef.current?.(agent);
+                useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
               }
             }
           }
@@ -224,20 +212,41 @@ export function TerminalView({
         } else if (marker === "D") {
           const exitCode = parseInt(data.slice(2), 10) || 0;
           lastExitCode = exitCode;
-          onCommandFinishedRef.current?.(exitCode);
+          useSessionsStore.getState().handleCommandFinished(sessionIdRef.current, exitCode);
         }
         return true;
       });
       cleanups.push(() => promptDisposable.dispose());
 
       const cwd = dir === "~" ? undefined : dir;
+      let pendingData: Uint8Array[] = [];
+      let writeRafId = 0;
+      cleanups.push(() => { if (writeRafId) cancelAnimationFrame(writeRafId); });
       let pty;
       try {
         pty = await openPty(
           term.cols,
           term.rows,
           {
-            onData: (bytes) => term.write(bytes),
+            onData: (bytes) => {
+              pendingData.push(bytes);
+              if (!writeRafId) {
+                writeRafId = requestAnimationFrame(() => {
+                  writeRafId = 0;
+                  if (pendingData.length === 1) {
+                    term.write(pendingData[0]);
+                  } else if (pendingData.length > 1) {
+                    let totalLen = 0;
+                    for (const d of pendingData) totalLen += d.length;
+                    const merged = new Uint8Array(totalLen);
+                    let offset = 0;
+                    for (const d of pendingData) { merged.set(d, offset); offset += d.length; }
+                    term.write(merged);
+                  }
+                  pendingData = [];
+                });
+              }
+            },
             onExit: (code) => {
               term.write(`\r\n\x1b[2m[process exited: ${code}]\x1b[0m\r\n`);
               term.options.disableStdin = true;
@@ -256,6 +265,14 @@ export function TerminalView({
       }
       ptyRef.current = pty;
 
+      if (pendingInputRef.current) {
+        const cmd = pendingInputRef.current;
+        setTimeout(() => {
+          pty.write(cmd + "\n");
+          onPendingInputConsumedRef.current?.();
+        }, 300);
+      }
+
       let inputBuffer = "";
       let lastSubmittedAgent: AgentCode | null = null;
       resetLastAgent = () => { lastSubmittedAgent = null; };
@@ -264,13 +281,13 @@ export function TerminalView({
         if (osc133Active) { inputBuffer = ""; return; }
         const trimmed = cleanTerminalText(inputBuffer).trim();
         if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
-          onCommandDetectedRef.current?.(trimmed);
+          useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }
         const agent = detectAgentCommand(inputBuffer);
         if (agent && agent !== lastSubmittedAgent) {
           lastSubmittedAgent = agent;
           hasAgent = true;
-          onAgentCommandSubmittedRef.current?.(agent);
+          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
         }
         inputBuffer = "";
       };
@@ -346,8 +363,10 @@ export function TerminalView({
     return () => {
       disposed = true;
       cleanups.forEach((fn) => fn());
-      ptyRef.current?.close();
-      ptyRef.current = null;
+      if (ptyRef.current) {
+        ptyRef.current.close();
+        ptyRef.current = null;
+      }
       termRef.current?.dispose();
       termRef.current = null;
     };
@@ -382,24 +401,126 @@ export function TerminalView({
     if (!term) return;
     term.options.fontSize = fontSize;
     term.options.cursorStyle = cursorStyle as CursorStyle;
-    term.options.theme = isDarkTheme(theme) ? DARK_THEME : LIGHT_THEME;
+    term.options.theme = getTerminalTheme(theme, terminalTheme);
     try {
       fit?.fit();
       if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows);
     } catch {
       /* noop */
     }
-  }, [fontSize, cursorStyle, theme, active]);
+  }, [fontSize, cursorStyle, theme, terminalTheme, active]);
 
-  return <div ref={containerRef} style={{ flex: 1, padding: "4px 0 0 4px", minHeight: 0 }} />;
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    if (!searchAddonRef.current) return;
+    if (value) {
+      searchAddonRef.current.findNext(value, { regex: false, caseSensitive: false, wholeWord: false });
+    } else {
+      searchAddonRef.current.clearDecorations();
+    }
+  }, []);
+
+  const handleSearchNext = useCallback(() => {
+    searchAddonRef.current?.findNext(searchQuery, { regex: false, caseSensitive: false, wholeWord: false });
+  }, [searchQuery]);
+
+  const handleSearchPrev = useCallback(() => {
+    searchAddonRef.current?.findPrevious(searchQuery, { regex: false, caseSensitive: false, wholeWord: false });
+  }, [searchQuery]);
+
+  const closeSearch = useCallback(() => {
+    searchOpenRef.current = false;
+    setSearchOpen(false);
+    setSearchQuery("");
+    searchAddonRef.current?.clearDecorations();
+    termRef.current?.focus();
+  }, []);
+
+  return (
+    <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {searchOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 12,
+            zIndex: 30,
+            background: "var(--c-bg-1)",
+            border: "1px solid var(--c-border-2)",
+            borderRadius: "var(--r-btn)",
+            padding: "4px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            boxShadow: "var(--shadow-card)",
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                closeSearch();
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) handleSearchPrev();
+                else handleSearchNext();
+              }
+            }}
+            autoFocus
+            placeholder="搜索…"
+            style={{
+              border: "none",
+              background: "transparent",
+              outline: "none",
+              fontSize: "var(--fs-body)",
+              color: "var(--c-text-primary)",
+              fontFamily: "var(--font-ui)",
+              width: 200,
+            }}
+          />
+          <button
+            onClick={handleSearchPrev}
+            title="上一个 ⇧Enter"
+            className="hover-bg"
+            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </button>
+          <button
+            onClick={handleSearchNext}
+            title="下一个 Enter"
+            className="hover-bg"
+            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <button
+            onClick={closeSearch}
+            title="关闭 Esc"
+            className="hover-bg"
+            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
+      <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-1)", minHeight: 0 }} />
+    </div>
+  );
 }
 
-function cleanTerminalText(text: string): string {
-  return text
-    // ANSI CSI / OSC fragments should not leak into sidebar titles.
-    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}

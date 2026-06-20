@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { TerminalView } from "./TerminalView";
 import { type Session, AGENT_NAMES } from "./types";
 import { gitAheadBehind, type RemoteState } from "@/modules/git/git-bridge";
-import { useSessionsStore, createSession } from "@/state/sessions";
+import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
@@ -10,15 +10,9 @@ import { AgentStatusBar } from "./AgentStatusBar";
 interface MainAreaProps {
   sessions: Session[];
   activeSessionId: string;
-  onAgentDetected?: (sessionId: string, agent: import("./types").AgentCode) => void;
-  onAgentExited?: (sessionId: string, exitCode: number) => void;
-  onCommandDetected?: (sessionId: string, command: string) => void;
-  onCommandFinished?: (sessionId: string, exitCode: number) => void;
-  onCwd?: (sessionId: string, cwd: string) => void;
-  onShellTitle?: (sessionId: string, title: string) => void;
 }
 
-export function MainArea({ sessions, activeSessionId, onAgentDetected, onAgentExited, onCommandDetected, onCommandFinished, onCwd, onShellTitle }: MainAreaProps) {
+export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const nonce = useSessionsStore((s) => s.gitNonce[active?.id ?? ""] ?? 0);
   const [remote, setRemote] = useState<RemoteState | null>(null);
@@ -41,14 +35,11 @@ export function MainArea({ sessions, activeSessionId, onAgentDetected, onAgentEx
       <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <AgentStatusBar session={s} />
         <TerminalView
+          sessionId={s.id}
           dir={s.dir}
           active={isActive}
-          onAgentCommandSubmitted={onAgentDetected ? (agent) => onAgentDetected(s.id, agent) : undefined}
-          onAgentExited={onAgentExited ? (exitCode) => onAgentExited(s.id, exitCode) : undefined}
-          onCommandDetected={onCommandDetected ? (cmd) => onCommandDetected(s.id, cmd) : undefined}
-          onCommandFinished={onCommandFinished ? (exitCode) => onCommandFinished(s.id, exitCode) : undefined}
-          onCwd={onCwd ? (cwd) => onCwd(s.id, cwd) : undefined}
-          onShellTitle={onShellTitle ? (title) => onShellTitle(s.id, title) : undefined}
+          pendingInput={s.pendingInput}
+          onPendingInputConsumed={() => useSessionsStore.getState().updateSession(s.id, { pendingInput: undefined })}
         />
       </div>
     );
@@ -122,28 +113,28 @@ export function MainArea({ sessions, activeSessionId, onAgentDetected, onAgentEx
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 11, color: "var(--c-shell-path)", fontFamily: "var(--font-mono)" }}>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)" }}>
           {active?.dir ?? ""}
         </span>
-        <span style={{ fontSize: 11, color: "var(--c-text-6)", fontFamily: "var(--font-mono)" }}>·</span>
-        <span style={{ fontSize: 11, color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)" }}>·</span>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
           ⎇ {active?.branch || "—"}
         </span>
         {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
           <>
-            <span style={{ fontSize: 11, color: "var(--c-text-6)", fontFamily: "var(--font-mono)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
+            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)" }}>·</span>
+            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
               {remote.ahead > 0 && `↑${remote.ahead}`}{remote.ahead > 0 && remote.behind > 0 && " "}{remote.behind > 0 && `↓${remote.behind}`}
             </span>
           </>
         )}
         {active?.agent && (
           <>
-            <span style={{ fontSize: 11, color: "var(--c-text-6)", fontFamily: "var(--font-mono)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)" }}>·</span>
+            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
               {AGENT_NAMES[active.agent] ?? active.agent}
               {active.runState === "running" && (
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.2s ease infinite", flexShrink: 0 }} />
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0 }} />
               )}
             </span>
           </>
@@ -179,13 +170,7 @@ export function MainArea({ sessions, activeSessionId, onAgentDetected, onAgentEx
         ) : (
           <>
             <button
-              onClick={() => {
-                const st = useSessionsStore.getState();
-                const dir = st.sessions.find((s) => s.id === st.activeSessionId)?.dir ?? "~";
-                const newSess = createSession(dir, { title: "终端" });
-                st.addSession(newSess);
-                useUIStore.getState().splitHorizontal(newSess.id);
-              }}
+              onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
               title="水平分栏 ⌘D"
               style={{
                 border: "none",
@@ -205,13 +190,7 @@ export function MainArea({ sessions, activeSessionId, onAgentDetected, onAgentEx
               </svg>
             </button>
             <button
-              onClick={() => {
-                const st = useSessionsStore.getState();
-                const dir = st.sessions.find((s) => s.id === st.activeSessionId)?.dir ?? "~";
-                const newSess = createSession(dir, { title: "终端" });
-                st.addSession(newSess);
-                useUIStore.getState().splitVertical(newSess.id);
-              }}
+              onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
               title="垂直分栏 ⌘⇧D"
               style={{
                 border: "none",

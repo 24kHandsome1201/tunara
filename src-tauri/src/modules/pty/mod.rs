@@ -41,7 +41,7 @@ pub fn pty_open(
         e
     })?;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
-    state.sessions.write().unwrap().insert(id, session);
+    state.sessions.write().expect("pty sessions lock poisoned").insert(id, session);
     log::info!("pty opened id={id} cols={cols} rows={rows}");
     Ok(id)
 }
@@ -51,7 +51,7 @@ pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result
     let session = state
         .sessions
         .read()
-        .unwrap()
+        .expect("pty sessions lock poisoned")
         .get(&id)
         .cloned()
         .ok_or_else(|| {
@@ -63,7 +63,7 @@ pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result
     let result = session
         .writer
         .lock()
-        .unwrap()
+        .expect("pty writer lock poisoned")
         .write_all(data.as_bytes())
         .map_err(|e| {
             // EPIPE is expected if the child already exited.
@@ -83,7 +83,7 @@ pub fn pty_resize(
     let session = state
         .sessions
         .read()
-        .unwrap()
+        .expect("pty sessions lock poisoned")
         .get(&id)
         .cloned()
         .ok_or_else(|| {
@@ -93,7 +93,7 @@ pub fn pty_resize(
     let result = session
         .master
         .lock()
-        .unwrap()
+        .expect("pty master lock poisoned")
         .resize(PtySize {
             rows,
             cols,
@@ -109,9 +109,9 @@ pub fn pty_resize(
 
 #[tauri::command]
 pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
-    let session = state.sessions.write().unwrap().remove(&id);
+    let session = state.sessions.write().expect("pty sessions lock poisoned").remove(&id);
     if let Some(s) = session {
-        if let Err(e) = s.killer.lock().unwrap().kill() {
+        if let Err(e) = s.killer.lock().expect("pty killer lock poisoned").kill() {
             // Non-fatal: the child may already have exited on its own (e.g. the
             // user ran `exit`). Log so this isn't invisible during debugging.
             log::debug!("pty_close: kill id={id} returned {e}");

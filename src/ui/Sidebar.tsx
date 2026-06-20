@@ -40,7 +40,7 @@ function DirGroupHeader({ dir, count }: { dir: string; count: number }) {
       <FolderIcon />
       <span
         style={{
-          fontSize: 11.5,
+          fontSize: "var(--fs-meta)",
           fontWeight: 600,
           fontFamily: "var(--font-mono)",
           color: "var(--c-text-3)",
@@ -89,7 +89,7 @@ export function Sidebar({
   return (
     <div
       style={{
-        width: "var(--w-sidebar)",
+        width: "100%",
         background: "var(--c-bg-2-glass)",
         borderRight: "1px solid var(--c-border-1)",
         display: "flex",
@@ -135,6 +135,7 @@ export function Sidebar({
       {/* 搜索框 */}
       <div style={{ padding: "8px 12px" }}>
         <div
+          className="sidebar-search"
           style={{
             background: "var(--c-bg-3)",
             borderRadius: "var(--r-input)",
@@ -142,6 +143,8 @@ export function Sidebar({
             alignItems: "center",
             gap: 7,
             padding: "6px 10px",
+            border: "1px solid transparent",
+            transition: "border-color var(--duration-fast) ease",
           }}
         >
           <SearchIcon />

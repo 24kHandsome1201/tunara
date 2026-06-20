@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -25,7 +24,7 @@ pub struct DirEntry {
 /// a "show hidden" toggle later.
 #[tauri::command]
 pub fn fs_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
-    let root = PathBuf::from(&path);
+    let root = super::expand_tilde(&path);
     let read = std::fs::read_dir(&root).map_err(|e| {
         log::debug!("fs_read_dir({}) failed: {e}", root.display());
         e.to_string()
@@ -94,7 +93,7 @@ pub fn fs_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
 /// Hidden entries are filtered by dot-prefix only.
 #[tauri::command]
 pub fn list_subdirs(path: String) -> Result<Vec<String>, String> {
-    let root = PathBuf::from(&path);
+    let root = super::expand_tilde(&path);
     let read = std::fs::read_dir(&root).map_err(|e| {
         log::debug!("list_subdirs({}) read_dir failed: {e}", root.display());
         e.to_string()
