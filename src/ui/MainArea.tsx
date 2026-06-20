@@ -168,13 +168,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             title="关闭分栏"
             style={{
+              width: 24,
+              height: 20,
               border: "none",
               background: "transparent",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              padding: "2px 4px",
               borderRadius: "var(--r-btn)",
             }}
             className="hover-bg"
@@ -189,13 +190,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
               title="水平分栏 ⌘D"
               style={{
+                width: 24,
+                height: 20,
                 border: "none",
                 background: "transparent",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: "2px 4px",
                 borderRadius: "var(--r-btn)",
               }}
               className="hover-bg"
@@ -209,13 +211,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
               title="垂直分栏 ⌘⇧D"
               style={{
+                width: 24,
+                height: 20,
                 border: "none",
                 background: "transparent",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: "2px 4px",
                 borderRadius: "var(--r-btn)",
               }}
               className="hover-bg"

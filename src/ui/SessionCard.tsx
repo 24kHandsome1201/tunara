@@ -88,7 +88,7 @@ function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolea
   if (runState === "running") {
     return (
       <span style={{ width: 13, height: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: isAgent ? undefined : "pulseDot 1.2s ease infinite" }} />
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", animation: isAgent ? undefined : "pulseDot 1.2s ease infinite" }} />
       </span>
     );
   }
@@ -163,7 +163,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
       className="session-card"
       style={{
         position: "relative",
-        padding: active ? "10px 10px 10px 14px" : "10px 10px",
+        padding: "10px",
         borderRadius: "var(--r-card)",
         cursor: "pointer",
         userSelect: "none",

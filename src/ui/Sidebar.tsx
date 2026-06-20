@@ -42,7 +42,7 @@ function DirGroupHeader({ dir, count, onNewTerminal }: { dir: string; count: num
         display: "flex",
         alignItems: "center",
         gap: 6,
-        padding: "6px 14px 4px",
+        padding: "6px 14px 6px",
       }}
     >
       <FolderIcon />
@@ -192,7 +192,7 @@ export function Sidebar({
       }}
     >
       {onNewTerminal && (
-        <div style={{ padding: "10px 12px 4px", display: "flex", gap: 6 }}>
+        <div style={{ padding: "10px 12px 6px", display: "flex", gap: 6 }}>
           <button
             onClick={onNewTerminal}
             style={{
@@ -226,7 +226,7 @@ export function Sidebar({
       )}
 
       {/* 搜索框 */}
-      <div style={{ padding: "8px 12px" }}>
+      <div style={{ padding: "6px 12px" }}>
         <div
           className="sidebar-search"
           style={{
