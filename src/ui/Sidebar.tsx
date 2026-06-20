@@ -237,7 +237,7 @@ export function Sidebar({
             gap: 7,
             padding: "6px 10px",
             border: "1px solid transparent",
-            transition: "border-color var(--duration-fast) ease",
+            transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease",
           }}
         >
           <SearchIcon />
