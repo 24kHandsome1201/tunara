@@ -145,10 +145,19 @@ pub fn resolve_bin(state: tauri::State<'_, ResolverState>, name: String) -> Reso
     state.resolve(&name)
 }
 
-/// 设置页一次性拿三个 CLI 的解析结果。
+/// 设置页一次性拿所有 agent CLI 的解析结果，name 使用前端 AgentCode。
 #[tauri::command]
 pub fn resolve_all_bins(state: tauri::State<'_, ResolverState>) -> Vec<ResolvedCommand> {
-    ["claude", "codex", "git"].iter().map(|n| state.resolve(n)).collect()
+    const AGENTS: &[(&str, &str)] = &[
+        ("CC", "claude"), ("CX", "codex"), ("AM", "amp"), ("GM", "gemini"),
+        ("CP", "gh"), ("CR", "cursor"), ("DR", "droid"), ("OC", "opencode"),
+        ("PI", "pi"), ("AG", "auggie"), ("DV", "devin"),
+    ];
+    AGENTS.iter().map(|(code, bin)| {
+        let mut r = state.resolve(bin);
+        r.name = code.to_string();
+        r
+    }).collect()
 }
 
 #[tauri::command]

@@ -2,54 +2,7 @@ mod modules;
 
 use modules::resolver::ResolverState;
 use modules::{fs, pty, secrets, shell};
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
-
-#[tauri::command]
-async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Result<(), String> {
-    let url_path = match tab.as_deref() {
-        Some(t) if !t.is_empty() => format!("settings.html?tab={}", t),
-        _ => "settings.html".to_string(),
-    };
-
-    if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.set_focus();
-        if let Some(t) = tab.as_deref().filter(|s| !s.is_empty()) {
-            // emit() serializes via JSON — no string-escape footgun, unlike
-            // eval() with format!(). Frontend listens via Tauri event API.
-            let _ = window.emit("conduit:settings-tab", t);
-        }
-        return Ok(());
-    }
-
-    let builder = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App(url_path.into()))
-        .title("Settings")
-        .inner_size(720.0, 520.0)
-        .min_inner_size(720.0, 520.0)
-        .max_inner_size(720.0, 520.0)
-        .resizable(false);
-
-    #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true);
-
-    // On Linux we render our own titlebar + rounded shell, so drop the
-    // native chrome and make the window transparent.
-    #[cfg(target_os = "linux")]
-    let builder = builder.decorations(false).transparent(true);
-
-    let window = builder.build().map_err(|e| e.to_string())?;
-
-    // Some Linux compositors (notably GNOME/Mutter with CSD-by-default)
-    // ignore the builder-time decorations flag and force-draw a header bar.
-    // Re-asserting it after the window is realized makes mutter respect it.
-    #[cfg(target_os = "linux")]
-    {
-        let _ = window.set_decorations(false);
-    }
-    let _ = window;
-    Ok(())
-}
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -77,15 +30,7 @@ pub fn run() {
         .manage(shell::ShellState::default())
         .manage(secrets::SecretsState::default())
         .manage(ResolverState::default())
-        .manage(modules::agent::AgentState::default())
-        .on_window_event(|window, event| {
-            if window.label() == "main" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    window.app_handle().exit(0);
-                }
-            }
-        })
+        .on_window_event(|_window, _event| {})
         .setup(|app| {
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_bin 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
@@ -128,7 +73,7 @@ pub fn run() {
             shell::shell_bg_logs,
             shell::shell_bg_kill,
             shell::shell_bg_list,
-            open_settings_window,
+
             secrets::secrets_get,
             secrets::secrets_set,
             secrets::secrets_delete,
@@ -137,11 +82,7 @@ pub fn run() {
             modules::resolver::resolve_bin,
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
-            // Conduit 新增（§3.3 agent harness）
-            modules::agent::agent_spawn,
-            modules::agent::agent_cancel,
-            modules::agent::agent_max_concurrent,
-            modules::agent::agent_discard_changes,
+            // Conduit 新增（agent CLI 检测）
             modules::agent::preflight::agent_preflight,
             // Conduit 新增（§3.4 git 集成）
             modules::git::git_status,
