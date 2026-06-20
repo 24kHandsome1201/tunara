@@ -71,6 +71,7 @@ pub fn run() {
             modules::git::git_status,
             modules::git::git_diff,
             modules::git::git_ahead_behind,
+            modules::git::git_snapshot_baseline,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

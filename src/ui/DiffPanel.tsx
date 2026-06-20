@@ -70,13 +70,51 @@ function FileStatusBadge({ status }: { status: string }) {
   );
 }
 
-function EmptyClean() {
+function EmptyClean({ scope }: { scope: DiffScope }) {
   return (
     <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
         <polyline points="20 6 9 17 4 12" />
       </svg>
-      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>工作区干净</span>
+      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
+        {scope === "agent" ? "本次运行暂无改动" : "工作区干净"}
+      </span>
+    </div>
+  );
+}
+
+type DiffScope = "all" | "agent";
+
+function ScopeToggle({ scope, onChange }: { scope: DiffScope; onChange: (s: DiffScope) => void }) {
+  const opts: { value: DiffScope; label: string }[] = [
+    { value: "agent", label: "本次改动" },
+    { value: "all", label: "全部" },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 2, background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2 }}>
+      {opts.map((o) => {
+        const active = scope === o.value;
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            style={{
+              border: "none",
+              cursor: "pointer",
+              borderRadius: "calc(var(--r-btn) - 2px)",
+              padding: "2px 8px",
+              fontSize: "var(--fs-meta)",
+              fontWeight: active ? 600 : 400,
+              fontFamily: "var(--font-mono)",
+              background: active ? "var(--c-bg-white)" : "transparent",
+              color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
+              boxShadow: active ? "var(--shadow-1, 0 1px 2px rgba(0,0,0,0.08))" : "none",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -136,6 +174,14 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
 
+  const agentBaseline = session.agentBaseline;
+  const [scope, setScope] = useState<DiffScope>(agentBaseline ? "agent" : "all");
+  // 新一轮 agent 启动（baseline 变化）时默认看「本次改动」；基线清空时回退到「全部」。
+  useEffect(() => {
+    setScope(agentBaseline ? "agent" : "all");
+  }, [agentBaseline]);
+  const effectiveBaseline = scope === "agent" ? agentBaseline : undefined;
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -143,7 +189,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     setDiffs({});
     (async () => {
       try {
-        const status = await gitStatus(repoPath);
+        const status = await gitStatus(repoPath, effectiveBaseline);
         if (cancelled) return;
         setNotGit(false);
         setFiles(status.files);
@@ -170,7 +216,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoPath, session.id, nonce]);
+  }, [repoPath, session.id, nonce, effectiveBaseline]);
 
   useEffect(() => {
     if (session.runState !== "running") return;
@@ -188,7 +234,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     setExpandedFile(path);
     if (!diffs[path]) {
       try {
-        const d = await gitDiff(repoPath, path);
+        const d = await gitDiff(repoPath, path, effectiveBaseline);
         setDiffs((prev) => ({ ...prev, [path]: d }));
       } catch {
         // diff load failed silently
@@ -245,13 +291,24 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         </div>
       )}
 
+      {agentBaseline && !notGit && (
+        <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <ScopeToggle scope={scope} onChange={setScope} />
+          {scope === "agent" && (
+            <span style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
+              自 agent 启动以来
+            </span>
+          )}
+        </div>
+      )}
+
       <div style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar">
         {loading ? (
           <EmptyLoading />
         ) : notGit ? (
           <EmptyNotGit path={repoPath} />
         ) : !hasChanges ? (
-          <EmptyClean />
+          <EmptyClean scope={scope} />
         ) : (
           <div style={{ padding: "8px" }}>
             {files.map((file) => {

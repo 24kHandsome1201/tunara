@@ -25,6 +25,9 @@ export interface Session {
   lastExitCode?: number;
   shellTitle?: string;
 
+  // ── 改动基线：agent 启动时的工作区快照 tree oid，用于「本次改动」范围 diff ──
+  agentBaseline?: string;
+
   pendingInput?: string;
 
   // ── git 改动 ──

@@ -31,14 +31,19 @@ export type RemoteState =
   | { state: "unborn" }
   | { state: "unknown"; message: string };
 
-export function gitStatus(repoPath: string): Promise<StatusResult> {
-  return invoke<StatusResult>("git_status", { repoPath });
+export function gitStatus(repoPath: string, baseline?: string): Promise<StatusResult> {
+  return invoke<StatusResult>("git_status", { repoPath, baseline: baseline ?? null });
 }
 
-export function gitDiff(repoPath: string, file: string): Promise<FileDiff> {
-  return invoke<FileDiff>("git_diff", { repoPath, file });
+export function gitDiff(repoPath: string, file: string, baseline?: string): Promise<FileDiff> {
+  return invoke<FileDiff>("git_diff", { repoPath, file, baseline: baseline ?? null });
 }
 
 export function gitAheadBehind(repoPath: string): Promise<RemoteState> {
   return invoke<RemoteState>("git_ahead_behind", { repoPath });
+}
+
+/** agent 启动时抓一个工作区基线快照，返回 tree oid，用于「本次改动」范围 diff。 */
+export function gitSnapshotBaseline(repoPath: string): Promise<string> {
+  return invoke<string>("git_snapshot_baseline", { repoPath });
 }

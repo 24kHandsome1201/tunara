@@ -40,7 +40,7 @@ pub struct StatusResult {
 }
 
 #[tauri::command]
-pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
+pub fn git_status(repo_path: String, baseline: Option<String>) -> Result<StatusResult, String> {
     let repo_path = expand_tilde(&repo_path);
     let repo = Repository::discover(&repo_path).map_err(|e| e.to_string())?;
     let branch = repo
@@ -49,12 +49,13 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
         .and_then(|h| h.shorthand().map(String::from))
         .unwrap_or_else(|| "HEAD".into());
 
-    // HEAD tree → workdir（经 index），含 untracked，覆盖 staged+unstaged 全部改动
-    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    // base tree → workdir（经 index），含 untracked，覆盖 staged+unstaged 全部改动。
+    // baseline 为 None 时 base 取 HEAD（全部改动）；给定快照 tree oid 时只看自快照以来的改动。
+    let base_tree = resolve_base_tree(&repo, baseline.as_deref());
     let mut opts = DiffOptions::new();
     opts.include_untracked(true).recurse_untracked_dirs(true);
     let diff = repo
-        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+        .diff_tree_to_workdir_with_index(base_tree.as_ref(), Some(&mut opts))
         .map_err(|e| e.to_string())?;
 
     // 修 P2-15：先 file_cb 登记每个 delta（保证零行变更也在列表里），再 line_cb 累计。
@@ -136,14 +137,18 @@ pub enum FileDiff {
 }
 
 #[tauri::command]
-pub fn git_diff(repo_path: String, file: String) -> Result<FileDiff, String> {
+pub fn git_diff(
+    repo_path: String,
+    file: String,
+    baseline: Option<String>,
+) -> Result<FileDiff, String> {
     let repo_path = expand_tilde(&repo_path);
     let repo = Repository::discover(&repo_path).map_err(|e| e.to_string())?;
-    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    let base_tree = resolve_base_tree(&repo, baseline.as_deref());
     let mut opts = DiffOptions::new();
     opts.include_untracked(true).pathspec(&file);
     let diff = repo
-        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+        .diff_tree_to_workdir_with_index(base_tree.as_ref(), Some(&mut opts))
         .map_err(|e| e.to_string())?;
 
     // 先看 delta：二进制 / 纯 metadata 直接短路
@@ -198,6 +203,28 @@ pub fn git_diff(repo_path: String, file: String) -> Result<FileDiff, String> {
         truncated,
         total_lines: lines,
     })
+}
+
+// ── git_snapshot_baseline ───────────────────────────────────────────────
+
+/// 把当前工作区快照成一个 tree，返回其 oid（十六进制）。
+///
+/// 用途：agent 启动瞬间记一个「改动基线」，之后 `git_status` / `git_diff`
+/// 传入该 oid，就只显示「自 agent 启动以来」的改动，而非工作区里全部未提交改动。
+///
+/// 实现：把工作区（遵守 .gitignore）加进 repo 的**内存** index 再 `write_tree`，
+/// 全程不调用 `index.write()`，磁盘上的 index 不受影响；只在 odb 里留下
+/// 可被 GC 的松散对象。
+#[tauri::command]
+pub fn git_snapshot_baseline(repo_path: String) -> Result<String, String> {
+    let repo_path = expand_tilde(&repo_path);
+    let repo = Repository::discover(&repo_path).map_err(|e| e.to_string())?;
+    let mut index = repo.index().map_err(|e| e.to_string())?;
+    index
+        .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| e.to_string())?;
+    let tree_oid = index.write_tree().map_err(|e| e.to_string())?;
+    Ok(tree_oid.to_string())
 }
 
 // ── git_ahead_behind ────────────────────────────────────────────────────
@@ -270,6 +297,18 @@ pub fn git_ahead_behind(repo_path: String) -> Result<RemoteState, String> {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────
+
+/// 解析 diff 的 base tree：给定可解析的快照 oid 时用快照，否则回退到 HEAD。
+fn resolve_base_tree<'r>(repo: &'r Repository, baseline: Option<&str>) -> Option<git2::Tree<'r>> {
+    if let Some(oid_hex) = baseline {
+        if let Ok(oid) = git2::Oid::from_str(oid_hex) {
+            if let Ok(tree) = repo.find_tree(oid) {
+                return Some(tree);
+            }
+        }
+    }
+    repo.head().ok().and_then(|h| h.peel_to_tree().ok())
+}
 
 fn delta_path(delta: &git2::DiffDelta) -> String {
     delta

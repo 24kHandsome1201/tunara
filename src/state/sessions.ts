@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Session, AgentCode } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
+import { gitSnapshotBaseline } from "@/modules/git/git-bridge";
 import { useUIStore } from "./ui";
 
 interface SessionsState {
@@ -123,6 +124,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     })),
 
   handleAgentDetected: (id, agent) => {
+    const dir = get().sessions.find((s) => s.id === id)?.dir;
     get().updateSession(id, {
       agent,
       title: AGENT_NAMES[agent] ?? agent,
@@ -130,6 +132,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       startedAt: Date.now(),
       completedAt: undefined,
     });
+    // 抓一个工作区基线快照，供 DiffPanel「本次改动」范围 diff（失败则静默回退到「全部」）。
+    if (dir) {
+      gitSnapshotBaseline(dir)
+        .then((oid) => get().updateSession(id, { agentBaseline: oid }))
+        .catch(() => {});
+    }
   },
 
   handleAgentExited: (id, exitCode) => {
