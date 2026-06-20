@@ -13,7 +13,10 @@ pub fn expand_tilde(path: &str) -> String {
     }
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = home_dir() {
-            return PathBuf::from(home).join(rest).to_string_lossy().into_owned();
+            return PathBuf::from(home)
+                .join(rest)
+                .to_string_lossy()
+                .into_owned();
         }
     }
     path.to_string()

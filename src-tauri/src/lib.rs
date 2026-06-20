@@ -1,13 +1,12 @@
 mod modules;
 
 use modules::resolver::ResolverState;
-use modules::{fs, pty, secrets, shell};
+use modules::{fs, pty};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -27,10 +26,12 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
-        .manage(shell::ShellState::default())
-        .manage(secrets::SecretsState::default())
         .manage(ResolverState::default())
-        .on_window_event(|_window, _event| {})
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                window.state::<pty::PtyState>().close_all();
+            }
+        })
         .setup(|app| {
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_bin 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
@@ -56,28 +57,10 @@ pub fn run() {
             fs::tree::list_subdirs,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,
-            fs::file::fs_write_file,
             fs::file::fs_stat,
-            fs::mutate::fs_create_file,
-            fs::mutate::fs_create_dir,
-            fs::mutate::fs_rename,
-            fs::mutate::fs_delete,
             fs::search::fs_search,
             fs::grep::fs_grep,
             fs::grep::fs_glob,
-            shell::shell_run_command,
-            shell::shell_session_open,
-            shell::shell_session_run,
-            shell::shell_session_close,
-            shell::shell_bg_spawn,
-            shell::shell_bg_logs,
-            shell::shell_bg_kill,
-            shell::shell_bg_list,
-
-            secrets::secrets_get,
-            secrets::secrets_set,
-            secrets::secrets_delete,
-            secrets::secrets_get_all,
             // Conduit 新增（§3.7.2 CLI 路径解析）
             modules::resolver::resolve_bin,
             modules::resolver::resolve_all_bins,
@@ -88,8 +71,6 @@ pub fn run() {
             modules::git::git_status,
             modules::git::git_diff,
             modules::git::git_ahead_behind,
-            modules::git::commit::git_commit,
-            modules::git::commit::git_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

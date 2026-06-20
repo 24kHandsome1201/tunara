@@ -36,7 +36,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   const setTab = useUIStore((s) => s.setInspectorTab);
 
   return (
-    <div style={{ width: "var(--w-panel)", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
+    <div style={{ width: "100%", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
       {/* title bar */}
       <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 16, flexShrink: 0 }}>
         <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>改动</TabButton>

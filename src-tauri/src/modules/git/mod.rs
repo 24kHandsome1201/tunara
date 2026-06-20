@@ -9,7 +9,8 @@
 //! - `FileDiff` 结构化：text / binary / tooLarge / metadataOnly（修 P1-13）。
 //! - `RemoteState` 结构化降级：无 upstream / detached / unborn 不连累文件列表（修 P1-10）。
 
-pub mod commit;
+#[cfg(test)]
+mod commit;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -62,7 +63,10 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
     diff.foreach(
         &mut |delta, _progress| {
             let path = delta_path(&delta);
-            per_file.borrow_mut().entry(path).or_insert((0, 0, delta_mark(&delta)));
+            per_file
+                .borrow_mut()
+                .entry(path)
+                .or_insert((0, 0, delta_mark(&delta)));
             true
         },
         None,
@@ -93,9 +97,15 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
         .collect();
     files.sort_by(|a, b| a.path.cmp(&b.path));
 
-    let (ta, tr): (usize, usize) = files.iter().fold((0, 0), |(a, r), f| (a + f.added, r + f.removed));
+    let (ta, tr): (usize, usize) = files
+        .iter()
+        .fold((0, 0), |(a, r), f| (a + f.added, r + f.removed));
     let summary = format!("{} 文件 · +{} −{}", files.len(), ta, tr);
-    Ok(StatusResult { branch, files, summary })
+    Ok(StatusResult {
+        branch,
+        files,
+        summary,
+    })
 }
 
 // ── git_diff ────────────────────────────────────────────────────────────
@@ -139,9 +149,7 @@ pub fn git_diff(repo_path: String, file: String) -> Result<FileDiff, String> {
     // 先看 delta：二进制 / 纯 metadata 直接短路
     if let Some(delta) = diff.deltas().next() {
         if delta.flags().is_binary() {
-            return Ok(FileDiff::Binary {
-                path: file,
-            });
+            return Ok(FileDiff::Binary { path: file });
         }
         match delta.status() {
             Delta::Renamed => {

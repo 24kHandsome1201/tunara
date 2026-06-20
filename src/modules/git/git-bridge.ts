@@ -1,6 +1,6 @@
 // Git 前端桥（实施文档 §4.3 / §3.4）
 //
-// invoke 封装：git_status / git_diff / git_ahead_behind / git_commit / git_push。
+// invoke 封装：git_status / git_diff / git_ahead_behind。
 // 与后端 git/mod.rs + git/commit.rs 的命令契约对齐。
 
 import { invoke } from "@tauri-apps/api/core";
@@ -41,12 +41,4 @@ export function gitDiff(repoPath: string, file: string): Promise<FileDiff> {
 
 export function gitAheadBehind(repoPath: string): Promise<RemoteState> {
   return invoke<RemoteState>("git_ahead_behind", { repoPath });
-}
-
-export function gitCommit(repoPath: string, message: string, files: string[]): Promise<string> {
-  return invoke<string>("git_commit", { repoPath, message, files });
-}
-
-export function gitPush(repoPath: string): Promise<void> {
-  return invoke("git_push", { repoPath });
 }

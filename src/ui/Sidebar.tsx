@@ -1,6 +1,13 @@
 import { SessionCard } from "./SessionCard";
 import { groupByDir, deriveTitle, type Session } from "./types";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
+import { useSessionsStore } from "@/state/sessions";
+
+interface DragState {
+  draggingId: string;
+  sourceDir: string;
+  overIndex: number;
+}
 
 interface SidebarProps {
   sessions: Session[];
@@ -27,9 +34,10 @@ function FolderIcon() {
   );
 }
 
-function DirGroupHeader({ dir, count }: { dir: string; count: number }) {
+function DirGroupHeader({ dir, count, onNewTerminal }: { dir: string; count: number; onNewTerminal?: () => void }) {
   return (
     <div
+      className="dir-group-header"
       style={{
         display: "flex",
         alignItems: "center",
@@ -61,6 +69,31 @@ function DirGroupHeader({ dir, count }: { dir: string; count: number }) {
       >
         {count}
       </span>
+      {onNewTerminal && (
+        <span
+          role="button"
+          tabIndex={0}
+          className="dir-group-add hover-bg"
+          onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNewTerminal(); } }}
+          title="在此目录新建终端"
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: "var(--c-text-5)",
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </span>
+      )}
     </div>
   );
 }
@@ -73,6 +106,12 @@ export function Sidebar({
   onCloseSession,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const dragStartY = useRef(0);
+  const dragStarted = useRef(false);
+  const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
+  const clearCloseConfirmation = useSessionsStore((s) => s.clearCloseConfirmation);
   const q = search.trim().toLowerCase();
   const filtered = q
     ? sessions.filter((s) => {
@@ -85,6 +124,60 @@ export function Sidebar({
       })
     : sessions;
   const groups = groupByDir(filtered);
+
+  const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
+    dragStartY.current = e.clientY;
+    dragStarted.current = false;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+
+    const onMove = (ev: PointerEvent) => {
+      if (!dragStarted.current && Math.abs(ev.clientY - dragStartY.current) > 4) {
+        dragStarted.current = true;
+        const initial: DragState = { draggingId: sessionId, sourceDir: dir, overIndex: index };
+        dragRef.current = initial;
+        setDrag(initial);
+      }
+      if (!dragStarted.current) return;
+
+      const container = el.closest("[data-dir-group]");
+      if (!container) return;
+      const cards = Array.from(container.querySelectorAll("[data-session-id]"));
+      let closest = index;
+      let minDist = Infinity;
+      cards.forEach((card, i) => {
+        const rect = card.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        const dist = Math.abs(ev.clientY - mid);
+        if (dist < minDist) { minDist = dist; closest = i; }
+      });
+      setDrag((prev) => {
+        const next = prev ? { ...prev, overIndex: closest } : null;
+        dragRef.current = next;
+        return next;
+      });
+    };
+
+    const onUp = () => {
+      el.releasePointerCapture(e.pointerId);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      const finalDrag = dragRef.current;
+      if (dragStarted.current && finalDrag) {
+        const current = useSessionsStore.getState().sessions;
+        const fromIdx = current.filter((s) => s.dir === finalDrag.sourceDir).findIndex((s) => s.id === finalDrag.draggingId);
+        if (fromIdx !== -1) {
+          useSessionsStore.getState().reorderInGroup(finalDrag.sourceDir, fromIdx, finalDrag.overIndex);
+        }
+      }
+      dragRef.current = null;
+      setDrag(null);
+      dragStarted.current = false;
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, []);
 
   return (
     <div
@@ -176,18 +269,40 @@ export function Sidebar({
         className="no-scrollbar"
       >
         {Object.entries(groups).map(([dir, groupSessions]) => (
-          <div key={dir} style={{ marginBottom: 6 }}>
-            <DirGroupHeader dir={dir} count={groupSessions.length} />
+          <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
+            <DirGroupHeader dir={dir} count={groupSessions.length} onNewTerminal={() => useSessionsStore.getState().newTerminalInDir(dir)} />
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {groupSessions.map((s) => (
-                <SessionCard
-                  key={s.id}
-                  session={s}
-                  active={s.id === activeSessionId}
-                  onClick={() => onSelectSession(s.id)}
-                  onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
-                />
-              ))}
+              {groupSessions.map((s, idx) => {
+                const isDragging = drag?.draggingId === s.id;
+                const showIndicator = drag?.sourceDir === dir && drag.overIndex === idx && drag.draggingId !== s.id;
+                return (
+                  <div key={s.id} data-session-id={s.id}>
+                    {showIndicator && (
+                      <div style={{ height: 2, background: "var(--c-accent)", borderRadius: 1, margin: "0 10px 2px" }} />
+                    )}
+                    <div
+                      onPointerDown={(e) => {
+                        if ((e.target as HTMLElement).closest(".session-card-close") || (e.target as HTMLElement).closest(".hover-close")) return;
+                        handleDragStart(e, s.id, dir, idx);
+                      }}
+                      style={{
+                        opacity: isDragging ? 0.3 : 1,
+                        transition: "opacity 120ms ease",
+                        touchAction: "none",
+                      }}
+                    >
+                      <SessionCard
+                        session={s}
+                        active={s.id === activeSessionId}
+                        confirmClose={!!closeConfirmations[s.id]}
+                        onClick={() => { if (!dragStarted.current) onSelectSession(s.id); }}
+                        onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
+                        onClearCloseConfirm={() => clearCloseConfirmation(s.id)}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}

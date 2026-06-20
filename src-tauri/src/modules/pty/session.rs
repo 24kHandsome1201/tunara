@@ -68,6 +68,7 @@ pub fn spawn(
     drop(pair.slave);
 
     let killer = child.clone_killer();
+    let flusher_killer = Arc::new(Mutex::new(child.clone_killer()));
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
@@ -119,6 +120,7 @@ pub fn spawn(
     let on_event_flush = on_event.clone();
     let pending_f = pending.clone();
     let done_f = done.clone();
+    let killer_f = flusher_killer.clone();
     thread::Builder::new()
         .name("conduit-pty-flusher".into())
         .spawn(move || loop {
@@ -144,6 +146,9 @@ pub fn spawn(
             };
             if let Err(e) = on_event_flush.send(event) {
                 log::debug!("pty flusher exiting, channel closed: {e}");
+                if let Ok(mut k) = killer_f.lock() {
+                    let _ = k.kill();
+                }
                 break;
             }
         })

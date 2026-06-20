@@ -23,7 +23,9 @@ impl fmt::Display for ProcessError {
             ProcessError::Timeout => write!(f, "子进程超时，已终止"),
             ProcessError::Cancelled => write!(f, "已取消"),
             ProcessError::NonZeroExit { code, stderr } => {
-                let c = code.map(|c| c.to_string()).unwrap_or_else(|| "signal".into());
+                let c = code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "signal".into());
                 if stderr.is_empty() {
                     write!(f, "子进程退出码 {c}")
                 } else {

@@ -7,7 +7,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export function useInit() {
   const addSession = useSessionsStore((s) => s.addSession);
-  const setActive = useSessionsStore((s) => s.setActive);
 
   const initRef = useRef(false);
   useEffect(() => {
@@ -15,13 +14,18 @@ export function useInit() {
     initRef.current = true;
 
     loadSessions().then(({ sessions: restored, activeSessionId: restoredActive }) => {
-      for (const s of restored) addSession(s);
       if (restored.length === 0 && useSessionsStore.getState().sessions.length === 0) {
         addSession(createSession("~", { title: "终端" }));
-      } else if (restoredActive) {
-        const exists = useSessionsStore.getState().sessions.some((s) => s.id === restoredActive);
-        if (exists) setActive(restoredActive);
+        return;
       }
+      const activeSessionId = restored.some((s) => s.id === restoredActive)
+        ? restoredActive
+        : restored[0]?.id ?? null;
+      useSessionsStore.setState({
+        sessions: restored,
+        activeSessionId,
+        launchedSessionIds: activeSessionId ? { [activeSessionId]: true } : {},
+      });
     });
 
     loadUILayout().then((layout) => {
@@ -68,6 +72,12 @@ export function useInit() {
         }),
     );
 
+    const onWindowFocus = () => {
+      const activeId = useSessionsStore.getState().activeSessionId;
+      if (activeId) useSessionsStore.getState().refreshGit(activeId);
+    };
+    window.addEventListener("focus", onWindowFocus);
+
     let prevSessions = useSessionsStore.getState().sessions;
     const unsub = useSessionsStore.subscribe((state) => {
       if (state.sessions !== prevSessions) {
@@ -83,7 +93,8 @@ export function useInit() {
     return () => {
       unsub();
       clearInterval(timer);
+      window.removeEventListener("focus", onWindowFocus);
       unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {}));
     };
-  }, [addSession, setActive]);
+  }, [addSession]);
 }

@@ -50,7 +50,9 @@ pub async fn agent_preflight(
         return Ok(Preflight {
             installed: false,
             logged_in: false,
-            hint: Some(format!("未找到 {bin}，请先安装该 agent CLI（或在设置里指定路径）")),
+            hint: Some(format!(
+                "未找到 {bin}，请先安装该 agent CLI（或在设置里指定路径）"
+            )),
         });
     };
     let program = path.to_string_lossy().into_owned();

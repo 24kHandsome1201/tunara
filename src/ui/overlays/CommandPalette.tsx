@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { deriveTitle, type Session, AGENT_NAMES, AGENT_CLI } from "../types";
-import { useSessionsStore, createSession } from "@/state/sessions";
+import { deriveTitle, type Session } from "../types";
+import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { invoke } from "@tauri-apps/api/core";
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -27,17 +26,6 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
   const setActive = useSessionsStore((s) => s.setActive);
   const ui = useUIStore;
-
-  const [installedAgents, setInstalledAgents] = useState<{ code: string; name: string }[]>([]);
-  useEffect(() => {
-    invoke<{ name: string; path: string | null }[]>("resolve_all_bins")
-      .then((bins) => {
-        setInstalledAgents(
-          bins.filter((b) => b.path).map((b) => ({ code: b.name, name: AGENT_NAMES[b.name] ?? b.name })),
-        );
-      })
-      .catch(() => {});
-  }, []);
 
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
@@ -114,23 +102,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       action: () => { ui.getState().setOverlay("settings"); },
     });
 
-    for (const agent of installedAgents) {
-      const cli = AGENT_CLI[agent.code] ?? agent.code.toLowerCase();
-      cmds.push({
-        id: `launch-${agent.code}`,
-        label: `新建 ${agent.name} 终端`,
-        section: "启动 Agent",
-        action: () => {
-          const st = useSessionsStore.getState();
-          const active = st.sessions.find((s: Session) => s.id === st.activeSessionId);
-          useSessionsStore.getState().addSession(createSession(active?.dir ?? "~", { title: agent.name, pendingInput: cli }));
-          onClose();
-        },
-      });
-    }
-
     return cmds;
-  }, [sessions, activeSessionId, setActive, onClose, ui, installedAgents]);
+  }, [sessions, activeSessionId, setActive, onClose, ui]);
 
   const q = query.trim().toLowerCase();
   const filtered = q

@@ -1,10 +1,10 @@
 # Security
 
-Terax runs shells, reads/writes files, and talks to AI providers — so security bugs matter. If you find one, please tell us before posting it publicly.
+Conduit runs local shells, reads files for review surfaces, and exposes a Tauri IPC boundary to the renderer. Security bugs matter. If you find one, report it privately before posting details publicly.
 
 ## Reporting
 
-Email **security@terax.app**. Include:
+Open a private security advisory on GitHub, or email the maintainer for this repository. Include:
 
 - What the issue is and what it lets an attacker do
 - Steps to reproduce (a small PoC is great)
@@ -16,31 +16,31 @@ Please **don't** open a public GitHub issue for security reports.
 
 ## Supported versions
 
-Until `1.0.0`, only the latest minor gets security fixes. Right now that's `0.5.x`. 
+Until `1.0.0`, only the current development line is expected to receive security fixes.
 
 ## What's in scope
 
 - The Rust backend in `src-tauri/` (PTY, FS, IPC, plugins)
 - The frontend in `src/` — anywhere untrusted input lands (terminal output, file content, AI tool results, credentials)
-- Release artifacts on GitHub and `terax.app`
+- Release artifacts on GitHub
 - The auto-updater
 
 ## What's not
 
-- Bugs in upstream deps (Tauri, xterm.js, CodeMirror, AI SDKs…) — report those upstream. We'll ship the fix once it's released.
+- Bugs in upstream deps such as Tauri, xterm.js, `portable-pty`, or git2. Report those upstream first; Conduit can pick up fixed releases.
 - Anything that needs an already-compromised machine or a local attacker with shell access
-- Older versions (`< 0.5`)
+- Old local prototypes or unreleased design artifacts
 
 ## What we do to keep things safe
 
-- **API keys** live in the OS keychain via `keyring` — not on disk, not in `localStorage`, not in logs.
-- **No telemetry.** Terax only talks to the network when you ask it to (AI requests, update checks, web preview).
-- **AI tool approval.** File writes and shell commands from the agent need your OK before they run.
-- **No Node in the renderer.** The frontend only reaches the host through the allow-listed Tauri commands.
-- **Signed releases.** Updates are verified before they're applied.
+- **Host access is behind Tauri commands.** The frontend reaches PTY, file, Git, resolver, shell, and secrets functionality through the allow-listed IPC surface in `src-tauri/src/lib.rs` and `src-tauri/capabilities/`.
+- **No Node in the renderer.** The webview does not receive direct Node-style filesystem or process access.
+- **Git write operations are not part of the main UI.** The current review panel is read-only; users run mutating Git commands from the terminal when they choose to.
+- **Signed updates.** Tauri updater configuration verifies update signatures before applying releases.
+- **No product telemetry is expected in the current app shell.** Network access is limited to explicit user workflows and update checks.
 
 ## What we can't promise
 
-- Terax runs whatever you (or the agent) tell it to run, with your permissions. That's kind of the point of a terminal.
-- AI providers see whatever you send them. Read their retention policies.
-- Local LLM endpoints (LM Studio, OpenAI-compatible) are trusted at the network level — only point Terax at servers you control.
+- Conduit runs whatever you type into the terminal, with your user permissions. That is the point of a terminal.
+- Agent CLIs such as Claude Code, Codex, or Amp are external tools. Their authentication, data retention, and network behavior are controlled by those tools, not by Conduit.
+- Any local command, shell startup file, Git hook, or CLI plugin can affect the workspace. Review the tools you run.

@@ -1,7 +1,7 @@
 [package]
 name = "conduit"
-version = "0.1.0"
-description = "Conduit — AI 原生终端（基于 Tauri + xterm.js）"
+version = "1.0.0"
+description = "Conduit — 带智能侧栏的真实终端（基于 Tauri + xterm.js）"
 authors = ["Conduit"]
 edition = "2021"
 

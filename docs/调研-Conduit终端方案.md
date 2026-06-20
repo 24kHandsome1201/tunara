@@ -24,13 +24,13 @@
 
 Conduit 是一个 **AI 原生终端**，不是普通终端：
 
-- **侧边栏不是文件树**，而是**按工作目录分组的会话列表**，每个会话挂一个 AI agent。
+- **侧边栏不是文件树**，而是**按工作目录分组的会话列表**。当前实现以真实终端会话为主，用户在终端中启动 Agent CLI 后，侧栏做品牌标记、运行态和 review 辅助，而不是把每个会话都强制建模成独立 Agent。
   - ⚠️ **原型历史信息**：设计稿原型标注三家 agent（CC=Claude Code / CX=Codex / CU=Cursor）。**实际范围以 D2 为准：只接 CC + CX，砍掉 CU**（详见《调研-三大难点深入.md》决策记录）。
 - **主区呈现真实终端流 + AI 回复**（原型把 AI 回复画成「内联」在终端流里，带「应用补丁 / 查看 diff」按钮）。
   - ⚠️ **原型历史信息（两处需以决策为准）**：
     1. **「应用补丁」按钮**：D1 已决定 agent 直接写盘，不做「先产出 patch 再 apply」。按钮语义降级为「已应用 ✓ / 查看 diff / 丢弃本轮改动」。
     2. **「AI 回复内联渲染在终端里」不能直译为「把 React 组件插进 xterm buffer」**：xterm.js 有自己的 scrollback / selection / resize 模型，与 DOM block 是两套体系，不能仅靠一个 `InlineAgentBlock.tsx` 混排。本项目的渲染取舍见 §1.3 末「渲染模型取舍」。
-- **右栏是跟随当前会话的 diff / 审查面板**，底部可直接 commit & push。
+- **右栏是跟随当前会话的 diff / 审查面板**。当前产品边界下它是只读 review 面板，不提供 commit / push GUI。
 
 这意味着工程范围 = 真实终端 + 会话编排 + AI 集成 + Git 集成。设计稿只规定「呈现」，不含后端逻辑。
 
@@ -50,7 +50,7 @@ Conduit 是一个 **AI 原生终端**，不是普通终端：
 │ [搜索会话]│ ❯ shell 流 …                    │                  │
 │          │ ┃ 内联AI回复块(左2px #c2683c)    │ ─────────        │
 │ ~/orbit 3│ ┃ [应用补丁][查看diff]           │ commit 输入框     │
-│  •会话卡  │                                │ [提交][提交并推送]│
+│  •会话卡  │                                │ 只读 review       │
 │  •会话卡  │ ❯ 输入 ▏(闪烁光标)              │ origin/branch    │
 │ ~/web  1 │                                │                  │
 │  •会话卡  ├────────────────────────────────┤                  │
@@ -276,7 +276,7 @@ tauri-plugin-{log,os,store,process} = "2"
 4. **新增 Conduit 特有逻辑**：
    - 会话编排（按目录分组、状态机 running/fresh/done、进度条）。
    - **AI agent 接入**：CC/CX/CU 的实际调用 + 内联回复块（terax 已有 `ai-elements` 与 ai-sdk，可借）。
-   - **Git 集成**：diff 面板的 `git status`/diff 解析、commit & push（terax **没有**，需自建，建议 Rust 端封 `git2` 或调 `git` CLI）。
+   - **Git 集成**：diff 面板的 `git status`/diff 解析（terax **没有**，需自建，建议 Rust 端封 `git2`）；commit / push 写操作保留为后端底层能力或终端内 CLI 流程，不作为右栏主 UI。
 
 ### 3.2 难度分级（基于已确认的代码现状）
 

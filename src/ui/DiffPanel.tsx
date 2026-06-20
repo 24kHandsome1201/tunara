@@ -149,9 +149,10 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         setFiles(status.files);
         setBranch(status.branch);
         setSummary(status.summary);
-        if (status.branch && status.branch !== session.branch) {
-          updateSession(session.id, { branch: status.branch });
-        }
+        updateSession(session.id, {
+          branch: status.branch,
+          changes: { files: status.files, summary: status.summary },
+        });
         gitAheadBehind(repoPath)
           .then((r) => !cancelled && setRemote(r))
           .catch(() => !cancelled && setRemote(null));
@@ -160,6 +161,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         setNotGit(true);
         setFiles([]);
         setRemote(null);
+        updateSession(session.id, { changes: undefined });
       } finally {
         if (!cancelled) setLoading(false);
       }

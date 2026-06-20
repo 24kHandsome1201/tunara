@@ -14,9 +14,9 @@ interface ResolvedCommand {
   source: ResolveSource;
 }
 
-type SettingsTab = "外观" | "Agents";
+type SettingsTab = "外观" | "CLI";
 
-const TABS: SettingsTab[] = ["外观", "Agents"];
+const TABS: SettingsTab[] = ["外观", "CLI"];
 
 function ThemeCard({ label, themeType, selected, onClick }: { label: string; themeType: ThemeType; selected: boolean; onClick: () => void }) {
   const isDark = themeType === "dark";
@@ -84,7 +84,7 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
 
 const SECTION_LABEL: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 10 };
 
-const AGENT_LIST = [
+const CLI_LIST = [
   { code: "CC", name: "Claude Code" }, { code: "CX", name: "Codex" }, { code: "AM", name: "Amp" },
   { code: "GM", name: "Gemini" }, { code: "CP", name: "Copilot" }, { code: "CR", name: "Cursor" },
   { code: "DR", name: "Droid" }, { code: "OC", name: "OpenCode" }, { code: "PI", name: "Pi" },
@@ -107,14 +107,12 @@ export function Settings({ onClose }: SettingsProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[]>([]);
-  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     invoke<ResolvedCommand[]>("resolve_all_bins").then(setResolvedClis).catch(() => {});
   }, []);
 
-  const installed = AGENT_LIST.filter(({ code }) => resolvedClis.find((c) => c.name === code)?.path);
-  const notInstalled = AGENT_LIST.filter(({ code }) => !resolvedClis.find((c) => c.name === code)?.path);
+  const installed = CLI_LIST.filter(({ code }) => resolvedClis.find((c) => c.name === code)?.path);
 
   return (
     <>
@@ -216,10 +214,13 @@ export function Settings({ onClose }: SettingsProps) {
             </div>
           )}
 
-          {activeTab === "Agents" && (
+          {activeTab === "CLI" && (
             <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
               {resolvedClis.length === 0 && (
                 <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>检测中…</div>
+              )}
+              {resolvedClis.length > 0 && installed.length === 0 && (
+                <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>未检测到常用终端 CLI</div>
               )}
               {installed.map(({ code, name }) => {
                 const cli = resolvedClis.find((c) => c.name === code);
@@ -232,22 +233,6 @@ export function Settings({ onClose }: SettingsProps) {
                   </div>
                 );
               })}
-              {notInstalled.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <button
-                    onClick={() => setShowMore(!showMore)}
-                    style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", padding: "4px 0", display: "flex", alignItems: "center", gap: 4 }}
-                  >
-                    <span style={{ fontSize: "var(--fs-meta-sm)", transform: showMore ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease" }}>▸</span>
-                    更多 agent（{notInstalled.length}）
-                  </button>
-                  {showMore && notInstalled.map(({ code, name }) => (
-                    <div key={code} style={{ marginBottom: 8, marginLeft: 14 }}>
-                      <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>{name} ({code}) — 未安装</div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>

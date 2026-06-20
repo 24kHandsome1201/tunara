@@ -37,11 +37,21 @@ export function registerPromptTracker(term: Terminal): PromptTracker {
 }
 
 function parseOsc7(data: string): string | null {
-  const m = data.match(/^file:\/\/[^/]*(\/.*)$/);
+  const m = data.match(/^file:\/\/([^/]*)(\/.*)$/);
   if (!m) return null;
+  if (!isLocalOscHost(m[1])) return null;
   try {
-    return decodeURIComponent(m[1]);
+    return decodeURIComponent(m[2]);
   } catch {
-    return m[1];
+    return m[2];
   }
+}
+
+function isLocalOscHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  if (!normalized || normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1") {
+    return true;
+  }
+  const browserHost = globalThis.location?.hostname?.toLowerCase();
+  return !!browserHost && normalized === browserHost;
 }

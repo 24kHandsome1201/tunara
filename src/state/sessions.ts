@@ -6,7 +6,9 @@ import { useUIStore } from "./ui";
 interface SessionsState {
   sessions: Session[];
   activeSessionId: string | null;
+  launchedSessionIds: Record<string, true>;
   gitNonce: Record<string, number>;
+  closeConfirmations: Record<string, number>;
 
   addSession: (s: Session) => void;
   removeSession: (id: string) => void;
@@ -14,6 +16,7 @@ interface SessionsState {
   markRead: (id: string) => void;
   updateSession: (id: string, patch: Partial<Session>) => void;
   refreshGit: (id: string) => void;
+  clearCloseConfirmation: (id: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
@@ -22,7 +25,9 @@ interface SessionsState {
   handleCwdChange: (id: string, cwd: string) => void;
   handleShellTitle: (id: string, title: string) => void;
 
+  reorderInGroup: (dir: string, fromIndex: number, toIndex: number) => void;
   newTerminal: () => void;
+  newTerminalInDir: (dir: string) => void;
   splitWithNewSession: (direction: "horizontal" | "vertical") => void;
   closeSession: (id: string) => void;
 }
@@ -53,12 +58,15 @@ export function createSession(
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessions: [],
   activeSessionId: null,
+  launchedSessionIds: {},
   gitNonce: {},
+  closeConfirmations: {},
 
   addSession: (s) =>
     set((state) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
+      launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
     })),
 
   removeSession: (id) =>
@@ -68,15 +76,37 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         state.activeSessionId === id
           ? sessions[0]?.id ?? null
           : state.activeSessionId;
-      return { sessions, activeSessionId };
+      const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
+      const { [id]: _launched, ...launchedSessionIds } = state.launchedSessionIds;
+      const nextLaunchedSessionIds = { ...launchedSessionIds };
+      if (activeSessionId) nextLaunchedSessionIds[activeSessionId] = true;
+      return {
+        sessions,
+        activeSessionId,
+        closeConfirmations,
+        launchedSessionIds: nextLaunchedSessionIds,
+      };
     }),
 
-  setActive: (id) => set({ activeSessionId: id }),
+  setActive: (id) =>
+    set((state) => {
+      if (!state.sessions.some((s) => s.id === id)) return {};
+      return {
+        activeSessionId: id,
+        launchedSessionIds: { ...state.launchedSessionIds, [id]: true },
+      };
+    }),
 
   refreshGit: (id) =>
     set((state) => ({
       gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
     })),
+
+  clearCloseConfirmation: (id) =>
+    set((state) => {
+      const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
+      return { closeConfirmations };
+    }),
 
   markRead: (id) =>
     set((state) => ({
@@ -146,34 +176,71 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().updateSession(id, { shellTitle: title });
   },
 
+  reorderInGroup: (dir, fromIndex, toIndex) =>
+    set((state) => {
+      if (fromIndex === toIndex) return {};
+      const group = state.sessions.filter((s) => s.dir === dir);
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= group.length || toIndex >= group.length) return {};
+      const movedId = group[fromIndex].id;
+      const targetId = group[toIndex].id;
+      const sessions = [...state.sessions];
+      const globalFrom = sessions.findIndex((s) => s.id === movedId);
+      const globalTo = sessions.findIndex((s) => s.id === targetId);
+      const [item] = sessions.splice(globalFrom, 1);
+      sessions.splice(globalTo, 0, item);
+      return { sessions };
+    }),
+
   newTerminal: () => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
     get().addSession(createSession(active?.dir ?? "~", { title: "终端" }));
   },
 
+  newTerminalInDir: (dir) => {
+    get().addSession(createSession(dir, { title: "终端" }));
+  },
+
   splitWithNewSession: (direction) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
     const newSess = createSession(active?.dir ?? "~", { title: "终端" });
+    if (!active) {
+      get().addSession(newSess);
+      return;
+    }
     get().addSession(newSess);
     const ui = useUIStore.getState();
     if (direction === "horizontal") {
-      ui.splitHorizontal(newSess.id);
+      ui.splitHorizontal(active.id, newSess.id);
     } else {
-      ui.splitVertical(newSess.id);
+      ui.splitVertical(active.id, newSess.id);
     }
   },
 
   closeSession: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (session?.runState === "running") {
+      const lastConfirm = get().closeConfirmations[id] ?? 0;
+      if (Date.now() - lastConfirm > 3_000) {
+        set((state) => ({
+          closeConfirmations: { ...state.closeConfirmations, [id]: Date.now() },
+        }));
+        return;
+      }
+    }
+
     const ui = useUIStore.getState();
-    if (ui.split.mode !== "single" && ui.split.paneB) {
-      if (ui.split.paneB === id) {
-        ui.closeSplit();
-      } else if (get().activeSessionId === id) {
-        set({ activeSessionId: ui.split.paneB });
+    let survivor: string | null = null;
+    if (ui.split.mode !== "single") {
+      const split = ui.split;
+      if (split.paneA === id || split.paneB === id) {
+        survivor = split.paneA === id ? split.paneB : split.paneA;
         ui.closeSplit();
       }
     }
     get().removeSession(id);
+    if (survivor && get().sessions.some((s) => s.id === survivor)) {
+      set({ activeSessionId: survivor });
+    }
     if (get().sessions.length === 0) {
       get().addSession(createSession("~", { title: "终端" }));
     }

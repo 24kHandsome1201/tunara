@@ -24,6 +24,7 @@ function decodeBase64(b64: string): Uint8Array {
 }
 
 export async function openPty(
+  logicalSessionId: string,
   cols: number,
   rows: number,
   handlers: PtyHandlers,
@@ -42,6 +43,7 @@ export async function openPty(
   };
 
   const id = await invoke<number>("pty_open", {
+    logicalSessionId,
     cols,
     rows,
     cwd: cwd ?? null,

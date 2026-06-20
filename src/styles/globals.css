@@ -77,6 +77,21 @@ html[data-chrome="borderless"] #root {
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 
-/* Conduit responsive */
-@media (max-width: 900px) { .conduit-panel { display: none !important; } }
-@media (max-width: 720px) { .conduit-sidebar { display: none !important; } }
+/* Panel resize handle: visible line on hover */
+.panel-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: var(--c-border-2);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.panel-resize-handle:hover::after { opacity: 1; background: var(--c-accent); }
+
+/* Dir group header: + button fade on hover */
+.dir-group-header .dir-group-add { opacity: 0; transition: opacity 120ms ease; }
+.dir-group-header:hover .dir-group-add { opacity: 1; }

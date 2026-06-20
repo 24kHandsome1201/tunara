@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { type Session, type RunState, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 
@@ -126,34 +126,30 @@ function DiffStat({ added, removed }: { added: number; removed: number }) {
 interface SessionCardProps {
   session: Session;
   active: boolean;
+  confirmClose?: boolean;
   onClick: () => void;
   onClose?: () => void;
+  onClearCloseConfirm?: () => void;
 }
 
-export function SessionCard({ session, active, onClick, onClose }: SessionCardProps) {
+export function SessionCard({ session, active, confirmClose, onClick, onClose, onClearCloseConfirm }: SessionCardProps) {
   const { primary, isCommand } = deriveTitle(session);
-  const [confirmClose, setConfirmClose] = useState(false);
-
-  useEffect(() => {
-    if (!confirmClose) return;
-    const timer = setTimeout(() => setConfirmClose(false), 3000);
-    return () => clearTimeout(timer);
-  }, [confirmClose]);
-
-  useEffect(() => {
-    if (session.runState !== "running") setConfirmClose(false);
-  }, [session.runState]);
 
   const handleClose = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (!onClose) return;
-    if (session.runState === "running" && !confirmClose) {
-      setConfirmClose(true);
-      return;
-    }
-    setConfirmClose(false);
     onClose();
   };
+
+  useEffect(() => {
+    if (!confirmClose) return;
+    const timer = setTimeout(() => onClearCloseConfirm?.(), 3_000);
+    return () => clearTimeout(timer);
+  }, [confirmClose, onClearCloseConfirm]);
+
+  useEffect(() => {
+    if (confirmClose && session.runState !== "running") onClearCloseConfirm?.();
+  }, [confirmClose, onClearCloseConfirm, session.runState]);
 
   const totalAdded = session.changes?.files.reduce((a, f) => a + f.added, 0) ?? 0;
   const totalRemoved = session.changes?.files.reduce((a, f) => a + f.removed, 0) ?? 0;

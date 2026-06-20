@@ -2,10 +2,29 @@ import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    !!target.closest(".xterm") ||
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
+
+function hasAppModifier(e: KeyboardEvent): boolean {
+  const isMac =
+    navigator.platform.toLowerCase().includes("mac") ||
+    navigator.userAgent.toLowerCase().includes("mac");
+  return isMac ? e.metaKey : e.ctrlKey;
+}
+
 export function useKeybindings() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (!hasAppModifier(e) || e.altKey) return;
+      if (isEditableTarget(e.target) && !e.metaKey) return;
       const k = e.key.toLowerCase();
       if (k === "t" || k === "n") {
         e.preventDefault();

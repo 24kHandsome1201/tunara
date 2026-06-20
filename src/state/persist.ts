@@ -8,7 +8,7 @@ const UI_LAYOUT_KEY = "uiLayout";
 
 type PersistedSession = Pick<
   Session,
-  "id" | "title" | "dir" | "branch" | "agent" | "updatedAt"
+  "id" | "title" | "dir" | "branch" | "updatedAt"
 >;
 
 interface PersistedUILayout {
@@ -22,13 +22,30 @@ function toPersistedSession(s: Session): PersistedSession {
     title: s.title,
     dir: s.dir,
     branch: s.branch,
-    agent: s.agent,
     updatedAt: s.updatedAt,
   };
 }
 
 function fromPersistedSession(p: PersistedSession): Session {
-  return { ...p, runState: "idle" };
+  return { ...p, title: "终端", runState: "idle" };
+}
+
+function dedupeById<T extends { id: string; updatedAt: number }>(items: T[]): T[] {
+  const order: string[] = [];
+  const byId = new Map<string, T>();
+
+  for (const item of items) {
+    const existing = byId.get(item.id);
+    if (!existing) order.push(item.id);
+    if (!existing || item.updatedAt >= existing.updatedAt) {
+      byId.set(item.id, item);
+    }
+  }
+
+  return order.flatMap((id) => {
+    const item = byId.get(id);
+    return item ? [item] : [];
+  });
 }
 
 export async function saveSessions(
@@ -37,7 +54,7 @@ export async function saveSessions(
 ): Promise<void> {
   try {
     const store = await load(STORE_FILE, { defaults: {} });
-    const persisted = sessions.map(toPersistedSession);
+    const persisted = dedupeById(sessions).map(toPersistedSession);
     await store.set(SESSIONS_KEY, persisted);
     if (activeSessionId !== undefined) {
       await store.set(ACTIVE_KEY, activeSessionId);
@@ -57,8 +74,9 @@ export async function loadSessions(): Promise<{
     const persisted = await store.get<PersistedSession[]>(SESSIONS_KEY);
     const activeId = await store.get<string | null>(ACTIVE_KEY);
     if (!persisted) return { sessions: [], activeSessionId: null };
+    const sessions = dedupeById(persisted).map(fromPersistedSession);
     return {
-      sessions: persisted.map(fromPersistedSession),
+      sessions,
       activeSessionId: activeId ?? null,
     };
   } catch {

@@ -30,7 +30,12 @@ pub struct CommandSpec {
 
 impl CommandSpec {
     pub fn new(program: impl Into<String>) -> Self {
-        Self { program: program.into(), args: Vec::new(), cwd: None, envs: Vec::new() }
+        Self {
+            program: program.into(),
+            args: Vec::new(),
+            cwd: None,
+            envs: Vec::new(),
+        }
     }
     pub fn args<I, S>(mut self, args: I) -> Self
     where
@@ -75,7 +80,10 @@ pub struct CommandOutput {
 /// 这里 spawn + select。`wait_with_output()` 消费 child，故超时分支不再碰 child：
 /// 依赖 `kill_on_drop(true)`（CommandSpec::to_command 已设）——函数 return 时 child 被
 /// drop 即触发 kill，同样杜绝残留进程。
-pub async fn run_capture(spec: CommandSpec, timeout: Duration) -> Result<CommandOutput, ProcessError> {
+pub async fn run_capture(
+    spec: CommandSpec,
+    timeout: Duration,
+) -> Result<CommandOutput, ProcessError> {
     let child = spec
         .to_command()
         .stdout(Stdio::piped())
@@ -141,7 +149,10 @@ impl Default for CancelToken {
 impl CancelToken {
     pub fn new() -> Self {
         let (tx, rx) = tokio::sync::watch::channel(false);
-        Self { tx: Arc::new(tx), rx }
+        Self {
+            tx: Arc::new(tx),
+            rx,
+        }
     }
     pub fn cancel(&self) {
         let _ = self.tx.send(true);
@@ -177,7 +188,9 @@ pub struct ManagedProcessHandle {
 impl ManagedProcessHandle {
     /// 等待进程结束，返回（终止原因，drain 到的 stderr）。
     pub async fn wait(self) -> (StreamEnd, String) {
-        self.join.await.unwrap_or((StreamEnd::Exited { success: false }, String::new()))
+        self.join
+            .await
+            .unwrap_or((StreamEnd::Exited { success: false }, String::new()))
     }
 }
 
@@ -200,8 +213,14 @@ where
         .spawn()
         .map_err(|e| ProcessError::Spawn(format!("{}：{e}", spec.program)))?;
 
-    let stdout = child.stdout.take().ok_or_else(|| ProcessError::Io("no stdout".into()))?;
-    let stderr = child.stderr.take().ok_or_else(|| ProcessError::Io("no stderr".into()))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| ProcessError::Io("no stdout".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| ProcessError::Io("no stderr".into()))?;
 
     // drain stderr（修 P0：管道写满会 hang），攒成失败诊断。
     let stderr_buf = Arc::new(Mutex::new(String::new()));

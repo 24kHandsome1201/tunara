@@ -55,11 +55,6 @@ export type ThemeType = "light" | "dark" | "system";
 /** 终端配色主题 */
 export type TerminalThemeName = "default" | "catppuccin" | "tokyo-night" | "one-dark" | "solarized";
 
-export const AGENT_CLI: Record<string, string> = {
-  CC: "claude", CX: "codex", AM: "amp", GM: "gemini", CP: "copilot",
-  CR: "cursor", DR: "droid", OC: "opencode", PI: "pi", AG: "auggie", DV: "devin",
-};
-
 export const AGENT_NAMES: Record<string, string> = {
   CC: "Claude Code",
   CX: "Codex",

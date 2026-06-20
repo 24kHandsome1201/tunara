@@ -225,6 +225,7 @@ export function TerminalView({
       let pty;
       try {
         pty = await openPty(
+          sessionIdRef.current,
           term.cols,
           term.rows,
           {
@@ -523,4 +524,3 @@ export function TerminalView({
     </div>
   );
 }
-

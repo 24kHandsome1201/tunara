@@ -8,6 +8,7 @@ export type SplitMode = "single" | "horizontal" | "vertical";
 
 export interface SplitState {
   mode: SplitMode;
+  paneA: string | null;
   paneB: string | null;
   ratio: number;
 }
@@ -18,6 +19,7 @@ interface AppearanceSettings {
   cursorStyle: CursorStyle;
   fontSize: number;
   sidebarWidth: number;
+  panelWidth: number;
   terminalTheme: TerminalThemeName;
 }
 
@@ -28,6 +30,7 @@ const DEFAULT_SETTINGS: AppearanceSettings = {
   cursorStyle: "bar",
   fontSize: 14,
   sidebarWidth: 272,
+  panelWidth: 320,
   terminalTheme: "default",
 };
 
@@ -35,7 +38,17 @@ function loadSettings(): AppearanceSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw) as Partial<AppearanceSettings>;
+    return {
+      ...DEFAULT_SETTINGS,
+      ...(parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system" ? { theme: parsed.theme } : {}),
+      ...(typeof parsed.accent === "string" ? { accent: parsed.accent } : {}),
+      ...(parsed.cursorStyle === "bar" || parsed.cursorStyle === "block" || parsed.cursorStyle === "underline" ? { cursorStyle: parsed.cursorStyle } : {}),
+      ...(typeof parsed.fontSize === "number" ? { fontSize: parsed.fontSize } : {}),
+      ...(typeof parsed.sidebarWidth === "number" ? { sidebarWidth: parsed.sidebarWidth } : {}),
+      ...(typeof parsed.panelWidth === "number" ? { panelWidth: parsed.panelWidth } : {}),
+      ...(parsed.terminalTheme === "default" || parsed.terminalTheme === "catppuccin" || parsed.terminalTheme === "tokyo-night" || parsed.terminalTheme === "one-dark" || parsed.terminalTheme === "solarized" ? { terminalTheme: parsed.terminalTheme } : {}),
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -56,6 +69,7 @@ interface UIState extends AppearanceSettings {
   panelVisible: boolean;
   overlay: OverlayType;
   trafficLightWidth: number;
+  viewportWidth: number;
   split: SplitState;
   inspectorTab: InspectorTab;
 
@@ -69,12 +83,15 @@ interface UIState extends AppearanceSettings {
   setFontSize: (n: number) => void;
   setTerminalTheme: (t: TerminalThemeName) => void;
   setSidebarWidth: (w: number) => void;
+  setPanelWidth: (w: number) => void;
   setTrafficLightWidth: (w: number) => void;
-  splitHorizontal: (paneBSessionId: string) => void;
-  splitVertical: (paneBSessionId: string) => void;
+  setViewportWidth: (w: number) => void;
+  splitHorizontal: (paneASessionId: string, paneBSessionId: string) => void;
+  splitVertical: (paneASessionId: string, paneBSessionId: string) => void;
   closeSplit: () => void;
   setSplitRatio: (ratio: number) => void;
   setSplitPaneB: (sessionId: string | null) => void;
+  setSplitPaneA: (sessionId: string | null) => void;
 }
 
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
@@ -84,7 +101,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     panelVisible: true,
     overlay: null,
     trafficLightWidth: 0,
-    split: { mode: "single", paneB: null, ratio: 0.5 },
+    viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
+    split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
     inspectorTab: "changes" as InspectorTab,
     ...initial,
 
@@ -100,21 +118,28 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setSidebarWidth: (sidebarWidth) => {
       set({ sidebarWidth: Math.max(200, Math.min(400, sidebarWidth)) });
     },
+    setPanelWidth: (panelWidth) => {
+      const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+      set({ panelWidth: Math.max(240, Math.min(Math.floor(vw * 0.45), panelWidth)) });
+    },
     setTrafficLightWidth: (trafficLightWidth) => set({ trafficLightWidth }),
-    splitHorizontal: (paneBSessionId) =>
-      set({ split: { mode: "horizontal", paneB: paneBSessionId, ratio: 0.5 } }),
-    splitVertical: (paneBSessionId) =>
-      set({ split: { mode: "vertical", paneB: paneBSessionId, ratio: 0.5 } }),
+    setViewportWidth: (viewportWidth) => set({ viewportWidth }),
+    splitHorizontal: (paneASessionId, paneBSessionId) =>
+      set({ split: { mode: "horizontal", paneA: paneASessionId, paneB: paneBSessionId, ratio: 0.5 } }),
+    splitVertical: (paneASessionId, paneBSessionId) =>
+      set({ split: { mode: "vertical", paneA: paneASessionId, paneB: paneBSessionId, ratio: 0.5 } }),
     closeSplit: () =>
-      set({ split: { mode: "single", paneB: null, ratio: 0.5 } }),
+      set({ split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }),
     setSplitRatio: (ratio) =>
       set((s) => ({ split: { ...s.split, ratio: Math.max(0.2, Math.min(0.8, ratio)) } })),
     setSplitPaneB: (sessionId) =>
-      set((s) => sessionId ? { split: { ...s.split, paneB: sessionId } } : { split: { mode: "single", paneB: null, ratio: 0.5 } }),
+      set((s) => sessionId ? { split: { ...s.split, paneB: sessionId } } : { split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }),
+    setSplitPaneA: (sessionId) =>
+      set((s) => sessionId ? { split: { ...s.split, paneA: sessionId } } : { split: { ...s.split, paneA: null } }),
   };
 }));
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "fontSize", "sidebarWidth", "terminalTheme"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "fontSize", "sidebarWidth", "panelWidth", "terminalTheme"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(
@@ -122,8 +147,8 @@ useUIStore.subscribe(
   () => {
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      const { theme, accent, cursorStyle, fontSize, sidebarWidth, terminalTheme } = useUIStore.getState();
-      persistSettings({ theme, accent, cursorStyle, fontSize, sidebarWidth, terminalTheme });
+      const { theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme } = useUIStore.getState();
+      persistSettings({ theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme });
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },

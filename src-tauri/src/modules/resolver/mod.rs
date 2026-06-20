@@ -66,7 +66,11 @@ impl ResolverState {
         let g = match self.inner.read() {
             Ok(g) => g,
             Err(_) => {
-                return ResolvedCommand { name: name.into(), path: None, source: ResolveSource::NotFound }
+                return ResolvedCommand {
+                    name: name.into(),
+                    path: None,
+                    source: ResolveSource::NotFound,
+                }
             }
         };
 
@@ -95,7 +99,11 @@ impl ResolverState {
 
         // ③ 进程当前 PATH（which）+ 常见路径兜底
         if let Ok(p) = which::which(name) {
-            return ResolvedCommand { name: name.into(), path: Some(p), source: ResolveSource::SystemPath };
+            return ResolvedCommand {
+                name: name.into(),
+                path: Some(p),
+                source: ResolveSource::SystemPath,
+            };
         }
         for dir in common_bin_dirs() {
             let cand = dir.join(name);
@@ -108,7 +116,11 @@ impl ResolverState {
             }
         }
 
-        ResolvedCommand { name: name.into(), path: None, source: ResolveSource::NotFound }
+        ResolvedCommand {
+            name: name.into(),
+            path: None,
+            source: ResolveSource::NotFound,
+        }
     }
 }
 
@@ -149,15 +161,26 @@ pub fn resolve_bin(state: tauri::State<'_, ResolverState>, name: String) -> Reso
 #[tauri::command]
 pub fn resolve_all_bins(state: tauri::State<'_, ResolverState>) -> Vec<ResolvedCommand> {
     const AGENTS: &[(&str, &str)] = &[
-        ("CC", "claude"), ("CX", "codex"), ("AM", "amp"), ("GM", "gemini"),
-        ("CP", "gh"), ("CR", "cursor"), ("DR", "droid"), ("OC", "opencode"),
-        ("PI", "pi"), ("AG", "auggie"), ("DV", "devin"),
+        ("CC", "claude"),
+        ("CX", "codex"),
+        ("AM", "amp"),
+        ("GM", "gemini"),
+        ("CP", "gh"),
+        ("CR", "cursor"),
+        ("DR", "droid"),
+        ("OC", "opencode"),
+        ("PI", "pi"),
+        ("AG", "auggie"),
+        ("DV", "devin"),
     ];
-    AGENTS.iter().map(|(code, bin)| {
-        let mut r = state.resolve(bin);
-        r.name = code.to_string();
-        r
-    }).collect()
+    AGENTS
+        .iter()
+        .map(|(code, bin)| {
+            let mut r = state.resolve(bin);
+            r.name = code.to_string();
+            r
+        })
+        .collect()
 }
 
 #[tauri::command]
