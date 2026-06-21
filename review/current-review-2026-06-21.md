@@ -57,6 +57,7 @@
 - `FileExplorer`: 面包屑改用 `›`, 搜索结果路径智能缩略, 文件大小列固定右对齐。
 - `ContextMenu`: 增加轻量进入动画。
 - `Settings`: 终端主题卡片改成自适应 grid, 强调色选中态不再膨胀。
+- `Settings`: 主题缩略图去掉 traffic-light 和 2px 微线条, 改为侧栏/主区/accent 组成的块面预览。
 - `AgentStatusBar`: 完成态停留时间和淡出时间缩短。
 - `Sidebar`/`FileExplorer`/`DiffPanel`/`Settings`/`CommandPalette`: 隐藏滚动条的纵向列表增加 `scroll-fade-y` 边界阴影, 侧栏使用 `scroll-fade-sidebar` 匹配玻璃底色。
 
@@ -181,6 +182,7 @@
 - ContextMenu 缺少进入动画。
 - ContextMenu 菜单项缺少图标。
 - Settings 终端主题卡片固定宽度。
+- Settings 主题缩略图细节过碎。
 - Toast 固定 260px 和左侧 accent 竖条挤压内容。
 - Linux 字体回退链不够保险。
 - 隐藏滚动条后缺少滚动提示。

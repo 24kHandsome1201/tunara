@@ -350,6 +350,12 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(status, /\}, 1500\)/);
   assert.match(status, /transition: "opacity 0\.3s ease"/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
+  assert.match(settings, /const previewBg =/);
+  assert.match(settings, /const sidebarBg =/);
+  assert.match(settings, /height: 56, background: previewBg/);
+  assert.doesNotMatch(settings, /#ff5f57|#febc2e|#28c840/);
+  assert.doesNotMatch(settings, /\[9, 6, 8\]/);
+  assert.doesNotMatch(settings, /boxShadow: selected \?/);
   assert.match(settings, /className="no-scrollbar scroll-fade-y"/);
   assert.match(diff, /function remoteLabel\(remote: RemoteState \| null\): string/);
   assert.match(diff, /Git 状态未知/);

@@ -25,25 +25,16 @@ const TABS: SettingsTab[] = ["外观", "CLI"];
 function ThemeCard({ label, themeType, selected, onClick }: { label: string; themeType: ThemeType; selected: boolean; onClick: () => void }) {
   const isDark = themeType === "dark";
   const isSystem = themeType === "system";
+  const previewBg = isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fbfbfc 50%, #1a1a1f 50%)" : "#fbfbfc";
+  const sidebarBg = isDark ? "rgba(255,255,255,0.08)" : isSystem ? "rgba(194,104,60,0.16)" : "#f0eff2";
+  const contentBg = isDark ? "rgba(255,255,255,0.12)" : isSystem ? "rgba(255,255,255,0.72)" : "#ffffff";
   return (
     <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 56, background: isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fff 50%, #1a1a1f 50%)" : "#fbfbfc", borderBottom: "1px solid var(--c-border-2)", display: "flex", flexDirection: "column" }}>
-        <div style={{ height: 14, background: isDark ? "#27272a" : "#f7f7f8", borderBottom: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, display: "flex", alignItems: "center", paddingLeft: 6, gap: 2.5 }}>
-          {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
-            <div key={c} style={{ width: 4, height: 4, borderRadius: "50%", background: c }} />
-          ))}
-        </div>
-        <div style={{ flex: 1, display: "flex" }}>
-          <div style={{ width: 28, background: isDark ? "#2a2a30" : "#f0eff2", borderRight: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, padding: "4px 3px", display: "flex", flexDirection: "column", gap: 2.5 }}>
-            {[1, 1, 1].map((_, i) => (
-              <div key={i} style={{ height: 2.5, borderRadius: 1.5, background: i === 0 ? "var(--c-accent)" : (isDark ? "#3f3f46" : "#d8d8de"), opacity: i === 0 ? 0.6 : 0.4 }} />
-            ))}
-          </div>
-          <div style={{ flex: 1, padding: "4px 6px", display: "flex", flexDirection: "column", gap: 2.5 }}>
-            {[9, 6, 8].map((w, i) => (
-              <div key={i} style={{ height: 2, width: `${w * 9}%`, borderRadius: 1, background: isDark ? "#3f3f46" : "#e0e0e5" }} />
-            ))}
-          </div>
+      <div style={{ height: 56, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 7, display: "flex", gap: 6 }}>
+        <div style={{ width: 30, borderRadius: 5, background: sidebarBg, boxShadow: "inset -1px 0 color-mix(in srgb, var(--c-border-2) 80%, transparent)" }} />
+        <div style={{ flex: 1, minWidth: 0, borderRadius: 5, background: contentBg, position: "relative", overflow: "hidden", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--c-border-2) 64%, transparent)" }}>
+          <div style={{ position: "absolute", left: 8, right: 8, top: 9, height: 3, borderRadius: 999, background: "var(--c-accent)", opacity: isDark ? 0.72 : 0.62 }} />
+          <div style={{ position: "absolute", left: 8, right: "38%", bottom: 10, height: 7, borderRadius: 4, background: isDark ? "rgba(255,255,255,0.14)" : "rgba(20,20,24,0.08)" }} />
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px" }}>
@@ -56,7 +47,7 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
 
 function AccentRing({ color, label, selected, onClick }: { color: string; label: string; selected: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} title={label} style={{ width: 24, height: 24, borderRadius: "50%", border: selected ? `1px solid ${color}` : "1px solid transparent", padding: 3, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: selected ? `0 0 0 1px ${color}` : "none" }}>
+    <button onClick={onClick} title={label} style={{ width: 24, height: 24, borderRadius: "50%", border: selected ? `1px solid ${color}` : "1px solid transparent", padding: 3, background: selected ? "var(--c-bg-3)" : "transparent", cursor: "pointer", flexShrink: 0, boxShadow: "none" }}>
       <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: color }} />
     </button>
   );
