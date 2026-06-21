@@ -242,6 +242,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /function MenuIcon/);
   assert.match(contextMenu, /aria-hidden="true"/);
   assert.match(shared, /export function SearchIcon/);
+  assert.match(shared, /export function CloseIcon/);
 
   assert.match(settings, /CLI 路径检测失败/);
   assert.match(settings, /未在当前应用 PATH 中找到/);
@@ -306,17 +307,39 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   const settings = read("src/ui/overlays/Settings.tsx");
   const diff = read("src/ui/DiffPanel.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
+  const filePreview = read("src/ui/FilePreview.tsx");
+  const inspector = read("src/ui/InspectorPanel.tsx");
+  const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
+  const toast = read("src/ui/Toast.tsx");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const contextMenu = read("src/ui/ContextMenu.tsx");
   const globals = read("src/styles/globals.css");
   const tokens = read("src/styles/tokens.css");
+  const iconUsers = [
+    titlebar,
+    sidebarHeader,
+    sessionCard,
+    diff,
+    explorer,
+    filePreview,
+    inspector,
+    terminalSearch,
+    toast,
+    settings,
+    palette,
+  ].join("\n");
 
   assert.match(titlebar, /width: 20, height: 20/);
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
   assert.match(sidebarHeader, /padding: "6px 9px"/);
-  assert.match(sidebarHeader, /import \{ SearchIcon \} from "\.\/shared"/);
+  assert.match(sidebarHeader, /import \{ CloseIcon, SearchIcon \} from "\.\/shared"/);
   assert.match(sidebarHeader, /export function SidebarSearchIcon\(\) \{\n  return <SearchIcon \/>;\n\}/);
+  assert.doesNotMatch(iconUsers, /<line x1="18" y1="6" x2="6" y2="18"/);
+  assert.doesNotMatch(iconUsers, /<path d="m21 21-4\.35-4\.35"/);
+  assert.match(iconUsers, /<CloseIcon/);
+  assert.match(terminalSearch, /<SearchIcon \/>/);
+  assert.match(palette, /<SearchIcon size=\{14\} \/>/);
   assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
   assert.match(sessionCard, /paddingLeft: 6/);
   assert.match(main, /"1px solid var\(--c-accent\)"/);

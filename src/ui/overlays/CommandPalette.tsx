@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { SearchIcon } from "../shared";
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -346,10 +347,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         }}
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
+          <SearchIcon size={14} />
           <input
             ref={inputRef}
             type="text"

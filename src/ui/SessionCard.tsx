@@ -3,6 +3,7 @@ import { type Session, type RunState, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
+import { CloseIcon } from "./shared";
 
 function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
@@ -102,12 +103,7 @@ function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolea
     );
   }
   if (runState === "failed") {
-    return (
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-error)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <line x1="18" y1="6" x2="6" y2="18" />
-        <line x1="6" y1="6" x2="18" y2="18" />
-      </svg>
-    );
+    return <CloseIcon size={13} strokeWidth={2.8} color="var(--c-error)" />;
   }
   return null;
 }
@@ -285,10 +281,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
             zIndex: 2,
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+          <CloseIcon size={11} strokeWidth={2.5} />
         </span>
       )}
 

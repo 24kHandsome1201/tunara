@@ -10,7 +10,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
 import { isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
-import { RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 
 interface DiffPanelProps {
   session: Session;
@@ -320,10 +320,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
               }}
               className="hover-bg"
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <CloseIcon size={13} strokeWidth={2.2} />
             </button>
           )}
         </div>

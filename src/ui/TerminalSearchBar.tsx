@@ -1,4 +1,5 @@
 import type { CSSProperties, RefObject } from "react";
+import { CloseIcon, SearchIcon } from "./shared";
 
 interface TerminalSearchBarProps {
   inputRef: RefObject<HTMLInputElement | null>;
@@ -49,10 +50,7 @@ export function TerminalSearchBar({
         boxShadow: "var(--shadow-card)",
       }}
     >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.35-4.35" />
-      </svg>
+      <SearchIcon />
       <input
         ref={inputRef}
         type="text"
@@ -96,10 +94,7 @@ export function TerminalSearchBar({
         </svg>
       </button>
       <button onClick={onClose} title="关闭 Esc" className="hover-bg" style={SEARCH_BUTTON_STYLE}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <CloseIcon size={12} strokeWidth={2.2} />
       </button>
     </div>
   );
