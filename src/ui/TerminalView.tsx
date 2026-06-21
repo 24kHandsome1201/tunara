@@ -14,6 +14,7 @@ import { type AgentCode } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { cleanTerminalLines, cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
+import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
 import { TerminalSearchBar } from "./TerminalSearchBar";
@@ -466,26 +467,25 @@ export function TerminalView({
 
       let inputBuffer = "";
       // Fallback keystroke command detection — only used when OSC 133 is not active
-      const submitCommandBuffer = () => {
-        if (osc133Active) { inputBuffer = ""; return; }
-        const trimmed = cleanTerminalText(inputBuffer).trim();
+      const submitCommandBuffer = (submitted: string) => {
+        if (osc133Active) return;
+        const trimmed = cleanTerminalText(submitted).trim();
         if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }
         if (!hasAgent) {
-          const agent = detectAgentCommand(inputBuffer);
+          const agent = detectAgentCommand(submitted);
           if (agent) {
             markAgentDetected(agent);
           }
         }
-        inputBuffer = "";
       };
       const dataDisposable = term.onData((data) => {
         writePty(data);
-        const submitAgentInput = () => {
+        const submitAgentInput = (submitted: string) => {
           if (!hasAgent) return;
-          const submitted = cleanTerminalText(inputBuffer).trim();
-          if (!submitted) return;
+          const trimmed = cleanTerminalText(submitted).trim();
+          if (!trimmed) return;
           agentStartupPending = false;
           if (idleTimer) {
             clearTimeout(idleTimer);
@@ -496,35 +496,11 @@ export function TerminalView({
             useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
           }
         };
-        {
-          for (let i = 0; i < data.length; i += 1) {
-            const ch = data[i];
-            if (ch === "\x1b") {
-              const next = data[i + 1];
-              if (next === "]") {
-                // OSC sequence: \x1b] ... (terminated by \x07 or \x1b\\)
-                i += 2;
-                while (i < data.length) {
-                  if (data[i] === "\x07") break;
-                  if (data[i] === "\x1b" && data[i + 1] === "\\") { i += 1; break; }
-                  i += 1;
-                }
-              } else {
-                // CSI / other escape sequences
-                while (i + 1 < data.length && !/[A-Za-z~]/.test(data[i + 1])) i += 1;
-                if (i + 1 < data.length) i += 1;
-              }
-            } else if (ch === "\r" || ch === "\n") {
-              submitAgentInput();
-              submitCommandBuffer();
-            } else if (ch === "\x7f" || ch === "\b") {
-              inputBuffer = inputBuffer.slice(0, -1);
-            } else if (ch === "\x03" || ch === "\x15") {
-              inputBuffer = "";
-            } else if (ch >= " " && ch !== "\x7f") {
-              inputBuffer += ch;
-            }
-          }
+        const result = scanTerminalInputBuffer(inputBuffer, data);
+        inputBuffer = result.buffer;
+        for (const submitted of result.submissions) {
+          submitAgentInput(submitted);
+          submitCommandBuffer(submitted);
         }
       });
       cleanups.push(() => dataDisposable.dispose());

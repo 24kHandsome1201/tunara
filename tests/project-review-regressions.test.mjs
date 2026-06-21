@@ -302,19 +302,24 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminal = read("src/ui/TerminalView.tsx");
   const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
   const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
+  const terminalInput = read("src/modules/terminal/lib/terminal-input-buffer.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
   assert.match(terminal, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
   assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
+  assert.match(terminal, /import \{ scanTerminalInputBuffer \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
   assert.match(terminal, /observeTerminalResize\(\{/);
+  assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
   assert.match(terminalSearch, /export function TerminalSearchBar/);
   assert.match(terminalResize, /export function observeTerminalResize/);
   assert.match(terminalResize, /new ResizeObserver/);
+  assert.match(terminalInput, /export function scanTerminalInputBuffer/);
   assert.match(sidebar, /import \{ DirGroupHeader, SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
   assert.match(sidebarHeader, /export function DirGroupHeader/);
   assert.doesNotMatch(terminal, /new ResizeObserver/);
+  assert.doesNotMatch(terminal, /for \(let i = 0; i < data\.length; i \+= 1\)/);
 
-  assert.ok(terminal.split("\n").length < 660);
+  assert.ok(terminal.split("\n").length < 630);
   assert.ok(sidebar.split("\n").length < 380);
 });

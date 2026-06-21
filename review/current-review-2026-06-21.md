@@ -11,14 +11,14 @@
 
 - `git diff --check main`: 通过。
 - `pnpm build`: 通过。
-- `pnpm test`: 通过, Node 26 个测试, Rust 5 个测试。
+- `pnpm test`: 通过, Node 28 个测试, Rust 5 个测试。
 - `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY。
 
 仍不应把它直接当成稳定发布完成:
 
 - Tauri 进程和 PTY 已验证, 但窗口视觉和控件树检查被 macOS Apple Event 权限拦截。
 - Homebrew cask 还没有基于真实发布 DMG 回填 sha256, 不能直接宣称发版产物已完成。
-- `TerminalView.tsx` 仍是结构热点, 需要后续继续拆分 PTY 初始化、agent lifecycle 和输入检测逻辑。
+- `TerminalView.tsx` 仍是结构热点, 需要后续继续拆分 PTY 初始化和 agent lifecycle。
 
 ## 本轮已修
 
@@ -69,7 +69,8 @@
 - `src-tauri/src/modules/resolver/mod.rs` 读取共享 agent registry JSON, 并增加 Rust 单测锁住 `CP -> gh`, `CR -> cursor` 等跨语言映射。
 - `sessions` store 统一管理单个会话和目录批量关闭确认态的过期 timer, UI 组件不再各自启动 3 秒清理 timer。
 - release metadata 已收口: package, Tauri, Cargo, Cargo.lock 和 Homebrew cask 都对齐 `1.0.2`; Homebrew URL/homepage 对齐当前 GitHub owner; cask zap 路径对齐 `dev.conduit.app`; 回归测试禁止 `PLACEHOLDER_SHA256` 和旧 owner/bundle id 回流。
-- `TerminalSearchBar`, `SidebarDirGroupHeader` 和 `observeTerminalResize` 已从大组件抽出, `TerminalView.tsx` 降到 650 行, `Sidebar.tsx` 降到 338 行, 并新增 line-count 回归测试防止回涨。
+- `TerminalSearchBar`, `SidebarDirGroupHeader`, `observeTerminalResize` 和 `scanTerminalInputBuffer` 已从大组件抽出, `TerminalView.tsx` 降到 626 行, `Sidebar.tsx` 降到 338 行, 并新增 line-count 回归测试防止回涨。
+- `terminal-input-buffer`: 终端输入逐字符解析改成纯函数, 覆盖跨 chunk 输入、退格、Ctrl-U、多行提交、OSC title 和 CSI 方向键噪声。
 - `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 
@@ -117,7 +118,7 @@
 
 当前热点:
 
-- `src/ui/TerminalView.tsx`: 已从 746 行降到 650 行, resize observer 已拆出, 但 PTY 初始化、agent lifecycle 和输入检测仍在一个 effect 里。
+- `src/ui/TerminalView.tsx`: 已从 746 行降到 626 行, resize observer 和输入 buffer parser 已拆出, 但 PTY 初始化和 agent lifecycle 仍在一个 effect 里。
 - `src/ui/Sidebar.tsx`: 已从 493 行降到 338 行, 当前可接受, 后续主要是 drag/reorder 可独立抽 hook。
 
 建议拆分:
