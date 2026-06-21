@@ -64,6 +64,15 @@ function persistSettings(s: AppearanceSettings) {
 
 export type InspectorTab = "changes" | "files";
 
+export interface Toast {
+  id: string;
+  sessionId: string;
+  title: string;
+  subtitle: string;
+  variant: "success" | "error";
+  agentCode?: string;
+}
+
 interface UIState extends AppearanceSettings {
   sidebarVisible: boolean;
   panelVisible: boolean;
@@ -72,6 +81,7 @@ interface UIState extends AppearanceSettings {
   viewportWidth: number;
   split: SplitState;
   inspectorTab: InspectorTab;
+  toasts: Toast[];
 
   toggleSidebar: () => void;
   togglePanel: () => void;
@@ -92,6 +102,8 @@ interface UIState extends AppearanceSettings {
   setSplitRatio: (ratio: number) => void;
   setSplitPaneB: (sessionId: string | null) => void;
   setSplitPaneA: (sessionId: string | null) => void;
+  addToast: (toast: Omit<Toast, "id">) => void;
+  removeToast: (id: string) => void;
 }
 
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
@@ -104,6 +116,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
     inspectorTab: "changes" as InspectorTab,
+    toasts: [],
     ...initial,
 
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
@@ -136,6 +149,14 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((s) => sessionId ? { split: { ...s.split, paneB: sessionId } } : { split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }),
     setSplitPaneA: (sessionId) =>
       set((s) => sessionId ? { split: { ...s.split, paneA: sessionId } } : { split: { ...s.split, paneA: null } }),
+    addToast: (toast) => {
+      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      set((s) => ({ toasts: [...s.toasts.slice(-2), { ...toast, id }] }));
+      setTimeout(() => {
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+      }, 4000);
+    },
+    removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   };
 }));
 

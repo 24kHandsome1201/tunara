@@ -4,6 +4,7 @@ import { MainArea } from "@/ui/MainArea";
 import { InspectorPanel } from "@/ui/InspectorPanel";
 import { Settings } from "@/ui/overlays/Settings";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
+import { ToastContainer } from "@/ui/Toast";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useInit } from "./useInit";
@@ -214,6 +215,7 @@ export default function App() {
 
       {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
+      <ToastContainer />
     </div>
   );
 }

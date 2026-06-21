@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Session, AgentCode } from "@/ui/types";
+import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import {
   agentBusyUpdate,
@@ -166,6 +167,19 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (!update) return;
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
+    if (!isActive && session?.agent) {
+      const fileCount = session.changes?.files.length ?? 0;
+      const name = AGENT_NAMES[session.agent] ?? session.agent;
+      useUIStore.getState().addToast({
+        sessionId: id,
+        title: name,
+        subtitle: exitCode === 0
+          ? (fileCount > 0 ? `已完成 · 编辑 ${fileCount} 文件` : "已完成")
+          : `已退出 (exit ${exitCode})`,
+        variant: exitCode === 0 ? "success" : "error",
+        agentCode: session.agent,
+      });
+    }
   },
 
   handleCommandDetected: (id, command) => {
@@ -181,6 +195,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (!update) return;
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
+    if (!isActive && session?.lastCommand) {
+      const cmd = session.lastCommand.length > 30
+        ? session.lastCommand.slice(0, 30) + "…"
+        : session.lastCommand;
+      useUIStore.getState().addToast({
+        sessionId: id,
+        title: cmd,
+        subtitle: exitCode === 0 ? "完成" : `失败 (exit ${exitCode})`,
+        variant: exitCode === 0 ? "success" : "error",
+      });
+    }
   },
 
   handleCwdChange: (id, cwd) => {
