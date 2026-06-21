@@ -268,6 +268,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
 test("follow-up review fixes polish dense UI surfaces", () => {
   const titlebar = read("src/ui/Titlebar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const main = read("src/ui/MainArea.tsx");
   const status = read("src/ui/AgentStatusBar.tsx");
@@ -281,7 +282,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(titlebar, /width: 20, height: 20/);
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
-  assert.match(sidebar, /padding: "6px 9px"/);
+  assert.match(sidebarHeader, /padding: "6px 9px"/);
   assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
   assert.match(sessionCard, /paddingLeft: 6/);
   assert.match(main, /"1px solid var\(--c-accent\)"/);
@@ -295,4 +296,19 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(globals, /@keyframes ctxMenuIn/);
   assert.match(contextMenu, /ctxMenuIn var\(--duration-fast\) ease/);
+});
+
+test("review follow-up keeps terminal and sidebar hotspots split into focused pieces", () => {
+  const terminal = read("src/ui/TerminalView.tsx");
+  const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
+  const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
+
+  assert.match(terminal, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
+  assert.match(terminalSearch, /export function TerminalSearchBar/);
+  assert.match(sidebar, /import \{ DirGroupHeader, SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
+  assert.match(sidebarHeader, /export function DirGroupHeader/);
+
+  assert.ok(terminal.split("\n").length < 700);
+  assert.ok(sidebar.split("\n").length < 380);
 });

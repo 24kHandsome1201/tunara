@@ -15,6 +15,7 @@ import { getTerminalTheme } from "@/styles/terminalTheme";
 import { cleanTerminalLines, cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
+import { TerminalSearchBar } from "./TerminalSearchBar";
 
 interface TerminalViewProps {
   sessionId: string;
@@ -655,90 +656,15 @@ export function TerminalView({
   return (
     <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
       {searchOpen && (
-        <div
-          style={{
-            position: "absolute",
-            top: 6,
-            right: 12,
-            zIndex: 30,
-            background: "var(--c-bg-1)",
-            border: "1px solid var(--c-border-2)",
-            borderRadius: "var(--r-btn)",
-            padding: "4px 8px",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            boxShadow: "var(--shadow-card)",
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                closeSearch();
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                if (e.shiftKey) handleSearchPrev();
-                else handleSearchNext();
-              }
-            }}
-            autoFocus
-            placeholder="搜索…"
-            style={{
-              border: "none",
-              background: "transparent",
-              outline: "none",
-              fontSize: "var(--fs-body)",
-              color: "var(--c-text-primary)",
-              fontFamily: "var(--font-ui)",
-              width: 200,
-            }}
-          />
-          {searchCount && (
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", flexShrink: 0 }}>
-              {searchCount.current}/{searchCount.total}
-            </span>
-          )}
-          <button
-            onClick={handleSearchPrev}
-            title="上一个 ⇧Enter"
-            className="hover-bg"
-            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="18 15 12 9 6 15" />
-            </svg>
-          </button>
-          <button
-            onClick={handleSearchNext}
-            title="下一个 Enter"
-            className="hover-bg"
-            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-          <button
-            onClick={closeSearch}
-            title="关闭 Esc"
-            className="hover-bg"
-            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+        <TerminalSearchBar
+          inputRef={searchInputRef}
+          query={searchQuery}
+          count={searchCount}
+          onQueryChange={handleSearchChange}
+          onNext={handleSearchNext}
+          onPrev={handleSearchPrev}
+          onClose={closeSearch}
+        />
       )}
       <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
     </div>
