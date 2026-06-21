@@ -20,10 +20,11 @@ pub struct DirEntry {
 }
 
 /// Lists immediate children of `path`. Dirs first, then files, each sorted
-/// case-insensitively. Hidden (dot-prefix) entries are filtered — UI may add
-/// a "show hidden" toggle later.
+/// case-insensitively. Hidden (dot-prefix) entries are filtered unless the UI
+/// asks to include them.
 #[tauri::command]
-pub fn fs_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
+pub fn fs_read_dir(path: String, include_hidden: Option<bool>) -> Result<Vec<DirEntry>, String> {
+    let include_hidden = include_hidden.unwrap_or(false);
     let root = super::expand_tilde(&path);
     let read = std::fs::read_dir(&root).map_err(|e| {
         log::debug!("fs_read_dir({}) failed: {e}", root.display());
@@ -34,7 +35,7 @@ pub fn fs_read_dir(path: String) -> Result<Vec<DirEntry>, String> {
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
-            if name.starts_with('.') {
+            if !include_hidden && name.starts_with('.') {
                 return None;
             }
 

@@ -38,12 +38,18 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         if (cancelled) return;
         useSessionsStore.getState().updateSession(active.id, {
           branch: status.branch,
+          gitState: "repo",
           changes: { files: status.files, summary: status.summary },
         });
       })
       .catch(() => {
         if (!cancelled) {
-          useSessionsStore.getState().updateSession(active.id, { changes: undefined });
+          setRemote(null);
+          useSessionsStore.getState().updateSession(active.id, {
+            branch: "",
+            gitState: "notGit",
+            changes: undefined,
+          });
         }
       });
     return () => { cancelled = true; };

@@ -63,6 +63,7 @@ export function createSession(
     title: opts?.title ?? "终端",
     dir,
     branch: opts?.branch ?? "",
+    gitState: "unknown",
     runState: "idle" as const,
     pendingInput: opts?.pendingInput,
     updatedAt: Date.now(),

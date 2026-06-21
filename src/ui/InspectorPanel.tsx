@@ -53,7 +53,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
         {onClose && (
           <button
             onClick={onClose}
-            title="关闭面板 ⌘⇧\"
+            title="关闭面板"
             className="hover-bg"
             style={{
               width: "var(--h-titlebar-control)", height: "var(--h-titlebar-control)",

@@ -158,10 +158,13 @@ export function Sidebar({
       });
     };
 
-    const onUp = () => {
-      el.releasePointerCapture(e.pointerId);
+    const cleanup = (ev: PointerEvent) => {
+      if (el.hasPointerCapture(ev.pointerId)) {
+        el.releasePointerCapture(ev.pointerId);
+      }
       document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointerup", cleanup);
+      document.removeEventListener("pointercancel", cleanup);
       const finalDrag = dragRef.current;
       if (dragStarted.current && finalDrag) {
         const current = useSessionsStore.getState().sessions;
@@ -176,7 +179,8 @@ export function Sidebar({
     };
 
     document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointerup", cleanup);
+    document.addEventListener("pointercancel", cleanup);
   }, []);
 
   return (

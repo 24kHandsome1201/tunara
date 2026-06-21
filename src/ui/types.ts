@@ -9,6 +9,9 @@ export type RunState = "idle" | "running" | "done" | "failed";
 /** Agent 进程内的活动状态，独立于普通 shell 命令状态 */
 export type AgentActivity = "starting" | "idle" | "running";
 
+/** Git 探测状态 */
+export type GitState = "unknown" | "repo" | "notGit";
+
 /** 会话数据 */
 export interface Session {
   id: string;
@@ -33,6 +36,7 @@ export interface Session {
   pendingInput?: string;
 
   // ── git 改动 ──
+  gitState?: GitState;
   changes?: {
     files: ChangedFile[];
     summary: string;

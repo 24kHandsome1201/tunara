@@ -63,9 +63,26 @@ export function useInit() {
       useUIStore.getState().setTrafficLightWidth(96);
     }
 
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const persistSessionsNow = () => {
+      const st = useSessionsStore.getState();
+      void saveSessions(st.sessions, st.activeSessionId);
+    };
+    const scheduleSessionsSave = () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        persistSessionsNow();
+      }, 500);
+    };
+
     unlistens.push(
       getCurrentWindow()
         .onCloseRequested(async () => {
+          if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+          }
           const st = useSessionsStore.getState();
           const ui = useUIStore.getState();
           await saveSessions(st.sessions, st.activeSessionId);
@@ -85,16 +102,18 @@ export function useInit() {
     const unsub = useSessionsStore.subscribe((state) => {
       if (state.sessions !== prevSessions) {
         prevSessions = state.sessions;
-        void saveSessions(state.sessions, state.activeSessionId);
+        scheduleSessionsSave();
       }
     });
 
-    const timer = setInterval(() => {
-      const st = useSessionsStore.getState();
-      void saveSessions(st.sessions, st.activeSessionId);
-    }, 30_000);
+    const timer = setInterval(persistSessionsNow, 30_000);
     return () => {
       unsub();
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+        persistSessionsNow();
+      }
       clearInterval(timer);
       window.removeEventListener("focus", onWindowFocus);
       unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {}));

@@ -17,7 +17,8 @@ function PanelResizeHandle() {
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
     const startX = e.clientX;
     const startWidth = useUIStore.getState().panelWidth;
 
@@ -25,16 +26,20 @@ function PanelResizeHandle() {
       setPanelWidth(startWidth - (ev.clientX - startX));
     };
 
-    const onPointerUp = (ev: PointerEvent) => {
-      (ev.target as HTMLElement).releasePointerCapture(ev.pointerId);
+    const cleanup = (ev: PointerEvent) => {
+      if (handle.hasPointerCapture(ev.pointerId)) {
+        handle.releasePointerCapture(ev.pointerId);
+      }
       document.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointerup", cleanup);
+      document.removeEventListener("pointercancel", cleanup);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
 
     document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointerup", cleanup);
+    document.addEventListener("pointercancel", cleanup);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   };
@@ -61,7 +66,8 @@ function SidebarResizeHandle() {
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
     const startX = e.clientX;
     const startWidth = useUIStore.getState().sidebarWidth;
 
@@ -69,16 +75,20 @@ function SidebarResizeHandle() {
       setSidebarWidth(startWidth + ev.clientX - startX);
     };
 
-    const onPointerUp = (ev: PointerEvent) => {
-      (ev.target as HTMLElement).releasePointerCapture(ev.pointerId);
+    const cleanup = (ev: PointerEvent) => {
+      if (handle.hasPointerCapture(ev.pointerId)) {
+        handle.releasePointerCapture(ev.pointerId);
+      }
       document.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointerup", cleanup);
+      document.removeEventListener("pointercancel", cleanup);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
 
     document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointerup", cleanup);
+    document.addEventListener("pointercancel", cleanup);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   };

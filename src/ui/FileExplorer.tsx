@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { fsReadDir, type DirEntry } from "@/modules/fs/fs-bridge";
+import { useEffect, useMemo, useState } from "react";
+import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 
@@ -24,12 +24,71 @@ function FileIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  );
+}
+
+function RefreshIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+      <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+      <polyline points="18 2 18.5 5.8 14.8 6.2" />
+      <polyline points="6 22 5.5 18.2 9.2 17.8" />
+    </svg>
+  );
+}
+
+function joinPath(base: string, name: string): string {
+  if (!base || base === "/") return "/" + name;
+  return base.endsWith("/") ? base + name : base + "/" + name;
+}
+
+function parentPath(path: string): string {
+  if (path === "/") return "/";
+  const trimmed = path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path;
+  const idx = trimmed.lastIndexOf("/");
+  if (idx <= 0) return trimmed.startsWith("~") ? "~" : "/";
+  return trimmed.slice(0, idx);
+}
 
 function pathDisplay(currentPath: string, rootDir: string): string {
-  const resolved = rootDir === "~" ? currentPath : currentPath;
-  const parts = resolved.split("/").filter(Boolean);
-  if (parts.length <= 3) return parts.join(" / ");
-  return "… / " + parts.slice(-3).join(" / ");
+  if (currentPath === rootDir) return rootDir;
+  let display = currentPath;
+  if (rootDir !== "/" && currentPath.startsWith(rootDir + "/")) {
+    display = "· / " + currentPath.slice(rootDir.length + 1).split("/").join(" / ");
+  }
+  const parts = display.split("/").filter(Boolean);
+  if (parts.length <= 4) return parts.join(" / ") || "/";
+  return "… / " + parts.slice(-4).join(" / ");
+}
+
+function EmptyState({ label, detail }: { label: string; detail?: string }) {
+  return (
+    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+      </div>
+      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{label}</span>
+      {detail && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: "90%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>}
+    </div>
+  );
+}
+
+function LoadingState({ label = "加载中" }: { label?: string }) {
+  return (
+    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />
+      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{label}</span>
+    </div>
+  );
 }
 
 export function FileExplorer({ rootDir }: FileExplorerProps) {
@@ -39,10 +98,18 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
   const [error, setError] = useState(false);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
+  const [includeHidden, setIncludeHidden] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
 
   useEffect(() => {
     setNavDir(null);
     setCurrentPath(rootDir);
+    setExpandedFile(null);
+    setSearchQuery("");
   }, [rootDir]);
 
   useEffect(() => {
@@ -50,44 +117,102 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
     setLoading(true);
     setError(false);
     setExpandedFile(null);
-    fsReadDir(currentPath)
-      .then((e) => { if (!cancelled) { setEntries(e); setLoading(false); } })
-      .catch(() => { if (!cancelled) { setEntries([]); setError(true); setLoading(false); } });
+    fsReadDir(currentPath, includeHidden)
+      .then((e) => {
+        if (!cancelled) {
+          setEntries(e);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEntries([]);
+          setError(true);
+          setLoading(false);
+        }
+      });
     return () => { cancelled = true; };
-  }, [currentPath]);
+  }, [currentPath, includeHidden, reloadKey]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchHits([]);
+      setSearchLoading(false);
+      setSearchError(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchLoading(true);
+    setSearchError(false);
+    const timer = window.setTimeout(() => {
+      fsSearch(rootDir, q, 80, includeHidden)
+        .then((hits) => {
+          if (!cancelled) {
+            setSearchHits(hits);
+            setSearchLoading(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSearchHits([]);
+            setSearchError(true);
+            setSearchLoading(false);
+          }
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [rootDir, searchQuery, includeHidden, reloadKey]);
 
   const canGoUp = currentPath !== "/" && currentPath !== rootDir;
+  const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
+  const files = useMemo(() => entries.filter((e) => e.kind !== "dir"), [entries]);
+  const isSearching = searchQuery.trim().length > 0;
+
+  function refresh() {
+    setReloadKey((n) => n + 1);
+  }
 
   function goUp() {
-    const parts = currentPath.split("/");
-    parts.pop();
-    const parent = parts.join("/") || "/";
     setNavDir("out");
-    setCurrentPath(parent);
+    setCurrentPath(parentPath(currentPath));
   }
 
   function enterDir(name: string) {
-    const next = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
     setNavDir("in");
-    setCurrentPath(next);
+    setCurrentPath(joinPath(currentPath, name));
+  }
+
+  function openSearchDir(path: string) {
+    setSearchQuery("");
+    setNavDir("in");
+    setCurrentPath(path);
   }
 
   function toggleFile(name: string) {
-    const fullPath = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
+    const fullPath = joinPath(currentPath, name);
     setExpandedFile((prev) => (prev === fullPath ? null : fullPath));
   }
 
-  const dirs = entries.filter((e) => e.kind === "dir");
-  const files = entries.filter((e) => e.kind !== "dir");
+  function toggleSearchFile(path: string) {
+    setExpandedFile((prev) => (prev === path ? null : path));
+  }
+
+  const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      {/* breadcrumb */}
       <div style={{ height: 34, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 8px 0 6px", gap: 6, flexShrink: 0 }}>
         <button
           onClick={goUp}
           disabled={!canGoUp}
           className="hover-bg"
+          title="返回上级"
           style={{
             width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none",
             background: "transparent", cursor: canGoUp ? "pointer" : "default",
@@ -102,35 +227,113 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
         <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl", textAlign: "left", flex: 1 }}>
           {pathDisplay(currentPath, rootDir)}
         </span>
+        <button
+          onClick={refresh}
+          className="hover-bg"
+          title="刷新文件列表"
+          style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+        >
+          <RefreshIcon />
+        </button>
+        <button
+          onClick={() => setIncludeHidden((v) => !v)}
+          className="hover-bg"
+          title={includeHidden ? "隐藏点文件" : "显示点文件"}
+          style={{
+            height: 22,
+            minWidth: 22,
+            padding: "0 6px",
+            borderRadius: "var(--r-btn)",
+            border: "none",
+            background: includeHidden ? "var(--c-accent-bg-light)" : "transparent",
+            color: includeHidden ? "var(--c-accent)" : "var(--c-text-5)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "var(--fs-meta)",
+            fontFamily: "var(--font-mono)",
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          .*
+        </button>
       </div>
 
-      {/* content */}
-      <div key={currentPath} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar">
-        {loading ? (
-          <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>加载中</span>
-          </div>
+      <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
+        <div style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: "1px solid transparent" }}>
+          <SearchIcon />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索当前项目"
+            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0 }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="hover-bg"
+              title="清空搜索"
+              style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)", flexShrink: 0 }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar">
+        {isSearching ? (
+          searchLoading ? (
+            <LoadingState label="搜索中" />
+          ) : searchError ? (
+            <EmptyState label="搜索失败" detail={searchQuery.trim()} />
+          ) : searchHits.length === 0 ? (
+            <EmptyState label="没有找到匹配文件" detail={searchQuery.trim()} />
+          ) : (
+            <>
+              <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>结果</span>
+                <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-text-4)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "1px 6px", fontFamily: "var(--font-mono)" }}>{searchHits.length}</span>
+              </div>
+              {searchHits.map((hit) => {
+                const isExpanded = expandedFile === hit.path;
+                return (
+                  <div key={hit.path}>
+                    <button
+                      onClick={() => hit.isDir ? openSearchDir(hit.path) : toggleSearchFile(hit.path)}
+                      className="hover-bg"
+                      style={{
+                        width: "100%", height: 30, padding: "0 8px", borderRadius: "var(--r-btn)", border: "none",
+                        background: isExpanded ? "var(--c-accent-bg-light)" : "transparent",
+                        cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2,
+                      }}
+                    >
+                      {hit.isDir ? <FolderIcon /> : <FileIcon />}
+                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{hit.rel}</span>
+                      {hit.isDir && <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>}
+                    </button>
+                    {isExpanded && !hit.isDir && (
+                      <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
+                        <FilePreview filePath={hit.path} fileName={hit.name} onClose={() => setExpandedFile(null)} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )
+        ) : loading ? (
+          <LoadingState />
         ) : error ? (
-          <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-            </div>
-            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>无法读取目录</span>
-          </div>
+          <EmptyState label="无法读取目录" detail={currentPath} />
         ) : entries.length === 0 ? (
-          <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-            </div>
-            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>目录为空</span>
-          </div>
+          <EmptyState label="目录为空" />
         ) : (
           <>
             {dirs.map((entry) => (
@@ -151,7 +354,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
             )}
 
             {files.map((entry) => {
-              const fullPath = currentPath.endsWith("/") ? currentPath + entry.name : currentPath + "/" + entry.name;
+              const fullPath = joinPath(currentPath, entry.name);
               const isExpanded = expandedFile === fullPath;
               return (
                 <div key={"f-" + entry.name}>

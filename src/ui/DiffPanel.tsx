@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { type Session } from "./types";
 import {
-  gitStatus,
   gitDiff,
   gitAheadBehind,
-  type FileChange,
   type FileDiff,
   type RemoteState,
 } from "@/modules/git/git-bridge";
@@ -130,53 +128,31 @@ function remoteLabel(remote: RemoteState | null, branch: string): string {
 export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const repoPath = session.dir;
   const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
-  const updateSession = useSessionsStore((s) => s.updateSession);
   const busy = isSessionBusy(session);
 
-  const [files, setFiles] = useState<FileChange[]>([]);
-  const [branch, setBranch] = useState(session.branch || "");
-  const [summary, setSummary] = useState("");
+  const files = session.changes?.files ?? [];
+  const branch = session.branch || "";
+  const summary = session.changes?.summary ?? "";
+  const notGit = session.gitState === "notGit";
+  const loading = session.gitState !== "repo" && session.gitState !== "notGit" && !session.changes;
+
   const [remote, setRemote] = useState<RemoteState | null>(null);
-  const [notGit, setNotGit] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setExpandedFile(null);
     setDiffs({});
-    (async () => {
-      try {
-        const status = await gitStatus(repoPath);
-        if (cancelled) return;
-        setNotGit(false);
-        setFiles(status.files);
-        setBranch(status.branch);
-        setSummary(status.summary);
-        updateSession(session.id, {
-          branch: status.branch,
-          changes: { files: status.files, summary: status.summary },
-        });
-        gitAheadBehind(repoPath)
-          .then((r) => !cancelled && setRemote(r))
-          .catch(() => !cancelled && setRemote(null));
-      } catch {
-        if (cancelled) return;
-        setNotGit(true);
-        setFiles([]);
-        setRemote(null);
-        updateSession(session.id, { changes: undefined });
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    setRemote(null);
+    if (notGit) return () => { cancelled = true; };
+    gitAheadBehind(repoPath)
+      .then((r) => !cancelled && setRemote(r))
+      .catch(() => !cancelled && setRemote(null));
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoPath, session.id, nonce]);
+  }, [repoPath, session.id, nonce, notGit]);
 
   useEffect(() => {
     if (!busy) return;
@@ -203,6 +179,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   }
 
   const hasChanges = files.length > 0;
+  const refresh = () => useSessionsStore.getState().refreshGit(session.id);
 
   const outerStyle = embedded
     ? { display: "flex", flexDirection: "column" as const, flex: 1, overflow: "hidden", minHeight: 0 }
@@ -217,12 +194,37 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           {hasChanges && summary && (
             <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
           )}
+          <button
+            onClick={refresh}
+            title="刷新 Git 状态"
+            className="hover-bg"
+            style={{
+              marginLeft: hasChanges && summary ? 4 : "auto",
+              width: "var(--h-titlebar-control)",
+              height: "var(--h-titlebar-control)",
+              borderRadius: "var(--r-btn)",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+              <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+              <polyline points="18 2 18.5 5.8 14.8 6.2" />
+              <polyline points="6 22 5.5 18.2 9.2 17.8" />
+            </svg>
+          </button>
           {onClose && (
             <button
               onClick={onClose}
-              title="关闭面板 ⌘⇧\"
+              title="关闭面板"
               style={{
-                marginLeft: hasChanges && summary ? 6 : "auto",
+                marginLeft: 4,
                 width: "var(--h-titlebar-control)",
                 height: "var(--h-titlebar-control)",
                 borderRadius: "var(--r-btn)",
@@ -248,6 +250,19 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       {embedded && hasChanges && summary && (
         <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0, display: "flex", alignItems: "center" }}>
           <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)" }}>{summary}</span>
+          <button
+            onClick={refresh}
+            title="刷新 Git 状态"
+            className="hover-bg"
+            style={{ marginLeft: "auto", width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+              <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+              <polyline points="18 2 18.5 5.8 14.8 6.2" />
+              <polyline points="6 22 5.5 18.2 9.2 17.8" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -293,10 +308,23 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       </div>
 
       {!notGit && !loading && (
-        <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "4px 12px", flexShrink: 0 }}>
-          <div style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {remoteLabel(remote, branch)}
+        <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "4px 8px 4px 12px", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {remoteLabel(remote, branch) || "Git"}
           </div>
+          <button
+            onClick={refresh}
+            title="刷新 Git 状态"
+            className="hover-bg"
+            style={{ width: 22, height: 20, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+              <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+              <polyline points="18 2 18.5 5.8 14.8 6.2" />
+              <polyline points="6 22 5.5 18.2 9.2 17.8" />
+            </svg>
+          </button>
         </div>
       )}
     </div>

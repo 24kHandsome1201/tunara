@@ -26,8 +26,31 @@ function toPersistedSession(s: Session): PersistedSession {
   };
 }
 
+function isPersistedSession(value: unknown): value is PersistedSession {
+  if (!value || typeof value !== "object") return false;
+  const s = value as Partial<PersistedSession>;
+  return (
+    typeof s.id === "string" &&
+    typeof s.title === "string" &&
+    typeof s.dir === "string" &&
+    typeof s.branch === "string" &&
+    typeof s.updatedAt === "number" &&
+    Number.isFinite(s.updatedAt)
+  );
+}
+
 function fromPersistedSession(p: PersistedSession): Session {
-  return { ...p, title: "终端", runState: "idle" };
+  return {
+    ...p,
+    title: p.title.trim() || "终端",
+    runState: "idle",
+  };
+}
+
+function isPersistedUILayout(value: unknown): value is PersistedUILayout {
+  if (!value || typeof value !== "object") return false;
+  const layout = value as Partial<PersistedUILayout>;
+  return typeof layout.sidebarVisible === "boolean" && typeof layout.panelVisible === "boolean";
 }
 
 function dedupeById<T extends { id: string; updatedAt: number }>(items: T[]): T[] {
@@ -71,13 +94,13 @@ export async function loadSessions(): Promise<{
 }> {
   try {
     const store = await load(STORE_FILE, { defaults: {} });
-    const persisted = await store.get<PersistedSession[]>(SESSIONS_KEY);
-    const activeId = await store.get<string | null>(ACTIVE_KEY);
-    if (!persisted) return { sessions: [], activeSessionId: null };
-    const sessions = dedupeById(persisted).map(fromPersistedSession);
+    const persisted = await store.get<unknown>(SESSIONS_KEY);
+    const activeId = await store.get<unknown>(ACTIVE_KEY);
+    if (!Array.isArray(persisted)) return { sessions: [], activeSessionId: null };
+    const sessions = dedupeById(persisted.filter(isPersistedSession)).map(fromPersistedSession);
     return {
       sessions,
-      activeSessionId: activeId ?? null,
+      activeSessionId: typeof activeId === "string" ? activeId : null,
     };
   } catch {
     return { sessions: [], activeSessionId: null };
@@ -97,7 +120,8 @@ export async function saveUILayout(layout: PersistedUILayout): Promise<void> {
 export async function loadUILayout(): Promise<PersistedUILayout | null> {
   try {
     const store = await load(STORE_FILE, { defaults: {} });
-    return (await store.get<PersistedUILayout>(UI_LAYOUT_KEY)) ?? null;
+    const layout = await store.get<unknown>(UI_LAYOUT_KEY);
+    return isPersistedUILayout(layout) ? layout : null;
   } catch {
     return null;
   }

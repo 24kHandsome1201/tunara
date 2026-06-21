@@ -132,6 +132,7 @@ export function cwdChangedUpdate(
     patch: {
       dir: cwd,
       branch: "",
+      gitState: "unknown",
       changes: undefined,
       shellTitle: undefined,
       suppressShellTitle: false,

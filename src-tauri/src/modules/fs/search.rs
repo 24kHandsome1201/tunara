@@ -2,6 +2,7 @@ use ignore::WalkBuilder;
 use serde::Serialize;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchHit {
     /// Absolute path of the matched file.
     pub path: String,
@@ -21,12 +22,14 @@ pub fn fs_search(
     root: String,
     query: String,
     limit: Option<usize>,
+    include_hidden: Option<bool>,
 ) -> Result<Vec<SearchHit>, String> {
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return Ok(Vec::new());
     }
     let cap = limit.unwrap_or(200).min(1000);
+    let include_hidden = include_hidden.unwrap_or(false);
     let root_path = super::expand_tilde(&root);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
@@ -35,7 +38,7 @@ pub fn fs_search(
     let mut out: Vec<SearchHit> = Vec::with_capacity(cap.min(64));
 
     let walker = WalkBuilder::new(&root_path)
-        .hidden(true)
+        .hidden(!include_hidden)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
