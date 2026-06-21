@@ -61,17 +61,19 @@ function ToastItem({ toast }: { toast: Toast }) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={{
-        width: 260,
+        width: "fit-content",
+        minWidth: 260,
+        maxWidth: "min(340px, calc(100vw - 24px))",
         background: "var(--c-bg-white-glass)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
         border: "1px solid var(--c-border-1)",
         borderRadius: "var(--r-card)",
-        boxShadow: "var(--shadow-notif)",
-        padding: "10px 12px 8px",
+        boxShadow: `var(--shadow-notif), inset 3px 0 0 ${accentColor}`,
+        padding: "10px 12px 8px 14px",
         display: "flex",
         alignItems: "center",
-        gap: 10,
+        gap: 9,
         cursor: "pointer",
         animation: exiting
           ? `toastOut ${EXIT_DURATION}ms ease forwards`
@@ -80,8 +82,6 @@ function ToastItem({ toast }: { toast: Toast }) {
         position: "relative",
       }}
     >
-      <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: accentColor, flexShrink: 0 }} />
-
       {toast.agentCode ? (
         <AgentBadge agent={toast.agentCode} size={22} />
       ) : (
@@ -113,6 +113,9 @@ function ToastItem({ toast }: { toast: Toast }) {
           fontSize: "var(--fs-meta)",
           color: "var(--c-text-5)",
           marginTop: 1,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}>
           {toast.subtitle}
         </div>

@@ -191,6 +191,10 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(sidebar, /const canReorder = q\.length === 0/);
   assert.match(sidebar, /if \(!canReorder\) return;/);
   assert.match(toast, /exitTimerRef/);
+  assert.match(toast, /minWidth: 260/);
+  assert.match(toast, /maxWidth: "min\(340px, calc\(100vw - 24px\)\)"/);
+  assert.match(toast, /boxShadow: `var\(--shadow-notif\), inset 3px 0 0 \$\{accentColor\}`/);
+  assert.doesNotMatch(toast, /width: 260/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
 
@@ -295,6 +299,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const contextMenu = read("src/ui/ContextMenu.tsx");
   const globals = read("src/styles/globals.css");
+  const tokens = read("src/styles/tokens.css");
 
   assert.match(titlebar, /width: 20, height: 20/);
   assert.match(titlebar, /paddingLeft: 8/);
@@ -311,6 +316,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(explorer, /function compactRelativePath/);
   assert.match(explorer, /minWidth: 48, textAlign: "right"/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
+  assert.match(tokens, /--font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;/);
   assert.match(globals, /@keyframes ctxMenuIn/);
   assert.match(contextMenu, /ctxMenuIn var\(--duration-fast\) ease/);
 });

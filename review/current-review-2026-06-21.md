@@ -73,6 +73,8 @@
 - `terminal-input-buffer`: 终端输入逐字符解析改成纯函数, 覆盖跨 chunk 输入、退格、Ctrl-U、多行提交、OSC title 和 CSI 方向键噪声。
 - `App`: 左右栏 resize handle 合并成参数化 `ResizeHandle`, pointer capture 和 document listener 生命周期只维护一份。
 - `useInit`: 复用同一个 `getCurrentWindow()` 结果处理 fullscreen、resize 和 close-requested, 避免窗口生命周期接线分叉。
+- `Toast`: 宽度改为 260 到 340px 的响应式范围, 左侧 accent 从独立占位竖条改为 inset 标记, 长 subtitle 使用单行截断。
+- `tokens`: `--font-ui` 增补 BlinkMacSystemFont, Segoe UI 和 Roboto, Linux/WebKitGTK 字体回退更稳。
 - `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 
@@ -165,6 +167,8 @@
 - FileExplorer 面包屑、搜索路径和文件大小列。
 - ContextMenu 缺少进入动画。
 - Settings 终端主题卡片固定宽度。
+- Toast 固定 260px 和左侧 accent 竖条挤压内容。
+- Linux 字体回退链不够保险。
 
 仍建议后续视觉 QA:
 
