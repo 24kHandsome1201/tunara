@@ -12,7 +12,7 @@
 - `git diff --check`: 通过。
 - `pnpm build`: 通过。
 - `pnpm test`: 通过, Node 29 个测试, Rust 5 个测试。
-- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY, 最近一次使用 1422 端口。
+- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY, 最近一次使用 1423 端口。
 
 仍不应把它直接当成稳定发布完成:
 
@@ -108,6 +108,10 @@
 - 本次 1422 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
 - `nc -z 127.0.0.1 1422` 在启动期间成功, 退出后已释放。
 - Computer Use 读取 `Conduit` 和运行应用列表仍失败, 错误仍为 `Apple event error -1743`。
+- 当前 HEAD `cce53a6` 再次使用临时 1423 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1423","devUrl":"http://127.0.0.1:1423"}}'`。
+- 本次 1423 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- `nc -z 127.0.0.1 1423` 在启动期间成功, 退出后已释放。
+- `osascript` 读取 `Conduit` 窗口位置/大小仍失败, 错误为 `-1719`, 原因是 `osascript` 不允许辅助访问。
 
 仍需人工或授权后验证:
 
