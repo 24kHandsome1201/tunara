@@ -75,6 +75,7 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
           borderRadius: "50%",
           background: "var(--c-accent)",
           flexShrink: 0,
+          animation: "scaleIn var(--duration-fast) var(--ease-out-back), subtlePulse 3s var(--ease-smooth) 0.5s infinite",
         }} />
       )}
       <span style={{
@@ -82,7 +83,7 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
         fontWeight: isActive ? 600 : 400,
         color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)",
         fontFamily: "var(--font-ui)",
-        transition: "color var(--duration-fast) ease",
+        transition: "color var(--duration-fast) var(--ease-smooth), font-weight var(--duration-fast) var(--ease-smooth)",
       }}>
         {label}
       </span>
@@ -94,7 +95,7 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
         className="tab-close hover-close"
         style={{
-          width: 16, height: 16, borderRadius: "50%", display: "flex", alignItems: "center",
+          width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center",
           justifyContent: "center", flexShrink: 0,
         }}
       >
@@ -277,7 +278,7 @@ export function Titlebar({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          gap: 4,
           paddingRight: 12,
           flexShrink: 0,
           WebkitAppRegion: "no-drag",

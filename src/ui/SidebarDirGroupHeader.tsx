@@ -50,7 +50,7 @@ export function DirGroupHeader({
         display: "flex",
         alignItems: "center",
         gap: 6,
-        padding: "5px 9px",
+        padding: "5px 12px",
         cursor: onToggleCollapse ? "pointer" : undefined,
       }}
     >
@@ -66,7 +66,7 @@ export function DirGroupHeader({
           strokeLinejoin="round"
           style={{
             transform: collapsed ? "none" : "rotate(90deg)",
-            transition: "transform var(--duration-fast) ease",
+            transition: "transform var(--duration-normal) var(--ease-out-back)",
             flexShrink: 0,
           }}
         >

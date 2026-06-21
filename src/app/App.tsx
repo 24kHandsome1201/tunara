@@ -162,6 +162,7 @@ export default function App() {
               zIndex: 65,
               background: "var(--backdrop-color)",
               backdropFilter: "var(--backdrop-blur)",
+              animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
             }}
           />
         )}
@@ -175,6 +176,7 @@ export default function App() {
               zIndex: 75,
               background: "var(--backdrop-color)",
               backdropFilter: "var(--backdrop-blur)",
+              animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
             }}
           />
         )}
@@ -193,7 +195,7 @@ export default function App() {
             bottom: sidebarOverlay ? 0 : undefined,
             zIndex: sidebarOverlay ? 80 : undefined,
             boxShadow: sidebarOverlay && sidebarVisible ? "var(--shadow-overlay)" : undefined,
-            transition: "width var(--duration-normal) ease",
+            transition: "width var(--duration-expand) var(--ease-out-expo)",
           }}
         >
           <Sidebar
@@ -227,7 +229,7 @@ export default function App() {
               display: "flex",
               minHeight: 0,
               overflow: "hidden",
-              transition: "width var(--duration-normal) ease",
+              transition: "width var(--duration-expand) var(--ease-out-expo)",
             }}
           >
             {panelVisible && <PanelResizeHandle />}

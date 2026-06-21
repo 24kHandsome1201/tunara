@@ -24,7 +24,8 @@ function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?:
         borderRadius: "50%",
         background: color,
         border: "2px solid var(--c-bg-white)",
-        animation: runState === "running" && !isAgent ? "pulseDot 1.3s ease-in-out infinite" : undefined,
+        animation: runState === "running" && !isAgent ? "pulseDot 1.5s var(--ease-in-out) infinite" : "scaleIn var(--duration-fast) var(--ease-out-back)",
+        boxShadow: runState === "running" ? `0 0 6px ${color}` : undefined,
       }}
     />
   );
@@ -121,17 +122,18 @@ function BusyProgress() {
         height: 2,
         overflow: "hidden",
         borderRadius: 999,
-        background: "color-mix(in srgb, var(--c-accent) 14%, transparent)",
+        background: "color-mix(in srgb, var(--c-accent) 10%, transparent)",
+        animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
       }}
     >
       <span
         style={{
           display: "block",
-          width: "42%",
+          width: "38%",
           height: "100%",
           borderRadius: 999,
-          background: "var(--c-accent)",
-          animation: "agentBusyProgress 1.25s ease-in-out infinite",
+          background: "linear-gradient(90deg, transparent, var(--c-accent), transparent)",
+          animation: "agentBusyProgress 1.6s var(--ease-in-out) infinite",
         }}
       />
     </div>
@@ -254,13 +256,12 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
           left: 0,
           top: "50%",
           transform: "translateY(-50%)",
-          width: 2,
-          height: "60%",
-          minHeight: 18,
+          width: 2.5,
+          height: 18,
           background: "var(--c-accent)",
-          borderRadius: "0 1px 1px 0",
+          borderRadius: "0 2px 2px 0",
           opacity: active ? 1 : 0,
-          transition: "opacity var(--duration-fast) ease",
+          transition: "opacity var(--duration-normal) var(--ease-smooth)",
         }}
       />
 

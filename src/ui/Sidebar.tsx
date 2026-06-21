@@ -161,7 +161,7 @@ export function Sidebar({
       aria-label="会话侧栏"
     >
       {onNewTerminal && (
-        <div style={{ padding: "8px 12px 6px" }}>
+        <div style={{ padding: "8px 12px" }}>
           <button
             onClick={onNewTerminal}
             style={{
@@ -175,7 +175,7 @@ export function Sidebar({
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
-              transition: "background var(--duration-fast) ease",
+              transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-smooth)",
             }}
             className="hover-accent-bg"
           >
@@ -282,7 +282,7 @@ export function Sidebar({
               }}
             />
             {!collapsed && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
               {groupSessions.map((s, idx) => {
                 const isDragging = drag?.draggingId === s.id;
                 const showIndicator = drag?.sourceDir === dir && drag.overIndex === idx && drag.draggingId !== s.id;

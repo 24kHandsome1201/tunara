@@ -30,19 +30,12 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
   const contentBg = isDark ? "rgba(255,255,255,0.12)" : isSystem ? "rgba(255,255,255,0.72)" : "#ffffff";
   return (
     <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 62, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 7, display: "flex", gap: 6 }}>
-        <div style={{ width: 30, borderRadius: 5, background: sidebarBg, boxShadow: "inset -1px 0 color-mix(in srgb, var(--c-border-2) 80%, transparent)", display: "flex", flexDirection: "column", padding: "6px 3px", gap: 3 }}>
-          <div style={{ height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)" }} />
-          <div style={{ height: 2, width: "70%", borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)" }} />
-          <div style={{ height: 2, width: "85%", borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)" }} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0, borderRadius: 5, background: contentBg, position: "relative", overflow: "hidden", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--c-border-2) 64%, transparent)" }}>
-          <div style={{ position: "absolute", left: 6, top: 7, display: "flex", alignItems: "center", gap: 3 }}>
-            <div style={{ width: 3, height: 3, borderRadius: "50%", background: "var(--c-accent)", opacity: 0.7 }} />
-            <div style={{ height: 2, width: 20, borderRadius: 1, background: "var(--c-accent)", opacity: isDark ? 0.72 : 0.62 }} />
-          </div>
-          <div style={{ position: "absolute", left: 6, right: 6, top: 18, height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.12)" : "rgba(20,20,24,0.06)" }} />
-          <div style={{ position: "absolute", left: 6, right: "38%", bottom: 8, height: 7, borderRadius: 4, background: isDark ? "rgba(255,255,255,0.14)" : "rgba(20,20,24,0.08)" }} />
+      <div style={{ height: 56, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 6, display: "flex", gap: 5 }}>
+        <div style={{ width: 28, borderRadius: 4, background: sidebarBg }} />
+        <div style={{ flex: 1, minWidth: 0, borderRadius: 4, background: contentBg, position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", left: 6, top: 8, width: 16, height: 2, borderRadius: 1, background: "var(--c-accent)", opacity: 0.7 }} />
+          <div style={{ position: "absolute", left: 6, right: 6, top: 16, height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(20,20,24,0.05)" }} />
+          <div style={{ position: "absolute", left: 6, right: "40%", bottom: 8, height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(20,20,24,0.05)" }} />
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px" }}>
@@ -55,7 +48,7 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
 
 function AccentRing({ color, label, selected, onClick }: { color: string; label: string; selected: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} title={label} style={{ width: 24, height: 24, borderRadius: "50%", border: selected ? `1px solid ${color}` : "1px solid transparent", padding: 3, background: selected ? "var(--c-bg-3)" : "transparent", cursor: "pointer", flexShrink: 0, boxShadow: "none" }}>
+    <button onClick={onClick} title={label} style={{ width: 26, height: 26, borderRadius: "50%", border: selected ? `2px solid ${color}` : "2px solid transparent", padding: 3, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: "none", transition: "border-color var(--duration-fast) var(--ease-smooth)" }}>
       <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: color }} />
     </button>
   );
@@ -80,7 +73,7 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
       {options.map((opt) => (
         <button
           key={opt.id} onClick={() => onChange(opt.id)}
-          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: opt.id === value ? "var(--r-btn)" : 0, background: opt.id === value ? "var(--c-bg-white)" : "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", boxShadow: opt.id === value ? "var(--shadow-card)" : "none", transition: "all var(--duration-fast) ease" }}
+          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: opt.id === value ? "var(--r-btn)" : 0, background: opt.id === value ? "var(--c-bg-white)" : "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", boxShadow: opt.id === value ? "var(--shadow-card)" : "none", transition: "all var(--duration-normal) var(--ease-smooth)" }}
         >
           {opt.label}
         </button>
@@ -150,11 +143,11 @@ export function Settings({ onClose }: SettingsProps) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", backdropFilter: "var(--backdrop-blur)", zIndex: 200, animation: "fadeIn var(--duration-normal) ease" }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", backdropFilter: "var(--backdrop-blur)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
       <div
         ref={sheetRef} tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Escape") onClose(); }}
-        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn var(--duration-normal) ease", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
+        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn var(--duration-slow) var(--ease-out-back)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
         <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>设置</span>
@@ -164,7 +157,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
           <div style={{ display: "inline-flex", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: 3, gap: 2 }}>
             {TABS.map((tab) => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: "4px 12px", borderRadius: "var(--r-pill)", border: "none", background: activeTab === tab ? "var(--c-bg-white)" : "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", boxShadow: activeTab === tab ? "var(--shadow-card)" : "none" }}>
+              <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: "4px 12px", borderRadius: "var(--r-pill)", border: "none", background: activeTab === tab ? "var(--c-bg-white)" : "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", boxShadow: activeTab === tab ? "var(--shadow-card)" : "none", transition: "all var(--duration-normal) var(--ease-smooth)" }}>
                 {tab}
               </button>
             ))}
@@ -203,7 +196,7 @@ export function Settings({ onClose }: SettingsProps) {
                       style={{
                         width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
                         background: cursorBlink ? "var(--c-accent)" : "var(--c-bg-3)",
-                        transition: "background var(--duration-fast) ease",
+                        transition: "background var(--duration-normal) var(--ease-smooth)",
                         display: "flex", alignItems: "center",
                       }}
                     >
@@ -211,7 +204,7 @@ export function Settings({ onClose }: SettingsProps) {
                         width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
                         boxShadow: "var(--shadow-card)",
                         transform: cursorBlink ? "translateX(16px)" : "translateX(0)",
-                        transition: "transform var(--duration-fast) ease",
+                        transition: "transform var(--duration-normal) var(--ease-out-back)",
                       }} />
                     </button>
                   </label>
@@ -242,7 +235,7 @@ export function Settings({ onClose }: SettingsProps) {
                     style={{
                       width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
                       background: bellNotification ? "var(--c-accent)" : "var(--c-bg-3)",
-                      transition: "background var(--duration-fast) ease",
+                      transition: "background var(--duration-normal) var(--ease-smooth)",
                       display: "flex", alignItems: "center", marginBottom: 10,
                     }}
                   >
@@ -250,7 +243,7 @@ export function Settings({ onClose }: SettingsProps) {
                       width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
                       boxShadow: "var(--shadow-card)",
                       transform: bellNotification ? "translateX(16px)" : "translateX(0)",
-                      transition: "transform var(--duration-fast) ease",
+                      transition: "transform var(--duration-normal) var(--ease-out-back)",
                     }} />
                   </button>
                 </div>
@@ -303,7 +296,7 @@ export function Settings({ onClose }: SettingsProps) {
                     <button
                       key={ed}
                       onClick={() => setExternalEditor(ed)}
-                      style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: ed === externalEditor ? "var(--r-btn)" : 0, background: ed === externalEditor ? "var(--c-bg-white)" : "transparent", color: ed === externalEditor ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: ed === externalEditor ? 600 : 400, cursor: "pointer", boxShadow: ed === externalEditor ? "var(--shadow-card)" : "none", transition: "all var(--duration-fast) ease" }}
+                      style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: ed === externalEditor ? "var(--r-btn)" : 0, background: ed === externalEditor ? "var(--c-bg-white)" : "transparent", color: ed === externalEditor ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: ed === externalEditor ? 600 : 400, cursor: "pointer", boxShadow: ed === externalEditor ? "var(--shadow-card)" : "none", transition: "all var(--duration-normal) var(--ease-smooth)" }}
                     >
                       {EDITOR_LABELS[ed]}
                     </button>
@@ -392,7 +385,7 @@ export function Settings({ onClose }: SettingsProps) {
           ) : <span />}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", background: "var(--c-bg-3)", padding: "2px 6px", borderRadius: "var(--r-btn)" }}>ESC</span>
-            <button onClick={onClose} style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>
+            <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)" }}>
               完成
             </button>
           </div>

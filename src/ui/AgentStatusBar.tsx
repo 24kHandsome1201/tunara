@@ -30,7 +30,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       const timer = setTimeout(() => {
         setVisible(false);
         setFading(false);
-      }, 1500);
+      }, 1200);
       return () => clearTimeout(timer);
     } else if (!session.agent) {
       setVisible(false);
@@ -45,12 +45,10 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   return (
     <div
       style={{
-        height: 32,
-        margin: "4px 8px 0",
+        height: 30,
+        margin: "4px 8px",
         flexShrink: 0,
-        background: "var(--c-bg-1-glass)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
+        background: "var(--c-bg-1)",
         border: "1px solid var(--c-border-1)",
         borderRadius: "var(--r-btn)",
         display: "flex",
@@ -58,8 +56,9 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         padding: "0 10px",
         gap: 8,
         opacity: fading ? 0 : 1,
-        transition: "opacity 0.3s ease",
-        pointerEvents: "none",
+        transform: fading ? "translateY(-4px) scale(0.98)" : "translateY(0) scale(1)",
+        transition: "opacity var(--duration-slow) var(--ease-smooth), transform var(--duration-slow) var(--ease-smooth)",
+        animation: !fading ? "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)" : undefined,
       }}
     >
       {agentCode && <AgentBadge agent={agentCode} size={18} />}
@@ -70,7 +69,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       <span style={{ fontSize: "var(--fs-meta)", color: isBusy ? "var(--c-accent)" : "var(--c-text-5)", fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 4 }}>
         {isBusy ? (isStarting ? "加载中" : "运行中") : "已完成"}
         {isBusy && (
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)" }} />
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.5s var(--ease-in-out) infinite", boxShadow: "0 0 6px color-mix(in srgb, var(--c-accent) 40%, transparent)" }} />
         )}
       </span>
       {fileCount > 0 && (

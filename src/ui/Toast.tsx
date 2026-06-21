@@ -71,15 +71,15 @@ function ToastItem({ toast }: { toast: Toast }) {
         border: "1px solid var(--c-border-1)",
         borderRadius: "var(--r-card)",
         boxShadow: "var(--shadow-notif)",
-        borderLeft: `3px solid ${accentColor}`,
+        borderLeft: `2.5px solid ${accentColor}`,
         padding: "10px 12px 8px 12px",
         display: "flex",
         alignItems: "center",
         gap: 9,
         cursor: "pointer",
         animation: exiting
-          ? `toastOut ${EXIT_DURATION}ms ease forwards`
-          : "toastIn var(--duration-normal) ease",
+          ? `toastOut ${EXIT_DURATION}ms var(--ease-smooth) forwards`
+          : "toastIn var(--duration-slow) var(--ease-out-back)",
         overflow: "hidden",
         position: "relative",
       }}

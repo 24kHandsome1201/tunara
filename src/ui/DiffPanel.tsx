@@ -109,7 +109,7 @@ function FileStatusBadge({ status }: { status: string }) {
 const checkIcon = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>;
 
 const chevronIcon = (expanded: boolean) => (
-  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease", flexShrink: 0 }}>
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-normal) var(--ease-out-back)", flexShrink: 0 }}>
     <polyline points="9 6 15 12 9 18" />
   </svg>
 );
@@ -235,7 +235,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   function renderFileRow(file: typeof files[number]) {
     const isExpanded = expandedFile === file.path;
     return (
-      <div key={file.path} className="diff-file-row" style={{ background: "var(--c-bg-white)", borderBottom: "1px solid var(--c-border-1)", overflow: "hidden" }}>
+      <div key={file.path} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
         <div
           role="button"
           tabIndex={0}
@@ -292,7 +292,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           {chevronIcon(isExpanded)}
         </div>
         {isExpanded && (
-          <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
+          <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
             <MiniDiff diff={diffs[file.path]} />
           </div>
         )}
@@ -405,14 +405,6 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
             {remoteLabel(remote) || "Git"}
           </div>
-          <button
-            onClick={refresh}
-            title="刷新 Git 状态"
-            className="hover-bg"
-            style={{ width: 20, height: 20, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            <RefreshIcon size={12} />
-          </button>
         </div>
       )}
     </div>

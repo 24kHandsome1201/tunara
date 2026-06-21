@@ -322,7 +322,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           position: "fixed", inset: 0, zIndex: 999,
           background: "var(--backdrop-color)",
           backdropFilter: "var(--backdrop-blur)",
-          animation: "fadeIn var(--duration-fast) ease",
+          animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
         }}
       />
       <div
@@ -343,7 +343,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          animation: "sheetIn var(--duration-normal) ease",
+          animation: "sheetIn var(--duration-slow) var(--ease-out-back)",
         }}
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
@@ -375,7 +375,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           {[...sections.entries()].map(([section, cmds], sectionIdx) => (
             <div key={section}>
               {sectionIdx > 0 && <div style={{ height: 1, background: "var(--c-border-1)", margin: "4px 14px" }} />}
-              <div style={{ padding: "6px 14px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>
+              <div style={{ padding: "6px 20px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>
                 {section}
               </div>
               {cmds.map(({ cmd, globalIdx }) => {
@@ -396,11 +396,12 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                       background: isSelected ? "var(--c-accent-bg-light)" : "transparent",
                       borderRadius: "var(--r-btn)",
                       margin: "0 6px",
-                      transition: "background var(--duration-fast) ease",
+                      transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
+                      transform: isSelected ? "translateX(2px)" : "none",
                     }}
                   >
                     {cmd.icon && (
-                      <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--duration-fast) ease" }}>
+                      <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)", transform: isSelected ? "scale(1.1)" : "scale(1)" }}>
                         {cmd.icon}
                       </span>
                     )}

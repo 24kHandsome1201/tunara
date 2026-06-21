@@ -144,9 +144,9 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         overflow: "hidden",
         borderRadius: 6,
         boxShadow: s.id === activeSessionId
-          ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)"
-          : "inset 0 1px 0 transparent",
-        transition: "box-shadow var(--duration-fast) ease",
+          ? "inset 0 2px 0 var(--c-accent)"
+          : "none",
+        transition: "box-shadow var(--duration-normal) var(--ease-smooth)",
       };
     }
 
@@ -202,9 +202,9 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "1 1 96px", minWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
           {compactPath(active?.dir ?? "")}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, maxWidth: "55%", overflow: "hidden", flexShrink: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", letterSpacing: "0.02em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", letterSpacing: "0.02em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1 }}>
             ⎇ {active?.branch || "-"}
           </span>
           {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
@@ -218,10 +218,10 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           {active?.agent && (
             <>
               <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1 }}>
                 {AGENT_NAMES[active.agent] ?? active.agent}
                 {isAgentActivityBusy(active.agentActivity) && (
-                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0 }} />
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0, animation: "pulseDot 1.5s var(--ease-in-out) infinite", boxShadow: "0 0 4px color-mix(in srgb, var(--c-accent) 40%, transparent)" }} />
                 )}
               </span>
             </>
@@ -262,7 +262,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               title="左右分栏 ⌘D"
               aria-label="左右分栏"
               style={{
-                width: 28,
+                width: 26,
                 height: 22,
                 border: "none",
                 background: "transparent",
@@ -281,7 +281,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               title="上下分栏 ⌘⇧D"
               aria-label="上下分栏"
               style={{
-                width: 28,
+                width: 26,
                 height: 22,
                 border: "none",
                 background: "transparent",

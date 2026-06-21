@@ -263,7 +263,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
         </div>
       </div>
 
-      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar scroll-fade-y">
+      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }} className="no-scrollbar scroll-fade-y">
         {isSearching ? (
           searchLoading ? (
             <PanelLoadingState label="搜索中" />
@@ -295,7 +295,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                       {hit.isDir && <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>}
                     </button>
                     {isExpanded && !hit.isDir && (
-                      <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
+                      <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
                         <FilePreview filePath={hit.path} fileName={hit.name} onClose={() => setExpandedFile(null)} />
                       </div>
                     )}
@@ -372,7 +372,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 48, textAlign: "right" }}>{formatSize(entry.size)}</span>
                   </button>
                   {isExpanded && (
-                    <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
+                    <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
                       <FilePreview filePath={fullPath} fileName={entry.name} onClose={() => setExpandedFile(null)} />
                     </div>
                   )}

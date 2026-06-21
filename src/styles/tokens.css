@@ -122,6 +122,14 @@
   --duration-fast: 120ms;
   --duration-normal: 200ms;
   --duration-slow: 350ms;
+  --duration-expand: 280ms;
+
+  /* ── 缓动曲线 ── */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ── 遮罩 ── */
   --backdrop-color: rgba(20, 20, 28, 0.3);
@@ -133,10 +141,12 @@
   --c-radio-ring: #d4d4d8;
 
   /* ── 阴影 ── */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.03);
-  --shadow-overlay: 0 30px 80px rgba(20, 20, 30, 0.4);
-  --shadow-notif: 0 16px 40px rgba(20, 20, 30, 0.18);
-  --shadow-menu: 0 10px 28px rgba(20, 20, 30, 0.14);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 0 1px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 24px 64px rgba(20, 20, 30, 0.28), 0 8px 20px rgba(20, 20, 30, 0.12);
+  --shadow-notif: 0 12px 32px rgba(20, 20, 30, 0.16), 0 4px 8px rgba(20, 20, 30, 0.08);
+  --shadow-menu: 0 8px 24px rgba(20, 20, 30, 0.12), 0 2px 6px rgba(20, 20, 30, 0.06);
+  --shadow-btn-hover: 0 2px 8px rgba(0, 0, 0, 0.06);
 
   /* ── 尺寸 ── */
   --h-titlebar: 48px;
@@ -231,46 +241,82 @@
   --c-diff-add-bg: #1a2e22;
   --c-diff-add-text: #4ade80;
 
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-overlay: 0 30px 80px rgba(0, 0, 0, 0.6);
-  --shadow-notif: 0 16px 40px rgba(0, 0, 0, 0.4);
-  --shadow-menu: 0 10px 28px rgba(0, 0, 0, 0.44);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 0, 0, 0.35);
+  --shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.5), 0 8px 20px rgba(0, 0, 0, 0.25);
+  --shadow-notif: 0 12px 32px rgba(0, 0, 0, 0.35), 0 4px 8px rgba(0, 0, 0, 0.2);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
+  --shadow-btn-hover: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.hover-bg { background: transparent; color: var(--c-text-4); transition: background var(--duration-fast) ease, color var(--duration-fast) ease; }
+.hover-bg {
+  background: transparent; color: var(--c-text-4);
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-out-expo),
+              box-shadow var(--duration-fast) var(--ease-smooth);
+}
 .hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-bg:active { transform: scale(0.94); }
-.hover-close { background: transparent; color: var(--c-text-5); transition: background var(--duration-fast) ease, color var(--duration-fast) ease; }
+.hover-bg:active { transform: scale(0.92); transition-duration: 60ms; }
+.hover-close {
+  background: transparent; color: var(--c-text-5);
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-out-expo);
+}
 .hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-close:active { transform: scale(0.92); }
-.hover-accent-bg { background: transparent; }
-.hover-accent-bg:hover { background: var(--c-accent-bg-light); }
+.hover-close:active { transform: scale(0.88); transition-duration: 60ms; }
+.hover-accent-bg {
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-smooth);
+}
+.hover-accent-bg:hover { background: var(--c-accent-bg-light); box-shadow: 0 1px 4px color-mix(in srgb, var(--c-accent) 12%, transparent); }
+.hover-accent-bg:active { transform: scale(0.98); box-shadow: none; }
 .hover-text-3:hover { color: var(--c-text-3); }
+.hover-primary:active { transform: scale(0.96); transition: transform 60ms var(--ease-out-expo); }
+.hover-primary:hover { opacity: 0.88; }
 
-.tab-close { opacity: 0; pointer-events: none; }
+.tab-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .tab-btn[data-active="false"]:hover { background: var(--c-bg-3) !important; }
 .tab-btn[data-active="true"]:hover { background: var(--c-accent-bg-light) !important; }
 .tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
+.tab-btn:active { transform: scale(0.96); transition: transform 60ms var(--ease-out-expo); }
+.tab-btn { transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 
 .split-handle:hover .split-handle-line { background: var(--c-accent) !important; }
 .split-handle-h:hover .split-handle-line { width: 3px !important; }
 .split-handle-v:hover .split-handle-line { height: 3px !important; }
+.split-handle-line { transition: background var(--duration-fast) var(--ease-smooth), width var(--duration-fast) var(--ease-out-expo), height var(--duration-fast) var(--ease-out-expo); }
 
-.session-card:hover { background: var(--c-bg-hover); }
-.session-card-close { opacity: 0; pointer-events: none; }
+.session-card {
+  transition: background var(--duration-fast) var(--ease-smooth),
+              box-shadow var(--duration-normal) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-out-expo);
+}
+.session-card:hover { background: var(--c-bg-hover); box-shadow: var(--shadow-card); }
+.session-card:active { transform: scale(0.98); transition-duration: 60ms; }
+.session-card[aria-current="page"] { box-shadow: none; }
+.session-card[aria-current="page"]:hover { box-shadow: 0 1px 4px color-mix(in srgb, var(--c-accent) 10%, transparent); }
+.session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
+.session-card-close:active { transform: scale(0.85); }
 
 /* Context menu items */
-.ctx-item { background: transparent; color: var(--c-text-2); transition: background var(--duration-fast) ease, color var(--duration-fast) ease; }
-.ctx-item:hover { background: var(--c-bg-hover); color: var(--c-text-primary); }
-.ctx-item:active { opacity: 0.8; }
+.ctx-item {
+  background: transparent; color: var(--c-text-2);
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              padding-left var(--duration-fast) var(--ease-out-expo);
+}
+.ctx-item:hover { background: var(--c-bg-hover); color: var(--c-text-primary); padding-left: 14px; }
+.ctx-item:active { opacity: 0.7; transform: scale(0.98); }
 .ctx-item-danger { color: var(--c-error); }
 .ctx-item-danger:hover { background: var(--c-error-bg-light); color: var(--c-error); }
 .ctx-item-disabled { color: var(--c-text-6); pointer-events: none; }
 .ctx-divider { height: 1px; background: var(--c-border-2); margin: var(--sp-1) 0; }
 
-.sidebar-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 2px var(--c-accent-bg-light); }
-.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 2px var(--c-accent-bg-light); }
+.sidebar-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 16%, transparent); }
+.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 16%, transparent); }
 
 /* ── Utility classes ── */
 

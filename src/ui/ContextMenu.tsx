@@ -176,7 +176,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
         boxShadow: "var(--shadow-menu)",
         padding: "4px 0",
         outline: "none",
-        animation: "ctxMenuIn var(--duration-fast) ease",
+        animation: "ctxMenuIn var(--duration-normal) var(--ease-out-back)",
       }}
     >
       {items.map((entry, i) => {

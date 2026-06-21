@@ -23,7 +23,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
         fontSize: "var(--fs-secondary)",
         fontWeight: active ? 600 : 400,
         color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
-        transition: "background var(--duration-fast) ease, color var(--duration-fast) ease",
+        transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
+        boxShadow: active ? "var(--shadow-card)" : "none",
       }}
       className={active ? undefined : "hover-text-3"}
     >
@@ -69,10 +70,10 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
 
       {/* content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-fast) ease" : undefined }}>
+        <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           <DiffPanel session={session} embedded />
         </div>
-        <div key={`files-${tab}`} style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "files" ? "contentIn var(--duration-fast) ease" : undefined }}>
+        <div key={`files-${tab}`} style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "files" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           <FileExplorer rootDir={session.dir} />
         </div>
       </div>
