@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
+import { RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 
 interface FileExplorerProps {
   rootDir: string;
@@ -33,17 +34,6 @@ function SearchIcon() {
   );
 }
 
-function RefreshIcon({ size = 13 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-      <path d="M3 12A9 9 0 0 1 18.5 5.8" />
-      <polyline points="18 2 18.5 5.8 14.8 6.2" />
-      <polyline points="6 22 5.5 18.2 9.2 17.8" />
-    </svg>
-  );
-}
-
 function joinPath(base: string, name: string): string {
   if (!base || base === "/") return "/" + name;
   return base.endsWith("/") ? base + name : base + "/" + name;
@@ -68,28 +58,11 @@ function pathDisplay(currentPath: string, rootDir: string): string {
   return "… / " + parts.slice(-4).join(" / ");
 }
 
-function EmptyState({ label, detail }: { label: string; detail?: string }) {
-  return (
-    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-        </svg>
-      </div>
-      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{label}</span>
-      {detail && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: "90%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>}
-    </div>
-  );
-}
-
-function LoadingState({ label = "加载中" }: { label?: string }) {
-  return (
-    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />
-      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{label}</span>
-    </div>
-  );
-}
+const folderEmptyIcon = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
 
 export function FileExplorer({ rootDir }: FileExplorerProps) {
   const [currentPath, setCurrentPath] = useState(rootDir);
@@ -224,7 +197,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl", textAlign: "left", flex: 1 }}>
+        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {pathDisplay(currentPath, rootDir)}
         </span>
         <button
@@ -262,7 +235,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
       </div>
 
       <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
-        <div style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: "1px solid transparent" }}>
+        <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
           <SearchIcon />
           <input
             type="text"
@@ -290,11 +263,11 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
       <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar">
         {isSearching ? (
           searchLoading ? (
-            <LoadingState label="搜索中" />
+            <PanelLoadingState label="搜索中" />
           ) : searchError ? (
-            <EmptyState label="搜索失败" detail={searchQuery.trim()} />
+            <PanelEmptyState label="搜索失败" sublabel={searchQuery.trim()} />
           ) : searchHits.length === 0 ? (
-            <EmptyState label="没有找到匹配文件" detail={searchQuery.trim()} />
+            <PanelEmptyState label="没有找到匹配文件" sublabel={searchQuery.trim()} />
           ) : (
             <>
               <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
@@ -329,11 +302,11 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
             </>
           )
         ) : loading ? (
-          <LoadingState />
+          <PanelLoadingState />
         ) : error ? (
-          <EmptyState label="无法读取目录" detail={currentPath} />
+          <PanelEmptyState label="无法读取目录" sublabel={currentPath} />
         ) : entries.length === 0 ? (
-          <EmptyState label="目录为空" />
+          <PanelEmptyState icon={folderEmptyIcon} label="目录为空" />
         ) : (
           <>
             {dirs.map((entry) => (

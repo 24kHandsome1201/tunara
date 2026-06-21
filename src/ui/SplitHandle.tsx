@@ -13,7 +13,8 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      const handle = e.currentTarget as HTMLElement;
+      handle.setPointerCapture(e.pointerId);
       dragging.current = true;
       const container = containerRef.current;
       if (!container) return;
@@ -28,11 +29,14 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
         setSplitRatio(ratio);
       };
 
-      const onPointerUp = (ev: PointerEvent) => {
+      const cleanup = (ev: PointerEvent) => {
         dragging.current = false;
-        (ev.target as HTMLElement).releasePointerCapture(ev.pointerId);
+        if (handle.hasPointerCapture(ev.pointerId)) {
+          handle.releasePointerCapture(ev.pointerId);
+        }
         document.removeEventListener("pointermove", onPointerMove);
-        document.removeEventListener("pointerup", onPointerUp);
+        document.removeEventListener("pointerup", cleanup);
+        document.removeEventListener("pointercancel", cleanup);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       };
@@ -40,7 +44,8 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
       document.body.style.cursor = mode === "horizontal" ? "col-resize" : "row-resize";
       document.body.style.userSelect = "none";
       document.addEventListener("pointermove", onPointerMove);
-      document.addEventListener("pointerup", onPointerUp);
+      document.addEventListener("pointerup", cleanup);
+      document.addEventListener("pointercancel", cleanup);
     },
     [mode, containerRef, setSplitRatio],
   );

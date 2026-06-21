@@ -8,6 +8,7 @@ import {
 } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
+import { RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 
 interface DiffPanelProps {
   session: Session;
@@ -69,45 +70,7 @@ function FileStatusBadge({ status }: { status: string }) {
   );
 }
 
-function EmptyState({ icon, label, sublabel }: { icon: React.ReactNode; label: string; sublabel?: string }) {
-  return (
-    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
-        {icon}
-      </div>
-      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{label}</span>
-      {sublabel && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: "90%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sublabel}</span>}
-    </div>
-  );
-}
-
-function EmptyClean() {
-  return (
-    <EmptyState
-      icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
-      label="工作区干净"
-    />
-  );
-}
-
-function EmptyNotGit({ path }: { path: string }) {
-  return (
-    <EmptyState
-      icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>}
-      label="非 Git 仓库"
-      sublabel={path}
-    />
-  );
-}
-
-function EmptyLoading() {
-  return (
-    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />
-      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>git status</span>
-    </div>
-  );
-}
+const checkIcon = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>;
 
 function remoteLabel(remote: RemoteState | null, branch: string): string {
   if (!remote) return "";
@@ -188,7 +151,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   return (
     <div style={outerStyle}>
       {!embedded && (
-        <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 6, flexShrink: 0 }}>
+        <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
           <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)" }}>改动</span>
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "—"}</span>
           {hasChanges && summary && (
@@ -212,12 +175,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
               flexShrink: 0,
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-              <path d="M3 12A9 9 0 0 1 18.5 5.8" />
-              <polyline points="18 2 18.5 5.8 14.8 6.2" />
-              <polyline points="6 22 5.5 18.2 9.2 17.8" />
-            </svg>
+            <RefreshIcon />
           </button>
           {onClose && (
             <button
@@ -256,23 +214,18 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
             className="hover-bg"
             style={{ marginLeft: "auto", width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-              <path d="M3 12A9 9 0 0 1 18.5 5.8" />
-              <polyline points="18 2 18.5 5.8 14.8 6.2" />
-              <polyline points="6 22 5.5 18.2 9.2 17.8" />
-            </svg>
+            <RefreshIcon size={12} />
           </button>
         </div>
       )}
 
       <div style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar">
         {loading ? (
-          <EmptyLoading />
+          <PanelLoadingState label="git status" />
         ) : notGit ? (
-          <EmptyNotGit path={repoPath} />
+          <PanelEmptyState label="非 Git 仓库" sublabel={repoPath} />
         ) : !hasChanges ? (
-          <EmptyClean />
+          <PanelEmptyState icon={checkIcon} label="工作区干净" />
         ) : (
           <div style={{ padding: "6px" }}>
             {files.map((file) => {
@@ -316,14 +269,9 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
             onClick={refresh}
             title="刷新 Git 状态"
             className="hover-bg"
-            style={{ width: 22, height: 20, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-              <path d="M3 12A9 9 0 0 1 18.5 5.8" />
-              <polyline points="18 2 18.5 5.8 14.8 6.2" />
-              <polyline points="6 22 5.5 18.2 9.2 17.8" />
-            </svg>
+            <RefreshIcon size={11} />
           </button>
         </div>
       )}

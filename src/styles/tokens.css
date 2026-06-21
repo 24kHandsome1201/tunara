@@ -259,6 +259,7 @@
 .session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
 
 .sidebar-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 2px var(--c-accent-bg-light); }
+.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 2px var(--c-accent-bg-light); }
 
 /* ── Utility classes ── */
 
