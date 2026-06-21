@@ -350,7 +350,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(palette, /<SearchIcon size=\{14\} \/>/);
   assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
   assert.match(sessionCard, /paddingLeft: 6/);
-  assert.match(main, /"1px solid var\(--c-accent\)"/);
+  assert.match(main, /"inset 0 2px 0 var\(--c-accent\)"/);
+  assert.doesNotMatch(main, /outline: .*var\(--c-accent\)/);
   assert.match(main, /function SplitIcon/);
   assert.match(main, /title="左右分栏 ⌘D"/);
   assert.match(main, /title="上下分栏 ⌘⇧D"/);
@@ -395,17 +396,44 @@ test("follow-up review fixes polish dense UI surfaces", () => {
 test("review follow-up keeps terminal and sidebar hotspots split into focused pieces", () => {
   const terminal = read("src/ui/TerminalView.tsx");
   const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
+  const terminalSearchHook = read("src/ui/useTerminalSearch.ts");
+  const terminalRuntimeSync = read("src/ui/useTerminalRuntimeSync.ts");
+  const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
+  const terminalCommand = read("src/modules/terminal/lib/terminal-command.ts");
+  const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
+  const terminalOutput = read("src/modules/terminal/lib/terminal-output-buffer.ts");
   const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
   const terminalInput = read("src/modules/terminal/lib/terminal-input-buffer.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
   assert.match(terminal, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
+  assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
+  assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
+  assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
+  assert.match(terminal, /import \{ isMeaningfulCommand \} from "@\/modules\/terminal\/lib\/terminal-command"/);
+  assert.match(terminal, /import \{ createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
+  assert.match(terminal, /import \{ createTerminalOutputBuffer \} from "@\/modules\/terminal\/lib\/terminal-output-buffer"/);
   assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
   assert.match(terminal, /import \{ scanTerminalInputBuffer \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
+  assert.match(terminal, /createTerminalInstance\(\{/);
+  assert.match(terminal, /createTerminalOutputBuffer\(term\)/);
+  assert.match(terminal, /useTerminalRuntimeSync\(\{/);
+  assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
   assert.match(terminalSearch, /export function TerminalSearchBar/);
+  assert.match(terminalSearchHook, /export function useTerminalSearch/);
+  assert.match(terminalSearchHook, /registerSearchAddon/);
+  assert.match(terminalSearchHook, /handleCustomKeyEvent/);
+  assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
+  assert.match(terminalRuntimeSync, /getTerminalTheme\(theme, terminalTheme, accent\)/);
+  assert.match(terminalBufferRead, /export function extractCommandFromBuffer/);
+  assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
+  assert.match(terminalBufferRead, /export function getTerminalTailText/);
+  assert.match(terminalCommand, /export function isMeaningfulCommand/);
+  assert.match(terminalInstance, /export function createTerminalInstance/);
+  assert.match(terminalOutput, /export function createTerminalOutputBuffer/);
   assert.match(terminalResize, /export function observeTerminalResize/);
   assert.match(terminalResize, /new ResizeObserver/);
   assert.match(terminalInput, /export function scanTerminalInputBuffer/);
@@ -413,7 +441,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(sidebarHeader, /export function DirGroupHeader/);
   assert.doesNotMatch(terminal, /new ResizeObserver/);
   assert.doesNotMatch(terminal, /for \(let i = 0; i < data\.length; i \+= 1\)/);
+  assert.doesNotMatch(terminal, /const NOISE_COMMANDS = new Set/);
+  assert.doesNotMatch(terminal, /function getTerminalTailText/);
 
-  assert.ok(terminal.split("\n").length < 630);
+  assert.ok(terminal.split("\n").length < 500);
   assert.ok(sidebar.split("\n").length < 380);
 });

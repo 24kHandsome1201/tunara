@@ -12,13 +12,13 @@
 - `git diff --check`: 通过。
 - `pnpm build`: 通过。
 - `pnpm test`: 通过, Node 29 个测试, Rust 5 个测试。
-- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY, 最近一次使用 1423 端口。
+- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY, 最近一次使用 1424 端口。
 
 仍不应把它直接当成稳定发布完成:
 
 - Tauri 进程和 PTY 已验证, 但窗口视觉和控件树检查被 macOS Apple Event 权限拦截。
 - Homebrew cask 还没有基于真实发布 DMG 回填 sha256, 不能直接宣称发版产物已完成。
-- `TerminalView.tsx` 仍是结构热点, 需要后续继续拆分 PTY 初始化和 agent lifecycle。
+- `TerminalView.tsx` 文件尺寸热点已消除, 但 PTY 初始化和 agent lifecycle 仍是后续可继续拆的深层状态机。
 
 ## 本轮已修
 
@@ -78,7 +78,7 @@
 - `src-tauri/src/modules/resolver/mod.rs` 读取共享 agent registry JSON, 并增加 Rust 单测锁住 `CP -> gh`, `CR -> cursor` 等跨语言映射。
 - `sessions` store 统一管理单个会话和目录批量关闭确认态的过期 timer, UI 组件不再各自启动 3 秒清理 timer。
 - release metadata 已收口: package, Tauri, Cargo, Cargo.lock 和 Homebrew cask 都对齐 `1.0.2`; Homebrew URL/homepage 对齐当前 GitHub owner; cask zap 路径对齐 `dev.conduit.app`; 回归测试禁止 `PLACEHOLDER_SHA256` 和旧 owner/bundle id 回流。
-- `TerminalSearchBar`, `SidebarDirGroupHeader`, `observeTerminalResize` 和 `scanTerminalInputBuffer` 已从大组件抽出, `TerminalView.tsx` 降到 626 行, `Sidebar.tsx` 降到 338 行, 并新增 line-count 回归测试防止回涨。
+- `TerminalSearchBar`, `useTerminalSearch`, `useTerminalRuntimeSync`, `terminal-buffer-read`, `terminal-command`, `terminal-instance`, `terminal-output-buffer`, `observeTerminalResize` 和 `scanTerminalInputBuffer` 已从大组件抽出, `TerminalView.tsx` 降到 482 行, `Sidebar.tsx` 降到 338 行, 并新增 line-count 回归测试防止回涨。
 - `terminal-input-buffer`: 终端输入逐字符解析改成纯函数, 覆盖跨 chunk 输入、退格、Ctrl-U、多行提交、OSC title 和 CSI 方向键噪声。
 - `App`: 左右栏 resize handle 合并成参数化 `ResizeHandle`, pointer capture 和 document listener 生命周期只维护一份。
 - `useInit`: 复用同一个 `getCurrentWindow()` 结果处理 fullscreen、resize 和 close-requested, 避免窗口生命周期接线分叉。
@@ -112,6 +112,10 @@
 - 本次 1423 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
 - `nc -z 127.0.0.1 1423` 在启动期间成功, 退出后已释放。
 - `osascript` 读取 `Conduit` 窗口位置/大小仍失败, 错误为 `-1719`, 原因是 `osascript` 不允许辅助访问。
+- 当前未提交拆分后再次使用临时 1424 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1424","devUrl":"http://127.0.0.1:1424"}}'`。
+- 本次 1424 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- `nc -z 127.0.0.1 1424` 在启动期间成功, 退出后已释放。
+- `osascript` 读取 `Conduit` 窗口位置/大小仍失败, 错误为 `-1719`, 原因仍是 `osascript` 不允许辅助访问。
 
 仍需人工或授权后验证:
 
@@ -138,20 +142,19 @@
 - 真实 release DMG 上传后, 下载发布资产并用实际 sha256 替换 `:no_check`。
 - 用该 GitHub release asset 反查 URL 和 checksum 后, 再宣布 Homebrew cask 可发布。
 
-### P2: 架构热点
+### P2: 深层状态机拆分
 
-当前热点:
+当前状态:
 
-- `src/ui/TerminalView.tsx`: 已从 746 行降到 626 行, resize observer 和输入 buffer parser 已拆出, 但 PTY 初始化和 agent lifecycle 仍在一个 effect 里。
+- `python3 /Users/mawei/.agents/skills/check/scripts/audit_signals.py --root /Users/mawei/code/pi5x/rail`: `FILE SIZE HOTSPOTS` 通过, 当前没有 500 行以上源码文件。
+- `src/ui/TerminalView.tsx`: 已从 746 行降到 482 行, resize observer、输入 buffer parser、搜索状态、可见/外观同步、xterm 初始化、输出批量写入、buffer 读取和命令噪声判断均已拆出。
 - `src/ui/Sidebar.tsx`: 已从 493 行降到 338 行, 当前可接受, 后续主要是 drag/reorder 可独立抽 hook。
 
-建议拆分:
+仍可后续拆分:
 
-- `useTerminalInstance`
 - `usePtyBridge`
-- `useTerminalSearch`
 - `useAgentLifecycleTracking`
-- Sidebar dir grouping, drag/reorder, context menu action builder
+- Sidebar drag/reorder 和 context menu action builder
 
 ## GPT Pro review 校准
 
@@ -194,6 +197,7 @@
 - ContextMenu 菜单项缺少图标。
 - Settings 终端主题卡片固定宽度。
 - Settings 主题缩略图细节过碎。
+- 分屏活跃面板 outline 视觉噪声。
 - Toast 固定 260px 和左侧 accent 竖条挤压内容。
 - Linux 字体回退链不够保险。
 - 隐藏滚动条后缺少滚动提示。
