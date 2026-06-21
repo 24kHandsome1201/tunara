@@ -6,10 +6,14 @@ export type AgentCode = "CC" | "CX" | "AM" | "GM" | "CP" | "CR" | "DR" | "OC" | 
 /** 会话运行状态 */
 export type RunState = "idle" | "running" | "done" | "failed";
 
+/** Agent 进程内的活动状态，独立于普通 shell 命令状态 */
+export type AgentActivity = "starting" | "idle" | "running";
+
 /** 会话数据 */
 export interface Session {
   id: string;
   agent?: AgentCode;
+  agentActivity?: AgentActivity;
   title: string;
   dir: string;
   branch: string;
@@ -24,6 +28,7 @@ export interface Session {
   lastCommand?: string;
   lastExitCode?: number;
   shellTitle?: string;
+  suppressShellTitle?: boolean;
 
   pendingInput?: string;
 
@@ -79,19 +84,33 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
+export function isPromptLikeShellTitle(title: string): boolean {
+  return /(?:^|\s)[^@\s]+@[^%#$\n]+.*\s[%#$](?:\s|$)/.test(title.trim());
+}
+
 export function deriveTitle(s: Session): { primary: string; subtitle: string; isCommand: boolean } {
   let primary: string;
   let isCommand = false;
 
+  const lastCommand = s.lastCommand && !isPromptLikeShellTitle(s.lastCommand)
+    ? s.lastCommand
+    : undefined;
+
   if (s.agent) {
     primary = AGENT_NAMES[s.agent] ?? s.agent;
-  } else if (s.lastCommand) {
-    primary = truncate(s.lastCommand, 60);
+  } else if (lastCommand) {
+    primary = truncate(lastCommand, 60);
     isCommand = true;
-  } else if (s.shellTitle && s.shellTitle !== s.dir && s.shellTitle !== shortDir(s.dir)) {
+  } else if (
+    s.shellTitle
+    && !s.suppressShellTitle
+    && !isPromptLikeShellTitle(s.shellTitle)
+    && s.shellTitle !== s.dir
+    && s.shellTitle !== shortDir(s.dir)
+  ) {
     primary = s.shellTitle;
   } else {
-    primary = s.title || "New session";
+    primary = s.title && !isPromptLikeShellTitle(s.title) ? s.title : "终端";
   }
 
   const dirLabel = shortDir(s.dir);

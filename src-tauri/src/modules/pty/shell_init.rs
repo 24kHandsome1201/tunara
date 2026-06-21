@@ -31,10 +31,12 @@ const ZPROFILE: &str = include_str!("scripts/zprofile.zsh");
 const ZLOGIN: &str = include_str!("scripts/zlogin.zsh");
 const ZSHRC: &str = include_str!("scripts/zshrc.zsh");
 const BASHRC: &str = include_str!("scripts/bashrc.bash");
+const FISH_CONFIG: &str = include_str!("scripts/config.fish");
 
 pub enum Shell {
     Zsh,
     Bash,
+    Fish,
     Other,
 }
 
@@ -45,6 +47,7 @@ impl Shell {
         let shell = match name.as_str() {
             "zsh" => Shell::Zsh,
             "bash" => Shell::Bash,
+            "fish" => Shell::Fish,
             _ => Shell::Other,
         };
         (shell, path)
@@ -116,6 +119,19 @@ pub fn build_command(
             // /etc/profile first.
             cmd.arg("-i");
         }
+        Shell::Fish => {
+            match prepare_fish_config() {
+                Ok(config) => {
+                    cmd.arg("-i");
+                    cmd.arg("-C");
+                    cmd.arg(format!("source {}", fish_quote_path(&config)));
+                }
+                Err(e) => {
+                    log::warn!("fish shell integration disabled: {e}");
+                    cmd.arg("-i");
+                }
+            }
+        }
         Shell::Other => {
             log::info!(
                 "unsupported shell '{}', spawning without integration",
@@ -152,6 +168,20 @@ fn prepare_bash_rcfile() -> Result<PathBuf, String> {
     let rc = dir.join("bashrc");
     write_if_changed(&rc, BASHRC)?;
     Ok(rc)
+}
+
+fn prepare_fish_config() -> Result<PathBuf, String> {
+    let dir = integration_root()?.join("fish");
+    fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let config = dir.join("config.fish");
+    write_if_changed(&config, FISH_CONFIG)?;
+    Ok(config)
+}
+
+fn fish_quote_path(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    let escaped = text.replace('\\', "\\\\").replace('\'', "\\'");
+    format!("'{}'", escaped)
 }
 
 fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {

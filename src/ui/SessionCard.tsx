@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { type Session, type RunState, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
+import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 
-function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
+function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
   if (runState === "idle" || ((runState === "done" || runState === "failed") && !unread)) return null;
   const color = runState === "running"
@@ -21,7 +22,7 @@ function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean 
         borderRadius: "50%",
         background: color,
         border: "2px solid var(--c-bg-white)",
-        animation: runState === "running" ? "pulseDot 1.3s ease-in-out infinite" : undefined,
+        animation: runState === "running" && !isAgent ? "pulseDot 1.3s ease-in-out infinite" : undefined,
       }}
     />
   );
@@ -29,6 +30,7 @@ function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean 
 
 function SessionIcon({ session }: { session: Session }) {
   const size = 28;
+  const displayRunState = sessionDisplayRunState(session);
 
   if (session.agent) {
     const style = AGENT_CIRCLE_STYLES[session.agent] ?? AGENT_CIRCLE_STYLES.CC;
@@ -53,7 +55,7 @@ function SessionIcon({ session }: { session: Session }) {
             </span>
           )}
         </div>
-        <StatusDot runState={session.runState} unread={session.unread} />
+        <StatusDot runState={displayRunState} unread={session.unread} isAgent />
       </div>
     );
   }
@@ -77,12 +79,12 @@ function SessionIcon({ session }: { session: Session }) {
           <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
       </div>
-      <StatusDot runState={session.runState} unread={session.unread} />
+      <StatusDot runState={displayRunState} unread={session.unread} isAgent={false} />
     </div>
   );
 }
 
-function StatusMark({ runState }: { runState: RunState }) {
+function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolean }) {
   if (runState === "done") {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -93,7 +95,7 @@ function StatusMark({ runState }: { runState: RunState }) {
   if (runState === "running") {
     return (
       <span style={{ width: 13, height: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.2s ease infinite" }} />
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: isAgent ? undefined : "pulseDot 1.2s ease infinite" }} />
       </span>
     );
   }
@@ -106,6 +108,36 @@ function StatusMark({ runState }: { runState: RunState }) {
     );
   }
   return null;
+}
+
+
+function BusyProgress() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: 10,
+        right: 10,
+        bottom: 0,
+        height: 2,
+        overflow: "hidden",
+        borderRadius: 999,
+        background: "color-mix(in srgb, var(--c-accent) 14%, transparent)",
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          width: "42%",
+          height: "100%",
+          borderRadius: 999,
+          background: "var(--c-accent)",
+          animation: "agentBusyProgress 1.25s ease-in-out infinite",
+        }}
+      />
+    </div>
+  );
 }
 
 function DiffStat({ added, removed }: { added: number; removed: number }) {
@@ -139,6 +171,9 @@ interface SessionCardProps {
 
 export function SessionCard({ session, active, confirmClose, onClick, onClose, onClearCloseConfirm }: SessionCardProps) {
   const { primary, isCommand } = deriveTitle(session);
+  const displayRunState = sessionDisplayRunState(session);
+  const busy = isSessionBusy(session);
+  const showBusyProgress = !!session.agent && busy;
 
   const handleClose = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
@@ -153,8 +188,8 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
   }, [confirmClose, onClearCloseConfirm]);
 
   useEffect(() => {
-    if (confirmClose && session.runState !== "running") onClearCloseConfirm?.();
-  }, [confirmClose, onClearCloseConfirm, session.runState]);
+    if (confirmClose && !busy) onClearCloseConfirm?.();
+  }, [busy, confirmClose, onClearCloseConfirm]);
 
   const totalAdded = session.changes?.files.reduce((a, f) => a + f.added, 0) ?? 0;
   const totalRemoved = session.changes?.files.reduce((a, f) => a + f.removed, 0) ?? 0;
@@ -168,7 +203,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
       className="session-card"
       style={{
         position: "relative",
-        padding: "10px",
+        padding: active ? "10px 10px 10px 14px" : "10px 10px",
         borderRadius: "var(--r-card)",
         cursor: "pointer",
         userSelect: "none",
@@ -205,7 +240,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
             width: 8,
             height: 8,
             borderRadius: "50%",
-            background: session.runState === "failed" ? "var(--c-error)" : "var(--c-accent)",
+            background: displayRunState === "failed" ? "var(--c-error)" : "var(--c-accent)",
           }}
         />
       )}
@@ -246,7 +281,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatusMark runState={session.runState} />
+            <StatusMark runState={displayRunState} isAgent={!!session.agent} />
             <span
               style={{
                 fontSize: "var(--fs-body)",
@@ -302,28 +337,6 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         </div>
       </div>
 
-      {session.runState === "running" && session.agent && (
-        <div
-          style={{
-            marginTop: 8,
-            height: 2,
-            borderRadius: 1,
-            background: "var(--c-bg-3)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              width: "40%",
-              background: "var(--c-accent)",
-              borderRadius: 1,
-              animation: "indeterminate 1.4s ease-in-out infinite",
-            }}
-          />
-        </div>
-      )}
-
       {confirmClose && (
         <div
           style={{
@@ -336,6 +349,8 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
           进程运行中，再次点击关闭
         </div>
       )}
+
+      {showBusyProgress && <BusyProgress />}
     </div>
   );
 }

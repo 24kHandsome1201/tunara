@@ -1,0 +1,149 @@
+import type { AgentActivity, AgentCode, RunState, Session } from "../../../ui/types.ts";
+import { AGENT_NAMES } from "../../../ui/types.ts";
+import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
+
+export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
+
+const AGENT_COMMANDS: Record<string, AgentCode> = {
+  claude: "CC",
+  codex: "CX",
+  amp: "AM",
+  ampcode: "AM",
+  gemini: "GM",
+  copilot: "CP",
+  agent: "CR",
+  droid: "DR",
+  opencode: "OC",
+  pi: "PI",
+  auggie: "AG",
+  devin: "DV",
+};
+
+const AGENT_CODES = new Set<AgentCode>(Object.values(AGENT_COMMANDS));
+
+export type AgentLifecycleEventName = "start" | "idle" | "stop" | "exit";
+
+export interface AgentLifecycleEvent {
+  event: AgentLifecycleEventName;
+  session: string;
+  agent: AgentCode;
+  code?: number;
+}
+
+const AGENT_SHELL_TITLE_ALIASES = new Set(
+  [
+    ...Object.values(AGENT_NAMES),
+    ...Object.keys(AGENT_COMMANDS),
+  ].map((title) => title.trim().toLowerCase()),
+);
+
+const AGENT_SHELL_TITLE_FRAGMENTS = [
+  "claude code",
+  "claude",
+  "codex",
+  "ampcode",
+  "gemini",
+  "copilot",
+  "droid",
+  "opencode",
+  "auggie",
+  "devin",
+];
+
+export function isAgentCode(value: string): value is AgentCode {
+  return AGENT_CODES.has(value as AgentCode);
+}
+
+export function detectAgentCommand(commandLine: string): AgentCode | null {
+  const cmd = cleanTerminalText(commandLine).trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  return AGENT_COMMANDS[cmd] ?? null;
+}
+
+export function isAgentShellTitle(title: string): boolean {
+  const normalized = title.trim().toLowerCase();
+  return AGENT_SHELL_TITLE_ALIASES.has(normalized)
+    || AGENT_SHELL_TITLE_FRAGMENTS.some((fragment) => normalized.includes(fragment));
+}
+
+export function initialAgentActivity(agent: AgentCode): AgentActivity {
+  if (HOOK_READY_AGENTS.has(agent)) return "starting";
+  if (PROMPT_READY_AGENTS.has(agent)) return "idle";
+  return "running";
+}
+
+export function isAgentActivityBusy(activity?: AgentActivity): boolean {
+  return activity === "starting" || activity === "running";
+}
+
+export function isSessionBusy(session: Session): boolean {
+  return session.agent
+    ? isAgentActivityBusy(session.agentActivity)
+    : session.runState === "running";
+}
+
+export function sessionDisplayRunState(session: Session): RunState {
+  if (!session.agent) return session.runState;
+  return isAgentActivityBusy(session.agentActivity) ? "running" : "idle";
+}
+
+export type AgentScreenState = "ready" | "busy" | null;
+
+function isCodexPromptLine(line: string): boolean {
+  return /^\s*›(?:\s|$)/.test(line);
+}
+
+function hasCodexBusyIndicator(text: string): boolean {
+  return /\bWorking\b/i.test(text)
+    || /esc to interrupt/i.test(text)
+    || /Pursuing goal/i.test(text)
+    || /background terminal running/i.test(text);
+}
+
+export function detectCodexScreenState(text: string): AgentScreenState {
+  const lines = cleanTerminalLines(text)
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0);
+  const recent = lines.slice(-12);
+  let promptIndex = -1;
+  for (let i = recent.length - 1; i >= 0; i -= 1) {
+    if (isCodexPromptLine(recent[i])) {
+      promptIndex = i;
+      break;
+    }
+  }
+
+  if (promptIndex >= 0) {
+    const recentJoined = recent.join("\n");
+    return hasCodexBusyIndicator(recentJoined) ? "busy" : "ready";
+  }
+
+  const recentText = recent.join("\n");
+  if (hasCodexBusyIndicator(recentText)) {
+    return "busy";
+  }
+
+  return null;
+}
+
+export function parseAgentLifecycleOsc(data: string): AgentLifecycleEvent | null {
+  const parts = data.split(";");
+  if (parts[0] !== "conduit-agent") return null;
+
+  const event = parts[1] as AgentLifecycleEventName | undefined;
+  const session = parts[2] ?? "";
+  const agent = parts[3] ?? "";
+  const codeText = parts[4] ?? "";
+
+  if (event !== "start" && event !== "idle" && event !== "stop" && event !== "exit") return null;
+  if (!session || !isAgentCode(agent)) return null;
+
+  const code = codeText === "" ? undefined : Number.parseInt(codeText, 10);
+  return {
+    event,
+    session,
+    agent,
+    ...(Number.isFinite(code) ? { code } : {}),
+  };
+}

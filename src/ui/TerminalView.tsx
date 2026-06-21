@@ -12,7 +12,8 @@ import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore, type CursorStyle } from "@/state/ui";
 import { type AgentCode } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
-import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
+import { cleanTerminalLines, cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
+import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
 
 interface TerminalViewProps {
@@ -24,8 +25,6 @@ interface TerminalViewProps {
 }
 
 const FONT_FAMILY = '"JetBrains Mono", SFMono-Regular, Menlo, monospace';
-
-const HOOKABLE_AGENTS = new Set<AgentCode>(["CC", "CX", "DR", "DV"]);
 
 const NOISE_COMMANDS = new Set([
   "ls", "ll", "la", "l", "dir",
@@ -42,22 +41,6 @@ const NOISE_COMMANDS = new Set([
 function isMeaningfulCommand(command: string): boolean {
   const cmd = command.split(/\s+/)[0]?.toLowerCase() ?? "";
   return !NOISE_COMMANDS.has(cmd);
-}
-
-function detectAgentCommand(commandLine: string): AgentCode | null {
-  const cmd = cleanTerminalText(commandLine).trim().split(/\s+/)[0]?.toLowerCase() ?? "";
-  if (cmd === "claude") return "CC";
-  if (cmd === "codex") return "CX";
-  if (cmd === "amp" || cmd === "ampcode") return "AM";
-  if (cmd === "gemini") return "GM";
-  if (cmd === "copilot") return "CP";
-  if (cmd === "agent") return "CR";
-  if (cmd === "droid") return "DR";
-  if (cmd === "opencode") return "OC";
-  if (cmd === "pi") return "PI";
-  if (cmd === "auggie") return "AG";
-  if (cmd === "devin") return "DV";
-  return null;
 }
 
 export function TerminalView({
@@ -151,21 +134,108 @@ export function TerminalView({
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
       let hasAgent = false;
       let currentAgentCode: AgentCode | null = null;
-      let resetLastAgent: (() => void) | null = null;
+      let agentStartupPending = false;
       let osc133Active = false;
       let promptEndRow = -1;
       let lastExitCode = 0;
       let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      let codexStateTimer: ReturnType<typeof setTimeout> | null = null;
+      const getCurrentSession = () =>
+        useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
+      const syncAgentTrackingFromStore = () => {
+        const sess = getCurrentSession();
+        if (sess?.agent && (!hasAgent || currentAgentCode !== sess.agent)) {
+          hasAgent = true;
+          currentAgentCode = sess.agent;
+          agentStartupPending = sess.agentActivity === "starting";
+        }
+        return sess;
+      };
+      const clearAgentTracking = () => {
+        hasAgent = false;
+        currentAgentCode = null;
+        agentStartupPending = false;
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+        if (codexStateTimer) {
+          clearTimeout(codexStateTimer);
+          codexStateTimer = null;
+        }
+      };
+      const scheduleQuietAgentReady = (delay = 3000) => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          idleTimer = null;
+          const s = getCurrentSession();
+          if (!s?.agent || s.agentActivity === "idle") return;
+          if (currentAgentCode && HOOK_READY_AGENTS.has(currentAgentCode)) {
+            agentStartupPending = false;
+          }
+          useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
+        }, delay);
+      };
+
+      const markAgentDetected = (agent: AgentCode) => {
+        const sess = getCurrentSession();
+        hasAgent = true;
+        currentAgentCode = agent;
+        agentStartupPending = sess?.agent === agent
+          ? sess.agentActivity === "starting"
+          : HOOK_READY_AGENTS.has(agent);
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+        if (sess?.agent !== agent) {
+          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
+        }
+      };
+
+      const applyAgentLifecycleEvent = (data: string) => {
+        const payload = parseAgentLifecycleOsc(data);
+        if (!payload) return false;
+        if (payload.session !== sessionIdRef.current) return true;
+
+        if (payload.event === "start") {
+          markAgentDetected(payload.agent);
+          return true;
+        }
+
+        const current = getCurrentSession();
+        if (!current?.agent || current.agent !== payload.agent) return true;
+
+        if (payload.event === "exit") {
+          clearAgentTracking();
+          useSessionsStore.getState().handleAgentExited(sessionIdRef.current, payload.code ?? lastExitCode);
+          return true;
+        }
+
+        if (payload.event === "idle" || payload.event === "stop") {
+          agentStartupPending = false;
+          useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
+        }
+
+        return true;
+      };
+
+      cleanups.push(
+        useSessionsStore.subscribe((state) => {
+          const sess = state.sessions.find((s) => s.id === sessionIdRef.current);
+          if (sess?.agent && (!hasAgent || currentAgentCode !== sess.agent)) {
+            hasAgent = true;
+            currentAgentCode = sess.agent;
+            agentStartupPending = sess.agentActivity === "starting";
+          } else if (!sess?.agent && hasAgent) {
+            clearAgentTracking();
+          }
+        }),
+      );
 
       cleanups.push(
         registerCwdHandler(term, (cwd) => {
           useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
-          // OSC 7 from shell after agent exit → fallback for shells without OSC 133
-          if (hasAgent) {
-            hasAgent = false;
-            resetLastAgent?.();
-            useSessionsStore.getState().handleAgentExited(sessionIdRef.current, lastExitCode);
-          }
         }),
       );
       const titleDisposable = term.onTitleChange((title) => {
@@ -187,21 +257,73 @@ export function TerminalView({
         return cleanTerminalText(parts.join(" ")).trim();
       };
 
+      const extractCommandFromOsc = (data: string): string => {
+        if (!data.startsWith("C;")) return "";
+        try {
+          return decodeURIComponent(data.slice(2)).trim();
+        } catch {
+          return "";
+        }
+      };
+
+      const getTerminalTailText = (rowCount = 12): string => {
+        const buffer = term.buffer.active;
+        const cursorRow = buffer.baseY + buffer.cursorY;
+        const start = Math.max(0, cursorRow - rowCount);
+        const parts: string[] = [];
+        for (let row = start; row <= cursorRow; row += 1) {
+          const line = buffer.getLine(row);
+          if (line) parts.push(line.translateToString(true));
+        }
+        return cleanTerminalLines(parts.join("\n"));
+      };
+
+      let codexDataBurstCount = 0;
+
+      const scheduleCodexStateCheck = () => {
+        codexDataBurstCount += 1;
+        const store = useSessionsStore.getState();
+        const sess = getCurrentSession();
+        if (sess?.agent && sess.agentActivity !== "running" && codexDataBurstCount >= 3) {
+          store.handleAgentBusy(sessionIdRef.current);
+        }
+
+        if (codexStateTimer) clearTimeout(codexStateTimer);
+        codexStateTimer = setTimeout(() => {
+          codexStateTimer = null;
+          codexDataBurstCount = 0;
+          if (!hasAgent || currentAgentCode !== "CX") return;
+          const s = getCurrentSession();
+          if (!s?.agent) return;
+
+          const tail = getTerminalTailText();
+          const screenState = detectCodexScreenState(tail);
+
+          if (screenState === "ready" && s.agentActivity !== "idle") {
+            store.handleAgentReady(sessionIdRef.current);
+          }
+        }, 500);
+      };
+
+      const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
+      cleanups.push(() => agentLifecycleDisposable.dispose());
+
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
+        const trackedSession = syncAgentTrackingFromStore();
 
-        if (hasAgent) {
+        if (hasAgent || trackedSession?.agent) {
           if (marker === "A") {
             const exitCode = lastExitCode;
-            hasAgent = false;
-            currentAgentCode = null;
-            if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-            resetLastAgent?.();
+            clearAgentTracking();
 
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
             osc133Active = true;
           } else if (marker === "D") {
-            lastExitCode = parseInt(data.slice(2), 10) || 0;
+            const exitCode = parseInt(data.slice(2), 10) || 0;
+            lastExitCode = exitCode;
+            clearAgentTracking();
+            useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
           }
           return true;
         }
@@ -210,17 +332,16 @@ export function TerminalView({
         } else if (marker === "B") {
           promptEndRow = term.buffer.active.cursorY + term.buffer.active.baseY;
         } else if (marker === "C") {
-          if (osc133Active && promptEndRow >= 0) {
-            const cmd = extractCommandFromBuffer();
+          const oscCommand = extractCommandFromOsc(data);
+          if (osc133Active && (promptEndRow >= 0 || oscCommand)) {
+            const cmd = oscCommand || extractCommandFromBuffer();
             if (cmd) {
               if (isMeaningfulCommand(cmd)) {
                 useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
               }
               const agent = detectAgentCommand(cmd);
               if (agent) {
-                hasAgent = true;
-                currentAgentCode = agent;
-                useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
+                markAgentDetected(agent);
               }
             }
           }
@@ -264,22 +385,18 @@ export function TerminalView({
                 });
               }
               if (hasAgent && currentAgentCode) {
-                if (!HOOKABLE_AGENTS.has(currentAgentCode)) {
-                  const sess = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
-                  if (sess?.runState === "done") {
-                    useSessionsStore.getState().handleAgentResumed(sessionIdRef.current);
-                  }
+                if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
+                  scheduleCodexStateCheck();
+                  return;
                 }
-                if (idleTimer) clearTimeout(idleTimer);
 
-                idleTimer = setTimeout(() => {
-                  idleTimer = null;
-                  const s = useSessionsStore.getState().sessions.find((ss) => ss.id === sessionIdRef.current);
-
-                  if (s?.agent && s.runState === "running") {
-                    useSessionsStore.getState().handleAgentTurnDone(sessionIdRef.current);
-                  }
-                }, 3000);
+                const sess = getCurrentSession();
+                if (agentStartupPending && sess?.agentActivity === "idle") {
+                  useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
+                }
+                if (agentStartupPending || sess?.agentActivity === "running") {
+                  scheduleQuietAgentReady();
+                }
               }
             },
             onExit: (code) => {
@@ -309,8 +426,6 @@ export function TerminalView({
       }
 
       let inputBuffer = "";
-      let lastSubmittedAgent: AgentCode | null = null;
-      resetLastAgent = () => { lastSubmittedAgent = null; };
       // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = () => {
         if (osc133Active) { inputBuffer = ""; return; }
@@ -318,22 +433,30 @@ export function TerminalView({
         if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }
-        const agent = detectAgentCommand(inputBuffer);
-        if (agent && agent !== lastSubmittedAgent) {
-          lastSubmittedAgent = agent;
-          hasAgent = true;
-          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
+        if (!hasAgent) {
+          const agent = detectAgentCommand(inputBuffer);
+          if (agent) {
+            markAgentDetected(agent);
+          }
         }
         inputBuffer = "";
       };
       const dataDisposable = term.onData((data) => {
         pty.write(data);
-        if (hasAgent && (data === "\r" || data === "\n")) {
-          const sess = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
-          if (sess?.agent && sess.runState !== "running") {
-            useSessionsStore.getState().handleAgentResumed(sessionIdRef.current);
+        const submitAgentInput = () => {
+          if (!hasAgent) return;
+          const submitted = cleanTerminalText(inputBuffer).trim();
+          if (!submitted) return;
+          agentStartupPending = false;
+          if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
           }
-        }
+          const sess = getCurrentSession();
+          if (sess?.agent && sess.agentActivity !== "running") {
+            useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
+          }
+        };
         {
           for (let i = 0; i < data.length; i += 1) {
             const ch = data[i];
@@ -353,6 +476,7 @@ export function TerminalView({
                 if (i + 1 < data.length) i += 1;
               }
             } else if (ch === "\r" || ch === "\n") {
+              submitAgentInput();
               submitCommandBuffer();
             } else if (ch === "\x7f" || ch === "\b") {
               inputBuffer = inputBuffer.slice(0, -1);
@@ -398,7 +522,16 @@ export function TerminalView({
         if (resizeTimer) clearTimeout(resizeTimer);
       });
 
-      cleanups.push(() => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } });
+      cleanups.push(() => {
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+        if (codexStateTimer) {
+          clearTimeout(codexStateTimer);
+          codexStateTimer = null;
+        }
+      });
 
       if (active) term.focus();
     })();

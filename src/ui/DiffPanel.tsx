@@ -9,6 +9,7 @@ import {
   type RemoteState,
 } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
+import { isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 
 interface DiffPanelProps {
   session: Session;
@@ -126,6 +127,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const repoPath = session.dir;
   const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
   const updateSession = useSessionsStore((s) => s.updateSession);
+  const busy = isSessionBusy(session);
 
   const [files, setFiles] = useState<FileChange[]>([]);
   const [branch, setBranch] = useState(session.branch || "");
@@ -173,12 +175,12 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   }, [repoPath, session.id, nonce]);
 
   useEffect(() => {
-    if (session.runState !== "running") return;
+    if (!busy) return;
     const timer = setInterval(() => {
       useSessionsStore.getState().refreshGit(session.id);
     }, 10_000);
     return () => clearInterval(timer);
-  }, [session.runState, session.id]);
+  }, [busy, session.id]);
 
   async function toggleFile(path: string) {
     if (expandedFile === path) {
