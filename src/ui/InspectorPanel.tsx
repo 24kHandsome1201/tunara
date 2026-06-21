@@ -23,6 +23,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
         fontWeight: active ? 600 : 400,
         color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
         marginBottom: -1,
+        transition: "border-color var(--duration-normal) ease, color var(--duration-fast) ease",
       }}
       className={active ? undefined : "hover-text-3"}
     >

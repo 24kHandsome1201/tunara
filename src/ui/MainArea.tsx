@@ -169,8 +169,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             title="关闭分栏"
             style={{
-              width: 24,
-              height: 20,
+              width: 28,
+              height: 22,
               border: "none",
               background: "transparent",
               cursor: "pointer",

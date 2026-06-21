@@ -246,7 +246,8 @@
 .hover-text-3:hover { color: var(--c-text-3); }
 
 .tab-close { opacity: 0; pointer-events: none; }
-.tab-btn[data-active="false"]:hover { background: var(--c-bg-hover) !important; }
+.tab-btn[data-active="false"]:hover { background: var(--c-bg-3) !important; }
+.tab-btn[data-active="true"]:hover { background: var(--c-accent-bg-light) !important; }
 .tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
 
 .split-handle:hover .split-handle-line { background: var(--c-accent) !important; }

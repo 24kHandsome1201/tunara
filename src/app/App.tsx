@@ -153,33 +153,34 @@ export default function App() {
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
-        {sidebarVisible && (
-          <div
-            className="conduit-sidebar"
-            style={{
-              display: "flex",
-              minHeight: 0,
-              overflow: "hidden",
-              width: sidebarOverlay ? Math.min(sidebarWidth, Math.max(240, viewportWidth * 0.86)) : sidebarWidth,
-              flexShrink: 0,
-              position: sidebarOverlay ? "absolute" : "relative",
-              top: sidebarOverlay ? 0 : undefined,
-              left: sidebarOverlay ? 0 : undefined,
-              bottom: sidebarOverlay ? 0 : undefined,
-              zIndex: sidebarOverlay ? 80 : undefined,
-              boxShadow: sidebarOverlay ? "var(--shadow-overlay)" : undefined,
-            }}
-          >
-            <Sidebar
-              sessions={sessions}
-              activeSessionId={activeSessionId ?? ""}
-              onSelectSession={setActive}
-              onNewTerminal={() => useSessionsStore.getState().newTerminal()}
-              onCloseSession={(id) => useSessionsStore.getState().closeSession(id)}
-            />
-            <SidebarResizeHandle />
-          </div>
-        )}
+        <div
+          className="conduit-sidebar"
+          style={{
+            display: "flex",
+            minHeight: 0,
+            overflow: "hidden",
+            width: sidebarVisible
+              ? (sidebarOverlay ? Math.min(sidebarWidth, Math.max(240, viewportWidth * 0.86)) : sidebarWidth)
+              : 0,
+            flexShrink: 0,
+            position: sidebarOverlay ? "absolute" : "relative",
+            top: sidebarOverlay ? 0 : undefined,
+            left: sidebarOverlay ? 0 : undefined,
+            bottom: sidebarOverlay ? 0 : undefined,
+            zIndex: sidebarOverlay ? 80 : undefined,
+            boxShadow: sidebarOverlay && sidebarVisible ? "var(--shadow-overlay)" : undefined,
+            transition: "width var(--duration-normal) ease",
+          }}
+        >
+          <Sidebar
+            sessions={sessions}
+            activeSessionId={activeSessionId ?? ""}
+            onSelectSession={setActive}
+            onNewTerminal={() => useSessionsStore.getState().newTerminal()}
+            onCloseSession={(id) => useSessionsStore.getState().closeSession(id)}
+          />
+          {sidebarVisible && <SidebarResizeHandle />}
+        </div>
 
         {sessions.length > 0 && (
           <MainArea
@@ -188,7 +189,7 @@ export default function App() {
           />
         )}
 
-        {panelVisible && activeSession ? (
+        {activeSession && (
           <div
             className="conduit-panel"
             style={{
@@ -197,16 +198,18 @@ export default function App() {
               right: panelOverlay ? 0 : undefined,
               bottom: panelOverlay ? 0 : undefined,
               zIndex: panelOverlay ? 70 : undefined,
-              boxShadow: panelOverlay ? "var(--shadow-overlay)" : undefined,
-              width: panelWidth,
+              boxShadow: panelOverlay && panelVisible ? "var(--shadow-overlay)" : undefined,
+              width: panelVisible ? panelWidth : 0,
               display: "flex",
               minHeight: 0,
+              overflow: "hidden",
+              transition: "width var(--duration-normal) ease",
             }}
           >
-            <PanelResizeHandle />
+            {panelVisible && <PanelResizeHandle />}
             <InspectorPanel session={activeSession} onClose={togglePanel} />
           </div>
-        ) : null}
+        )}
       </div>
 
       {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}

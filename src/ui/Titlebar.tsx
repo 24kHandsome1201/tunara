@@ -17,11 +17,11 @@ interface TitlebarProps {
   onOpenSettings: () => void;
 }
 
-function PanelLeftIcon() {
+function PanelLeftIcon({ active }: { active: boolean }) {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
       <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
-      <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="var(--c-accent)" fillOpacity="0.3" />
+      <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill={active ? "var(--c-accent)" : "currentColor"} fillOpacity={active ? 0.3 : 0.1} />
     </svg>
   );
 }
@@ -42,34 +42,35 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
       className="tab-btn"
       data-active={isActive ? "true" : "false"}
       style={{
-        height: "var(--h-titlebar-tab)",
-        padding: "7px 13px 8px",
-        borderRadius: "var(--r-input) var(--r-input) 0 0",
-        border: isActive ? "1px solid var(--c-border-2)" : "1px solid transparent",
-        borderBottomColor: isActive ? "var(--c-bg-white)" : "transparent",
-        background: isActive ? "var(--c-bg-white)" : "transparent",
+        height: 28,
+        padding: "0 10px",
+        borderRadius: "var(--r-pill)",
+        border: "none",
+        background: isActive ? "var(--c-accent-bg-soft)" : "transparent",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        gap: 4,
+        gap: 5,
         flexShrink: 0,
-        position: "relative",
-        alignSelf: "center",
-        boxShadow: "none",
+        transition: "background var(--duration-fast) ease",
       }}
     >
       {isActive && (
-        <div style={{
-          position: "absolute",
-          left: 8,
-          right: 8,
-          top: -1,
-          height: 2,
+        <span style={{
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
           background: "var(--c-accent)",
-          borderRadius: "2px 2px 0 0",
+          flexShrink: 0,
         }} />
       )}
-      <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 500, color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)", fontFamily: "var(--font-ui)" }}>
+      <span style={{
+        fontSize: "var(--fs-secondary)",
+        fontWeight: isActive ? 600 : 400,
+        color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)",
+        fontFamily: "var(--font-ui)",
+        transition: "color var(--duration-fast) ease",
+      }}>
         {label}
       </span>
       <span
@@ -80,11 +81,11 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
         onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onClose(); } }}
         className="tab-close hover-close"
         style={{
-          width: 16, height: 16, borderRadius: 4, display: "flex", alignItems: "center",
+          width: 16, height: 16, borderRadius: "50%", display: "flex", alignItems: "center",
           justifyContent: "center", flexShrink: 0,
         }}
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
@@ -154,7 +155,7 @@ export function Titlebar({
           }}
           className="hover-bg"
         >
-          <PanelLeftIcon />
+          <PanelLeftIcon active={sidebarVisible} />
         </button>
       </div>
 
@@ -169,6 +170,7 @@ export function Titlebar({
             flex: 1,
             overflowX: "auto",
             overflowY: "hidden",
+            animation: "tabsIn var(--duration-normal) ease",
             WebkitAppRegion: "no-drag",
           } as DragStyle}
         >

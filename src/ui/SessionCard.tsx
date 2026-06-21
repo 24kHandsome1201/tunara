@@ -214,21 +214,21 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         transition: "background var(--duration-fast) ease",
       }}
     >
-      {active && (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 3,
-            height: "60%",
-            minHeight: 18,
-            background: "var(--c-accent)",
-            borderRadius: "0 2px 2px 0",
-          }}
-        />
-      )}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          top: "50%",
+          transform: "translateY(-50%)",
+          width: 3,
+          height: active ? "60%" : "0%",
+          minHeight: active ? 18 : 0,
+          background: "var(--c-accent)",
+          borderRadius: "0 2px 2px 0",
+          opacity: active ? 1 : 0,
+          transition: "height var(--duration-normal) ease, min-height var(--duration-normal) ease, opacity var(--duration-fast) ease",
+        }}
+      />
 
       {session.unread && (
         <span
