@@ -1,14 +1,47 @@
+import { useEffect, useRef, useState } from "react";
 import { useUIStore, type Toast } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { AgentBadge } from "./agents";
 
+const TOAST_DURATION = 4000;
+const EXIT_DURATION = 250;
+
 function ToastItem({ toast }: { toast: Toast }) {
   const removeToast = useUIStore((s) => s.removeToast);
   const setActive = useSessionsStore((s) => s.setActive);
+  const [exiting, setExiting] = useState<boolean>(false);
+  const [paused, setPaused] = useState<boolean>(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const remainRef = useRef(TOAST_DURATION);
+  const startRef = useRef(Date.now());
+
+  const dismiss = () => {
+    if (exiting) return;
+    setExiting(true);
+    setTimeout(() => removeToast(toast.id), EXIT_DURATION);
+  };
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    timerRef.current = setTimeout(dismiss, TOAST_DURATION);
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  const handleMouseEnter = () => {
+    setPaused(true);
+    clearTimeout(timerRef.current);
+    remainRef.current -= Date.now() - startRef.current;
+  };
+
+  const handleMouseLeave = () => {
+    setPaused(false);
+    startRef.current = Date.now();
+    timerRef.current = setTimeout(dismiss, Math.max(remainRef.current, 500));
+  };
 
   const handleClick = () => {
     setActive(toast.sessionId);
-    removeToast(toast.id);
+    dismiss();
   };
 
   const accentColor = toast.variant === "success" ? "var(--c-success)" : "var(--c-error)";
@@ -19,6 +52,8 @@ function ToastItem({ toast }: { toast: Toast }) {
       tabIndex={0}
       onClick={handleClick}
       onKeyDown={(e) => e.key === "Enter" && handleClick()}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       style={{
         width: 260,
         background: "var(--c-bg-white-glass)",
@@ -27,13 +62,16 @@ function ToastItem({ toast }: { toast: Toast }) {
         border: "1px solid var(--c-border-1)",
         borderRadius: "var(--r-card)",
         boxShadow: "var(--shadow-notif)",
-        padding: "10px 12px",
+        padding: "10px 12px 8px",
         display: "flex",
         alignItems: "center",
         gap: 10,
         cursor: "pointer",
-        animation: "toastIn var(--duration-normal) ease",
-        transition: "opacity var(--duration-fast) ease",
+        animation: exiting
+          ? `toastOut ${EXIT_DURATION}ms ease forwards`
+          : "toastIn var(--duration-normal) ease",
+        overflow: "hidden",
+        position: "relative",
       }}
     >
       <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: accentColor, flexShrink: 0 }} />
@@ -75,7 +113,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       </div>
 
       <button
-        onClick={(e) => { e.stopPropagation(); removeToast(toast.id); }}
+        onClick={(e) => { e.stopPropagation(); dismiss(); }}
         style={{
           width: 18,
           height: 18,
@@ -96,6 +134,26 @@ function ToastItem({ toast }: { toast: Toast }) {
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
+
+      {/* Progress bar */}
+      <div style={{
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 2,
+        background: "var(--c-border-1)",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          height: "100%",
+          background: accentColor,
+          opacity: 0.5,
+          transformOrigin: "left",
+          animation: paused ? "none" : `toastProgress ${TOAST_DURATION}ms linear forwards`,
+          animationPlayState: paused ? "paused" : "running",
+        }} />
+      </div>
     </div>
   );
 }
@@ -107,11 +165,11 @@ export function ToastContainer() {
   return (
     <div style={{
       position: "fixed",
-      bottom: "calc(var(--h-statusbar) + 12px)",
+      top: "calc(var(--h-titlebar) + 8px)",
       right: 12,
       zIndex: 300,
       display: "flex",
-      flexDirection: "column-reverse",
+      flexDirection: "column",
       gap: 8,
       pointerEvents: "auto",
     }}>
