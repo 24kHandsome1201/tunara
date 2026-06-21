@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type ThemeType, type TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
 import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
-import { CloseIcon } from "../shared";
+import { CloseIcon, RefreshIcon } from "../shared";
 
 interface SettingsProps {
   onClose: () => void;
@@ -115,7 +115,9 @@ export function Settings({ onClose }: SettingsProps) {
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
   const [cliError, setCliError] = useState(false);
 
-  useEffect(() => {
+  const loadCliStatus = useCallback(() => {
+    setResolvedClis(null);
+    setCliError(false);
     invoke<ResolvedCommand[]>("resolve_all_bins")
       .then((items) => {
         setResolvedClis(items);
@@ -126,7 +128,13 @@ export function Settings({ onClose }: SettingsProps) {
         setCliError(true);
       });
   }, []);
+
+  useEffect(() => {
+    loadCliStatus();
+  }, [loadCliStatus]);
+
   const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
+  const installedCliCount = CLI_LIST.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
 
   return (
     <>
@@ -265,6 +273,36 @@ export function Settings({ onClose }: SettingsProps) {
 
           {activeTab === "CLI" && (
             <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...SECTION_LABEL, marginBottom: 4 }}>CLI 路径</div>
+                  <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
+                    {resolvedClis === null ? "正在检测当前应用 PATH" : `已找到 ${installedCliCount}/${CLI_LIST.length}`}
+                  </div>
+                </div>
+                <button
+                  onClick={loadCliStatus}
+                  className="hover-bg"
+                  disabled={resolvedClis === null}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "5px 9px",
+                    borderRadius: "var(--r-btn)",
+                    border: "1px solid var(--c-border-2)",
+                    background: "var(--c-bg-white)",
+                    color: "var(--c-text-3)",
+                    fontSize: "var(--fs-secondary)",
+                    cursor: resolvedClis === null ? "default" : "pointer",
+                    opacity: resolvedClis === null ? 0.55 : 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  <RefreshIcon size={12} />
+                  重新检测
+                </button>
+              </div>
               {resolvedClis === null && (
                 <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>检测中…</div>
               )}

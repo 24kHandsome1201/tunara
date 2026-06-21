@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  detectAgentCommand,
   detectCodexScreenState,
   isSessionBusy,
   parseAgentLifecycleOsc,
@@ -102,6 +103,16 @@ test("terminal input buffer handles editing keys and terminal escape noise", () 
     buffer: "",
     submissions: ["one", "two"],
   });
+});
+
+test("agent command detection maps first shell command token only", () => {
+  assert.equal(detectAgentCommand("claude --dangerously-skip-permissions"), "CC");
+  assert.equal(detectAgentCommand("\x1b[32mcodex\x1b[0m exec"), "CX");
+  assert.equal(detectAgentCommand("ampcode"), "AM");
+  assert.equal(detectAgentCommand("agent run task"), "CR");
+  assert.equal(detectAgentCommand("copilot suggest"), "CP");
+  assert.equal(detectAgentCommand("ls claude"), null);
+  assert.equal(detectAgentCommand(""), null);
 });
 
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {

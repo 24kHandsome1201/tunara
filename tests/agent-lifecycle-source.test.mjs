@@ -49,7 +49,8 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(rust, /const FISH_CONFIG: &str = include_str!\("scripts\/config\.fish"\);/);
   assert.match(rust, /Fish,/);
   assert.match(rust, /"fish" => Shell::Fish/);
-  assert.match(rust, /Shell::Fish => \{[\s\S]*cmd\.arg\("-C"\);[\s\S]*source \{\}/);
+  assert.match(rust, /Shell::Fish => (?:match prepare_fish_config\(\)|\{[\s\S]*prepare_fish_config\(\))/);
+  assert.match(rust, /cmd\.arg\("-C"\);[\s\S]*format!\("source \{\}", fish_quote_path\(&config\)\)/);
   assert.match(rust, /fn prepare_fish_config\(\) -> Result<PathBuf, String>/);
 });
 

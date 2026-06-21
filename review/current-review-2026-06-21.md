@@ -11,8 +11,10 @@
 
 - `git diff --check`: 通过。
 - `pnpm build`: 通过。
-- `pnpm test`: 通过, Node 29 个测试, Rust 5 个测试。
-- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY, 最近一次使用 1424 端口。
+- `pnpm test`: 通过, Node 30 个测试, Rust 5 个测试。
+- `cargo fmt --manifest-path src-tauri/Cargo.toml --check`: 通过。
+- `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`: 通过。
+- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY, 最近一次使用 1426 端口。
 
 仍不应把它直接当成稳定发布完成:
 
@@ -40,7 +42,7 @@
 - `AgentStatusBar`: 从绝对定位浮层改为终端 pane 内的固定状态行, 不再遮挡终端顶部输出。
 - `SessionCard`: 移除右侧独立 unread 圆点, unread 状态回到左侧状态点, 不再和关闭按钮抢位。
 - `AgentBadge`/`SessionCard`: Agent 圆形图标改用 `--c-agent-*` token, dark mode 下颜色体系统一。
-- `Settings`: CLI tab 展示全部 CLI 的 installed, missing, error 和 source 状态, 不再静默吞掉 `resolve_all_bins` 失败。
+- `Settings`: CLI tab 展示全部 CLI 的 installed, missing, error 和 source 状态, 不再静默吞掉 `resolve_all_bins` 失败; 同时补充安装数量摘要和重新检测入口。
 - `Settings`: CLI tab 下不显示“恢复默认”, 避免用户在不可见上下文里重置外观。
 - `ContextMenu`: 增加 `role="menu"`, `role="menuitem"`, `role="separator"` 和 Arrow/Home/End/Enter/Space 键盘支持。
 - `ContextMenu`: 阴影改用 `--shadow-menu` token。
@@ -80,6 +82,7 @@
 - release metadata 已收口: package, Tauri, Cargo, Cargo.lock 和 Homebrew cask 都对齐 `1.0.2`; Homebrew URL/homepage 对齐当前 GitHub owner; cask zap 路径对齐 `dev.conduit.app`; 回归测试禁止 `PLACEHOLDER_SHA256` 和旧 owner/bundle id 回流。
 - `TerminalSearchBar`, `useTerminalSearch`, `useTerminalRuntimeSync`, `terminal-buffer-read`, `terminal-command`, `terminal-instance`, `terminal-output-buffer`, `observeTerminalResize` 和 `scanTerminalInputBuffer` 已从大组件抽出, `TerminalView.tsx` 降到 482 行, `Sidebar.tsx` 降到 338 行, 并新增 line-count 回归测试防止回涨。
 - `terminal-input-buffer`: 终端输入逐字符解析改成纯函数, 覆盖跨 chunk 输入、退格、Ctrl-U、多行提交、OSC title 和 CSI 方向键噪声。
+- `agent-lifecycle`: 新增 `detectAgentCommand` 行为测试, 锁住首 token 识别、ANSI 清理和非首 token 不误判。
 - `App`: 左右栏 resize handle 合并成参数化 `ResizeHandle`, pointer capture 和 document listener 生命周期只维护一份。
 - `useInit`: 复用同一个 `getCurrentWindow()` 结果处理 fullscreen、resize 和 close-requested, 避免窗口生命周期接线分叉。
 - `Toast`: 宽度改为 260 到 340px 的响应式范围, 左侧 accent 从独立占位竖条改为 inset 标记, 长 subtitle 使用单行截断。
@@ -89,6 +92,7 @@
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 - `deriveTitle`: 副标题和 `SessionCard` diff badge 共用同一次新增/删除统计, 不再重复 reduce。
 - `styles`: 删除 0 字节的 `src/styles/tokens.ts`, 保留实际入口 `tokens.css`。
+- `CI`: 增加 Rust `rustfmt` 和 `clippy -D warnings` 门禁, 并修复当前 clippy 发现的手写 clamp 和 Git diff tuple 聚合可读性问题。
 
 ## 仍需跟进
 
@@ -116,6 +120,14 @@
 - 本次 1424 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
 - `nc -z 127.0.0.1 1424` 在启动期间成功, 退出后已释放。
 - `osascript` 读取 `Conduit` 窗口位置/大小仍失败, 错误为 `-1719`, 原因仍是 `osascript` 不允许辅助访问。
+- 当前 HEAD `304993c` 再次使用临时 1425 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1425","devUrl":"http://127.0.0.1:1425"}}'`。
+- 本次 1425 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- Computer Use 读取 `Conduit` 窗口状态失败, 错误为 `Apple event error -1743`。
+- `screencapture -x /tmp/rail-conduit-1425.png` 被安全策略拒绝, 原因是全屏截取可能包含无关敏感窗口内容, 需要用户明确提供截图或授权更窄的视觉验证路径。
+- `nc -z 127.0.0.1 1425` 在退出后已释放。
+- 当前未提交 CI/测试补强后再次使用临时 1426 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1426","devUrl":"http://127.0.0.1:1426"}}'`。
+- 本次 1426 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- `nc -z 127.0.0.1 1426` 在启动期间成功, 退出后已释放。
 
 仍需人工或授权后验证:
 

@@ -295,15 +295,15 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 onBlur={commitRename}
-	                onKeyDown={(e) => {
-	                  if (e.key === "Enter") commitRename();
-	                  if (e.key === "Escape") {
-	                    setEditValue(session.customTitle ?? primary);
-	                    setEditing(false);
-	                    useSessionsStore.getState().stopRenaming();
-	                  }
-	                  e.stopPropagation();
-	                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") {
+                    setEditValue(session.customTitle ?? primary);
+                    setEditing(false);
+                    useSessionsStore.getState().stopRenaming();
+                  }
+                  e.stopPropagation();
+                }}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   fontSize: "var(--fs-body)",

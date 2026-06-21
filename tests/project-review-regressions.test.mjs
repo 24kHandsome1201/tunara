@@ -247,6 +247,11 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(shared, /export function CloseIcon/);
 
   assert.match(settings, /CLI 路径检测失败/);
+  assert.match(settings, /const loadCliStatus = useCallback/);
+  assert.match(settings, /onClick=\{loadCliStatus\}/);
+  assert.match(settings, /<RefreshIcon size=\{12\} \/>/);
+  assert.match(settings, /CLI 路径/);
+  assert.match(settings, /已找到 \$\{installedCliCount\}\/\$\{CLI_LIST\.length\}/);
   assert.match(settings, /未在当前应用 PATH 中找到/);
   assert.match(settings, /activeTab === "外观"/);
 });

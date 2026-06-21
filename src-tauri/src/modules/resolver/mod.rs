@@ -39,8 +39,7 @@ struct AgentRegistryEntry {
     cli_bin: String,
 }
 
-const AGENT_REGISTRY_JSON: &str =
-    include_str!("../../../../src/modules/agent/registry-data.json");
+const AGENT_REGISTRY_JSON: &str = include_str!("../../../../src/modules/agent/registry-data.json");
 
 fn agent_registry_entries() -> Vec<AgentRegistryEntry> {
     serde_json::from_str(AGENT_REGISTRY_JSON).expect("agent registry JSON must stay valid")
