@@ -19,15 +19,19 @@ interface AppearanceSettings {
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
   fontSize: number;
+  scrollback: number;
   sidebarWidth: number;
   panelWidth: number;
   terminalTheme: TerminalThemeName;
   externalEditor: ExternalEditor;
+  bellNotification: boolean;
 }
 
 const SETTINGS_KEY = "conduit-appearance";
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 22;
+const MIN_SCROLLBACK = 1000;
+const MAX_SCROLLBACK = 50000;
 const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 400;
 const MIN_PANEL_WIDTH = 240;
@@ -39,10 +43,12 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   cursorStyle: "bar",
   cursorBlink: true,
   fontSize: 14,
+  scrollback: 5000,
   sidebarWidth: 272,
   panelWidth: 320,
   terminalTheme: "default",
   externalEditor: "vscode",
+  bellNotification: true,
 };
 
 function isExternalEditor(v: unknown): v is ExternalEditor {
@@ -90,10 +96,12 @@ function loadSettings(): AppearanceSettings {
       cursorStyle: isCursorStyle(parsed.cursorStyle) ? parsed.cursorStyle : DEFAULT_SETTINGS.cursorStyle,
       cursorBlink: typeof parsed.cursorBlink === "boolean" ? parsed.cursorBlink : DEFAULT_SETTINGS.cursorBlink,
       fontSize: clampNumber(parsed.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
+      scrollback: clampNumber(parsed.scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback),
       sidebarWidth: clampNumber(parsed.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
       panelWidth: clampNumber(parsed.panelWidth, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
       terminalTheme: isTerminalTheme(parsed.terminalTheme) ? parsed.terminalTheme : DEFAULT_SETTINGS.terminalTheme,
       externalEditor: isExternalEditor(parsed.externalEditor) ? parsed.externalEditor : DEFAULT_SETTINGS.externalEditor,
+      bellNotification: typeof parsed.bellNotification === "boolean" ? parsed.bellNotification : DEFAULT_SETTINGS.bellNotification,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -175,6 +183,7 @@ interface UIState extends AppearanceSettings {
   setCursorStyle: (c: CursorStyle) => void;
   setCursorBlink: (b: boolean) => void;
   setFontSize: (n: number) => void;
+  setScrollback: (n: number) => void;
   setTerminalTheme: (t: TerminalThemeName) => void;
   setSidebarWidth: (w: number) => void;
   setPanelWidth: (w: number) => void;
@@ -191,6 +200,7 @@ interface UIState extends AppearanceSettings {
   toggleDirCollapsed: (dir: string) => void;
   recordCommandUse: (id: string) => void;
   setExternalEditor: (e: ExternalEditor) => void;
+  setBellNotification: (b: boolean) => void;
   resetAppearance: () => void;
 }
 
@@ -220,6 +230,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
     setCursorBlink: (cursorBlink) => set({ cursorBlink: typeof cursorBlink === "boolean" ? cursorBlink : DEFAULT_SETTINGS.cursorBlink }),
     setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
+    setScrollback: (scrollback) => set({ scrollback: clampNumber(scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback) }),
     setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
     setSidebarWidth: (sidebarWidth) => {
       set({ sidebarWidth: clampNumber(sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth) });
@@ -261,11 +272,12 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
         return { commandUsage: Object.fromEntries(entries) };
       }),
     setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
+    setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     resetAppearance: () => set({ ...DEFAULT_SETTINGS }),
   };
 }));
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(
@@ -273,8 +285,8 @@ useUIStore.subscribe(
   () => {
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      const { theme, accent, cursorStyle, cursorBlink, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor } = useUIStore.getState();
-      persistSettings({ theme, accent, cursorStyle, cursorBlink, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor });
+      const { theme, accent, cursorStyle, cursorBlink, fontSize, scrollback, sidebarWidth, panelWidth, terminalTheme, externalEditor, bellNotification } = useUIStore.getState();
+      persistSettings({ theme, accent, cursorStyle, cursorBlink, fontSize, scrollback, sidebarWidth, panelWidth, terminalTheme, externalEditor, bellNotification });
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },

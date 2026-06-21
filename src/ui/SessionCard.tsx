@@ -237,7 +237,7 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
       className="session-card"
       style={{
         position: "relative",
-        padding: "7px 10px 7px 12px",
+        padding: "6px 10px 6px 12px",
         borderRadius: "var(--r-btn)",
         cursor: "pointer",
         userSelect: "none",

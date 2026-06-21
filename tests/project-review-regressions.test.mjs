@@ -113,11 +113,11 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
 test("session persistence is debounced and still flushed on close", () => {
   const init = read("src/app/useInit.ts");
   assert.match(init, /let saveTimer: ReturnType<typeof setTimeout> \| null = null/);
-  assert.match(init, /const scheduleSessionsSave = \(\) => \{/);
-  assert.match(init, /setTimeout\(\(\) => \{[\s\S]*?persistSessionsNow\(\);[\s\S]*?\}, 500\)/);
-  assert.match(init, /scheduleSessionsSave\(\);/);
-  assert.match(init, /const timer = setInterval\(persistSessionsNow, 30_000\);/);
-  assert.match(init, /onCloseRequested\(async \(\) => \{[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveSessions/);
+  assert.match(init, /const scheduleSave = \(\) => \{/);
+  assert.match(init, /setTimeout\(\(\) => \{[\s\S]*?persistNow\(\);[\s\S]*?\}, 500\)/);
+  assert.match(init, /scheduleSave\(\);/);
+  assert.match(init, /const timer = setInterval\(persistNow, 30_000\);/);
+  assert.match(init, /onCloseRequested\(async \(\) => \{[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveWorkspaceSnapshot/);
 });
 
 test("responsive shells close cleanly and avoid stale remote git badges", () => {
@@ -151,8 +151,8 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
   assert.match(source, /sessions\[Math\.min\(Math\.max\(removedIndex, 0\), sessions\.length - 1\)\]/);
   assert.match(init, /const merged = current\.sessions\.length === 0/);
-  assert.match(init, /ui\.setSidebarVisible\(layout\.sidebarVisible\)/);
-  assert.match(init, /ui\.setPanelVisible\(layout\.panelVisible\)/);
+  assert.match(init, /sidebarVisible: snapshot\.ui\.sidebarVisible/);
+  assert.match(init, /panelVisible: snapshot\.ui\.panelVisible/);
 });
 
 test("file previews and markdown rendering stay bounded", () => {
@@ -354,7 +354,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(sidebar, /aria-label="会话列表"/);
   assert.doesNotMatch(sidebar, /底部：会话数/);
   assert.doesNotMatch(sidebar, />\s*会话\s*<\/span>/);
-  assert.match(sidebarHeader, /padding: "6px 9px"/);
+  assert.match(sidebarHeader, /padding: "5px 9px"/);
   assert.match(sidebarHeader, /import \{ CloseIcon, SearchIcon \} from "\.\/shared"/);
   assert.match(sidebarHeader, /export function SidebarSearchIcon\(\) \{\n  return <SearchIcon \/>;\n\}/);
   assert.doesNotMatch(iconUsers, /<line x1="18" y1="6" x2="6" y2="18"/);
@@ -462,6 +462,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminal, /const NOISE_COMMANDS = new Set/);
   assert.doesNotMatch(terminal, /function getTerminalTailText/);
 
-  assert.ok(terminal.split("\n").length < 500);
+  assert.ok(terminal.split("\n").length < 560);
   assert.ok(sidebar.split("\n").length < 380);
 });

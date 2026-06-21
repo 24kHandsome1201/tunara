@@ -7,6 +7,7 @@ export const TERMINAL_FONT_FAMILY = '"JetBrains Mono", SFMono-Regular, Menlo, mo
 
 interface TerminalInstanceOptions {
   fontSize: number;
+  scrollback: number;
   theme: ThemeType;
   terminalTheme: TerminalThemeName;
   accent: string;
@@ -16,6 +17,7 @@ interface TerminalInstanceOptions {
 
 export function createTerminalInstance({
   fontSize,
+  scrollback,
   theme,
   terminalTheme,
   accent,
@@ -30,7 +32,7 @@ export function createTerminalInstance({
     cursorBlink,
     cursorStyle,
     cursorInactiveStyle: "outline",
-    scrollback: 3_000,
+    scrollback,
     allowProposedApi: true,
   });
 }

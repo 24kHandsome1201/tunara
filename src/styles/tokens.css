@@ -19,12 +19,12 @@
   /* ── 面/底 ── */
   --c-bg-white: #ffffff;
   --c-bg-white-glass: rgba(255, 255, 255, 0.78);
-  --c-bg-1: #fbfbfc;
-  --c-bg-1-glass: rgba(251, 251, 252, 0.72);
+  --c-bg-1: #fdfdfe;
+  --c-bg-1-glass: rgba(253, 253, 254, 0.72);
   --c-bg-2: #f7f7f8;
   --c-bg-2-glass: rgba(247, 247, 248, 0.65);
   --c-bg-3: #efeff1;
-  --c-bg-hover: #f0eff2;
+  --c-bg-hover: #f4f3f5;
 
   /* ── 线/边框 ── */
   --c-border-1: #ededf0;
@@ -256,7 +256,7 @@
 .split-handle-h:hover .split-handle-line { width: 3px !important; }
 .split-handle-v:hover .split-handle-line { height: 3px !important; }
 
-.session-card:hover { background: var(--c-bg-3); }
+.session-card:hover { background: var(--c-bg-hover); }
 .session-card-close { opacity: 0; pointer-events: none; }
 .session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
 

@@ -12,6 +12,7 @@ interface TerminalRuntimeSyncOptions {
   fitRef: RefObject<FitAddon | null>;
   ptyRef: RefObject<PtySession | null>;
   fontSize: number;
+  scrollback: number;
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
   theme: ThemeType;
@@ -25,6 +26,7 @@ export function useTerminalRuntimeSync({
   fitRef,
   ptyRef,
   fontSize,
+  scrollback,
   cursorStyle,
   cursorBlink,
   theme,
@@ -54,6 +56,7 @@ export function useTerminalRuntimeSync({
     const fit = fitRef.current;
     if (!term) return;
     term.options.fontSize = fontSize;
+    term.options.scrollback = scrollback;
     term.options.cursorStyle = cursorStyle;
     term.options.cursorBlink = cursorBlink;
     term.options.theme = getTerminalTheme(theme, terminalTheme, accent);
@@ -63,5 +66,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontSize, ptyRef, termRef, terminalTheme, theme]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontSize, ptyRef, scrollback, termRef, terminalTheme, theme]);
 }

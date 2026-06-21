@@ -106,15 +106,19 @@ export function Settings({ onClose }: SettingsProps) {
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const fontSize = useUIStore((s) => s.fontSize);
+  const scrollback = useUIStore((s) => s.scrollback);
   const setTheme = useUIStore((s) => s.setTheme);
   const setAccent = useUIStore((s) => s.setAccent);
   const setCursorStyle = useUIStore((s) => s.setCursorStyle);
   const setCursorBlink = useUIStore((s) => s.setCursorBlink);
   const setFontSize = useUIStore((s) => s.setFontSize);
+  const setScrollback = useUIStore((s) => s.setScrollback);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
   const setTerminalTheme = useUIStore((s) => s.setTerminalTheme);
   const externalEditor = useUIStore((s) => s.externalEditor);
   const setExternalEditor = useUIStore((s) => s.setExternalEditor);
+  const bellNotification = useUIStore((s) => s.bellNotification);
+  const setBellNotification = useUIStore((s) => s.setBellNotification);
 
   const isDark = isDarkTheme(theme);
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
@@ -221,6 +225,36 @@ export function Settings({ onClose }: SettingsProps) {
                   <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{fontSize}px</span>
                   <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderLeft: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
                 </div>
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={SECTION_LABEL}>回滚行数</div>
+                <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", overflow: "hidden" }}>
+                  <button onClick={() => setScrollback(Math.max(1000, scrollback - 1000))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderRight: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                  <span style={{ minWidth: 64, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{scrollback}</span>
+                  <button onClick={() => setScrollback(Math.min(50000, scrollback + 1000))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderLeft: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                </div>
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={SECTION_LABEL}>完成通知</div>
+                  <button
+                    onClick={() => setBellNotification(!bellNotification)}
+                    style={{
+                      width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
+                      background: bellNotification ? "var(--c-accent)" : "var(--c-bg-3)",
+                      transition: "background var(--duration-fast) ease",
+                      display: "flex", alignItems: "center", marginBottom: 10,
+                    }}
+                  >
+                    <div style={{
+                      width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
+                      boxShadow: "var(--shadow-card)",
+                      transform: bellNotification ? "translateX(16px)" : "translateX(0)",
+                      transition: "transform var(--duration-fast) ease",
+                    }} />
+                  </button>
+                </div>
+                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: -6 }}>窗口不在前台时，终端 bell 或 Agent 完成将触发 Dock 弹跳</div>
               </div>
               <div>
                 <div style={SECTION_LABEL}>终端配色</div>

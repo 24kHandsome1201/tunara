@@ -7,6 +7,10 @@ import { type Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { SearchAddon } from "@xterm/addon-search";
+import { SerializeAddon } from "@xterm/addon-serialize";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
@@ -19,6 +23,7 @@ import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-outp
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
+import { updateTerminalSnapshot, getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { useSessionsStore } from "@/state/sessions";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { useTerminalSearch } from "./useTerminalSearch";
@@ -54,6 +59,7 @@ export function TerminalView({
 
   const theme = useUIStore((s) => s.theme);
   const fontSize = useUIStore((s) => s.fontSize);
+  const scrollback = useUIStore((s) => s.scrollback);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
@@ -65,6 +71,7 @@ export function TerminalView({
     fitRef,
     ptyRef,
     fontSize,
+    scrollback,
     cursorStyle,
     cursorBlink,
     theme,
@@ -85,6 +92,7 @@ export function TerminalView({
 
       const term = createTerminalInstance({
         fontSize,
+        scrollback,
         theme,
         terminalTheme,
         accent,
@@ -105,6 +113,11 @@ export function TerminalView({
       } catch {
         // WebGL unavailable, canvas fallback
       }
+
+      const serializeAddon = new SerializeAddon();
+      term.loadAddon(serializeAddon);
+
+      term.loadAddon(new WebLinksAddon((_event, uri) => { openUrl(uri); }));
 
       // Fit after WebGL addon loads — the addon replaces the renderer and
       // changes cell metrics; fitting before it loads would measure stale
@@ -200,6 +213,9 @@ export function TerminalView({
         if (payload.event === "exit") {
           clearAgentTracking();
           useSessionsStore.getState().handleAgentExited(sessionIdRef.current, payload.code ?? lastExitCode);
+          if (!document.hasFocus() && useUIStore.getState().bellNotification) {
+            getCurrentWindow().requestUserAttention(2);
+          }
           return true;
         }
 
@@ -275,12 +291,18 @@ export function TerminalView({
             clearAgentTracking();
 
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
+            if (!document.hasFocus() && useUIStore.getState().bellNotification) {
+              getCurrentWindow().requestUserAttention(2);
+            }
             osc133Active = true;
           } else if (marker === "D") {
             const exitCode = parseInt(data.slice(2), 10) || 0;
             lastExitCode = exitCode;
             clearAgentTracking();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
+            if (!document.hasFocus() && useUIStore.getState().bellNotification) {
+              getCurrentWindow().requestUserAttention(2);
+            }
           }
           return true;
         }
@@ -312,6 +334,41 @@ export function TerminalView({
       });
       cleanups.push(() => promptDisposable.dispose());
 
+      const existingSnapshot = getTerminalSnapshot(sessionIdRef.current);
+      if (existingSnapshot) {
+        term.write(existingSnapshot.serialized);
+        term.write("\r\n\x1b[2m[conduit restored snapshot, new shell started below]\x1b[0m\r\n");
+        requestAnimationFrame(() => {
+          if (existingSnapshot.viewportY !== undefined) {
+            term.scrollToLine(existingSnapshot.viewportY);
+          }
+        });
+      }
+
+      let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleSnapshot = () => {
+        if (snapshotTimer) clearTimeout(snapshotTimer);
+        snapshotTimer = setTimeout(() => {
+          snapshotTimer = null;
+          if (!termRef.current) return;
+          updateTerminalSnapshot(sessionIdRef.current, {
+            serialized: serializeAddon.serialize(),
+            viewportY: term.buffer.active.viewportY,
+            baseY: term.buffer.active.baseY,
+            cols: term.cols,
+            rows: term.rows,
+            capturedAt: Date.now(),
+            truncated: false,
+          });
+        }, 1000);
+      };
+      cleanups.push(() => {
+        if (snapshotTimer) {
+          clearTimeout(snapshotTimer);
+          snapshotTimer = null;
+        }
+      });
+
       const cwd = dir === "~" ? undefined : dir;
       const outputBuffer = createTerminalOutputBuffer(term);
       cleanups.push(() => outputBuffer.dispose());
@@ -324,6 +381,7 @@ export function TerminalView({
           {
             onData: (bytes) => {
               outputBuffer.push(bytes);
+              scheduleSnapshot();
               if (hasAgent && currentAgentCode) {
                 if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
                   scheduleCodexStateCheck();
@@ -424,6 +482,14 @@ export function TerminalView({
         }
       });
       cleanups.push(() => dataDisposable.dispose());
+
+      const bellDisposable = term.onBell(() => {
+        if (!useUIStore.getState().bellNotification) return;
+        if (!document.hasFocus()) {
+          getCurrentWindow().requestUserAttention(2);
+        }
+      });
+      cleanups.push(() => bellDisposable.dispose());
 
       const el = containerRef.current!;
       cleanups.push(observeTerminalResize({

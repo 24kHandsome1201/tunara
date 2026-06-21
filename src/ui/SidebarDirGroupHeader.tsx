@@ -50,7 +50,7 @@ export function DirGroupHeader({
         display: "flex",
         alignItems: "center",
         gap: 6,
-        padding: "6px 9px",
+        padding: "5px 9px",
         cursor: onToggleCollapse ? "pointer" : undefined,
       }}
     >
