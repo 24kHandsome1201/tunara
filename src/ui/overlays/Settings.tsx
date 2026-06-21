@@ -160,7 +160,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar">
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
           {activeTab === "外观" && (
             <div>
               <div style={{ marginBottom: 24 }}>

@@ -366,7 +366,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           />
         </div>
 
-        <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "6px 0" }} className="no-scrollbar">
+        <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "6px 0" }} className="no-scrollbar scroll-fade-y">
           {ranked.length === 0 && (
             <div style={{ padding: "20px 16px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
               无匹配结果

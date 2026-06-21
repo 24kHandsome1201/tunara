@@ -33,7 +33,7 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
   }
   const lines = diff.patch.split("\n");
   return (
-    <div style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar">
+    <div style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar scroll-fade-y">
       {lines.map((line, i) => {
         const isHunk = line.startsWith("@@") || line.startsWith("---") || line.startsWith("+++");
         const isAdd = !isHunk && line.startsWith("+");
@@ -332,7 +332,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar">
+      <div style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar scroll-fade-y">
         {loading ? (
           <PanelLoadingState label="git status" />
         ) : notGit ? (

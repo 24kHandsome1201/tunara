@@ -76,6 +76,19 @@ html[data-chrome="borderless"] {
   display: none !important;
 }
 
+.scroll-fade-y {
+  --scroll-fade-bg: var(--c-bg-white);
+  background:
+    linear-gradient(var(--scroll-fade-bg) 32%, transparent) top / 100% 14px local,
+    linear-gradient(transparent, var(--scroll-fade-bg) 68%) bottom / 100% 14px local,
+    linear-gradient(to bottom, color-mix(in srgb, var(--c-text-primary) 10%, transparent), transparent) top / 100% 9px scroll,
+    linear-gradient(to top, color-mix(in srgb, var(--c-text-primary) 8%, transparent), transparent) bottom / 100% 9px scroll;
+  background-repeat: no-repeat;
+}
+.scroll-fade-sidebar {
+  --scroll-fade-bg: var(--c-bg-2-glass);
+}
+
 /* Conduit animations */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }

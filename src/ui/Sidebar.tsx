@@ -210,7 +210,7 @@ export function Sidebar({
           overflowY: "auto",
           padding: "0 8px",
         }}
-        className="no-scrollbar"
+        className="no-scrollbar scroll-fade-y scroll-fade-sidebar"
       >
         {filtered.length === 0 && (
           <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>

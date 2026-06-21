@@ -12,7 +12,7 @@ interface FilePreviewProps {
 function MarkdownPreview({ content }: { content: string }) {
   const blocks = useMemo(() => parseMarkdown(content), [content]);
   return (
-    <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar">
+    <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar scroll-fade-y">
       {blocks.map((block, i) => (
         <MarkdownBlock key={i} block={block} />
       ))}
@@ -187,7 +187,7 @@ function MarkdownBlock({ block }: { block: Block }) {
 
 function TextPreview({ content }: { content: string }) {
   return (
-    <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar">
+    <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar scroll-fade-y">
       <pre style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}>
         {content}
       </pre>

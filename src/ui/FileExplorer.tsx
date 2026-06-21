@@ -263,7 +263,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
         </div>
       </div>
 
-      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar">
+      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar scroll-fade-y">
         {isSearching ? (
           searchLoading ? (
             <PanelLoadingState label="搜索中" />
