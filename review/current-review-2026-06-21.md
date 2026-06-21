@@ -54,6 +54,7 @@
 - `Titlebar`: tab 关闭按钮 hit target 从 16px 增到 20px, 折叠侧栏时 tab 区补左间距, 右侧按钮 gap 收窄。
 - `Sidebar`: 新建按钮和目录 header 对齐收口, 快捷键标注改成 badge 样式。
 - `Sidebar`: 移除底部固定“会话 + 数字”统计栏, 减少低价值 chrome, 把垂直空间还给会话列表。
+- `Sidebar`/`SessionCard`: 会话列表补 `role="list"`/`listitem`, roving `tabIndex`, ArrowUp/Down/Home/End 键盘导航和可见焦点环, 过滤或折叠目录后仍按当前可见会话移动。
 - `CommandPalette`: 批量关闭改走 store 统一 action, 运行中会话用一次集中确认反馈, 同时去掉选中项左侧竖条。
 - `CommandPalette`: section 分组时保留全局索引, 渲染期不再用 `ranked.indexOf(cmd)` 做 O(n²) 反查。
 - `DiffPanel`: 文件状态 badge 增加 R/? 区分, embedded 模式去掉重复刷新入口, `remoteLabel` 删除死参数。
@@ -213,6 +214,7 @@
 - Toast 固定 260px 和左侧 accent 竖条挤压内容。
 - Linux 字体回退链不够保险。
 - 隐藏滚动条后缺少滚动提示。
+- 侧栏会话列表键盘导航覆盖不足。
 
 仍建议后续视觉 QA:
 

@@ -162,13 +162,15 @@ interface SessionCardProps {
   session: Session;
   active: boolean;
   confirmClose?: boolean;
+  tabIndex?: number;
   onClick: () => void;
   onClose?: () => void;
   onRename?: (name: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, active, confirmClose, onClick, onClose, onRename, onContextMenu }: SessionCardProps) {
+export function SessionCard({ session, active, confirmClose, tabIndex, onClick, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
@@ -177,6 +179,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
   const isRenaming = renamingSessionId === session.id;
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
+  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -216,14 +219,20 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
   return (
     <div
       role="button"
-      tabIndex={0}
+      tabIndex={tabIndex ?? 0}
+      aria-current={active ? "page" : undefined}
+      data-session-card-id={session.id}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onClick();
+          return;
         }
+        onKeyDown?.(e);
       }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       onContextMenu={onContextMenu}
       className="session-card"
       style={{
@@ -234,7 +243,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         userSelect: "none",
         background: active ? "var(--c-accent-bg-light)" : "transparent",
         border: "none",
-        boxShadow: "none",
+        boxShadow: focused ? "inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 70%, transparent)" : "none",
         outline: "none",
         transition: "background var(--duration-fast) ease",
       }}

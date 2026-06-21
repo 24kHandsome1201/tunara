@@ -55,6 +55,39 @@ export function Sidebar({
     : sessions;
   const groups = groupByDir(filtered);
   const canReorder = q.length === 0;
+  const groupEntries = Object.entries(groups);
+  const visibleSessionIds = groupEntries.flatMap(([dir, groupSessions]) =>
+    !!collapsedDirs[dir] && !q ? [] : groupSessions.map((s) => s.id)
+  );
+  const tabbableSessionId = visibleSessionIds.includes(activeSessionId) ? activeSessionId : visibleSessionIds[0] ?? null;
+
+  const focusSessionCard = useCallback((sessionId: string) => {
+    requestAnimationFrame(() => {
+      const card = Array.from(document.querySelectorAll<HTMLElement>("[data-session-card-id]")).find(
+        (el) => el.dataset.sessionCardId === sessionId,
+      );
+      card?.focus();
+      card?.scrollIntoView({ block: "nearest" });
+    });
+  }, []);
+
+  const handleSessionKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>, sessionId: string) => {
+    const currentIndex = visibleSessionIds.indexOf(sessionId);
+    if (currentIndex === -1) return;
+
+    let nextIndex = currentIndex;
+    if (e.key === "ArrowDown") nextIndex = Math.min(currentIndex + 1, visibleSessionIds.length - 1);
+    else if (e.key === "ArrowUp") nextIndex = Math.max(currentIndex - 1, 0);
+    else if (e.key === "Home") nextIndex = 0;
+    else if (e.key === "End") nextIndex = visibleSessionIds.length - 1;
+    else return;
+
+    const nextId = visibleSessionIds[nextIndex];
+    if (!nextId) return;
+    e.preventDefault();
+    onSelectSession(nextId);
+    focusSessionCard(nextId);
+  }, [focusSessionCard, onSelectSession, visibleSessionIds]);
 
   const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
     dragStartY.current = e.clientY;
@@ -125,6 +158,7 @@ export function Sidebar({
         flexShrink: 0,
         overflow: "hidden",
       }}
+      aria-label="会话侧栏"
     >
       {onNewTerminal && (
         <div style={{ padding: "8px 12px 6px" }}>
@@ -190,6 +224,7 @@ export function Sidebar({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索会话"
+            aria-label="搜索会话"
             style={{
               flex: 1,
               border: "none",
@@ -211,6 +246,8 @@ export function Sidebar({
           padding: "0 8px",
         }}
         className="no-scrollbar scroll-fade-y scroll-fade-sidebar"
+        role="list"
+        aria-label="会话列表"
       >
         {filtered.length === 0 && (
           <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
@@ -218,7 +255,7 @@ export function Sidebar({
           </div>
         )}
 
-        {Object.entries(groups).map(([dir, groupSessions]) => {
+        {groupEntries.map(([dir, groupSessions]) => {
           const collapsed = !!collapsedDirs[dir] && !q;
           return (
           <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
@@ -250,7 +287,7 @@ export function Sidebar({
                 const isDragging = drag?.draggingId === s.id;
                 const showIndicator = drag?.sourceDir === dir && drag.overIndex === idx && drag.draggingId !== s.id;
                 return (
-                  <div key={s.id} data-session-id={s.id}>
+                  <div key={s.id} data-session-id={s.id} role="listitem">
                     {showIndicator && (
                       <div style={{ height: 2, background: "var(--c-accent)", borderRadius: 1, margin: "0 10px 2px" }} />
                     )}
@@ -270,7 +307,9 @@ export function Sidebar({
                         session={s}
                         active={s.id === activeSessionId}
                         confirmClose={!!closeConfirmations[s.id]}
+                        tabIndex={s.id === tabbableSessionId ? 0 : -1}
                         onClick={() => { if (!dragStarted.current) onSelectSession(s.id); }}
+                        onKeyDown={(e) => handleSessionKeyDown(e, s.id)}
                         onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
                         onRename={(name) => useSessionsStore.getState().renameSession(s.id, name)}
                         onContextMenu={(e) => {

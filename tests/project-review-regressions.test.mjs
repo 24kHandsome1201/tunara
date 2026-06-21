@@ -343,6 +343,15 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);
+  assert.match(sidebar, /const visibleSessionIds = groupEntries\.flatMap/);
+  assert.match(sidebar, /const tabbableSessionId = visibleSessionIds\.includes\(activeSessionId\)/);
+  assert.match(sidebar, /const handleSessionKeyDown = useCallback/);
+  assert.match(sidebar, /ArrowDown/);
+  assert.match(sidebar, /ArrowUp/);
+  assert.match(sidebar, /Home/);
+  assert.match(sidebar, /End/);
+  assert.match(sidebar, /role="list"/);
+  assert.match(sidebar, /aria-label="会话列表"/);
   assert.doesNotMatch(sidebar, /底部：会话数/);
   assert.doesNotMatch(sidebar, />\s*会话\s*<\/span>/);
   assert.match(sidebarHeader, /padding: "6px 9px"/);
@@ -355,6 +364,10 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(palette, /<SearchIcon size=\{14\} \/>/);
   assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
   assert.match(sessionCard, /paddingLeft: 6/);
+  assert.match(sessionCard, /data-session-card-id=\{session\.id\}/);
+  assert.match(sessionCard, /tabIndex=\{tabIndex \?\? 0\}/);
+  assert.match(sessionCard, /aria-current=\{active \? "page" : undefined\}/);
+  assert.match(sessionCard, /boxShadow: focused \?/);
   assert.match(main, /"inset 0 2px 0 var\(--c-accent\)"/);
   assert.doesNotMatch(main, /outline: .*var\(--c-accent\)/);
   assert.match(main, /function SplitIcon/);
