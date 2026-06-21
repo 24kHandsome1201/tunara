@@ -90,11 +90,31 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
       <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: isSplit ? (isHorizontal ? "row" : "column") : "row" }}>
         {isSplit ? (
           <>
-            <div style={{ [isHorizontal ? "width" : "height"]: `calc(${split.ratio * 100}% - 2.5px)`, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+            <div
+              onClick={() => useSessionsStore.getState().setActive(paneASession!.id)}
+              style={{
+                [isHorizontal ? "width" : "height"]: `calc(${split.ratio * 100}% - 2.5px)`,
+                display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
+                borderRadius: 6,
+                outline: paneASession!.id === activeSessionId ? "2px solid var(--c-accent)" : "2px solid transparent",
+                outlineOffset: -2,
+                transition: "outline-color var(--duration-fast) ease",
+              }}
+            >
               {renderTerminalPane(paneASession!, paneASession!.id === activeSessionId)}
             </div>
             <SplitHandle mode={split.mode as "horizontal" | "vertical"} containerRef={splitContainerRef} />
-            <div style={{ [isHorizontal ? "width" : "height"]: `calc(${(1 - split.ratio) * 100}% - 2.5px)`, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+            <div
+              onClick={() => useSessionsStore.getState().setActive(paneBSession!.id)}
+              style={{
+                [isHorizontal ? "width" : "height"]: `calc(${(1 - split.ratio) * 100}% - 2.5px)`,
+                display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
+                borderRadius: 6,
+                outline: paneBSession!.id === activeSessionId ? "2px solid var(--c-accent)" : "2px solid transparent",
+                outlineOffset: -2,
+                transition: "outline-color var(--duration-fast) ease",
+              }}
+            >
               {renderTerminalPane(paneBSession!, paneBSession!.id === activeSessionId)}
             </div>
             {hiddenMountedSessions.map((s) => (

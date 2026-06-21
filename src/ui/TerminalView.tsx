@@ -26,6 +26,8 @@ interface TerminalViewProps {
 
 const FONT_FAMILY = '"JetBrains Mono", SFMono-Regular, Menlo, monospace';
 
+const SEARCH_DECORATIONS = { matchBackground: "#e8a96044", matchOverviewRuler: "#e8a960", activeMatchBackground: "#e8a960aa", activeMatchColorOverviewRuler: "#e8a960" };
+
 const NOISE_COMMANDS = new Set([
   "ls", "ll", "la", "l", "dir",
   "cd", "pushd", "popd",
@@ -58,6 +60,7 @@ export function TerminalView({
   const initRef = useRef(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchCount, setSearchCount] = useState<{ current: number; total: number } | null>(null);
   const searchOpenRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const pendingInputRef = useRef(pendingInput);
@@ -122,6 +125,11 @@ export function TerminalView({
       const searchAddon = new SearchAddon();
       term.loadAddon(searchAddon);
       searchAddonRef.current = searchAddon;
+      const searchResultDisposable = searchAddon.onDidChangeResults((e) => {
+        if (e.resultCount === 0) setSearchCount(null);
+        else setSearchCount({ current: e.resultIndex + 1, total: e.resultCount });
+      });
+      cleanups.push(() => searchResultDisposable.dispose());
 
       term.attachCustomKeyEventHandler((e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === "f" && e.type === "keydown") {
@@ -600,24 +608,26 @@ export function TerminalView({
     setSearchQuery(value);
     if (!searchAddonRef.current) return;
     if (value) {
-      searchAddonRef.current.findNext(value, { regex: false, caseSensitive: false, wholeWord: false });
+      searchAddonRef.current.findNext(value, { regex: false, caseSensitive: false, wholeWord: false, decorations: SEARCH_DECORATIONS });
     } else {
       searchAddonRef.current.clearDecorations();
+      setSearchCount(null);
     }
   }, []);
 
   const handleSearchNext = useCallback(() => {
-    searchAddonRef.current?.findNext(searchQuery, { regex: false, caseSensitive: false, wholeWord: false });
+    searchAddonRef.current?.findNext(searchQuery, { regex: false, caseSensitive: false, wholeWord: false, decorations: SEARCH_DECORATIONS });
   }, [searchQuery]);
 
   const handleSearchPrev = useCallback(() => {
-    searchAddonRef.current?.findPrevious(searchQuery, { regex: false, caseSensitive: false, wholeWord: false });
+    searchAddonRef.current?.findPrevious(searchQuery, { regex: false, caseSensitive: false, wholeWord: false, decorations: SEARCH_DECORATIONS });
   }, [searchQuery]);
 
   const closeSearch = useCallback(() => {
     searchOpenRef.current = false;
     setSearchOpen(false);
     setSearchQuery("");
+    setSearchCount(null);
     searchAddonRef.current?.clearDecorations();
     termRef.current?.focus();
   }, []);
@@ -672,6 +682,11 @@ export function TerminalView({
               width: 200,
             }}
           />
+          {searchCount && (
+            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", flexShrink: 0 }}>
+              {searchCount.current}/{searchCount.total}
+            </span>
+          )}
           <button
             onClick={handleSearchPrev}
             title="上一个 ⇧Enter"

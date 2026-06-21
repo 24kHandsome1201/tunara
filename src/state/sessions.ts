@@ -17,6 +17,7 @@ import { useUIStore } from "./ui";
 interface SessionsState {
   sessions: Session[];
   activeSessionId: string | null;
+  renamingSessionId: string | null;
   launchedSessionIds: Record<string, true>;
   gitNonce: Record<string, number>;
   closeConfirmations: Record<string, number>;
@@ -41,6 +42,9 @@ interface SessionsState {
   handleCwdChange: (id: string, cwd: string) => void;
   handleShellTitle: (id: string, title: string) => void;
 
+  renameSession: (id: string, name: string) => void;
+  startRenaming: (id: string) => void;
+  stopRenaming: () => void;
   reorderInGroup: (dir: string, fromIndex: number, toIndex: number) => void;
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
@@ -84,6 +88,7 @@ function ensureSessionVisibleInSplit(sessionId: string) {
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessions: [],
   activeSessionId: null,
+  renamingSessionId: null,
   launchedSessionIds: {},
   gitNonce: {},
   closeConfirmations: {},
@@ -280,6 +285,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const update = shellTitleUpdate(session, title);
     if (update) get().updateSession(id, update.patch);
   },
+
+  renameSession: (id, name) => {
+    const trimmed = name.trim();
+    get().updateSession(id, { customTitle: trimmed || undefined });
+    set({ renamingSessionId: null });
+  },
+
+  startRenaming: (id) => set({ renamingSessionId: id }),
+  stopRenaming: () => set({ renamingSessionId: null }),
 
   reorderInGroup: (dir, fromIndex, toIndex) =>
     set((state) => {

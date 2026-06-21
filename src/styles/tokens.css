@@ -151,12 +151,9 @@
 }
 
 /* ── Dark mode ── */
+/* --c-accent and derived vars (--c-accent-bg-light, --c-accent-bg-soft, --c-accent-border)
+   are set dynamically by useTheme.ts to avoid flash when user picks a non-default accent. */
 .dark {
-  --c-accent: #e09070;
-  --c-accent-bg-light: #3a2a20;
-  --c-accent-bg-soft: #2e231c;
-  --c-accent-border: #5a3e2e;
-
   --c-text-primary: #e4e4e7;
   --c-text-2: #d4d4d8;
   --c-text-3: #a1a1aa;

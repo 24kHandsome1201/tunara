@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { type Session, type RunState, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
+import { useSessionsStore } from "@/state/sessions";
 
 function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
@@ -166,15 +167,49 @@ interface SessionCardProps {
   confirmClose?: boolean;
   onClick: () => void;
   onClose?: () => void;
+  onRename?: (name: string) => void;
   onClearCloseConfirm?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, active, confirmClose, onClick, onClose, onClearCloseConfirm, onContextMenu }: SessionCardProps) {
+export function SessionCard({ session, active, confirmClose, onClick, onClose, onRename, onClearCloseConfirm, onContextMenu }: SessionCardProps) {
   const { primary, isCommand } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
   const showBusyProgress = !!session.agent && busy;
+  const renamingSessionId = useSessionsStore((s) => s.renamingSessionId);
+  const isRenaming = renamingSessionId === session.id;
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming && !editing) {
+      setEditValue(session.customTitle ?? primary);
+      setEditing(true);
+    }
+  }, [isRenaming, editing, session.customTitle, primary]);
+
+  const startRename = useCallback(() => {
+    if (!onRename) return;
+    setEditValue(session.customTitle ?? primary);
+    setEditing(true);
+  }, [onRename, session.customTitle, primary]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== primary) {
+      onRename?.(trimmed);
+    } else if (!trimmed) {
+      onRename?.("");
+    }
+    setEditing(false);
+    useSessionsStore.getState().stopRenaming();
+  }, [editValue, primary, onRename]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
 
   const handleClose = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
@@ -284,20 +319,50 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <StatusMark runState={displayRunState} isAgent={!!session.agent} />
-            <span
-              style={{
-                fontSize: "var(--fs-body)",
-                fontWeight: session.unread ? 700 : 600,
-                color: "var(--c-text-primary)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                fontFamily: isCommand ? "var(--font-mono)" : "var(--font-ui)",
-                lineHeight: 1.3,
-              }}
-            >
-              {primary}
-            </span>
+            {editing ? (
+              <input
+                ref={inputRef}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") setEditing(false);
+                  e.stopPropagation();
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  fontSize: "var(--fs-body)",
+                  fontWeight: 600,
+                  color: "var(--c-text-primary)",
+                  fontFamily: "var(--font-ui)",
+                  lineHeight: 1.3,
+                  border: "none",
+                  outline: "none",
+                  background: "var(--c-bg-3)",
+                  borderRadius: 4,
+                  padding: "0 4px",
+                  width: "100%",
+                  minWidth: 0,
+                }}
+              />
+            ) : (
+              <span
+                onDoubleClick={(e) => { e.stopPropagation(); startRename(); }}
+                style={{
+                  fontSize: "var(--fs-body)",
+                  fontWeight: session.unread ? 700 : 600,
+                  color: "var(--c-text-primary)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontFamily: isCommand ? "var(--font-mono)" : "var(--font-ui)",
+                  lineHeight: 1.3,
+                }}
+              >
+                {primary}
+              </span>
+            )}
           </div>
 
           {/* 行2: 目录 · 分支 · diff */}

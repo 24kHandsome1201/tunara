@@ -102,6 +102,19 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       });
 
       cmds.push({
+        id: "rename-current-session",
+        label: "重命名当前会话",
+        icon: <CmdIcon d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />,
+        section: "操作",
+        originalIndex: idx++,
+        action: () => {
+          ui.getState().recordCommandUse("rename-current-session");
+          useSessionsStore.getState().startRenaming(activeSession.id);
+          onClose();
+        },
+      });
+
+      cmds.push({
         id: "close-current-session",
         label: "关闭当前会话",
         shortcut: "⌘W",
@@ -175,6 +188,50 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       originalIndex: idx++,
       action: () => { ui.getState().recordCommandUse("settings"); ui.getState().setOverlay("settings"); },
     });
+
+    cmds.push({
+      id: "refresh-all-git",
+      label: "刷新所有 Git 状态",
+      icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
+      section: "批量",
+      originalIndex: idx++,
+      action: () => {
+        ui.getState().recordCommandUse("refresh-all-git");
+        const st = useSessionsStore.getState();
+        st.sessions.forEach((s) => st.refreshGit(s.id));
+        onClose();
+      },
+    });
+
+    if (sessions.length > 1) {
+      cmds.push({
+        id: "close-all-sessions",
+        label: "关闭所有会话",
+        icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
+        section: "批量",
+        originalIndex: idx++,
+        action: () => {
+          ui.getState().recordCommandUse("close-all-sessions");
+          const st = useSessionsStore.getState();
+          [...st.sessions].reverse().forEach((s) => st.closeSession(s.id));
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "close-other-sessions",
+        label: "关闭其他会话",
+        icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
+        section: "批量",
+        originalIndex: idx++,
+        action: () => {
+          ui.getState().recordCommandUse("close-other-sessions");
+          const st = useSessionsStore.getState();
+          st.sessions.filter((s) => s.id !== activeSessionId).reverse().forEach((s) => st.closeSession(s.id));
+          onClose();
+        },
+      });
+    }
 
     return cmds;
   }, [sessions, activeSessionId, activeSession, setActive, onClose, ui]);

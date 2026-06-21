@@ -164,6 +164,12 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   }, [repoPath, session.id, nonce, notGit]);
 
   useEffect(() => {
+    if (expandedFile && !files.some((f) => f.path === expandedFile)) {
+      setExpandedFile(null);
+    }
+  }, [files, expandedFile]);
+
+  useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => {
       useSessionsStore.getState().refreshGit(session.id);

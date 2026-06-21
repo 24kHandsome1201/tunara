@@ -9,7 +9,7 @@ const UI_LAYOUT_KEY = "uiLayout";
 type PersistedSession = Pick<
   Session,
   "id" | "title" | "dir" | "branch" | "updatedAt"
->;
+> & { customTitle?: string };
 
 interface PersistedUILayout {
   sidebarVisible: boolean;
@@ -17,13 +17,15 @@ interface PersistedUILayout {
 }
 
 function toPersistedSession(s: Session): PersistedSession {
-  return {
+  const p: PersistedSession = {
     id: s.id,
     title: s.title,
     dir: s.dir,
     branch: s.branch,
     updatedAt: s.updatedAt,
   };
+  if (s.customTitle) p.customTitle = s.customTitle;
+  return p;
 }
 
 function isPersistedSession(value: unknown): value is PersistedSession {
@@ -43,6 +45,7 @@ function fromPersistedSession(p: PersistedSession): Session {
   return {
     ...p,
     title: p.title.trim() || "终端",
+    customTitle: p.customTitle || undefined,
     runState: "idle",
   };
 }

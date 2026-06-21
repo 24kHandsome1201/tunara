@@ -1,0 +1,907 @@
+diff -ruN /mnt/data/conduit_original/conduit-main/docs/review-fixes-2026-06-21.md /mnt/data/conduit_review_work/conduit-main/docs/review-fixes-2026-06-21.md
+--- /mnt/data/conduit_original/conduit-main/docs/review-fixes-2026-06-21.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/docs/review-fixes-2026-06-21.md	2026-06-21 06:17:18.304581149 +0000
+@@ -0,0 +1,102 @@
++# Conduit 代码审查与修复报告
++
++日期：2026-06-21
++
++## 1. 总体结论
++
++项目整体方向清晰，核心是 Tauri v2 加 React，加 xterm.js 终端，加 Git 和文件审查面板。主要风险集中在四类地方：终端视图过大导致维护成本高，分屏与会话状态存在真实使用中的可见性问题，移动端窄屏交互不够稳，文件预览和 diff 输出有不必要的大块数据传输。
++
++本次已完成低风险、可验证的修复，并补充回归测试。更大规模的架构拆分建议放到下一轮做，特别是 `src/ui/TerminalView.tsx` 的拆分。
++
++## 2. 已修复的问题
++
++### 2.1 架构与状态管理
++
++`TerminalView.tsx` 当前约 701 行，混合了 xterm 初始化、PTY IO、搜索 UI、agent 检测、键盘事件和生命周期同步。这个文件会继续变成风险热点。本次没有贸然大拆，先修复周边状态漏洞。
++
++会话在分屏模式下切换时，新的 active session 可能没有出现在任何 pane 里。现在 `setActive` 和 `addSession` 会保证当前会话在分屏中可见。
++
++关闭 active session 时，旧逻辑更容易跳到列表第一个会话。现在优先选择相邻会话，体验更符合标签页常见行为。
++
++删除会话时会清理 `gitNonce`、启动标记和关闭确认状态，减少长期运行后的脏状态。
++
++初始化恢复会话时，如果用户在持久化数据加载完成前新建了会话，旧逻辑可能覆盖用户刚创建的会话。现在会合并恢复数据和当前会话。
++
++### 2.2 用户体验
++
++窄屏下侧栏和审查面板增加了遮罩，点击遮罩可以关闭，避免内容层叠后无处可点。
++
++侧栏和面板宽度增加了响应式上限，设置窗口增加了 `maxWidth`，小屏幕不会横向溢出。
++
++Escape 现在可以关闭覆盖层、移动端侧栏和移动端面板，同时尽量不抢终端内部的 Escape。
++
++命令面板新增了三个常用动作：在当前目录新建终端，刷新当前 Git 状态，关闭当前会话。
++
++命令面板搜索结果变化时会夹住选中索引，避免 Enter 触发空项或越界项。
++
++分屏快捷键切换现在只在 paneA 和 paneB 之间切换，避免跳到分屏外的隐藏会话。
++
++侧栏搜索时禁用拖拽排序，避免用过滤后的索引改乱完整会话列表。搜索无结果时会显示空状态。
++
++### 2.3 性能优化
++
++文件预览后端现在最多读取 256 KiB 文本预览内容，并返回 `truncated` 标记。之前前端只展示一小段，后端和 IPC 仍可能传输最多 10 MB 文本。
++
++Markdown 预览解析加入 `useMemo`，避免无关状态变更时反复解析同一份内容。
++
++Git diff 输出增加了更严格的字节上限判断，减少超限 patch 的额外字符串增长。
++
++切换目录时先清空远端 Git 状态，避免 UI 短暂显示上一个目录的 ahead 或 behind 信息。
++
++### 2.4 稳定性与可访问性
++
++外观设置加载时会校验 theme、accent、cursorStyle、terminalTheme、fontSize、sidebarWidth、panelWidth。异常 localStorage 值会回到安全默认值。
++
++设置 setter 也增加了防御式校验，减少调试或异常调用带来的非法 UI 状态。
++
++Toast 的退出计时器现在会在卸载时清理，降低快速切换或重复渲染时的泄漏风险。
++
++新增 `prefers-reduced-motion` 支持，对系统减少动态效果偏好的用户更友好。
++
++## 3. 修改文件
++
++| 文件 | 主要改动 |
++| --- | --- |
++| `src/state/ui.ts` | 外观设置校验，宽度和字号夹取，新增直接设置侧栏和面板可见性的方法 |
++| `src/state/sessions.ts` | 分屏可见性保障，关闭相邻会话，清理 per-session 状态 |
++| `src/app/useInit.ts` | 恢复会话时合并当前状态，布局恢复使用直接 setter |
++| `src/app/App.tsx` | 窄屏遮罩，响应式宽度，侧栏和面板 overlay 层级优化 |
++| `src/app/useKeybindings.ts` | Escape 关闭覆盖层和移动端面板 |
++| `src/ui/MainArea.tsx` | 切换目录时清空 stale remote 状态 |
++| `src/ui/overlays/CommandPalette.tsx` | 新增常用命令，修复选中索引和滚动定位 |
++| `src/ui/Sidebar.tsx` | 搜索时禁用拖拽，新增空状态 |
++| `src/ui/FilePreview.tsx` | Markdown memo，展示截断提示 |
++| `src/modules/fs/fs-bridge.ts` | ReadResult 增加 truncated 字段 |
++| `src-tauri/src/modules/fs/file.rs` | 文本预览读取上限，二进制探测保留 |
++| `src-tauri/src/modules/git/mod.rs` | diff 输出上限更严格 |
++| `src/ui/Toast.tsx` | 清理退出计时器 |
++| `src/ui/overlays/Settings.tsx` | 设置窗口小屏 maxWidth |
++| `src/styles/globals.css` | 减少动态效果支持 |
++| `tests/project-review-regressions.test.mjs` | 新增 4 个回归测试 |
++
++## 4. 验证结果
++
++已执行：
++
++```bash
++node --experimental-strip-types --test tests/*.test.mjs
++```
++
++结果：21 个测试全部通过。
++
++受限项：当前容器没有 `node_modules`，`pnpm` 需要联网激活，且 `cargo`、`rustc` 不存在。因此完整 `pnpm build`、`pnpm typecheck`、`cargo test` 没有完成。直接运行 `tsc --noEmit` 时主要失败点是缺少 `react`、`zustand`、`@tauri-apps/*`、`@xterm/*` 等依赖类型。
++
++## 5. 下一轮建议
++
++1. 拆分 `TerminalView.tsx`，建议拆成 `useTerminalInstance`、`usePtyBridge`、`useTerminalSearch`、`useAgentTracking` 和展示组件。
++
++2. 给 Rust 侧补单元测试，覆盖 `fs_read_file` 的文本截断、二进制探测、UTF-8 边界，以及 `git_diff` 的超限场景。
++
++3. 给关键 UI 行为补浏览器级测试，尤其是移动端 overlay、命令面板、分屏切换和关闭会话。
++
++4. 增加虚拟列表或分组懒渲染，未来会话数量较多时侧栏能保持稳定帧率。
+diff -ruN /mnt/data/conduit_original/conduit-main/src/app/App.tsx /mnt/data/conduit_review_work/conduit-main/src/app/App.tsx
+--- /mnt/data/conduit_original/conduit-main/src/app/App.tsx	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/app/App.tsx	2026-06-21 06:11:22.010478537 +0000
+@@ -131,6 +131,12 @@
+   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
+   const sidebarOverlay = viewportWidth < 720;
+   const panelOverlay = viewportWidth < 900;
++  const sidebarEffectiveWidth = sidebarVisible
++    ? (sidebarOverlay ? Math.min(sidebarWidth, Math.max(240, viewportWidth * 0.86)) : sidebarWidth)
++    : 0;
++  const panelEffectiveWidth = panelVisible
++    ? (panelOverlay ? Math.min(panelWidth, Math.max(220, viewportWidth - 24)) : panelWidth)
++    : 0;
+ 
+   useEffect(() => {
+     const syncWidth = () => setViewportWidth(window.innerWidth);
+@@ -164,15 +170,39 @@
+       />
+ 
+       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
++        {panelOverlay && panelVisible && (
++          <div
++            onClick={togglePanel}
++            style={{
++              position: "absolute",
++              inset: 0,
++              zIndex: 65,
++              background: "var(--backdrop-color)",
++              backdropFilter: "var(--backdrop-blur)",
++            }}
++          />
++        )}
++
++        {sidebarOverlay && sidebarVisible && (
++          <div
++            onClick={toggleSidebar}
++            style={{
++              position: "absolute",
++              inset: 0,
++              zIndex: 75,
++              background: "var(--backdrop-color)",
++              backdropFilter: "var(--backdrop-blur)",
++            }}
++          />
++        )}
++
+         <div
+           className="conduit-sidebar"
+           style={{
+             display: "flex",
+             minHeight: 0,
+             overflow: "hidden",
+-            width: sidebarVisible
+-              ? (sidebarOverlay ? Math.min(sidebarWidth, Math.max(240, viewportWidth * 0.86)) : sidebarWidth)
+-              : 0,
++            width: sidebarEffectiveWidth,
+             flexShrink: 0,
+             position: sidebarOverlay ? "absolute" : "relative",
+             top: sidebarOverlay ? 0 : undefined,
+@@ -210,7 +240,7 @@
+               bottom: panelOverlay ? 0 : undefined,
+               zIndex: panelOverlay ? 70 : undefined,
+               boxShadow: panelOverlay && panelVisible ? "var(--shadow-overlay)" : undefined,
+-              width: panelVisible ? panelWidth : 0,
++              width: panelEffectiveWidth,
+               display: "flex",
+               minHeight: 0,
+               overflow: "hidden",
+diff -ruN /mnt/data/conduit_original/conduit-main/src/app/useInit.ts /mnt/data/conduit_review_work/conduit-main/src/app/useInit.ts
+--- /mnt/data/conduit_original/conduit-main/src/app/useInit.ts	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/app/useInit.ts	2026-06-21 06:10:48.728071287 +0000
+@@ -15,25 +15,36 @@
+     initRef.current = true;
+ 
+     loadSessions().then(({ sessions: restored, activeSessionId: restoredActive }) => {
++      const current = useSessionsStore.getState();
+       if (restored.length === 0 && useSessionsStore.getState().sessions.length === 0) {
+         addSession(createSession("~", { title: "终端" }));
+         return;
+       }
+-      const activeSessionId = restored.some((s) => s.id === restoredActive)
++      const merged = current.sessions.length === 0
++        ? restored
++        : [
++            ...restored,
++            ...current.sessions.filter((s) => !restored.some((r) => r.id === s.id)),
++          ];
++      const activeSessionId = merged.some((s) => s.id === current.activeSessionId)
++        ? current.activeSessionId
++        : merged.some((s) => s.id === restoredActive)
+         ? restoredActive
+-        : restored[0]?.id ?? null;
++        : merged[0]?.id ?? null;
+       useSessionsStore.setState({
+-        sessions: restored,
++        sessions: merged,
+         activeSessionId,
+-        launchedSessionIds: activeSessionId ? { [activeSessionId]: true } : {},
++        launchedSessionIds: activeSessionId
++          ? { ...current.launchedSessionIds, [activeSessionId]: true }
++          : current.launchedSessionIds,
+       });
+     });
+ 
+     loadUILayout().then((layout) => {
+       if (!layout) return;
+       const ui = useUIStore.getState();
+-      if (layout.sidebarVisible !== ui.sidebarVisible) ui.toggleSidebar();
+-      if (layout.panelVisible !== ui.panelVisible) ui.togglePanel();
++      ui.setSidebarVisible(layout.sidebarVisible);
++      ui.setPanelVisible(layout.panelVisible);
+     });
+ 
+     const unlistens: Array<Promise<() => void>> = [];
+diff -ruN /mnt/data/conduit_original/conduit-main/src/app/useKeybindings.ts /mnt/data/conduit_review_work/conduit-main/src/app/useKeybindings.ts
+--- /mnt/data/conduit_original/conduit-main/src/app/useKeybindings.ts	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/app/useKeybindings.ts	2026-06-21 06:17:05.283214097 +0000
+@@ -23,6 +23,24 @@
+ export function useKeybindings() {
+   useEffect(() => {
+     const onKey = (e: KeyboardEvent) => {
++      if (e.key === "Escape") {
++        const ui = useUIStore.getState();
++        if (ui.overlay) {
++          e.preventDefault();
++          ui.setOverlay(null);
++          return;
++        }
++        if (!isEditableTarget(e.target) && ui.viewportWidth < 720 && ui.sidebarVisible) {
++          e.preventDefault();
++          ui.setSidebarVisible(false);
++          return;
++        }
++        if (!isEditableTarget(e.target) && ui.viewportWidth < 900 && ui.panelVisible) {
++          e.preventDefault();
++          ui.setPanelVisible(false);
++          return;
++        }
++      }
+       if (!hasAppModifier(e) || e.altKey) return;
+       if (isEditableTarget(e.target) && !e.metaKey) return;
+       const k = e.key.toLowerCase();
+@@ -57,13 +75,9 @@
+         e.preventDefault();
+         const ui = useUIStore.getState();
+         const st = useSessionsStore.getState();
+-        if (ui.split.mode !== "single" && ui.split.paneB) {
+-          if (st.activeSessionId === ui.split.paneB) {
+-            const nonPaneB = st.sessions.find((s) => s.id !== ui.split.paneB);
+-            if (nonPaneB) st.setActive(nonPaneB.id);
+-          } else {
+-            st.setActive(ui.split.paneB);
+-          }
++        const { paneA, paneB } = ui.split;
++        if (ui.split.mode !== "single" && paneA && paneB) {
++          st.setActive(st.activeSessionId === paneB ? paneA : paneB);
+         }
+       } else if (k === "k") {
+         e.preventDefault();
+diff -ruN /mnt/data/conduit_original/conduit-main/src/modules/fs/fs-bridge.ts /mnt/data/conduit_review_work/conduit-main/src/modules/fs/fs-bridge.ts
+--- /mnt/data/conduit_original/conduit-main/src/modules/fs/fs-bridge.ts	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/modules/fs/fs-bridge.ts	2026-06-21 06:11:42.915051931 +0000
+@@ -15,7 +15,7 @@
+ }
+ 
+ export type ReadResult =
+-  | { kind: "text"; content: string; size: number }
++  | { kind: "text"; content: string; size: number; truncated?: boolean }
+   | { kind: "binary"; size: number }
+   | { kind: "toolarge"; size: number; limit: number };
+ 
+diff -ruN /mnt/data/conduit_original/conduit-main/src/state/sessions.ts /mnt/data/conduit_review_work/conduit-main/src/state/sessions.ts
+--- /mnt/data/conduit_original/conduit-main/src/state/sessions.ts	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/state/sessions.ts	2026-06-21 06:13:27.187097165 +0000
+@@ -70,6 +70,13 @@
+   };
+ }
+ 
++function ensureSessionVisibleInSplit(sessionId: string) {
++  const ui = useUIStore.getState();
++  const { split } = ui;
++  if (split.mode === "single" || split.paneA === sessionId || split.paneB === sessionId) return;
++  ui.setSplitPaneB(sessionId);
++}
++
+ export const useSessionsStore = create<SessionsState>()((set, get) => ({
+   sessions: [],
+   activeSessionId: null,
+@@ -77,43 +84,52 @@
+   gitNonce: {},
+   closeConfirmations: {},
+ 
+-  addSession: (s) =>
++  addSession: (s) => {
+     set((state) => ({
+       sessions: [...state.sessions, s],
+       activeSessionId: s.id,
+       launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
+-    })),
++    }));
++    ensureSessionVisibleInSplit(s.id);
++  },
+ 
+   removeSession: (id) =>
+     set((state) => {
++      const removedIndex = state.sessions.findIndex((s) => s.id === id);
+       const sessions = state.sessions.filter((s) => s.id !== id);
+       const activeSessionId =
+         state.activeSessionId === id
+-          ? sessions[0]?.id ?? null
++          ? sessions[Math.min(Math.max(removedIndex, 0), sessions.length - 1)]?.id ?? null
+           : state.activeSessionId;
+       const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
+       const { [id]: _launched, ...launchedSessionIds } = state.launchedSessionIds;
++      const { [id]: _gitNonce, ...gitNonce } = state.gitNonce;
+       const nextLaunchedSessionIds = { ...launchedSessionIds };
+       if (activeSessionId) nextLaunchedSessionIds[activeSessionId] = true;
+       return {
+         sessions,
+         activeSessionId,
+         closeConfirmations,
+-        launchedSessionIds: nextLaunchedSessionIds,
++      launchedSessionIds: nextLaunchedSessionIds,
++        gitNonce,
+       };
+     }),
+ 
+-  setActive: (id) =>
++  setActive: (id) => {
++    let accepted = false;
+     set((state) => {
+       if (!state.sessions.some((s) => s.id === id)) return {};
++      accepted = true;
+       return {
+-        activeSessionId: id,
+-        launchedSessionIds: { ...state.launchedSessionIds, [id]: true },
++      activeSessionId: id,
++      launchedSessionIds: { ...state.launchedSessionIds, [id]: true },
+         sessions: state.sessions.map((s) =>
+           s.id === id && s.unread ? { ...s, unread: false } : s,
+         ),
+       };
+-    }),
++    });
++    if (accepted) ensureSessionVisibleInSplit(id);
++  },
+ 
+   refreshGit: (id) =>
+     set((state) => ({
+diff -ruN /mnt/data/conduit_original/conduit-main/src/state/ui.ts /mnt/data/conduit_review_work/conduit-main/src/state/ui.ts
+--- /mnt/data/conduit_original/conduit-main/src/state/ui.ts	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/state/ui.ts	2026-06-21 06:16:05.145979028 +0000
+@@ -24,6 +24,13 @@
+ }
+ 
+ const SETTINGS_KEY = "conduit-appearance";
++const MIN_FONT_SIZE = 10;
++const MAX_FONT_SIZE = 22;
++const MIN_SIDEBAR_WIDTH = 200;
++const MAX_SIDEBAR_WIDTH = 400;
++const MIN_PANEL_WIDTH = 240;
++const MAX_PANEL_WIDTH_RATIO = 0.45;
++
+ const DEFAULT_SETTINGS: AppearanceSettings = {
+   theme: "light",
+   accent: "#c2683c",
+@@ -34,6 +41,35 @@
+   terminalTheme: "default",
+ };
+ 
++function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
++  return typeof value === "number" && Number.isFinite(value)
++    ? Math.max(min, Math.min(max, value))
++    : fallback;
++}
++
++function maxPanelWidth(): number {
++  const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
++  return Math.max(MIN_PANEL_WIDTH, Math.floor(vw * MAX_PANEL_WIDTH_RATIO));
++}
++
++function isTheme(value: unknown): value is ThemeType {
++  return value === "light" || value === "dark" || value === "system";
++}
++
++function isCursorStyle(value: unknown): value is CursorStyle {
++  return value === "bar" || value === "block" || value === "underline";
++}
++
++function isTerminalTheme(value: unknown): value is TerminalThemeName {
++  return value === "default" || value === "catppuccin" || value === "tokyo-night" || value === "one-dark" || value === "solarized";
++}
++
++function sanitizeAccent(value: unknown): string {
++  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
++    ? value
++    : DEFAULT_SETTINGS.accent;
++}
++
+ function loadSettings(): AppearanceSettings {
+   try {
+     const raw = localStorage.getItem(SETTINGS_KEY);
+@@ -41,13 +77,13 @@
+     const parsed = JSON.parse(raw) as Partial<AppearanceSettings>;
+     return {
+       ...DEFAULT_SETTINGS,
+-      ...(parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system" ? { theme: parsed.theme } : {}),
+-      ...(typeof parsed.accent === "string" ? { accent: parsed.accent } : {}),
+-      ...(parsed.cursorStyle === "bar" || parsed.cursorStyle === "block" || parsed.cursorStyle === "underline" ? { cursorStyle: parsed.cursorStyle } : {}),
+-      ...(typeof parsed.fontSize === "number" ? { fontSize: parsed.fontSize } : {}),
+-      ...(typeof parsed.sidebarWidth === "number" ? { sidebarWidth: parsed.sidebarWidth } : {}),
+-      ...(typeof parsed.panelWidth === "number" ? { panelWidth: parsed.panelWidth } : {}),
+-      ...(parsed.terminalTheme === "default" || parsed.terminalTheme === "catppuccin" || parsed.terminalTheme === "tokyo-night" || parsed.terminalTheme === "one-dark" || parsed.terminalTheme === "solarized" ? { terminalTheme: parsed.terminalTheme } : {}),
++      theme: isTheme(parsed.theme) ? parsed.theme : DEFAULT_SETTINGS.theme,
++      accent: sanitizeAccent(parsed.accent),
++      cursorStyle: isCursorStyle(parsed.cursorStyle) ? parsed.cursorStyle : DEFAULT_SETTINGS.cursorStyle,
++      fontSize: clampNumber(parsed.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
++      sidebarWidth: clampNumber(parsed.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
++      panelWidth: clampNumber(parsed.panelWidth, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
++      terminalTheme: isTerminalTheme(parsed.terminalTheme) ? parsed.terminalTheme : DEFAULT_SETTINGS.terminalTheme,
+     };
+   } catch {
+     return DEFAULT_SETTINGS;
+@@ -83,6 +119,8 @@
+   inspectorTab: InspectorTab;
+   toasts: Toast[];
+ 
++  setSidebarVisible: (visible: boolean) => void;
++  setPanelVisible: (visible: boolean) => void;
+   toggleSidebar: () => void;
+   togglePanel: () => void;
+   setOverlay: (o: OverlayType) => void;
+@@ -121,19 +159,20 @@
+ 
+     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
+     togglePanel: () => set((s) => ({ panelVisible: !s.panelVisible })),
++    setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
++    setPanelVisible: (panelVisible) => set({ panelVisible }),
+     setOverlay: (overlay) => set({ overlay }),
+     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
+-    setTheme: (theme) => set({ theme }),
+-    setAccent: (accent) => set({ accent }),
+-    setCursorStyle: (cursorStyle) => set({ cursorStyle }),
+-    setFontSize: (fontSize) => set({ fontSize }),
+-    setTerminalTheme: (terminalTheme) => set({ terminalTheme }),
++    setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
++    setAccent: (accent) => set({ accent: sanitizeAccent(accent) }),
++    setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
++    setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
++    setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
+     setSidebarWidth: (sidebarWidth) => {
+-      set({ sidebarWidth: Math.max(200, Math.min(400, sidebarWidth)) });
++      set({ sidebarWidth: clampNumber(sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth) });
+     },
+     setPanelWidth: (panelWidth) => {
+-      const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+-      set({ panelWidth: Math.max(240, Math.min(Math.floor(vw * 0.45), panelWidth)) });
++      set({ panelWidth: clampNumber(panelWidth, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth) });
+     },
+     setTrafficLightWidth: (trafficLightWidth) => set({ trafficLightWidth }),
+     setViewportWidth: (viewportWidth) => set({ viewportWidth }),
+diff -ruN /mnt/data/conduit_original/conduit-main/src/styles/globals.css /mnt/data/conduit_review_work/conduit-main/src/styles/globals.css
+--- /mnt/data/conduit_original/conduit-main/src/styles/globals.css	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/styles/globals.css	2026-06-21 06:14:16.653173303 +0000
+@@ -102,3 +102,14 @@
+ /* Dir group header: + button fade on hover */
+ .dir-group-header .dir-group-add { opacity: 0; transition: opacity 120ms ease; }
+ .dir-group-header:hover .dir-group-add { opacity: 1; }
++
++@media (prefers-reduced-motion: reduce) {
++  *,
++  *::before,
++  *::after {
++    animation-duration: 1ms !important;
++    animation-iteration-count: 1 !important;
++    scroll-behavior: auto !important;
++    transition-duration: 1ms !important;
++  }
++}
+diff -ruN /mnt/data/conduit_original/conduit-main/src/ui/FilePreview.tsx /mnt/data/conduit_review_work/conduit-main/src/ui/FilePreview.tsx
+--- /mnt/data/conduit_original/conduit-main/src/ui/FilePreview.tsx	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/ui/FilePreview.tsx	2026-06-21 06:11:44.205724062 +0000
+@@ -1,4 +1,4 @@
+-import { useEffect, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ import { fsReadFile, type ReadResult } from "@/modules/fs/fs-bridge";
+ import { formatSize } from "./types";
+ 
+@@ -9,7 +9,7 @@
+ }
+ 
+ function MarkdownPreview({ content }: { content: string }) {
+-  const blocks = parseMarkdown(content);
++  const blocks = useMemo(() => parseMarkdown(content), [content]);
+   return (
+     <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar">
+       {blocks.map((block, i) => (
+@@ -218,6 +218,9 @@
+   }, [filePath]);
+ 
+   const isMarkdown = /\.md$/i.test(fileName);
++  const textContent = result?.kind === "text"
++    ? result.content + (result.truncated ? "\n… 已截断" : "")
++    : "";
+ 
+   return (
+     <div style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginTop: 2, overflow: "hidden" }}>
+@@ -247,9 +250,9 @@
+       ) : result.kind === "toolarge" ? (
+         <PreviewMessage icon="⊘" text={`文件过大（${formatSize(result.size)}）`} />
+       ) : isMarkdown ? (
+-        <MarkdownPreview content={result.content} />
++        <MarkdownPreview content={textContent} />
+       ) : (
+-        <TextPreview content={result.content.length > 32768 ? result.content.slice(0, 32768) + "\n… 已截断" : result.content} />
++        <TextPreview content={textContent} />
+       )}
+     </div>
+   );
+diff -ruN /mnt/data/conduit_original/conduit-main/src/ui/MainArea.tsx /mnt/data/conduit_review_work/conduit-main/src/ui/MainArea.tsx
+--- /mnt/data/conduit_original/conduit-main/src/ui/MainArea.tsx	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/ui/MainArea.tsx	2026-06-21 06:11:35.195770842 +0000
+@@ -30,6 +30,7 @@
+   useEffect(() => {
+     if (!active?.dir) return;
+     let cancelled = false;
++    setRemote(null);
+     gitAheadBehind(active.dir)
+       .then((r) => !cancelled && setRemote(r))
+       .catch(() => !cancelled && setRemote(null));
+diff -ruN /mnt/data/conduit_original/conduit-main/src/ui/Sidebar.tsx /mnt/data/conduit_review_work/conduit-main/src/ui/Sidebar.tsx
+--- /mnt/data/conduit_original/conduit-main/src/ui/Sidebar.tsx	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/ui/Sidebar.tsx	2026-06-21 06:13:56.648455741 +0000
+@@ -124,6 +124,7 @@
+       })
+     : sessions;
+   const groups = groupByDir(filtered);
++  const canReorder = q.length === 0;
+ 
+   const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
+     dragStartY.current = e.clientY;
+@@ -278,6 +279,12 @@
+         }}
+         className="no-scrollbar"
+       >
++        {filtered.length === 0 && (
++          <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
++            {q ? "无匹配会话" : "暂无会话"}
++          </div>
++        )}
++
+         {Object.entries(groups).map(([dir, groupSessions]) => (
+           <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
+             <DirGroupHeader dir={dir} count={groupSessions.length} onNewTerminal={() => useSessionsStore.getState().newTerminalInDir(dir)} />
+@@ -292,13 +299,14 @@
+                     )}
+                     <div
+                       onPointerDown={(e) => {
++                        if (!canReorder) return;
+                         if ((e.target as HTMLElement).closest(".session-card-close") || (e.target as HTMLElement).closest(".hover-close")) return;
+                         handleDragStart(e, s.id, dir, idx);
+                       }}
+                       style={{
+                         opacity: isDragging ? 0.3 : 1,
+                         transition: "opacity 120ms ease",
+-                        touchAction: "none",
++                        touchAction: canReorder ? "none" : "auto",
+                       }}
+                     >
+                       <SessionCard
+diff -ruN /mnt/data/conduit_original/conduit-main/src/ui/Toast.tsx /mnt/data/conduit_review_work/conduit-main/src/ui/Toast.tsx
+--- /mnt/data/conduit_original/conduit-main/src/ui/Toast.tsx	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/ui/Toast.tsx	2026-06-21 06:14:06.163183220 +0000
+@@ -11,20 +11,24 @@
+   const setActive = useSessionsStore((s) => s.setActive);
+   const [exiting, setExiting] = useState<boolean>(false);
+   const [paused, setPaused] = useState<boolean>(false);
+-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
++  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
++  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+   const remainRef = useRef(TOAST_DURATION);
+   const startRef = useRef(Date.now());
+ 
+   const dismiss = () => {
+     if (exiting) return;
+     setExiting(true);
+-    setTimeout(() => removeToast(toast.id), EXIT_DURATION);
++    exitTimerRef.current = setTimeout(() => removeToast(toast.id), EXIT_DURATION);
+   };
+ 
+   useEffect(() => {
+     startRef.current = Date.now();
+     timerRef.current = setTimeout(dismiss, TOAST_DURATION);
+-    return () => clearTimeout(timerRef.current);
++    return () => {
++      clearTimeout(timerRef.current);
++      clearTimeout(exitTimerRef.current);
++    };
+   }, []);
+ 
+   const handleMouseEnter = () => {
+diff -ruN /mnt/data/conduit_original/conduit-main/src/ui/overlays/CommandPalette.tsx /mnt/data/conduit_review_work/conduit-main/src/ui/overlays/CommandPalette.tsx
+--- /mnt/data/conduit_original/conduit-main/src/ui/overlays/CommandPalette.tsx	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/ui/overlays/CommandPalette.tsx	2026-06-21 06:13:44.334090365 +0000
+@@ -34,6 +34,7 @@
+   const sessions = useSessionsStore((s) => s.sessions);
+   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
+   const setActive = useSessionsStore((s) => s.setActive);
++  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+   const ui = useUIStore;
+ 
+   const commands = useMemo((): Command[] => {
+@@ -65,6 +66,44 @@
+       },
+     });
+ 
++    if (activeSession) {
++      cmds.push({
++        id: "new-terminal-current-dir",
++        label: "在当前目录新建终端",
++        subtitle: activeSession.dir,
++        icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 5v14M5 12h14" /><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>,
++        section: "操作",
++        action: () => {
++          useSessionsStore.getState().newTerminalInDir(activeSession.dir);
++          onClose();
++        },
++      });
++
++      cmds.push({
++        id: "refresh-git-current",
++        label: "刷新当前 Git 状态",
++        subtitle: activeSession.dir,
++        icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
++        section: "操作",
++        action: () => {
++          useSessionsStore.getState().refreshGit(activeSession.id);
++          onClose();
++        },
++      });
++
++      cmds.push({
++        id: "close-current-session",
++        label: "关闭当前会话",
++        shortcut: "⌘W",
++        icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
++        section: "操作",
++        action: () => {
++          useSessionsStore.getState().closeSession(activeSession.id);
++          onClose();
++        },
++      });
++    }
++
+     cmds.push({
+       id: "toggle-sidebar",
+       label: "切换侧栏",
+@@ -119,7 +158,7 @@
+     });
+ 
+     return cmds;
+-  }, [sessions, activeSessionId, setActive, onClose, ui]);
++  }, [sessions, activeSessionId, activeSession, setActive, onClose, ui]);
+ 
+   const q = query.trim().toLowerCase();
+   const filtered = q
+@@ -134,13 +173,17 @@
+   }, [query]);
+ 
+   useEffect(() => {
++    setSelectedIndex((index) => filtered.length === 0 ? 0 : Math.min(index, filtered.length - 1));
++  }, [filtered.length]);
++
++  useEffect(() => {
+     inputRef.current?.focus();
+   }, []);
+ 
+   useEffect(() => {
+     const el = listRef.current;
+     if (!el) return;
+-    const selected = el.children[selectedIndex] as HTMLElement | undefined;
++    const selected = el.querySelector(`[data-cmd-index="${selectedIndex}"]`) as HTMLElement | null;
+     selected?.scrollIntoView({ block: "nearest" });
+   }, [selectedIndex]);
+ 
+@@ -150,6 +193,7 @@
+       onClose();
+     } else if (e.key === "ArrowDown") {
+       e.preventDefault();
++      if (filtered.length === 0) return;
+       setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
+     } else if (e.key === "ArrowUp") {
+       e.preventDefault();
+@@ -239,6 +283,7 @@
+                 return (
+                   <div
+                     key={cmd.id}
++                    data-cmd-index={globalIdx}
+                     onClick={() => cmd.action()}
+                     onMouseEnter={() => setSelectedIndex(globalIdx)}
+                     style={{
+diff -ruN /mnt/data/conduit_original/conduit-main/src/ui/overlays/Settings.tsx /mnt/data/conduit_review_work/conduit-main/src/ui/overlays/Settings.tsx
+--- /mnt/data/conduit_original/conduit-main/src/ui/overlays/Settings.tsx	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src/ui/overlays/Settings.tsx	2026-06-21 06:14:12.464116528 +0000
+@@ -125,7 +125,7 @@
+       <div
+         ref={sheetRef} tabIndex={0}
+         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Escape") onClose(); }}
+-        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn var(--duration-normal) ease", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
++        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn var(--duration-normal) ease", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
+         <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
+           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+             <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>设置</span>
+diff -ruN /mnt/data/conduit_original/conduit-main/src-tauri/src/modules/fs/file.rs /mnt/data/conduit_review_work/conduit-main/src-tauri/src/modules/fs/file.rs
+--- /mnt/data/conduit_original/conduit-main/src-tauri/src/modules/fs/file.rs	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src-tauri/src/modules/fs/file.rs	2026-06-21 06:11:53.400803702 +0000
+@@ -1,8 +1,10 @@
++use std::io::Read;
+ use std::time::UNIX_EPOCH;
+ 
+ use serde::Serialize;
+ 
+ const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
++const MAX_TEXT_PREVIEW_BYTES: u64 = 256 * 1024; // UI preview cap
+ const BINARY_SNIFF_BYTES: usize = 8 * 1024;
+ 
+ #[derive(Serialize)]
+@@ -11,6 +13,7 @@
+     Text {
+         content: String,
+         size: u64,
++        truncated: bool,
+     },
+     Binary {
+         size: u64,
+@@ -53,10 +56,23 @@
+         });
+     }
+ 
+-    let bytes = std::fs::read(&p).map_err(|e| {
+-        log::debug!("fs_read_file read({}) failed: {e}", p.display());
++    let mut file = std::fs::File::open(&p).map_err(|e| {
++        log::debug!("fs_read_file open({}) failed: {e}", p.display());
+         e.to_string()
+     })?;
++    let mut bytes = Vec::with_capacity(size.min(MAX_TEXT_PREVIEW_BYTES + 1) as usize);
++    file.by_ref()
++        .take(MAX_TEXT_PREVIEW_BYTES + 1)
++        .read_to_end(&mut bytes)
++        .map_err(|e| {
++            log::debug!("fs_read_file read({}) failed: {e}", p.display());
++            e.to_string()
++        })?;
++
++    let mut truncated = size > MAX_TEXT_PREVIEW_BYTES || bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES;
++    if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
++        bytes.truncate(MAX_TEXT_PREVIEW_BYTES as usize);
++    }
+ 
+     // Null-byte sniff on the first chunk. Not perfect (misses UTF-16 BOM
+     // cases) but catches the common "this is a PNG" mistake cheaply.
+@@ -66,8 +82,31 @@
+     }
+ 
+     match String::from_utf8(bytes) {
+-        Ok(content) => Ok(ReadResult::Text { content, size }),
+-        Err(_) => Ok(ReadResult::Binary { size }),
++        Ok(content) => Ok(ReadResult::Text {
++            content,
++            size,
++            truncated,
++        }),
++        Err(e) => {
++            let err = e.utf8_error();
++            let valid_up_to = err.valid_up_to();
++            let incomplete_at_end = err.error_len().is_none();
++            if truncated && incomplete_at_end && valid_up_to > 0 {
++                let mut bytes = e.into_bytes();
++                bytes.truncate(valid_up_to);
++                truncated = true;
++                match String::from_utf8(bytes) {
++                    Ok(content) => Ok(ReadResult::Text {
++                        content,
++                        size,
++                        truncated,
++                    }),
++                    Err(_) => Ok(ReadResult::Binary { size }),
++                }
++            } else {
++                Ok(ReadResult::Binary { size })
++            }
++        }
+     }
+ }
+ 
+diff -ruN /mnt/data/conduit_original/conduit-main/src-tauri/src/modules/git/mod.rs /mnt/data/conduit_review_work/conduit-main/src-tauri/src/modules/git/mod.rs
+--- /mnt/data/conduit_original/conduit-main/src-tauri/src/modules/git/mod.rs	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/src-tauri/src/modules/git/mod.rs	2026-06-21 06:14:23.113512618 +0000
+@@ -172,16 +172,18 @@
+     let mut lines = 0usize;
+     let mut truncated = false;
+     diff.print(git2::DiffFormat::Patch, |_d, _h, l| {
+-        if out.len() >= DIFF_MAX_BYTES || lines >= DIFF_MAX_LINES {
++        let content = std::str::from_utf8(l.content()).unwrap_or("");
++        let origin = l.origin();
++        let prefix_len = if matches!(origin, '+' | '-' | ' ') { 1 } else { 0 };
++        if out.len() + content.len() + prefix_len > DIFF_MAX_BYTES || lines >= DIFF_MAX_LINES {
+             truncated = true;
+             return true;
+         }
+-        let origin = l.origin();
+-        if matches!(origin, '+' | '-' | ' ') {
++        if prefix_len == 1 {
+             out.push(origin);
+             lines += 1;
+         }
+-        out.push_str(std::str::from_utf8(l.content()).unwrap_or(""));
++        out.push_str(content);
+         true
+     })
+     .map_err(|e| e.to_string())?;
+diff -ruN /mnt/data/conduit_original/conduit-main/tests/project-review-regressions.test.mjs /mnt/data/conduit_review_work/conduit-main/tests/project-review-regressions.test.mjs
+--- /mnt/data/conduit_original/conduit-main/tests/project-review-regressions.test.mjs	2026-06-21 05:01:29.000000000 +0000
++++ /mnt/data/conduit_review_work/conduit-main/tests/project-review-regressions.test.mjs	2026-06-21 06:17:11.790548947 +0000
+@@ -80,3 +80,76 @@
+   assert.match(init, /const timer = setInterval\(persistSessionsNow, 30_000\);/);
+   assert.match(init, /onCloseRequested\(async \(\) => \{[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveSessions/);
+ });
++
++test("responsive shells close cleanly and avoid stale remote git badges", () => {
++  const app = read("src/app/App.tsx");
++  const keys = read("src/app/useKeybindings.ts");
++  const main = read("src/ui/MainArea.tsx");
++  const settings = read("src/ui/overlays/Settings.tsx");
++
++  assert.match(app, /const sidebarEffectiveWidth = sidebarVisible/);
++  assert.match(app, /const panelEffectiveWidth = panelVisible/);
++  assert.match(app, /onClick=\{togglePanel\}/);
++  assert.match(app, /onClick=\{toggleSidebar\}/);
++  assert.match(keys, /if \(e\.key === "Escape"\)/);
++  assert.match(keys, /ui\.setOverlay\(null\)/);
++  assert.match(keys, /ui\.setSidebarVisible\(false\)/);
++  assert.match(keys, /ui\.setPanelVisible\(false\)/);
++  assert.match(keys, /const \{ paneA, paneB \} = ui\.split/);
++  assert.match(keys, /st\.setActive\(st\.activeSessionId === paneB \? paneA : paneB\)/);
++  assert.match(main, /setRemote\(null\);[\s\S]*gitAheadBehind\(active\.dir\)/);
++  assert.match(settings, /maxWidth: "calc\(100vw - 32px\)"/);
++});
++
++test("session store keeps active sessions visible in split mode and cleans per-session metadata", () => {
++  const source = read("src/state/sessions.ts");
++  const init = read("src/app/useInit.ts");
++
++  assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string\)/);
++  assert.match(source, /ui\.setSplitPaneB\(sessionId\)/);
++  assert.match(source, /ensureSessionVisibleInSplit\(s\.id\)/);
++  assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
++  assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
++  assert.match(source, /sessions\[Math\.min\(Math\.max\(removedIndex, 0\), sessions\.length - 1\)\]/);
++  assert.match(init, /const merged = current\.sessions\.length === 0/);
++  assert.match(init, /ui\.setSidebarVisible\(layout\.sidebarVisible\)/);
++  assert.match(init, /ui\.setPanelVisible\(layout\.panelVisible\)/);
++});
++
++test("file previews and markdown rendering stay bounded", () => {
++  const rust = read("src-tauri/src/modules/fs/file.rs");
++  const bridge = read("src/modules/fs/fs-bridge.ts");
++  const preview = read("src/ui/FilePreview.tsx");
++
++  assert.match(rust, /const MAX_TEXT_PREVIEW_BYTES: u64 = 256 \* 1024/);
++  assert.match(rust, /truncated: bool/);
++  assert.match(rust, /take\(MAX_TEXT_PREVIEW_BYTES \+ 1\)/);
++  assert.match(rust, /bytes\.truncate\(MAX_TEXT_PREVIEW_BYTES as usize\)/);
++  assert.match(bridge, /truncated\?: boolean/);
++  assert.match(preview, /useMemo/);
++  assert.match(preview, /result\.truncated \? "\\n… 已截断" : ""/);
++});
++
++test("appearance settings are sanitized and command palette exposes useful actions", () => {
++  const ui = read("src/state/ui.ts");
++  const palette = read("src/ui/overlays/CommandPalette.tsx");
++  const sidebar = read("src/ui/Sidebar.tsx");
++  const toast = read("src/ui/Toast.tsx");
++  const css = read("src/styles/globals.css");
++  const git = read("src-tauri/src/modules/git/mod.rs");
++
++  assert.match(ui, /function clampNumber\(value: unknown/);
++  assert.match(ui, /function sanitizeAccent\(value: unknown\)/);
++  assert.match(ui, /setAccent: \(accent\) => set\(\{ accent: sanitizeAccent\(accent\) \}\)/);
++  assert.match(ui, /setSidebarVisible: \(sidebarVisible\) => set\(\{ sidebarVisible \}\)/);
++  assert.match(ui, /setPanelVisible: \(panelVisible\) => set\(\{ panelVisible \}\)/);
++  assert.match(palette, /label: "在当前目录新建终端"/);
++  assert.match(palette, /label: "刷新当前 Git 状态"/);
++  assert.match(palette, /label: "关闭当前会话"/);
++  assert.match(palette, /filtered\.length === 0 \? 0 : Math\.min\(index, filtered\.length - 1\)/);
++  assert.match(sidebar, /const canReorder = q\.length === 0/);
++  assert.match(sidebar, /if \(!canReorder\) return;/);
++  assert.match(toast, /exitTimerRef/);
++  assert.match(css, /prefers-reduced-motion: reduce/);
++  assert.match(git, /out\.len\(\) \+ content\.len\(\) \+ prefix_len > DIFF_MAX_BYTES/);
++});

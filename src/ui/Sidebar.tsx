@@ -436,12 +436,14 @@ export function Sidebar({
                         confirmClose={!!closeConfirmations[s.id]}
                         onClick={() => { if (!dragStarted.current) onSelectSession(s.id); }}
                         onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
+                        onRename={(name) => useSessionsStore.getState().renameSession(s.id, name)}
                         onClearCloseConfirm={() => clearCloseConfirmation(s.id)}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setContextMenu({
                             position: { x: e.clientX, y: e.clientY },
                             items: [
+                              { label: "重命名", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
                               { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
                               { label: "复制目录路径", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
                               null,

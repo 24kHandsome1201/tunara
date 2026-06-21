@@ -27,6 +27,9 @@ export interface Session {
   completedAt?: number;
   unread?: boolean;
 
+  // ── 用户自定义标题（优先级最高） ──
+  customTitle?: string;
+
   // ── 动态标题源（Warp 风格瀑布推导） ──
   lastCommand?: string;
   lastExitCode?: number;
@@ -63,7 +66,7 @@ export type OverlayType = null | "settings" | "command-palette";
 export type ThemeType = "light" | "dark" | "system";
 
 /** 终端配色主题 */
-export type TerminalThemeName = "default" | "catppuccin" | "tokyo-night" | "one-dark" | "solarized";
+export type TerminalThemeName = "default" | "catppuccin" | "tokyo-night" | "one-dark" | "solarized" | "github-light" | "rose-pine-dawn";
 
 export const AGENT_NAMES: Record<string, string> = {
   CC: "Claude Code",
@@ -101,7 +104,9 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
     ? s.lastCommand
     : undefined;
 
-  if (s.agent) {
+  if (s.customTitle) {
+    primary = s.customTitle;
+  } else if (s.agent) {
     primary = AGENT_NAMES[s.agent] ?? s.agent;
   } else if (lastCommand) {
     primary = truncate(lastCommand, 60);

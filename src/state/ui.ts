@@ -69,7 +69,7 @@ function isCursorStyle(value: unknown): value is CursorStyle {
 }
 
 function isTerminalTheme(value: unknown): value is TerminalThemeName {
-  return value === "default" || value === "catppuccin" || value === "tokyo-night" || value === "one-dark" || value === "solarized";
+  return value === "default" || value === "catppuccin" || value === "tokyo-night" || value === "one-dark" || value === "solarized" || value === "github-light" || value === "rose-pine-dawn";
 }
 
 function sanitizeAccent(value: unknown): string {
@@ -192,6 +192,7 @@ interface UIState extends AppearanceSettings {
   toggleDirCollapsed: (dir: string) => void;
   recordCommandUse: (id: string) => void;
   setExternalEditor: (e: ExternalEditor) => void;
+  resetAppearance: () => void;
 }
 
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
@@ -261,6 +262,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
         return { commandUsage: Object.fromEntries(entries) };
       }),
     setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
+    resetAppearance: () => set({ ...DEFAULT_SETTINGS }),
   };
 }));
 
