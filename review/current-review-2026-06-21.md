@@ -44,6 +44,7 @@
 - `Settings`: CLI tab 下不显示“恢复默认”, 避免用户在不可见上下文里重置外观。
 - `ContextMenu`: 增加 `role="menu"`, `role="menuitem"`, `role="separator"` 和 Arrow/Home/End/Enter/Space 键盘支持。
 - `ContextMenu`: 阴影改用 `--shadow-menu` token。
+- `ContextMenu`: 增加统一 icon slot, 文件、目录和会话右键菜单项不再是纯文字列表。
 - `Sidebar`/`FileExplorer`/`sessions`: 移除 "启动所有 Agent" 入口和 `launchAllAgents`, 避免产品漂移成 agent launcher。
 - `MainArea`: 状态栏路径做中间缩略, 右侧 Git/Agent 信息加收缩策略。
 - `DiffPanel`: 文件行从松散卡片改为列表分隔线, 信息密度更接近开发者工具。
@@ -166,6 +167,7 @@
 - CommandPalette 选中竖条和 section 对齐。
 - FileExplorer 面包屑、搜索路径和文件大小列。
 - ContextMenu 缺少进入动画。
+- ContextMenu 菜单项缺少图标。
 - Settings 终端主题卡片固定宽度。
 - Toast 固定 260px 和左侧 accent 竖条挤压内容。
 - Linux 字体回退链不够保险。

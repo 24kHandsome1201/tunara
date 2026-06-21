@@ -335,9 +335,9 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                   setContextMenu({
                     position: { x: e.clientX, y: e.clientY },
                     items: [
-                      { label: "在此目录新建终端", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
-                      { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                      { label: "复制路径", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                      { label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
+                      { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                      { label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                     ],
                   });
                 }}
@@ -367,8 +367,8 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                       setContextMenu({
                         position: { x: e.clientX, y: e.clientY },
                         items: [
-                          { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                          { label: "复制路径", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                          { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                          { label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                         ],
                       });
                     }}

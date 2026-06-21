@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+export type MenuIconName = "terminal" | "editor" | "copy" | "rename" | "close";
+
 export interface MenuItem {
   label: string;
   action: () => void;
+  icon?: MenuIconName;
   danger?: boolean;
   disabled?: boolean;
 }
@@ -14,6 +17,62 @@ interface ContextMenuProps {
   items: MenuEntry[];
   position: { x: number; y: number };
   onClose: () => void;
+}
+
+function MenuIcon({ name }: { name: MenuIconName }) {
+  const common = {
+    width: 14,
+    height: 14,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
+  if (name === "terminal") {
+    return (
+      <svg {...common}>
+        <polyline points="4 7 10 12 4 17" />
+        <line x1="12" y1="17" x2="20" y2="17" />
+      </svg>
+    );
+  }
+  if (name === "editor") {
+    return (
+      <svg {...common}>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+      </svg>
+    );
+  }
+  if (name === "copy") {
+    return (
+      <svg {...common}>
+        <rect x="8" y="8" width="11" height="11" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+      </svg>
+    );
+  }
+  if (name === "rename") {
+    return (
+      <svg {...common}>
+        <path d="M4 7h10" />
+        <path d="M4 17h8" />
+        <path d="M16 15l3 3 3-7Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M4 7h16" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 7l1 13h10l1-13" />
+      <path d="M9 7V4h6v3" />
+    </svg>
+  );
 }
 
 export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
@@ -138,9 +197,10 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             }}
             style={{
               height: 32,
-              padding: "0 12px",
+              padding: "0 12px 0 10px",
               display: "flex",
               alignItems: "center",
+              gap: 8,
               fontSize: "var(--fs-body)",
               fontFamily: "var(--font-ui)",
               background: active ? "var(--c-bg-hover)" : undefined,
@@ -151,7 +211,21 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
               textOverflow: "ellipsis",
             }}
           >
-            {item.label}
+            <span
+              aria-hidden="true"
+              style={{
+                width: 16,
+                height: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: item.danger ? "var(--c-error)" : "var(--c-text-5)",
+                flexShrink: 0,
+              }}
+            >
+              {item.icon ? <MenuIcon name={item.icon} /> : null}
+            </span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
           </div>
         );
       })}

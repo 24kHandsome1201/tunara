@@ -235,6 +235,9 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /ArrowDown/);
   assert.match(contextMenu, /role="separator"/);
   assert.match(contextMenu, /boxShadow: "var\(--shadow-menu\)"/);
+  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "editor" \| "copy" \| "rename" \| "close"/);
+  assert.match(contextMenu, /function MenuIcon/);
+  assert.match(contextMenu, /aria-hidden="true"/);
 
   assert.match(settings, /CLI 路径检测失败/);
   assert.match(settings, /未在当前应用 PATH 中找到/);
@@ -281,6 +284,9 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.doesNotMatch(sessionCard, /onClearCloseConfirm/);
   assert.doesNotMatch(sidebar, /onClearCloseConfirm/);
   assert.doesNotMatch(sidebar, /clearDirCloseConfirmation/);
+  assert.match(sidebar, /label: "重命名", icon: "rename"/);
+  assert.match(sidebar, /label: "关闭会话", icon: "close"/);
+  assert.match(sidebar, /label: "关闭全部会话", icon: "close"/);
   assert.match(palette, /st\.closeSessions\(st\.sessions\.map/);
   assert.match(palette, /notifyBatchCloseConfirmation/);
   assert.match(toast, /exitingRef/);
@@ -314,6 +320,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(diff, /function remoteLabel\(remote: RemoteState \| null\): string/);
   assert.match(diff, /Git 状态未知/);
   assert.match(explorer, /function compactRelativePath/);
+  assert.match(explorer, /label: "在此目录新建终端", icon: "terminal"/);
+  assert.match(explorer, /label: "复制路径", icon: "copy"/);
   assert.match(explorer, /minWidth: 48, textAlign: "right"/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(tokens, /--font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;/);

@@ -235,11 +235,11 @@ export function Sidebar({
                 setContextMenu({
                   position: { x: e.clientX, y: e.clientY },
                   items: [
-                    { label: "在此目录新建终端", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
-                    { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
-                    { label: "复制路径", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
+                    { label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
+                    { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
+                    { label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
                     null,
-                    { label: "关闭全部会话", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
+                    { label: "关闭全部会话", icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
                   ],
                 });
               }}
@@ -278,11 +278,11 @@ export function Sidebar({
                           setContextMenu({
                             position: { x: e.clientX, y: e.clientY },
                             items: [
-                              { label: "重命名", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
-                              { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
-                              { label: "复制目录路径", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
+                              { label: "重命名", icon: "rename", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
+                              { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
+                              { label: "复制目录路径", icon: "copy", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
                               null,
-                              { label: "关闭会话", danger: true, action: () => { onCloseSession?.(s.id); } },
+                              { label: "关闭会话", icon: "close", danger: true, action: () => { onCloseSession?.(s.id); } },
                             ],
                           });
                         }}
