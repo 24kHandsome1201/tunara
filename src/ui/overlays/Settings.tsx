@@ -4,6 +4,7 @@ import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, ED
 import { isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
 import { AgentBadge } from "@/ui/agents";
+import { AGENT_REGISTRY } from "@/modules/agent/registry";
 
 interface SettingsProps {
   onClose: () => void;
@@ -54,7 +55,7 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
 
 function AccentRing({ color, label, selected, onClick }: { color: string; label: string; selected: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} title={label} style={{ width: 24, height: 24, borderRadius: "50%", border: selected ? `2px solid ${color}` : "none", padding: 2, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: selected ? `0 0 0 1px ${color}` : "none" }}>
+    <button onClick={onClick} title={label} style={{ width: 24, height: 24, borderRadius: "50%", border: selected ? `1px solid ${color}` : "1px solid transparent", padding: 3, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: selected ? `0 0 0 1px ${color}` : "none" }}>
       <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: color }} />
     </button>
   );
@@ -90,12 +91,7 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
 
 const SECTION_LABEL: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 10 };
 
-const CLI_LIST = [
-  { code: "CC", name: "Claude Code" }, { code: "CX", name: "Codex" }, { code: "AM", name: "Amp" },
-  { code: "GM", name: "Gemini" }, { code: "CP", name: "Copilot" }, { code: "CR", name: "Cursor" },
-  { code: "DR", name: "Droid" }, { code: "OC", name: "OpenCode" }, { code: "PI", name: "Pi" },
-  { code: "AG", name: "Auggie" }, { code: "DV", name: "Devin" },
-];
+const CLI_LIST = AGENT_REGISTRY.map(({ code, name }) => ({ code, name }));
 
 const SOURCE_LABELS: Record<ResolveSource, string> = {
   userOverride: "自定义",
@@ -216,15 +212,15 @@ export function Settings({ onClose }: SettingsProps) {
               <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>字号</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-	                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>−</button>
-	                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)" }}>{fontSize}px</span>
-	                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>+</button>
+                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>−</button>
+                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)" }}>{fontSize}px</span>
+                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>+</button>
                 </div>
               </div>
               <div>
                 <div style={SECTION_LABEL}>终端配色</div>
                 <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>仅影响终端区域，不改变界面主题</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 8 }}>
                   {([
                     { id: "default" as TerminalThemeName, label: "默认", bg: isDark ? "#18181b" : "#ffffff", fg: isDark ? "#e4e4e7" : "#27272a" },
                     { id: "github-light" as TerminalThemeName, label: "GitHub", bg: "#ffffff", fg: "#24292f" },
@@ -238,7 +234,7 @@ export function Settings({ onClose }: SettingsProps) {
                       key={t.id}
                       onClick={() => setTerminalTheme(t.id)}
                       style={{
-                        width: 100,
+                        width: "100%",
                         border: terminalTheme === t.id ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)",
                         borderRadius: "var(--r-card)",
                         padding: 0,
@@ -294,20 +290,20 @@ export function Settings({ onClose }: SettingsProps) {
                     const cli = resolvedByCode.get(code);
                     const installed = !!cli?.path;
                     const source = cli?.source ?? "notFound";
-                  return (
-                    <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
-                      <AgentBadge agent={code} size={28} disabled={!installed} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
-                        <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-                          {installed ? cli?.path : "未在当前应用 PATH 中找到"}
+                    return (
+                      <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
+                        <AgentBadge agent={code} size={28} disabled={!installed} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
+                          <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+                            {installed ? cli?.path : "未在当前应用 PATH 中找到"}
+                          </div>
                         </div>
+                        <span style={{ fontSize: "var(--fs-meta)", color: installed ? "var(--c-success)" : "var(--c-text-5)", fontWeight: 600, flexShrink: 0 }}>
+                          {installed ? SOURCE_LABELS[source] : "未找到"}
+                        </span>
                       </div>
-                      <span style={{ fontSize: "var(--fs-meta)", color: installed ? "var(--c-success)" : "var(--c-text-5)", fontWeight: 600, flexShrink: 0 }}>
-                        {installed ? SOURCE_LABELS[source] : "未找到"}
-                      </span>
-                    </div>
-                  );
+                    );
                   })}
                 </div>
               )}

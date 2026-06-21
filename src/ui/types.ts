@@ -1,4 +1,6 @@
 // Conduit UI 共用类型定义
+import { AGENT_NAMES } from "../modules/agent/registry.ts";
+export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
 export type AgentCode = "CC" | "CX" | "AM" | "GM" | "CP" | "CR" | "DR" | "OC" | "PI" | "AG" | "DV";
@@ -66,21 +68,8 @@ export type OverlayType = null | "settings" | "command-palette";
 export type ThemeType = "light" | "dark" | "system";
 
 /** 终端配色主题 */
-export type TerminalThemeName = "default" | "catppuccin" | "tokyo-night" | "one-dark" | "solarized" | "github-light" | "rose-pine-dawn";
-
-export const AGENT_NAMES: Record<string, string> = {
-  CC: "Claude Code",
-  CX: "Codex",
-  AM: "Amp",
-  GM: "Gemini",
-  CP: "Copilot",
-  CR: "Cursor",
-  DR: "Droid",
-  OC: "OpenCode",
-  PI: "Pi",
-  AG: "Auggie",
-  DV: "Devin",
-};
+export const TERMINAL_THEME_NAMES = ["default", "catppuccin", "tokyo-night", "one-dark", "solarized", "github-light", "rose-pine-dawn"] as const;
+export type TerminalThemeName = typeof TERMINAL_THEME_NAMES[number];
 
 function shortDir(dir: string): string {
   if (dir === "~") return "~";

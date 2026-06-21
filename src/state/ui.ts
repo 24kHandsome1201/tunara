@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import type { OverlayType, ThemeType, TerminalThemeName } from "@/ui/types";
+import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName } from "@/ui/types";
 
 export type CursorStyle = "bar" | "block" | "underline";
 
@@ -33,7 +33,7 @@ const MAX_SIDEBAR_WIDTH = 400;
 const MIN_PANEL_WIDTH = 240;
 const MAX_PANEL_WIDTH_RATIO = 0.45;
 
-const DEFAULT_SETTINGS: AppearanceSettings = {
+export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   theme: "light",
   accent: "#c2683c",
   cursorStyle: "bar",
@@ -69,7 +69,7 @@ function isCursorStyle(value: unknown): value is CursorStyle {
 }
 
 function isTerminalTheme(value: unknown): value is TerminalThemeName {
-  return value === "default" || value === "catppuccin" || value === "tokyo-night" || value === "one-dark" || value === "solarized" || value === "github-light" || value === "rose-pine-dawn";
+  return typeof value === "string" && (TERMINAL_THEME_NAMES as readonly string[]).includes(value);
 }
 
 function sanitizeAccent(value: unknown): string {
@@ -163,7 +163,6 @@ interface UIState extends AppearanceSettings {
   toasts: Toast[];
   collapsedDirs: Record<string, true>;
   commandUsage: Record<string, number>;
-  externalEditor: ExternalEditor;
 
   setSidebarVisible: (visible: boolean) => void;
   setPanelVisible: (visible: boolean) => void;

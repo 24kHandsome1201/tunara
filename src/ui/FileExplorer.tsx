@@ -55,11 +55,17 @@ function pathDisplay(currentPath: string, rootDir: string): string {
   if (currentPath === rootDir) return rootDir;
   let display = currentPath;
   if (rootDir !== "/" && currentPath.startsWith(rootDir + "/")) {
-    display = "· / " + currentPath.slice(rootDir.length + 1).split("/").join(" / ");
+    display = currentPath.slice(rootDir.length + 1).split("/").join(" › ");
   }
-  const parts = display.split("/").filter(Boolean);
-  if (parts.length <= 4) return parts.join(" / ") || "/";
-  return "… / " + parts.slice(-4).join(" / ");
+  const parts = display.split(/[\/›]/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 4) return parts.join(" › ") || "/";
+  return "… › " + parts.slice(-4).join(" › ");
+}
+
+function compactRelativePath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= 3) return path;
+  return "…/" + parts.slice(-3).join("/");
 }
 
 const folderEmptyIcon = (
@@ -297,7 +303,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                       }}
                     >
                       {hit.isDir ? <FolderIcon /> : <FileIcon />}
-                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{hit.rel}</span>
+                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
                       {hit.isDir && <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>}
                     </button>
                     {isExpanded && !hit.isDir && (
@@ -375,7 +381,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                   >
                     <FileIcon />
                     <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{entry.name}</span>
-                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{formatSize(entry.size)}</span>
+                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 48, textAlign: "right" }}>{formatSize(entry.size)}</span>
                   </button>
                   {isExpanded && (
                     <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>

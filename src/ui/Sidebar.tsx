@@ -82,7 +82,7 @@ function DirGroupHeader({
         display: "flex",
         alignItems: "center",
         gap: 6,
-        padding: "6px 14px 6px",
+        padding: "6px 9px",
         cursor: onToggleCollapse ? "pointer" : undefined,
       }}
     >
@@ -135,7 +135,7 @@ function DirGroupHeader({
           tabIndex={0}
           className="dir-group-add hover-bg"
           onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNewTerminal(); } }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onNewTerminal(); } }}
           title="在此目录新建终端"
           style={{
             width: 18,
@@ -160,7 +160,7 @@ function DirGroupHeader({
           tabIndex={0}
           className="dir-group-close hover-close"
           onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onCloseAll(); } }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onCloseAll(); } }}
           title={confirmClose ? "进程运行中，再次点击关闭全部" : "关闭此目录全部会话"}
           style={{
             width: 18,
@@ -292,7 +292,7 @@ export function Sidebar({
       }}
     >
       {onNewTerminal && (
-        <div style={{ padding: "10px 12px 6px" }}>
+        <div style={{ padding: "8px 12px 6px" }}>
           <button
             onClick={onNewTerminal}
             style={{
@@ -322,6 +322,9 @@ export function Sidebar({
                 fontSize: "var(--fs-badge)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
+                background: "var(--c-bg-3)",
+                borderRadius: 4,
+                padding: "1px 5px",
                 marginLeft: "auto",
               }}
             >

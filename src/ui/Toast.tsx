@@ -15,9 +15,11 @@ function ToastItem({ toast }: { toast: Toast }) {
   const exitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const remainRef = useRef(TOAST_DURATION);
   const startRef = useRef(Date.now());
+  const exitingRef = useRef(false);
 
   const dismiss = () => {
-    if (exiting) return;
+    if (exitingRef.current) return;
+    exitingRef.current = true;
     setExiting(true);
     exitTimerRef.current = setTimeout(() => removeToast(toast.id), EXIT_DURATION);
   };

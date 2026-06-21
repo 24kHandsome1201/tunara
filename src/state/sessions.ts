@@ -30,6 +30,7 @@ interface SessionsState {
   updateSession: (id: string, patch: Partial<Session>) => void;
   refreshGit: (id: string) => void;
   clearCloseConfirmation: (id: string) => void;
+  closeSessions: (ids: string[]) => boolean;
   closeSessionsInDir: (dir: string) => void;
   clearDirCloseConfirmation: (dir: string) => void;
 
@@ -53,6 +54,7 @@ interface SessionsState {
 }
 
 let nextId = 1;
+const CLOSE_CONFIRM_WINDOW_MS = 3_000;
 
 export function makeSessionId(): string {
   return `s-${Date.now()}-${nextId++}`;
@@ -157,32 +159,44 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       return { dirCloseConfirmations };
     }),
 
-  closeSessionsInDir: (dir) => {
-    const sessionsInDir = get().sessions.filter((s) => s.dir === dir);
-    if (sessionsInDir.length === 0) return;
-    const hasBusy = sessionsInDir.some((s) => isSessionBusy(s));
+  closeSessions: (ids) => {
+    const uniqueIds = new Set(ids);
+    const orderedTargets = get().sessions.filter((s) => uniqueIds.has(s.id));
+    if (orderedTargets.length === 0) return true;
 
-    if (hasBusy) {
+    const now = Date.now();
+    const unconfirmedBusy = orderedTargets.filter((s) =>
+      isSessionBusy(s) && now - (get().closeConfirmations[s.id] ?? 0) > CLOSE_CONFIRM_WINDOW_MS,
+    );
+    if (unconfirmedBusy.length > 0) {
+      set((state) => {
+        const closeConfirmations = { ...state.closeConfirmations };
+        for (const s of unconfirmedBusy) closeConfirmations[s.id] = now;
+        return { closeConfirmations };
+      });
+      return false;
+    }
+
+    for (const s of [...orderedTargets].reverse()) {
+      if (get().sessions.some((current) => current.id === s.id)) {
+        get().closeSession(s.id);
+      }
+    }
+    return true;
+  },
+
+  closeSessionsInDir: (dir) => {
+    const sessionIds = get().sessions.filter((s) => s.dir === dir).map((s) => s.id);
+    if (sessionIds.length === 0) return;
+    const closed = get().closeSessions(sessionIds);
+    if (!closed) {
       const lastConfirm = get().dirCloseConfirmations[dir] ?? 0;
-      if (Date.now() - lastConfirm > 3_000) {
+      if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
         set((state) => ({
           dirCloseConfirmations: { ...state.dirCloseConfirmations, [dir]: Date.now() },
         }));
-        return;
       }
-      // 二次确认：预置各 busy 会话的 closeConfirmation，使复用的 closeSession 直接通过其单会话确认门
-      const now = Date.now();
-      set((state) => {
-        const closeConfirmations = { ...state.closeConfirmations };
-        for (const s of sessionsInDir) {
-          if (isSessionBusy(s)) closeConfirmations[s.id] = now;
-        }
-        return { closeConfirmations };
-      });
-    }
-
-    for (const s of [...sessionsInDir].reverse()) {
-      get().closeSession(s.id);
+      return;
     }
 
     get().clearDirCloseConfirmation(dir);
@@ -338,7 +352,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     if (session && isSessionBusy(session)) {
       const lastConfirm = get().closeConfirmations[id] ?? 0;
-      if (Date.now() - lastConfirm > 3_000) {
+      if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
         set((state) => ({
           closeConfirmations: { ...state.closeConfirmations, [id]: Date.now() },
         }));

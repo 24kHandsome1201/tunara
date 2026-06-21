@@ -104,8 +104,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 [isHorizontal ? "width" : "height"]: `calc(${split.ratio * 100}% - 2.5px)`,
                 display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
                 borderRadius: 6,
-                outline: paneASession!.id === activeSessionId ? "2px solid var(--c-accent)" : "2px solid transparent",
-                outlineOffset: -2,
+                outline: paneASession!.id === activeSessionId ? "1px solid var(--c-accent)" : "1px solid transparent",
+                outlineOffset: -1,
                 transition: "outline-color var(--duration-fast) ease",
               }}
             >
@@ -118,8 +118,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 [isHorizontal ? "width" : "height"]: `calc(${(1 - split.ratio) * 100}% - 2.5px)`,
                 display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
                 borderRadius: 6,
-                outline: paneBSession!.id === activeSessionId ? "2px solid var(--c-accent)" : "2px solid transparent",
-                outlineOffset: -2,
+                outline: paneBSession!.id === activeSessionId ? "1px solid var(--c-accent)" : "1px solid transparent",
+                outlineOffset: -1,
                 transition: "outline-color var(--duration-fast) ease",
               }}
             >

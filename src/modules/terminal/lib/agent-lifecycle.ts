@@ -1,26 +1,9 @@
 import type { AgentActivity, AgentCode, RunState, Session } from "../../../ui/types.ts";
-import { AGENT_NAMES } from "../../../ui/types.ts";
+import { AGENT_CODES, AGENT_COMMANDS, AGENT_NAMES, AGENT_SHELL_TITLE_FRAGMENTS } from "../../agent/registry.ts";
 import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
 export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
-
-const AGENT_COMMANDS: Record<string, AgentCode> = {
-  claude: "CC",
-  codex: "CX",
-  amp: "AM",
-  ampcode: "AM",
-  gemini: "GM",
-  copilot: "CP",
-  agent: "CR",
-  droid: "DR",
-  opencode: "OC",
-  pi: "PI",
-  auggie: "AG",
-  devin: "DV",
-};
-
-const AGENT_CODES = new Set<AgentCode>(Object.values(AGENT_COMMANDS));
 
 export type AgentLifecycleEventName = "start" | "idle" | "stop" | "exit";
 
@@ -37,19 +20,6 @@ const AGENT_SHELL_TITLE_ALIASES = new Set(
     ...Object.keys(AGENT_COMMANDS),
   ].map((title) => title.trim().toLowerCase()),
 );
-
-const AGENT_SHELL_TITLE_FRAGMENTS = [
-  "claude code",
-  "claude",
-  "codex",
-  "ampcode",
-  "gemini",
-  "copilot",
-  "droid",
-  "opencode",
-  "auggie",
-  "devin",
-];
 
 export function isAgentCode(value: string): value is AgentCode {
   return AGENT_CODES.has(value as AgentCode);

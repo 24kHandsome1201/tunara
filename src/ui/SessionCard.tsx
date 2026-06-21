@@ -145,7 +145,7 @@ function BusyProgress() {
 function DiffStat({ added, removed }: { added: number; removed: number }) {
   if (added === 0 && removed === 0) return null;
   return (
-    <span style={{ display: "inline-flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
+    <span style={{ display: "inline-flex", gap: 4, flexShrink: 0, marginLeft: "auto", paddingLeft: 6 }}>
       {added > 0 && (
         <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-add-text)", background: "var(--c-diff-add-bg)", borderRadius: 4, padding: "1px 5px" }}>
           +{added}
@@ -236,7 +236,12 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onContextMenu={onContextMenu}
       className="session-card"
       style={{
@@ -259,12 +264,12 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
           top: "50%",
           transform: "translateY(-50%)",
           width: 3,
-          height: active ? "60%" : "0%",
-          minHeight: active ? 18 : 0,
+          height: "60%",
+          minHeight: 18,
           background: "var(--c-accent)",
           borderRadius: "0 2px 2px 0",
           opacity: active ? 1 : 0,
-          transition: "height var(--duration-normal) ease, min-height var(--duration-normal) ease, opacity var(--duration-fast) ease",
+          transition: "opacity var(--duration-fast) ease",
         }}
       />
 

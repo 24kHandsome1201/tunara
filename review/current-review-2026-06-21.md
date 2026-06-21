@@ -11,7 +11,7 @@
 
 - `git diff --check main`: 通过。
 - `pnpm build`: 通过。
-- `pnpm test`: 通过, Node 22 个测试, Rust 4 个测试。
+- `pnpm test`: 通过, Node 24 个测试, Rust 4 个测试。
 - `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY。
 
 仍不应把它直接当成稳定发布完成:
@@ -47,11 +47,26 @@
 - `Sidebar`/`FileExplorer`/`sessions`: 移除 "启动所有 Agent" 入口和 `launchAllAgents`, 避免产品漂移成 agent launcher。
 - `MainArea`: 状态栏路径做中间缩略, 右侧 Git/Agent 信息加收缩策略。
 - `DiffPanel`: 文件行从松散卡片改为列表分隔线, 信息密度更接近开发者工具。
+- `Titlebar`: tab 关闭按钮 hit target 从 16px 增到 20px, 折叠侧栏时 tab 区补左间距, 右侧按钮 gap 收窄。
+- `Sidebar`: 新建按钮和目录 header 对齐收口, 快捷键标注改成 badge 样式。
+- `CommandPalette`: 批量关闭改走 store 统一 action, 运行中会话用一次集中确认反馈, 同时去掉选中项左侧竖条。
+- `DiffPanel`: 文件状态 badge 增加 R/? 区分, embedded 模式去掉重复刷新入口, `remoteLabel` 删除死参数。
+- `FileExplorer`: 面包屑改用 `›`, 搜索结果路径智能缩略, 文件大小列固定右对齐。
+- `ContextMenu`: 增加轻量进入动画。
+- `Settings`: 终端主题卡片改成自适应 grid, 强调色选中态不再膨胀。
+- `AgentStatusBar`: 完成态停留时间和淡出时间缩短。
 
 ### 文档
 
 - `docs/设计-右键菜单与批量启动Agent.md`: 重写为右键菜单基础设施文档, 删除批量启动 Agent 规格。
 - `docs/实现文档-功能补全.md`: 删除“已合入当前 main”的误导表述, 改为候选分支口径。
+
+### 结构收口
+
+- 新增 `src/modules/agent/registry.ts`, 前端 agent 名称、命令识别和 Settings CLI 列表共用同一事实源。
+- `TerminalThemeName` 改由 `TERMINAL_THEME_NAMES` 数组派生, localStorage 校验不再手写另一份枚举。
+- `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
+- `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 
 ## 仍需跟进
 
@@ -95,30 +110,23 @@
 - release 后回填真实 sha256。
 - zap bundle id 使用实际 Tauri identifier。
 
-### P1: Agent registry 还没有单一事实源
+### P1: Rust resolver 仍需和前端 agent registry 锁定
 
-已移除最危险的 `launchAllAgents`, 但仍有多处 agent 信息:
-
-- `agent-lifecycle.ts` 的命令识别。
-- `Settings.tsx` 的 CLI 展示列表。
-- Rust resolver 的 `resolve_all_bins` 映射。
+前端已经有 `src/modules/agent/registry.ts` 单一事实源, 但 Rust `resolve_all_bins` 仍保留一份 code 到 bin 的映射。这不是运行时 bug, 但新增 agent 时仍可能出现跨语言漂移。
 
 建议:
 
-- 后续建立 `agent-registry` 作为前端单一事实源。
-- Rust resolver 映射保持同一顺序和同一 code/bin 对, 并增加测试锁住。
+- 给 Rust resolver 增加测试, 锁住 code/bin 顺序和前端 registry 的公开契约。
+- 后续如需要彻底统一, 可由 Rust command 返回 resolver 支持列表, 前端 registry 只补 UI 展示名和检测别名。
 
-### P1: 命令面板批量关闭 busy session 反馈仍需收敛
+### P1: 关闭确认超时仍有 UI 层残留
 
-问题:
-
-- “关闭所有会话”和“关闭其他会话”仍是逐个调用 `closeSession`。
-- 遇到 busy session 时, 第一次调用只是进入确认态, 用户反馈还不够集中。
+本轮已把批量关闭统一到 store action, 但单个会话和目录 header 的 3 秒视觉清除仍有 UI 层 timer。当前行为可用, 但还不是最干净的模型。
 
 建议:
 
-- 增加 store 层 batch close action。
-- 如果目标里有 busy session, 第一次只进入统一确认状态并显示 Toast, 第二次再批量关闭。
+- 后续把 `closeConfirmations` 和 `dirCloseConfirmations` 的过期清理由 store 统一管理。
+- UI 只读取确认态, 不再各自启动 timer。
 
 ### P2: 架构热点
 
@@ -141,17 +149,17 @@
 
 - B-1 重命名 Escape: 已修。
 - B-2 暗色 accent fallback: 已修。
-- D-1 Agent 列表分散: 部分处理, 移除批量启动, registry 后续做。
-- D-2 terminal theme 校验重复: 仍建议后续统一。
-- D-8 remoteLabel 死代码: 仍是低优先级清理项。
+- D-1 Agent 列表分散: 前端已处理, Rust resolver 仍需测试锁定。
+- D-2 terminal theme 校验重复: 已修, type 和校验共用 `TERMINAL_THEME_NAMES`。
+- D-8 remoteLabel 死代码: 已修。
 - P-3 CommandPalette `indexOf`: 仍是低优先级性能债。
 
 已失效或降级:
 
 - B-3 useEffect 缺 deps: 当前代码已补依赖。
 - D-7 customTitle 不持久化: 当前代码已持久化。
-- B-4 closeSessionsInDir 旧快照: 可优化, 但不是当前最高风险。
-- B-5 Toast stale closure: 低风险, 不阻断。
+- B-4 closeSessionsInDir 旧快照: 已修, 目录关闭和命令面板批量关闭都走 `closeSessions`。
+- B-5 Toast stale closure: 已修。
 
 `review/design-review.md` 中已处理:
 
@@ -161,13 +169,19 @@
 - CLI tab 内容空洞和错误状态不可见。
 - ContextMenu 可访问性不足。
 - DiffPanel 文件列表过度卡片化。
+- Tab close hit target 偏小。
+- Sidebar 对齐和快捷键 badge 不统一。
+- CommandPalette 选中竖条和 section 对齐。
+- FileExplorer 面包屑、搜索路径和文件大小列。
+- ContextMenu 缺少进入动画。
+- Settings 终端主题卡片固定宽度。
 
 仍建议后续视觉 QA:
 
 - 侧栏文字对齐。
 - 状态栏在极窄窗口下的最终表现。
 - 终端 padding 8px 后的密度。
-- 设置页终端主题卡片 grid 化。
+- 设置页终端主题 grid 在真实窗口里的最终换行效果。
 
 ## 当前建议
 

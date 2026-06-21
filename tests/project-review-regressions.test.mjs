@@ -197,3 +197,66 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /未在当前应用 PATH 中找到/);
   assert.match(settings, /activeTab === "外观"/);
 });
+
+test("follow-up review fixes keep agent registry and batch close behavior centralized", () => {
+  const registry = read("src/modules/agent/registry.ts");
+  const lifecycle = read("src/modules/terminal/lib/agent-lifecycle.ts");
+  const settings = read("src/ui/overlays/Settings.tsx");
+  const types = read("src/ui/types.ts");
+  const ui = read("src/state/ui.ts");
+  const keys = read("src/app/useKeybindings.ts");
+  const sessions = read("src/state/sessions.ts");
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const toast = read("src/ui/Toast.tsx");
+
+  assert.match(registry, /export const AGENT_REGISTRY/);
+  assert.match(registry, /export const AGENT_COMMANDS/);
+  assert.match(registry, /export const AGENT_NAMES/);
+  assert.match(lifecycle, /from "\.\.\/\.\.\/agent\/registry\.ts"/);
+  assert.doesNotMatch(lifecycle, /const AGENT_COMMANDS: Record/);
+  assert.match(settings, /const CLI_LIST = AGENT_REGISTRY\.map/);
+  assert.match(types, /export const TERMINAL_THEME_NAMES = \[/);
+  assert.match(ui, /TERMINAL_THEME_NAMES as readonly string\[\]/);
+  assert.doesNotMatch(ui, /externalEditor: ExternalEditor;\n\n  setSidebarVisible/);
+  assert.match(keys, /setFontSize\(DEFAULT_SETTINGS\.fontSize\)/);
+
+  assert.match(sessions, /closeSessions: \(ids: string\[\]\) => boolean/);
+  assert.match(sessions, /const orderedTargets = get\(\)\.sessions\.filter/);
+  assert.match(sessions, /unconfirmedBusy\.length > 0/);
+  assert.match(sessions, /get\(\)\.closeSessions\(sessionIds\)/);
+  assert.match(palette, /st\.closeSessions\(st\.sessions\.map/);
+  assert.match(palette, /notifyBatchCloseConfirmation/);
+  assert.match(toast, /exitingRef/);
+});
+
+test("follow-up review fixes polish dense UI surfaces", () => {
+  const titlebar = read("src/ui/Titlebar.tsx");
+  const sidebar = read("src/ui/Sidebar.tsx");
+  const sessionCard = read("src/ui/SessionCard.tsx");
+  const main = read("src/ui/MainArea.tsx");
+  const status = read("src/ui/AgentStatusBar.tsx");
+  const settings = read("src/ui/overlays/Settings.tsx");
+  const diff = read("src/ui/DiffPanel.tsx");
+  const explorer = read("src/ui/FileExplorer.tsx");
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const contextMenu = read("src/ui/ContextMenu.tsx");
+  const globals = read("src/styles/globals.css");
+
+  assert.match(titlebar, /width: 20, height: 20/);
+  assert.match(titlebar, /paddingLeft: 8/);
+  assert.match(sidebar, /padding: "8px 12px 6px"/);
+  assert.match(sidebar, /padding: "6px 9px"/);
+  assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
+  assert.match(sessionCard, /paddingLeft: 6/);
+  assert.match(main, /"1px solid var\(--c-accent\)"/);
+  assert.match(status, /\}, 1500\)/);
+  assert.match(status, /transition: "opacity 0\.3s ease"/);
+  assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
+  assert.match(diff, /function remoteLabel\(remote: RemoteState \| null\): string/);
+  assert.match(diff, /Git 状态未知/);
+  assert.match(explorer, /function compactRelativePath/);
+  assert.match(explorer, /minWidth: 48, textAlign: "right"/);
+  assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
+  assert.match(globals, /@keyframes ctxMenuIn/);
+  assert.match(contextMenu, /ctxMenuIn var\(--duration-fast\) ease/);
+});

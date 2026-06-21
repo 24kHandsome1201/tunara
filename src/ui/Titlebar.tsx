@@ -83,10 +83,10 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
         tabIndex={0}
         title="关闭"
         onClick={(e) => { e.stopPropagation(); onClose(); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onClose(); } }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
         className="tab-close hover-close"
         style={{
-          width: 16, height: 16, borderRadius: "50%", display: "flex", alignItems: "center",
+          width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center",
           justifyContent: "center", flexShrink: 0,
         }}
       >
@@ -224,6 +224,7 @@ export function Titlebar({
             alignItems: "center",
             height: "100%",
             gap: 6,
+            paddingLeft: 8,
             flex: 1,
             overflowX: "auto",
             overflowY: "hidden",
@@ -271,7 +272,7 @@ export function Titlebar({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: 6,
           paddingRight: 12,
           flexShrink: 0,
           WebkitAppRegion: "no-drag",

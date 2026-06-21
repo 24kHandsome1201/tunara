@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
-import { useUIStore } from "@/state/ui";
+import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -92,7 +92,7 @@ export function useKeybindings() {
         ui.setFontSize(ui.fontSize - 1);
       } else if (k === "0") {
         e.preventDefault();
-        useUIStore.getState().setFontSize(14);
+        useUIStore.getState().setFontSize(DEFAULT_SETTINGS.fontSize);
       } else if (k >= "1" && k <= "8") {
         e.preventDefault();
         const idx = parseInt(k) - 1;

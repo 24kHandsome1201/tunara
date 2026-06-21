@@ -40,7 +40,7 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
         const isDel = !isHunk && line.startsWith("-");
         return (
           <div
-            key={i}
+            key={`${i}-${line.slice(0, 16)}`}
             style={{
               padding: "1px 8px",
               background: isAdd ? "var(--c-diff-add-bg)" : isDel ? "var(--c-diff-del-bg)" : "transparent",
@@ -58,16 +58,16 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
 }
 
 function FileStatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; text: string }> = {
+  const colors: Record<string, { bg: string; text: string; border?: string }> = {
     M: { bg: "var(--c-bg-3)", text: "var(--c-text-4)" },
     A: { bg: "var(--c-success-bg)", text: "var(--c-success)" },
     D: { bg: "var(--c-error-bg)", text: "var(--c-error)" },
-    R: { bg: "var(--c-bg-3)", text: "var(--c-text-4)" },
-    "?": { bg: "var(--c-bg-3)", text: "var(--c-text-5)" },
+    R: { bg: "color-mix(in srgb, #3b82f6 12%, transparent)", text: "#3b82f6" },
+    "?": { bg: "transparent", text: "var(--c-text-5)", border: "1px dashed var(--c-border-2)" },
   };
   const style = colors[status] ?? colors["M"];
   return (
-    <span style={{ fontSize: "var(--fs-badge)", background: style.bg, color: style.text, borderRadius: 3, padding: "1px 4px", fontWeight: 700, fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+    <span style={{ fontSize: "var(--fs-badge)", background: style.bg, color: style.text, border: style.border ?? "1px solid transparent", borderRadius: 3, padding: "0 4px", fontWeight: 700, fontFamily: "var(--font-mono)", flexShrink: 0 }}>
       {status}
     </span>
   );
@@ -117,7 +117,7 @@ function SectionHeader({ title, count, expanded, onToggle, titleColor, accentBor
   );
 }
 
-function remoteLabel(remote: RemoteState | null, branch: string): string {
+function remoteLabel(remote: RemoteState | null): string {
   if (!remote) return "";
   switch (remote.state) {
     case "ok":
@@ -128,8 +128,8 @@ function remoteLabel(remote: RemoteState | null, branch: string): string {
       return `游离 HEAD @ ${remote.oid.slice(0, 7)}`;
     case "unborn":
       return "尚无提交";
-    default:
-      return branch;
+    case "unknown":
+      return "Git 状态未知";
   }
 }
 
@@ -277,7 +277,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       {!embedded && (
         <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
           <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)" }}>改动</span>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "—"}</span>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "-"}</span>
           {hasChanges && summary && (
             <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
           )}
@@ -332,14 +332,6 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       {embedded && hasChanges && summary && (
         <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0, display: "flex", alignItems: "center" }}>
           <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)" }}>{summary}</span>
-          <button
-            onClick={refresh}
-            title="刷新 Git 状态"
-            className="hover-bg"
-            style={{ marginLeft: "auto", width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-          >
-            <RefreshIcon size={12} />
-          </button>
         </div>
       )}
 
@@ -382,7 +374,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       {!notGit && !loading && (
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "4px 8px 4px 12px", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-            {remoteLabel(remote, branch) || "Git"}
+            {remoteLabel(remote) || "Git"}
           </div>
           <button
             onClick={refresh}
