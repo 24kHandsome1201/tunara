@@ -50,6 +50,7 @@ export interface Session {
 export interface ChangedFile {
   path: string;
   status: string;
+  stage: "staged" | "unstaged" | "untracked";
   added: number;
   removed: number;
   patch?: string;

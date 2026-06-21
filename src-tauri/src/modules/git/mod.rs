@@ -4,7 +4,7 @@
 //! 写操作（commit/push）在 [`commit`] 模块里走系统 `git` CLI（D4）。
 //!
 //! 关键设计：
-//! - `diff_tree_to_workdir_with_index` 覆盖 staged + unstaged + untracked（修 P1）。
+//! - `git_status` 两步 diff：`diff_tree_to_index` (staged) + `diff_index_to_workdir` (unstaged/untracked)，带 stage 字段。
 //! - `diff.foreach` 先 file_cb 登记再 line_cb 累计，不漏零行变更（修 P2-15）。
 //! - `FileDiff` 结构化：text / binary / tooLarge / metadataOnly（修 P1-13）。
 //! - `RemoteState` 结构化降级：无 upstream / detached / unborn 不连累文件列表（修 P1-10）。
@@ -27,6 +27,7 @@ use crate::modules::util::expand_tilde;
 pub struct FileChange {
     pub path: String,
     pub status: String,
+    pub stage: String,
     pub added: usize,
     pub removed: usize,
 }
@@ -49,53 +50,24 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
         .and_then(|h| h.shorthand().map(String::from))
         .unwrap_or_else(|| "HEAD".into());
 
-    // HEAD tree → workdir（经 index），含 untracked，覆盖 staged+unstaged 全部改动
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    let mut opts = DiffOptions::new();
-    opts.include_untracked(true).recurse_untracked_dirs(true);
-    let diff = repo
-        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+
+    // Staged: HEAD tree → index（已暂存改动）
+    let mut staged_opts = DiffOptions::new();
+    let staged_diff = repo
+        .diff_tree_to_index(head_tree.as_ref(), None, Some(&mut staged_opts))
         .map_err(|e| e.to_string())?;
+    let mut files = collect_diff(&staged_diff, true)?;
 
-    // 修 P2-15：先 file_cb 登记每个 delta（保证零行变更也在列表里），再 line_cb 累计。
-    // RefCell 让 file_cb 和 line_cb 共享可变访问（git2 foreach 同时要两个 &mut FnMut）。
-    let per_file: RefCell<HashMap<String, (usize, usize, char)>> = RefCell::new(HashMap::new());
-    diff.foreach(
-        &mut |delta, _progress| {
-            let path = delta_path(&delta);
-            per_file
-                .borrow_mut()
-                .entry(path)
-                .or_insert((0, 0, delta_mark(&delta)));
-            true
-        },
-        None,
-        None,
-        Some(&mut |delta, _hunk, line| {
-            let path = delta_path(&delta);
-            let mut map = per_file.borrow_mut();
-            let e = map.entry(path).or_insert((0, 0, delta_mark(&delta)));
-            match line.origin() {
-                '+' => e.0 += 1,
-                '-' => e.1 += 1,
-                _ => {}
-            }
-            true
-        }),
-    )
-    .map_err(|e| e.to_string())?;
+    // Unstaged + untracked: index → workdir（未暂存 + 未追踪）
+    let mut unstaged_opts = DiffOptions::new();
+    unstaged_opts.include_untracked(true).recurse_untracked_dirs(true);
+    let unstaged_diff = repo
+        .diff_index_to_workdir(None, Some(&mut unstaged_opts))
+        .map_err(|e| e.to_string())?;
+    files.extend(collect_diff(&unstaged_diff, false)?);
 
-    let mut files: Vec<FileChange> = per_file
-        .into_inner()
-        .into_iter()
-        .map(|(path, (added, removed, mark))| FileChange {
-            path,
-            status: mark.to_string(),
-            added,
-            removed,
-        })
-        .collect();
-    files.sort_by(|a, b| a.path.cmp(&b.path));
+    files.sort_by(|a, b| a.path.cmp(&b.path).then(a.stage.cmp(&b.stage)));
 
     let (ta, tr): (usize, usize) = files
         .iter()
@@ -106,6 +78,64 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
         files,
         summary,
     })
+}
+
+/// 从 diff 收集 FileChange，`is_staged_diff` 区分是 staged (HEAD→index) 还是
+/// unstaged (index→workdir) diff。后者中 Untracked delta 归类为 "untracked"。
+fn collect_diff(diff: &git2::Diff, is_staged_diff: bool) -> Result<Vec<FileChange>, String> {
+    // (added, removed, mark, stage)
+    let per_file: RefCell<HashMap<String, (usize, usize, char, &'static str)>> =
+        RefCell::new(HashMap::new());
+    diff.foreach(
+        &mut |delta, _progress| {
+            let path = delta_path(&delta);
+            let stage = stage_for_delta(&delta, is_staged_diff);
+            per_file
+                .borrow_mut()
+                .entry(path)
+                .or_insert((0, 0, delta_mark(&delta), stage));
+            true
+        },
+        None,
+        None,
+        Some(&mut |delta, _hunk, line| {
+            let path = delta_path(&delta);
+            let stage = stage_for_delta(&delta, is_staged_diff);
+            let mut map = per_file.borrow_mut();
+            let e = map
+                .entry(path)
+                .or_insert((0, 0, delta_mark(&delta), stage));
+            match line.origin() {
+                '+' => e.0 += 1,
+                '-' => e.1 += 1,
+                _ => {}
+            }
+            true
+        }),
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(per_file
+        .into_inner()
+        .into_iter()
+        .map(|(path, (added, removed, mark, stage))| FileChange {
+            path,
+            status: mark.to_string(),
+            stage: stage.to_string(),
+            added,
+            removed,
+        })
+        .collect())
+}
+
+fn stage_for_delta(delta: &git2::DiffDelta, is_staged_diff: bool) -> &'static str {
+    if is_staged_diff {
+        "staged"
+    } else if delta.status() == Delta::Untracked {
+        "untracked"
+    } else {
+        "unstaged"
+    }
 }
 
 // ── git_diff ────────────────────────────────────────────────────────────
@@ -284,7 +314,8 @@ fn delta_path(delta: &git2::DiffDelta) -> String {
 
 fn delta_mark(delta: &git2::DiffDelta) -> char {
     match delta.status() {
-        Delta::Added | Delta::Untracked => 'A',
+        Delta::Untracked => '?',
+        Delta::Added => 'A',
         Delta::Deleted => 'D',
         Delta::Renamed => 'R',
         _ => 'M',

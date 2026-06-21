@@ -82,6 +82,30 @@ export function useKeybindings() {
       } else if (k === "k") {
         e.preventDefault();
         useUIStore.getState().setOverlay("command-palette");
+      } else if (k === "=" || k === "+") {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        ui.setFontSize(ui.fontSize + 1);
+      } else if (k === "-") {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        ui.setFontSize(ui.fontSize - 1);
+      } else if (k === "0") {
+        e.preventDefault();
+        useUIStore.getState().setFontSize(14);
+      } else if (k >= "1" && k <= "8") {
+        e.preventDefault();
+        const idx = parseInt(k) - 1;
+        const sessions = useSessionsStore.getState().sessions;
+        if (idx < sessions.length) {
+          useSessionsStore.getState().setActive(sessions[idx].id);
+        }
+      } else if (k === "9") {
+        e.preventDefault();
+        const sessions = useSessionsStore.getState().sessions;
+        if (sessions.length > 0) {
+          useSessionsStore.getState().setActive(sessions[sessions.length - 1].id);
+        }
       }
     };
     window.addEventListener("keydown", onKey, { capture: true });

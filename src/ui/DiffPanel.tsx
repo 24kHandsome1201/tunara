@@ -63,6 +63,7 @@ function FileStatusBadge({ status }: { status: string }) {
     A: { bg: "var(--c-success-bg)", text: "var(--c-success)" },
     D: { bg: "var(--c-error-bg)", text: "var(--c-error)" },
     R: { bg: "var(--c-bg-3)", text: "var(--c-text-4)" },
+    "?": { bg: "var(--c-bg-3)", text: "var(--c-text-5)" },
   };
   const style = colors[status] ?? colors["M"];
   return (
@@ -73,6 +74,48 @@ function FileStatusBadge({ status }: { status: string }) {
 }
 
 const checkIcon = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>;
+
+const chevronIcon = (expanded: boolean) => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease", flexShrink: 0 }}>
+    <polyline points="9 6 15 12 9 18" />
+  </svg>
+);
+
+interface SectionHeaderProps {
+  title: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  titleColor?: string;
+  accentBorder?: boolean;
+}
+
+function SectionHeader({ title, count, expanded, onToggle, titleColor, accentBorder }: SectionHeaderProps) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+      className="hover-bg"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 8px",
+        cursor: "pointer",
+        borderLeft: accentBorder ? "2px solid var(--c-success)" : "none",
+        marginLeft: accentBorder ? -1 : 0,
+      }}
+    >
+      {chevronIcon(expanded)}
+      <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: titleColor ?? "var(--c-text-4)" }}>{title}</span>
+      <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-text-4)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "1px 6px", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+        {count}
+      </span>
+    </div>
+  );
+}
 
 function remoteLabel(remote: RemoteState | null, branch: string): string {
   if (!remote) return "";
@@ -104,6 +147,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [remote, setRemote] = useState<RemoteState | null>(null);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +189,78 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
 
   const hasChanges = files.length > 0;
   const refresh = () => useSessionsStore.getState().refreshGit(session.id);
+
+  const stagedFiles = files.filter((f) => f.stage === "staged");
+  const unstagedFiles = files.filter((f) => f.stage === "unstaged");
+  const untrackedFiles = files.filter((f) => f.stage === "untracked");
+
+  function renderFileRow(file: typeof files[number]) {
+    const isExpanded = expandedFile === file.path;
+    return (
+      <div key={file.path} className="diff-file-row" style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 3, overflow: "hidden" }}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => toggleFile(file.path)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFile(file.path); } }}
+          className="hover-bg"
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+        >
+          <FileStatusBadge status={file.status} />
+          <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
+            {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
+          </span>
+          <span
+            role="button"
+            tabIndex={0}
+            className="diff-file-open hover-bg"
+            title="在外部编辑器打开"
+            onClick={(e) => {
+              e.stopPropagation();
+              const editor = useUIStore.getState().externalEditor;
+              openInEditor(editor, `${repoPath}/${file.path}`).catch(() => {
+                useUIStore.getState().addToast({
+                  sessionId: session.id,
+                  title: "未找到编辑器",
+                  subtitle: editor,
+                  variant: "error",
+                });
+              });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.click();
+            }}
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "var(--c-text-5)",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+          </span>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+            +{file.added} −{file.removed}
+          </span>
+          {chevronIcon(isExpanded)}
+        </div>
+        {isExpanded && (
+          <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
+            <MiniDiff diff={diffs[file.path]} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const outerStyle = embedded
     ? { display: "flex", flexDirection: "column" as const, flex: 1, overflow: "hidden", minHeight: 0 }
@@ -230,75 +346,29 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           <PanelEmptyState icon={checkIcon} label="工作区干净" />
         ) : (
           <div style={{ padding: "6px" }}>
-            {files.map((file) => {
-              const isExpanded = expandedFile === file.path;
-              return (
-                <div key={file.path} className="diff-file-row" style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 3, overflow: "hidden" }}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => toggleFile(file.path)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFile(file.path); } }}
-                    className="hover-bg"
-                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
-                  >
-                    <FileStatusBadge status={file.status} />
-                    <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
-                      {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
-                    </span>
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="diff-file-open hover-bg"
-                      title="在外部编辑器打开"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const editor = useUIStore.getState().externalEditor;
-                        openInEditor(editor, `${repoPath}/${file.path}`).catch(() => {
-                          useUIStore.getState().addToast({
-                            sessionId: session.id,
-                            title: "未找到编辑器",
-                            subtitle: editor,
-                            variant: "error",
-                          });
-                        });
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") e.currentTarget.click();
-                      }}
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        color: "var(--c-text-5)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                        <polyline points="15 3 21 3 21 9" />
-                        <line x1="10" y1="14" x2="21" y2="3" />
-                      </svg>
-                    </span>
-                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-                      +{file.added} −{file.removed}
-                    </span>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease", flexShrink: 0 }}>
-                      <polyline points="9 6 15 12 9 18" />
-                    </svg>
+            {(() => {
+              const sections = [
+                { key: "staged", title: "已暂存", files: stagedFiles, titleColor: "var(--c-success)", accentBorder: true },
+                { key: "unstaged", title: "未暂存", files: unstagedFiles, titleColor: "var(--c-text-4)", accentBorder: false },
+                { key: "untracked", title: "未追踪", files: untrackedFiles, titleColor: "var(--c-text-5)", accentBorder: false },
+              ].filter((s) => s.files.length > 0);
+              return sections.map((section) => {
+                const collapsed = !!collapsedSections[section.key];
+                return (
+                  <div key={section.key} style={{ marginBottom: 6 }}>
+                    <SectionHeader
+                      title={section.title}
+                      count={section.files.length}
+                      expanded={!collapsed}
+                      onToggle={() => setCollapsedSections((prev) => ({ ...prev, [section.key]: !prev[section.key] }))}
+                      titleColor={section.titleColor}
+                      accentBorder={section.accentBorder}
+                    />
+                    {!collapsed && section.files.map((file) => renderFileRow(file))}
                   </div>
-                  {isExpanded && (
-                    <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
-                      <MiniDiff diff={diffs[file.path]} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         )}
       </div>

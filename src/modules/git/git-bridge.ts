@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface FileChange {
   path: string;
   status: string;
+  stage: "staged" | "unstaged" | "untracked";
   added: number;
   removed: number;
 }
