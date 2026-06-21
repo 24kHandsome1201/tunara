@@ -167,9 +167,10 @@ interface SessionCardProps {
   onClick: () => void;
   onClose?: () => void;
   onClearCloseConfirm?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, active, confirmClose, onClick, onClose, onClearCloseConfirm }: SessionCardProps) {
+export function SessionCard({ session, active, confirmClose, onClick, onClose, onClearCloseConfirm, onContextMenu }: SessionCardProps) {
   const { primary, isCommand } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
@@ -200,6 +201,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => e.key === "Enter" && onClick()}
+      onContextMenu={onContextMenu}
       className="session-card"
       style={{
         position: "relative",

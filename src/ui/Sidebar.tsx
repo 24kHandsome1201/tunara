@@ -1,8 +1,10 @@
 import { SessionCard } from "./SessionCard";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { groupByDir, deriveTitle, type Session } from "./types";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { openInEditor } from "@/modules/editor/open";
 
 interface DragState {
   draggingId: string;
@@ -44,6 +46,7 @@ function DirGroupHeader({
   onCloseAll,
   confirmClose,
   onClearCloseConfirm,
+  onContextMenu,
 }: {
   dir: string;
   count: number;
@@ -53,6 +56,7 @@ function DirGroupHeader({
   onCloseAll?: () => void;
   confirmClose?: boolean;
   onClearCloseConfirm?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   useEffect(() => {
     if (!confirmClose) return;
@@ -73,6 +77,7 @@ function DirGroupHeader({
         }
       }}
       title={onToggleCollapse ? (collapsed ? "展开" : "折叠") : undefined}
+      onContextMenu={onContextMenu}
       style={{
         display: "flex",
         alignItems: "center",
@@ -188,6 +193,11 @@ export function Sidebar({
 }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    items: MenuEntry[];
+    position: { x: number; y: number };
+  } | null>(null);
+  const externalEditor = useUIStore((s) => s.externalEditor);
   const dragRef = useRef<DragState | null>(null);
   const dragStartY = useRef(0);
   const dragStarted = useRef(false);
@@ -383,6 +393,20 @@ export function Sidebar({
               onCloseAll={() => useSessionsStore.getState().closeSessionsInDir(dir)}
               confirmClose={!!dirCloseConfirmations[dir]}
               onClearCloseConfirm={() => clearDirCloseConfirmation(dir)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMenu({
+                  position: { x: e.clientX, y: e.clientY },
+                  items: [
+                    { label: "在此目录新建终端", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
+                    { label: "启动所有 Agent", action: () => useSessionsStore.getState().launchAllAgents(dir) },
+                    { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
+                    { label: "复制路径", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
+                    null,
+                    { label: "关闭全部会话", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
+                  ],
+                });
+              }}
             />
             {!collapsed && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -413,6 +437,18 @@ export function Sidebar({
                         onClick={() => { if (!dragStarted.current) onSelectSession(s.id); }}
                         onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
                         onClearCloseConfirm={() => clearCloseConfirmation(s.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({
+                            position: { x: e.clientX, y: e.clientY },
+                            items: [
+                              { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
+                              { label: "复制目录路径", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
+                              null,
+                              { label: "关闭会话", danger: true, action: () => { onCloseSession?.(s.id); } },
+                            ],
+                          });
+                        }}
                       />
                     </div>
                   </div>
@@ -452,6 +488,14 @@ export function Sidebar({
           {sessions.length}
         </span>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          items={contextMenu.items}
+          position={contextMenu.position}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

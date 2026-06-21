@@ -3,6 +3,10 @@ import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 import { RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
+import { openInEditor } from "@/modules/editor/open";
 
 interface FileExplorerProps {
   rootDir: string;
@@ -77,6 +81,11 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    items: MenuEntry[];
+    position: { x: number; y: number };
+  } | null>(null);
+  const externalEditor = useUIStore((s) => s.externalEditor);
 
   useEffect(() => {
     setNavDir(null);
@@ -309,10 +318,24 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
           <PanelEmptyState icon={folderEmptyIcon} label="目录为空" />
         ) : (
           <>
-            {dirs.map((entry) => (
+            {dirs.map((entry) => {
+              const fullPath = joinPath(currentPath, entry.name);
+              return (
               <button
                 key={"d-" + entry.name}
                 onClick={() => enterDir(entry.name)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({
+                    position: { x: e.clientX, y: e.clientY },
+                    items: [
+                      { label: "在此目录新建终端", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
+                      { label: "启动所有 Agent", action: () => useSessionsStore.getState().launchAllAgents(fullPath) },
+                      { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                      { label: "复制路径", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                    ],
+                  });
+                }}
                 className="hover-bg"
                 style={{ width: "100%", height: 30, padding: "0 8px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2 }}
               >
@@ -320,7 +343,8 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                 <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
                 <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>
               </button>
-            ))}
+              );
+            })}
 
             {dirs.length > 0 && files.length > 0 && (
               <div style={{ borderTop: "1px solid var(--c-border-2)", margin: "4px 0" }} />
@@ -333,6 +357,16 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                 <div key={"f-" + entry.name}>
                   <button
                     onClick={() => toggleFile(entry.name)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        position: { x: e.clientX, y: e.clientY },
+                        items: [
+                          { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                          { label: "复制路径", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                        ],
+                      });
+                    }}
                     className="hover-bg"
                     style={{
                       width: "100%", height: 30, padding: "0 8px", borderRadius: "var(--r-btn)", border: "none",
@@ -355,6 +389,14 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
           </>
         )}
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          items={contextMenu.items}
+          position={contextMenu.position}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

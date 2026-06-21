@@ -44,6 +44,7 @@ interface SessionsState {
   reorderInGroup: (dir: string, fromIndex: number, toIndex: number) => void;
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
+  launchAllAgents: (dir: string) => void;
   splitWithNewSession: (direction: "horizontal" | "vertical") => void;
   closeSession: (id: string) => void;
 }
@@ -302,6 +303,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   newTerminalInDir: (dir) => {
     get().addSession(createSession(dir, { title: "终端" }));
+  },
+
+  launchAllAgents: (dir) => {
+    const agents = ["claude", "codex", "droid", "devin"];
+    for (const cmd of agents) {
+      get().addSession(createSession(dir, { pendingInput: cmd }));
+    }
+    const { collapsedDirs } = useUIStore.getState();
+    if (collapsedDirs[dir]) {
+      useUIStore.getState().toggleDirCollapsed(dir);
+    }
   },
 
   splitWithNewSession: (direction) => {
