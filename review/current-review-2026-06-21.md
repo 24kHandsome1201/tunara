@@ -9,10 +9,10 @@
 
 当前工作区已经处理第一轮合入阻断和一批 P0/P1 行为与设计问题。源码门禁通过:
 
-- `git diff --check main`: 通过。
+- `git diff --check`: 通过。
 - `pnpm build`: 通过。
-- `pnpm test`: 通过, Node 28 个测试, Rust 5 个测试。
-- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY。
+- `pnpm test`: 通过, Node 29 个测试, Rust 5 个测试。
+- `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY, 最近一次使用 1422 端口。
 
 仍不应把它直接当成稳定发布完成:
 
@@ -97,6 +97,10 @@
 - Tauri 日志显示 `hooks listener started` 和 `pty opened id=1`, 说明应用进程与 PTY 初始化链路可跑通。
 - Computer Use 和 bundle id 方式读取窗口状态均失败, 错误为 `Apple event error -1743`。
 - 临时 1421 端口在退出后已无监听, 本轮启动的 Tauri 进程已停止。机器上另有既存 `target/debug/conduit` 进程, 未处理。
+- 当前分支再次使用临时 1422 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1422","devUrl":"http://127.0.0.1:1422"}}'`。
+- 本次 1422 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- `nc -z 127.0.0.1 1422` 在启动期间成功, 退出后已释放。
+- Computer Use 读取 `Conduit` 和运行应用列表仍失败, 错误仍为 `Apple event error -1743`。
 
 仍需人工或授权后验证:
 
