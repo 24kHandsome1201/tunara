@@ -206,24 +206,38 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   const ui = read("src/state/ui.ts");
   const keys = read("src/app/useKeybindings.ts");
   const sessions = read("src/state/sessions.ts");
+  const sessionCard = read("src/ui/SessionCard.tsx");
+  const sidebar = read("src/ui/Sidebar.tsx");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const resolver = read("src-tauri/src/modules/resolver/mod.rs");
   const toast = read("src/ui/Toast.tsx");
 
+  assert.match(registry, /import agentRegistryData from "\.\/registry-data\.json" with \{ type: "json" \}/);
   assert.match(registry, /export const AGENT_REGISTRY/);
   assert.match(registry, /export const AGENT_COMMANDS/);
   assert.match(registry, /export const AGENT_NAMES/);
+  assert.match(registry, /cliBin: string/);
+  assert.match(read("src/modules/agent/registry-data.json"), /"cliBin": "gh"/);
   assert.match(lifecycle, /from "\.\.\/\.\.\/agent\/registry\.ts"/);
   assert.doesNotMatch(lifecycle, /const AGENT_COMMANDS: Record/);
   assert.match(settings, /const CLI_LIST = AGENT_REGISTRY\.map/);
+  assert.match(resolver, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/src\/modules\/agent\/registry-data\.json"\)/);
+  assert.match(resolver, /fn resolver_uses_shared_agent_registry_data/);
   assert.match(types, /export const TERMINAL_THEME_NAMES = \[/);
   assert.match(ui, /TERMINAL_THEME_NAMES as readonly string\[\]/);
   assert.doesNotMatch(ui, /externalEditor: ExternalEditor;\n\n  setSidebarVisible/);
   assert.match(keys, /setFontSize\(DEFAULT_SETTINGS\.fontSize\)/);
 
   assert.match(sessions, /closeSessions: \(ids: string\[\]\) => boolean/);
+  assert.match(sessions, /const closeConfirmationTimers = new Map/);
+  assert.match(sessions, /function scheduleCloseConfirmationExpiry/);
+  assert.match(sessions, /function scheduleDirCloseConfirmationExpiry/);
   assert.match(sessions, /const orderedTargets = get\(\)\.sessions\.filter/);
   assert.match(sessions, /unconfirmedBusy\.length > 0/);
   assert.match(sessions, /get\(\)\.closeSessions\(sessionIds\)/);
+  assert.doesNotMatch(sessionCard, /onClearCloseConfirm/);
+  assert.doesNotMatch(sidebar, /onClearCloseConfirm/);
+  assert.doesNotMatch(sidebar, /clearDirCloseConfirmation/);
   assert.match(palette, /st\.closeSessions\(st\.sessions\.map/);
   assert.match(palette, /notifyBatchCloseConfirmation/);
   assert.match(toast, /exitingRef/);

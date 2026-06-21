@@ -11,7 +11,7 @@
 
 - `git diff --check main`: 通过。
 - `pnpm build`: 通过。
-- `pnpm test`: 通过, Node 24 个测试, Rust 4 个测试。
+- `pnpm test`: 通过, Node 24 个测试, Rust 5 个测试。
 - `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY。
 
 仍不应把它直接当成稳定发布完成:
@@ -64,7 +64,10 @@
 ### 结构收口
 
 - 新增 `src/modules/agent/registry.ts`, 前端 agent 名称、命令识别和 Settings CLI 列表共用同一事实源。
+- 新增 `src/modules/agent/registry-data.json`, 前端 registry 和 Rust resolver 共用 agent code, UI 名称、识别命令和 CLI 探测命令配置。
 - `TerminalThemeName` 改由 `TERMINAL_THEME_NAMES` 数组派生, localStorage 校验不再手写另一份枚举。
+- `src-tauri/src/modules/resolver/mod.rs` 读取共享 agent registry JSON, 并增加 Rust 单测锁住 `CP -> gh`, `CR -> cursor` 等跨语言映射。
+- `sessions` store 统一管理单个会话和目录批量关闭确认态的过期 timer, UI 组件不再各自启动 3 秒清理 timer。
 - `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 
@@ -110,24 +113,6 @@
 - release 后回填真实 sha256。
 - zap bundle id 使用实际 Tauri identifier。
 
-### P1: Rust resolver 仍需和前端 agent registry 锁定
-
-前端已经有 `src/modules/agent/registry.ts` 单一事实源, 但 Rust `resolve_all_bins` 仍保留一份 code 到 bin 的映射。这不是运行时 bug, 但新增 agent 时仍可能出现跨语言漂移。
-
-建议:
-
-- 给 Rust resolver 增加测试, 锁住 code/bin 顺序和前端 registry 的公开契约。
-- 后续如需要彻底统一, 可由 Rust command 返回 resolver 支持列表, 前端 registry 只补 UI 展示名和检测别名。
-
-### P1: 关闭确认超时仍有 UI 层残留
-
-本轮已把批量关闭统一到 store action, 但单个会话和目录 header 的 3 秒视觉清除仍有 UI 层 timer。当前行为可用, 但还不是最干净的模型。
-
-建议:
-
-- 后续把 `closeConfirmations` 和 `dirCloseConfirmations` 的过期清理由 store 统一管理。
-- UI 只读取确认态, 不再各自启动 timer。
-
 ### P2: 架构热点
 
 当前热点:
@@ -149,7 +134,7 @@
 
 - B-1 重命名 Escape: 已修。
 - B-2 暗色 accent fallback: 已修。
-- D-1 Agent 列表分散: 前端已处理, Rust resolver 仍需测试锁定。
+- D-1 Agent 列表分散: 已修, 前端和 Rust resolver 共用 `registry-data.json`, 并有 Node/Rust 回归锁定。
 - D-2 terminal theme 校验重复: 已修, type 和校验共用 `TERMINAL_THEME_NAMES`。
 - D-8 remoteLabel 死代码: 已修。
 - P-3 CommandPalette `indexOf`: 仍是低优先级性能债。

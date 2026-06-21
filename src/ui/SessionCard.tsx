@@ -169,11 +169,10 @@ interface SessionCardProps {
   onClick: () => void;
   onClose?: () => void;
   onRename?: (name: string) => void;
-  onClearCloseConfirm?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, active, confirmClose, onClick, onClose, onRename, onClearCloseConfirm, onContextMenu }: SessionCardProps) {
+export function SessionCard({ session, active, confirmClose, onClick, onClose, onRename, onContextMenu }: SessionCardProps) {
   const { primary, isCommand } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
@@ -217,16 +216,6 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
     if (!onClose) return;
     onClose();
   };
-
-  useEffect(() => {
-    if (!confirmClose) return;
-    const timer = setTimeout(() => onClearCloseConfirm?.(), 3_000);
-    return () => clearTimeout(timer);
-  }, [confirmClose, onClearCloseConfirm]);
-
-  useEffect(() => {
-    if (confirmClose && !busy) onClearCloseConfirm?.();
-  }, [busy, confirmClose, onClearCloseConfirm]);
 
   const totalAdded = session.changes?.files.reduce((a, f) => a + f.added, 0) ?? 0;
   const totalRemoved = session.changes?.files.reduce((a, f) => a + f.removed, 0) ?? 0;

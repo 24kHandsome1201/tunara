@@ -1,7 +1,7 @@
 import { SessionCard } from "./SessionCard";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { groupByDir, deriveTitle, type Session } from "./types";
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
@@ -45,7 +45,6 @@ function DirGroupHeader({
   onNewTerminal,
   onCloseAll,
   confirmClose,
-  onClearCloseConfirm,
   onContextMenu,
 }: {
   dir: string;
@@ -55,15 +54,8 @@ function DirGroupHeader({
   onNewTerminal?: () => void;
   onCloseAll?: () => void;
   confirmClose?: boolean;
-  onClearCloseConfirm?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
-  useEffect(() => {
-    if (!confirmClose) return;
-    const timer = setTimeout(() => onClearCloseConfirm?.(), 3_000);
-    return () => clearTimeout(timer);
-  }, [confirmClose, onClearCloseConfirm]);
-
   return (
     <div
       className="dir-group-header"
@@ -202,9 +194,7 @@ export function Sidebar({
   const dragStartY = useRef(0);
   const dragStarted = useRef(false);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
-  const clearCloseConfirmation = useSessionsStore((s) => s.clearCloseConfirmation);
   const dirCloseConfirmations = useSessionsStore((s) => s.dirCloseConfirmations);
-  const clearDirCloseConfirmation = useSessionsStore((s) => s.clearDirCloseConfirmation);
   const collapsedDirs = useUIStore((s) => s.collapsedDirs);
   const toggleDirCollapsed = useUIStore((s) => s.toggleDirCollapsed);
   const q = search.trim().toLowerCase();
@@ -395,7 +385,6 @@ export function Sidebar({
               onNewTerminal={() => useSessionsStore.getState().newTerminalInDir(dir)}
               onCloseAll={() => useSessionsStore.getState().closeSessionsInDir(dir)}
               confirmClose={!!dirCloseConfirmations[dir]}
-              onClearCloseConfirm={() => clearDirCloseConfirmation(dir)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({
@@ -439,7 +428,6 @@ export function Sidebar({
                         onClick={() => { if (!dragStarted.current) onSelectSession(s.id); }}
                         onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
                         onRename={(name) => useSessionsStore.getState().renameSession(s.id, name)}
-                        onClearCloseConfirm={() => clearCloseConfirmation(s.id)}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setContextMenu({

@@ -55,6 +55,8 @@ interface SessionsState {
 
 let nextId = 1;
 const CLOSE_CONFIRM_WINDOW_MS = 3_000;
+const closeConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const dirCloseConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function makeSessionId(): string {
   return `s-${Date.now()}-${nextId++}`;
@@ -86,6 +88,38 @@ function ensureSessionVisibleInSplit(sessionId: string) {
   ui.setSplitPaneB(sessionId);
 }
 
+function cancelCloseConfirmationTimer(id: string) {
+  const timer = closeConfirmationTimers.get(id);
+  if (!timer) return;
+  clearTimeout(timer);
+  closeConfirmationTimers.delete(id);
+}
+
+function cancelDirCloseConfirmationTimer(dir: string) {
+  const timer = dirCloseConfirmationTimers.get(dir);
+  if (!timer) return;
+  clearTimeout(timer);
+  dirCloseConfirmationTimers.delete(dir);
+}
+
+function scheduleCloseConfirmationExpiry(id: string, clear: (id: string) => void) {
+  cancelCloseConfirmationTimer(id);
+  const timer = setTimeout(() => {
+    closeConfirmationTimers.delete(id);
+    clear(id);
+  }, CLOSE_CONFIRM_WINDOW_MS);
+  closeConfirmationTimers.set(id, timer);
+}
+
+function scheduleDirCloseConfirmationExpiry(dir: string, clear: (dir: string) => void) {
+  cancelDirCloseConfirmationTimer(dir);
+  const timer = setTimeout(() => {
+    dirCloseConfirmationTimers.delete(dir);
+    clear(dir);
+  }, CLOSE_CONFIRM_WINDOW_MS);
+  dirCloseConfirmationTimers.set(dir, timer);
+}
+
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessions: [],
   activeSessionId: null,
@@ -104,7 +138,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     ensureSessionVisibleInSplit(s.id);
   },
 
-  removeSession: (id) =>
+  removeSession: (id) => {
+    cancelCloseConfirmationTimer(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
@@ -124,7 +159,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         launchedSessionIds: nextLaunchedSessionIds,
         gitNonce,
       };
-    }),
+    });
+  },
 
   setActive: (id) => {
     let accepted = false;
@@ -147,17 +183,21 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
     })),
 
-  clearCloseConfirmation: (id) =>
+  clearCloseConfirmation: (id) => {
+    cancelCloseConfirmationTimer(id);
     set((state) => {
       const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
       return { closeConfirmations };
-    }),
+    });
+  },
 
-  clearDirCloseConfirmation: (dir) =>
+  clearDirCloseConfirmation: (dir) => {
+    cancelDirCloseConfirmationTimer(dir);
     set((state) => {
       const { [dir]: _removed, ...dirCloseConfirmations } = state.dirCloseConfirmations;
       return { dirCloseConfirmations };
-    }),
+    });
+  },
 
   closeSessions: (ids) => {
     const uniqueIds = new Set(ids);
@@ -174,6 +214,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         for (const s of unconfirmedBusy) closeConfirmations[s.id] = now;
         return { closeConfirmations };
       });
+      for (const s of unconfirmedBusy) {
+        scheduleCloseConfirmationExpiry(s.id, get().clearCloseConfirmation);
+      }
       return false;
     }
 
@@ -195,6 +238,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         set((state) => ({
           dirCloseConfirmations: { ...state.dirCloseConfirmations, [dir]: Date.now() },
         }));
+        scheduleDirCloseConfirmationExpiry(dir, get().clearDirCloseConfirmation);
       }
       return;
     }
@@ -209,12 +253,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       ),
     })),
 
-  updateSession: (id, patch) =>
+  updateSession: (id, patch) => {
     set((state) => ({
       sessions: state.sessions.map((s) =>
         s.id === id ? { ...s, ...patch, updatedAt: Date.now() } : s,
       ),
-    })),
+    }));
+    const session = get().sessions.find((s) => s.id === id);
+    if (session && !isSessionBusy(session) && get().closeConfirmations[id]) {
+      get().clearCloseConfirmation(id);
+    }
+  },
 
   handleAgentDetected: (id, agent) => {
     const session = get().sessions.find((s) => s.id === id);
@@ -356,6 +405,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         set((state) => ({
           closeConfirmations: { ...state.closeConfirmations, [id]: Date.now() },
         }));
+        scheduleCloseConfirmationExpiry(id, get().clearCloseConfirmation);
         return;
       }
     }

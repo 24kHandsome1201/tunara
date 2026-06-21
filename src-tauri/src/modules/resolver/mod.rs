@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::RwLock;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +30,20 @@ pub struct ResolvedCommand {
     pub name: String,
     pub path: Option<PathBuf>,
     pub source: ResolveSource,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct AgentRegistryEntry {
+    code: String,
+    cli_bin: String,
+}
+
+const AGENT_REGISTRY_JSON: &str =
+    include_str!("../../../../src/modules/agent/registry-data.json");
+
+fn agent_registry_entries() -> Vec<AgentRegistryEntry> {
+    serde_json::from_str(AGENT_REGISTRY_JSON).expect("agent registry JSON must stay valid")
 }
 
 /// 全局解析器状态：用户覆盖项 + 启动时探测到的 login-shell PATH。
@@ -160,24 +174,11 @@ pub fn resolve_bin(state: tauri::State<'_, ResolverState>, name: String) -> Reso
 /// 设置页一次性拿所有 agent CLI 的解析结果，name 使用前端 AgentCode。
 #[tauri::command]
 pub fn resolve_all_bins(state: tauri::State<'_, ResolverState>) -> Vec<ResolvedCommand> {
-    const AGENTS: &[(&str, &str)] = &[
-        ("CC", "claude"),
-        ("CX", "codex"),
-        ("AM", "amp"),
-        ("GM", "gemini"),
-        ("CP", "gh"),
-        ("CR", "cursor"),
-        ("DR", "droid"),
-        ("OC", "opencode"),
-        ("PI", "pi"),
-        ("AG", "auggie"),
-        ("DV", "devin"),
-    ];
-    AGENTS
-        .iter()
-        .map(|(code, bin)| {
-            let mut r = state.resolve(bin);
-            r.name = code.to_string();
+    agent_registry_entries()
+        .into_iter()
+        .map(|agent| {
+            let mut r = state.resolve(&agent.cli_bin);
+            r.name = agent.code;
             r
         })
         .collect()
@@ -186,4 +187,25 @@ pub fn resolve_all_bins(state: tauri::State<'_, ResolverState>) -> Vec<ResolvedC
 #[tauri::command]
 pub fn set_bin_override(state: tauri::State<'_, ResolverState>, name: String, path: String) {
     state.set_override(&name, PathBuf::from(path));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_registry_entries;
+
+    #[test]
+    fn resolver_uses_shared_agent_registry_data() {
+        let entries = agent_registry_entries();
+        let pairs: Vec<(&str, &str)> = entries
+            .iter()
+            .map(|entry| (entry.code.as_str(), entry.cli_bin.as_str()))
+            .collect();
+
+        assert_eq!(entries.len(), 11);
+        assert!(pairs.contains(&("CC", "claude")));
+        assert!(pairs.contains(&("CX", "codex")));
+        assert!(pairs.contains(&("CP", "gh")));
+        assert!(pairs.contains(&("CR", "cursor")));
+        assert!(pairs.contains(&("DV", "devin")));
+    }
 }
