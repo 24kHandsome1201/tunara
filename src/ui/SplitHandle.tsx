@@ -4,9 +4,10 @@ import { useUIStore, type SplitMode } from "@/state/ui";
 interface SplitHandleProps {
   mode: Exclude<SplitMode, "single">;
   containerRef: React.RefObject<HTMLDivElement | null>;
+  order?: number;
 }
 
-export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
+export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
   const setSplitRatio = useUIStore((s) => s.setSplitRatio);
   const dragging = useRef(false);
 
@@ -59,6 +60,7 @@ export function SplitHandle({ mode, containerRef }: SplitHandleProps) {
       style={{
         position: "relative",
         zIndex: 10,
+        order,
         ...(isHorizontal
           ? { width: 5, cursor: "col-resize", flexShrink: 0 }
           : { height: 5, cursor: "row-resize", flexShrink: 0 }),

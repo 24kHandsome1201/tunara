@@ -121,73 +121,69 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
   const isSplit = split.mode !== "single" && paneASession && paneBSession && paneASession.id !== paneBSession.id;
   const isHorizontal = split.mode === "horizontal";
-  const visibleIds = new Set<string>();
-  if (isSplit) {
-    visibleIds.add(paneASession.id);
-    visibleIds.add(paneBSession.id);
-  } else if (active?.id) {
-    visibleIds.add(active.id);
-  }
 
   const mountedIdsForRender = new Set(Object.keys(launchedSessionIds));
   const mountedSessions = sessions.filter((s) => mountedIdsForRender.has(s.id));
-  const hiddenMountedSessions = mountedSessions.filter((s) => !visibleIds.has(s.id));
+
+  // Every mounted session keeps a stable, keyed wrapper across single<->split
+  // transitions so React never unmounts its TerminalView (which would close the
+  // PTY and kill any running agent). Layout is driven entirely by CSS here.
+  function paneWrapperStyle(s: Session): React.CSSProperties {
+    const isPaneA = isSplit && s.id === paneASession!.id;
+    const isPaneB = isSplit && s.id === paneBSession!.id;
+
+    if (isPaneA || isPaneB) {
+      const ratioPct = isPaneA ? split.ratio : 1 - split.ratio;
+      return {
+        [isHorizontal ? "width" : "height"]: `calc(${ratioPct * 100}% - 2.5px)`,
+        order: isPaneA ? 0 : 2,
+        display: "flex",
+        flexDirection: "column",
+        minWidth: 0,
+        minHeight: 0,
+        overflow: "hidden",
+        borderRadius: 6,
+        boxShadow: s.id === activeSessionId
+          ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)"
+          : "inset 0 1px 0 transparent",
+        transition: "box-shadow var(--duration-fast) ease",
+      };
+    }
+
+    if (!isSplit && s.id === activeSessionId) {
+      return {
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        flexDirection: "column",
+        minWidth: 0,
+        minHeight: 0,
+      };
+    }
+
+    return { display: "none" };
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}>
       <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: isSplit ? (isHorizontal ? "row" : "column") : "row" }}>
-        {isSplit ? (
-          <>
-            <div
-              onClick={() => useSessionsStore.getState().setActive(paneASession!.id)}
-              style={{
-                [isHorizontal ? "width" : "height"]: `calc(${split.ratio * 100}% - 2.5px)`,
-                display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
-                borderRadius: 6,
-                boxShadow: paneASession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)" : "inset 0 1px 0 transparent",
-                transition: "box-shadow var(--duration-fast) ease",
-              }}
-            >
-              {renderTerminalPane(paneASession!, paneASession!.id === activeSessionId)}
-            </div>
-            <SplitHandle mode={split.mode as "horizontal" | "vertical"} containerRef={splitContainerRef} />
-            <div
-              onClick={() => useSessionsStore.getState().setActive(paneBSession!.id)}
-              style={{
-                [isHorizontal ? "width" : "height"]: `calc(${(1 - split.ratio) * 100}% - 2.5px)`,
-                display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
-                borderRadius: 6,
-                boxShadow: paneBSession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)" : "inset 0 1px 0 transparent",
-                transition: "box-shadow var(--duration-fast) ease",
-              }}
-            >
-              {renderTerminalPane(paneBSession!, paneBSession!.id === activeSessionId)}
-            </div>
-            {hiddenMountedSessions.map((s) => (
-              <div key={s.id} style={{ display: "none" }}>
-                {renderTerminalPane(s, false)}
-              </div>
-            ))}
-          </>
-        ) : (
-          mountedSessions.map((s) => {
-            const isActive = s.id === activeSessionId;
-            return (
-              <div
-                key={s.id}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: isActive ? "flex" : "none",
-                  flexDirection: "column",
-                  minWidth: 0,
-                  minHeight: 0,
-                }}
-              >
-                {renderTerminalPane(s, isActive)}
-              </div>
-            );
-          })
+        {mountedSessions.map((s) => (
+          <div
+            key={s.id}
+            onClick={() => {
+              if (s.id !== activeSessionId) useSessionsStore.getState().setActive(s.id);
+            }}
+            style={paneWrapperStyle(s)}
+          >
+            {renderTerminalPane(s, s.id === activeSessionId)}
+          </div>
+        ))}
+        {isSplit && (
+          <SplitHandle
+            mode={split.mode as "horizontal" | "vertical"}
+            containerRef={splitContainerRef}
+            order={1}
+          />
         )}
       </div>
 

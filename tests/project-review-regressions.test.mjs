@@ -155,6 +155,22 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /panelVisible: snapshot\.ui\.panelVisible/);
 });
 
+test("terminal panes keep stable keyed mounts across single/split so the agent PTY survives", () => {
+  const main = read("src/ui/MainArea.tsx");
+  const handle = read("src/ui/SplitHandle.tsx");
+
+  // Single stable-keyed mount list (no dual single/split render branches that
+  // would unmount the active session's TerminalView and kill its PTY).
+  assert.match(main, /function paneWrapperStyle\(s: Session\): React\.CSSProperties/);
+  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?renderTerminalPane\(s, s\.id === activeSessionId\)/);
+  assert.match(main, /order: isPaneA \? 0 : 2/);
+  // Regression shape from the removed single-mode branch must be gone.
+  assert.doesNotMatch(main, /display: isActive \? "flex" : "none"/);
+  // SplitHandle takes the middle flex slot via an order prop.
+  assert.match(handle, /order\?: number/);
+  assert.match(main, /containerRef=\{splitContainerRef\}\s*order=\{1\}/);
+});
+
 test("file previews and markdown rendering stay bounded", () => {
   const rust = read("src-tauri/src/modules/fs/file.rs");
   const bridge = read("src/modules/fs/fs-bridge.ts");
