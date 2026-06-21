@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 export type MenuIconName = "terminal" | "editor" | "copy" | "rename" | "close";
 
 export interface MenuItem {
+  id?: string;
   label: string;
   action: () => void;
   icon?: MenuIconName;
@@ -73,6 +74,13 @@ function MenuIcon({ name }: { name: MenuIconName }) {
       <path d="M9 7V4h6v3" />
     </svg>
   );
+}
+
+function menuEntryKey(items: MenuEntry[], entry: MenuEntry, index: number): string {
+  if (entry) return entry.id ?? `${entry.icon ?? "item"}:${entry.label}`;
+  const before = [...items.slice(0, index)].reverse().find(Boolean)?.label ?? "start";
+  const after = items.slice(index + 1).find(Boolean)?.label ?? "end";
+  return `separator:${before}:${after}`;
 }
 
 export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
@@ -173,7 +181,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
     >
       {items.map((entry, i) => {
         if (entry === null) {
-          return <div key={`sep-${i}`} role="separator" className="ctx-divider" />;
+          return <div key={menuEntryKey(items, entry, i)} role="separator" className="ctx-divider" />;
         }
         const item = entry;
         const active = activeIndex === i && !item.disabled;
@@ -184,7 +192,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
         ].filter(Boolean).join(" ");
         return (
           <div
-            key={`${item.label}-${i}`}
+            key={menuEntryKey(items, item, i)}
             role="menuitem"
             aria-disabled={item.disabled ? true : undefined}
             tabIndex={-1}

@@ -13,6 +13,46 @@ interface MainAreaProps {
   activeSessionId: string;
 }
 
+function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.35,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
+  if (direction === "rows") {
+    return (
+      <svg {...common}>
+        <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+        <path d="M1.5 8h13" />
+        <path d="M3.5 3.5h9v3h-9Z" fill="currentColor" opacity="0.16" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (direction === "columns") {
+    return (
+      <svg {...common}>
+        <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+        <path d="M8 1.5v13" />
+        <path d="M3.5 3.5h3v9h-3Z" fill="currentColor" opacity="0.16" stroke="none" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...common}>
+      <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+      <path d="M5 5l6 6M11 5l-6 6" />
+    </svg>
+  );
+}
+
 export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const nonce = useSessionsStore((s) => s.gitNonce[active?.id ?? ""] ?? 0);
@@ -205,6 +245,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               else ui.closeSplit();
             }}
             title="关闭分栏"
+            aria-label="关闭分栏"
             style={{
               width: 28,
               height: 22,
@@ -218,15 +259,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             className="hover-bg"
           >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-            </svg>
+            <SplitIcon direction="single" />
           </button>
         ) : (
           <>
             <button
               onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
-              title="水平分栏 ⌘D"
+              title="左右分栏 ⌘D"
+              aria-label="左右分栏"
               style={{
                 width: 28,
                 height: 22,
@@ -240,14 +280,12 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               }}
               className="hover-bg"
             >
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-                <line x1="8" y1="1.5" x2="8" y2="14.5" />
-              </svg>
+              <SplitIcon direction="columns" />
             </button>
             <button
               onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
-              title="垂直分栏 ⌘⇧D"
+              title="上下分栏 ⌘⇧D"
+              aria-label="上下分栏"
               style={{
                 width: 28,
                 height: 22,
@@ -261,10 +299,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               }}
               className="hover-bg"
             >
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-                <line x1="1.5" y1="8" x2="14.5" y2="8" />
-              </svg>
+              <SplitIcon direction="rows" />
             </button>
           </>
         )}

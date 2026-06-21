@@ -16,17 +16,9 @@ export const AGENT_CIRCLE_STYLES: Record<string, { bg: string; border: string; c
 
 export function AgentBadge({ agent, size = 22, disabled }: { agent?: string; size?: number; disabled?: boolean }) {
   if (!agent) return null;
-  const badgeStyle = (code: string): React.CSSProperties => ({
-    background: disabled ? "var(--c-bg-3)" : `var(--c-agent-${code}-bg)`,
-    border: `1px solid ${disabled ? "var(--c-border-2)" : `var(--c-agent-${code}-border)`}`,
-    color: disabled ? "var(--c-text-5)" : `var(--c-agent-${code}-text)`,
-  });
-  const codeMap: Record<string, string> = {
-    CC: "cc", CX: "cx", AM: "am", GM: "gm", CP: "cp", CR: "cr", DR: "dr", OC: "oc", PI: "pi", AG: "ag", DV: "dv",
-  };
-  const styleMap: Record<string, React.CSSProperties> = Object.fromEntries(
-    Object.entries(codeMap).map(([k, v]) => [k, badgeStyle(v)])
-  );
+  const palette = disabled
+    ? { bg: "var(--c-bg-3)", border: "var(--c-border-2)", color: "var(--c-text-5)" }
+    : (AGENT_CIRCLE_STYLES[agent] ?? AGENT_CIRCLE_STYLES.CC);
   const Icon = AGENT_ICONS[agent];
 
   return (
@@ -39,7 +31,9 @@ export function AgentBadge({ agent, size = 22, disabled }: { agent?: string; siz
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
-        ...(styleMap[agent] ?? styleMap.CC),
+        background: palette.bg,
+        border: `1px solid ${palette.border}`,
+        color: palette.color,
       }}
     >
       {Icon ? <Icon size={size} /> : <span style={{ fontSize: "var(--fs-badge)", fontWeight: 700, fontFamily: "var(--font-mono)" }}>{agent}</span>}

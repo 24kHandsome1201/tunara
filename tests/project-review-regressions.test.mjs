@@ -239,6 +239,8 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /role="separator"/);
   assert.match(contextMenu, /boxShadow: "var\(--shadow-menu\)"/);
   assert.match(contextMenu, /export type MenuIconName = "terminal" \| "editor" \| "copy" \| "rename" \| "close"/);
+  assert.match(contextMenu, /id\?: string/);
+  assert.match(contextMenu, /function menuEntryKey/);
   assert.match(contextMenu, /function MenuIcon/);
   assert.match(contextMenu, /aria-hidden="true"/);
   assert.match(shared, /export function SearchIcon/);
@@ -349,6 +351,10 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
   assert.match(sessionCard, /paddingLeft: 6/);
   assert.match(main, /"1px solid var\(--c-accent\)"/);
+  assert.match(main, /function SplitIcon/);
+  assert.match(main, /title="左右分栏 ⌘D"/);
+  assert.match(main, /title="上下分栏 ⌘⇧D"/);
+  assert.match(main, /aria-label="左右分栏"/);
   assert.match(status, /\}, 1500\)/);
   assert.match(status, /transition: "opacity 0\.3s ease"/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
@@ -357,9 +363,12 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(settings, /height: 56, background: previewBg/);
   assert.doesNotMatch(settings, /#ff5f57|#febc2e|#28c840/);
   assert.doesNotMatch(settings, /\[9, 6, 8\]/);
+  assert.doesNotMatch(settings, /key=\{i\}/);
   assert.doesNotMatch(settings, /boxShadow: selected \?/);
   assert.match(settings, /className="no-scrollbar scroll-fade-y"/);
   assert.match(diff, /function remoteLabel\(remote: RemoteState \| null\): string/);
+  assert.match(diff, /function buildMiniDiffRows\(patch: string\)/);
+  assert.doesNotMatch(diff, /lines\.map\(\(line, i\)/);
   assert.match(diff, /Git 状态未知/);
   assert.match(diff, /className="no-scrollbar scroll-fade-y"/);
   assert.match(explorer, /function compactRelativePath/);
@@ -377,6 +386,10 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(globals, /\.scroll-fade-sidebar/);
   assert.match(globals, /@keyframes ctxMenuIn/);
   assert.match(contextMenu, /ctxMenuIn var\(--duration-fast\) ease/);
+  assert.doesNotMatch(contextMenu, /key=\{`\$\{item\.label\}-\$\{i\}`\}/);
+  assert.doesNotMatch(contextMenu, /key=\{`sep-\$\{i\}`\}/);
+  assert.match(filePreview, /class UniqueKeyBuilder/);
+  assert.doesNotMatch(filePreview, /key=\{i\}/);
 });
 
 test("review follow-up keeps terminal and sidebar hotspots split into focused pieces", () => {

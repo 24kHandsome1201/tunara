@@ -234,8 +234,8 @@ export function Settings({ onClose }: SettingsProps) {
                       }}
                     >
                       <div style={{ height: 36, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 3 }}>
-                        {[{ w: 40, o: 0.3 }, { w: 75, o: 0.6 }, { w: 55, o: 0.4 }, { w: 30, o: 0.25 }].map((line, i) => (
-                          <div key={i} style={{ height: 2, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
+                        {[{ w: 40, o: 0.3 }, { w: 75, o: 0.6 }, { w: 55, o: 0.4 }, { w: 30, o: 0.25 }].map((line) => (
+                          <div key={`${line.w}-${line.o}`} style={{ height: 2, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
                         ))}
                       </div>
                       <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>

@@ -11,10 +11,11 @@ interface FilePreviewProps {
 
 function MarkdownPreview({ content }: { content: string }) {
   const blocks = useMemo(() => parseMarkdown(content), [content]);
+  const keys = new UniqueKeyBuilder();
   return (
     <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar scroll-fade-y">
-      {blocks.map((block, i) => (
-        <MarkdownBlock key={i} block={block} />
+      {blocks.map((block) => (
+        <MarkdownBlock key={blockKey(block, keys)} block={block} />
       ))}
     </div>
   );
@@ -28,6 +29,28 @@ type Block =
   | { type: "ul"; items: string[] }
   | { type: "ol"; items: string[] }
   | { type: "hr" };
+
+class UniqueKeyBuilder {
+  private counts = new Map<string, number>();
+
+  make(base: string): string {
+    const count = this.counts.get(base) ?? 0;
+    this.counts.set(base, count + 1);
+    return count === 0 ? base : `${base}:${count}`;
+  }
+}
+
+function compactKeyText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 96);
+}
+
+function blockKey(block: Block, keys: UniqueKeyBuilder): string {
+  if (block.type === "ul" || block.type === "ol") {
+    return keys.make(`${block.type}:${block.items.map(compactKeyText).join("|")}`);
+  }
+  if (block.type === "hr") return keys.make("hr");
+  return keys.make(`${block.type}:${compactKeyText(block.text)}`);
+}
 
 function parseMarkdown(src: string): Block[] {
   const lines = src.split("\n");
@@ -124,27 +147,29 @@ function parseMarkdown(src: string): Block[] {
 
 function InlineText({ text }: { text: string }) {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/);
+  const keys = new UniqueKeyBuilder();
   return (
     <>
-      {parts.map((part, i) => {
+      {parts.map((part) => {
+        const key = keys.make(`part:${compactKeyText(part)}`);
         if (part.startsWith("`") && part.endsWith("`")) {
           return (
-            <code key={i} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent)" }}>
+            <code key={key} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent)" }}>
               {part.slice(1, -1)}
             </code>
           );
         }
         if (part.startsWith("**") && part.endsWith("**")) {
-          return <strong key={i} style={{ fontWeight: 600, color: "var(--c-text-2)" }}>{part.slice(2, -2)}</strong>;
+          return <strong key={key} style={{ fontWeight: 600, color: "var(--c-text-2)" }}>{part.slice(2, -2)}</strong>;
         }
         if (part.startsWith("*") && part.endsWith("*")) {
-          return <em key={i} style={{ color: "var(--c-text-4)" }}>{part.slice(1, -1)}</em>;
+          return <em key={key} style={{ color: "var(--c-text-4)" }}>{part.slice(1, -1)}</em>;
         }
         const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (linkMatch) {
-          return <span key={i} style={{ color: "var(--c-accent)" }}>{linkMatch[1]}</span>;
+          return <span key={key} style={{ color: "var(--c-accent)" }}>{linkMatch[1]}</span>;
         }
-        return <span key={i}>{part}</span>;
+        return <span key={key}>{part}</span>;
       })}
     </>
   );
@@ -169,15 +194,17 @@ function MarkdownBlock({ block }: { block: Block }) {
     case "quote":
       return <div style={{ borderLeft: "2px solid var(--c-border-2)", paddingLeft: 8, color: "var(--c-text-5)", margin: "4px 0", fontSize: "var(--fs-meta)", lineHeight: 1.6 }}><InlineText text={block.text} /></div>;
     case "ul":
+      const ulKeys = new UniqueKeyBuilder();
       return (
         <ul style={{ paddingLeft: 16, margin: "4px 0", listStyle: "disc" }}>
-          {block.items.map((item, i) => <li key={i} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
+          {block.items.map((item) => <li key={ulKeys.make(`ul:${compactKeyText(item)}`)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
         </ul>
       );
     case "ol":
+      const olKeys = new UniqueKeyBuilder();
       return (
         <ol style={{ paddingLeft: 16, margin: "4px 0" }}>
-          {block.items.map((item, i) => <li key={i} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
+          {block.items.map((item) => <li key={olKeys.make(`ol:${compactKeyText(item)}`)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
         </ol>
       );
     case "hr":

@@ -235,11 +235,11 @@ export function Sidebar({
                 setContextMenu({
                   position: { x: e.clientX, y: e.clientY },
                   items: [
-                    { label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
-                    { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
-                    { label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
+                    { id: "dir:new-terminal", label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
+                    { id: "dir:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
+                    { id: "dir:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
                     null,
-                    { label: "关闭全部会话", icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
+                    { id: "dir:close-all", label: "关闭全部会话", icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
                   ],
                 });
               }}
@@ -278,11 +278,11 @@ export function Sidebar({
                           setContextMenu({
                             position: { x: e.clientX, y: e.clientY },
                             items: [
-                              { label: "重命名", icon: "rename", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
-                              { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
-                              { label: "复制目录路径", icon: "copy", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
+                              { id: "session:rename", label: "重命名", icon: "rename", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
+                              { id: "session:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
+                              { id: "session:copy-dir", label: "复制目录路径", icon: "copy", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
                               null,
-                              { label: "关闭会话", icon: "close", danger: true, action: () => { onCloseSession?.(s.id); } },
+                              { id: "session:close", label: "关闭会话", icon: "close", danger: true, action: () => { onCloseSession?.(s.id); } },
                             ],
                           });
                         }}

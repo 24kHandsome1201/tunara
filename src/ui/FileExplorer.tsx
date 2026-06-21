@@ -323,9 +323,9 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                   setContextMenu({
                     position: { x: e.clientX, y: e.clientY },
                     items: [
-                      { label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
-                      { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                      { label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                      { id: "dir:new-terminal", label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
+                      { id: "dir:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                      { id: "dir:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                     ],
                   });
                 }}
@@ -355,8 +355,8 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                       setContextMenu({
                         position: { x: e.clientX, y: e.clientY },
                         items: [
-                          { label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                          { label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                          { id: "file:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                          { id: "file:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                         ],
                       });
                     }}

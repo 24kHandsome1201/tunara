@@ -61,6 +61,9 @@
 - `Settings`: 主题缩略图去掉 traffic-light 和 2px 微线条, 改为侧栏/主区/accent 组成的块面预览。
 - `AgentStatusBar`: 完成态停留时间和淡出时间缩短。
 - `Sidebar`/`FileExplorer`/`DiffPanel`/`Settings`/`CommandPalette`: 隐藏滚动条的纵向列表增加 `scroll-fade-y` 边界阴影, 侧栏使用 `scroll-fade-sidebar` 匹配玻璃底色。
+- `MainArea`: 分屏按钮改成 16px 左右/上下专用 glyph, 并补 `aria-label`, 小尺寸下方向不再只靠 tooltip 区分。
+- `ContextMenu`: 菜单项支持显式 `id`, separator key 由相邻项派生, 不再用渲染索引作为 key。
+- `DiffPanel`/`FilePreview`/`Settings`: diff 行、Markdown block/inline/list 和主题缩略图线条改为内容派生 key, 避免稳定列表继续依赖数组索引。
 
 ### 文档
 
@@ -81,6 +84,7 @@
 - `useInit`: 复用同一个 `getCurrentWindow()` 结果处理 fullscreen、resize 和 close-requested, 避免窗口生命周期接线分叉。
 - `Toast`: 宽度改为 260 到 340px 的响应式范围, 左侧 accent 从独立占位竖条改为 inset 标记, 长 subtitle 使用单行截断。
 - `tokens`: `--font-ui` 增补 BlinkMacSystemFont, Segoe UI 和 Roboto, Linux/WebKitGTK 字体回退更稳。
+- `AgentBadge`: 直接复用 `AGENT_CIRCLE_STYLES` token map, 移除 render-time 构造的重复 styleMap。
 - `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 - `deriveTitle`: 副标题和 `SessionCard` diff badge 共用同一次新增/删除统计, 不再重复 reduce。
@@ -158,6 +162,7 @@
 - D-8 remoteLabel 死代码: 已修。
 - S-2 SVG 图标重复: 已修, `SearchIcon` 和 `CloseIcon` 共用 `src/ui/shared.tsx`。
 - S-4 空 `tokens.ts`: 已修, 删除未被引用的 0 字节文件。
+- S-5 数组索引 key: 已修, 右键菜单、diff 预览、Markdown 预览和设置缩略图都改为显式 id 或内容派生 key。
 - P-1 SessionCard 重复 reduce 计算: 已修, `deriveTitle` 返回 `totalAdded` 和 `totalRemoved`。
 - P-3 CommandPalette `indexOf`: 已修, section 分组直接携带 `globalIdx`。
 

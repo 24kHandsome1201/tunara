@@ -31,16 +31,13 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
   if (diff.kind === "metadataOnly") {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>仅元数据变更（{diff.change}）</div>;
   }
-  const lines = diff.patch.split("\n");
+  const rows = buildMiniDiffRows(diff.patch);
   return (
     <div style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar scroll-fade-y">
-      {lines.map((line, i) => {
-        const isHunk = line.startsWith("@@") || line.startsWith("---") || line.startsWith("+++");
-        const isAdd = !isHunk && line.startsWith("+");
-        const isDel = !isHunk && line.startsWith("-");
+      {rows.map(({ key, line, isAdd, isDel }) => {
         return (
           <div
-            key={`${i}-${line.slice(0, 16)}`}
+            key={key}
             style={{
               padding: "1px 8px",
               background: isAdd ? "var(--c-diff-add-bg)" : isDel ? "var(--c-diff-del-bg)" : "transparent",
@@ -55,6 +52,42 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
       {diff.truncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)" }}>… 已截断</div>}
     </div>
   );
+}
+
+function buildMiniDiffRows(patch: string): Array<{ key: string; line: string; isAdd: boolean; isDel: boolean }> {
+  let oldLine = 0;
+  let newLine = 0;
+  let prelude = 0;
+
+  return patch.split("\n").map((line) => {
+    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      return { key: `hunk:${oldLine}:${newLine}:${line}`, line, isAdd: false, isDel: false };
+    }
+    if (line.startsWith("---") || line.startsWith("+++")) {
+      return { key: `file:${line}`, line, isAdd: false, isDel: false };
+    }
+    if (line.startsWith("+")) {
+      const key = `new:${newLine}:${line}`;
+      newLine += 1;
+      return { key, line, isAdd: true, isDel: false };
+    }
+    if (line.startsWith("-")) {
+      const key = `old:${oldLine}:${line}`;
+      oldLine += 1;
+      return { key, line, isAdd: false, isDel: true };
+    }
+    if (oldLine > 0 || newLine > 0) {
+      const key = `ctx:${oldLine}:${newLine}:${line}`;
+      oldLine += 1;
+      newLine += 1;
+      return { key, line, isAdd: false, isDel: false };
+    }
+    prelude += 1;
+    return { key: `prelude:${prelude}:${line}`, line, isAdd: false, isDel: false };
+  });
 }
 
 function FileStatusBadge({ status }: { status: string }) {
