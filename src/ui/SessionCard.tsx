@@ -29,7 +29,7 @@ function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?:
 }
 
 function SessionIcon({ session }: { session: Session }) {
-  const size = 28;
+  const size = 24;
   const displayRunState = sessionDisplayRunState(session);
 
   if (session.agent) {
@@ -74,7 +74,7 @@ function SessionIcon({ session }: { session: Session }) {
           justifyContent: "center",
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="4 17 10 11 4 5" />
           <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
@@ -203,13 +203,13 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
       className="session-card"
       style={{
         position: "relative",
-        padding: active ? "10px 10px 10px 14px" : "10px 10px",
-        borderRadius: "var(--r-card)",
+        padding: "7px 10px 7px 12px",
+        borderRadius: "var(--r-btn)",
         cursor: "pointer",
         userSelect: "none",
-        background: active ? "var(--c-bg-white)" : "transparent",
-        border: active ? "1px solid var(--c-border-2)" : "1px solid transparent",
-        boxShadow: active ? "var(--shadow-card)" : "none",
+        background: active ? "var(--c-accent-bg-soft)" : "transparent",
+        border: "none",
+        boxShadow: "none",
         outline: "none",
         transition: "background var(--duration-fast) ease",
       }}
@@ -275,7 +275,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         </span>
       )}
 
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <SessionIcon session={session} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -298,40 +298,29 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
             </span>
           </div>
 
-          {/* 行2: 工作目录 */}
-          <div
-            style={{
-              fontSize: "var(--fs-meta)",
-              color: "var(--c-text-4)",
-              fontFamily: "var(--font-mono)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              marginTop: 3,
-              lineHeight: 1.3,
-            }}
-          >
-            {session.dir}
-          </div>
-
-          {/* 行3: 分支 + diff 统计 */}
+          {/* 行2: 目录 · 分支 · diff */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              marginTop: 3,
+              gap: 4,
+              marginTop: 2,
               lineHeight: 1.3,
+              fontSize: "var(--fs-meta)",
+              fontFamily: "var(--font-mono)",
+              color: "var(--c-text-5)",
+              overflow: "hidden",
             }}
           >
-            <span
-              style={{
-                fontSize: "var(--fs-meta)",
-                color: "var(--c-text-5)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              ⎇ {session.branch || "—"}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
+              {session.dir.split("/").pop() || session.dir}
             </span>
+            {session.branch && (
+              <>
+                <span style={{ flexShrink: 0 }}>·</span>
+                <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>⎇ {session.branch}</span>
+              </>
+            )}
             <DiffStat added={totalAdded} removed={totalRemoved} />
           </div>
         </div>

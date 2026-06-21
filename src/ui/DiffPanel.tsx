@@ -71,37 +71,41 @@ function FileStatusBadge({ status }: { status: string }) {
   );
 }
 
+function EmptyState({ icon, label, sublabel }: { icon: React.ReactNode; label: string; sublabel?: string }) {
+  return (
+    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
+        {icon}
+      </div>
+      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{label}</span>
+      {sublabel && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: "90%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sublabel}</span>}
+    </div>
+  );
+}
+
 function EmptyClean() {
   return (
-    <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>工作区干净</span>
-    </div>
+    <EmptyState
+      icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+      label="工作区干净"
+    />
   );
 }
 
 function EmptyNotGit({ path }: { path: string }) {
   return (
-    <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>非 Git 仓库</span>
-      </div>
-      <span style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: 19 }}>{path}</span>
-    </div>
+    <EmptyState
+      icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>}
+      label="非 Git 仓库"
+      sublabel={path}
+    />
   );
 }
 
 function EmptyLoading() {
   return (
-    <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite", flexShrink: 0 }} />
+    <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />
       <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>git status</span>
     </div>
   );

@@ -191,8 +191,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
               title="水平分栏 ⌘D"
               style={{
-                width: 24,
-                height: 20,
+                width: 28,
+                height: 22,
                 border: "none",
                 background: "transparent",
                 cursor: "pointer",
@@ -212,8 +212,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
               title="垂直分栏 ⌘⇧D"
               style={{
-                width: 24,
-                height: 20,
+                width: 28,
+                height: 22,
                 border: "none",
                 background: "transparent",
                 cursor: "pointer",

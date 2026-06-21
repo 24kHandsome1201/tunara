@@ -23,17 +23,21 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
   const isSystem = themeType === "system";
   return (
     <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 60, background: isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fff 50%, #1a1a1f 50%)" : "#fbfbfc", borderBottom: "1px solid var(--c-border-2)", display: "flex", flexDirection: "column" }}>
-        <div style={{ height: 14, background: isDark ? "#27272a" : "#f7f7f8", borderBottom: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, display: "flex", alignItems: "center", paddingLeft: 6, gap: 3 }}>
+      <div style={{ height: 80, background: isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fff 50%, #1a1a1f 50%)" : "#fbfbfc", borderBottom: "1px solid var(--c-border-2)", display: "flex", flexDirection: "column" }}>
+        <div style={{ height: 16, background: isDark ? "#27272a" : "#f7f7f8", borderBottom: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, display: "flex", alignItems: "center", paddingLeft: 8, gap: 3 }}>
           {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
-            <div key={c} style={{ width: 4, height: 4, borderRadius: "50%", background: c }} />
+            <div key={c} style={{ width: 5, height: 5, borderRadius: "50%", background: c }} />
           ))}
         </div>
         <div style={{ flex: 1, display: "flex" }}>
-          <div style={{ width: 30, background: isDark ? "#2a2a30" : "#f0eff2", borderRight: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}` }} />
-          <div style={{ flex: 1, padding: "4px 6px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[8, 6, 7].map((w, i) => (
-              <div key={i} style={{ height: 2, width: `${w * 8}%`, borderRadius: 1, background: isDark ? "#3f3f46" : "#e0e0e5" }} />
+          <div style={{ width: 36, background: isDark ? "#2a2a30" : "#f0eff2", borderRight: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, padding: "6px 4px", display: "flex", flexDirection: "column", gap: 3 }}>
+            {[1, 1, 1].map((_, i) => (
+              <div key={i} style={{ height: 3, borderRadius: 1.5, background: i === 0 ? "var(--c-accent)" : (isDark ? "#3f3f46" : "#d8d8de"), opacity: i === 0 ? 0.6 : 0.4 }} />
+            ))}
+          </div>
+          <div style={{ flex: 1, padding: "6px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
+            {[9, 6, 8, 5].map((w, i) => (
+              <div key={i} style={{ height: 2.5, width: `${w * 9}%`, borderRadius: 1, background: isDark ? "#3f3f46" : "#e0e0e5" }} />
             ))}
           </div>
         </div>

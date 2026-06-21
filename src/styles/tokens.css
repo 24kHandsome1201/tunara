@@ -254,7 +254,7 @@
 .split-handle-h:hover .split-handle-line { width: 3px !important; }
 .split-handle-v:hover .split-handle-line { height: 3px !important; }
 
-.session-card:hover { background: var(--c-bg-hover); }
+.session-card:hover { background: var(--c-bg-3); }
 .session-card-close { opacity: 0; pointer-events: none; }
 .session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
 

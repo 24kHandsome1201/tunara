@@ -103,25 +103,29 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
       {/* content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }} className="no-scrollbar">
         {loading ? (
-          <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite", flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>加载中…</span>
+          <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />
+            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>加载中</span>
           </div>
         ) : error ? (
-          <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>无法读取目录</span>
+          <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>无法读取目录</span>
           </div>
         ) : entries.length === 0 ? (
-          <div style={{ padding: "40px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>目录为空</span>
+          <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+            </div>
+            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>目录为空</span>
           </div>
         ) : (
           <>

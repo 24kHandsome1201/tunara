@@ -12,8 +12,17 @@ interface Command {
   label: string;
   subtitle?: string;
   shortcut?: string;
+  icon?: React.ReactNode;
   action: () => void;
   section: string;
+}
+
+function CmdIcon({ d, size = 14 }: { d: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d={d} />
+    </svg>
+  );
 }
 
 export function CommandPalette({ onClose }: CommandPaletteProps) {
@@ -38,6 +47,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           id: `switch-${s.id}`,
           label: primary,
           subtitle,
+          icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
           section: "会话",
           action: () => { setActive(s.id); onClose(); },
         });
@@ -47,6 +57,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       id: "new-terminal",
       label: "新建终端",
       shortcut: "⌘T",
+      icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
       section: "操作",
       action: () => {
         useSessionsStore.getState().newTerminal();
@@ -58,6 +69,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       id: "toggle-sidebar",
       label: "切换侧栏",
       shortcut: "⌘\\",
+      icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       action: () => { ui.getState().toggleSidebar(); onClose(); },
     });
@@ -66,6 +78,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       id: "toggle-panel",
       label: "切换审查面板",
       shortcut: "⌘⇧\\",
+      icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       action: () => { ui.getState().togglePanel(); onClose(); },
     });
@@ -74,6 +87,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       id: "split-horizontal",
       label: "水平分栏",
       shortcut: "⌘D",
+      icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="8" y1="1.5" x2="8" y2="14.5" /></svg>,
       section: "操作",
       action: () => {
         if (ui.getState().split.mode !== "single") { onClose(); return; }
@@ -86,6 +100,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       id: "split-vertical",
       label: "垂直分栏",
       shortcut: "⌘⇧D",
+      icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="1.5" y1="8" x2="14.5" y2="8" /></svg>,
       section: "操作",
       action: () => {
         if (ui.getState().split.mode !== "single") { onClose(); return; }
@@ -98,6 +113,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       id: "settings",
       label: "设置",
       shortcut: "⌘,",
+      icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
       section: "操作",
       action: () => { ui.getState().setOverlay("settings"); },
     });
@@ -222,16 +238,35 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                     onClick={() => cmd.action()}
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     style={{
+                      position: "relative",
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
-                      padding: "7px 16px",
+                      gap: 10,
+                      padding: "7px 12px 7px 14px",
                       cursor: "pointer",
-                      background: isSelected ? "var(--c-bg-hover)" : "transparent",
-                      borderRadius: "var(--r-badge)",
+                      background: isSelected ? "var(--c-accent-bg-soft)" : "transparent",
+                      borderRadius: "var(--r-btn)",
                       margin: "0 6px",
+                      transition: "background var(--duration-fast) ease",
                     }}
                   >
+                    {isSelected && (
+                      <div style={{
+                        position: "absolute",
+                        left: 0,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        width: 3,
+                        height: "60%",
+                        background: "var(--c-accent)",
+                        borderRadius: "0 2px 2px 0",
+                      }} />
+                    )}
+                    {cmd.icon && (
+                      <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--duration-fast) ease" }}>
+                        {cmd.icon}
+                      </span>
+                    )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
                         fontSize: "var(--fs-body)",
@@ -262,6 +297,9 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                         fontSize: "var(--fs-meta)",
                         color: "var(--c-text-5)",
                         fontFamily: "var(--font-mono)",
+                        background: "var(--c-bg-3)",
+                        padding: "1px 5px",
+                        borderRadius: 4,
                         flexShrink: 0,
                       }}>
                         {cmd.shortcut}

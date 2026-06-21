@@ -13,17 +13,16 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     <button
       onClick={onClick}
       style={{
-        height: "100%",
-        padding: "0 2px",
+        height: 26,
+        padding: "0 10px",
+        borderRadius: "var(--r-pill)",
         border: "none",
-        borderBottom: active ? "2px solid var(--c-accent)" : "2px solid transparent",
-        background: "transparent",
+        background: active ? "var(--c-accent-bg-soft)" : "transparent",
         cursor: "pointer",
         fontSize: "var(--fs-secondary)",
         fontWeight: active ? 600 : 400,
         color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
-        marginBottom: -1,
-        transition: "border-color var(--duration-normal) ease, color var(--duration-fast) ease",
+        transition: "background var(--duration-fast) ease, color var(--duration-fast) ease",
       }}
       className={active ? undefined : "hover-text-3"}
     >
@@ -39,7 +38,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   return (
     <div style={{ width: "100%", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
       {/* title bar */}
-      <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 16, flexShrink: 0 }}>
+      <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
         <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>改动</TabButton>
         <TabButton active={tab === "files"} onClick={() => setTab("files")}>文件</TabButton>
 
