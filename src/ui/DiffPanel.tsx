@@ -280,7 +280,11 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                       <polyline points="9 6 15 12 9 18" />
                     </svg>
                   </button>
-                  {isExpanded && <MiniDiff diff={diffs[file.path]} />}
+                  {isExpanded && (
+                    <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
+                      <MiniDiff diff={diffs[file.path]} />
+                    </div>
+                  )}
                 </div>
               );
             })}

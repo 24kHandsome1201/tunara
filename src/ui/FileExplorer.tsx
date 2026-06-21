@@ -38,8 +38,10 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
 
   useEffect(() => {
+    setNavDir(null);
     setCurrentPath(rootDir);
   }, [rootDir]);
 
@@ -60,11 +62,13 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
     const parts = currentPath.split("/");
     parts.pop();
     const parent = parts.join("/") || "/";
+    setNavDir("out");
     setCurrentPath(parent);
   }
 
   function enterDir(name: string) {
     const next = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
+    setNavDir("in");
     setCurrentPath(next);
   }
 
@@ -101,7 +105,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
       </div>
 
       {/* content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }} className="no-scrollbar">
+      <div key={currentPath} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar">
         {loading ? (
           <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />
@@ -165,7 +169,9 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{formatSize(entry.size)}</span>
                   </button>
                   {isExpanded && (
-                    <FilePreview filePath={fullPath} fileName={entry.name} onClose={() => setExpandedFile(null)} />
+                    <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
+                      <FilePreview filePath={fullPath} fileName={entry.name} onClose={() => setExpandedFile(null)} />
+                    </div>
                   )}
                 </div>
               );

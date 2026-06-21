@@ -71,10 +71,10 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
 
       {/* content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0 }}>
+        <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-fast) ease" : undefined }}>
           <DiffPanel session={session} embedded />
         </div>
-        <div style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0 }}>
+        <div key={`files-${tab}`} style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "files" ? "contentIn var(--duration-fast) ease" : undefined }}>
           <FileExplorer rootDir={session.dir} />
         </div>
       </div>
