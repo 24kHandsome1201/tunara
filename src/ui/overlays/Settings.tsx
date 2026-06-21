@@ -24,21 +24,21 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
   const isSystem = themeType === "system";
   return (
     <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 80, background: isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fff 50%, #1a1a1f 50%)" : "#fbfbfc", borderBottom: "1px solid var(--c-border-2)", display: "flex", flexDirection: "column" }}>
-        <div style={{ height: 16, background: isDark ? "#27272a" : "#f7f7f8", borderBottom: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, display: "flex", alignItems: "center", paddingLeft: 8, gap: 3 }}>
+      <div style={{ height: 56, background: isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fff 50%, #1a1a1f 50%)" : "#fbfbfc", borderBottom: "1px solid var(--c-border-2)", display: "flex", flexDirection: "column" }}>
+        <div style={{ height: 14, background: isDark ? "#27272a" : "#f7f7f8", borderBottom: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, display: "flex", alignItems: "center", paddingLeft: 6, gap: 2.5 }}>
           {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
-            <div key={c} style={{ width: 5, height: 5, borderRadius: "50%", background: c }} />
+            <div key={c} style={{ width: 4, height: 4, borderRadius: "50%", background: c }} />
           ))}
         </div>
         <div style={{ flex: 1, display: "flex" }}>
-          <div style={{ width: 36, background: isDark ? "#2a2a30" : "#f0eff2", borderRight: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, padding: "6px 4px", display: "flex", flexDirection: "column", gap: 3 }}>
+          <div style={{ width: 28, background: isDark ? "#2a2a30" : "#f0eff2", borderRight: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, padding: "4px 3px", display: "flex", flexDirection: "column", gap: 2.5 }}>
             {[1, 1, 1].map((_, i) => (
-              <div key={i} style={{ height: 3, borderRadius: 1.5, background: i === 0 ? "var(--c-accent)" : (isDark ? "#3f3f46" : "#d8d8de"), opacity: i === 0 ? 0.6 : 0.4 }} />
+              <div key={i} style={{ height: 2.5, borderRadius: 1.5, background: i === 0 ? "var(--c-accent)" : (isDark ? "#3f3f46" : "#d8d8de"), opacity: i === 0 ? 0.6 : 0.4 }} />
             ))}
           </div>
-          <div style={{ flex: 1, padding: "6px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
-            {[9, 6, 8, 5].map((w, i) => (
-              <div key={i} style={{ height: 2.5, width: `${w * 9}%`, borderRadius: 1, background: isDark ? "#3f3f46" : "#e0e0e5" }} />
+          <div style={{ flex: 1, padding: "4px 6px", display: "flex", flexDirection: "column", gap: 2.5 }}>
+            {[9, 6, 8].map((w, i) => (
+              <div key={i} style={{ height: 2, width: `${w * 9}%`, borderRadius: 1, background: isDark ? "#3f3f46" : "#e0e0e5" }} />
             ))}
           </div>
         </div>
@@ -203,9 +203,9 @@ export function Settings({ onClose }: SettingsProps) {
                         textAlign: "left",
                       }}
                     >
-                      <div style={{ height: 36, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 2 }}>
-                        {[7, 5, 6].map((w, i) => (
-                          <div key={i} style={{ height: 2, width: `${w * 10}%`, borderRadius: 1, background: t.fg, opacity: 0.5 }} />
+                      <div style={{ height: 36, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 3 }}>
+                        {[{ w: 40, o: 0.3 }, { w: 75, o: 0.6 }, { w: 55, o: 0.4 }, { w: 30, o: 0.25 }].map((line, i) => (
+                          <div key={i} style={{ height: 2, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
                         ))}
                       </div>
                       <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -227,21 +227,26 @@ export function Settings({ onClose }: SettingsProps) {
               {resolvedClis.length > 0 && installed.length === 0 && (
                 <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>未检测到常用终端 CLI</div>
               )}
-              {installed.map(({ code, name }) => {
-                const cli = resolvedClis.find((c) => c.name === code);
-                return (
-                  <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
-                    <AgentBadge agent={code} size={28} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
-                      <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-                        {cli?.path}
+              {(() => {
+                const hasUninstalled = CLI_LIST.some(({ code }) => !resolvedClis.find((c) => c.name === code)?.path);
+                return installed.map(({ code, name }) => {
+                  const cli = resolvedClis.find((c) => c.name === code);
+                  return (
+                    <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
+                      <AgentBadge agent={code} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
+                        <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+                          {cli?.path}
+                        </div>
                       </div>
+                      {hasUninstalled && (
+                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)", fontWeight: 600 }}>已安装</span>
+                      )}
                     </div>
-                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)", fontWeight: 600 }}>已安装</span>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           )}
         </div>

@@ -207,7 +207,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         borderRadius: "var(--r-btn)",
         cursor: "pointer",
         userSelect: "none",
-        background: active ? "var(--c-accent-bg-soft)" : "transparent",
+        background: active ? "var(--c-accent-bg-light)" : "transparent",
         border: "none",
         boxShadow: "none",
         outline: "none",

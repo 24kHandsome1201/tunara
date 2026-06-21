@@ -259,15 +259,15 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         ) : !hasChanges ? (
           <EmptyClean />
         ) : (
-          <div style={{ padding: "8px" }}>
+          <div style={{ padding: "6px" }}>
             {files.map((file) => {
               const isExpanded = expandedFile === file.path;
               return (
-                <div key={file.path} style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 4, overflow: "hidden" }}>
+                <div key={file.path} style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 3, overflow: "hidden" }}>
                   <button
                     onClick={() => toggleFile(file.path)}
                     className="hover-bg"
-                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
                   >
                     <FileStatusBadge status={file.status} />
                     <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
