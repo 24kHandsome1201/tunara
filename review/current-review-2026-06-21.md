@@ -45,6 +45,7 @@
 - `ContextMenu`: 增加 `role="menu"`, `role="menuitem"`, `role="separator"` 和 Arrow/Home/End/Enter/Space 键盘支持。
 - `ContextMenu`: 阴影改用 `--shadow-menu` token。
 - `ContextMenu`: 增加统一 icon slot, 文件、目录和会话右键菜单项不再是纯文字列表。
+- `shared`: `SearchIcon` 从 `FileExplorer` 和 `SidebarDirGroupHeader` 的重复 SVG 中抽到共享组件。
 - `Sidebar`/`FileExplorer`/`sessions`: 移除 "启动所有 Agent" 入口和 `launchAllAgents`, 避免产品漂移成 agent launcher。
 - `MainArea`: 状态栏路径做中间缩略, 右侧 Git/Agent 信息加收缩策略。
 - `DiffPanel`: 文件行从松散卡片改为列表分隔线, 信息密度更接近开发者工具。
@@ -146,6 +147,7 @@
 - D-5 PanelResizeHandle 和 SidebarResizeHandle 重复: 已修, 合并到通用 `ResizeHandle`。
 - D-6 useInit 重复调用 getCurrentWindow: 已修, fullscreen 和 close-requested 共用同一个 `win`。
 - D-8 remoteLabel 死代码: 已修。
+- S-2 SearchIcon 重复定义: 已修, 共用 `src/ui/shared.tsx`。
 - P-3 CommandPalette `indexOf`: 已修, section 分组直接携带 `globalIdx`。
 
 已失效或降级:

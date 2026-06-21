@@ -212,6 +212,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const contextMenu = read("src/ui/ContextMenu.tsx");
   const settings = read("src/ui/overlays/Settings.tsx");
   const docs = read("docs/设计-右键菜单与批量启动Agent.md");
+  const shared = read("src/ui/shared.tsx");
 
   assert.match(html, /: "#c2683c"/);
   assert.doesNotMatch(html, /#e09070/);
@@ -240,6 +241,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /export type MenuIconName = "terminal" \| "editor" \| "copy" \| "rename" \| "close"/);
   assert.match(contextMenu, /function MenuIcon/);
   assert.match(contextMenu, /aria-hidden="true"/);
+  assert.match(shared, /export function SearchIcon/);
 
   assert.match(settings, /CLI 路径检测失败/);
   assert.match(settings, /未在当前应用 PATH 中找到/);
@@ -313,6 +315,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
   assert.match(sidebarHeader, /padding: "6px 9px"/);
+  assert.match(sidebarHeader, /import \{ SearchIcon \} from "\.\/shared"/);
+  assert.match(sidebarHeader, /export function SidebarSearchIcon\(\) \{\n  return <SearchIcon \/>;\n\}/);
   assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
   assert.match(sessionCard, /paddingLeft: 6/);
   assert.match(main, /"1px solid var\(--c-accent\)"/);
@@ -324,6 +328,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(explorer, /function compactRelativePath/);
   assert.match(explorer, /label: "在此目录新建终端", icon: "terminal"/);
   assert.match(explorer, /label: "复制路径", icon: "copy"/);
+  assert.doesNotMatch(explorer, /function SearchIcon/);
   assert.match(explorer, /minWidth: 48, textAlign: "right"/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(tokens, /--font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;/);

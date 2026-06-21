@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
-import { RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -25,15 +25,6 @@ function FileIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
     </svg>
   );
 }

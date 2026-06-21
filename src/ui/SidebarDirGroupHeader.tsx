@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { SearchIcon } from "./shared";
 
 function FolderIcon() {
   return (
@@ -9,12 +10,7 @@ function FolderIcon() {
 }
 
 export function SidebarSearchIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
+  return <SearchIcon />;
 }
 
 export function DirGroupHeader({
