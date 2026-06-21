@@ -11,13 +11,13 @@
 
 - `git diff --check main`: 通过。
 - `pnpm build`: 通过。
-- `pnpm test`: 通过, Node 24 个测试, Rust 5 个测试。
+- `pnpm test`: 通过, Node 25 个测试, Rust 5 个测试。
 - `pnpm tauri dev` 临时端口启动: 通过编译并打开 PTY。
 
 仍不应把它直接当成稳定发布完成:
 
 - Tauri 进程和 PTY 已验证, 但窗口视觉和控件树检查被 macOS Apple Event 权限拦截。
-- release 配置仍有版本、owner 和 bundle id 漂移。
+- Homebrew cask 还没有基于真实发布 DMG 回填 sha256, 不能直接宣称发版产物已完成。
 - `TerminalView.tsx` 和 `Sidebar.tsx` 仍是结构热点, 需要后续拆分。
 
 ## 本轮已修
@@ -68,6 +68,7 @@
 - `TerminalThemeName` 改由 `TERMINAL_THEME_NAMES` 数组派生, localStorage 校验不再手写另一份枚举。
 - `src-tauri/src/modules/resolver/mod.rs` 读取共享 agent registry JSON, 并增加 Rust 单测锁住 `CP -> gh`, `CR -> cursor` 等跨语言映射。
 - `sessions` store 统一管理单个会话和目录批量关闭确认态的过期 timer, UI 组件不再各自启动 3 秒清理 timer。
+- release metadata 已收口: package, Tauri, Cargo, Cargo.lock 和 Homebrew cask 都对齐 `1.0.2`; Homebrew URL/homepage 对齐当前 GitHub owner; cask zap 路径对齐 `dev.conduit.app`; 回归测试禁止 `PLACEHOLDER_SHA256` 和旧 owner/bundle id 回流。
 - `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 
@@ -95,23 +96,21 @@
 - 打开右键菜单并用键盘操作。
 - 窄窗口检查 sidebar/panel overlay。
 
-### P1: release 配置漂移
+### P1: release artifact sha 未闭环
 
 证据:
 
 - `package.json` 是 `1.0.2`。
 - `src-tauri/tauri.conf.json` 是 `1.0.2`, identifier 是 `dev.conduit.app`。
-- `src-tauri/Cargo.toml` 仍是 `1.0.1`。
-- `homebrew/conduit.rb` 使用 `PLACEHOLDER_SHA256`。
-- Homebrew cask URL 指向 `mawei/conduit`, updater endpoint 指向 `24kHandsome1201/conduit`。
-- cask zap 路径使用 `com.conduit.app`, 和 Tauri identifier `dev.conduit.app` 不一致。
+- `src-tauri/Cargo.toml` 和 `src-tauri/Cargo.lock` 已对齐 `1.0.2`。
+- `homebrew/conduit.rb` URL/homepage 已指向当前远端 owner `24kHandsome1201/conduit`。
+- cask zap 路径已对齐 `dev.conduit.app`。
+- cask 目前使用 `sha256 :no_check`, 避免提交假 checksum, 但这不是最终发布证明。
 
 建议:
 
-- 发版前统一 package, Cargo, Tauri, Homebrew 版本。
-- 统一 GitHub owner。
-- release 后回填真实 sha256。
-- zap bundle id 使用实际 Tauri identifier。
+- 真实 release DMG 上传后, 下载发布资产并用实际 sha256 替换 `:no_check`。
+- 用该 GitHub release asset 反查 URL 和 checksum 后, 再宣布 Homebrew cask 可发布。
 
 ### P2: 架构热点
 

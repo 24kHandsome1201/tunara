@@ -13,6 +13,28 @@ test("node test script can import TypeScript sources on Node 22", () => {
   assert.match(pkg.scripts.test, /pnpm test:node/);
 });
 
+test("release metadata keeps versions and distribution identifiers aligned", () => {
+  const pkg = JSON.parse(read("package.json"));
+  const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
+  const cargo = read("src-tauri/Cargo.toml");
+  const lock = read("src-tauri/Cargo.lock");
+  const cask = read("homebrew/conduit.rb");
+
+  const version = pkg.version;
+  assert.equal(tauri.version, version);
+  assert.match(cargo, new RegExp(`^version = "${version}"$`, "m"));
+  assert.match(lock, new RegExp(`name = "conduit"\\nversion = "${version}"`));
+  assert.match(cask, new RegExp(`version "${version}"`));
+
+  assert.equal(tauri.identifier, "dev.conduit.app");
+  assert.match(cask, /github\.com\/24kHandsome1201\/conduit/);
+  assert.doesNotMatch(cask, /github\.com\/mawei\/conduit/);
+  assert.doesNotMatch(cask, /PLACEHOLDER_SHA256/);
+  assert.doesNotMatch(cask, /com\.conduit\.app/);
+  assert.match(cask, /Application Support\/dev\.conduit\.app/);
+  assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/conduit/);
+});
+
 test("session persistence keeps custom titles and rejects invalid stored payloads", () => {
   const persist = read("src/state/persist.ts");
   assert.match(persist, /function isPersistedSession\(value: unknown\): value is PersistedSession/);
