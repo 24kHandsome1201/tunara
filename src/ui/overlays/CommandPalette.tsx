@@ -199,7 +199,11 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           animation: "sheetIn var(--duration-normal) ease",
         }}
       >
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
           <input
             ref={inputRef}
             type="text"
@@ -207,7 +211,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="输入命令或搜索…"
             style={{
-              width: "100%",
+              flex: 1,
               border: "none",
               background: "transparent",
               outline: "none",

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { type ThemeType, type TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle } from "@/state/ui";
 import { invoke } from "@tauri-apps/api/core";
+import { AgentBadge } from "@/ui/agents";
 
 interface SettingsProps {
   onClose: () => void;
@@ -229,11 +230,15 @@ export function Settings({ onClose }: SettingsProps) {
               {installed.map(({ code, name }) => {
                 const cli = resolvedClis.find((c) => c.name === code);
                 return (
-                  <div key={code} style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 4 }}>{name} ({code})</div>
-                    <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
-                      {cli?.path} <span style={{ color: "var(--c-success)" }}>✓</span>
+                  <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
+                    <AgentBadge agent={code} size={28} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
+                      <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+                        {cli?.path}
+                      </div>
                     </div>
+                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)", fontWeight: 600 }}>已安装</span>
                   </div>
                 );
               })}

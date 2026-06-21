@@ -276,7 +276,9 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
                       +{file.added} −{file.removed}
                     </span>
-                    <span style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease", flexShrink: 0 }}>▸</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease", flexShrink: 0 }}>
+                      <polyline points="9 6 15 12 9 18" />
+                    </svg>
                   </button>
                   {isExpanded && <MiniDiff diff={diffs[file.path]} />}
                 </div>

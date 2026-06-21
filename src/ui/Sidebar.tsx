@@ -192,31 +192,37 @@ export function Sidebar({
       }}
     >
       {onNewTerminal && (
-        <div style={{ padding: "10px 12px 6px", display: "flex", gap: 6 }}>
+        <div style={{ padding: "10px 12px 6px" }}>
           <button
             onClick={onNewTerminal}
             style={{
-              flex: 1,
-              padding: "7px 10px",
-              border: "1px solid var(--c-border-2)",
-              borderRadius: "var(--r-card)",
-              background: "var(--c-bg-white)",
+              width: "100%",
+              padding: "6px 10px",
+              border: "none",
+              borderRadius: "var(--r-btn)",
+              background: "var(--c-accent-bg-soft)",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 5,
+              gap: 6,
+              transition: "background var(--duration-fast) ease",
             }}
-            className="hover-bg"
+            className="hover-accent-bg"
           >
-            <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>
-              + 终端
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-accent)" }}>
+              新建终端
             </span>
             <span
               style={{
                 fontSize: "var(--fs-badge)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
+                marginLeft: "auto",
               }}
             >
               ⌘T
@@ -312,19 +318,27 @@ export function Sidebar({
       <div
         style={{
           borderTop: "1px solid var(--c-border-1)",
-          padding: "8px 14px",
+          padding: "6px 14px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-end",
+          gap: 6,
         }}
       >
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
+          会话
+        </span>
         <span
           style={{
-            fontSize: "var(--fs-secondary)",
-            color: "var(--c-text-5)",
+            fontSize: "var(--fs-badge)",
+            fontWeight: 600,
+            color: "var(--c-text-4)",
+            background: "var(--c-bg-3)",
+            borderRadius: "var(--r-pill)",
+            padding: "1px 6px",
+            fontFamily: "var(--font-mono)",
           }}
         >
-          {sessions.length} 个会话
+          {sessions.length}
         </span>
       </div>
     </div>

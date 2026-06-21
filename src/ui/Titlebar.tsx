@@ -255,7 +255,7 @@ export function Titlebar({
           }}
           className="hover-bg"
         >
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ color: panelVisible ? "var(--c-accent)" : undefined, transition: "color var(--duration-fast) ease" }}>
             <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
             <rect x="9" y="1.5" width="5.5" height="13" rx="2" fill={panelVisible ? "currentColor" : "none"} fillOpacity="0.3" stroke="currentColor" strokeWidth="1.2" />
           </svg>
