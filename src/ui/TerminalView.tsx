@@ -100,7 +100,6 @@ export function TerminalView({
       fitRef.current = fit;
       term.loadAddon(fit);
       term.open(containerRef.current);
-      fit.fit();
 
       try {
         const webgl = new WebglAddon();
@@ -109,6 +108,14 @@ export function TerminalView({
       } catch {
         // WebGL unavailable, canvas fallback
       }
+
+      // Fit after WebGL addon loads — the addon replaces the renderer and
+      // changes cell metrics; fitting before it loads would measure stale
+      // dimensions, causing a cols/rows mismatch with the PTY that shows
+      // as garbled output until the next resize.
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      if (disposed || !containerRef.current) return;
+      fit.fit();
 
       const searchAddon = new SearchAddon();
       term.loadAddon(searchAddon);
