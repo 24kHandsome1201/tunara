@@ -169,7 +169,7 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session, active, confirmClose, onClick, onClose, onRename, onContextMenu }: SessionCardProps) {
-  const { primary, isCommand } = deriveTitle(session);
+  const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
   const showBusyProgress = !!session.agent && busy;
@@ -212,9 +212,6 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
     if (!onClose) return;
     onClose();
   };
-
-  const totalAdded = session.changes?.files.reduce((a, f) => a + f.added, 0) ?? 0;
-  const totalRemoved = session.changes?.files.reduce((a, f) => a + f.removed, 0) ?? 0;
 
   return (
     <div

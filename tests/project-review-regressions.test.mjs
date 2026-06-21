@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -275,6 +275,8 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(resolver, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/src\/modules\/agent\/registry-data\.json"\)/);
   assert.match(resolver, /fn resolver_uses_shared_agent_registry_data/);
   assert.match(types, /export const TERMINAL_THEME_NAMES = \[/);
+  assert.match(types, /totalAdded: number; totalRemoved: number/);
+  assert.match(types, /for \(const file of s\.changes\.files\)/);
   assert.match(ui, /TERMINAL_THEME_NAMES as readonly string\[\]/);
   assert.doesNotMatch(ui, /externalEditor: ExternalEditor;\n\n  setSidebarVisible/);
   assert.match(keys, /setFontSize\(DEFAULT_SETTINGS\.fontSize\)/);
@@ -287,6 +289,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sessions, /unconfirmedBusy\.length > 0/);
   assert.match(sessions, /get\(\)\.closeSessions\(sessionIds\)/);
   assert.doesNotMatch(sessionCard, /onClearCloseConfirm/);
+  assert.doesNotMatch(sessionCard, /session\.changes\?\.files\.reduce/);
   assert.doesNotMatch(sidebar, /onClearCloseConfirm/);
   assert.doesNotMatch(sidebar, /clearDirCloseConfirmation/);
   assert.match(sidebar, /label: "重命名", icon: "rename"/);
@@ -355,6 +358,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(explorer, /minWidth: 48, textAlign: "right"/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(tokens, /--font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;/);
+  assert.equal(existsSync(resolve(root, "src/styles/tokens.ts")), false);
   assert.match(globals, /@keyframes ctxMenuIn/);
   assert.match(contextMenu, /ctxMenuIn var\(--duration-fast\) ease/);
 });

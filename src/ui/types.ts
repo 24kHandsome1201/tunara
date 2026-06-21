@@ -85,7 +85,7 @@ export function isPromptLikeShellTitle(title: string): boolean {
   return /(?:^|\s)[^@\s]+@[^%#$\n]+.*\s[%#$](?:\s|$)/.test(title.trim());
 }
 
-export function deriveTitle(s: Session): { primary: string; subtitle: string; isCommand: boolean } {
+export function deriveTitle(s: Session): { primary: string; subtitle: string; isCommand: boolean; totalAdded: number; totalRemoved: number } {
   let primary: string;
   let isCommand = false;
 
@@ -116,16 +116,23 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
   const parts: string[] = [];
   if (s.branch) parts.push(`⎇ ${s.branch}`);
   parts.push(dirLabel);
+  let totalAdded = 0;
+  let totalRemoved = 0;
   if (s.changes?.files.length) {
-    const added = s.changes.files.reduce((a, f) => a + f.added, 0);
-    const removed = s.changes.files.reduce((a, f) => a + f.removed, 0);
+    for (const file of s.changes.files) {
+      totalAdded += file.added;
+      totalRemoved += file.removed;
+    }
+  }
+
+  if (s.changes?.files.length) {
     const diffParts: string[] = [];
-    if (added > 0) diffParts.push(`+${added}`);
-    if (removed > 0) diffParts.push(`-${removed}`);
+    if (totalAdded > 0) diffParts.push(`+${totalAdded}`);
+    if (totalRemoved > 0) diffParts.push(`-${totalRemoved}`);
     if (diffParts.length) parts.push(diffParts.join(" "));
   }
 
-  return { primary, subtitle: parts.join(" · "), isCommand };
+  return { primary, subtitle: parts.join(" · "), isCommand, totalAdded, totalRemoved };
 }
 
 export function formatSize(bytes: number): string {

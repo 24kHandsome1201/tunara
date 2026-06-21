@@ -80,6 +80,8 @@
 - `tokens`: `--font-ui` 增补 BlinkMacSystemFont, Segoe UI 和 Roboto, Linux/WebKitGTK 字体回退更稳。
 - `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
+- `deriveTitle`: 副标题和 `SessionCard` diff badge 共用同一次新增/删除统计, 不再重复 reduce。
+- `styles`: 删除 0 字节的 `src/styles/tokens.ts`, 保留实际入口 `tokens.css`。
 
 ## 仍需跟进
 
@@ -148,6 +150,8 @@
 - D-6 useInit 重复调用 getCurrentWindow: 已修, fullscreen 和 close-requested 共用同一个 `win`。
 - D-8 remoteLabel 死代码: 已修。
 - S-2 SVG 图标重复: 已修, `SearchIcon` 和 `CloseIcon` 共用 `src/ui/shared.tsx`。
+- S-4 空 `tokens.ts`: 已修, 删除未被引用的 0 字节文件。
+- P-1 SessionCard 重复 reduce 计算: 已修, `deriveTitle` 返回 `totalAdded` 和 `totalRemoved`。
 - P-3 CommandPalette `indexOf`: 已修, section 分组直接携带 `globalIdx`。
 
 已失效或降级:
