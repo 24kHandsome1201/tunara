@@ -13,6 +13,7 @@ import { useUIStore, type CursorStyle } from "@/state/ui";
 import { type AgentCode } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { cleanTerminalLines, cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
+import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
 import { TerminalSearchBar } from "./TerminalSearchBar";
@@ -529,36 +530,13 @@ export function TerminalView({
       cleanups.push(() => dataDisposable.dispose());
 
       const el = containerRef.current!;
-      let lastW = el.clientWidth;
-      let lastH = el.clientHeight;
-      let fitTimer: ReturnType<typeof setTimeout> | null = null;
-      let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-
-      const observer = new ResizeObserver(() => {
-        if (fitTimer) clearTimeout(fitTimer);
-        fitTimer = setTimeout(() => {
-          fitTimer = null;
-          if (disposed) return;
-          const w = el.clientWidth;
-          const h = el.clientHeight;
-          if (w === lastW && h === lastH) return;
-          if (w === 0 || h === 0) return;
-          lastW = w;
-          lastH = h;
-          fit.fit();
-          if (resizeTimer) clearTimeout(resizeTimer);
-          resizeTimer = setTimeout(() => {
-            resizeTimer = null;
-            if (!disposed) resizePty(term.cols, term.rows);
-          }, 250);
-        }, 8);
-      });
-      observer.observe(el);
-      cleanups.push(() => {
-        observer.disconnect();
-        if (fitTimer) clearTimeout(fitTimer);
-        if (resizeTimer) clearTimeout(resizeTimer);
-      });
+      cleanups.push(observeTerminalResize({
+        element: el,
+        terminal: term,
+        fit,
+        resizePty,
+        isDisposed: () => disposed,
+      }));
 
       cleanups.push(() => {
         if (idleTimer) {

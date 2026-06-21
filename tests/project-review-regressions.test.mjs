@@ -301,14 +301,20 @@ test("follow-up review fixes polish dense UI surfaces", () => {
 test("review follow-up keeps terminal and sidebar hotspots split into focused pieces", () => {
   const terminal = read("src/ui/TerminalView.tsx");
   const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
+  const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
   assert.match(terminal, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
+  assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
+  assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminalSearch, /export function TerminalSearchBar/);
+  assert.match(terminalResize, /export function observeTerminalResize/);
+  assert.match(terminalResize, /new ResizeObserver/);
   assert.match(sidebar, /import \{ DirGroupHeader, SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
   assert.match(sidebarHeader, /export function DirGroupHeader/);
+  assert.doesNotMatch(terminal, /new ResizeObserver/);
 
-  assert.ok(terminal.split("\n").length < 700);
+  assert.ok(terminal.split("\n").length < 660);
   assert.ok(sidebar.split("\n").length < 380);
 });
