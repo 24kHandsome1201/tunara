@@ -336,6 +336,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);
+  assert.doesNotMatch(sidebar, /底部：会话数/);
+  assert.doesNotMatch(sidebar, />\s*会话\s*<\/span>/);
   assert.match(sidebarHeader, /padding: "6px 9px"/);
   assert.match(sidebarHeader, /import \{ CloseIcon, SearchIcon \} from "\.\/shared"/);
   assert.match(sidebarHeader, /export function SidebarSearchIcon\(\) \{\n  return <SearchIcon \/>;\n\}/);

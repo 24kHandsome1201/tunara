@@ -298,34 +298,6 @@ export function Sidebar({
         })}
       </div>
 
-      {/* 底部：会话数 */}
-      <div
-        style={{
-          borderTop: "1px solid var(--c-border-1)",
-          padding: "6px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-          会话
-        </span>
-        <span
-          style={{
-            fontSize: "var(--fs-badge)",
-            fontWeight: 600,
-            color: "var(--c-text-4)",
-            background: "var(--c-bg-3)",
-            borderRadius: "var(--r-pill)",
-            padding: "1px 6px",
-            fontFamily: "var(--font-mono)",
-          }}
-        >
-          {sessions.length}
-        </span>
-      </div>
-
       {contextMenu && (
         <ContextMenu
           items={contextMenu.items}

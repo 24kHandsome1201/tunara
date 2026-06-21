@@ -51,6 +51,7 @@
 - `DiffPanel`: 文件行从松散卡片改为列表分隔线, 信息密度更接近开发者工具。
 - `Titlebar`: tab 关闭按钮 hit target 从 16px 增到 20px, 折叠侧栏时 tab 区补左间距, 右侧按钮 gap 收窄。
 - `Sidebar`: 新建按钮和目录 header 对齐收口, 快捷键标注改成 badge 样式。
+- `Sidebar`: 移除底部固定“会话 + 数字”统计栏, 减少低价值 chrome, 把垂直空间还给会话列表。
 - `CommandPalette`: 批量关闭改走 store 统一 action, 运行中会话用一次集中确认反馈, 同时去掉选中项左侧竖条。
 - `CommandPalette`: section 分组时保留全局索引, 渲染期不再用 `ranked.indexOf(cmd)` 做 O(n²) 反查。
 - `DiffPanel`: 文件状态 badge 增加 R/? 区分, embedded 模式去掉重复刷新入口, `remoteLabel` 删除死参数。
@@ -177,6 +178,7 @@
 - DiffPanel 文件列表过度卡片化。
 - Tab close hit target 偏小。
 - Sidebar 对齐和快捷键 badge 不统一。
+- Sidebar 底部“会话”统计栏信息密度过低。
 - CommandPalette 选中竖条和 section 对齐。
 - FileExplorer 面包屑、搜索路径和文件大小列。
 - ContextMenu 缺少进入动画。
