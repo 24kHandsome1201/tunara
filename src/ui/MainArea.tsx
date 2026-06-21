@@ -30,6 +30,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   useEffect(() => {
     if (!active?.dir) return;
     let cancelled = false;
+    setRemote(null);
     gitAheadBehind(active.dir)
       .then((r) => !cancelled && setRemote(r))
       .catch(() => !cancelled && setRemote(null));

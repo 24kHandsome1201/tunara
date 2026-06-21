@@ -209,6 +209,7 @@ export function Sidebar({
       })
     : sessions;
   const groups = groupByDir(filtered);
+  const canReorder = q.length === 0;
 
   const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
     dragStartY.current = e.clientY;
@@ -363,6 +364,12 @@ export function Sidebar({
         }}
         className="no-scrollbar"
       >
+        {filtered.length === 0 && (
+          <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
+            {q ? "无匹配会话" : "暂无会话"}
+          </div>
+        )}
+
         {Object.entries(groups).map(([dir, groupSessions]) => {
           const collapsed = !!collapsedDirs[dir] && !q;
           return (
@@ -389,13 +396,14 @@ export function Sidebar({
                     )}
                     <div
                       onPointerDown={(e) => {
+                        if (!canReorder) return;
                         if ((e.target as HTMLElement).closest(".session-card-close") || (e.target as HTMLElement).closest(".hover-close")) return;
                         handleDragStart(e, s.id, dir, idx);
                       }}
                       style={{
                         opacity: isDragging ? 0.3 : 1,
                         transition: "opacity 120ms ease",
-                        touchAction: "none",
+                        touchAction: canReorder ? "none" : "auto",
                       }}
                     >
                       <SessionCard

@@ -73,6 +73,13 @@ export function createSession(
   };
 }
 
+function ensureSessionVisibleInSplit(sessionId: string) {
+  const ui = useUIStore.getState();
+  const { split } = ui;
+  if (split.mode === "single" || split.paneA === sessionId || split.paneB === sessionId) return;
+  ui.setSplitPaneB(sessionId);
+}
+
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessions: [],
   activeSessionId: null,
@@ -81,22 +88,26 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   closeConfirmations: {},
   dirCloseConfirmations: {},
 
-  addSession: (s) =>
+  addSession: (s) => {
     set((state) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
       launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
-    })),
+    }));
+    ensureSessionVisibleInSplit(s.id);
+  },
 
   removeSession: (id) =>
     set((state) => {
+      const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
       const activeSessionId =
         state.activeSessionId === id
-          ? sessions[0]?.id ?? null
+          ? sessions[Math.min(Math.max(removedIndex, 0), sessions.length - 1)]?.id ?? null
           : state.activeSessionId;
       const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
       const { [id]: _launched, ...launchedSessionIds } = state.launchedSessionIds;
+      const { [id]: _gitNonce, ...gitNonce } = state.gitNonce;
       const nextLaunchedSessionIds = { ...launchedSessionIds };
       if (activeSessionId) nextLaunchedSessionIds[activeSessionId] = true;
       return {
@@ -104,12 +115,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         activeSessionId,
         closeConfirmations,
         launchedSessionIds: nextLaunchedSessionIds,
+        gitNonce,
       };
     }),
 
-  setActive: (id) =>
+  setActive: (id) => {
+    let accepted = false;
     set((state) => {
       if (!state.sessions.some((s) => s.id === id)) return {};
+      accepted = true;
       return {
         activeSessionId: id,
         launchedSessionIds: { ...state.launchedSessionIds, [id]: true },
@@ -117,7 +131,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
           s.id === id && s.unread ? { ...s, unread: false } : s,
         ),
       };
-    }),
+    });
+    if (accepted) ensureSessionVisibleInSplit(id);
+  },
 
   refreshGit: (id) =>
     set((state) => ({

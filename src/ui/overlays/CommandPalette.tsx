@@ -35,6 +35,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
   const setActive = useSessionsStore((s) => s.setActive);
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const ui = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
 
@@ -70,6 +71,50 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         onClose();
       },
     });
+
+    if (activeSession) {
+      cmds.push({
+        id: "new-terminal-current-dir",
+        label: "在当前目录新建终端",
+        subtitle: activeSession.dir,
+        icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 5v14M5 12h14" /><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>,
+        section: "操作",
+        originalIndex: idx++,
+        action: () => {
+          ui.getState().recordCommandUse("new-terminal-current-dir");
+          useSessionsStore.getState().newTerminalInDir(activeSession.dir);
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "refresh-git-current",
+        label: "刷新当前 Git 状态",
+        subtitle: activeSession.dir,
+        icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
+        section: "操作",
+        originalIndex: idx++,
+        action: () => {
+          ui.getState().recordCommandUse("refresh-git-current");
+          useSessionsStore.getState().refreshGit(activeSession.id);
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "close-current-session",
+        label: "关闭当前会话",
+        shortcut: "⌘W",
+        icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
+        section: "操作",
+        originalIndex: idx++,
+        action: () => {
+          ui.getState().recordCommandUse("close-current-session");
+          useSessionsStore.getState().closeSession(activeSession.id);
+          onClose();
+        },
+      });
+    }
 
     cmds.push({
       id: "toggle-sidebar",
@@ -132,7 +177,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     });
 
     return cmds;
-  }, [sessions, activeSessionId, setActive, onClose, ui]);
+  }, [sessions, activeSessionId, activeSession, setActive, onClose, ui]);
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -159,13 +204,17 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   }, [query]);
 
   useEffect(() => {
+    setSelectedIndex((index) => ranked.length === 0 ? 0 : Math.min(index, ranked.length - 1));
+  }, [ranked.length]);
+
+  useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    const selected = el.children[selectedIndex] as HTMLElement | undefined;
+    const selected = el.querySelector(`[data-cmd-index="${selectedIndex}"]`) as HTMLElement | null;
     selected?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
@@ -175,6 +224,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       onClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
+      if (ranked.length === 0) return;
       setSelectedIndex((i) => Math.min(i + 1, ranked.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -264,6 +314,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                 return (
                   <div
                     key={cmd.id}
+                    data-cmd-index={globalIdx}
                     onClick={() => cmd.action()}
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     style={{

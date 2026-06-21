@@ -131,6 +131,12 @@ export default function App() {
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const sidebarOverlay = viewportWidth < 720;
   const panelOverlay = viewportWidth < 900;
+  const sidebarEffectiveWidth = sidebarVisible
+    ? (sidebarOverlay ? Math.min(sidebarWidth, Math.max(240, viewportWidth * 0.86)) : sidebarWidth)
+    : 0;
+  const panelEffectiveWidth = panelVisible
+    ? (panelOverlay ? Math.min(panelWidth, Math.max(220, viewportWidth - 24)) : panelWidth)
+    : 0;
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);
@@ -164,15 +170,39 @@ export default function App() {
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
+        {panelOverlay && panelVisible && (
+          <div
+            onClick={togglePanel}
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 65,
+              background: "var(--backdrop-color)",
+              backdropFilter: "var(--backdrop-blur)",
+            }}
+          />
+        )}
+
+        {sidebarOverlay && sidebarVisible && (
+          <div
+            onClick={toggleSidebar}
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 75,
+              background: "var(--backdrop-color)",
+              backdropFilter: "var(--backdrop-blur)",
+            }}
+          />
+        )}
+
         <div
           className="conduit-sidebar"
           style={{
             display: "flex",
             minHeight: 0,
             overflow: "hidden",
-            width: sidebarVisible
-              ? (sidebarOverlay ? Math.min(sidebarWidth, Math.max(240, viewportWidth * 0.86)) : sidebarWidth)
-              : 0,
+            width: sidebarEffectiveWidth,
             flexShrink: 0,
             position: sidebarOverlay ? "absolute" : "relative",
             top: sidebarOverlay ? 0 : undefined,
@@ -210,7 +240,7 @@ export default function App() {
               bottom: panelOverlay ? 0 : undefined,
               zIndex: panelOverlay ? 70 : undefined,
               boxShadow: panelOverlay && panelVisible ? "var(--shadow-overlay)" : undefined,
-              width: panelVisible ? panelWidth : 0,
+              width: panelEffectiveWidth,
               display: "flex",
               minHeight: 0,
               overflow: "hidden",

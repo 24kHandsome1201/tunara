@@ -12,19 +12,23 @@ function ToastItem({ toast }: { toast: Toast }) {
   const [exiting, setExiting] = useState<boolean>(false);
   const [paused, setPaused] = useState<boolean>(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const remainRef = useRef(TOAST_DURATION);
   const startRef = useRef(Date.now());
 
   const dismiss = () => {
     if (exiting) return;
     setExiting(true);
-    setTimeout(() => removeToast(toast.id), EXIT_DURATION);
+    exitTimerRef.current = setTimeout(() => removeToast(toast.id), EXIT_DURATION);
   };
 
   useEffect(() => {
     startRef.current = Date.now();
     timerRef.current = setTimeout(dismiss, TOAST_DURATION);
-    return () => clearTimeout(timerRef.current);
+    return () => {
+      clearTimeout(timerRef.current);
+      clearTimeout(exitTimerRef.current);
+    };
   }, []);
 
   const handleMouseEnter = () => {

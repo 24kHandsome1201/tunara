@@ -172,16 +172,18 @@ pub fn git_diff(repo_path: String, file: String) -> Result<FileDiff, String> {
     let mut lines = 0usize;
     let mut truncated = false;
     diff.print(git2::DiffFormat::Patch, |_d, _h, l| {
-        if out.len() >= DIFF_MAX_BYTES || lines >= DIFF_MAX_LINES {
+        let content = std::str::from_utf8(l.content()).unwrap_or("");
+        let origin = l.origin();
+        let prefix_len = if matches!(origin, '+' | '-' | ' ') { 1 } else { 0 };
+        if out.len() + content.len() + prefix_len > DIFF_MAX_BYTES || lines >= DIFF_MAX_LINES {
             truncated = true;
             return true;
         }
-        let origin = l.origin();
-        if matches!(origin, '+' | '-' | ' ') {
+        if prefix_len == 1 {
             out.push(origin);
             lines += 1;
         }
-        out.push_str(std::str::from_utf8(l.content()).unwrap_or(""));
+        out.push_str(content);
         true
     })
     .map_err(|e| e.to_string())?;

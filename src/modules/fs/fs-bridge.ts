@@ -15,7 +15,7 @@ export interface SearchHit {
 }
 
 export type ReadResult =
-  | { kind: "text"; content: string; size: number }
+  | { kind: "text"; content: string; size: number; truncated?: boolean }
   | { kind: "binary"; size: number }
   | { kind: "toolarge"; size: number; limit: number };
 

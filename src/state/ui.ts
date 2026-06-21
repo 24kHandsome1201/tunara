@@ -25,6 +25,13 @@ interface AppearanceSettings {
 }
 
 const SETTINGS_KEY = "conduit-appearance";
+const MIN_FONT_SIZE = 10;
+const MAX_FONT_SIZE = 22;
+const MIN_SIDEBAR_WIDTH = 200;
+const MAX_SIDEBAR_WIDTH = 400;
+const MIN_PANEL_WIDTH = 240;
+const MAX_PANEL_WIDTH_RATIO = 0.45;
+
 const DEFAULT_SETTINGS: AppearanceSettings = {
   theme: "light",
   accent: "#c2683c",
@@ -40,6 +47,35 @@ function isExternalEditor(v: unknown): v is ExternalEditor {
   return v === "vscode" || v === "cursor" || v === "zed" || v === "sublime";
 }
 
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(min, Math.min(max, value))
+    : fallback;
+}
+
+function maxPanelWidth(): number {
+  const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+  return Math.max(MIN_PANEL_WIDTH, Math.floor(vw * MAX_PANEL_WIDTH_RATIO));
+}
+
+function isTheme(value: unknown): value is ThemeType {
+  return value === "light" || value === "dark" || value === "system";
+}
+
+function isCursorStyle(value: unknown): value is CursorStyle {
+  return value === "bar" || value === "block" || value === "underline";
+}
+
+function isTerminalTheme(value: unknown): value is TerminalThemeName {
+  return value === "default" || value === "catppuccin" || value === "tokyo-night" || value === "one-dark" || value === "solarized";
+}
+
+function sanitizeAccent(value: unknown): string {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
+    ? value
+    : DEFAULT_SETTINGS.accent;
+}
+
 function loadSettings(): AppearanceSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -47,14 +83,14 @@ function loadSettings(): AppearanceSettings {
     const parsed = JSON.parse(raw) as Partial<AppearanceSettings>;
     return {
       ...DEFAULT_SETTINGS,
-      ...(parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system" ? { theme: parsed.theme } : {}),
-      ...(typeof parsed.accent === "string" ? { accent: parsed.accent } : {}),
-      ...(parsed.cursorStyle === "bar" || parsed.cursorStyle === "block" || parsed.cursorStyle === "underline" ? { cursorStyle: parsed.cursorStyle } : {}),
-      ...(typeof parsed.fontSize === "number" ? { fontSize: parsed.fontSize } : {}),
-      ...(typeof parsed.sidebarWidth === "number" ? { sidebarWidth: parsed.sidebarWidth } : {}),
-      ...(typeof parsed.panelWidth === "number" ? { panelWidth: parsed.panelWidth } : {}),
-      ...(parsed.terminalTheme === "default" || parsed.terminalTheme === "catppuccin" || parsed.terminalTheme === "tokyo-night" || parsed.terminalTheme === "one-dark" || parsed.terminalTheme === "solarized" ? { terminalTheme: parsed.terminalTheme } : {}),
-      ...(isExternalEditor(parsed.externalEditor) ? { externalEditor: parsed.externalEditor } : {}),
+      theme: isTheme(parsed.theme) ? parsed.theme : DEFAULT_SETTINGS.theme,
+      accent: sanitizeAccent(parsed.accent),
+      cursorStyle: isCursorStyle(parsed.cursorStyle) ? parsed.cursorStyle : DEFAULT_SETTINGS.cursorStyle,
+      fontSize: clampNumber(parsed.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
+      sidebarWidth: clampNumber(parsed.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
+      panelWidth: clampNumber(parsed.panelWidth, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
+      terminalTheme: isTerminalTheme(parsed.terminalTheme) ? parsed.terminalTheme : DEFAULT_SETTINGS.terminalTheme,
+      externalEditor: isExternalEditor(parsed.externalEditor) ? parsed.externalEditor : DEFAULT_SETTINGS.externalEditor,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -126,6 +162,8 @@ interface UIState extends AppearanceSettings {
   commandUsage: Record<string, number>;
   externalEditor: ExternalEditor;
 
+  setSidebarVisible: (visible: boolean) => void;
+  setPanelVisible: (visible: boolean) => void;
   toggleSidebar: () => void;
   togglePanel: () => void;
   setOverlay: (o: OverlayType) => void;
@@ -167,21 +205,22 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     commandUsage: loadCommandUsage(),
     ...initial,
 
+    setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
+    setPanelVisible: (panelVisible) => set({ panelVisible }),
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
     togglePanel: () => set((s) => ({ panelVisible: !s.panelVisible })),
     setOverlay: (overlay) => set({ overlay }),
     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
-    setTheme: (theme) => set({ theme }),
-    setAccent: (accent) => set({ accent }),
-    setCursorStyle: (cursorStyle) => set({ cursorStyle }),
-    setFontSize: (fontSize) => set({ fontSize }),
-    setTerminalTheme: (terminalTheme) => set({ terminalTheme }),
+    setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
+    setAccent: (accent) => set({ accent: sanitizeAccent(accent) }),
+    setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
+    setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
+    setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
     setSidebarWidth: (sidebarWidth) => {
-      set({ sidebarWidth: Math.max(200, Math.min(400, sidebarWidth)) });
+      set({ sidebarWidth: clampNumber(sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth) });
     },
     setPanelWidth: (panelWidth) => {
-      const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
-      set({ panelWidth: Math.max(240, Math.min(Math.floor(vw * 0.45), panelWidth)) });
+      set({ panelWidth: clampNumber(panelWidth, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth) });
     },
     setTrafficLightWidth: (trafficLightWidth) => set({ trafficLightWidth }),
     setViewportWidth: (viewportWidth) => set({ viewportWidth }),
@@ -216,7 +255,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
         const entries = Object.entries(next).sort((a, b) => b[1] - a[1]).slice(0, 50);
         return { commandUsage: Object.fromEntries(entries) };
       }),
-    setExternalEditor: (externalEditor) => set({ externalEditor }),
+    setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
   };
 }));
 

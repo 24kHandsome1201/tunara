@@ -15,25 +15,36 @@ export function useInit() {
     initRef.current = true;
 
     loadSessions().then(({ sessions: restored, activeSessionId: restoredActive }) => {
-      if (restored.length === 0 && useSessionsStore.getState().sessions.length === 0) {
+      const current = useSessionsStore.getState();
+      if (restored.length === 0 && current.sessions.length === 0) {
         addSession(createSession("~", { title: "终端" }));
         return;
       }
-      const activeSessionId = restored.some((s) => s.id === restoredActive)
+      const merged = current.sessions.length === 0
+        ? restored
+        : [
+            ...restored,
+            ...current.sessions.filter((s) => !restored.some((r) => r.id === s.id)),
+          ];
+      const activeSessionId = merged.some((s) => s.id === current.activeSessionId)
+        ? current.activeSessionId
+        : merged.some((s) => s.id === restoredActive)
         ? restoredActive
-        : restored[0]?.id ?? null;
+        : merged[0]?.id ?? null;
       useSessionsStore.setState({
-        sessions: restored,
+        sessions: merged,
         activeSessionId,
-        launchedSessionIds: activeSessionId ? { [activeSessionId]: true } : {},
+        launchedSessionIds: activeSessionId
+          ? { ...current.launchedSessionIds, [activeSessionId]: true }
+          : current.launchedSessionIds,
       });
     });
 
     loadUILayout().then((layout) => {
       if (!layout) return;
       const ui = useUIStore.getState();
-      if (layout.sidebarVisible !== ui.sidebarVisible) ui.toggleSidebar();
-      if (layout.panelVisible !== ui.panelVisible) ui.togglePanel();
+      ui.setSidebarVisible(layout.sidebarVisible);
+      ui.setPanelVisible(layout.panelVisible);
     });
 
     const unlistens: Array<Promise<() => void>> = [];

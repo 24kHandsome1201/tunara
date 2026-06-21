@@ -80,3 +80,77 @@ test("session persistence is debounced and still flushed on close", () => {
   assert.match(init, /const timer = setInterval\(persistSessionsNow, 30_000\);/);
   assert.match(init, /onCloseRequested\(async \(\) => \{[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveSessions/);
 });
+
+test("responsive shells close cleanly and avoid stale remote git badges", () => {
+  const app = read("src/app/App.tsx");
+  const keys = read("src/app/useKeybindings.ts");
+  const main = read("src/ui/MainArea.tsx");
+  const settings = read("src/ui/overlays/Settings.tsx");
+
+  assert.match(app, /const sidebarEffectiveWidth = sidebarVisible/);
+  assert.match(app, /const panelEffectiveWidth = panelVisible/);
+  assert.match(app, /onClick=\{togglePanel\}/);
+  assert.match(app, /onClick=\{toggleSidebar\}/);
+  assert.match(keys, /if \(e\.key === "Escape"\)/);
+  assert.match(keys, /ui\.setOverlay\(null\)/);
+  assert.match(keys, /ui\.setSidebarVisible\(false\)/);
+  assert.match(keys, /ui\.setPanelVisible\(false\)/);
+  assert.match(keys, /const \{ paneA, paneB \} = ui\.split/);
+  assert.match(keys, /st\.setActive\(st\.activeSessionId === paneB \? paneA : paneB\)/);
+  assert.match(main, /setRemote\(null\);[\s\S]*gitAheadBehind\(active\.dir\)/);
+  assert.match(settings, /maxWidth: "calc\(100vw - 32px\)"/);
+});
+
+test("session store keeps active sessions visible in split mode and cleans per-session metadata", () => {
+  const source = read("src/state/sessions.ts");
+  const init = read("src/app/useInit.ts");
+
+  assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string\)/);
+  assert.match(source, /ui\.setSplitPaneB\(sessionId\)/);
+  assert.match(source, /ensureSessionVisibleInSplit\(s\.id\)/);
+  assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
+  assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
+  assert.match(source, /sessions\[Math\.min\(Math\.max\(removedIndex, 0\), sessions\.length - 1\)\]/);
+  assert.match(init, /const merged = current\.sessions\.length === 0/);
+  assert.match(init, /ui\.setSidebarVisible\(layout\.sidebarVisible\)/);
+  assert.match(init, /ui\.setPanelVisible\(layout\.panelVisible\)/);
+});
+
+test("file previews and markdown rendering stay bounded", () => {
+  const rust = read("src-tauri/src/modules/fs/file.rs");
+  const bridge = read("src/modules/fs/fs-bridge.ts");
+  const preview = read("src/ui/FilePreview.tsx");
+  const git = read("src-tauri/src/modules/git/mod.rs");
+
+  assert.match(rust, /const MAX_TEXT_PREVIEW_BYTES: u64 = 256 \* 1024/);
+  assert.match(rust, /truncated: bool/);
+  assert.match(rust, /take\(MAX_TEXT_PREVIEW_BYTES \+ 1\)/);
+  assert.match(rust, /bytes\.truncate\(MAX_TEXT_PREVIEW_BYTES as usize\)/);
+  assert.match(bridge, /truncated\?: boolean/);
+  assert.match(preview, /useMemo/);
+  assert.match(preview, /result\.truncated \? "\\n… 已截断" : ""/);
+  assert.match(git, /out\.len\(\) \+ content\.len\(\) \+ prefix_len > DIFF_MAX_BYTES/);
+});
+
+test("appearance settings are sanitized and command palette exposes useful actions", () => {
+  const ui = read("src/state/ui.ts");
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const sidebar = read("src/ui/Sidebar.tsx");
+  const toast = read("src/ui/Toast.tsx");
+  const css = read("src/styles/globals.css");
+
+  assert.match(ui, /function clampNumber\(value: unknown/);
+  assert.match(ui, /function sanitizeAccent\(value: unknown\)/);
+  assert.match(ui, /setAccent: \(accent\) => set\(\{ accent: sanitizeAccent\(accent\) \}\)/);
+  assert.match(ui, /setSidebarVisible: \(sidebarVisible\) => set\(\{ sidebarVisible \}\)/);
+  assert.match(ui, /setPanelVisible: \(panelVisible\) => set\(\{ panelVisible \}\)/);
+  assert.match(ui, /setExternalEditor: \(externalEditor\) => set\(\{ externalEditor: isExternalEditor\(externalEditor\)/);
+  assert.match(palette, /label: "在当前目录新建终端"/);
+  assert.match(palette, /label: "刷新当前 Git 状态"/);
+  assert.match(palette, /label: "关闭当前会话"/);
+  assert.match(palette, /ranked\.length === 0 \? 0 : Math\.min\(index, ranked\.length - 1\)/);
+  assert.match(sidebar, /const canReorder = q\.length === 0/);
+  assert.match(sidebar, /if \(!canReorder\) return;/);
+  assert.match(toast, /exitTimerRef/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+});

@@ -23,6 +23,24 @@ function hasAppModifier(e: KeyboardEvent): boolean {
 export function useKeybindings() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        const ui = useUIStore.getState();
+        if (ui.overlay) {
+          e.preventDefault();
+          ui.setOverlay(null);
+          return;
+        }
+        if (!isEditableTarget(e.target) && ui.viewportWidth < 720 && ui.sidebarVisible) {
+          e.preventDefault();
+          ui.setSidebarVisible(false);
+          return;
+        }
+        if (!isEditableTarget(e.target) && ui.viewportWidth < 900 && ui.panelVisible) {
+          e.preventDefault();
+          ui.setPanelVisible(false);
+          return;
+        }
+      }
       if (!hasAppModifier(e) || e.altKey) return;
       if (isEditableTarget(e.target) && !e.metaKey) return;
       const k = e.key.toLowerCase();
@@ -57,13 +75,9 @@ export function useKeybindings() {
         e.preventDefault();
         const ui = useUIStore.getState();
         const st = useSessionsStore.getState();
-        if (ui.split.mode !== "single" && ui.split.paneB) {
-          if (st.activeSessionId === ui.split.paneB) {
-            const nonPaneB = st.sessions.find((s) => s.id !== ui.split.paneB);
-            if (nonPaneB) st.setActive(nonPaneB.id);
-          } else {
-            st.setActive(ui.split.paneB);
-          }
+        const { paneA, paneB } = ui.split;
+        if (ui.split.mode !== "single" && paneA && paneB) {
+          st.setActive(st.activeSessionId === paneB ? paneA : paneB);
         }
       } else if (k === "k") {
         e.preventDefault();

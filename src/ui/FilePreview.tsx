@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fsReadFile, type ReadResult } from "@/modules/fs/fs-bridge";
 import { formatSize } from "./types";
 
@@ -9,7 +9,7 @@ interface FilePreviewProps {
 }
 
 function MarkdownPreview({ content }: { content: string }) {
-  const blocks = parseMarkdown(content);
+  const blocks = useMemo(() => parseMarkdown(content), [content]);
   return (
     <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar">
       {blocks.map((block, i) => (
@@ -218,6 +218,9 @@ export function FilePreview({ filePath, fileName, onClose }: FilePreviewProps) {
   }, [filePath]);
 
   const isMarkdown = /\.md$/i.test(fileName);
+  const textContent = result?.kind === "text"
+    ? result.content + (result.truncated ? "\n… 已截断" : "")
+    : "";
 
   return (
     <div style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginTop: 2, overflow: "hidden" }}>
@@ -247,11 +250,10 @@ export function FilePreview({ filePath, fileName, onClose }: FilePreviewProps) {
       ) : result.kind === "toolarge" ? (
         <PreviewMessage icon="⊘" text={`文件过大（${formatSize(result.size)}）`} />
       ) : isMarkdown ? (
-        <MarkdownPreview content={result.content} />
+        <MarkdownPreview content={textContent} />
       ) : (
-        <TextPreview content={result.content.length > 32768 ? result.content.slice(0, 32768) + "\n… 已截断" : result.content} />
+        <TextPreview content={textContent} />
       )}
     </div>
   );
 }
-

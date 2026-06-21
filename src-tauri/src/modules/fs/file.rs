@@ -1,8 +1,10 @@
+use std::io::Read;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+const MAX_TEXT_PREVIEW_BYTES: u64 = 256 * 1024; // UI preview cap
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 
 #[derive(Serialize)]
@@ -11,6 +13,7 @@ pub enum ReadResult {
     Text {
         content: String,
         size: u64,
+        truncated: bool,
     },
     Binary {
         size: u64,
@@ -53,10 +56,23 @@ pub fn fs_read_file(path: String) -> Result<ReadResult, String> {
         });
     }
 
-    let bytes = std::fs::read(&p).map_err(|e| {
-        log::debug!("fs_read_file read({}) failed: {e}", p.display());
+    let mut file = std::fs::File::open(&p).map_err(|e| {
+        log::debug!("fs_read_file open({}) failed: {e}", p.display());
         e.to_string()
     })?;
+    let mut bytes = Vec::with_capacity(size.min(MAX_TEXT_PREVIEW_BYTES + 1) as usize);
+    file.by_ref()
+        .take(MAX_TEXT_PREVIEW_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| {
+            log::debug!("fs_read_file read({}) failed: {e}", p.display());
+            e.to_string()
+        })?;
+
+    let mut truncated = size > MAX_TEXT_PREVIEW_BYTES || bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES;
+    if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
+        bytes.truncate(MAX_TEXT_PREVIEW_BYTES as usize);
+    }
 
     // Null-byte sniff on the first chunk. Not perfect (misses UTF-16 BOM
     // cases) but catches the common "this is a PNG" mistake cheaply.
@@ -66,8 +82,31 @@ pub fn fs_read_file(path: String) -> Result<ReadResult, String> {
     }
 
     match String::from_utf8(bytes) {
-        Ok(content) => Ok(ReadResult::Text { content, size }),
-        Err(_) => Ok(ReadResult::Binary { size }),
+        Ok(content) => Ok(ReadResult::Text {
+            content,
+            size,
+            truncated,
+        }),
+        Err(e) => {
+            let err = e.utf8_error();
+            let valid_up_to = err.valid_up_to();
+            let incomplete_at_end = err.error_len().is_none();
+            if truncated && incomplete_at_end && valid_up_to > 0 {
+                let mut bytes = e.into_bytes();
+                bytes.truncate(valid_up_to);
+                truncated = true;
+                match String::from_utf8(bytes) {
+                    Ok(content) => Ok(ReadResult::Text {
+                        content,
+                        size,
+                        truncated,
+                    }),
+                    Err(_) => Ok(ReadResult::Binary { size }),
+                }
+            } else {
+                Ok(ReadResult::Binary { size })
+            }
+        }
     }
 }
 
