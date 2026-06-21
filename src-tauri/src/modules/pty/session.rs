@@ -1,7 +1,9 @@
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
+
+use parking_lot::Mutex;
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
@@ -38,13 +40,7 @@ pub struct Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        // If the session Arc is dropped without an explicit pty_close (e.g.
-        // frontend disconnected, window crashed, dev HMR), the reader/flusher
-        // threads would otherwise stay alive forever holding the child. Kill
-        // the child here so the reader hits EOF and the threads unwind.
-        if let Ok(mut k) = self.killer.lock() {
-            let _ = k.kill();
-        }
+        let _ = self.killer.lock().kill();
     }
 }
 
@@ -93,7 +89,7 @@ pub fn spawn(
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let mut g = pending_r.lock().unwrap();
+                        let mut g = pending_r.lock();
                         if g.len() + n > MAX_PENDING {
                             // Discard the whole backlog rather than slicing
                             // through escape sequences. Emit a hard reset so
@@ -128,7 +124,7 @@ pub fn spawn(
         .spawn(move || loop {
             thread::sleep(FLUSH_INTERVAL);
             let chunk = {
-                let mut g = pending_f.lock().unwrap();
+                let mut g = pending_f.lock();
                 if g.is_empty() {
                     if done_f.load(Ordering::Acquire) {
                         break;
@@ -148,9 +144,7 @@ pub fn spawn(
             };
             if let Err(e) = on_event_flush.send(event) {
                 log::debug!("pty flusher exiting, channel closed: {e}");
-                if let Ok(mut k) = killer_f.lock() {
-                    let _ = k.kill();
-                }
+                let _ = killer_f.lock().kill();
                 break;
             }
         })
@@ -174,7 +168,7 @@ pub fn spawn(
             if let Err(e) = reader_thread.join() {
                 log::error!("pty reader thread panicked: {e:?}");
             }
-            let tail = std::mem::take(&mut *pending_e.lock().unwrap());
+            let tail = std::mem::take(&mut *pending_e.lock());
             if !tail.is_empty() {
                 if let Err(e) = on_event_exit.send(PtyEvent::Data {
                     data: B64.encode(&tail),

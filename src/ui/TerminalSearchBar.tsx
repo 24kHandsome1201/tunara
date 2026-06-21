@@ -5,10 +5,14 @@ interface TerminalSearchBarProps {
   inputRef: RefObject<HTMLInputElement | null>;
   query: string;
   count: { current: number; total: number } | null;
+  useRegex: boolean;
+  caseSensitive: boolean;
   onQueryChange: (value: string) => void;
   onNext: () => void;
   onPrev: () => void;
   onClose: () => void;
+  onToggleRegex: () => void;
+  onToggleCaseSensitive: () => void;
 }
 
 const SEARCH_BUTTON_STYLE: CSSProperties = {
@@ -24,14 +28,26 @@ const SEARCH_BUTTON_STYLE: CSSProperties = {
   flexShrink: 0,
 };
 
+const TOGGLE_STYLE: CSSProperties = {
+  ...SEARCH_BUTTON_STYLE,
+  fontSize: 11,
+  fontWeight: 700,
+  fontFamily: "var(--font-mono)",
+  lineHeight: 1,
+};
+
 export function TerminalSearchBar({
   inputRef,
   query,
   count,
+  useRegex,
+  caseSensitive,
   onQueryChange,
   onNext,
   onPrev,
   onClose,
+  onToggleRegex,
+  onToggleCaseSensitive,
 }: TerminalSearchBarProps) {
   return (
     <div
@@ -78,6 +94,22 @@ export function TerminalSearchBar({
           width: 200,
         }}
       />
+      <button
+        onClick={onToggleRegex}
+        title="正则表达式"
+        className="hover-bg"
+        style={{ ...TOGGLE_STYLE, color: useRegex ? "var(--c-accent)" : undefined, background: useRegex ? "var(--c-accent-bg-light)" : undefined }}
+      >
+        .*
+      </button>
+      <button
+        onClick={onToggleCaseSensitive}
+        title="区分大小写"
+        className="hover-bg"
+        style={{ ...TOGGLE_STYLE, color: caseSensitive ? "var(--c-accent)" : undefined, background: caseSensitive ? "var(--c-accent-bg-light)" : undefined }}
+      >
+        Aa
+      </button>
       {count && (
         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", flexShrink: 0 }}>
           {count.current}/{count.total}

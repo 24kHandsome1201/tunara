@@ -58,35 +58,37 @@ function buildMiniDiffRows(patch: string): Array<{ key: string; line: string; is
   let oldLine = 0;
   let newLine = 0;
   let prelude = 0;
+  let idx = 0;
 
   return patch.split("\n").map((line) => {
+    const i = idx++;
     const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
     if (hunk) {
       oldLine = Number(hunk[1]);
       newLine = Number(hunk[2]);
-      return { key: `hunk:${oldLine}:${newLine}:${line}`, line, isAdd: false, isDel: false };
+      return { key: `hunk:${i}`, line, isAdd: false, isDel: false };
     }
     if (line.startsWith("---") || line.startsWith("+++")) {
-      return { key: `file:${line}`, line, isAdd: false, isDel: false };
+      return { key: `file:${i}`, line, isAdd: false, isDel: false };
     }
     if (line.startsWith("+")) {
-      const key = `new:${newLine}:${line}`;
+      const key = `new:${i}`;
       newLine += 1;
       return { key, line, isAdd: true, isDel: false };
     }
     if (line.startsWith("-")) {
-      const key = `old:${oldLine}:${line}`;
+      const key = `old:${i}`;
       oldLine += 1;
       return { key, line, isAdd: false, isDel: true };
     }
     if (oldLine > 0 || newLine > 0) {
-      const key = `ctx:${oldLine}:${newLine}:${line}`;
+      const key = `ctx:${i}`;
       oldLine += 1;
       newLine += 1;
       return { key, line, isAdd: false, isDel: false };
     }
     prelude += 1;
-    return { key: `prelude:${prelude}:${line}`, line, isAdd: false, isDel: false };
+    return { key: `prelude:${i}`, line, isAdd: false, isDel: false };
   });
 }
 

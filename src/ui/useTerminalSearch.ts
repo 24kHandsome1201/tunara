@@ -16,6 +16,18 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchCount, setSearchCount] = useState<{ current: number; total: number } | null>(null);
+  const [useRegex, setUseRegex] = useState(false);
+  const [caseSensitive, setCaseSensitive] = useState(false);
+
+  const optionsRef = useRef({ useRegex: false, caseSensitive: false });
+  optionsRef.current = { useRegex, caseSensitive };
+
+  const getSearchOptions = useCallback(() => ({
+    regex: optionsRef.current.useRegex,
+    caseSensitive: optionsRef.current.caseSensitive,
+    wholeWord: false,
+    decorations: SEARCH_DECORATIONS,
+  }), []);
 
   const registerSearchAddon = useCallback((searchAddon: SearchAddon) => {
     searchAddonRef.current = searchAddon;
@@ -51,46 +63,57 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
     setSearchQuery(value);
     if (!searchAddonRef.current) return;
     if (value) {
-      searchAddonRef.current.findNext(value, {
-        regex: false,
-        caseSensitive: false,
-        wholeWord: false,
-        decorations: SEARCH_DECORATIONS,
-      });
+      searchAddonRef.current.findNext(value, getSearchOptions());
     } else {
       searchAddonRef.current.clearDecorations();
       setSearchCount(null);
     }
-  }, []);
+  }, [getSearchOptions]);
 
   const handleSearchNext = useCallback(() => {
-    searchAddonRef.current?.findNext(searchQuery, {
-      regex: false,
-      caseSensitive: false,
-      wholeWord: false,
-      decorations: SEARCH_DECORATIONS,
-    });
-  }, [searchQuery]);
+    searchAddonRef.current?.findNext(searchQuery, getSearchOptions());
+  }, [searchQuery, getSearchOptions]);
 
   const handleSearchPrev = useCallback(() => {
-    searchAddonRef.current?.findPrevious(searchQuery, {
-      regex: false,
-      caseSensitive: false,
-      wholeWord: false,
-      decorations: SEARCH_DECORATIONS,
+    searchAddonRef.current?.findPrevious(searchQuery, getSearchOptions());
+  }, [searchQuery, getSearchOptions]);
+
+  const toggleRegex = useCallback(() => {
+    setUseRegex((prev) => {
+      const next = !prev;
+      optionsRef.current.useRegex = next;
+      if (searchQuery && searchAddonRef.current) {
+        searchAddonRef.current.findNext(searchQuery, getSearchOptions());
+      }
+      return next;
     });
-  }, [searchQuery]);
+  }, [searchQuery, getSearchOptions]);
+
+  const toggleCaseSensitive = useCallback(() => {
+    setCaseSensitive((prev) => {
+      const next = !prev;
+      optionsRef.current.caseSensitive = next;
+      if (searchQuery && searchAddonRef.current) {
+        searchAddonRef.current.findNext(searchQuery, getSearchOptions());
+      }
+      return next;
+    });
+  }, [searchQuery, getSearchOptions]);
 
   return {
     searchInputRef,
     searchOpen,
     searchQuery,
     searchCount,
+    useRegex,
+    caseSensitive,
     registerSearchAddon,
     handleCustomKeyEvent,
     handleSearchChange,
     handleSearchNext,
     handleSearchPrev,
+    toggleRegex,
+    toggleCaseSensitive,
     closeSearch,
   };
 }

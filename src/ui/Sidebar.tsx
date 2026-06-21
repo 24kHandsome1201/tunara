@@ -6,6 +6,7 @@ import { useState, useRef, useCallback } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
+import { formatShortcut } from "./formatShortcut";
 
 interface DragState {
   draggingId: string;
@@ -197,7 +198,7 @@ export function Sidebar({
                 marginLeft: "auto",
               }}
             >
-              ⌘T
+              {formatShortcut("mod+t")}
             </span>
           </button>
         </div>

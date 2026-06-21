@@ -75,5 +75,12 @@
     "commands": ["devin"],
     "shellTitleFragments": ["devin"],
     "cliBin": "devin"
+  },
+  {
+    "code": "AD",
+    "name": "Aider",
+    "commands": ["aider"],
+    "shellTitleFragments": ["aider"],
+    "cliBin": "aider"
   }
 ]

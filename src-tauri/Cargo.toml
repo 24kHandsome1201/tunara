@@ -25,6 +25,7 @@ serde_json = "1"
 portable-pty = "0.9"
 base64 = "0.22"
 log = "0.4"
+parking_lot = "0.12"
 # Conduit 新增（§3.7 底座 / agent harness / git）
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
 which = "6"

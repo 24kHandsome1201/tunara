@@ -117,7 +117,14 @@ export function TerminalView({
       const serializeAddon = new SerializeAddon();
       term.loadAddon(serializeAddon);
 
-      term.loadAddon(new WebLinksAddon((_event, uri) => { openUrl(uri); }));
+      term.loadAddon(new WebLinksAddon((_event, uri) => {
+        try {
+          const url = new URL(uri);
+          if (url.protocol === "http:" || url.protocol === "https:") {
+            openUrl(uri);
+          }
+        } catch { /* malformed URL, ignore */ }
+      }));
 
       // Fit after WebGL addon loads — the addon replaces the renderer and
       // changes cell metrics; fitting before it loads would measure stale
@@ -536,10 +543,14 @@ export function TerminalView({
           inputRef={search.searchInputRef}
           query={search.searchQuery}
           count={search.searchCount}
+          useRegex={search.useRegex}
+          caseSensitive={search.caseSensitive}
           onQueryChange={search.handleSearchChange}
           onNext={search.handleSearchNext}
           onPrev={search.handleSearchPrev}
           onClose={search.closeSearch}
+          onToggleRegex={search.toggleRegex}
+          onToggleCaseSensitive={search.toggleCaseSensitive}
         />
       )}
       <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />

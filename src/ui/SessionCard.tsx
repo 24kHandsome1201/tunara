@@ -88,7 +88,7 @@ function SessionIcon({ session }: { session: Session }) {
   );
 }
 
-function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolean }) {
+function StatusMark({ runState, isAgent, exitCode }: { runState: RunState; isAgent: boolean; exitCode?: number }) {
   if (runState === "done") {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -105,6 +105,23 @@ function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolea
   }
   if (runState === "failed") {
     return <CloseIcon size={13} strokeWidth={2.8} color="var(--c-error)" />;
+  }
+  if (runState === "idle" && exitCode !== undefined && exitCode !== 0) {
+    return (
+      <span style={{
+        fontSize: "var(--fs-badge)",
+        fontFamily: "var(--font-mono)",
+        fontWeight: 700,
+        color: "var(--c-error)",
+        background: "var(--c-error-bg)",
+        borderRadius: 3,
+        padding: "0 3px",
+        lineHeight: "14px",
+        flexShrink: 0,
+      }}>
+        {exitCode}
+      </span>
+    );
   }
   return null;
 }
@@ -138,6 +155,26 @@ function BusyProgress() {
       />
     </div>
   );
+}
+
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function useElapsed(startedAt: number | undefined, active: boolean): string | null {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!active || !startedAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active, startedAt]);
+  if (!startedAt || !active) return null;
+  return formatElapsed(now - startedAt);
 }
 
 function DiffStat({ added, removed }: { added: number; removed: number }) {
@@ -177,6 +214,7 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
   const showBusyProgress = !!session.agent && busy;
+  const elapsed = useElapsed(session.startedAt, busy);
   const renamingSessionId = useSessionsStore((s) => s.renamingSessionId);
   const isRenaming = renamingSessionId === session.id;
   const [editing, setEditing] = useState(false);
@@ -298,7 +336,7 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatusMark runState={displayRunState} isAgent={!!session.agent} />
+            <StatusMark runState={displayRunState} isAgent={!!session.agent} exitCode={session.lastExitCode} />
             {editing ? (
               <input
                 ref={inputRef}
@@ -370,6 +408,12 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
               <>
                 <span style={{ flexShrink: 0 }}>·</span>
                 <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>⎇ {session.branch}</span>
+              </>
+            )}
+            {elapsed && (
+              <>
+                <span style={{ flexShrink: 0 }}>·</span>
+                <span style={{ flexShrink: 0, whiteSpace: "nowrap", color: "var(--c-accent)" }}>{elapsed}</span>
               </>
             )}
             <DiffStat added={totalAdded} removed={totalRemoved} />

@@ -161,6 +161,7 @@ export interface Toast {
 }
 
 interface UIState extends AppearanceSettings {
+  ready: boolean;
   sidebarVisible: boolean;
   panelVisible: boolean;
   overlay: OverlayType;
@@ -207,6 +208,7 @@ interface UIState extends AppearanceSettings {
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
   const initial = loadSettings();
   return {
+    ready: false,
     sidebarVisible: true,
     panelVisible: true,
     overlay: null,

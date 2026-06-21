@@ -92,7 +92,38 @@ function SidebarResizeHandle() {
   );
 }
 
+function AppSplash() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "var(--font-ui)",
+        background: "var(--c-bg-white)",
+        animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          color: "var(--c-text-primary)",
+          letterSpacing: "-0.012em",
+          opacity: 0.8,
+          animation: "breathe 1.6s ease-in-out infinite",
+        }}
+      >
+        Conduit
+      </span>
+    </div>
+  );
+}
+
 export default function App() {
+  const ready = useUIStore((s) => s.ready);
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
   const setActive = useSessionsStore((s) => s.setActive);
@@ -110,6 +141,8 @@ export default function App() {
   useInit();
   useTheme();
   useKeybindings();
+
+  if (!ready) return <AppSplash />;
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const sidebarOverlay = viewportWidth < 720;

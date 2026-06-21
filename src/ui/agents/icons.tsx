@@ -114,6 +114,15 @@ function DevinIcon({ size }: { size: number }) {
   );
 }
 
+function AiderIcon({ size }: { size: number }) {
+  const s = Math.round(size * 0.55);
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <path d="M12 2L3 20h4l1.5-4h7L17 20h4L12 2zm0 6.5L14.5 14h-5L12 8.5z" fill="currentColor"/>
+    </svg>
+  );
+}
+
 export const AGENT_ICONS: Record<string, React.FC<{ size: number }>> = {
   CC: ClaudeIcon,
   CX: CodexIcon,
@@ -126,4 +135,5 @@ export const AGENT_ICONS: Record<string, React.FC<{ size: number }>> = {
   PI: PiIcon,
   AG: AuggieIcon,
   DV: DevinIcon,
+  AD: AiderIcon,
 };

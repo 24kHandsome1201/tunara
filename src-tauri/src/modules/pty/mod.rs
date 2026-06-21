@@ -4,7 +4,9 @@ mod shell_init;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use parking_lot::RwLock;
 
 use portable_pty::PtySize;
 use tauri::ipc::Channel;
@@ -38,20 +40,13 @@ impl PtyState {
         let sessions: Vec<(u32, Arc<Session>)> = self
             .sessions
             .write()
-            .expect("pty sessions lock poisoned")
             .drain()
             .collect();
         self.logical_sessions
             .write()
-            .expect("pty logical sessions lock poisoned")
             .clear();
         for (id, session) in sessions {
-            if let Err(e) = session
-                .killer
-                .lock()
-                .expect("pty killer lock poisoned")
-                .kill()
-            {
+            if let Err(e) = session.killer.lock().kill() {
                 log::debug!("pty close_all: kill id={id} returned {e}");
             }
             log::info!("pty closed id={id}");
@@ -73,21 +68,14 @@ pub fn pty_open(
         let old_id = state
             .logical_sessions
             .write()
-            .expect("pty logical sessions lock poisoned")
             .remove(logical_id);
         if let Some(old_id) = old_id {
             let old_session = state
                 .sessions
                 .write()
-                .expect("pty sessions lock poisoned")
                 .remove(&old_id);
             if let Some(session) = old_session {
-                if let Err(e) = session
-                    .killer
-                    .lock()
-                    .expect("pty killer lock poisoned")
-                    .kill()
-                {
+                if let Err(e) = session.killer.lock().kill() {
                     log::debug!("pty_open replace: kill id={old_id} returned {e}");
                 }
                 log::info!("pty replaced id={old_id} logical_session_id={logical_id}");
@@ -112,13 +100,11 @@ pub fn pty_open(
     state
         .sessions
         .write()
-        .expect("pty sessions lock poisoned")
         .insert(id, session);
     if let Some(logical_id) = logical_session_id {
         state
             .logical_sessions
             .write()
-            .expect("pty logical sessions lock poisoned")
             .insert(logical_id.clone(), id);
         log::info!("pty opened id={id} logical_session_id={logical_id} cols={cols} rows={rows}");
     } else {
@@ -132,19 +118,15 @@ pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result
     let session = state
         .sessions
         .read()
-        .expect("pty sessions lock poisoned")
         .get(&id)
         .cloned()
         .ok_or_else(|| {
             log::warn!("pty_write: unknown id={id}");
             "no session".to_string()
         })?;
-    // Bind to a local so the MutexGuard temporary drops before `session` —
-    // see rustc note on tail-expression temporary drop order.
     let result = session
         .writer
         .lock()
-        .expect("pty writer lock poisoned")
         .write_all(data.as_bytes())
         .map_err(|e| {
             // EPIPE is expected if the child already exited.
@@ -164,7 +146,6 @@ pub fn pty_resize(
     let session = state
         .sessions
         .read()
-        .expect("pty sessions lock poisoned")
         .get(&id)
         .cloned()
         .ok_or_else(|| {
@@ -174,7 +155,6 @@ pub fn pty_resize(
     let result = session
         .master
         .lock()
-        .expect("pty master lock poisoned")
         .resize(PtySize {
             rows,
             cols,
@@ -193,13 +173,11 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
     let session = state
         .sessions
         .write()
-        .expect("pty sessions lock poisoned")
         .remove(&id);
     let removed_logical: Option<String> = {
         let mut ls = state
             .logical_sessions
-            .write()
-            .expect("pty logical sessions lock poisoned");
+            .write();
         let key = ls
             .iter()
             .find(|(_, sid)| **sid == id)
@@ -213,9 +191,7 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
         wrapper::cleanup_hooks_settings(lid);
     }
     if let Some(s) = session {
-        if let Err(e) = s.killer.lock().expect("pty killer lock poisoned").kill() {
-            // Non-fatal: the child may already have exited on its own (e.g. the
-            // user ran `exit`). Log so this isn't invisible during debugging.
+        if let Err(e) = s.killer.lock().kill() {
             log::debug!("pty_close: kill id={id} returned {e}");
         }
         log::info!("pty closed id={id}");

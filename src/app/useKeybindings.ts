@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
+import { platform } from "@tauri-apps/plugin-os";
+
+const isMac = platform() === "macos";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -14,9 +17,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 function hasAppModifier(e: KeyboardEvent): boolean {
-  const isMac =
-    navigator.platform.toLowerCase().includes("mac") ||
-    navigator.userAgent.toLowerCase().includes("mac");
   return isMac ? e.metaKey : e.ctrlKey;
 }
 

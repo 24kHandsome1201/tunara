@@ -1,135 +1,119 @@
 # Contributing
 
-Thanks for wanting to help. Issues, PRs, and ideas are all welcome.
+欢迎参与贡献。Issue、PR 和想法都欢迎。
 
-## Quick start
+## 快速开始
 
 ```bash
 pnpm install
 pnpm tauri dev
 ```
 
-Prereqs: Rust (stable), Node 20+, pnpm, plus your platform's [Tauri prerequisites](https://tauri.app/start/prerequisites/).
+前置条件：Rust stable、Node 20+、pnpm 9+、以及平台对应的 [Tauri 依赖](https://tauri.app/start/prerequisites/)。
 
-## Before opening a PR
-
-Run these and make sure they pass:
+## 提交 PR 前
 
 ```bash
-pnpm exec tsc --noEmit          # frontend types
-cd src-tauri && cargo clippy    # Rust lint
-cd src-tauri && cargo fmt       # Rust format
+pnpm typecheck                                  # 前端类型检查
+cargo clippy --manifest-path src-tauri/Cargo.toml  # Rust lint
+cargo fmt --manifest-path src-tauri/Cargo.toml     # Rust 格式化
+pnpm test                                        # 全部测试
 ```
 
-Build a release bundle at least once if you touched anything in `src-tauri/`:
+如果改动了 `src-tauri/`，至少构建一次 release：
 
 ```bash
 pnpm tauri build
 ```
 
-## Branches
+## 分支
 
-Branch off `main`. Use these prefixes (kebab-case):
+从 `main` 创建分支，使用以下前缀（kebab-case）：
 
-| Prefix     | Use for                                  |
-| ---------- | ---------------------------------------- |
-| `feat/`    | New feature                              |
-| `fix/`     | Bug fix                                  |
-| `chore/`   | Refactor, tooling, config, dependencies  |
-| `docs/`    | Docs-only changes                        |
-| `perf/`    | Performance work                         |
+| 前缀 | 用途 |
+|------|------|
+| `feat/` | 新功能 |
+| `fix/` | Bug 修复 |
+| `chore/` | 重构、工具、配置、依赖 |
+| `docs/` | 仅文档变更 |
+| `perf/` | 性能优化 |
 
-Examples: `feat/split-panes`, `fix/explorer-focus`, `chore/windows-bundle-config`.
+示例：`feat/command-blocks`、`fix/pty-leak`、`chore/bump-tauri`。
 
-Don't open PRs from your fork's `main` branch — it makes future syncs painful for you. Always work on a feature branch.
+## 非小改动请先开 Issue
 
-## Issues first for non-trivial work
+超出 typo、小 bug 修复或 `good-first-issue` 范围的改动，请先开 Issue 讨论方案。10 分钟讨论胜过 500 行不符合路线图的 PR。
 
-For anything beyond a typo, a small bug fix, or a clear `good-first-issue` — **open an issue first** and wait for a maintainer to ack the approach. A 10-minute conversation saves a 500-line PR that doesn't fit the roadmap.
+## 欢迎的贡献
 
-If an issue already exists for what you want to do, comment "I'll take this" before starting so we don't duplicate work.
+- **Bug 修复** — 随时欢迎
+- **新功能** — 非小改动请先开 Issue
+- **文档/typo/小 UX 修复** — 直接提 PR
+- **新 Agent 识别** — 参考 `src/modules/agent/registry.ts` 和 `public/agents/registry-data.json`
+- **终端配色方案** — 参考 `src/styles/terminalTheme.ts`
 
-## What we want
+## 不接受的贡献
 
-- **Bug fixes** — always.
-- **Features** — open an issue first if it's non-trivial. We'd rather discuss the approach than reject a finished PR.
-- **Docs / typos / small UX fixes** — just send the PR.
-- **New AI providers** — see `src/modules/ai/providers/`. Keep BYOK; no hardcoded keys.
-- **Themes / icon packs** — yes, but keep the bundle size in check.
+- 遥测、分析或任何回传数据的功能
+- 硬编码 API 密钥或账户
+- 为小功能引入大依赖（保持轻量）
+- 无功能变更的大规模重构
 
-## What we don't want
+## 代码风格
 
-- Telemetry, analytics, or anything that phones home.
-- Hardcoded API keys or accounts. Terax stays BYOK.
-- Large dependencies for small wins. The bundle is ~7 MB and we want it to stay light.
-- Sweeping refactors with no functional change.
+- 遵循现有模式，修改前先阅读相邻文件
+- TypeScript：避免 `any`
+- Rust：`cargo fmt` + `clippy` clean
+- 少写注释，只解释 why 而非 what
+- 内联样式 + CSS 自定义属性（tokens.css），不使用 CSS Modules
 
-## Code style
+## Commits & PR
 
-- Follow the existing patterns. Read adjacent files before adding new ones.
-- TypeScript: no `any` unless you really mean it.
-- Rust: `cargo fmt` + `clippy` clean.
-- Few comments. Code should explain itself; comments are for the *why*, not the *what*.
-- No emoji in code or commit messages.
-
-## Commits & PRs
-
-We squash-merge every PR — the **PR title becomes the squash commit**, so it should follow [Conventional Commits](https://www.conventionalcommits.org/):
+Squash-merge，PR 标题遵循 [Conventional Commits](https://www.conventionalcommits.org/)：
 
 ```
-feat(terminal): add split panes
-fix(explorer): prevent input from disappearing on create
-chore(deps): bump tauri to 2.x
-docs(readme): clarify Linux install on Arch
+feat(terminal): add command blocks
+fix(pty): prevent session leak on close
+chore(deps): bump xterm to 6.x
 ```
 
-Types: `feat`, `fix`, `chore`, `docs`, `perf`, `refactor`, `test`, `build`, `ci`.
-Common scopes: `terminal`, `editor`, `explorer`, `pty`, `ai`, `settings`, `tabs`, `shortcuts`, `agents`, `ui`.
+类型：`feat`、`fix`、`chore`、`docs`、`perf`、`refactor`、`test`、`build`、`ci`。
+常用 scope：`terminal`、`sidebar`、`diff`、`pty`、`agent`、`settings`、`palette`、`ui`。
 
-Within a PR, individual commit messages can be whatever — they get squashed.
+一个 PR 一个逻辑变更。UI 变更请附截图/GIF。
 
-**One logical change per PR.** A PR that adds a feature, fixes an unrelated bug, and reformats `.gitignore` is three PRs. Split them.
-
-**Open a draft PR early** if you want feedback mid-flight; mark "Ready for review" when done. Fill out the PR template — what changed, why, how you tested. Include screenshots / GIFs for any UI change.
-
-### What gets merged faster
-
-- Clear problem statement
-- Small, focused diff
-- Follows existing patterns (read 2-3 nearby files before writing yours)
-- `pnpm exec tsc --noEmit` clean
-- Manual testing notes ("I tested by doing X, Y, Z")
-
-### What gets bounced back
-
-- Mixed-concern PRs ("split this please")
-- Large architectural PRs without prior discussion
-- New dependencies without justification
-- Breaking changes without migration notes
-- Incidental reformatting unrelated to the change (adds noise to review)
-- AI-generated code that obviously wasn't read by the author
-
-## Project layout
+## 项目结构
 
 ```
-src-tauri/        Rust backend — PTY, FS, shell, plugins
-src/
-  modules/
-    terminal/     xterm.js sessions + OSC handlers
-    editor/       CodeMirror stack
-    explorer/     File tree
-    tabs/         Tab model
-    ai/           Agents, sessions, tools, mini-window
-    header/       Top bar + search
-    statusbar/    Bottom bar
-    shortcuts/    Keymap
-  components/     shadcn/ui + AI Elements
+src/                    # React 前端
+├── app/                # 应用入口、初始化、快捷键、主题
+├── modules/
+│   ├── terminal/       # xterm.js 会话、OSC handler、agent 生命周期
+│   ├── fs/             # 文件系统桥接
+│   ├── git/            # Git 桥接
+│   ├── agent/          # Agent 注册表
+│   └── editor/         # 外部编辑器跳转
+├── state/              # Zustand store（sessions + ui + persist）
+├── styles/             # CSS tokens + 终端主题
+└── ui/                 # UI 组件
+
+src-tauri/src/          # Rust 后端
+├── modules/
+│   ├── pty/            # PTY 会话管理（portable-pty）
+│   ├── git/            # Git 操作（git2）
+│   ├── fs/             # 文件系统（目录树、搜索、grep）
+│   ├── agent/          # Agent CLI 预检 + hooks
+│   ├── editor/         # 编辑器启动
+│   ├── resolver/       # 二进制路径解析
+│   ├── shell/          # 后台命令执行
+│   └── process/        # 子进程管理
+└── lib.rs              # Tauri 命令注册
 ```
 
-## Security issues
+## 安全问题
 
-Don't file them as issues — see [SECURITY.md](SECURITY.md).
+安全漏洞请不要公开提 Issue，发送邮件至维护者。
 
-## License
+## 许可证
 
-By contributing you agree your work is licensed under [Apache-2.0](LICENSE).
+贡献的代码遵循 [LICENSE](LICENSE) 中的许可协议。

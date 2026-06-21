@@ -1,57 +1,121 @@
 # Conduit
 
-AI 原生终端，基于 Tauri + xterm.js 的桌面应用。
+> 轻量好看的 AI 原生侧栏终端 — Tauri + React + xterm.js
 
-Conduit 当前的产品边界是：**带智能侧栏的真实终端**。真实 xterm / PTY 是主角；侧栏按工作目录组织会话，展示运行状态、Agent CLI 识别和上下文；右栏是跟随当前会话目录的只读 diff / 文件审查面板。它不是 Agent 管理平台、聊天工具、MCP 编排器、低配 IDE 或 Git GUI。
+Conduit 是一个带智能侧栏的真实桌面终端。真实 xterm / PTY 是主角，侧栏按工作目录组织会话并展示运行状态和 Agent CLI 识别，右栏提供只读 Git diff 审查面板。它不是 Agent 管理平台、聊天工具、IDE 或 Git GUI。
 
-> 当前阶段：Tauri + React 工程已搭建，真实 PTY、多会话 UI、终端内 Agent CLI 识别、只读 Git diff / 文件审查、设置页、命令面板和窗口状态正在迭代中。
+## 特性
 
-## 开发命令
+### 终端核心
+- 真实 PTY 多会话（portable-pty + xterm.js 6 + WebGL 渲染）
+- 水平/垂直分栏（⌘D / ⌘⇧D）
+- 终端内搜索（⌘F）+ 匹配计数
+- 可点击 URL 链接
+- 可配置 scrollback（1,000 – 50,000 行）
+- RAF 合批输出节流，8ms flush + 4MiB 背压
+- OSC 7 工作目录追踪 + OSC 133 Shell Integration
+
+### 智能侧栏
+- 会话按工作目录自动分组
+- 目录组折叠/展开
+- 拖拽排序、搜索过滤（fuzzy match）、重命名
+- Unread 指示器 + 运行状态
+- 关闭确认（running 状态双击确认）
+- 目录级批量关闭
+
+### AI Agent 识别
+- 自动检测 11 种 Agent CLI：Claude Code、Codex、Amp、Gemini、Copilot、Cursor、Droid、OpenCode、Pi、Auggie、Devin
+- 品牌标识角标 + 运行状态条（starting / idle / running）
+- Agent Hooks 监听（结构化生命周期事件）
+- Agent 改动计数
+
+### 审查面板
+- 只读 Git Diff（Staged / Unstaged / Untracked 分区）
+- 文件浏览器 + 代码预览（语法高亮 + Markdown）
+- 一键跳转外部编辑器（VS Code / Cursor / Zed / Sublime）
+- 二进制/超大文件降级提示
+- Ahead/Behind 远程状态
+
+### 桌面体验
+- 7 套终端配色（default / catppuccin / tokyo-night / one-dark / solarized / github-light / rose-pine-dawn）
+- 深浅色模式 + 跟随系统
+- 5 色强调色
+- macOS 毛玻璃效果 + 自定义标题栏
+- Command Palette（⌘K，权重排序）
+- 会话 + UI 布局跨重启恢复
+- 窗口状态持久化（位置、尺寸）
+- 响应式布局（窄窗自动隐藏侧栏/右栏）
+- Toast 通知（退出动画、hover 暂停、进度条）
+- 右键菜单（会话、目录组、文件）
+
+## 安装
+
+### 从 Release 下载
+
+前往 [Releases](https://github.com/24kHandsome1201/conduit/releases) 下载最新版本。
+
+### 从源码构建
 
 ```bash
 pnpm install
-pnpm build
-pnpm test
-pnpm tauri dev
+pnpm tauri build
 ```
 
-- 前端构建：`pnpm build`（TypeScript + Vite）
-- Rust 单测：`pnpm test`（等价于 `cargo test --manifest-path src-tauri/Cargo.toml`）
-- Tauri dev/build 配置也使用 pnpm，避免与 lockfile 版本漂移。
+前置条件：Rust stable、Node 20+、pnpm、以及平台对应的 [Tauri 依赖](https://tauri.app/start/prerequisites/)。
+
+## 开发
+
+```bash
+pnpm install          # 安装依赖
+pnpm tauri dev        # 启动开发模式
+pnpm build            # 前端构建
+pnpm typecheck        # 类型检查
+pnpm test             # 运行全部测试（Node.js + Rust）
+```
+
+## 快捷键
+
+| 操作 | macOS | Windows/Linux |
+|------|-------|---------------|
+| 新建终端 | ⌘T | Ctrl+T |
+| 关闭会话 | ⌘W | Ctrl+W |
+| 水平分栏 | ⌘D | Ctrl+D |
+| 垂直分栏 | ⌘⇧D | Ctrl+Shift+D |
+| 切换分栏焦点 | ⌘] / ⌘[ | Ctrl+] / Ctrl+[ |
+| Command Palette | ⌘K | Ctrl+K |
+| 终端搜索 | ⌘F | Ctrl+F |
+| 设置 | ⌘, | Ctrl+, |
+| 切换侧栏 | ⌘\\ | Ctrl+\\ |
+
+## 技术栈
+
+- **前端**：React 19 + Zustand 5 + xterm.js 6 + WebGL + Vite 7
+- **后端**：Tauri v2 + Rust（git2、portable-pty、tokio）
+- **字体**：Inter Variable + JetBrains Mono
 
 ## 目录结构
 
 ```
-.
-├── .github/workflows/          # CI / Release workflow
-├── docs/                       # 调研、实施、产品判断与验收文档
-│   ├── 调研-Conduit终端方案.md       # 设计稿研究 + 终端核心可复用性调研
-│   ├── 调研-三大难点深入.md
-│   ├── 实施文档-从零到完整功能.md
-│   ├── 测试文档-界面与功能Review.md
-│   ├── 产品评估-竞品分析与演进方向.md
-│   └── 产品规划-功能增删与设计优化.md
-├── src/                        # React 前端（主窗口、设置页、终端、Git/Agent 状态）
-├── src-tauri/                  # Tauri/Rust 后端（PTY、Git、文件系统、CLI 解析）
-└── _unzipped_design/           # 设计交付包（已解压）
-    └── design_handoff_conduit_terminal/
-        ├── README.md           # 设计交接文档（唯一规范来源：tokens/布局/交互/状态）
-        ├── Conduit.dc.html     # 高保真可交互原型（主参考）
-        └── Terminal Concepts.dc.html  # 风格探索看板（结论：Paper 浅色为最终方向）
+src/                    # React 前端
+├── app/                # 应用入口、初始化、快捷键、主题
+├── modules/            # 终端、Git、文件系统、Agent、编辑器桥接
+├── state/              # Zustand 状态管理（sessions + ui + persist）
+├── styles/             # CSS tokens + 终端主题
+└── ui/                 # UI 组件（Sidebar、MainArea、DiffPanel 等）
+
+src-tauri/src/          # Rust 后端
+├── modules/
+│   ├── pty/            # PTY 会话管理（portable-pty）
+│   ├── git/            # Git 操作（git2，只读）
+│   ├── fs/             # 文件系统（目录树、搜索、grep）
+│   ├── agent/          # Agent CLI 预检 + hooks 监听
+│   ├── editor/         # 外部编辑器跳转
+│   ├── resolver/       # 二进制路径解析
+│   ├── shell/          # 后台命令执行
+│   └── process/        # 统一子进程管理
+└── lib.rs              # Tauri 命令注册
 ```
 
-> ⚠️ 设计稿 HTML 使用内部 DSL，仅描述外观与交互，**不是生产代码**。需用目标框架按像素复刻视觉壳层，终端区接入真实 xterm.js。
+## 许可证
 
-## 技术方向
-
-- **外壳（UI）**：React + Zustand + 设计 token，复刻 Paper/light + Terracotta + JetBrains Mono 的桌面终端方向。
-- **终端核心**：Tauri v2 + `portable-pty` + xterm.js/webgl。PTY、背压和 shell integration 参考 Apache-2.0 的 `terax-ai-tauri-terminal`，并保留第三方说明。
-- **工程范围**：真实终端、多会话编排、终端内 Agent CLI 识别、只读 Git diff / 文件审查、设置与命令面板。
-
-## 当前能力边界
-
-- 当前主流程不提供独立“新建 Agent”弹层。用户在真实终端里启动 `claude` / `codex` / `amp` 等 CLI 后，Conduit 只做识别、品牌标记、运行状态和 review 辅助。
-- 右侧审查面板是只读 review 面板，不提供 commit / push GUI。用户可以在终端中使用 `git`，也可以让外部 agent 自己处理提交。
-- CI 会在 push/PR 上执行前端 build 和 Rust 单测；release workflow 只负责打包发布。
-
-详见 [`docs/`](docs/)。
+[LICENSE](LICENSE)

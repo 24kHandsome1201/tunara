@@ -12,7 +12,9 @@ pub struct AgentHookEvent {
 mod platform {
     use super::AgentHookEvent;
     use serde::Deserialize;
+    use std::fs;
     use std::io::Read;
+    use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,9 +48,17 @@ mod platform {
     }
 
     pub fn start_listener(app: AppHandle) -> HookListenerState {
-        let sock_path = PathBuf::from(format!("/tmp/conduit-hooks-{}.sock", std::process::id()));
+        let sock_dir = std::env::temp_dir().join("conduit-sockets");
+        if let Err(e) = fs::create_dir_all(&sock_dir) {
+            log::error!("failed to create hooks socket dir: {e}");
+        }
+        #[cfg(unix)]
+        {
+            let _ = fs::set_permissions(&sock_dir, fs::Permissions::from_mode(0o700));
+        }
+        let sock_path = sock_dir.join(format!("hooks-{}.sock", std::process::id()));
 
-        let _ = std::fs::remove_file(&sock_path);
+        let _ = fs::remove_file(&sock_path);
 
         let listener = UnixListener::bind(&sock_path).expect("bind conduit hooks socket");
         listener
@@ -68,11 +78,10 @@ mod platform {
                         break;
                     }
                     match stream {
-                        Ok(mut conn) => {
-                            let mut buf = vec![0u8; 4096];
-                            match conn.read(&mut buf) {
+                        Ok(conn) => {
+                            let mut raw = String::new();
+                            match conn.take(65536).read_to_string(&mut raw) {
                                 Ok(n) if n > 0 => {
-                                    let raw = String::from_utf8_lossy(&buf[..n]);
                                     match serde_json::from_str::<HookPayload>(&raw) {
                                         Ok(payload) => {
                                             log::info!(

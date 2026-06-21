@@ -12,6 +12,7 @@ export const AGENT_CIRCLE_STYLES: Record<string, { bg: string; border: string; c
   PI: { bg: "var(--c-agent-pi-bg)", border: "var(--c-agent-pi-border)", color: "var(--c-agent-pi-text)" },
   AG: { bg: "var(--c-agent-ag-bg)", border: "var(--c-agent-ag-border)", color: "var(--c-agent-ag-text)" },
   DV: { bg: "var(--c-agent-dv-bg)", border: "var(--c-agent-dv-border)", color: "var(--c-agent-dv-text)" },
+  AD: { bg: "var(--c-agent-ad-bg)", border: "var(--c-agent-ad-border)", color: "var(--c-agent-ad-text)" },
 };
 
 export function AgentBadge({ agent, size = 22, disabled }: { agent?: string; size?: number; disabled?: boolean }) {

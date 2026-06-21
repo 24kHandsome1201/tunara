@@ -3,6 +3,7 @@ import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "../shared";
+import { formatShortcut } from "../formatShortcut";
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -74,7 +75,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     cmds.push({
       id: "new-terminal",
       label: "新建终端",
-      shortcut: "⌘T",
+      shortcut: formatShortcut("mod+t"),
       icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
       section: "操作",
       originalIndex: idx++,
@@ -130,7 +131,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       cmds.push({
         id: "close-current-session",
         label: "关闭当前会话",
-        shortcut: "⌘W",
+        shortcut: formatShortcut("mod+w"),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
         section: "操作",
         originalIndex: idx++,
@@ -145,7 +146,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     cmds.push({
       id: "toggle-sidebar",
       label: "切换侧栏",
-      shortcut: "⌘\\",
+      shortcut: formatShortcut("mod+\\"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       originalIndex: idx++,
@@ -155,7 +156,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     cmds.push({
       id: "toggle-panel",
       label: "切换审查面板",
-      shortcut: "⌘⇧\\",
+      shortcut: formatShortcut("mod+shift+\\"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       originalIndex: idx++,
@@ -165,7 +166,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     cmds.push({
       id: "split-horizontal",
       label: "水平分栏",
-      shortcut: "⌘D",
+      shortcut: formatShortcut("mod+d"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="8" y1="1.5" x2="8" y2="14.5" /></svg>,
       section: "操作",
       originalIndex: idx++,
@@ -180,7 +181,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     cmds.push({
       id: "split-vertical",
       label: "垂直分栏",
-      shortcut: "⌘⇧D",
+      shortcut: formatShortcut("mod+shift+d"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="1.5" y1="8" x2="14.5" y2="8" /></svg>,
       section: "操作",
       originalIndex: idx++,
@@ -195,7 +196,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     cmds.push({
       id: "settings",
       label: "设置",
-      shortcut: "⌘,",
+      shortcut: formatShortcut("mod+,"),
       icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
       section: "操作",
       originalIndex: idx++,

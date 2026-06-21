@@ -74,6 +74,9 @@
   --c-agent-dv-bg: #ddf0fb;
   --c-agent-dv-border: #b0daf5;
   --c-agent-dv-text: #0278B5;
+  --c-agent-ad-bg: #defade;
+  --c-agent-ad-border: #b0e8b0;
+  --c-agent-ad-text: #14b014;
 
   /* ── Shell 终端专属配色 ── */
   --c-shell-path: #2563eb;
@@ -168,10 +171,10 @@
   --c-text-primary: #e4e4e7;
   --c-text-2: #d4d4d8;
   --c-text-3: #a1a1aa;
-  --c-text-4: #7a7a84;
-  --c-text-5: #65656e;
-  --c-text-6: #3f3f46;
-  --c-text-7: #27272a;
+  --c-text-4: #86868f;
+  --c-text-5: #71717a;
+  --c-text-6: #4a4a52;
+  --c-text-7: #313136;
 
   --c-bg-white: #18181b;
   --c-bg-white-glass: rgba(24, 24, 27, 0.78);
@@ -227,6 +230,9 @@
   --c-agent-dv-bg: #1a2a38;
   --c-agent-dv-border: #2a3e50;
   --c-agent-dv-text: #5bc0f8;
+  --c-agent-ad-bg: #1a2e1a;
+  --c-agent-ad-border: #2a4a2a;
+  --c-agent-ad-text: #4ade4a;
 
   --c-btn-primary-bg: #e4e4e7;
   --c-btn-primary-text: #18181b;

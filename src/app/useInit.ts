@@ -52,6 +52,7 @@ export function useInit() {
         if (current.sessions.length === 0) {
           addSession(createSession("~", { title: "终端" }));
         }
+        useUIStore.setState({ ready: true });
         return;
       }
 
@@ -107,6 +108,8 @@ export function useInit() {
       if (snapshot.terminals && Object.keys(snapshot.terminals).length > 0) {
         restoreTerminalSnapshots(snapshot.terminals);
       }
+
+      useUIStore.setState({ ready: true });
     });
 
     const unlistens: Array<Promise<() => void>> = [];
