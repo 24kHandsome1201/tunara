@@ -55,3 +55,35 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  update-homebrew-cask:
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute dmg sha256 and update cask
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          # 优先取 universal/aarch64 dmg
+          DMG_URL=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[] | select(.name | test("Conduit_.*\\.dmg")) | .url' | head -1)
+          if [ -z "$DMG_URL" ]; then
+            echo "No .dmg asset found, skipping cask update"
+            exit 0
+          fi
+          SHA=$(curl -fsSL "$DMG_URL" | shasum -a 256 | awk '{print $1}')
+          echo "Computed sha256: $SHA for version $TAG"
+          # 更新 homebrew/conduit.rb 中的 version 和 sha256
+          sed -i.bak "s/version \".*\"/version \"$TAG\"/" homebrew/conduit.rb
+          sed -i.bak "s/sha256 \".*\"/sha256 \"$SHA\"/" homebrew/conduit.rb
+          rm -f homebrew/conduit.rb.bak
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add homebrew/conduit.rb
+          git commit -m "chore: update homebrew cask to v${TAG} (sha256 ${SHA:0:12}…)" || exit 0
+          git push

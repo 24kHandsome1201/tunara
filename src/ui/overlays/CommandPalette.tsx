@@ -15,6 +15,7 @@ interface Command {
   icon?: React.ReactNode;
   action: () => void;
   section: string;
+  originalIndex: number;
 }
 
 function CmdIcon({ d, size = 14 }: { d: string; size?: number }) {
@@ -35,9 +36,11 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
   const setActive = useSessionsStore((s) => s.setActive);
   const ui = useUIStore;
+  const usage = useUIStore((s) => s.commandUsage);
 
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
+    let idx = 0;
 
     sessions
       .filter((s: Session) => s.id !== activeSessionId)
@@ -49,7 +52,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           subtitle,
           icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
           section: "会话",
-          action: () => { setActive(s.id); onClose(); },
+          originalIndex: idx++,
+          action: () => { setActive(s.id); ui.getState().recordCommandUse(`switch-${s.id}`); onClose(); },
         });
       });
 
@@ -59,7 +63,9 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘T",
       icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
       section: "操作",
+      originalIndex: idx++,
       action: () => {
+        ui.getState().recordCommandUse("new-terminal");
         useSessionsStore.getState().newTerminal();
         onClose();
       },
@@ -71,7 +77,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘\\",
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
-      action: () => { ui.getState().toggleSidebar(); onClose(); },
+      originalIndex: idx++,
+      action: () => { ui.getState().recordCommandUse("toggle-sidebar"); ui.getState().toggleSidebar(); onClose(); },
     });
 
     cmds.push({
@@ -80,7 +87,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘⇧\\",
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
-      action: () => { ui.getState().togglePanel(); onClose(); },
+      originalIndex: idx++,
+      action: () => { ui.getState().recordCommandUse("toggle-panel"); ui.getState().togglePanel(); onClose(); },
     });
 
     cmds.push({
@@ -89,7 +97,9 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘D",
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="8" y1="1.5" x2="8" y2="14.5" /></svg>,
       section: "操作",
+      originalIndex: idx++,
       action: () => {
+        ui.getState().recordCommandUse("split-horizontal");
         if (ui.getState().split.mode !== "single") { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("horizontal");
         onClose();
@@ -102,7 +112,9 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘⇧D",
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="1.5" y1="8" x2="14.5" y2="8" /></svg>,
       section: "操作",
+      originalIndex: idx++,
       action: () => {
+        ui.getState().recordCommandUse("split-vertical");
         if (ui.getState().split.mode !== "single") { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("vertical");
         onClose();
@@ -115,7 +127,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: "⌘,",
       icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
       section: "操作",
-      action: () => { ui.getState().setOverlay("settings"); },
+      originalIndex: idx++,
+      action: () => { ui.getState().recordCommandUse("settings"); ui.getState().setOverlay("settings"); },
     });
 
     return cmds;
@@ -128,6 +141,18 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         c.subtitle?.toLowerCase().includes(q) ||
         c.section.toLowerCase().includes(q))
     : commands;
+
+  const ranked = [...filtered].sort((a, b) => {
+    if (q) {
+      const ia = a.label.toLowerCase().indexOf(q);
+      const ib = b.label.toLowerCase().indexOf(q);
+      if (ia !== ib) return ia - ib;
+    }
+    const ua = usage[a.id] ?? 0;
+    const ub = usage[b.id] ?? 0;
+    if (ua !== ub) return ub - ua;
+    return a.originalIndex - b.originalIndex;
+  });
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -150,18 +175,18 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       onClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
+      setSelectedIndex((i) => Math.min(i + 1, ranked.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      filtered[selectedIndex]?.action();
+      ranked[selectedIndex]?.action();
     }
   }
 
   const sections = new Map<string, Command[]>();
-  for (const cmd of filtered) {
+  for (const cmd of ranked) {
     const list = sections.get(cmd.section) ?? [];
     list.push(cmd);
     sections.set(cmd.section, list);
@@ -223,7 +248,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         </div>
 
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "6px 0" }} className="no-scrollbar">
-          {filtered.length === 0 && (
+          {ranked.length === 0 && (
             <div style={{ padding: "20px 16px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
               无匹配结果
             </div>
@@ -234,7 +259,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                 {section}
               </div>
               {cmds.map((cmd) => {
-                const globalIdx = filtered.indexOf(cmd);
+                const globalIdx = ranked.indexOf(cmd);
                 const isSelected = globalIdx === selectedIndex;
                 return (
                   <div

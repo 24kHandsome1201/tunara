@@ -1,5 +1,10 @@
 import { deriveTitle, type Session } from "./types";
 import { useUIStore } from "@/state/ui";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { platform } from "@tauri-apps/plugin-os";
+
+let _isMac = true;
+try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DragStyle = React.CSSProperties & { WebkitAppRegion?: string; [key: string]: any };
@@ -91,6 +96,58 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
         </svg>
       </span>
     </button>
+  );
+}
+
+function WindowControls() {
+  const win = getCurrentWindow();
+  const btnBase: React.CSSProperties = {
+    width: 28,
+    height: 28,
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "var(--c-text-4)",
+    borderRadius: "var(--r-btn)",
+    flexShrink: 0,
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+      <button
+        onClick={() => win.minimize()}
+        title="最小化"
+        className="hover-bg"
+        style={btnBase}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <line x1="2" y1="6" x2="10" y2="6" />
+        </svg>
+      </button>
+      <button
+        onClick={() => win.toggleMaximize()}
+        title="最大化"
+        className="hover-bg"
+        style={btnBase}
+      >
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
+          <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
+        </svg>
+      </button>
+      <button
+        onClick={() => win.close()}
+        title="关闭"
+        className="hover-close"
+        style={btnBase}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <line x1="3" y1="3" x2="9" y2="9" />
+          <line x1="9" y1="3" x2="3" y2="9" />
+        </svg>
+      </button>
+    </div>
   );
 }
 
@@ -260,6 +317,8 @@ export function Titlebar({
             <rect x="9" y="1.5" width="5.5" height="13" rx="2" fill={panelVisible ? "currentColor" : "none"} fillOpacity="0.3" stroke="currentColor" strokeWidth="1.2" />
           </svg>
         </button>
+
+        {!_isMac && <WindowControls />}
       </div>
     </div>
   );

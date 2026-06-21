@@ -9,3 +9,4 @@ pub mod util;
 // Conduit 新增功能模块
 pub mod agent; // §3.3 agent harness
 pub mod git; // §3.4 git 集成
+pub mod editor; // §6.3 外部编辑器跳转

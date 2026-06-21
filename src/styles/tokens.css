@@ -145,6 +145,9 @@
   --w-sidebar: 272px;
   --w-panel: 300px;
   --h-statusbar: 26px;
+
+  /* ── 材质回退（Linux WebKitGTK 可能不支持 backdrop-filter）── */
+  --c-bg-glass-fallback: var(--c-bg-2);
 }
 
 /* ── Dark mode ── */

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { type ThemeType, type TerminalThemeName } from "../types";
-import { useUIStore, type CursorStyle } from "@/state/ui";
+import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { AgentBadge } from "@/ui/agents";
 
@@ -107,6 +107,8 @@ export function Settings({ onClose }: SettingsProps) {
   const setFontSize = useUIStore((s) => s.setFontSize);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
   const setTerminalTheme = useUIStore((s) => s.setTerminalTheme);
+  const externalEditor = useUIStore((s) => s.externalEditor);
+  const setExternalEditor = useUIStore((s) => s.setExternalEditor);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -212,6 +214,20 @@ export function Settings({ onClose }: SettingsProps) {
                         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-primary)", fontWeight: terminalTheme === t.id ? 600 : 400 }}>{t.label}</span>
                         {terminalTheme === t.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)" }} />}
                       </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ marginTop: 24 }}>
+                <div style={SECTION_LABEL}>外部编辑器</div>
+                <div style={{ display: "flex", background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2, gap: 0 }}>
+                  {EXTERNAL_EDITORS.map((ed: ExternalEditor) => (
+                    <button
+                      key={ed}
+                      onClick={() => setExternalEditor(ed)}
+                      style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: ed === externalEditor ? "var(--r-btn)" : 0, background: ed === externalEditor ? "var(--c-bg-white)" : "transparent", color: ed === externalEditor ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: ed === externalEditor ? 600 : 400, cursor: "pointer", boxShadow: ed === externalEditor ? "var(--shadow-card)" : "none", transition: "all var(--duration-fast) ease" }}
+                    >
+                      {EDITOR_LABELS[ed]}
                     </button>
                   ))}
                 </div>

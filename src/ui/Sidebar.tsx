@@ -1,7 +1,8 @@
 import { SessionCard } from "./SessionCard";
 import { groupByDir, deriveTitle, type Session } from "./types";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 
 interface DragState {
   draggingId: string;
@@ -34,17 +35,71 @@ function FolderIcon() {
   );
 }
 
-function DirGroupHeader({ dir, count, onNewTerminal }: { dir: string; count: number; onNewTerminal?: () => void }) {
+function DirGroupHeader({
+  dir,
+  count,
+  collapsed,
+  onToggleCollapse,
+  onNewTerminal,
+  onCloseAll,
+  confirmClose,
+  onClearCloseConfirm,
+}: {
+  dir: string;
+  count: number;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  onNewTerminal?: () => void;
+  onCloseAll?: () => void;
+  confirmClose?: boolean;
+  onClearCloseConfirm?: () => void;
+}) {
+  useEffect(() => {
+    if (!confirmClose) return;
+    const timer = setTimeout(() => onClearCloseConfirm?.(), 3_000);
+    return () => clearTimeout(timer);
+  }, [confirmClose, onClearCloseConfirm]);
+
   return (
     <div
       className="dir-group-header"
+      role={onToggleCollapse ? "button" : undefined}
+      tabIndex={onToggleCollapse ? 0 : undefined}
+      onClick={onToggleCollapse}
+      onKeyDown={(e) => {
+        if (onToggleCollapse && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onToggleCollapse();
+        }
+      }}
+      title={onToggleCollapse ? (collapsed ? "展开" : "折叠") : undefined}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 6,
         padding: "6px 14px 6px",
+        cursor: onToggleCollapse ? "pointer" : undefined,
       }}
     >
+      {onToggleCollapse && (
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--c-text-5)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            transform: collapsed ? "none" : "rotate(90deg)",
+            transition: "transform var(--duration-fast) ease",
+            flexShrink: 0,
+          }}
+        >
+          <polyline points="9 6 15 12 9 18" />
+        </svg>
+      )}
       <FolderIcon />
       <span
         style={{
@@ -94,6 +149,32 @@ function DirGroupHeader({ dir, count, onNewTerminal }: { dir: string; count: num
           </svg>
         </span>
       )}
+      {onCloseAll && (
+        <span
+          role="button"
+          tabIndex={0}
+          className="dir-group-close hover-close"
+          onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onCloseAll(); } }}
+          title={confirmClose ? "进程运行中，再次点击关闭全部" : "关闭此目录全部会话"}
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: confirmClose ? "var(--c-error)" : "var(--c-text-5)",
+            opacity: confirmClose ? 1 : undefined,
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </span>
+      )}
     </div>
   );
 }
@@ -112,6 +193,10 @@ export function Sidebar({
   const dragStarted = useRef(false);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const clearCloseConfirmation = useSessionsStore((s) => s.clearCloseConfirmation);
+  const dirCloseConfirmations = useSessionsStore((s) => s.dirCloseConfirmations);
+  const clearDirCloseConfirmation = useSessionsStore((s) => s.clearDirCloseConfirmation);
+  const collapsedDirs = useUIStore((s) => s.collapsedDirs);
+  const toggleDirCollapsed = useUIStore((s) => s.toggleDirCollapsed);
   const q = search.trim().toLowerCase();
   const filtered = q
     ? sessions.filter((s) => {
@@ -278,9 +363,21 @@ export function Sidebar({
         }}
         className="no-scrollbar"
       >
-        {Object.entries(groups).map(([dir, groupSessions]) => (
+        {Object.entries(groups).map(([dir, groupSessions]) => {
+          const collapsed = !!collapsedDirs[dir] && !q;
+          return (
           <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
-            <DirGroupHeader dir={dir} count={groupSessions.length} onNewTerminal={() => useSessionsStore.getState().newTerminalInDir(dir)} />
+            <DirGroupHeader
+              dir={dir}
+              count={groupSessions.length}
+              collapsed={collapsed}
+              onToggleCollapse={() => toggleDirCollapsed(dir)}
+              onNewTerminal={() => useSessionsStore.getState().newTerminalInDir(dir)}
+              onCloseAll={() => useSessionsStore.getState().closeSessionsInDir(dir)}
+              confirmClose={!!dirCloseConfirmations[dir]}
+              onClearCloseConfirm={() => clearDirCloseConfirmation(dir)}
+            />
+            {!collapsed && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {groupSessions.map((s, idx) => {
                 const isDragging = drag?.draggingId === s.id;
@@ -314,8 +411,10 @@ export function Sidebar({
                 );
               })}
             </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 底部：会话数 */}

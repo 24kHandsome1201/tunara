@@ -7,6 +7,8 @@ import {
   type RemoteState,
 } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
+import { openInEditor } from "@/modules/editor/open";
 import { isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 
@@ -231,9 +233,12 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
             {files.map((file) => {
               const isExpanded = expandedFile === file.path;
               return (
-                <div key={file.path} style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 3, overflow: "hidden" }}>
-                  <button
+                <div key={file.path} className="diff-file-row" style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 3, overflow: "hidden" }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggleFile(file.path)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFile(file.path); } }}
                     className="hover-bg"
                     style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
                   >
@@ -241,13 +246,51 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                     <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
                       {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
                     </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="diff-file-open hover-bg"
+                      title="在外部编辑器打开"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const editor = useUIStore.getState().externalEditor;
+                        openInEditor(editor, `${repoPath}/${file.path}`).catch(() => {
+                          useUIStore.getState().addToast({
+                            sessionId: session.id,
+                            title: "未找到编辑器",
+                            subtitle: editor,
+                            variant: "error",
+                          });
+                        });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.click();
+                      }}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        color: "var(--c-text-5)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                    </span>
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
                       +{file.added} −{file.removed}
                     </span>
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-fast) ease", flexShrink: 0 }}>
                       <polyline points="9 6 15 12 9 18" />
                     </svg>
-                  </button>
+                  </div>
                   {isExpanded && (
                     <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>
                       <MiniDiff diff={diffs[file.path]} />

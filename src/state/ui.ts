@@ -21,6 +21,7 @@ interface AppearanceSettings {
   sidebarWidth: number;
   panelWidth: number;
   terminalTheme: TerminalThemeName;
+  externalEditor: ExternalEditor;
 }
 
 const SETTINGS_KEY = "conduit-appearance";
@@ -32,7 +33,12 @@ const DEFAULT_SETTINGS: AppearanceSettings = {
   sidebarWidth: 272,
   panelWidth: 320,
   terminalTheme: "default",
+  externalEditor: "vscode",
 };
+
+function isExternalEditor(v: unknown): v is ExternalEditor {
+  return v === "vscode" || v === "cursor" || v === "zed" || v === "sublime";
+}
 
 function loadSettings(): AppearanceSettings {
   try {
@@ -48,6 +54,7 @@ function loadSettings(): AppearanceSettings {
       ...(typeof parsed.sidebarWidth === "number" ? { sidebarWidth: parsed.sidebarWidth } : {}),
       ...(typeof parsed.panelWidth === "number" ? { panelWidth: parsed.panelWidth } : {}),
       ...(parsed.terminalTheme === "default" || parsed.terminalTheme === "catppuccin" || parsed.terminalTheme === "tokyo-night" || parsed.terminalTheme === "one-dark" || parsed.terminalTheme === "solarized" ? { terminalTheme: parsed.terminalTheme } : {}),
+      ...(isExternalEditor(parsed.externalEditor) ? { externalEditor: parsed.externalEditor } : {}),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -62,7 +69,40 @@ function persistSettings(s: AppearanceSettings) {
   }
 }
 
+const COMMAND_USAGE_KEY = "conduit-command-usage";
+
+function loadCommandUsage(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(COMMAND_USAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function persistCommandUsage(usage: Record<string, number>) {
+  try {
+    localStorage.setItem(COMMAND_USAGE_KEY, JSON.stringify(usage));
+  } catch {
+    // localStorage 不可用时静默忽略
+  }
+}
+
 export type InspectorTab = "changes" | "files";
+
+export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
+
+export const EXTERNAL_EDITORS: ExternalEditor[] = ["vscode", "cursor", "zed", "sublime"];
+
+export const EDITOR_LABELS: Record<ExternalEditor, string> = {
+  vscode: "VS Code",
+  cursor: "Cursor",
+  zed: "Zed",
+  sublime: "Sublime",
+};
 
 export interface Toast {
   id: string;
@@ -82,6 +122,9 @@ interface UIState extends AppearanceSettings {
   split: SplitState;
   inspectorTab: InspectorTab;
   toasts: Toast[];
+  collapsedDirs: Record<string, true>;
+  commandUsage: Record<string, number>;
+  externalEditor: ExternalEditor;
 
   toggleSidebar: () => void;
   togglePanel: () => void;
@@ -104,6 +147,9 @@ interface UIState extends AppearanceSettings {
   setSplitPaneA: (sessionId: string | null) => void;
   addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
+  toggleDirCollapsed: (dir: string) => void;
+  recordCommandUse: (id: string) => void;
+  setExternalEditor: (e: ExternalEditor) => void;
 }
 
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
@@ -117,6 +163,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
     inspectorTab: "changes" as InspectorTab,
     toasts: [],
+    collapsedDirs: {},
+    commandUsage: loadCommandUsage(),
     ...initial,
 
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
@@ -154,10 +202,25 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((s) => ({ toasts: [...s.toasts.slice(-2), { ...toast, id }] }));
     },
     removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+    toggleDirCollapsed: (dir) =>
+      set((s) => {
+        if (s.collapsedDirs[dir]) {
+          const { [dir]: _, ...rest } = s.collapsedDirs;
+          return { collapsedDirs: rest };
+        }
+        return { collapsedDirs: { ...s.collapsedDirs, [dir]: true } };
+      }),
+    recordCommandUse: (id) =>
+      set((s) => {
+        const next = { ...s.commandUsage, [id]: Date.now() };
+        const entries = Object.entries(next).sort((a, b) => b[1] - a[1]).slice(0, 50);
+        return { commandUsage: Object.fromEntries(entries) };
+      }),
+    setExternalEditor: (externalEditor) => set({ externalEditor }),
   };
 }));
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "fontSize", "sidebarWidth", "panelWidth", "terminalTheme"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "fontSize", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(
@@ -165,9 +228,20 @@ useUIStore.subscribe(
   () => {
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      const { theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme } = useUIStore.getState();
-      persistSettings({ theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme });
+      const { theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor } = useUIStore.getState();
+      persistSettings({ theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor });
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
+);
+
+let commandUsagePersistTimer: ReturnType<typeof setTimeout> | null = null;
+useUIStore.subscribe(
+  (s) => s.commandUsage,
+  () => {
+    if (commandUsagePersistTimer) clearTimeout(commandUsagePersistTimer);
+    commandUsagePersistTimer = setTimeout(() => {
+      persistCommandUsage(useUIStore.getState().commandUsage);
+    }, 500);
+  },
 );

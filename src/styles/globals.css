@@ -28,6 +28,13 @@ html[data-chrome="borderless"] #root {
   background: var(--c-bg-white);
 }
 
+/* Linux: backdrop-filter may not work in WebKitGTK — use opaque fallbacks */
+html[data-chrome="borderless"] {
+  --c-bg-2-glass: var(--c-bg-2);
+  --c-bg-1-glass: var(--c-bg-1);
+  --c-bg-white-glass: var(--c-bg-white);
+}
+
 /* xterm.js scrollbar — thin overlay style */
 .xterm .xterm-viewport,
 .xterm-viewport {
@@ -99,6 +106,13 @@ html[data-chrome="borderless"] #root {
 }
 .panel-resize-handle:hover::after { opacity: 1; background: var(--c-accent); }
 
-/* Dir group header: + button fade on hover */
-.dir-group-header .dir-group-add { opacity: 0; transition: opacity 120ms ease; }
-.dir-group-header:hover .dir-group-add { opacity: 1; }
+/* Dir group header: + / × buttons fade on hover */
+.dir-group-header .dir-group-add,
+.dir-group-header .dir-group-close { opacity: 0; transition: opacity 120ms ease; }
+.dir-group-header:hover .dir-group-add,
+.dir-group-header:hover .dir-group-close { opacity: 1; }
+.dir-group-header[role="button"]:hover { background: var(--c-bg-hover); }
+
+/* DiffPanel: external-editor button reveals on row hover */
+.diff-file-row .diff-file-open { opacity: 0; transition: opacity 120ms ease; }
+.diff-file-row:hover .diff-file-open { opacity: 1; }

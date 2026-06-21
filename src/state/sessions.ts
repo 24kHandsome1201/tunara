@@ -20,6 +20,7 @@ interface SessionsState {
   launchedSessionIds: Record<string, true>;
   gitNonce: Record<string, number>;
   closeConfirmations: Record<string, number>;
+  dirCloseConfirmations: Record<string, number>;
 
   addSession: (s: Session) => void;
   removeSession: (id: string) => void;
@@ -28,6 +29,8 @@ interface SessionsState {
   updateSession: (id: string, patch: Partial<Session>) => void;
   refreshGit: (id: string) => void;
   clearCloseConfirmation: (id: string) => void;
+  closeSessionsInDir: (dir: string) => void;
+  clearDirCloseConfirmation: (dir: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode) => void;
   handleAgentReady: (id: string) => void;
@@ -76,6 +79,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   launchedSessionIds: {},
   gitNonce: {},
   closeConfirmations: {},
+  dirCloseConfirmations: {},
 
   addSession: (s) =>
     set((state) => ({
@@ -125,6 +129,43 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
       return { closeConfirmations };
     }),
+
+  clearDirCloseConfirmation: (dir) =>
+    set((state) => {
+      const { [dir]: _removed, ...dirCloseConfirmations } = state.dirCloseConfirmations;
+      return { dirCloseConfirmations };
+    }),
+
+  closeSessionsInDir: (dir) => {
+    const sessionsInDir = get().sessions.filter((s) => s.dir === dir);
+    if (sessionsInDir.length === 0) return;
+    const hasBusy = sessionsInDir.some((s) => isSessionBusy(s));
+
+    if (hasBusy) {
+      const lastConfirm = get().dirCloseConfirmations[dir] ?? 0;
+      if (Date.now() - lastConfirm > 3_000) {
+        set((state) => ({
+          dirCloseConfirmations: { ...state.dirCloseConfirmations, [dir]: Date.now() },
+        }));
+        return;
+      }
+      // 二次确认：预置各 busy 会话的 closeConfirmation，使复用的 closeSession 直接通过其单会话确认门
+      const now = Date.now();
+      set((state) => {
+        const closeConfirmations = { ...state.closeConfirmations };
+        for (const s of sessionsInDir) {
+          if (isSessionBusy(s)) closeConfirmations[s.id] = now;
+        }
+        return { closeConfirmations };
+      });
+    }
+
+    for (const s of [...sessionsInDir].reverse()) {
+      get().closeSession(s.id);
+    }
+
+    get().clearDirCloseConfirmation(dir);
+  },
 
   markRead: (id) =>
     set((state) => ({
