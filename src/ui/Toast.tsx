@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUIStore, type Toast } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { AgentBadge } from "./agents";
+import { CloseIcon } from "./shared";
 
 const TOAST_DURATION = 4000;
 const EXIT_DURATION = 250;
@@ -15,9 +16,11 @@ function ToastItem({ toast }: { toast: Toast }) {
   const exitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const remainRef = useRef(TOAST_DURATION);
   const startRef = useRef(Date.now());
+  const exitingRef = useRef(false);
 
   const dismiss = () => {
-    if (exiting) return;
+    if (exitingRef.current) return;
+    exitingRef.current = true;
     setExiting(true);
     exitTimerRef.current = setTimeout(() => removeToast(toast.id), EXIT_DURATION);
   };
@@ -59,17 +62,20 @@ function ToastItem({ toast }: { toast: Toast }) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={{
-        width: 260,
+        width: "fit-content",
+        minWidth: 260,
+        maxWidth: "min(340px, calc(100vw - 24px))",
         background: "var(--c-bg-white-glass)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
         border: "1px solid var(--c-border-1)",
         borderRadius: "var(--r-card)",
         boxShadow: "var(--shadow-notif)",
-        padding: "10px 12px 8px",
+        borderLeft: `3px solid ${accentColor}`,
+        padding: "10px 12px 8px 12px",
         display: "flex",
         alignItems: "center",
-        gap: 10,
+        gap: 9,
         cursor: "pointer",
         animation: exiting
           ? `toastOut ${EXIT_DURATION}ms ease forwards`
@@ -78,21 +84,14 @@ function ToastItem({ toast }: { toast: Toast }) {
         position: "relative",
       }}
     >
-      <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: accentColor, flexShrink: 0 }} />
-
       {toast.agentCode ? (
         <AgentBadge agent={toast.agentCode} size={22} />
-      ) : (
+      ) : toast.variant === "success" ? (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          {toast.variant === "success" ? (
-            <polyline points="20 6 9 17 4 12" />
-          ) : (
-            <>
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </>
-          )}
+          <polyline points="20 6 9 17 4 12" />
         </svg>
+      ) : (
+        <CloseIcon size={14} strokeWidth={2.5} color={accentColor} />
       )}
 
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -111,6 +110,9 @@ function ToastItem({ toast }: { toast: Toast }) {
           fontSize: "var(--fs-meta)",
           color: "var(--c-text-5)",
           marginTop: 1,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}>
           {toast.subtitle}
         </div>
@@ -133,10 +135,7 @@ function ToastItem({ toast }: { toast: Toast }) {
         }}
         className="hover-close"
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <CloseIcon size={10} strokeWidth={2.5} />
       </button>
 
       {/* Progress bar */}

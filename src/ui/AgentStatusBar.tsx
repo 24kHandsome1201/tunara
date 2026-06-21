@@ -30,7 +30,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       const timer = setTimeout(() => {
         setVisible(false);
         setFading(false);
-      }, 3000);
+      }, 1500);
       return () => clearTimeout(timer);
     } else if (!session.agent) {
       setVisible(false);
@@ -45,12 +45,9 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   return (
     <div
       style={{
-        position: "absolute",
-        top: 4,
-        left: 8,
-        right: 8,
         height: 32,
-        zIndex: 20,
+        margin: "4px 8px 0",
+        flexShrink: 0,
         background: "var(--c-bg-1-glass)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
@@ -61,7 +58,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         padding: "0 10px",
         gap: 8,
         opacity: fading ? 0 : 1,
-        transition: "opacity 0.5s ease",
+        transition: "opacity 0.3s ease",
         pointerEvents: "none",
       }}
     >

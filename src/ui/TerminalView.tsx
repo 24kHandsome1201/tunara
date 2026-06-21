@@ -2,19 +2,27 @@
 // 每个 shell 会话拥有独立、常驻的 PTY/xterm 实例,切 tab 时用 display 隐藏而非销毁,
 // 因此后台终端的输出与运行中的进程会保留。读取设置（字号/光标/主题）并实时生效。
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Terminal } from "@xterm/xterm";
+import { useEffect, useRef } from "react";
+import { type Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { SearchAddon } from "@xterm/addon-search";
 import { openPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
-import { useUIStore, type CursorStyle } from "@/state/ui";
+import { useUIStore } from "@/state/ui";
 import { type AgentCode } from "./types";
-import { getTerminalTheme } from "@/styles/terminalTheme";
-import { cleanTerminalLines, cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
+import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
+import { extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText } from "@/modules/terminal/lib/terminal-buffer-read";
+import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
+import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
+import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
+import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
+import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
+import { TerminalSearchBar } from "./TerminalSearchBar";
+import { useTerminalSearch } from "./useTerminalSearch";
+import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 
 interface TerminalViewProps {
   sessionId: string;
@@ -22,25 +30,6 @@ interface TerminalViewProps {
   active: boolean;
   pendingInput?: string;
   onPendingInputConsumed?: () => void;
-}
-
-const FONT_FAMILY = '"JetBrains Mono", SFMono-Regular, Menlo, monospace';
-
-const NOISE_COMMANDS = new Set([
-  "ls", "ll", "la", "l", "dir",
-  "cd", "pushd", "popd",
-  "pwd", "whoami", "hostname",
-  "cat", "head", "tail", "less", "more", "bat",
-  "clear", "reset", "cls",
-  "echo", "printf", "true", "false",
-  "exit", "logout",
-  "history", "which", "where", "type", "file",
-  "source", ".", "export", "unset", "alias", "unalias",
-]);
-
-function isMeaningfulCommand(command: string): boolean {
-  const cmd = command.split(/\s+/)[0]?.toLowerCase() ?? "";
-  return !NOISE_COMMANDS.has(cmd);
 }
 
 export function TerminalView({
@@ -53,13 +42,9 @@ export function TerminalView({
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const searchAddonRef = useRef<SearchAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
   const initRef = useRef(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const searchOpenRef = useRef(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const search = useTerminalSearch(termRef);
   const pendingInputRef = useRef(pendingInput);
   pendingInputRef.current = pendingInput;
   const onPendingInputConsumedRef = useRef(onPendingInputConsumed);
@@ -74,6 +59,19 @@ export function TerminalView({
   const terminalTheme = useUIStore((s) => s.terminalTheme);
   const accent = useUIStore((s) => s.accent);
 
+  useTerminalRuntimeSync({
+    active,
+    termRef,
+    fitRef,
+    ptyRef,
+    fontSize,
+    cursorStyle,
+    cursorBlink,
+    theme,
+    terminalTheme,
+    accent,
+  });
+
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
     initRef.current = true;
@@ -85,16 +83,13 @@ export function TerminalView({
       await document.fonts.load(`${fontSize}px "JetBrains Mono"`);
       if (disposed || !containerRef.current) return;
 
-      const term = new Terminal({
-        fontFamily: FONT_FAMILY,
+      const term = createTerminalInstance({
         fontSize,
-        lineHeight: 1.05,
-        theme: getTerminalTheme(theme, terminalTheme, accent),
+        theme,
+        terminalTheme,
+        accent,
         cursorBlink,
-        cursorStyle: cursorStyle as CursorStyle,
-        cursorInactiveStyle: "outline",
-        scrollback: 3_000,
-        allowProposedApi: true,
+        cursorStyle,
       });
       termRef.current = term;
 
@@ -121,23 +116,10 @@ export function TerminalView({
 
       const searchAddon = new SearchAddon();
       term.loadAddon(searchAddon);
-      searchAddonRef.current = searchAddon;
+      const searchResultDisposable = search.registerSearchAddon(searchAddon);
+      cleanups.push(() => searchResultDisposable.dispose());
 
-      term.attachCustomKeyEventHandler((e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === "f" && e.type === "keydown") {
-          searchOpenRef.current = true;
-          setSearchOpen(true);
-          return false;
-        }
-        if (e.key === "Escape" && e.type === "keydown" && searchOpenRef.current) {
-          searchOpenRef.current = false;
-          setSearchOpen(false);
-          setSearchQuery("");
-          searchAddon.clearDecorations();
-          return false;
-        }
-        return true;
-      });
+      term.attachCustomKeyEventHandler(search.handleCustomKeyEvent);
 
       // OSC 133 shell integration:
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
@@ -253,40 +235,6 @@ export function TerminalView({
       });
       cleanups.push(() => titleDisposable.dispose());
 
-      const extractCommandFromBuffer = (): string => {
-        const cursorY = term.buffer.active.cursorY + term.buffer.active.baseY;
-        const parts: string[] = [];
-        for (let row = promptEndRow; row <= cursorY; row++) {
-          const line = term.buffer.active.getLine(row);
-          if (line) {
-            const text = line.translateToString(true);
-            parts.push(text);
-          }
-        }
-        return cleanTerminalText(parts.join(" ")).trim();
-      };
-
-      const extractCommandFromOsc = (data: string): string => {
-        if (!data.startsWith("C;")) return "";
-        try {
-          return decodeURIComponent(data.slice(2)).trim();
-        } catch {
-          return "";
-        }
-      };
-
-      const getTerminalTailText = (rowCount = 12): string => {
-        const buffer = term.buffer.active;
-        const cursorRow = buffer.baseY + buffer.cursorY;
-        const start = Math.max(0, cursorRow - rowCount);
-        const parts: string[] = [];
-        for (let row = start; row <= cursorRow; row += 1) {
-          const line = buffer.getLine(row);
-          if (line) parts.push(line.translateToString(true));
-        }
-        return cleanTerminalLines(parts.join("\n"));
-      };
-
       let codexDataBurstCount = 0;
 
       const scheduleCodexStateCheck = () => {
@@ -305,7 +253,7 @@ export function TerminalView({
           const s = getCurrentSession();
           if (!s?.agent) return;
 
-          const tail = getTerminalTailText();
+          const tail = getTerminalTailText(term);
           const screenState = detectCodexScreenState(tail);
 
           if (screenState === "ready" && s.agentActivity !== "idle") {
@@ -343,7 +291,7 @@ export function TerminalView({
         } else if (marker === "C") {
           const oscCommand = extractCommandFromOsc(data);
           if (osc133Active && (promptEndRow >= 0 || oscCommand)) {
-            const cmd = oscCommand || extractCommandFromBuffer();
+            const cmd = oscCommand || extractCommandFromBuffer(term, promptEndRow);
             if (cmd) {
               if (isMeaningfulCommand(cmd)) {
                 useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
@@ -365,9 +313,8 @@ export function TerminalView({
       cleanups.push(() => promptDisposable.dispose());
 
       const cwd = dir === "~" ? undefined : dir;
-      let pendingData: Uint8Array[] = [];
-      let writeRafId = 0;
-      cleanups.push(() => { if (writeRafId) cancelAnimationFrame(writeRafId); });
+      const outputBuffer = createTerminalOutputBuffer(term);
+      cleanups.push(() => outputBuffer.dispose());
       let pty;
       try {
         pty = await openPty(
@@ -376,23 +323,7 @@ export function TerminalView({
           term.rows,
           {
             onData: (bytes) => {
-              pendingData.push(bytes);
-              if (!writeRafId) {
-                writeRafId = requestAnimationFrame(() => {
-                  writeRafId = 0;
-                  if (pendingData.length === 1) {
-                    term.write(pendingData[0]);
-                  } else if (pendingData.length > 1) {
-                    let totalLen = 0;
-                    for (const d of pendingData) totalLen += d.length;
-                    const merged = new Uint8Array(totalLen);
-                    let offset = 0;
-                    for (const d of pendingData) { merged.set(d, offset); offset += d.length; }
-                    term.write(merged);
-                  }
-                  pendingData = [];
-                });
-              }
+              outputBuffer.push(bytes);
               if (hasAgent && currentAgentCode) {
                 if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
                   scheduleCodexStateCheck();
@@ -421,41 +352,60 @@ export function TerminalView({
       }
 
       if (disposed) {
-        pty.close();
+        pty.close().catch(() => {});
         return;
       }
       ptyRef.current = pty;
 
+      const writePty = (data: string) => {
+        pty.write(data).catch(() => {
+          /* PTY may already be closed by the time xterm flushes input. */
+        });
+      };
+      const resizePty = (cols: number, rows: number) => {
+        pty.resize(cols, rows).catch(() => {
+          /* Resize can race with process exit or pane teardown. */
+        });
+      };
+      let pendingInputTimer: ReturnType<typeof setTimeout> | null = null;
+      cleanups.push(() => {
+        if (pendingInputTimer) {
+          clearTimeout(pendingInputTimer);
+          pendingInputTimer = null;
+        }
+      });
+
       if (pendingInputRef.current) {
         const cmd = pendingInputRef.current;
-        setTimeout(() => {
-          pty.write(cmd + "\n");
-          onPendingInputConsumedRef.current?.();
+        pendingInputTimer = setTimeout(() => {
+          pendingInputTimer = null;
+          pty.write(cmd + "\n")
+            .then(() => onPendingInputConsumedRef.current?.())
+            .catch(() => {});
         }, 300);
       }
 
       let inputBuffer = "";
       // Fallback keystroke command detection — only used when OSC 133 is not active
-      const submitCommandBuffer = () => {
-        if (osc133Active) { inputBuffer = ""; return; }
-        const trimmed = cleanTerminalText(inputBuffer).trim();
+      const submitCommandBuffer = (submitted: string) => {
+        if (osc133Active) return;
+        const trimmed = cleanTerminalText(submitted).trim();
         if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }
         if (!hasAgent) {
-          const agent = detectAgentCommand(inputBuffer);
+          const agent = detectAgentCommand(submitted);
           if (agent) {
             markAgentDetected(agent);
           }
         }
-        inputBuffer = "";
       };
       const dataDisposable = term.onData((data) => {
-        pty.write(data);
-        const submitAgentInput = () => {
+        writePty(data);
+        const submitAgentInput = (submitted: string) => {
           if (!hasAgent) return;
-          const submitted = cleanTerminalText(inputBuffer).trim();
-          if (!submitted) return;
+          const trimmed = cleanTerminalText(submitted).trim();
+          if (!trimmed) return;
           agentStartupPending = false;
           if (idleTimer) {
             clearTimeout(idleTimer);
@@ -466,70 +416,23 @@ export function TerminalView({
             useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
           }
         };
-        {
-          for (let i = 0; i < data.length; i += 1) {
-            const ch = data[i];
-            if (ch === "\x1b") {
-              const next = data[i + 1];
-              if (next === "]") {
-                // OSC sequence: \x1b] ... (terminated by \x07 or \x1b\\)
-                i += 2;
-                while (i < data.length) {
-                  if (data[i] === "\x07") break;
-                  if (data[i] === "\x1b" && data[i + 1] === "\\") { i += 1; break; }
-                  i += 1;
-                }
-              } else {
-                // CSI / other escape sequences
-                while (i + 1 < data.length && !/[A-Za-z~]/.test(data[i + 1])) i += 1;
-                if (i + 1 < data.length) i += 1;
-              }
-            } else if (ch === "\r" || ch === "\n") {
-              submitAgentInput();
-              submitCommandBuffer();
-            } else if (ch === "\x7f" || ch === "\b") {
-              inputBuffer = inputBuffer.slice(0, -1);
-            } else if (ch === "\x03" || ch === "\x15") {
-              inputBuffer = "";
-            } else if (ch >= " " && ch !== "\x7f") {
-              inputBuffer += ch;
-            }
-          }
+        const result = scanTerminalInputBuffer(inputBuffer, data);
+        inputBuffer = result.buffer;
+        for (const submitted of result.submissions) {
+          submitAgentInput(submitted);
+          submitCommandBuffer(submitted);
         }
       });
       cleanups.push(() => dataDisposable.dispose());
 
       const el = containerRef.current!;
-      let lastW = el.clientWidth;
-      let lastH = el.clientHeight;
-      let fitTimer: ReturnType<typeof setTimeout> | null = null;
-      let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-
-      const observer = new ResizeObserver(() => {
-        if (fitTimer) clearTimeout(fitTimer);
-        fitTimer = setTimeout(() => {
-          fitTimer = null;
-          if (disposed) return;
-          const w = el.clientWidth;
-          const h = el.clientHeight;
-          if (w === lastW && h === lastH) return;
-          if (w === 0 || h === 0) return;
-          lastW = w;
-          lastH = h;
-          fit.fit();
-          if (resizeTimer) clearTimeout(resizeTimer);
-          resizeTimer = setTimeout(() => {
-            resizeTimer = null;
-            if (!disposed) pty.resize(term.cols, term.rows);
-          }, 250);
-        }, 8);
-      });
-      observer.observe(el);
-      cleanups.push(() => {
-        observer.disconnect();
-        if (fitTimer) clearTimeout(fitTimer);
-        if (resizeTimer) clearTimeout(resizeTimer);
-      });
+      cleanups.push(observeTerminalResize({
+        element: el,
+        terminal: term,
+        fit,
+        resizePty,
+        isDisposed: () => disposed,
+      }));
 
       cleanups.push(() => {
         if (idleTimer) {
@@ -549,7 +452,7 @@ export function TerminalView({
       disposed = true;
       cleanups.forEach((fn) => fn());
       if (ptyRef.current) {
-        ptyRef.current.close();
+        ptyRef.current.close().catch(() => {});
         ptyRef.current = null;
       }
       termRef.current?.dispose();
@@ -560,152 +463,20 @@ export function TerminalView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 变为可见时重新 fit + 聚焦（display:none → flex 后容器才有尺寸）
-  useEffect(() => {
-    if (!active) return;
-    const term = termRef.current;
-    const fit = fitRef.current;
-    const pty = ptyRef.current;
-    if (!term || !fit) return;
-    const t = setTimeout(() => {
-      try {
-        fit.fit();
-        pty?.resize(term.cols, term.rows);
-        term.focus();
-      } catch {
-        /* noop */
-      }
-    }, 30);
-    return () => clearTimeout(t);
-  }, [active]);
-
-  // 设置实时生效：字号 / 光标 / 主题
-  useEffect(() => {
-    const term = termRef.current;
-    const fit = fitRef.current;
-    if (!term) return;
-    term.options.fontSize = fontSize;
-    term.options.cursorStyle = cursorStyle as CursorStyle;
-    term.options.cursorBlink = cursorBlink;
-    term.options.theme = getTerminalTheme(theme, terminalTheme, accent);
-    try {
-      fit?.fit();
-      if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows);
-    } catch {
-      /* noop */
-    }
-  }, [fontSize, cursorStyle, cursorBlink, theme, terminalTheme, accent, active]);
-
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchQuery(value);
-    if (!searchAddonRef.current) return;
-    if (value) {
-      searchAddonRef.current.findNext(value, { regex: false, caseSensitive: false, wholeWord: false });
-    } else {
-      searchAddonRef.current.clearDecorations();
-    }
-  }, []);
-
-  const handleSearchNext = useCallback(() => {
-    searchAddonRef.current?.findNext(searchQuery, { regex: false, caseSensitive: false, wholeWord: false });
-  }, [searchQuery]);
-
-  const handleSearchPrev = useCallback(() => {
-    searchAddonRef.current?.findPrevious(searchQuery, { regex: false, caseSensitive: false, wholeWord: false });
-  }, [searchQuery]);
-
-  const closeSearch = useCallback(() => {
-    searchOpenRef.current = false;
-    setSearchOpen(false);
-    setSearchQuery("");
-    searchAddonRef.current?.clearDecorations();
-    termRef.current?.focus();
-  }, []);
-
   return (
     <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
-      {searchOpen && (
-        <div
-          style={{
-            position: "absolute",
-            top: 6,
-            right: 12,
-            zIndex: 30,
-            background: "var(--c-bg-1)",
-            border: "1px solid var(--c-border-2)",
-            borderRadius: "var(--r-btn)",
-            padding: "4px 8px",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            boxShadow: "var(--shadow-card)",
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                closeSearch();
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                if (e.shiftKey) handleSearchPrev();
-                else handleSearchNext();
-              }
-            }}
-            autoFocus
-            placeholder="搜索…"
-            style={{
-              border: "none",
-              background: "transparent",
-              outline: "none",
-              fontSize: "var(--fs-body)",
-              color: "var(--c-text-primary)",
-              fontFamily: "var(--font-ui)",
-              width: 200,
-            }}
-          />
-          <button
-            onClick={handleSearchPrev}
-            title="上一个 ⇧Enter"
-            className="hover-bg"
-            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="18 15 12 9 6 15" />
-            </svg>
-          </button>
-          <button
-            onClick={handleSearchNext}
-            title="下一个 Enter"
-            className="hover-bg"
-            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-          <button
-            onClick={closeSearch}
-            title="关闭 Esc"
-            className="hover-bg"
-            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+      {search.searchOpen && (
+        <TerminalSearchBar
+          inputRef={search.searchInputRef}
+          query={search.searchQuery}
+          count={search.searchCount}
+          onQueryChange={search.handleSearchChange}
+          onNext={search.handleSearchNext}
+          onPrev={search.handleSearchPrev}
+          onClose={search.closeSearch}
+        />
       )}
-      <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-1)", minHeight: 0 }} />
+      <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
     </div>
   );
 }

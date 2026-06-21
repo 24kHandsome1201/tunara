@@ -12,18 +12,24 @@ import { useTheme } from "./useTheme";
 import { useKeybindings } from "./useKeybindings";
 import { useEffect } from "react";
 
-function PanelResizeHandle() {
-  const setPanelWidth = useUIStore((s) => s.setPanelWidth);
+interface ResizeHandleProps {
+  edge: "left" | "right";
+  getWidth: () => number;
+  setWidth: (width: number) => void;
+  direction: 1 | -1;
+  className?: string;
+}
 
+function ResizeHandle({ edge, getWidth, setWidth, direction, className }: ResizeHandleProps) {
   const onPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    const startWidth = useUIStore.getState().panelWidth;
+    const startWidth = getWidth();
 
     const onPointerMove = (ev: PointerEvent) => {
-      setPanelWidth(startWidth - (ev.clientX - startX));
+      setWidth(startWidth + (ev.clientX - startX) * direction);
     };
 
     const cleanup = (ev: PointerEvent) => {
@@ -46,12 +52,12 @@ function PanelResizeHandle() {
 
   return (
     <div
-      className="panel-resize-handle"
+      className={className}
       onPointerDown={onPointerDown}
       style={{
         position: "absolute",
         top: 0,
-        left: -2,
+        [edge]: -2,
         bottom: 0,
         width: 5,
         cursor: "col-resize",
@@ -61,50 +67,27 @@ function PanelResizeHandle() {
   );
 }
 
+function PanelResizeHandle() {
+  const setPanelWidth = useUIStore((s) => s.setPanelWidth);
+  return (
+    <ResizeHandle
+      className="panel-resize-handle"
+      edge="left"
+      getWidth={() => useUIStore.getState().panelWidth}
+      setWidth={setPanelWidth}
+      direction={-1}
+    />
+  );
+}
+
 function SidebarResizeHandle() {
   const setSidebarWidth = useUIStore((s) => s.setSidebarWidth);
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const handle = e.currentTarget as HTMLElement;
-    handle.setPointerCapture(e.pointerId);
-    const startX = e.clientX;
-    const startWidth = useUIStore.getState().sidebarWidth;
-
-    const onPointerMove = (ev: PointerEvent) => {
-      setSidebarWidth(startWidth + ev.clientX - startX);
-    };
-
-    const cleanup = (ev: PointerEvent) => {
-      if (handle.hasPointerCapture(ev.pointerId)) {
-        handle.releasePointerCapture(ev.pointerId);
-      }
-      document.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("pointerup", cleanup);
-      document.removeEventListener("pointercancel", cleanup);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", cleanup);
-    document.addEventListener("pointercancel", cleanup);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  };
-
   return (
-    <div
-      onPointerDown={onPointerDown}
-      style={{
-        position: "absolute",
-        top: 0,
-        right: -2,
-        bottom: 0,
-        width: 5,
-        cursor: "col-resize",
-        zIndex: 10,
-      }}
+    <ResizeHandle
+      edge="right"
+      getWidth={() => useUIStore.getState().sidebarWidth}
+      setWidth={setSidebarWidth}
+      direction={1}
     />
   );
 }

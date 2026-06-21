@@ -13,6 +13,46 @@ interface MainAreaProps {
   activeSessionId: string;
 }
 
+function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.35,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
+  if (direction === "rows") {
+    return (
+      <svg {...common}>
+        <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+        <path d="M1.5 8h13" />
+        <path d="M3.5 3.5h9v3h-9Z" fill="currentColor" opacity="0.16" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (direction === "columns") {
+    return (
+      <svg {...common}>
+        <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+        <path d="M8 1.5v13" />
+        <path d="M3.5 3.5h3v9h-3Z" fill="currentColor" opacity="0.16" stroke="none" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...common}>
+      <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+      <path d="M5 5l6 6M11 5l-6 6" />
+    </svg>
+  );
+}
+
 export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const nonce = useSessionsStore((s) => s.gitNonce[active?.id ?? ""] ?? 0);
@@ -56,6 +96,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
     return () => { cancelled = true; };
   }, [active?.dir, active?.id, nonce]);
 
+  function compactPath(path: string): string {
+    if (path.length <= 48) return path;
+    const normalized = path.replace(/^\/Users\/[^/]+/, "~");
+    const parts = normalized.split("/").filter(Boolean);
+    if (parts.length <= 3) return normalized;
+    return `${parts[0]}/.../${parts.slice(-2).join("/")}`;
+  }
+
   function renderTerminalPane(s: Session, isActive: boolean) {
     return (
       <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -90,11 +138,29 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
       <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: isSplit ? (isHorizontal ? "row" : "column") : "row" }}>
         {isSplit ? (
           <>
-            <div style={{ [isHorizontal ? "width" : "height"]: `calc(${split.ratio * 100}% - 2.5px)`, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+            <div
+              onClick={() => useSessionsStore.getState().setActive(paneASession!.id)}
+              style={{
+                [isHorizontal ? "width" : "height"]: `calc(${split.ratio * 100}% - 2.5px)`,
+                display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
+                borderRadius: 6,
+                boxShadow: paneASession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)" : "inset 0 1px 0 transparent",
+                transition: "box-shadow var(--duration-fast) ease",
+              }}
+            >
               {renderTerminalPane(paneASession!, paneASession!.id === activeSessionId)}
             </div>
             <SplitHandle mode={split.mode as "horizontal" | "vertical"} containerRef={splitContainerRef} />
-            <div style={{ [isHorizontal ? "width" : "height"]: `calc(${(1 - split.ratio) * 100}% - 2.5px)`, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+            <div
+              onClick={() => useSessionsStore.getState().setActive(paneBSession!.id)}
+              style={{
+                [isHorizontal ? "width" : "height"]: `calc(${(1 - split.ratio) * 100}% - 2.5px)`,
+                display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
+                borderRadius: 6,
+                boxShadow: paneBSession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)" : "inset 0 1px 0 transparent",
+                transition: "box-shadow var(--duration-fast) ease",
+              }}
+            >
               {renderTerminalPane(paneBSession!, paneBSession!.id === activeSessionId)}
             </div>
             {hiddenMountedSessions.map((s) => (
@@ -137,32 +203,34 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {active?.dir ?? ""}
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "1 1 96px", minWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
+          {compactPath(active?.dir ?? "")}
         </span>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-          ⎇ {active?.branch || "—"}
-        </span>
-        {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
-          <>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-              {remote.ahead > 0 && `↑${remote.ahead}`}{remote.ahead > 0 && remote.behind > 0 && " "}{remote.behind > 0 && `↓${remote.behind}`}
-            </span>
-          </>
-        )}
-        {active?.agent && (
-          <>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-              {AGENT_NAMES[active.agent] ?? active.agent}
-              {isAgentActivityBusy(active.agentActivity) && (
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0 }} />
-              )}
-            </span>
-          </>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, maxWidth: "55%", overflow: "hidden", flexShrink: 1 }}>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", letterSpacing: "0.02em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            ⎇ {active?.branch || "-"}
+          </span>
+          {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
+            <>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+                {remote.ahead > 0 && `↑${remote.ahead}`}{remote.ahead > 0 && remote.behind > 0 && " "}{remote.behind > 0 && `↓${remote.behind}`}
+              </span>
+            </>
+          )}
+          {active?.agent && (
+            <>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {AGENT_NAMES[active.agent] ?? active.agent}
+                {isAgentActivityBusy(active.agentActivity) && (
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0 }} />
+                )}
+              </span>
+            </>
+          )}
+        </div>
 
         <span style={{ marginLeft: "auto" }} />
 
@@ -175,9 +243,10 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               else ui.closeSplit();
             }}
             title="关闭分栏"
+            aria-label="关闭分栏"
             style={{
-              width: 28,
-              height: 22,
+              width: 24,
+              height: 24,
               border: "none",
               background: "transparent",
               cursor: "pointer",
@@ -188,15 +257,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             className="hover-bg"
           >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-            </svg>
+            <SplitIcon direction="single" />
           </button>
         ) : (
           <>
             <button
               onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
-              title="水平分栏 ⌘D"
+              title="左右分栏 ⌘D"
+              aria-label="左右分栏"
               style={{
                 width: 28,
                 height: 22,
@@ -210,14 +278,12 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               }}
               className="hover-bg"
             >
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-                <line x1="8" y1="1.5" x2="8" y2="14.5" />
-              </svg>
+              <SplitIcon direction="columns" />
             </button>
             <button
               onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
-              title="垂直分栏 ⌘⇧D"
+              title="上下分栏 ⌘⇧D"
+              aria-label="上下分栏"
               style={{
                 width: 28,
                 height: 22,
@@ -231,10 +297,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               }}
               className="hover-bg"
             >
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-                <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-                <line x1="1.5" y1="8" x2="14.5" y2="8" />
-              </svg>
+              <SplitIcon direction="rows" />
             </button>
           </>
         )}

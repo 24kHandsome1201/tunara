@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { type Session, type RunState, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
+import { useSessionsStore } from "@/state/sessions";
+import { CloseIcon } from "./shared";
 
 function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
@@ -44,6 +46,7 @@ function SessionIcon({ session }: { session: Session }) {
             borderRadius: "50%",
             background: style.bg,
             color: style.color,
+            border: `1px solid ${style.border}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -100,12 +103,7 @@ function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolea
     );
   }
   if (runState === "failed") {
-    return (
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-error)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <line x1="18" y1="6" x2="6" y2="18" />
-        <line x1="6" y1="6" x2="18" y2="18" />
-      </svg>
-    );
+    return <CloseIcon size={13} strokeWidth={2.8} color="var(--c-error)" />;
   }
   return null;
 }
@@ -143,7 +141,7 @@ function BusyProgress() {
 function DiffStat({ added, removed }: { added: number; removed: number }) {
   if (added === 0 && removed === 0) return null;
   return (
-    <span style={{ display: "inline-flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
+    <span style={{ display: "inline-flex", gap: 4, flexShrink: 0, marginLeft: "auto", paddingLeft: 6 }}>
       {added > 0 && (
         <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-add-text)", background: "var(--c-diff-add-bg)", borderRadius: 4, padding: "1px 5px" }}>
           +{added}
@@ -164,17 +162,53 @@ interface SessionCardProps {
   session: Session;
   active: boolean;
   confirmClose?: boolean;
+  tabIndex?: number;
   onClick: () => void;
   onClose?: () => void;
-  onClearCloseConfirm?: () => void;
+  onRename?: (name: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, active, confirmClose, onClick, onClose, onClearCloseConfirm, onContextMenu }: SessionCardProps) {
-  const { primary, isCommand } = deriveTitle(session);
+export function SessionCard({ session, active, confirmClose, tabIndex, onClick, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
+  const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
   const showBusyProgress = !!session.agent && busy;
+  const renamingSessionId = useSessionsStore((s) => s.renamingSessionId);
+  const isRenaming = renamingSessionId === session.id;
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming && !editing) {
+      setEditValue(session.customTitle ?? primary);
+      setEditing(true);
+    }
+  }, [isRenaming, editing, session.customTitle, primary]);
+
+  const startRename = useCallback(() => {
+    if (!onRename) return;
+    setEditValue(session.customTitle ?? primary);
+    setEditing(true);
+  }, [onRename, session.customTitle, primary]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== primary) {
+      onRename?.(trimmed);
+    } else if (!trimmed) {
+      onRename?.("");
+    }
+    setEditing(false);
+    useSessionsStore.getState().stopRenaming();
+  }, [editValue, primary, onRename]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
 
   const handleClose = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
@@ -182,25 +216,23 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
     onClose();
   };
 
-  useEffect(() => {
-    if (!confirmClose) return;
-    const timer = setTimeout(() => onClearCloseConfirm?.(), 3_000);
-    return () => clearTimeout(timer);
-  }, [confirmClose, onClearCloseConfirm]);
-
-  useEffect(() => {
-    if (confirmClose && !busy) onClearCloseConfirm?.();
-  }, [busy, confirmClose, onClearCloseConfirm]);
-
-  const totalAdded = session.changes?.files.reduce((a, f) => a + f.added, 0) ?? 0;
-  const totalRemoved = session.changes?.files.reduce((a, f) => a + f.removed, 0) ?? 0;
-
   return (
     <div
       role="button"
-      tabIndex={0}
+      tabIndex={tabIndex ?? 0}
+      aria-current={active ? "page" : undefined}
+      data-session-card-id={session.id}
       onClick={onClick}
-      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+          return;
+        }
+        onKeyDown?.(e);
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       onContextMenu={onContextMenu}
       className="session-card"
       style={{
@@ -211,7 +243,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         userSelect: "none",
         background: active ? "var(--c-accent-bg-light)" : "transparent",
         border: "none",
-        boxShadow: "none",
+        boxShadow: focused ? "inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 70%, transparent)" : "none",
         outline: "none",
         transition: "background var(--duration-fast) ease",
       }}
@@ -222,30 +254,15 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
           left: 0,
           top: "50%",
           transform: "translateY(-50%)",
-          width: 3,
-          height: active ? "60%" : "0%",
-          minHeight: active ? 18 : 0,
+          width: 2,
+          height: "60%",
+          minHeight: 18,
           background: "var(--c-accent)",
-          borderRadius: "0 2px 2px 0",
+          borderRadius: "0 1px 1px 0",
           opacity: active ? 1 : 0,
-          transition: "height var(--duration-normal) ease, min-height var(--duration-normal) ease, opacity var(--duration-fast) ease",
+          transition: "opacity var(--duration-fast) ease",
         }}
       />
-
-      {session.unread && (
-        <span
-          style={{
-            position: "absolute",
-            right: 8,
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: displayRunState === "failed" ? "var(--c-error)" : "var(--c-accent)",
-          }}
-        />
-      )}
 
       {onClose && (
         <span
@@ -270,10 +287,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
             zIndex: 2,
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+          <CloseIcon size={11} strokeWidth={2.5} />
         </span>
       )}
 
@@ -284,20 +298,54 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <StatusMark runState={displayRunState} isAgent={!!session.agent} />
-            <span
-              style={{
-                fontSize: "var(--fs-body)",
-                fontWeight: session.unread ? 700 : 600,
-                color: "var(--c-text-primary)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                fontFamily: isCommand ? "var(--font-mono)" : "var(--font-ui)",
-                lineHeight: 1.3,
-              }}
-            >
-              {primary}
-            </span>
+            {editing ? (
+              <input
+                ref={inputRef}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") {
+                    setEditValue(session.customTitle ?? primary);
+                    setEditing(false);
+                    useSessionsStore.getState().stopRenaming();
+                  }
+                  e.stopPropagation();
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  fontSize: "var(--fs-body)",
+                  fontWeight: 600,
+                  color: "var(--c-text-primary)",
+                  fontFamily: "var(--font-ui)",
+                  lineHeight: 1.3,
+                  border: "none",
+                  outline: "none",
+                  background: "var(--c-bg-3)",
+                  borderRadius: 4,
+                  padding: "0 4px",
+                  width: "100%",
+                  minWidth: 0,
+                }}
+              />
+            ) : (
+              <span
+                onDoubleClick={(e) => { e.stopPropagation(); startRename(); }}
+                style={{
+                  fontSize: "var(--fs-body)",
+                  fontWeight: session.unread ? 700 : 600,
+                  color: "var(--c-text-primary)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontFamily: isCommand ? "var(--font-mono)" : "var(--font-ui)",
+                  lineHeight: 1.3,
+                }}
+              >
+                {primary}
+              </span>
+            )}
           </div>
 
           {/* 行2: 目录 · 分支 · diff */}

@@ -4,18 +4,27 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Terax</title>
+    <title>Conduit</title>
     <script>
       (function () {
         try {
-          var t = localStorage.getItem("terax-ui-theme-shadow");
-          var resolved =
-            t === "light" || t === "dark"
-              ? t
-              : window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light";
-          document.documentElement.classList.add(resolved);
+          var s = JSON.parse(localStorage.getItem("conduit-appearance") || "{}");
+          var t = s.theme;
+          var dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+          var accent = /^#[0-9a-f]{6}$/i.test(s.accent || "") ? s.accent : "#c2683c";
+          var root = document.documentElement.style;
+          root.setProperty("--c-accent", accent);
+          var hex = parseInt(accent.slice(1), 16);
+          var ar = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+          var base = dark ? [24, 24, 27] : [255, 255, 255];
+          function mix(a, fg, bg) {
+            var r = Math.round(fg[0]*a+bg[0]*(1-a)), g = Math.round(fg[1]*a+bg[1]*(1-a)), b = Math.round(fg[2]*a+bg[2]*(1-a));
+            return "#" + ((1<<24)|(r<<16)|(g<<8)|b).toString(16).slice(1);
+          }
+          root.setProperty("--c-accent-bg-light", mix(dark ? 0.18 : 0.12, ar, base));
+          root.setProperty("--c-accent-bg-soft", mix(dark ? 0.10 : 0.06, ar, base));
+          root.setProperty("--c-accent-border", mix(dark ? 0.30 : 0.22, ar, base));
         } catch (e) {}
       })();
     </script>

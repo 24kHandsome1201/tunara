@@ -32,6 +32,8 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -43,5 +45,11 @@ jobs:
       - name: Typecheck and build frontend
         run: pnpm build
 
-      - name: Run Rust tests
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+      - name: Run Rust clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run test suite
         run: pnpm test

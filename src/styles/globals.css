@@ -76,6 +76,19 @@ html[data-chrome="borderless"] {
   display: none !important;
 }
 
+.scroll-fade-y {
+  --scroll-fade-bg: var(--c-bg-white);
+  background:
+    linear-gradient(var(--scroll-fade-bg) 32%, transparent) top / 100% 14px local,
+    linear-gradient(transparent, var(--scroll-fade-bg) 68%) bottom / 100% 14px local,
+    linear-gradient(to bottom, color-mix(in srgb, var(--c-text-primary) 10%, transparent), transparent) top / 100% 9px scroll,
+    linear-gradient(to top, color-mix(in srgb, var(--c-text-primary) 8%, transparent), transparent) bottom / 100% 9px scroll;
+  background-repeat: no-repeat;
+}
+.scroll-fade-sidebar {
+  --scroll-fade-bg: var(--c-bg-2-glass);
+}
+
 /* Conduit animations */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
@@ -88,6 +101,7 @@ html[data-chrome="borderless"] {
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 @keyframes agentBusyProgress { 0% { transform: translateX(-110%); } 50% { transform: translateX(70%); } 100% { transform: translateX(250%); } }
 @keyframes contentIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ctxMenuIn { from { opacity: 0; transform: translateY(-2px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes slideInRight { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes slideInLeft { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
 
@@ -116,6 +130,20 @@ html[data-chrome="borderless"] {
 /* DiffPanel: external-editor button reveals on row hover */
 .diff-file-row .diff-file-open { opacity: 0; transition: opacity 120ms ease; }
 .diff-file-row:hover .diff-file-open { opacity: 1; }
+
+/* Focus-visible: uniform keyboard focus ring */
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline-offset: 1px;
+}
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

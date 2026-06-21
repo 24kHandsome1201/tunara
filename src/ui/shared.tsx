@@ -9,6 +9,32 @@ export function RefreshIcon({ size = 13 }: { size?: number }) {
   );
 }
 
+export function SearchIcon({ size = 13, color = "var(--c-text-5)" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  );
+}
+
+export function CloseIcon({
+  size = 13,
+  strokeWidth = 2.3,
+  color = "currentColor",
+}: {
+  size?: number;
+  strokeWidth?: number;
+  color?: string;
+}) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
 export function PanelEmptyState({ icon, label, sublabel }: { icon?: React.ReactNode; label: string; sublabel?: string }) {
   const defaultIcon = (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

@@ -17,6 +17,7 @@ import { useUIStore } from "./ui";
 interface SessionsState {
   sessions: Session[];
   activeSessionId: string | null;
+  renamingSessionId: string | null;
   launchedSessionIds: Record<string, true>;
   gitNonce: Record<string, number>;
   closeConfirmations: Record<string, number>;
@@ -29,6 +30,7 @@ interface SessionsState {
   updateSession: (id: string, patch: Partial<Session>) => void;
   refreshGit: (id: string) => void;
   clearCloseConfirmation: (id: string) => void;
+  closeSessions: (ids: string[]) => boolean;
   closeSessionsInDir: (dir: string) => void;
   clearDirCloseConfirmation: (dir: string) => void;
 
@@ -41,15 +43,20 @@ interface SessionsState {
   handleCwdChange: (id: string, cwd: string) => void;
   handleShellTitle: (id: string, title: string) => void;
 
+  renameSession: (id: string, name: string) => void;
+  startRenaming: (id: string) => void;
+  stopRenaming: () => void;
   reorderInGroup: (dir: string, fromIndex: number, toIndex: number) => void;
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
-  launchAllAgents: (dir: string) => void;
   splitWithNewSession: (direction: "horizontal" | "vertical") => void;
   closeSession: (id: string) => void;
 }
 
 let nextId = 1;
+const CLOSE_CONFIRM_WINDOW_MS = 3_000;
+const closeConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const dirCloseConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function makeSessionId(): string {
   return `s-${Date.now()}-${nextId++}`;
@@ -81,9 +88,42 @@ function ensureSessionVisibleInSplit(sessionId: string) {
   ui.setSplitPaneB(sessionId);
 }
 
+function cancelCloseConfirmationTimer(id: string) {
+  const timer = closeConfirmationTimers.get(id);
+  if (!timer) return;
+  clearTimeout(timer);
+  closeConfirmationTimers.delete(id);
+}
+
+function cancelDirCloseConfirmationTimer(dir: string) {
+  const timer = dirCloseConfirmationTimers.get(dir);
+  if (!timer) return;
+  clearTimeout(timer);
+  dirCloseConfirmationTimers.delete(dir);
+}
+
+function scheduleCloseConfirmationExpiry(id: string, clear: (id: string) => void) {
+  cancelCloseConfirmationTimer(id);
+  const timer = setTimeout(() => {
+    closeConfirmationTimers.delete(id);
+    clear(id);
+  }, CLOSE_CONFIRM_WINDOW_MS);
+  closeConfirmationTimers.set(id, timer);
+}
+
+function scheduleDirCloseConfirmationExpiry(dir: string, clear: (dir: string) => void) {
+  cancelDirCloseConfirmationTimer(dir);
+  const timer = setTimeout(() => {
+    dirCloseConfirmationTimers.delete(dir);
+    clear(dir);
+  }, CLOSE_CONFIRM_WINDOW_MS);
+  dirCloseConfirmationTimers.set(dir, timer);
+}
+
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessions: [],
   activeSessionId: null,
+  renamingSessionId: null,
   launchedSessionIds: {},
   gitNonce: {},
   closeConfirmations: {},
@@ -98,7 +138,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     ensureSessionVisibleInSplit(s.id);
   },
 
-  removeSession: (id) =>
+  removeSession: (id) => {
+    cancelCloseConfirmationTimer(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
@@ -118,7 +159,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         launchedSessionIds: nextLaunchedSessionIds,
         gitNonce,
       };
-    }),
+    });
+  },
 
   setActive: (id) => {
     let accepted = false;
@@ -141,44 +183,64 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
     })),
 
-  clearCloseConfirmation: (id) =>
+  clearCloseConfirmation: (id) => {
+    cancelCloseConfirmationTimer(id);
     set((state) => {
       const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
       return { closeConfirmations };
-    }),
+    });
+  },
 
-  clearDirCloseConfirmation: (dir) =>
+  clearDirCloseConfirmation: (dir) => {
+    cancelDirCloseConfirmationTimer(dir);
     set((state) => {
       const { [dir]: _removed, ...dirCloseConfirmations } = state.dirCloseConfirmations;
       return { dirCloseConfirmations };
-    }),
+    });
+  },
+
+  closeSessions: (ids) => {
+    const uniqueIds = new Set(ids);
+    const orderedTargets = get().sessions.filter((s) => uniqueIds.has(s.id));
+    if (orderedTargets.length === 0) return true;
+
+    const now = Date.now();
+    const unconfirmedBusy = orderedTargets.filter((s) =>
+      isSessionBusy(s) && now - (get().closeConfirmations[s.id] ?? 0) > CLOSE_CONFIRM_WINDOW_MS,
+    );
+    if (unconfirmedBusy.length > 0) {
+      set((state) => {
+        const closeConfirmations = { ...state.closeConfirmations };
+        for (const s of unconfirmedBusy) closeConfirmations[s.id] = now;
+        return { closeConfirmations };
+      });
+      for (const s of unconfirmedBusy) {
+        scheduleCloseConfirmationExpiry(s.id, get().clearCloseConfirmation);
+      }
+      return false;
+    }
+
+    for (const s of [...orderedTargets].reverse()) {
+      if (get().sessions.some((current) => current.id === s.id)) {
+        get().closeSession(s.id);
+      }
+    }
+    return true;
+  },
 
   closeSessionsInDir: (dir) => {
-    const sessionsInDir = get().sessions.filter((s) => s.dir === dir);
-    if (sessionsInDir.length === 0) return;
-    const hasBusy = sessionsInDir.some((s) => isSessionBusy(s));
-
-    if (hasBusy) {
+    const sessionIds = get().sessions.filter((s) => s.dir === dir).map((s) => s.id);
+    if (sessionIds.length === 0) return;
+    const closed = get().closeSessions(sessionIds);
+    if (!closed) {
       const lastConfirm = get().dirCloseConfirmations[dir] ?? 0;
-      if (Date.now() - lastConfirm > 3_000) {
+      if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
         set((state) => ({
           dirCloseConfirmations: { ...state.dirCloseConfirmations, [dir]: Date.now() },
         }));
-        return;
+        scheduleDirCloseConfirmationExpiry(dir, get().clearDirCloseConfirmation);
       }
-      // 二次确认：预置各 busy 会话的 closeConfirmation，使复用的 closeSession 直接通过其单会话确认门
-      const now = Date.now();
-      set((state) => {
-        const closeConfirmations = { ...state.closeConfirmations };
-        for (const s of sessionsInDir) {
-          if (isSessionBusy(s)) closeConfirmations[s.id] = now;
-        }
-        return { closeConfirmations };
-      });
-    }
-
-    for (const s of [...sessionsInDir].reverse()) {
-      get().closeSession(s.id);
+      return;
     }
 
     get().clearDirCloseConfirmation(dir);
@@ -191,12 +253,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       ),
     })),
 
-  updateSession: (id, patch) =>
+  updateSession: (id, patch) => {
     set((state) => ({
       sessions: state.sessions.map((s) =>
         s.id === id ? { ...s, ...patch, updatedAt: Date.now() } : s,
       ),
-    })),
+    }));
+    const session = get().sessions.find((s) => s.id === id);
+    if (session && !isSessionBusy(session) && get().closeConfirmations[id]) {
+      get().clearCloseConfirmation(id);
+    }
+  },
 
   handleAgentDetected: (id, agent) => {
     const session = get().sessions.find((s) => s.id === id);
@@ -281,6 +348,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (update) get().updateSession(id, update.patch);
   },
 
+  renameSession: (id, name) => {
+    const trimmed = name.trim();
+    get().updateSession(id, { customTitle: trimmed || undefined });
+    set({ renamingSessionId: null });
+  },
+
+  startRenaming: (id) => set({ renamingSessionId: id }),
+  stopRenaming: () => set({ renamingSessionId: null }),
+
   reorderInGroup: (dir, fromIndex, toIndex) =>
     set((state) => {
       if (fromIndex === toIndex) return {};
@@ -305,17 +381,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().addSession(createSession(dir, { title: "终端" }));
   },
 
-  launchAllAgents: (dir) => {
-    const agents = ["claude", "codex", "droid", "devin"];
-    for (const cmd of agents) {
-      get().addSession(createSession(dir, { pendingInput: cmd }));
-    }
-    const { collapsedDirs } = useUIStore.getState();
-    if (collapsedDirs[dir]) {
-      useUIStore.getState().toggleDirCollapsed(dir);
-    }
-  },
-
   splitWithNewSession: (direction) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
     const newSess = createSession(active?.dir ?? "~", { title: "终端" });
@@ -336,10 +401,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     if (session && isSessionBusy(session)) {
       const lastConfirm = get().closeConfirmations[id] ?? 0;
-      if (Date.now() - lastConfirm > 3_000) {
+      if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
         set((state) => ({
           closeConfirmations: { ...state.closeConfirmations, [id]: Date.now() },
         }));
+        scheduleCloseConfirmationExpiry(id, get().clearCloseConfirmation);
         return;
       }
     }

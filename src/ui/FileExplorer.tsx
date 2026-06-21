@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
-import { RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -29,15 +29,6 @@ function FileIcon() {
   );
 }
 
-function SearchIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
 function joinPath(base: string, name: string): string {
   if (!base || base === "/") return "/" + name;
   return base.endsWith("/") ? base + name : base + "/" + name;
@@ -55,11 +46,17 @@ function pathDisplay(currentPath: string, rootDir: string): string {
   if (currentPath === rootDir) return rootDir;
   let display = currentPath;
   if (rootDir !== "/" && currentPath.startsWith(rootDir + "/")) {
-    display = "· / " + currentPath.slice(rootDir.length + 1).split("/").join(" / ");
+    display = currentPath.slice(rootDir.length + 1).split("/").join(" › ");
   }
-  const parts = display.split("/").filter(Boolean);
-  if (parts.length <= 4) return parts.join(" / ") || "/";
-  return "… / " + parts.slice(-4).join(" / ");
+  const parts = display.split(/[\/›]/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 4) return parts.join(" › ") || "/";
+  return "… › " + parts.slice(-4).join(" › ");
+}
+
+function compactRelativePath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= 3) return path;
+  return "…/" + parts.slice(-3).join("/");
 }
 
 const folderEmptyIcon = (
@@ -260,16 +257,13 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
               title="清空搜索"
               style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)", flexShrink: 0 }}
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <CloseIcon size={11} strokeWidth={2.4} />
             </button>
           )}
         </div>
       </div>
 
-      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar">
+      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} 150ms ease` : undefined }} className="no-scrollbar scroll-fade-y">
         {isSearching ? (
           searchLoading ? (
             <PanelLoadingState label="搜索中" />
@@ -297,7 +291,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                       }}
                     >
                       {hit.isDir ? <FolderIcon /> : <FileIcon />}
-                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{hit.rel}</span>
+                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
                       {hit.isDir && <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>}
                     </button>
                     {isExpanded && !hit.isDir && (
@@ -329,10 +323,9 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                   setContextMenu({
                     position: { x: e.clientX, y: e.clientY },
                     items: [
-                      { label: "在此目录新建终端", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
-                      { label: "启动所有 Agent", action: () => useSessionsStore.getState().launchAllAgents(fullPath) },
-                      { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                      { label: "复制路径", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                      { id: "dir:new-terminal", label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
+                      { id: "dir:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                      { id: "dir:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                     ],
                   });
                 }}
@@ -362,8 +355,8 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                       setContextMenu({
                         position: { x: e.clientX, y: e.clientY },
                         items: [
-                          { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                          { label: "复制路径", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                          { id: "file:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                          { id: "file:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                         ],
                       });
                     }}
@@ -376,7 +369,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                   >
                     <FileIcon />
                     <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{entry.name}</span>
-                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{formatSize(entry.size)}</span>
+                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 48, textAlign: "right" }}>{formatSize(entry.size)}</span>
                   </button>
                   {isExpanded && (
                     <div style={{ animation: "contentIn var(--duration-normal) ease", overflow: "hidden" }}>

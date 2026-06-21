@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type ThemeType, type TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
 import { AgentBadge } from "@/ui/agents";
+import { AGENT_REGISTRY } from "@/modules/agent/registry";
+import { CloseIcon, RefreshIcon } from "../shared";
 
 interface SettingsProps {
   onClose: () => void;
@@ -23,25 +25,24 @@ const TABS: SettingsTab[] = ["外观", "CLI"];
 function ThemeCard({ label, themeType, selected, onClick }: { label: string; themeType: ThemeType; selected: boolean; onClick: () => void }) {
   const isDark = themeType === "dark";
   const isSystem = themeType === "system";
+  const previewBg = isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fbfbfc 50%, #1a1a1f 50%)" : "#fbfbfc";
+  const sidebarBg = isDark ? "rgba(255,255,255,0.08)" : isSystem ? "rgba(194,104,60,0.16)" : "#f0eff2";
+  const contentBg = isDark ? "rgba(255,255,255,0.12)" : isSystem ? "rgba(255,255,255,0.72)" : "#ffffff";
   return (
     <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 56, background: isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fff 50%, #1a1a1f 50%)" : "#fbfbfc", borderBottom: "1px solid var(--c-border-2)", display: "flex", flexDirection: "column" }}>
-        <div style={{ height: 14, background: isDark ? "#27272a" : "#f7f7f8", borderBottom: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, display: "flex", alignItems: "center", paddingLeft: 6, gap: 2.5 }}>
-          {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
-            <div key={c} style={{ width: 4, height: 4, borderRadius: "50%", background: c }} />
-          ))}
+      <div style={{ height: 62, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 7, display: "flex", gap: 6 }}>
+        <div style={{ width: 30, borderRadius: 5, background: sidebarBg, boxShadow: "inset -1px 0 color-mix(in srgb, var(--c-border-2) 80%, transparent)", display: "flex", flexDirection: "column", padding: "6px 3px", gap: 3 }}>
+          <div style={{ height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)" }} />
+          <div style={{ height: 2, width: "70%", borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)" }} />
+          <div style={{ height: 2, width: "85%", borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)" }} />
         </div>
-        <div style={{ flex: 1, display: "flex" }}>
-          <div style={{ width: 28, background: isDark ? "#2a2a30" : "#f0eff2", borderRight: `1px solid ${isDark ? "#3f3f46" : "#ededf0"}`, padding: "4px 3px", display: "flex", flexDirection: "column", gap: 2.5 }}>
-            {[1, 1, 1].map((_, i) => (
-              <div key={i} style={{ height: 2.5, borderRadius: 1.5, background: i === 0 ? "var(--c-accent)" : (isDark ? "#3f3f46" : "#d8d8de"), opacity: i === 0 ? 0.6 : 0.4 }} />
-            ))}
+        <div style={{ flex: 1, minWidth: 0, borderRadius: 5, background: contentBg, position: "relative", overflow: "hidden", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--c-border-2) 64%, transparent)" }}>
+          <div style={{ position: "absolute", left: 6, top: 7, display: "flex", alignItems: "center", gap: 3 }}>
+            <div style={{ width: 3, height: 3, borderRadius: "50%", background: "var(--c-accent)", opacity: 0.7 }} />
+            <div style={{ height: 2, width: 20, borderRadius: 1, background: "var(--c-accent)", opacity: isDark ? 0.72 : 0.62 }} />
           </div>
-          <div style={{ flex: 1, padding: "4px 6px", display: "flex", flexDirection: "column", gap: 2.5 }}>
-            {[9, 6, 8].map((w, i) => (
-              <div key={i} style={{ height: 2, width: `${w * 9}%`, borderRadius: 1, background: isDark ? "#3f3f46" : "#e0e0e5" }} />
-            ))}
-          </div>
+          <div style={{ position: "absolute", left: 6, right: 6, top: 18, height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.12)" : "rgba(20,20,24,0.06)" }} />
+          <div style={{ position: "absolute", left: 6, right: "38%", bottom: 8, height: 7, borderRadius: 4, background: isDark ? "rgba(255,255,255,0.14)" : "rgba(20,20,24,0.08)" }} />
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px" }}>
@@ -54,7 +55,7 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
 
 function AccentRing({ color, label, selected, onClick }: { color: string; label: string; selected: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} title={label} style={{ width: 24, height: 24, borderRadius: "50%", border: selected ? `2px solid ${color}` : "none", padding: 2, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: selected ? `0 0 0 1px ${color}` : "none" }}>
+    <button onClick={onClick} title={label} style={{ width: 24, height: 24, borderRadius: "50%", border: selected ? `1px solid ${color}` : "1px solid transparent", padding: 3, background: selected ? "var(--c-bg-3)" : "transparent", cursor: "pointer", flexShrink: 0, boxShadow: "none" }}>
       <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: color }} />
     </button>
   );
@@ -90,12 +91,14 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
 
 const SECTION_LABEL: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 10 };
 
-const CLI_LIST = [
-  { code: "CC", name: "Claude Code" }, { code: "CX", name: "Codex" }, { code: "AM", name: "Amp" },
-  { code: "GM", name: "Gemini" }, { code: "CP", name: "Copilot" }, { code: "CR", name: "Cursor" },
-  { code: "DR", name: "Droid" }, { code: "OC", name: "OpenCode" }, { code: "PI", name: "Pi" },
-  { code: "AG", name: "Auggie" }, { code: "DV", name: "Devin" },
-];
+const CLI_LIST = AGENT_REGISTRY.map(({ code, name }) => ({ code, name }));
+
+const SOURCE_LABELS: Record<ResolveSource, string> = {
+  userOverride: "自定义",
+  loginShellPath: "登录 Shell",
+  systemPath: "系统 PATH",
+  notFound: "未找到",
+};
 
 export function Settings({ onClose }: SettingsProps) {
   const theme = useUIStore((s) => s.theme);
@@ -117,13 +120,29 @@ export function Settings({ onClose }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
-  const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[]>([]);
+  const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
+  const [cliError, setCliError] = useState(false);
 
-  useEffect(() => {
-    invoke<ResolvedCommand[]>("resolve_all_bins").then(setResolvedClis).catch(() => {});
+  const loadCliStatus = useCallback(() => {
+    setResolvedClis(null);
+    setCliError(false);
+    invoke<ResolvedCommand[]>("resolve_all_bins")
+      .then((items) => {
+        setResolvedClis(items);
+        setCliError(false);
+      })
+      .catch(() => {
+        setResolvedClis([]);
+        setCliError(true);
+      });
   }, []);
 
-  const installed = CLI_LIST.filter(({ code }) => resolvedClis.find((c) => c.name === code)?.path);
+  useEffect(() => {
+    loadCliStatus();
+  }, [loadCliStatus]);
+
+  const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
+  const installedCliCount = CLI_LIST.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
 
   return (
     <>
@@ -136,10 +155,7 @@ export function Settings({ onClose }: SettingsProps) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>设置</span>
             <button onClick={onClose} style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }} className="hover-bg">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <CloseIcon size={13} strokeWidth={2.2} />
             </button>
           </div>
           <div style={{ display: "inline-flex", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: 3, gap: 2 }}>
@@ -151,7 +167,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar">
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
           {activeTab === "外观" && (
             <div>
               <div style={{ marginBottom: 24 }}>
@@ -200,18 +216,20 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>字号</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>−</button>
-                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)" }}>{fontSize}px</span>
-                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>+</button>
+                <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", overflow: "hidden" }}>
+                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderRight: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{fontSize}px</span>
+                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderLeft: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
                 </div>
               </div>
               <div>
                 <div style={SECTION_LABEL}>终端配色</div>
                 <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>仅影响终端区域，不改变界面主题</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 8 }}>
                   {([
                     { id: "default" as TerminalThemeName, label: "默认", bg: isDark ? "#18181b" : "#ffffff", fg: isDark ? "#e4e4e7" : "#27272a" },
+                    { id: "github-light" as TerminalThemeName, label: "GitHub", bg: "#ffffff", fg: "#24292f" },
+                    { id: "rose-pine-dawn" as TerminalThemeName, label: "Dawn", bg: "#faf4ed", fg: "#575279" },
                     { id: "catppuccin" as TerminalThemeName, label: "Catppuccin", bg: "#1e1e2e", fg: "#cdd6f4" },
                     { id: "tokyo-night" as TerminalThemeName, label: "Tokyo Night", bg: "#1a1b26", fg: "#c0caf5" },
                     { id: "one-dark" as TerminalThemeName, label: "One Dark", bg: "#282c34", fg: "#abb2bf" },
@@ -221,7 +239,7 @@ export function Settings({ onClose }: SettingsProps) {
                       key={t.id}
                       onClick={() => setTerminalTheme(t.id)}
                       style={{
-                        width: 100,
+                        width: "100%",
                         border: terminalTheme === t.id ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)",
                         borderRadius: "var(--r-card)",
                         padding: 0,
@@ -231,9 +249,9 @@ export function Settings({ onClose }: SettingsProps) {
                         textAlign: "left",
                       }}
                     >
-                      <div style={{ height: 36, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 3 }}>
-                        {[{ w: 40, o: 0.3 }, { w: 75, o: 0.6 }, { w: 55, o: 0.4 }, { w: 30, o: 0.25 }].map((line, i) => (
-                          <div key={i} style={{ height: 2, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
+                      <div style={{ height: 40, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 2.5 }}>
+                        {[{ w: 18, o: 0.35 }, { w: 45, o: 0.6 }, { w: 60, o: 0.45 }, { w: 35, o: 0.5 }, { w: 25, o: 0.3 }].map((line) => (
+                          <div key={`${line.w}-${line.o}`} style={{ height: 2.5, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
                         ))}
                       </div>
                       <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -263,41 +281,84 @@ export function Settings({ onClose }: SettingsProps) {
 
           {activeTab === "CLI" && (
             <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
-              {resolvedClis.length === 0 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...SECTION_LABEL, marginBottom: 4 }}>CLI 路径</div>
+                  <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
+                    {resolvedClis === null ? "正在检测当前应用 PATH" : `已找到 ${installedCliCount}/${CLI_LIST.length}`}
+                  </div>
+                </div>
+                <button
+                  onClick={loadCliStatus}
+                  className="hover-bg"
+                  disabled={resolvedClis === null}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "5px 9px",
+                    borderRadius: "var(--r-btn)",
+                    border: "1px solid var(--c-border-2)",
+                    background: "var(--c-bg-white)",
+                    color: "var(--c-text-3)",
+                    fontSize: "var(--fs-secondary)",
+                    cursor: resolvedClis === null ? "default" : "pointer",
+                    opacity: resolvedClis === null ? 0.55 : 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  <RefreshIcon size={12} />
+                  重新检测
+                </button>
+              </div>
+              {resolvedClis === null && (
                 <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>检测中…</div>
               )}
-              {resolvedClis.length > 0 && installed.length === 0 && (
-                <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>未检测到常用终端 CLI</div>
+              {cliError && (
+                <div style={{ fontSize: "var(--fs-body)", color: "var(--c-error)", marginBottom: 10 }}>
+                  CLI 路径检测失败
+                </div>
               )}
-              {(() => {
-                const hasUninstalled = CLI_LIST.some(({ code }) => !resolvedClis.find((c) => c.name === code)?.path);
-                return installed.map(({ code, name }) => {
-                  const cli = resolvedClis.find((c) => c.name === code);
-                  return (
-                    <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
-                      <AgentBadge agent={code} size={28} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
-                        <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-                          {cli?.path}
+              {resolvedClis !== null && (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {CLI_LIST.map(({ code, name }) => {
+                    const cli = resolvedByCode.get(code);
+                    const installed = !!cli?.path;
+                    const source = cli?.source ?? "notFound";
+                    return (
+                      <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
+                        <AgentBadge agent={code} size={28} disabled={!installed} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
+                          <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+                            {installed ? cli?.path : "未在当前应用 PATH 中找到"}
+                          </div>
                         </div>
+                        <span style={{ fontSize: "var(--fs-meta)", color: installed ? "var(--c-success)" : "var(--c-text-5)", fontWeight: 600, flexShrink: 0 }}>
+                          {installed ? SOURCE_LABELS[source] : "未找到"}
+                        </span>
                       </div>
-                      {hasUninstalled && (
-                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)", fontWeight: 600 }}>已安装</span>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>更改即时生效</span>
+          {activeTab === "外观" ? (
+            <button
+              onClick={() => useUIStore.getState().resetAppearance()}
+              style={{ padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
+              className="hover-bg"
+            >
+              恢复默认
+            </button>
+          ) : <span />}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", background: "var(--c-bg-3)", padding: "2px 6px", borderRadius: "var(--r-btn)" }}>ESC</span>
-            <button onClick={onClose} style={{ padding: "7px 20px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>
+            <button onClick={onClose} style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>
               完成
             </button>
           </div>

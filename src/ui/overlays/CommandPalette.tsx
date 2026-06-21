@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { SearchIcon } from "../shared";
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -36,8 +37,20 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
   const setActive = useSessionsStore((s) => s.setActive);
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
-  const ui = useUIStore;
+  const uiStore = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
+
+  function notifyBatchCloseConfirmation(subtitle: string) {
+    const st = useSessionsStore.getState();
+    const sessionId = st.activeSessionId ?? st.sessions[0]?.id;
+    if (!sessionId) return;
+    uiStore.getState().addToast({
+      sessionId,
+      title: "再次执行以关闭",
+      subtitle,
+      variant: "error",
+    });
+  }
 
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
@@ -54,7 +67,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
           section: "会话",
           originalIndex: idx++,
-          action: () => { setActive(s.id); ui.getState().recordCommandUse(`switch-${s.id}`); onClose(); },
+          action: () => { setActive(s.id); uiStore.getState().recordCommandUse(`switch-${s.id}`); onClose(); },
         });
       });
 
@@ -66,7 +79,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       section: "操作",
       originalIndex: idx++,
       action: () => {
-        ui.getState().recordCommandUse("new-terminal");
+        uiStore.getState().recordCommandUse("new-terminal");
         useSessionsStore.getState().newTerminal();
         onClose();
       },
@@ -81,7 +94,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         section: "操作",
         originalIndex: idx++,
         action: () => {
-          ui.getState().recordCommandUse("new-terminal-current-dir");
+          uiStore.getState().recordCommandUse("new-terminal-current-dir");
           useSessionsStore.getState().newTerminalInDir(activeSession.dir);
           onClose();
         },
@@ -95,8 +108,21 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         section: "操作",
         originalIndex: idx++,
         action: () => {
-          ui.getState().recordCommandUse("refresh-git-current");
+          uiStore.getState().recordCommandUse("refresh-git-current");
           useSessionsStore.getState().refreshGit(activeSession.id);
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "rename-current-session",
+        label: "重命名当前会话",
+        icon: <CmdIcon d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />,
+        section: "操作",
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("rename-current-session");
+          useSessionsStore.getState().startRenaming(activeSession.id);
           onClose();
         },
       });
@@ -109,7 +135,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         section: "操作",
         originalIndex: idx++,
         action: () => {
-          ui.getState().recordCommandUse("close-current-session");
+          uiStore.getState().recordCommandUse("close-current-session");
           useSessionsStore.getState().closeSession(activeSession.id);
           onClose();
         },
@@ -123,7 +149,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       originalIndex: idx++,
-      action: () => { ui.getState().recordCommandUse("toggle-sidebar"); ui.getState().toggleSidebar(); onClose(); },
+      action: () => { uiStore.getState().recordCommandUse("toggle-sidebar"); uiStore.getState().toggleSidebar(); onClose(); },
     });
 
     cmds.push({
@@ -133,7 +159,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       originalIndex: idx++,
-      action: () => { ui.getState().recordCommandUse("toggle-panel"); ui.getState().togglePanel(); onClose(); },
+      action: () => { uiStore.getState().recordCommandUse("toggle-panel"); uiStore.getState().togglePanel(); onClose(); },
     });
 
     cmds.push({
@@ -144,8 +170,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       section: "操作",
       originalIndex: idx++,
       action: () => {
-        ui.getState().recordCommandUse("split-horizontal");
-        if (ui.getState().split.mode !== "single") { onClose(); return; }
+        uiStore.getState().recordCommandUse("split-horizontal");
+        if (uiStore.getState().split.mode !== "single") { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("horizontal");
         onClose();
       },
@@ -159,8 +185,8 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       section: "操作",
       originalIndex: idx++,
       action: () => {
-        ui.getState().recordCommandUse("split-vertical");
-        if (ui.getState().split.mode !== "single") { onClose(); return; }
+        uiStore.getState().recordCommandUse("split-vertical");
+        if (uiStore.getState().split.mode !== "single") { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("vertical");
         onClose();
       },
@@ -173,11 +199,57 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
       section: "操作",
       originalIndex: idx++,
-      action: () => { ui.getState().recordCommandUse("settings"); ui.getState().setOverlay("settings"); },
+      action: () => { uiStore.getState().recordCommandUse("settings"); uiStore.getState().setOverlay("settings"); },
     });
 
+    cmds.push({
+      id: "refresh-all-git",
+      label: "刷新所有 Git 状态",
+      icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
+      section: "批量",
+      originalIndex: idx++,
+      action: () => {
+        uiStore.getState().recordCommandUse("refresh-all-git");
+        const st = useSessionsStore.getState();
+        st.sessions.forEach((s) => st.refreshGit(s.id));
+        onClose();
+      },
+    });
+
+    if (sessions.length > 1) {
+      cmds.push({
+        id: "close-all-sessions",
+        label: "关闭所有会话",
+        icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
+        section: "批量",
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("close-all-sessions");
+          const st = useSessionsStore.getState();
+          const closed = st.closeSessions(st.sessions.map((s) => s.id));
+          if (!closed) notifyBatchCloseConfirmation("运行中的会话需要再次确认");
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "close-other-sessions",
+        label: "关闭其他会话",
+        icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
+        section: "批量",
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("close-other-sessions");
+          const st = useSessionsStore.getState();
+          const closed = st.closeSessions(st.sessions.filter((s) => s.id !== activeSessionId).map((s) => s.id));
+          if (!closed) notifyBatchCloseConfirmation("运行中的其他会话需要再次确认");
+          onClose();
+        },
+      });
+    }
+
     return cmds;
-  }, [sessions, activeSessionId, activeSession, setActive, onClose, ui]);
+  }, [sessions, activeSessionId, activeSession, setActive, onClose, uiStore]);
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -235,10 +307,10 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     }
   }
 
-  const sections = new Map<string, Command[]>();
-  for (const cmd of ranked) {
+  const sections = new Map<string, Array<{ cmd: Command; globalIdx: number }>>();
+  for (const [globalIdx, cmd] of ranked.entries()) {
     const list = sections.get(cmd.section) ?? [];
-    list.push(cmd);
+    list.push({ cmd, globalIdx });
     sections.set(cmd.section, list);
   }
 
@@ -275,10 +347,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         }}
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
+          <SearchIcon size={14} />
           <input
             ref={inputRef}
             type="text"
@@ -297,19 +366,19 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           />
         </div>
 
-        <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "6px 0" }} className="no-scrollbar">
+        <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "6px 0" }} className="no-scrollbar scroll-fade-y">
           {ranked.length === 0 && (
             <div style={{ padding: "20px 16px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
               无匹配结果
             </div>
           )}
-          {[...sections.entries()].map(([section, cmds]) => (
+          {[...sections.entries()].map(([section, cmds], sectionIdx) => (
             <div key={section}>
-              <div style={{ padding: "6px 16px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontWeight: 600 }}>
+              {sectionIdx > 0 && <div style={{ height: 1, background: "var(--c-border-1)", margin: "4px 14px" }} />}
+              <div style={{ padding: "6px 14px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>
                 {section}
               </div>
-              {cmds.map((cmd) => {
-                const globalIdx = ranked.indexOf(cmd);
+              {cmds.map(({ cmd, globalIdx }) => {
                 const isSelected = globalIdx === selectedIndex;
                 return (
                   <div
@@ -322,26 +391,14 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
-                      padding: "7px 12px 7px 14px",
+                      padding: "7px 14px",
                       cursor: "pointer",
-                      background: isSelected ? "var(--c-accent-bg-soft)" : "transparent",
+                      background: isSelected ? "var(--c-accent-bg-light)" : "transparent",
                       borderRadius: "var(--r-btn)",
                       margin: "0 6px",
                       transition: "background var(--duration-fast) ease",
                     }}
                   >
-                    {isSelected && (
-                      <div style={{
-                        position: "absolute",
-                        left: 0,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        width: 3,
-                        height: "60%",
-                        background: "var(--c-accent)",
-                        borderRadius: "0 2px 2px 0",
-                      }} />
-                    )}
                     {cmd.icon && (
                       <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--duration-fast) ease" }}>
                         {cmd.icon}

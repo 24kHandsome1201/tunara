@@ -1,4 +1,6 @@
 // Conduit UI 共用类型定义
+import { AGENT_NAMES } from "../modules/agent/registry.ts";
+export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
 export type AgentCode = "CC" | "CX" | "AM" | "GM" | "CP" | "CR" | "DR" | "OC" | "PI" | "AG" | "DV";
@@ -26,6 +28,9 @@ export interface Session {
   startedAt?: number;
   completedAt?: number;
   unread?: boolean;
+
+  // ── 用户自定义标题（优先级最高） ──
+  customTitle?: string;
 
   // ── 动态标题源（Warp 风格瀑布推导） ──
   lastCommand?: string;
@@ -63,21 +68,8 @@ export type OverlayType = null | "settings" | "command-palette";
 export type ThemeType = "light" | "dark" | "system";
 
 /** 终端配色主题 */
-export type TerminalThemeName = "default" | "catppuccin" | "tokyo-night" | "one-dark" | "solarized";
-
-export const AGENT_NAMES: Record<string, string> = {
-  CC: "Claude Code",
-  CX: "Codex",
-  AM: "Amp",
-  GM: "Gemini",
-  CP: "Copilot",
-  CR: "Cursor",
-  DR: "Droid",
-  OC: "OpenCode",
-  PI: "Pi",
-  AG: "Auggie",
-  DV: "Devin",
-};
+export const TERMINAL_THEME_NAMES = ["default", "catppuccin", "tokyo-night", "one-dark", "solarized", "github-light", "rose-pine-dawn"] as const;
+export type TerminalThemeName = typeof TERMINAL_THEME_NAMES[number];
 
 function shortDir(dir: string): string {
   if (dir === "~") return "~";
@@ -93,7 +85,7 @@ export function isPromptLikeShellTitle(title: string): boolean {
   return /(?:^|\s)[^@\s]+@[^%#$\n]+.*\s[%#$](?:\s|$)/.test(title.trim());
 }
 
-export function deriveTitle(s: Session): { primary: string; subtitle: string; isCommand: boolean } {
+export function deriveTitle(s: Session): { primary: string; subtitle: string; isCommand: boolean; totalAdded: number; totalRemoved: number } {
   let primary: string;
   let isCommand = false;
 
@@ -101,7 +93,9 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
     ? s.lastCommand
     : undefined;
 
-  if (s.agent) {
+  if (s.customTitle) {
+    primary = s.customTitle;
+  } else if (s.agent) {
     primary = AGENT_NAMES[s.agent] ?? s.agent;
   } else if (lastCommand) {
     primary = truncate(lastCommand, 60);
@@ -122,16 +116,23 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
   const parts: string[] = [];
   if (s.branch) parts.push(`⎇ ${s.branch}`);
   parts.push(dirLabel);
+  let totalAdded = 0;
+  let totalRemoved = 0;
   if (s.changes?.files.length) {
-    const added = s.changes.files.reduce((a, f) => a + f.added, 0);
-    const removed = s.changes.files.reduce((a, f) => a + f.removed, 0);
+    for (const file of s.changes.files) {
+      totalAdded += file.added;
+      totalRemoved += file.removed;
+    }
+  }
+
+  if (s.changes?.files.length) {
     const diffParts: string[] = [];
-    if (added > 0) diffParts.push(`+${added}`);
-    if (removed > 0) diffParts.push(`-${removed}`);
+    if (totalAdded > 0) diffParts.push(`+${totalAdded}`);
+    if (totalRemoved > 0) diffParts.push(`-${totalRemoved}`);
     if (diffParts.length) parts.push(diffParts.join(" "));
   }
 
-  return { primary, subtitle: parts.join(" · "), isCommand };
+  return { primary, subtitle: parts.join(" · "), isCommand, totalAdded, totalRemoved };
 }
 
 export function formatSize(bytes: number): string {

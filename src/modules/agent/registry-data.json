@@ -1,0 +1,79 @@
+[
+  {
+    "code": "CC",
+    "name": "Claude Code",
+    "commands": ["claude"],
+    "shellTitleFragments": ["claude code", "claude"],
+    "cliBin": "claude"
+  },
+  {
+    "code": "CX",
+    "name": "Codex",
+    "commands": ["codex"],
+    "shellTitleFragments": ["codex"],
+    "cliBin": "codex"
+  },
+  {
+    "code": "AM",
+    "name": "Amp",
+    "commands": ["amp", "ampcode"],
+    "shellTitleFragments": ["ampcode", "amp"],
+    "cliBin": "amp"
+  },
+  {
+    "code": "GM",
+    "name": "Gemini",
+    "commands": ["gemini"],
+    "shellTitleFragments": ["gemini"],
+    "cliBin": "gemini"
+  },
+  {
+    "code": "CP",
+    "name": "Copilot",
+    "commands": ["copilot"],
+    "shellTitleFragments": ["copilot"],
+    "cliBin": "gh"
+  },
+  {
+    "code": "CR",
+    "name": "Cursor",
+    "commands": ["agent"],
+    "shellTitleFragments": ["cursor"],
+    "cliBin": "cursor"
+  },
+  {
+    "code": "DR",
+    "name": "Droid",
+    "commands": ["droid"],
+    "shellTitleFragments": ["droid"],
+    "cliBin": "droid"
+  },
+  {
+    "code": "OC",
+    "name": "OpenCode",
+    "commands": ["opencode"],
+    "shellTitleFragments": ["opencode"],
+    "cliBin": "opencode"
+  },
+  {
+    "code": "PI",
+    "name": "Pi",
+    "commands": ["pi"],
+    "shellTitleFragments": ["pi"],
+    "cliBin": "pi"
+  },
+  {
+    "code": "AG",
+    "name": "Auggie",
+    "commands": ["auggie"],
+    "shellTitleFragments": ["auggie"],
+    "cliBin": "auggie"
+  },
+  {
+    "code": "DV",
+    "name": "Devin",
+    "commands": ["devin"],
+    "shellTitleFragments": ["devin"],
+    "cliBin": "devin"
+  }
+]

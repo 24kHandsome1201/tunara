@@ -49,7 +49,8 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(rust, /const FISH_CONFIG: &str = include_str!\("scripts\/config\.fish"\);/);
   assert.match(rust, /Fish,/);
   assert.match(rust, /"fish" => Shell::Fish/);
-  assert.match(rust, /Shell::Fish => \{[\s\S]*cmd\.arg\("-C"\);[\s\S]*source \{\}/);
+  assert.match(rust, /Shell::Fish => (?:match prepare_fish_config\(\)|\{[\s\S]*prepare_fish_config\(\))/);
+  assert.match(rust, /cmd\.arg\("-C"\);[\s\S]*format!\("source \{\}", fish_quote_path\(&config\)\)/);
   assert.match(rust, /fn prepare_fish_config\(\) -> Result<PathBuf, String>/);
 });
 
@@ -133,9 +134,10 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /if \(PROMPT_READY_AGENTS\.has\(currentAgentCode\)\) \{[\s\S]*?scheduleCodexStateCheck\(\);[\s\S]*?return;/);
   assert.match(terminal, /codexDataBurstCount[\s\S]*handleAgentBusy\(sessionIdRef\.current\)/);
   assert.match(terminal, /const screenState = detectCodexScreenState\(tail\);[\s\S]*if \(screenState === "ready"[\s\S]*handleAgentReady\(sessionIdRef\.current\)/);
-  assert.match(terminal, /const submitted = cleanTerminalText\(inputBuffer\)\.trim\(\);[\s\S]*if \(!submitted\) return;[\s\S]*handleAgentBusy\(sessionIdRef\.current\)/);
+  assert.match(terminal, /const submitAgentInput = \(submitted: string\) => \{[\s\S]*const trimmed = cleanTerminalText\(submitted\)\.trim\(\);[\s\S]*if \(!trimmed\) return;[\s\S]*handleAgentBusy\(sessionIdRef\.current\)/);
+  assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)[\s\S]*for \(const submitted of result\.submissions\) \{[\s\S]*submitAgentInput\(submitted\);[\s\S]*submitCommandBuffer\(submitted\);/);
   assert.match(terminal, /const oscCommand = extractCommandFromOsc\(data\);[\s\S]*promptEndRow >= 0 \|\| oscCommand/);
-  assert.match(terminal, /if \(!hasAgent\) \{[\s\S]*const agent = detectAgentCommand\(inputBuffer\);/);
+  assert.match(terminal, /if \(!hasAgent\) \{[\s\S]*const agent = detectAgentCommand\(submitted\);/);
   assert.match(terminal, /handleAgentBusy\(sessionIdRef\.current\)/);
   assert.match(terminal, /handleAgentReady\(sessionIdRef\.current\)/);
   assert.match(terminal, /handleAgentExited\(sessionIdRef\.current, exitCode\)/);

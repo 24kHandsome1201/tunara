@@ -1,7 +1,8 @@
 import { SessionCard } from "./SessionCard";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { groupByDir, deriveTitle, type Session } from "./types";
-import { useState, useRef, useCallback, useEffect } from "react";
+import { DirGroupHeader, SidebarSearchIcon } from "./SidebarDirGroupHeader";
+import { useState, useRef, useCallback } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
@@ -18,170 +19,6 @@ interface SidebarProps {
   onSelectSession: (id: string) => void;
   onNewTerminal?: () => void;
   onCloseSession?: (id: string) => void;
-}
-
-function SearchIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function DirGroupHeader({
-  dir,
-  count,
-  collapsed,
-  onToggleCollapse,
-  onNewTerminal,
-  onCloseAll,
-  confirmClose,
-  onClearCloseConfirm,
-  onContextMenu,
-}: {
-  dir: string;
-  count: number;
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
-  onNewTerminal?: () => void;
-  onCloseAll?: () => void;
-  confirmClose?: boolean;
-  onClearCloseConfirm?: () => void;
-  onContextMenu?: (e: React.MouseEvent) => void;
-}) {
-  useEffect(() => {
-    if (!confirmClose) return;
-    const timer = setTimeout(() => onClearCloseConfirm?.(), 3_000);
-    return () => clearTimeout(timer);
-  }, [confirmClose, onClearCloseConfirm]);
-
-  return (
-    <div
-      className="dir-group-header"
-      role={onToggleCollapse ? "button" : undefined}
-      tabIndex={onToggleCollapse ? 0 : undefined}
-      onClick={onToggleCollapse}
-      onKeyDown={(e) => {
-        if (onToggleCollapse && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault();
-          onToggleCollapse();
-        }
-      }}
-      title={onToggleCollapse ? (collapsed ? "展开" : "折叠") : undefined}
-      onContextMenu={onContextMenu}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 14px 6px",
-        cursor: onToggleCollapse ? "pointer" : undefined,
-      }}
-    >
-      {onToggleCollapse && (
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--c-text-5)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{
-            transform: collapsed ? "none" : "rotate(90deg)",
-            transition: "transform var(--duration-fast) ease",
-            flexShrink: 0,
-          }}
-        >
-          <polyline points="9 6 15 12 9 18" />
-        </svg>
-      )}
-      <FolderIcon />
-      <span
-        style={{
-          fontSize: "var(--fs-meta)",
-          fontWeight: 600,
-          fontFamily: "var(--font-mono)",
-          color: "var(--c-text-3)",
-          flex: 1,
-        }}
-      >
-        {dir}
-      </span>
-      <span
-        style={{
-          fontSize: "var(--fs-badge)",
-          color: "var(--c-text-4)",
-          background: "var(--c-bg-3)",
-          borderRadius: "var(--r-pill)",
-          padding: "1px 6px",
-          fontFamily: "var(--font-mono)",
-        }}
-      >
-        {count}
-      </span>
-      {onNewTerminal && (
-        <span
-          role="button"
-          tabIndex={0}
-          className="dir-group-add hover-bg"
-          onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNewTerminal(); } }}
-          title="在此目录新建终端"
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: 4,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            color: "var(--c-text-5)",
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </span>
-      )}
-      {onCloseAll && (
-        <span
-          role="button"
-          tabIndex={0}
-          className="dir-group-close hover-close"
-          onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onCloseAll(); } }}
-          title={confirmClose ? "进程运行中，再次点击关闭全部" : "关闭此目录全部会话"}
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: 4,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            color: confirmClose ? "var(--c-error)" : "var(--c-text-5)",
-            opacity: confirmClose ? 1 : undefined,
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </span>
-      )}
-    </div>
-  );
 }
 
 export function Sidebar({
@@ -202,9 +39,7 @@ export function Sidebar({
   const dragStartY = useRef(0);
   const dragStarted = useRef(false);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
-  const clearCloseConfirmation = useSessionsStore((s) => s.clearCloseConfirmation);
   const dirCloseConfirmations = useSessionsStore((s) => s.dirCloseConfirmations);
-  const clearDirCloseConfirmation = useSessionsStore((s) => s.clearDirCloseConfirmation);
   const collapsedDirs = useUIStore((s) => s.collapsedDirs);
   const toggleDirCollapsed = useUIStore((s) => s.toggleDirCollapsed);
   const q = search.trim().toLowerCase();
@@ -220,6 +55,39 @@ export function Sidebar({
     : sessions;
   const groups = groupByDir(filtered);
   const canReorder = q.length === 0;
+  const groupEntries = Object.entries(groups);
+  const visibleSessionIds = groupEntries.flatMap(([dir, groupSessions]) =>
+    !!collapsedDirs[dir] && !q ? [] : groupSessions.map((s) => s.id)
+  );
+  const tabbableSessionId = visibleSessionIds.includes(activeSessionId) ? activeSessionId : visibleSessionIds[0] ?? null;
+
+  const focusSessionCard = useCallback((sessionId: string) => {
+    requestAnimationFrame(() => {
+      const card = Array.from(document.querySelectorAll<HTMLElement>("[data-session-card-id]")).find(
+        (el) => el.dataset.sessionCardId === sessionId,
+      );
+      card?.focus();
+      card?.scrollIntoView({ block: "nearest" });
+    });
+  }, []);
+
+  const handleSessionKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>, sessionId: string) => {
+    const currentIndex = visibleSessionIds.indexOf(sessionId);
+    if (currentIndex === -1) return;
+
+    let nextIndex = currentIndex;
+    if (e.key === "ArrowDown") nextIndex = Math.min(currentIndex + 1, visibleSessionIds.length - 1);
+    else if (e.key === "ArrowUp") nextIndex = Math.max(currentIndex - 1, 0);
+    else if (e.key === "Home") nextIndex = 0;
+    else if (e.key === "End") nextIndex = visibleSessionIds.length - 1;
+    else return;
+
+    const nextId = visibleSessionIds[nextIndex];
+    if (!nextId) return;
+    e.preventDefault();
+    onSelectSession(nextId);
+    focusSessionCard(nextId);
+  }, [focusSessionCard, onSelectSession, visibleSessionIds]);
 
   const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
     dragStartY.current = e.clientY;
@@ -290,9 +158,10 @@ export function Sidebar({
         flexShrink: 0,
         overflow: "hidden",
       }}
+      aria-label="会话侧栏"
     >
       {onNewTerminal && (
-        <div style={{ padding: "10px 12px 6px" }}>
+        <div style={{ padding: "8px 12px 6px" }}>
           <button
             onClick={onNewTerminal}
             style={{
@@ -319,9 +188,12 @@ export function Sidebar({
             </span>
             <span
               style={{
-                fontSize: "var(--fs-badge)",
+                fontSize: "var(--fs-meta)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
+                background: "var(--c-bg-3)",
+                borderRadius: "var(--r-badge)",
+                padding: "2px 6px",
                 marginLeft: "auto",
               }}
             >
@@ -346,12 +218,13 @@ export function Sidebar({
             transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease",
           }}
         >
-          <SearchIcon />
+          <SidebarSearchIcon />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索会话"
+            aria-label="搜索会话"
             style={{
               flex: 1,
               border: "none",
@@ -372,7 +245,9 @@ export function Sidebar({
           overflowY: "auto",
           padding: "0 8px",
         }}
-        className="no-scrollbar"
+        className="no-scrollbar scroll-fade-y scroll-fade-sidebar"
+        role="list"
+        aria-label="会话列表"
       >
         {filtered.length === 0 && (
           <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
@@ -380,7 +255,7 @@ export function Sidebar({
           </div>
         )}
 
-        {Object.entries(groups).map(([dir, groupSessions]) => {
+        {groupEntries.map(([dir, groupSessions]) => {
           const collapsed = !!collapsedDirs[dir] && !q;
           return (
           <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
@@ -392,18 +267,16 @@ export function Sidebar({
               onNewTerminal={() => useSessionsStore.getState().newTerminalInDir(dir)}
               onCloseAll={() => useSessionsStore.getState().closeSessionsInDir(dir)}
               confirmClose={!!dirCloseConfirmations[dir]}
-              onClearCloseConfirm={() => clearDirCloseConfirmation(dir)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({
                   position: { x: e.clientX, y: e.clientY },
                   items: [
-                    { label: "在此目录新建终端", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
-                    { label: "启动所有 Agent", action: () => useSessionsStore.getState().launchAllAgents(dir) },
-                    { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
-                    { label: "复制路径", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
+                    { id: "dir:new-terminal", label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
+                    { id: "dir:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
+                    { id: "dir:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
                     null,
-                    { label: "关闭全部会话", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
+                    { id: "dir:close-all", label: "关闭全部会话", icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
                   ],
                 });
               }}
@@ -414,7 +287,7 @@ export function Sidebar({
                 const isDragging = drag?.draggingId === s.id;
                 const showIndicator = drag?.sourceDir === dir && drag.overIndex === idx && drag.draggingId !== s.id;
                 return (
-                  <div key={s.id} data-session-id={s.id}>
+                  <div key={s.id} data-session-id={s.id} role="listitem">
                     {showIndicator && (
                       <div style={{ height: 2, background: "var(--c-accent)", borderRadius: 1, margin: "0 10px 2px" }} />
                     )}
@@ -434,18 +307,21 @@ export function Sidebar({
                         session={s}
                         active={s.id === activeSessionId}
                         confirmClose={!!closeConfirmations[s.id]}
+                        tabIndex={s.id === tabbableSessionId ? 0 : -1}
                         onClick={() => { if (!dragStarted.current) onSelectSession(s.id); }}
+                        onKeyDown={(e) => handleSessionKeyDown(e, s.id)}
                         onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
-                        onClearCloseConfirm={() => clearCloseConfirmation(s.id)}
+                        onRename={(name) => useSessionsStore.getState().renameSession(s.id, name)}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setContextMenu({
                             position: { x: e.clientX, y: e.clientY },
                             items: [
-                              { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
-                              { label: "复制目录路径", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
+                              { id: "session:rename", label: "重命名", icon: "rename", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
+                              { id: "session:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
+                              { id: "session:copy-dir", label: "复制目录路径", icon: "copy", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
                               null,
-                              { label: "关闭会话", danger: true, action: () => { onCloseSession?.(s.id); } },
+                              { id: "session:close", label: "关闭会话", icon: "close", danger: true, action: () => { onCloseSession?.(s.id); } },
                             ],
                           });
                         }}
@@ -459,34 +335,6 @@ export function Sidebar({
           </div>
           );
         })}
-      </div>
-
-      {/* 底部：会话数 */}
-      <div
-        style={{
-          borderTop: "1px solid var(--c-border-1)",
-          padding: "6px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-          会话
-        </span>
-        <span
-          style={{
-            fontSize: "var(--fs-badge)",
-            fontWeight: 600,
-            color: "var(--c-text-4)",
-            background: "var(--c-bg-3)",
-            borderRadius: "var(--r-pill)",
-            padding: "1px 6px",
-            fontFamily: "var(--font-mono)",
-          }}
-        >
-          {sessions.length}
-        </span>
       </div>
 
       {contextMenu && (

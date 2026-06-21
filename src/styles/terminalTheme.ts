@@ -72,11 +72,40 @@ export const SOLARIZED_THEME = {
   brightBlue: "#839496", brightMagenta: "#6c71c4", brightCyan: "#93a1a1", brightWhite: "#fdf6e3",
 };
 
+export const GITHUB_LIGHT_THEME = {
+  background: "#ffffff",
+  foreground: "#24292f",
+  cursor: "#044289",
+  cursorAccent: "#ffffff",
+  selectionBackground: "#0969da33",
+  black: "#24292f", red: "#cf222e", green: "#116329", yellow: "#4d2d00",
+  blue: "#0550ae", magenta: "#8250df", cyan: "#1b7c83", white: "#6e7781",
+  brightBlack: "#57606a", brightRed: "#a40e26", brightGreen: "#1a7f37", brightYellow: "#633c01",
+  brightBlue: "#0969da", brightMagenta: "#8250df", brightCyan: "#3192aa", brightWhite: "#8c959f",
+};
+
+export const ROSE_PINE_DAWN_THEME = {
+  background: "#faf4ed",
+  foreground: "#575279",
+  cursor: "#575279",
+  cursorAccent: "#faf4ed",
+  selectionBackground: "#dfdad944",
+  black: "#f2e9e1", red: "#b4637a", green: "#286983", yellow: "#ea9d34",
+  blue: "#56949f", magenta: "#907aa9", cyan: "#d7827e", white: "#575279",
+  brightBlack: "#9893a5", brightRed: "#b4637a", brightGreen: "#286983", brightYellow: "#ea9d34",
+  brightBlue: "#56949f", brightMagenta: "#907aa9", brightCyan: "#d7827e", brightWhite: "#575279",
+};
+
 const NAMED_DARK_THEMES: Record<string, typeof DARK_THEME> = {
   catppuccin: CATPPUCCIN_THEME,
   "tokyo-night": TOKYO_NIGHT_THEME,
   "one-dark": ONE_DARK_THEME,
   solarized: SOLARIZED_THEME,
+};
+
+const NAMED_LIGHT_THEMES: Record<string, typeof LIGHT_THEME> = {
+  "github-light": GITHUB_LIGHT_THEME,
+  "rose-pine-dawn": ROSE_PINE_DAWN_THEME,
 };
 
 export function isDarkTheme(theme: ThemeType): boolean {
@@ -85,15 +114,22 @@ export function isDarkTheme(theme: ThemeType): boolean {
   return false;
 }
 
+export function isTerminalThemeDark(terminalTheme: TerminalThemeName, appTheme: ThemeType): boolean {
+  if (terminalTheme === "default") return isDarkTheme(appTheme);
+  return !!NAMED_DARK_THEMES[terminalTheme];
+}
+
 export function getTerminalTheme(appTheme: ThemeType, terminalTheme: TerminalThemeName, accent?: string) {
   let base;
   if (terminalTheme !== "default" && NAMED_DARK_THEMES[terminalTheme]) {
     base = NAMED_DARK_THEMES[terminalTheme];
+  } else if (terminalTheme !== "default" && NAMED_LIGHT_THEMES[terminalTheme]) {
+    base = NAMED_LIGHT_THEMES[terminalTheme];
   } else {
     base = isDarkTheme(appTheme) ? DARK_THEME : LIGHT_THEME;
   }
   if (accent) {
-    const dark = terminalTheme !== "default" || isDarkTheme(appTheme);
+    const dark = isTerminalThemeDark(terminalTheme, appTheme);
     return { ...base, selectionBackground: accent + (dark ? "66" : "44") };
   }
   return base;

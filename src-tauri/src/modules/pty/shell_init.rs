@@ -119,19 +119,17 @@ pub fn build_command(
             // /etc/profile first.
             cmd.arg("-i");
         }
-        Shell::Fish => {
-            match prepare_fish_config() {
-                Ok(config) => {
-                    cmd.arg("-i");
-                    cmd.arg("-C");
-                    cmd.arg(format!("source {}", fish_quote_path(&config)));
-                }
-                Err(e) => {
-                    log::warn!("fish shell integration disabled: {e}");
-                    cmd.arg("-i");
-                }
+        Shell::Fish => match prepare_fish_config() {
+            Ok(config) => {
+                cmd.arg("-i");
+                cmd.arg("-C");
+                cmd.arg(format!("source {}", fish_quote_path(&config)));
             }
-        }
+            Err(e) => {
+                log::warn!("fish shell integration disabled: {e}");
+                cmd.arg("-i");
+            }
+        },
         Shell::Other => {
             log::info!(
                 "unsupported shell '{}', spawning without integration",

@@ -69,7 +69,8 @@ pub fn fs_read_file(path: String) -> Result<ReadResult, String> {
             e.to_string()
         })?;
 
-    let mut truncated = size > MAX_TEXT_PREVIEW_BYTES || bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES;
+    let mut truncated =
+        size > MAX_TEXT_PREVIEW_BYTES || bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES;
     if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
         bytes.truncate(MAX_TEXT_PREVIEW_BYTES as usize);
     }

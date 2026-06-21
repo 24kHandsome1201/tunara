@@ -40,6 +40,13 @@ pub struct StatusResult {
     pub summary: String,
 }
 
+struct FileChangeAccumulator {
+    added: usize,
+    removed: usize,
+    mark: char,
+    stage: &'static str,
+}
+
 #[tauri::command]
 pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
     let repo_path = expand_tilde(&repo_path);
@@ -61,7 +68,9 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
 
     // Unstaged + untracked: index → workdir（未暂存 + 未追踪）
     let mut unstaged_opts = DiffOptions::new();
-    unstaged_opts.include_untracked(true).recurse_untracked_dirs(true);
+    unstaged_opts
+        .include_untracked(true)
+        .recurse_untracked_dirs(true);
     let unstaged_diff = repo
         .diff_index_to_workdir(None, Some(&mut unstaged_opts))
         .map_err(|e| e.to_string())?;
@@ -83,9 +92,7 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
 /// 从 diff 收集 FileChange，`is_staged_diff` 区分是 staged (HEAD→index) 还是
 /// unstaged (index→workdir) diff。后者中 Untracked delta 归类为 "untracked"。
 fn collect_diff(diff: &git2::Diff, is_staged_diff: bool) -> Result<Vec<FileChange>, String> {
-    // (added, removed, mark, stage)
-    let per_file: RefCell<HashMap<String, (usize, usize, char, &'static str)>> =
-        RefCell::new(HashMap::new());
+    let per_file: RefCell<HashMap<String, FileChangeAccumulator>> = RefCell::new(HashMap::new());
     diff.foreach(
         &mut |delta, _progress| {
             let path = delta_path(&delta);
@@ -93,7 +100,12 @@ fn collect_diff(diff: &git2::Diff, is_staged_diff: bool) -> Result<Vec<FileChang
             per_file
                 .borrow_mut()
                 .entry(path)
-                .or_insert((0, 0, delta_mark(&delta), stage));
+                .or_insert(FileChangeAccumulator {
+                    added: 0,
+                    removed: 0,
+                    mark: delta_mark(&delta),
+                    stage,
+                });
             true
         },
         None,
@@ -102,12 +114,15 @@ fn collect_diff(diff: &git2::Diff, is_staged_diff: bool) -> Result<Vec<FileChang
             let path = delta_path(&delta);
             let stage = stage_for_delta(&delta, is_staged_diff);
             let mut map = per_file.borrow_mut();
-            let e = map
-                .entry(path)
-                .or_insert((0, 0, delta_mark(&delta), stage));
+            let e = map.entry(path).or_insert(FileChangeAccumulator {
+                added: 0,
+                removed: 0,
+                mark: delta_mark(&delta),
+                stage,
+            });
             match line.origin() {
-                '+' => e.0 += 1,
-                '-' => e.1 += 1,
+                '+' => e.added += 1,
+                '-' => e.removed += 1,
                 _ => {}
             }
             true
@@ -118,12 +133,12 @@ fn collect_diff(diff: &git2::Diff, is_staged_diff: bool) -> Result<Vec<FileChang
     Ok(per_file
         .into_inner()
         .into_iter()
-        .map(|(path, (added, removed, mark, stage))| FileChange {
+        .map(|(path, change)| FileChange {
             path,
-            status: mark.to_string(),
-            stage: stage.to_string(),
-            added,
-            removed,
+            status: change.mark.to_string(),
+            stage: change.stage.to_string(),
+            added: change.added,
+            removed: change.removed,
         })
         .collect())
 }
@@ -204,7 +219,11 @@ pub fn git_diff(repo_path: String, file: String) -> Result<FileDiff, String> {
     diff.print(git2::DiffFormat::Patch, |_d, _h, l| {
         let content = std::str::from_utf8(l.content()).unwrap_or("");
         let origin = l.origin();
-        let prefix_len = if matches!(origin, '+' | '-' | ' ') { 1 } else { 0 };
+        let prefix_len = if matches!(origin, '+' | '-' | ' ') {
+            1
+        } else {
+            0
+        };
         if out.len() + content.len() + prefix_len > DIFF_MAX_BYTES || lines >= DIFF_MAX_LINES {
             truncated = true;
             return true;

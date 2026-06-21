@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  detectAgentCommand,
   detectCodexScreenState,
   isSessionBusy,
   parseAgentLifecycleOsc,
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
+import { scanTerminalInputBuffer } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
 import { parseOsc7 } from "../src/modules/terminal/lib/osc-handlers.ts";
 import {
   agentBusyUpdate,
@@ -69,6 +71,49 @@ function createHarness(initial = makeSession()) {
     },
   };
 }
+
+test("terminal input buffer scans submissions across chunks", () => {
+  let result = scanTerminalInputBuffer("", "cla");
+  assert.equal(result.buffer, "cla");
+  assert.deepEqual(result.submissions, []);
+
+  result = scanTerminalInputBuffer(result.buffer, "ude\r");
+  assert.equal(result.buffer, "");
+  assert.deepEqual(result.submissions, ["claude"]);
+});
+
+test("terminal input buffer handles editing keys and terminal escape noise", () => {
+  assert.deepEqual(scanTerminalInputBuffer("", "abc\x7fd\n"), {
+    buffer: "",
+    submissions: ["abd"],
+  });
+  assert.deepEqual(scanTerminalInputBuffer("", "abc\x15d\n"), {
+    buffer: "",
+    submissions: ["d"],
+  });
+  assert.deepEqual(scanTerminalInputBuffer("", "ab\x1b[Acd\n"), {
+    buffer: "",
+    submissions: ["abcd"],
+  });
+  assert.deepEqual(scanTerminalInputBuffer("", "ab\x1b]0;title\x07cd\n"), {
+    buffer: "",
+    submissions: ["abcd"],
+  });
+  assert.deepEqual(scanTerminalInputBuffer("", "one\ntwo\r"), {
+    buffer: "",
+    submissions: ["one", "two"],
+  });
+});
+
+test("agent command detection maps first shell command token only", () => {
+  assert.equal(detectAgentCommand("claude --dangerously-skip-permissions"), "CC");
+  assert.equal(detectAgentCommand("\x1b[32mcodex\x1b[0m exec"), "CX");
+  assert.equal(detectAgentCommand("ampcode"), "AM");
+  assert.equal(detectAgentCommand("agent run task"), "CR");
+  assert.equal(detectAgentCommand("copilot suggest"), "CP");
+  assert.equal(detectAgentCommand("ls claude"), null);
+  assert.equal(detectAgentCommand(""), null);
+});
 
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {
   const h = createHarness();
