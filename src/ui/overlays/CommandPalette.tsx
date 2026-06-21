@@ -306,10 +306,10 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     }
   }
 
-  const sections = new Map<string, Command[]>();
-  for (const cmd of ranked) {
+  const sections = new Map<string, Array<{ cmd: Command; globalIdx: number }>>();
+  for (const [globalIdx, cmd] of ranked.entries()) {
     const list = sections.get(cmd.section) ?? [];
-    list.push(cmd);
+    list.push({ cmd, globalIdx });
     sections.set(cmd.section, list);
   }
 
@@ -379,8 +379,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
               <div style={{ padding: "6px 14px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontWeight: 600 }}>
                 {section}
               </div>
-              {cmds.map((cmd) => {
-                const globalIdx = ranked.indexOf(cmd);
+              {cmds.map(({ cmd, globalIdx }) => {
                 const isSelected = globalIdx === selectedIndex;
                 return (
                   <div

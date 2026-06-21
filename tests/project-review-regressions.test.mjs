@@ -188,6 +188,8 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(palette, /label: "刷新当前 Git 状态"/);
   assert.match(palette, /label: "关闭当前会话"/);
   assert.match(palette, /ranked\.length === 0 \? 0 : Math\.min\(index, ranked\.length - 1\)/);
+  assert.match(palette, /for \(const \[globalIdx, cmd\] of ranked\.entries\(\)\)/);
+  assert.doesNotMatch(palette, /ranked\.indexOf/);
   assert.match(sidebar, /const canReorder = q\.length === 0/);
   assert.match(sidebar, /if \(!canReorder\) return;/);
   assert.match(toast, /exitTimerRef/);
