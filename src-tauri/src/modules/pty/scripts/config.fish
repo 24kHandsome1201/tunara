@@ -50,6 +50,27 @@ if set -q CONDUIT_SESSION_ID
     end
   end
 
+  function _conduit_agent_run
+    set -l real_bin $argv[1]
+    set -l agent $argv[2]
+    set -e argv[1]
+    set -e argv[1]
+    set -l sid $CONDUIT_SESSION_ID
+    set -l sock $CONDUIT_HOOKS_SOCK
+    set -l f /tmp/conduit-agent-$sid.json
+    _conduit_agent_emit start $agent
+    if test -n "$sock"
+      printf '{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"idle\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U %s"}]}],"Stop":[{"hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"stop\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U %s"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"idle\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U %s"}]}]}}' $sid $agent $sock $sid $agent $sock $sid $agent $sock >$f
+      command $real_bin --settings $f $argv
+    else
+      command $real_bin $argv
+    end
+    set -l ret $status
+    _conduit_agent_emit exit $agent $ret
+    rm -f $f 2>/dev/null
+    return $ret
+  end
+
   function _conduit_agent_plain_run
     set -l real_bin $argv[1]
     set -l agent $argv[2]
@@ -63,11 +84,11 @@ if set -q CONDUIT_SESSION_ID
   end
 
   function claude
-    _conduit_agent_plain_run claude CC $argv
+    _conduit_agent_run claude CC $argv
   end
 
   function droid
-    _conduit_agent_plain_run droid DR $argv
+    _conduit_agent_run droid DR $argv
   end
 
   function codex

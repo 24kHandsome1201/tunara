@@ -43,7 +43,7 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(fish, /printf '\\e\]7;file:\/\/localhost%s\\e\\\\'/);
   assert.match(fish, /printf '\\e\]133;C;%s\\e\\\\'/);
   assert.match(fish, /printf '\\e\]777;conduit-agent;%s;%s;%s;%s\\e\\\\'/);
-  assert.match(fish, /function claude[\s\S]*_conduit_agent_plain_run claude CC/);
+  assert.match(fish, /function claude[\s\S]*_conduit_agent_run claude CC/);
   assert.match(fish, /function codex[\s\S]*_conduit_agent_plain_run codex CX/);
 
   assert.match(rust, /const FISH_CONFIG: &str = include_str!\("scripts\/config\.fish"\);/);
