@@ -57,6 +57,23 @@ test("drag and resize handlers release pointer capture from the original handle"
   }
 });
 
+test("app shell keeps shared resize and window lifecycle plumbing centralized", () => {
+  const app = read("src/app/App.tsx");
+  const init = read("src/app/useInit.ts");
+
+  assert.match(app, /interface ResizeHandleProps/);
+  assert.match(app, /function ResizeHandle\(\{ edge, getWidth, setWidth, direction, className \}: ResizeHandleProps\)/);
+  assert.match(app, /<ResizeHandle[\s\S]*edge="left"[\s\S]*direction=\{-1\}/);
+  assert.match(app, /<ResizeHandle[\s\S]*edge="right"[\s\S]*direction=\{1\}/);
+  assert.doesNotMatch(app, /function PanelResizeHandle\(\)[\s\S]*?document\.addEventListener\("pointermove"/);
+  assert.doesNotMatch(app, /function SidebarResizeHandle\(\)[\s\S]*?document\.addEventListener\("pointermove"/);
+
+  assert.match(init, /const win = getCurrentWindow\(\);/);
+  assert.match(init, /win\.isFullscreen\(\)/);
+  assert.match(init, /win\.onCloseRequested/);
+  assert.equal((init.match(/getCurrentWindow\(\)/g) ?? []).length, 1);
+});
+
 test("file explorer exposes fast project search, refresh, and hidden-file controls", () => {
   const bridge = read("src/modules/fs/fs-bridge.ts");
   const explorer = read("src/ui/FileExplorer.tsx");

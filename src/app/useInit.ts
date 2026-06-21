@@ -48,6 +48,7 @@ export function useInit() {
     });
 
     const unlistens: Array<Promise<() => void>> = [];
+    const win = getCurrentWindow();
 
     try {
       const p = platform();
@@ -55,7 +56,6 @@ export function useInit() {
       const setTL = (fs: boolean) =>
         useUIStore.getState().setTrafficLightWidth(isMac && !fs ? 96 : 0);
 
-      const win = getCurrentWindow();
       win.isFullscreen().then((fs) => setTL(fs));
 
       if (isMac) {
@@ -88,17 +88,16 @@ export function useInit() {
     };
 
     unlistens.push(
-      getCurrentWindow()
-        .onCloseRequested(async () => {
-          if (saveTimer) {
-            clearTimeout(saveTimer);
-            saveTimer = null;
-          }
-          const st = useSessionsStore.getState();
-          const ui = useUIStore.getState();
-          await saveSessions(st.sessions, st.activeSessionId);
-          await saveUILayout({ sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible });
-        }),
+      win.onCloseRequested(async () => {
+        if (saveTimer) {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+        }
+        const st = useSessionsStore.getState();
+        const ui = useUIStore.getState();
+        await saveSessions(st.sessions, st.activeSessionId);
+        await saveUILayout({ sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible });
+      }),
     );
 
     unlistens.push(startHooksListener());

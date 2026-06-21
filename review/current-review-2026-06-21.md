@@ -71,6 +71,8 @@
 - release metadata 已收口: package, Tauri, Cargo, Cargo.lock 和 Homebrew cask 都对齐 `1.0.2`; Homebrew URL/homepage 对齐当前 GitHub owner; cask zap 路径对齐 `dev.conduit.app`; 回归测试禁止 `PLACEHOLDER_SHA256` 和旧 owner/bundle id 回流。
 - `TerminalSearchBar`, `SidebarDirGroupHeader`, `observeTerminalResize` 和 `scanTerminalInputBuffer` 已从大组件抽出, `TerminalView.tsx` 降到 626 行, `Sidebar.tsx` 降到 338 行, 并新增 line-count 回归测试防止回涨。
 - `terminal-input-buffer`: 终端输入逐字符解析改成纯函数, 覆盖跨 chunk 输入、退格、Ctrl-U、多行提交、OSC title 和 CSI 方向键噪声。
+- `App`: 左右栏 resize handle 合并成参数化 `ResizeHandle`, pointer capture 和 document listener 生命周期只维护一份。
+- `useInit`: 复用同一个 `getCurrentWindow()` 结果处理 fullscreen、resize 和 close-requested, 避免窗口生命周期接线分叉。
 - `⌘0` 字号重置改用 `DEFAULT_SETTINGS.fontSize`, 不再硬编码 14。
 - `Toast` 退出状态改用 ref 防重复 dismiss 旧闭包。
 
@@ -137,6 +139,8 @@
 - B-2 暗色 accent fallback: 已修。
 - D-1 Agent 列表分散: 已修, 前端和 Rust resolver 共用 `registry-data.json`, 并有 Node/Rust 回归锁定。
 - D-2 terminal theme 校验重复: 已修, type 和校验共用 `TERMINAL_THEME_NAMES`。
+- D-5 PanelResizeHandle 和 SidebarResizeHandle 重复: 已修, 合并到通用 `ResizeHandle`。
+- D-6 useInit 重复调用 getCurrentWindow: 已修, fullscreen 和 close-requested 共用同一个 `win`。
 - D-8 remoteLabel 死代码: 已修。
 - P-3 CommandPalette `indexOf`: 仍是低优先级性能债。
 
