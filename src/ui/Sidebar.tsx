@@ -188,12 +188,12 @@ export function Sidebar({
             </span>
             <span
               style={{
-                fontSize: "var(--fs-badge)",
+                fontSize: "var(--fs-meta)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
                 background: "var(--c-bg-3)",
-                borderRadius: 4,
-                padding: "1px 5px",
+                borderRadius: "var(--r-badge)",
+                padding: "2px 6px",
                 marginLeft: "auto",
               }}
             >

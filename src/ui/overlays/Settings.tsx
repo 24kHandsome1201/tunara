@@ -30,11 +30,19 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
   const contentBg = isDark ? "rgba(255,255,255,0.12)" : isSystem ? "rgba(255,255,255,0.72)" : "#ffffff";
   return (
     <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 56, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 7, display: "flex", gap: 6 }}>
-        <div style={{ width: 30, borderRadius: 5, background: sidebarBg, boxShadow: "inset -1px 0 color-mix(in srgb, var(--c-border-2) 80%, transparent)" }} />
+      <div style={{ height: 62, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 7, display: "flex", gap: 6 }}>
+        <div style={{ width: 30, borderRadius: 5, background: sidebarBg, boxShadow: "inset -1px 0 color-mix(in srgb, var(--c-border-2) 80%, transparent)", display: "flex", flexDirection: "column", padding: "6px 3px", gap: 3 }}>
+          <div style={{ height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)" }} />
+          <div style={{ height: 2, width: "70%", borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)" }} />
+          <div style={{ height: 2, width: "85%", borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)" }} />
+        </div>
         <div style={{ flex: 1, minWidth: 0, borderRadius: 5, background: contentBg, position: "relative", overflow: "hidden", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--c-border-2) 64%, transparent)" }}>
-          <div style={{ position: "absolute", left: 8, right: 8, top: 9, height: 3, borderRadius: 999, background: "var(--c-accent)", opacity: isDark ? 0.72 : 0.62 }} />
-          <div style={{ position: "absolute", left: 8, right: "38%", bottom: 10, height: 7, borderRadius: 4, background: isDark ? "rgba(255,255,255,0.14)" : "rgba(20,20,24,0.08)" }} />
+          <div style={{ position: "absolute", left: 6, top: 7, display: "flex", alignItems: "center", gap: 3 }}>
+            <div style={{ width: 3, height: 3, borderRadius: "50%", background: "var(--c-accent)", opacity: 0.7 }} />
+            <div style={{ height: 2, width: 20, borderRadius: 1, background: "var(--c-accent)", opacity: isDark ? 0.72 : 0.62 }} />
+          </div>
+          <div style={{ position: "absolute", left: 6, right: 6, top: 18, height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.12)" : "rgba(20,20,24,0.06)" }} />
+          <div style={{ position: "absolute", left: 6, right: "38%", bottom: 8, height: 7, borderRadius: 4, background: isDark ? "rgba(255,255,255,0.14)" : "rgba(20,20,24,0.08)" }} />
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px" }}>
@@ -208,10 +216,10 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>字号</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>−</button>
-                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)" }}>{fontSize}px</span>
-                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>+</button>
+                <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", overflow: "hidden" }}>
+                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderRight: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{fontSize}px</span>
+                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderLeft: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
                 </div>
               </div>
               <div>
@@ -241,9 +249,9 @@ export function Settings({ onClose }: SettingsProps) {
                         textAlign: "left",
                       }}
                     >
-                      <div style={{ height: 36, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 3 }}>
-                        {[{ w: 40, o: 0.3 }, { w: 75, o: 0.6 }, { w: 55, o: 0.4 }, { w: 30, o: 0.25 }].map((line) => (
-                          <div key={`${line.w}-${line.o}`} style={{ height: 2, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
+                      <div style={{ height: 40, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 2.5 }}>
+                        {[{ w: 18, o: 0.35 }, { w: 45, o: 0.6 }, { w: 60, o: 0.45 }, { w: 35, o: 0.5 }, { w: 25, o: 0.3 }].map((line) => (
+                          <div key={`${line.w}-${line.o}`} style={{ height: 2.5, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
                         ))}
                       </div>
                       <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -342,7 +350,7 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === "外观" ? (
             <button
               onClick={() => useUIStore.getState().resetAppearance()}
-              style={{ padding: "5px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
+              style={{ padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
               className="hover-bg"
             >
               恢复默认
@@ -350,7 +358,7 @@ export function Settings({ onClose }: SettingsProps) {
           ) : <span />}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", background: "var(--c-bg-3)", padding: "2px 6px", borderRadius: "var(--r-btn)" }}>ESC</span>
-            <button onClick={onClose} style={{ padding: "7px 20px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>
+            <button onClick={onClose} style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>
               完成
             </button>
           </div>

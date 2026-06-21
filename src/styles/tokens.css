@@ -87,7 +87,7 @@
   --c-diff-add-text: #1a7a4f;
 
   /* ── 字体族 ── */
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   /* ── 字体尺寸 ── */
@@ -239,10 +239,10 @@
 
 .hover-bg { background: transparent; color: var(--c-text-4); transition: background var(--duration-fast) ease, color var(--duration-fast) ease; }
 .hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-bg:active { opacity: 0.8; }
+.hover-bg:active { transform: scale(0.94); }
 .hover-close { background: transparent; color: var(--c-text-5); transition: background var(--duration-fast) ease, color var(--duration-fast) ease; }
 .hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-close:active { opacity: 0.8; }
+.hover-close:active { transform: scale(0.92); }
 .hover-accent-bg { background: transparent; }
 .hover-accent-bg:hover { background: var(--c-accent-bg-light); }
 .hover-text-3:hover { color: var(--c-text-3); }

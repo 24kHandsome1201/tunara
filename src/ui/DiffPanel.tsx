@@ -137,11 +137,10 @@ function SectionHeader({ title, count, expanded, onToggle, titleColor, accentBor
         gap: 6,
         padding: "4px 8px",
         cursor: "pointer",
-        borderLeft: accentBorder ? "2px solid var(--c-success)" : "none",
-        marginLeft: accentBorder ? -1 : 0,
       }}
     >
       {chevronIcon(expanded)}
+      {accentBorder && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--c-success)", flexShrink: 0 }} />}
       <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: titleColor ?? "var(--c-text-4)" }}>{title}</span>
       <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-text-4)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "1px 6px", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
         {count}
@@ -402,17 +401,17 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       </div>
 
       {!notGit && !loading && (
-        <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "4px 8px 4px 12px", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: "var(--fs-meta-sm)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+        <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "6px 12px", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
             {remoteLabel(remote) || "Git"}
           </div>
           <button
             onClick={refresh}
             title="刷新 Git 状态"
             className="hover-bg"
-            style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            style={{ width: 20, height: 20, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
           >
-            <RefreshIcon size={11} />
+            <RefreshIcon size={12} />
           </button>
         </div>
       )}

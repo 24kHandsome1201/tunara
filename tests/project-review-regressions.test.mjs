@@ -195,7 +195,7 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(toast, /exitTimerRef/);
   assert.match(toast, /minWidth: 260/);
   assert.match(toast, /maxWidth: "min\(340px, calc\(100vw - 24px\)\)"/);
-  assert.match(toast, /boxShadow: `var\(--shadow-notif\), inset 3px 0 0 \$\{accentColor\}`/);
+  assert.match(toast, /borderLeft: `3px solid \$\{accentColor\}`/);
   assert.doesNotMatch(toast, /width: 260/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
@@ -339,7 +339,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
     palette,
   ].join("\n");
 
-  assert.match(titlebar, /width: 20, height: 20/);
+  assert.match(titlebar, /width: 16, height: 16/);
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);
@@ -368,7 +368,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(sessionCard, /tabIndex=\{tabIndex \?\? 0\}/);
   assert.match(sessionCard, /aria-current=\{active \? "page" : undefined\}/);
   assert.match(sessionCard, /boxShadow: focused \?/);
-  assert.match(main, /"inset 0 2px 0 var\(--c-accent\)"/);
+  assert.match(main, /inset 0 2px 0 var\(--c-accent\)/);
   assert.doesNotMatch(main, /outline: .*var\(--c-accent\)/);
   assert.match(main, /function SplitIcon/);
   assert.match(main, /title="左右分栏 ⌘D"/);
@@ -379,7 +379,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
   assert.match(settings, /const previewBg =/);
   assert.match(settings, /const sidebarBg =/);
-  assert.match(settings, /height: 56, background: previewBg/);
+  assert.match(settings, /height: 62, background: previewBg/);
   assert.doesNotMatch(settings, /#ff5f57|#febc2e|#28c840/);
   assert.doesNotMatch(settings, /\[9, 6, 8\]/);
   assert.doesNotMatch(settings, /key=\{i\}/);
@@ -398,7 +398,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(explorer, /minWidth: 48, textAlign: "right"/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);
-  assert.match(tokens, /--font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;/);
+  assert.match(tokens, /--font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;/);
   assert.equal(existsSync(resolve(root, "src/styles/tokens.ts")), false);
   assert.match(globals, /\.scroll-fade-y/);
   assert.match(globals, /background-repeat: no-repeat/);

@@ -82,8 +82,9 @@ export function DirGroupHeader({
           color: "var(--c-text-3)",
           flex: 1,
         }}
+        title={dir}
       >
-        {dir}
+        {dir.split("/").pop() || dir}
       </span>
       <span
         style={{

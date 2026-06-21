@@ -144,7 +144,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 [isHorizontal ? "width" : "height"]: `calc(${split.ratio * 100}% - 2.5px)`,
                 display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
                 borderRadius: 6,
-                boxShadow: paneASession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent)" : "inset 0 1px 0 transparent",
+                boxShadow: paneASession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)" : "inset 0 1px 0 transparent",
                 transition: "box-shadow var(--duration-fast) ease",
               }}
             >
@@ -157,7 +157,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 [isHorizontal ? "width" : "height"]: `calc(${(1 - split.ratio) * 100}% - 2.5px)`,
                 display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden",
                 borderRadius: 6,
-                boxShadow: paneBSession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent)" : "inset 0 1px 0 transparent",
+                boxShadow: paneBSession!.id === activeSessionId ? "inset 0 2px 0 var(--c-accent), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent)" : "inset 0 1px 0 transparent",
                 transition: "box-shadow var(--duration-fast) ease",
               }}
             >
@@ -203,12 +203,12 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", flex: "1 1 96px", minWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "1 1 96px", minWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
           {compactPath(active?.dir ?? "")}
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, maxWidth: "55%", overflow: "hidden", flexShrink: 1 }}>
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", letterSpacing: "0.02em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             ⎇ {active?.branch || "-"}
           </span>
           {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
@@ -245,8 +245,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             title="关闭分栏"
             aria-label="关闭分栏"
             style={{
-              width: 28,
-              height: 22,
+              width: 24,
+              height: 24,
               border: "none",
               background: "transparent",
               cursor: "pointer",

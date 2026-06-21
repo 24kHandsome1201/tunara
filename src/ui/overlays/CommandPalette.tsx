@@ -372,9 +372,10 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
               无匹配结果
             </div>
           )}
-          {[...sections.entries()].map(([section, cmds]) => (
+          {[...sections.entries()].map(([section, cmds], sectionIdx) => (
             <div key={section}>
-              <div style={{ padding: "6px 14px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontWeight: 600 }}>
+              {sectionIdx > 0 && <div style={{ height: 1, background: "var(--c-border-1)", margin: "4px 14px" }} />}
+              <div style={{ padding: "6px 14px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>
                 {section}
               </div>
               {cmds.map(({ cmd, globalIdx }) => {
@@ -392,7 +393,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
                       gap: 10,
                       padding: "7px 14px",
                       cursor: "pointer",
-                      background: isSelected ? "var(--c-accent-bg-soft)" : "transparent",
+                      background: isSelected ? "var(--c-accent-bg-light)" : "transparent",
                       borderRadius: "var(--r-btn)",
                       margin: "0 6px",
                       transition: "background var(--duration-fast) ease",

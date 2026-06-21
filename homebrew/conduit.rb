@@ -1,5 +1,5 @@
 cask "conduit" do
-  version "1.0.2"
+  version "1.1.0"
   sha256 :no_check
 
   url "https://github.com/24kHandsome1201/conduit/releases/download/v#{version}/Conduit_#{version}_aarch64.dmg"
