@@ -70,7 +70,9 @@ export function TerminalView({
   const theme = useUIStore((s) => s.theme);
   const fontSize = useUIStore((s) => s.fontSize);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
+  const cursorBlink = useUIStore((s) => s.cursorBlink);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
+  const accent = useUIStore((s) => s.accent);
 
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
@@ -87,8 +89,8 @@ export function TerminalView({
         fontFamily: FONT_FAMILY,
         fontSize,
         lineHeight: 1.05,
-        theme: getTerminalTheme(theme, terminalTheme),
-        cursorBlink: true,
+        theme: getTerminalTheme(theme, terminalTheme, accent),
+        cursorBlink,
         cursorStyle: cursorStyle as CursorStyle,
         cursorInactiveStyle: "outline",
         scrollback: 3_000,
@@ -584,14 +586,15 @@ export function TerminalView({
     if (!term) return;
     term.options.fontSize = fontSize;
     term.options.cursorStyle = cursorStyle as CursorStyle;
-    term.options.theme = getTerminalTheme(theme, terminalTheme);
+    term.options.cursorBlink = cursorBlink;
+    term.options.theme = getTerminalTheme(theme, terminalTheme, accent);
     try {
       fit?.fit();
       if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows);
     } catch {
       /* noop */
     }
-  }, [fontSize, cursorStyle, theme, terminalTheme, active]);
+  }, [fontSize, cursorStyle, cursorBlink, theme, terminalTheme, accent, active]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);

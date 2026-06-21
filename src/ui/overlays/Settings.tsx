@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type ThemeType, type TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
+import { isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
 import { AgentBadge } from "@/ui/agents";
 
@@ -64,7 +65,7 @@ const ACCENT_COLORS = [
   { color: "#2f9e7a", label: "Sage" },
   { color: "#4f6ef0", label: "Indigo" },
   { color: "#e0556b", label: "Rose" },
-  { color: "#e2c08d", label: "Sand" },
+  { color: "#c4a060", label: "Sand" },
 ];
 
 function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: (v: CursorStyle) => void }) {
@@ -100,16 +101,19 @@ export function Settings({ onClose }: SettingsProps) {
   const theme = useUIStore((s) => s.theme);
   const accent = useUIStore((s) => s.accent);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
+  const cursorBlink = useUIStore((s) => s.cursorBlink);
   const fontSize = useUIStore((s) => s.fontSize);
   const setTheme = useUIStore((s) => s.setTheme);
   const setAccent = useUIStore((s) => s.setAccent);
   const setCursorStyle = useUIStore((s) => s.setCursorStyle);
+  const setCursorBlink = useUIStore((s) => s.setCursorBlink);
   const setFontSize = useUIStore((s) => s.setFontSize);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
   const setTerminalTheme = useUIStore((s) => s.setTerminalTheme);
   const externalEditor = useUIStore((s) => s.externalEditor);
   const setExternalEditor = useUIStore((s) => s.setExternalEditor);
 
+  const isDark = isDarkTheme(theme);
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
@@ -170,7 +174,28 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={SECTION_LABEL}>终端光标样式</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={SECTION_LABEL}>终端光标样式</div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 10 }}>
+                    <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>闪烁</span>
+                    <button
+                      onClick={() => setCursorBlink(!cursorBlink)}
+                      style={{
+                        width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
+                        background: cursorBlink ? "var(--c-accent)" : "var(--c-bg-3)",
+                        transition: "background var(--duration-fast) ease",
+                        display: "flex", alignItems: "center",
+                      }}
+                    >
+                      <div style={{
+                        width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
+                        boxShadow: "var(--shadow-card)",
+                        transform: cursorBlink ? "translateX(16px)" : "translateX(0)",
+                        transition: "transform var(--duration-fast) ease",
+                      }} />
+                    </button>
+                  </label>
+                </div>
                 <CursorStylePicker value={cursorStyle} onChange={setCursorStyle} />
               </div>
               <div style={{ marginBottom: 24 }}>
@@ -183,9 +208,10 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
               <div>
                 <div style={SECTION_LABEL}>终端配色</div>
+                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>仅影响终端区域，不改变界面主题</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {([
-                    { id: "default" as TerminalThemeName, label: "默认", bg: "#18181b", fg: "#e4e4e7" },
+                    { id: "default" as TerminalThemeName, label: "默认", bg: isDark ? "#18181b" : "#ffffff", fg: isDark ? "#e4e4e7" : "#27272a" },
                     { id: "catppuccin" as TerminalThemeName, label: "Catppuccin", bg: "#1e1e2e", fg: "#cdd6f4" },
                     { id: "tokyo-night" as TerminalThemeName, label: "Tokyo Night", bg: "#1a1b26", fg: "#c0caf5" },
                     { id: "one-dark" as TerminalThemeName, label: "One Dark", bg: "#282c34", fg: "#abb2bf" },

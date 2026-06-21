@@ -56,7 +56,7 @@ export const ONE_DARK_THEME = {
   selectionBackground: "#3e445166",
   black: "#3f4451", red: "#e06c75", green: "#98c379", yellow: "#e5c07b",
   blue: "#61afef", magenta: "#c678dd", cyan: "#56b6c2", white: "#abb2bf",
-  brightBlack: "#4f5666", brightRed: "#be5046", brightGreen: "#98c379", brightYellow: "#d19a66",
+  brightBlack: "#4f5666", brightRed: "#e06c75", brightGreen: "#98c379", brightYellow: "#d19a66",
   brightBlue: "#61afef", brightMagenta: "#c678dd", brightCyan: "#56b6c2", brightWhite: "#e6e6e6",
 };
 
@@ -68,7 +68,7 @@ export const SOLARIZED_THEME = {
   selectionBackground: "#07364466",
   black: "#073642", red: "#dc322f", green: "#859900", yellow: "#b58900",
   blue: "#268bd2", magenta: "#d33682", cyan: "#2aa198", white: "#eee8d5",
-  brightBlack: "#586e75", brightRed: "#cb4b16", brightGreen: "#586e75", brightYellow: "#657b83",
+  brightBlack: "#586e75", brightRed: "#cb4b16", brightGreen: "#859900", brightYellow: "#b58900",
   brightBlue: "#839496", brightMagenta: "#6c71c4", brightCyan: "#93a1a1", brightWhite: "#fdf6e3",
 };
 
@@ -85,9 +85,16 @@ export function isDarkTheme(theme: ThemeType): boolean {
   return false;
 }
 
-export function getTerminalTheme(appTheme: ThemeType, terminalTheme: TerminalThemeName) {
+export function getTerminalTheme(appTheme: ThemeType, terminalTheme: TerminalThemeName, accent?: string) {
+  let base;
   if (terminalTheme !== "default" && NAMED_DARK_THEMES[terminalTheme]) {
-    return NAMED_DARK_THEMES[terminalTheme];
+    base = NAMED_DARK_THEMES[terminalTheme];
+  } else {
+    base = isDarkTheme(appTheme) ? DARK_THEME : LIGHT_THEME;
   }
-  return isDarkTheme(appTheme) ? DARK_THEME : LIGHT_THEME;
+  if (accent) {
+    const dark = terminalTheme !== "default" || isDarkTheme(appTheme);
+    return { ...base, selectionBackground: accent + (dark ? "66" : "44") };
+  }
+  return base;
 }

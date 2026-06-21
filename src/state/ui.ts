@@ -17,6 +17,7 @@ interface AppearanceSettings {
   theme: ThemeType;
   accent: string;
   cursorStyle: CursorStyle;
+  cursorBlink: boolean;
   fontSize: number;
   sidebarWidth: number;
   panelWidth: number;
@@ -36,6 +37,7 @@ const DEFAULT_SETTINGS: AppearanceSettings = {
   theme: "light",
   accent: "#c2683c",
   cursorStyle: "bar",
+  cursorBlink: true,
   fontSize: 14,
   sidebarWidth: 272,
   panelWidth: 320,
@@ -86,6 +88,7 @@ function loadSettings(): AppearanceSettings {
       theme: isTheme(parsed.theme) ? parsed.theme : DEFAULT_SETTINGS.theme,
       accent: sanitizeAccent(parsed.accent),
       cursorStyle: isCursorStyle(parsed.cursorStyle) ? parsed.cursorStyle : DEFAULT_SETTINGS.cursorStyle,
+      cursorBlink: typeof parsed.cursorBlink === "boolean" ? parsed.cursorBlink : DEFAULT_SETTINGS.cursorBlink,
       fontSize: clampNumber(parsed.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
       sidebarWidth: clampNumber(parsed.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
       panelWidth: clampNumber(parsed.panelWidth, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
@@ -171,6 +174,7 @@ interface UIState extends AppearanceSettings {
   setTheme: (t: ThemeType) => void;
   setAccent: (c: string) => void;
   setCursorStyle: (c: CursorStyle) => void;
+  setCursorBlink: (b: boolean) => void;
   setFontSize: (n: number) => void;
   setTerminalTheme: (t: TerminalThemeName) => void;
   setSidebarWidth: (w: number) => void;
@@ -214,6 +218,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
     setAccent: (accent) => set({ accent: sanitizeAccent(accent) }),
     setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
+    setCursorBlink: (cursorBlink) => set({ cursorBlink: typeof cursorBlink === "boolean" ? cursorBlink : DEFAULT_SETTINGS.cursorBlink }),
     setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
     setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
     setSidebarWidth: (sidebarWidth) => {
@@ -259,7 +264,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
   };
 }));
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "fontSize", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(
@@ -267,8 +272,8 @@ useUIStore.subscribe(
   () => {
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      const { theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor } = useUIStore.getState();
-      persistSettings({ theme, accent, cursorStyle, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor });
+      const { theme, accent, cursorStyle, cursorBlink, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor } = useUIStore.getState();
+      persistSettings({ theme, accent, cursorStyle, cursorBlink, fontSize, sidebarWidth, panelWidth, terminalTheme, externalEditor });
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
