@@ -36,7 +36,7 @@ export function registerPromptTracker(term: Terminal): PromptTracker {
   };
 }
 
-function parseOsc7(data: string): string | null {
+export function parseOsc7(data: string): string | null {
   const m = data.match(/^file:\/\/([^/]*)(\/.*)$/);
   if (!m) return null;
   if (!isLocalOscHost(m[1])) return null;

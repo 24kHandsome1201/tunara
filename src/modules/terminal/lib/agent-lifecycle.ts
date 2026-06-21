@@ -1,6 +1,6 @@
-import type { AgentActivity, AgentCode, RunState, Session } from "@/ui/types";
-import { AGENT_NAMES } from "@/ui/types";
-import { cleanTerminalText } from "./terminal-utils";
+import type { AgentActivity, AgentCode, RunState, Session } from "../../../ui/types.ts";
+import { AGENT_NAMES } from "../../../ui/types.ts";
+import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
 export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
@@ -19,6 +19,17 @@ const AGENT_COMMANDS: Record<string, AgentCode> = {
   auggie: "AG",
   devin: "DV",
 };
+
+const AGENT_CODES = new Set<AgentCode>(Object.values(AGENT_COMMANDS));
+
+export type AgentLifecycleEventName = "start" | "idle" | "stop" | "exit";
+
+export interface AgentLifecycleEvent {
+  event: AgentLifecycleEventName;
+  session: string;
+  agent: AgentCode;
+  code?: number;
+}
 
 const AGENT_SHELL_TITLE_ALIASES = new Set(
   [
@@ -39,6 +50,10 @@ const AGENT_SHELL_TITLE_FRAGMENTS = [
   "auggie",
   "devin",
 ];
+
+export function isAgentCode(value: string): value is AgentCode {
+  return AGENT_CODES.has(value as AgentCode);
+}
 
 export function detectAgentCommand(commandLine: string): AgentCode | null {
   const cmd = cleanTerminalText(commandLine).trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -86,10 +101,11 @@ function hasCodexBusyIndicator(text: string): boolean {
 }
 
 export function detectCodexScreenState(text: string): AgentScreenState {
-  const lines = cleanTerminalText(text)
+  const lines = cleanTerminalLines(text)
     .split("\n")
-    .map((line) => line.trimEnd());
-  const recent = lines.slice(-8);
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0);
+  const recent = lines.slice(-12);
   let promptIndex = -1;
   for (let i = recent.length - 1; i >= 0; i -= 1) {
     if (isCodexPromptLine(recent[i])) {
@@ -98,11 +114,9 @@ export function detectCodexScreenState(text: string): AgentScreenState {
     }
   }
 
-  const afterPrompt = promptIndex >= 0 ? recent.slice(promptIndex + 1) : [];
-  const afterPromptText = afterPrompt.join("\n");
   if (promptIndex >= 0) {
-    if (hasCodexBusyIndicator(afterPromptText)) return "busy";
-    if (afterPrompt.length <= 4) return "ready";
+    const recentJoined = recent.join("\n");
+    return hasCodexBusyIndicator(recentJoined) ? "busy" : "ready";
   }
 
   const recentText = recent.join("\n");
@@ -111,4 +125,25 @@ export function detectCodexScreenState(text: string): AgentScreenState {
   }
 
   return null;
+}
+
+export function parseAgentLifecycleOsc(data: string): AgentLifecycleEvent | null {
+  const parts = data.split(";");
+  if (parts[0] !== "conduit-agent") return null;
+
+  const event = parts[1] as AgentLifecycleEventName | undefined;
+  const session = parts[2] ?? "";
+  const agent = parts[3] ?? "";
+  const codeText = parts[4] ?? "";
+
+  if (event !== "start" && event !== "idle" && event !== "stop" && event !== "exit") return null;
+  if (!session || !isAgentCode(agent)) return null;
+
+  const code = codeText === "" ? undefined : Number.parseInt(codeText, 10);
+  return {
+    event,
+    session,
+    agent,
+    ...(Number.isFinite(code) ? { code } : {}),
+  };
 }

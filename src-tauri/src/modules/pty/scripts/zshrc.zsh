@@ -58,11 +58,23 @@ if [[ -z "$__CONDUIT_HOOKS_LOADED" ]]; then
 fi
 
 # Agent wrapper: intercept hookable agents, inject --settings for lifecycle hooks
-if [[ -n "$CONDUIT_HOOKS_SOCK" && -n "$CONDUIT_SESSION_ID" ]]; then
+# OSC 777 keeps the UI lifecycle reliable even when nc is missing or the hook socket is unavailable.
+if [[ -n "$CONDUIT_SESSION_ID" ]]; then
+  _conduit_agent_osc() {
+    local event="$1"
+    local agent="$2"
+    local code="${3:-}"
+    printf '\e]777;conduit-agent;%s;%s;%s;%s\e\\' "$event" "$CONDUIT_SESSION_ID" "$agent" "$code"
+  }
+
   _conduit_agent_emit() {
     local event="$1"
     local agent="$2"
     local code="${3:-}"
+    _conduit_agent_osc "$event" "$agent" "$code"
+    if [[ -z "$CONDUIT_HOOKS_SOCK" ]]; then
+      return 0
+    fi
     if [[ -n "$code" ]]; then
       printf '{"event":"%s","session":"%s","agent":"%s","code":%s}' "$event" "$CONDUIT_SESSION_ID" "$agent" "$code" | nc -U "$CONDUIT_HOOKS_SOCK" >/dev/null 2>&1 || true
     else
@@ -77,10 +89,14 @@ if [[ -n "$CONDUIT_HOOKS_SOCK" && -n "$CONDUIT_SESSION_ID" ]]; then
     local sock="$CONDUIT_HOOKS_SOCK"
     local f="/tmp/conduit-agent-${sid}.json"
     _conduit_agent_emit start "$agent"
-    cat > "$f" <<CONDUIT_EOF
+    if [[ -n "$sock" ]]; then
+      cat > "$f" <<CONDUIT_EOF
 {"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}],"Stop":[{"hooks":[{"type":"command","command":"printf '{\"event\":\"stop\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}]}}
 CONDUIT_EOF
-    command "$real_bin" --settings "$f" "$@"
+      command "$real_bin" --settings "$f" "$@"
+    else
+      command "$real_bin" "$@"
+    fi
     local ret=$?
     _conduit_agent_emit exit "$agent" "$ret"
     rm -f "$f" 2>/dev/null

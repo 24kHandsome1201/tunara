@@ -110,6 +110,36 @@ function StatusMark({ runState, isAgent }: { runState: RunState; isAgent: boolea
   return null;
 }
 
+
+function BusyProgress() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: 10,
+        right: 10,
+        bottom: 0,
+        height: 2,
+        overflow: "hidden",
+        borderRadius: 999,
+        background: "color-mix(in srgb, var(--c-accent) 14%, transparent)",
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          width: "42%",
+          height: "100%",
+          borderRadius: 999,
+          background: "var(--c-accent)",
+          animation: "agentBusyProgress 1.25s ease-in-out infinite",
+        }}
+      />
+    </div>
+  );
+}
+
 function DiffStat({ added, removed }: { added: number; removed: number }) {
   if (added === 0 && removed === 0) return null;
   return (
@@ -143,6 +173,7 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
   const { primary, isCommand } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
+  const showBusyProgress = !!session.agent && busy;
 
   const handleClose = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
@@ -318,6 +349,8 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
           进程运行中，再次点击关闭
         </div>
       )}
+
+      {showBusyProgress && <BusyProgress />}
     </div>
   );
 }

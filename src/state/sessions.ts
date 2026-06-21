@@ -1,7 +1,16 @@
 import { create } from "zustand";
 import type { Session, AgentCode } from "@/ui/types";
-import { AGENT_NAMES, isPromptLikeShellTitle } from "@/ui/types";
-import { initialAgentActivity, isAgentShellTitle, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
+import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
+import {
+  agentBusyUpdate,
+  agentDetectedUpdate,
+  agentExitedUpdate,
+  agentReadyUpdate,
+  commandDetectedUpdate,
+  commandFinishedUpdate,
+  cwdChangedUpdate,
+  shellTitleUpdate,
+} from "@/modules/terminal/lib/session-lifecycle";
 import { useUIStore } from "./ui";
 
 interface SessionsState {
@@ -130,104 +139,62 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     })),
 
   handleAgentDetected: (id, agent) => {
-    get().updateSession(id, {
-      agent,
-      agentActivity: initialAgentActivity(agent),
-      title: AGENT_NAMES[agent] ?? agent,
-      runState: "idle",
-      startedAt: Date.now(),
-      completedAt: undefined,
-      lastCommand: undefined,
-      shellTitle: undefined,
-      suppressShellTitle: false,
-    });
+    const session = get().sessions.find((s) => s.id === id);
+    const update = agentDetectedUpdate(session, agent);
+    if (update) get().updateSession(id, update.patch);
   },
 
   handleAgentReady: (id) => {
     const session = get().sessions.find((s) => s.id === id);
-    if (!session?.agent) return;
     const isActive = get().activeSessionId === id;
-    get().updateSession(id, {
-      agentActivity: "idle",
-      runState: "idle",
-      completedAt: Date.now(),
-      ...(!isActive ? { unread: true } : {}),
-    });
-    get().refreshGit(id);
+    const update = agentReadyUpdate(session, isActive);
+    if (!update) return;
+    get().updateSession(id, update.patch);
+    if (update.refreshGit) get().refreshGit(id);
   },
 
   handleAgentBusy: (id) => {
     const session = get().sessions.find((s) => s.id === id);
-    if (!session?.agent || session.agentActivity === "running") return;
-    get().updateSession(id, {
-      agentActivity: "running",
-      runState: "idle",
-      startedAt: Date.now(),
-      completedAt: undefined,
-      unread: false,
-    });
+    const update = agentBusyUpdate(session);
+    if (update) get().updateSession(id, update.patch);
   },
 
   handleAgentExited: (id, exitCode) => {
+    const session = get().sessions.find((s) => s.id === id);
     const isActive = get().activeSessionId === id;
-    get().updateSession(id, {
-      agent: undefined,
-      agentActivity: undefined,
-      title: "终端",
-      lastCommand: undefined,
-      lastExitCode: exitCode,
-      shellTitle: undefined,
-      suppressShellTitle: true,
-      runState: "idle",
-      completedAt: Date.now(),
-      ...(!isActive ? { unread: true } : {}),
-    });
-    get().refreshGit(id);
+    const update = agentExitedUpdate(session, exitCode, isActive);
+    if (!update) return;
+    get().updateSession(id, update.patch);
+    if (update.refreshGit) get().refreshGit(id);
   },
 
   handleCommandDetected: (id, command) => {
     const session = get().sessions.find((s) => s.id === id);
-    if (session?.agent || isPromptLikeShellTitle(command)) return;
-    get().updateSession(id, {
-      lastCommand: command,
-      runState: "running",
-      startedAt: Date.now(),
-      suppressShellTitle: false,
-    });
+    const update = commandDetectedUpdate(session, command);
+    if (update) get().updateSession(id, update.patch);
   },
 
   handleCommandFinished: (id, exitCode) => {
     const session = get().sessions.find((s) => s.id === id);
-    if (session?.agent || !session?.lastCommand) {
-      get().updateSession(id, { lastExitCode: exitCode });
-      return;
-    }
     const isActive = get().activeSessionId === id;
-    get().updateSession(id, {
-      lastExitCode: exitCode,
-      runState: exitCode === 0 ? "done" : "failed",
-      completedAt: Date.now(),
-      ...(!isActive ? { unread: true } : {}),
-    });
-    get().refreshGit(id);
+    const update = commandFinishedUpdate(session, exitCode, isActive);
+    if (!update) return;
+    get().updateSession(id, update.patch);
+    if (update.refreshGit) get().refreshGit(id);
   },
 
   handleCwdChange: (id, cwd) => {
     const session = get().sessions.find((s) => s.id === id);
-    const cwdChanged = session?.dir !== cwd;
-    const lastCommand = session?.lastCommand?.trim() ?? "";
-    get().updateSession(id, {
-      dir: cwd,
-      ...(cwdChanged && /^(?:cd|pushd|popd)(?:\s|$)/.test(lastCommand)
-        ? { lastCommand: undefined }
-        : {}),
-    });
+    const update = cwdChangedUpdate(session, cwd);
+    if (!update) return;
+    get().updateSession(id, update.patch);
+    if (update.refreshGit) get().refreshGit(id);
   },
 
   handleShellTitle: (id, title) => {
     const session = get().sessions.find((s) => s.id === id);
-    if (session?.agent || session?.suppressShellTitle || isAgentShellTitle(title) || isPromptLikeShellTitle(title)) return;
-    get().updateSession(id, { shellTitle: title });
+    const update = shellTitleUpdate(session, title);
+    if (update) get().updateSession(id, update.patch);
   },
 
   reorderInGroup: (dir, fromIndex, toIndex) =>

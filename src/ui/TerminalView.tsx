@@ -12,8 +12,8 @@ import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore, type CursorStyle } from "@/state/ui";
 import { type AgentCode } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
-import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
-import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
+import { cleanTerminalLines, cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
+import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
 
 interface TerminalViewProps {
@@ -164,15 +164,60 @@ export function TerminalView({
           codexStateTimer = null;
         }
       };
+      const scheduleQuietAgentReady = (delay = 3000) => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          idleTimer = null;
+          const s = getCurrentSession();
+          if (!s?.agent || s.agentActivity === "idle") return;
+          if (currentAgentCode && HOOK_READY_AGENTS.has(currentAgentCode)) {
+            agentStartupPending = false;
+          }
+          useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
+        }, delay);
+      };
+
       const markAgentDetected = (agent: AgentCode) => {
+        const sess = getCurrentSession();
         hasAgent = true;
         currentAgentCode = agent;
-        agentStartupPending = HOOK_READY_AGENTS.has(agent);
+        agentStartupPending = sess?.agent === agent
+          ? sess.agentActivity === "starting"
+          : HOOK_READY_AGENTS.has(agent);
         if (idleTimer) {
           clearTimeout(idleTimer);
           idleTimer = null;
         }
-        useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
+        if (sess?.agent !== agent) {
+          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
+        }
+      };
+
+      const applyAgentLifecycleEvent = (data: string) => {
+        const payload = parseAgentLifecycleOsc(data);
+        if (!payload) return false;
+        if (payload.session !== sessionIdRef.current) return true;
+
+        if (payload.event === "start") {
+          markAgentDetected(payload.agent);
+          return true;
+        }
+
+        const current = getCurrentSession();
+        if (!current?.agent || current.agent !== payload.agent) return true;
+
+        if (payload.event === "exit") {
+          clearAgentTracking();
+          useSessionsStore.getState().handleAgentExited(sessionIdRef.current, payload.code ?? lastExitCode);
+          return true;
+        }
+
+        if (payload.event === "idle" || payload.event === "stop") {
+          agentStartupPending = false;
+          useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
+        }
+
+        return true;
       };
 
       cleanups.push(
@@ -191,12 +236,6 @@ export function TerminalView({
       cleanups.push(
         registerCwdHandler(term, (cwd) => {
           useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
-          // OSC 7 from shell after agent exit → fallback for shells without OSC 133
-          const sess = syncAgentTrackingFromStore();
-          if (hasAgent || sess?.agent) {
-            clearAgentTracking();
-            useSessionsStore.getState().handleAgentExited(sessionIdRef.current, lastExitCode);
-          }
         }),
       );
       const titleDisposable = term.onTitleChange((title) => {
@@ -236,33 +275,38 @@ export function TerminalView({
           const line = buffer.getLine(row);
           if (line) parts.push(line.translateToString(true));
         }
-        return cleanTerminalText(parts.join("\n"));
+        return cleanTerminalLines(parts.join("\n"));
       };
 
+      let codexDataBurstCount = 0;
+
       const scheduleCodexStateCheck = () => {
+        codexDataBurstCount += 1;
+        const store = useSessionsStore.getState();
+        const sess = getCurrentSession();
+        if (sess?.agent && sess.agentActivity !== "running" && codexDataBurstCount >= 3) {
+          store.handleAgentBusy(sessionIdRef.current);
+        }
+
         if (codexStateTimer) clearTimeout(codexStateTimer);
         codexStateTimer = setTimeout(() => {
           codexStateTimer = null;
+          codexDataBurstCount = 0;
           if (!hasAgent || currentAgentCode !== "CX") return;
-          const sess = getCurrentSession();
-          if (!sess?.agent) return;
+          const s = getCurrentSession();
+          if (!s?.agent) return;
 
           const tail = getTerminalTailText();
           const screenState = detectCodexScreenState(tail);
 
-          if (screenState === "ready") {
-            if (sess.agentActivity !== "idle") {
-              useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
-            }
-            return;
+          if (screenState === "ready" && s.agentActivity !== "idle") {
+            store.handleAgentReady(sessionIdRef.current);
           }
-          if (screenState === "busy") {
-            if (sess.agentActivity !== "running") {
-              useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
-            }
-          }
-        }, 120);
+        }, 500);
       };
+
+      const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
+      cleanups.push(() => agentLifecycleDisposable.dispose());
 
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
@@ -288,8 +332,9 @@ export function TerminalView({
         } else if (marker === "B") {
           promptEndRow = term.buffer.active.cursorY + term.buffer.active.baseY;
         } else if (marker === "C") {
-          if (osc133Active && promptEndRow >= 0) {
-            const cmd = extractCommandFromOsc(data) || extractCommandFromBuffer();
+          const oscCommand = extractCommandFromOsc(data);
+          if (osc133Active && (promptEndRow >= 0 || oscCommand)) {
+            const cmd = oscCommand || extractCommandFromBuffer();
             if (cmd) {
               if (isMeaningfulCommand(cmd)) {
                 useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
@@ -339,28 +384,19 @@ export function TerminalView({
                   pendingData = [];
                 });
               }
-              if (hasAgent && currentAgentCode && (!HOOK_READY_AGENTS.has(currentAgentCode) || agentStartupPending)) {
+              if (hasAgent && currentAgentCode) {
                 if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
                   scheduleCodexStateCheck();
                   return;
                 }
+
                 const sess = getCurrentSession();
-                if (sess?.agentActivity === "idle") {
+                if (agentStartupPending && sess?.agentActivity === "idle") {
                   useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
                 }
-                if (idleTimer) clearTimeout(idleTimer);
-
-                idleTimer = setTimeout(() => {
-                  idleTimer = null;
-                  const s = getCurrentSession();
-
-                  if (s?.agent && s.agentActivity !== "idle") {
-                    if (currentAgentCode && HOOK_READY_AGENTS.has(currentAgentCode)) {
-                      agentStartupPending = false;
-                    }
-                    useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
-                  }
-                }, 3000);
+                if (agentStartupPending || sess?.agentActivity === "running") {
+                  scheduleQuietAgentReady();
+                }
               }
             },
             onExit: (code) => {
@@ -397,9 +433,11 @@ export function TerminalView({
         if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }
-        const agent = detectAgentCommand(inputBuffer);
-        if (agent) {
-          markAgentDetected(agent);
+        if (!hasAgent) {
+          const agent = detectAgentCommand(inputBuffer);
+          if (agent) {
+            markAgentDetected(agent);
+          }
         }
         inputBuffer = "";
       };
