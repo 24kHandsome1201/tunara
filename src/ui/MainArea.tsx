@@ -56,6 +56,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
     return () => { cancelled = true; };
   }, [active?.dir, active?.id, nonce]);
 
+  function compactPath(path: string): string {
+    if (path.length <= 48) return path;
+    const normalized = path.replace(/^\/Users\/[^/]+/, "~");
+    const parts = normalized.split("/").filter(Boolean);
+    if (parts.length <= 3) return normalized;
+    return `${parts[0]}/.../${parts.slice(-2).join("/")}`;
+  }
+
   function renderTerminalPane(s: Session, isActive: boolean) {
     return (
       <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -157,32 +165,34 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {active?.dir ?? ""}
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", flex: "1 1 96px", minWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
+          {compactPath(active?.dir ?? "")}
         </span>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-          ⎇ {active?.branch || "—"}
-        </span>
-        {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
-          <>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-              {remote.ahead > 0 && `↑${remote.ahead}`}{remote.ahead > 0 && remote.behind > 0 && " "}{remote.behind > 0 && `↓${remote.behind}`}
-            </span>
-          </>
-        )}
-        {active?.agent && (
-          <>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-              {AGENT_NAMES[active.agent] ?? active.agent}
-              {isAgentActivityBusy(active.agentActivity) && (
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0 }} />
-              )}
-            </span>
-          </>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, maxWidth: "55%", overflow: "hidden", flexShrink: 1 }}>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            ⎇ {active?.branch || "-"}
+          </span>
+          {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
+            <>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+                {remote.ahead > 0 && `↑${remote.ahead}`}{remote.ahead > 0 && remote.behind > 0 && " "}{remote.behind > 0 && `↓${remote.behind}`}
+              </span>
+            </>
+          )}
+          {active?.agent && (
+            <>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {AGENT_NAMES[active.agent] ?? active.agent}
+                {isAgentActivityBusy(active.agentActivity) && (
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0 }} />
+                )}
+              </span>
+            </>
+          )}
+        </div>
 
         <span style={{ marginLeft: "auto" }} />
 

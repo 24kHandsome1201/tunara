@@ -154,3 +154,46 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(toast, /exitTimerRef/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
+
+test("review fixes remove stale artifacts and guard high-risk regressions", () => {
+  const html = read("index.html");
+  const sessionCard = read("src/ui/SessionCard.tsx");
+  const editor = read("src-tauri/src/modules/editor/mod.rs");
+  const terminal = read("src/ui/TerminalView.tsx");
+  const status = read("src/ui/AgentStatusBar.tsx");
+  const sidebar = read("src/ui/Sidebar.tsx");
+  const explorer = read("src/ui/FileExplorer.tsx");
+  const sessions = read("src/state/sessions.ts");
+  const contextMenu = read("src/ui/ContextMenu.tsx");
+  const settings = read("src/ui/overlays/Settings.tsx");
+  const docs = read("docs/设计-右键菜单与批量启动Agent.md");
+
+  assert.match(html, /: "#c2683c"/);
+  assert.doesNotMatch(html, /#e09070/);
+
+  assert.match(sessionCard, /e\.key === "Escape"[\s\S]*stopRenaming\(\)/);
+  assert.match(editor, /use crate::modules::util::expand_tilde;/);
+  assert.match(editor, /let expanded_path = expand_tilde\(&path\);/);
+
+  assert.match(terminal, /const writePty = \(data: string\) => \{/);
+  assert.match(terminal, /pty\.write\(data\)\.catch/);
+  assert.match(terminal, /pty\.write\(cmd \+ "\\n"\)[\s\S]*\.then\(\(\) => onPendingInputConsumedRef/);
+  assert.match(terminal, /clearTimeout\(pendingInputTimer\)/);
+
+  assert.doesNotMatch(status, /position: "absolute"/);
+  assert.match(status, /margin: "4px 8px 0"/);
+
+  assert.doesNotMatch(sessions, /launchAllAgents/);
+  assert.doesNotMatch(sidebar, /启动所有 Agent/);
+  assert.doesNotMatch(explorer, /启动所有 Agent/);
+  assert.match(docs, /不做批量启动 Agent/);
+
+  assert.match(contextMenu, /role="menu"/);
+  assert.match(contextMenu, /ArrowDown/);
+  assert.match(contextMenu, /role="separator"/);
+  assert.match(contextMenu, /boxShadow: "var\(--shadow-menu\)"/);
+
+  assert.match(settings, /CLI 路径检测失败/);
+  assert.match(settings, /未在当前应用 PATH 中找到/);
+  assert.match(settings, /activeTab === "外观"/);
+});

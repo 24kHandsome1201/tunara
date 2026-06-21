@@ -97,6 +97,13 @@ const CLI_LIST = [
   { code: "AG", name: "Auggie" }, { code: "DV", name: "Devin" },
 ];
 
+const SOURCE_LABELS: Record<ResolveSource, string> = {
+  userOverride: "自定义",
+  loginShellPath: "登录 Shell",
+  systemPath: "系统 PATH",
+  notFound: "未找到",
+};
+
 export function Settings({ onClose }: SettingsProps) {
   const theme = useUIStore((s) => s.theme);
   const accent = useUIStore((s) => s.accent);
@@ -117,13 +124,21 @@ export function Settings({ onClose }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
-  const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[]>([]);
+  const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
+  const [cliError, setCliError] = useState(false);
 
   useEffect(() => {
-    invoke<ResolvedCommand[]>("resolve_all_bins").then(setResolvedClis).catch(() => {});
+    invoke<ResolvedCommand[]>("resolve_all_bins")
+      .then((items) => {
+        setResolvedClis(items);
+        setCliError(false);
+      })
+      .catch(() => {
+        setResolvedClis([]);
+        setCliError(true);
+      });
   }, []);
-
-  const installed = CLI_LIST.filter(({ code }) => resolvedClis.find((c) => c.name === code)?.path);
+  const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
 
   return (
     <>
@@ -201,9 +216,9 @@ export function Settings({ onClose }: SettingsProps) {
               <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>字号</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>−</button>
-                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)" }}>{fontSize}px</span>
-                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>+</button>
+	                  <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>−</button>
+	                  <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)" }}>{fontSize}px</span>
+	                  <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} className="hover-bg" style={{ width: 30, height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 16, cursor: "pointer" }}>+</button>
                 </div>
               </div>
               <div>
@@ -265,44 +280,51 @@ export function Settings({ onClose }: SettingsProps) {
 
           {activeTab === "CLI" && (
             <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
-              {resolvedClis.length === 0 && (
+              {resolvedClis === null && (
                 <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>检测中…</div>
               )}
-              {resolvedClis.length > 0 && installed.length === 0 && (
-                <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>未检测到常用终端 CLI</div>
+              {cliError && (
+                <div style={{ fontSize: "var(--fs-body)", color: "var(--c-error)", marginBottom: 10 }}>
+                  CLI 路径检测失败
+                </div>
               )}
-              {(() => {
-                const hasUninstalled = CLI_LIST.some(({ code }) => !resolvedClis.find((c) => c.name === code)?.path);
-                return installed.map(({ code, name }) => {
-                  const cli = resolvedClis.find((c) => c.name === code);
+              {resolvedClis !== null && (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {CLI_LIST.map(({ code, name }) => {
+                    const cli = resolvedByCode.get(code);
+                    const installed = !!cli?.path;
+                    const source = cli?.source ?? "notFound";
                   return (
                     <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
-                      <AgentBadge agent={code} size={28} />
+                      <AgentBadge agent={code} size={28} disabled={!installed} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
                         <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-                          {cli?.path}
+                          {installed ? cli?.path : "未在当前应用 PATH 中找到"}
                         </div>
                       </div>
-                      {hasUninstalled && (
-                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)", fontWeight: 600 }}>已安装</span>
-                      )}
+                      <span style={{ fontSize: "var(--fs-meta)", color: installed ? "var(--c-success)" : "var(--c-text-5)", fontWeight: 600, flexShrink: 0 }}>
+                        {installed ? SOURCE_LABELS[source] : "未找到"}
+                      </span>
                     </div>
                   );
-                });
-              })()}
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <button
-            onClick={() => useUIStore.getState().resetAppearance()}
-            style={{ padding: "5px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
-            className="hover-bg"
-          >
-            恢复默认
-          </button>
+          {activeTab === "外观" ? (
+            <button
+              onClick={() => useUIStore.getState().resetAppearance()}
+              style={{ padding: "5px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
+              className="hover-bg"
+            >
+              恢复默认
+            </button>
+          ) : <span />}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", background: "var(--c-bg-3)", padding: "2px 6px", borderRadius: "var(--r-btn)" }}>ESC</span>
             <button onClick={onClose} style={{ padding: "7px 20px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer" }}>

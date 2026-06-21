@@ -203,7 +203,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   function renderFileRow(file: typeof files[number]) {
     const isExpanded = expandedFile === file.path;
     return (
-      <div key={file.path} className="diff-file-row" style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginBottom: 3, overflow: "hidden" }}>
+      <div key={file.path} className="diff-file-row" style={{ background: "var(--c-bg-white)", borderBottom: "1px solid var(--c-border-1)", overflow: "hidden" }}>
         <div
           role="button"
           tabIndex={0}

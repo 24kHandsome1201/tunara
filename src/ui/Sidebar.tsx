@@ -399,7 +399,6 @@ export function Sidebar({
                   position: { x: e.clientX, y: e.clientY },
                   items: [
                     { label: "在此目录新建终端", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
-                    { label: "启动所有 Agent", action: () => useSessionsStore.getState().launchAllAgents(dir) },
                     { label: "在编辑器中打开", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
                     { label: "复制路径", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
                     null,

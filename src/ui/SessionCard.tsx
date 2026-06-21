@@ -45,6 +45,7 @@ function SessionIcon({ session }: { session: Session }) {
             borderRadius: "50%",
             background: style.bg,
             color: style.color,
+            border: `1px solid ${style.border}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -267,21 +268,6 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
         }}
       />
 
-      {session.unread && (
-        <span
-          style={{
-            position: "absolute",
-            right: 8,
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: displayRunState === "failed" ? "var(--c-error)" : "var(--c-accent)",
-          }}
-        />
-      )}
-
       {onClose && (
         <span
           role="button"
@@ -325,11 +311,15 @@ export function SessionCard({ session, active, confirmClose, onClick, onClose, o
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 onBlur={commitRename}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitRename();
-                  if (e.key === "Escape") setEditing(false);
-                  e.stopPropagation();
-                }}
+	                onKeyDown={(e) => {
+	                  if (e.key === "Enter") commitRename();
+	                  if (e.key === "Escape") {
+	                    setEditValue(session.customTitle ?? primary);
+	                    setEditing(false);
+	                    useSessionsStore.getState().stopRenaming();
+	                  }
+	                  e.stopPropagation();
+	                }}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   fontSize: "var(--fs-body)",

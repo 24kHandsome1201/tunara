@@ -7,6 +7,7 @@
 use std::process::{Command, Stdio};
 
 use crate::modules::resolver::ResolverState;
+use crate::modules::util::expand_tilde;
 
 enum GotoStyle {
     Flag,
@@ -34,9 +35,10 @@ pub fn open_in_editor(
         None => return Err(format!("editor not found: {bin}")),
     };
 
+    let expanded_path = expand_tilde(&path);
     let target = match line {
-        Some(l) => format!("{path}:{l}"),
-        None => path,
+        Some(l) => format!("{expanded_path}:{l}"),
+        None => expanded_path,
     };
 
     let mut cmd = Command::new(resolved_path);

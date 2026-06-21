@@ -19,6 +19,19 @@ interface ContextMenuProps {
 export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x: position.x, y: position.y });
+  const firstEnabled = Math.max(0, items.findIndex((entry) => entry && !entry.disabled));
+  const [activeIndex, setActiveIndex] = useState(firstEnabled);
+
+  const enabledIndices = items
+    .map((entry, i) => (entry && !entry.disabled ? i : -1))
+    .filter((i) => i >= 0);
+
+  const runItem = (index: number) => {
+    const item = items[index];
+    if (!item || item.disabled) return;
+    item.action();
+    onClose();
+  };
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -32,6 +45,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   }, [position.x, position.y]);
 
   useEffect(() => {
+    ref.current?.focus();
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
@@ -49,10 +63,39 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
+  function moveActive(delta: number) {
+    if (enabledIndices.length === 0) return;
+    const current = enabledIndices.indexOf(activeIndex);
+    const next = current < 0
+      ? 0
+      : (current + delta + enabledIndices.length) % enabledIndices.length;
+    setActiveIndex(enabledIndices[next]);
+  }
+
   return createPortal(
     <div
       ref={ref}
+      role="menu"
+      tabIndex={-1}
       onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          moveActive(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          moveActive(-1);
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          if (enabledIndices.length > 0) setActiveIndex(enabledIndices[0]);
+        } else if (e.key === "End") {
+          e.preventDefault();
+          if (enabledIndices.length > 0) setActiveIndex(enabledIndices[enabledIndices.length - 1]);
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          runItem(activeIndex);
+        }
+      }}
       style={{
         position: "fixed",
         left: pos.x,
@@ -63,15 +106,17 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
         background: "var(--c-bg-white)",
         border: "1px solid var(--c-border-2)",
         borderRadius: "var(--r-input)",
-        boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
+        boxShadow: "var(--shadow-menu)",
         padding: "4px 0",
+        outline: "none",
       }}
     >
       {items.map((entry, i) => {
         if (entry === null) {
-          return <div key={i} className="ctx-divider" />;
+          return <div key={`sep-${i}`} role="separator" className="ctx-divider" />;
         }
         const item = entry;
+        const active = activeIndex === i && !item.disabled;
         const cls = [
           "ctx-item",
           item.danger ? "ctx-item-danger" : "",
@@ -79,13 +124,16 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
         ].filter(Boolean).join(" ");
         return (
           <div
-            key={i}
+            key={`${item.label}-${i}`}
             role="menuitem"
+            aria-disabled={item.disabled ? true : undefined}
+            tabIndex={-1}
             className={cls}
+            onMouseEnter={() => {
+              if (!item.disabled) setActiveIndex(i);
+            }}
             onClick={() => {
-              if (item.disabled) return;
-              item.action();
-              onClose();
+              runItem(i);
             }}
             style={{
               height: 32,
@@ -94,6 +142,8 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
               alignItems: "center",
               fontSize: "var(--fs-body)",
               fontFamily: "var(--font-ui)",
+              background: active ? "var(--c-bg-hover)" : undefined,
+              color: active ? "var(--c-text-primary)" : undefined,
               cursor: item.disabled ? "default" : "pointer",
               whiteSpace: "nowrap",
               overflow: "hidden",

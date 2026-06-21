@@ -12,7 +12,7 @@
           var t = s.theme;
           var dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           if (dark) document.documentElement.classList.add("dark");
-          var accent = /^#[0-9a-f]{6}$/i.test(s.accent || "") ? s.accent : (dark ? "#e09070" : "#c2683c");
+          var accent = /^#[0-9a-f]{6}$/i.test(s.accent || "") ? s.accent : "#c2683c";
           var root = document.documentElement.style;
           root.setProperty("--c-accent", accent);
           var hex = parseInt(accent.slice(1), 16);

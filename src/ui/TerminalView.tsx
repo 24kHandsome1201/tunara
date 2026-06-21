@@ -429,16 +429,36 @@ export function TerminalView({
       }
 
       if (disposed) {
-        pty.close();
+        pty.close().catch(() => {});
         return;
       }
       ptyRef.current = pty;
 
+      const writePty = (data: string) => {
+        pty.write(data).catch(() => {
+          /* PTY may already be closed by the time xterm flushes input. */
+        });
+      };
+      const resizePty = (cols: number, rows: number) => {
+        pty.resize(cols, rows).catch(() => {
+          /* Resize can race with process exit or pane teardown. */
+        });
+      };
+      let pendingInputTimer: ReturnType<typeof setTimeout> | null = null;
+      cleanups.push(() => {
+        if (pendingInputTimer) {
+          clearTimeout(pendingInputTimer);
+          pendingInputTimer = null;
+        }
+      });
+
       if (pendingInputRef.current) {
         const cmd = pendingInputRef.current;
-        setTimeout(() => {
-          pty.write(cmd + "\n");
-          onPendingInputConsumedRef.current?.();
+        pendingInputTimer = setTimeout(() => {
+          pendingInputTimer = null;
+          pty.write(cmd + "\n")
+            .then(() => onPendingInputConsumedRef.current?.())
+            .catch(() => {});
         }, 300);
       }
 
@@ -459,7 +479,7 @@ export function TerminalView({
         inputBuffer = "";
       };
       const dataDisposable = term.onData((data) => {
-        pty.write(data);
+        writePty(data);
         const submitAgentInput = () => {
           if (!hasAgent) return;
           const submitted = cleanTerminalText(inputBuffer).trim();
@@ -528,7 +548,7 @@ export function TerminalView({
           if (resizeTimer) clearTimeout(resizeTimer);
           resizeTimer = setTimeout(() => {
             resizeTimer = null;
-            if (!disposed) pty.resize(term.cols, term.rows);
+            if (!disposed) resizePty(term.cols, term.rows);
           }, 250);
         }, 8);
       });
@@ -557,7 +577,7 @@ export function TerminalView({
       disposed = true;
       cleanups.forEach((fn) => fn());
       if (ptyRef.current) {
-        ptyRef.current.close();
+        ptyRef.current.close().catch(() => {});
         ptyRef.current = null;
       }
       termRef.current?.dispose();
@@ -578,7 +598,7 @@ export function TerminalView({
     const t = setTimeout(() => {
       try {
         fit.fit();
-        pty?.resize(term.cols, term.rows);
+        pty?.resize(term.cols, term.rows).catch(() => {});
         term.focus();
       } catch {
         /* noop */
@@ -598,7 +618,7 @@ export function TerminalView({
     term.options.theme = getTerminalTheme(theme, terminalTheme, accent);
     try {
       fit?.fit();
-      if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows);
+      if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows).catch(() => {});
     } catch {
       /* noop */
     }
@@ -720,7 +740,7 @@ export function TerminalView({
           </button>
         </div>
       )}
-      <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-1)", minHeight: 0 }} />
+      <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
     </div>
   );
 }

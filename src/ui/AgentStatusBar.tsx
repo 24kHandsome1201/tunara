@@ -45,12 +45,9 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   return (
     <div
       style={{
-        position: "absolute",
-        top: 4,
-        left: 8,
-        right: 8,
         height: 32,
-        zIndex: 20,
+        margin: "4px 8px 0",
+        flexShrink: 0,
         background: "var(--c-bg-1-glass)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
