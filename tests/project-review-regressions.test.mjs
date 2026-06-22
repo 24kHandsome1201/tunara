@@ -44,12 +44,15 @@ test("release cleanup removes orphan Rust modules from the source tree", () => {
   const modules = read("src-tauri/src/modules/mod.rs");
   const readme = read("README.md");
   const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
+  const generatedCapabilities = JSON.parse(read("src-tauri/gen/schemas/capabilities.json"));
   const desktopCapability = JSON.parse(read("src-tauri/capabilities/desktop.json"));
 
   assert.doesNotMatch(modules, /\bsecrets\b/);
   assert.doesNotMatch(modules, /\bshell\b/);
   assert.doesNotMatch(readme, /├── shell\//);
   assert.deepEqual(defaultCapability.windows, ["main"]);
+  assert.ok(defaultCapability.permissions.includes("core:window:allow-request-user-attention"));
+  assert.ok(generatedCapabilities.default.permissions.includes("core:window:allow-request-user-attention"));
   assert.deepEqual(desktopCapability.windows, ["main"]);
 });
 
@@ -517,6 +520,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
   assert.match(terminal, /import \{ TerminalViewChrome \} from "\.\/TerminalViewChrome"/);
+  assert.match(terminal, /import \{ getCurrentWindow, UserAttentionType \} from "@tauri-apps\/api\/window"/);
+  assert.match(terminal, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
+  assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
   assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
   assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);

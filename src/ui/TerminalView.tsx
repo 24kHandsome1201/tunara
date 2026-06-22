@@ -5,7 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, UserAttentionType } from "@tauri-apps/api/window";
 import { openPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
@@ -36,6 +36,14 @@ interface TerminalViewProps {
   pendingInputSubmit?: boolean;
   onPendingInputConsumed?: () => void;
 }
+
+function requestInformationalAttention() {
+  if (document.hasFocus() || !useUIStore.getState().bellNotification) return;
+  getCurrentWindow()
+    .requestUserAttention(UserAttentionType.Informational)
+    .catch(() => {});
+}
+
 export function TerminalView({
   sessionId,
   dir,
@@ -198,9 +206,7 @@ export function TerminalView({
         if (payload.event === "exit") {
           clearAgentTracking();
           useSessionsStore.getState().handleAgentExited(sessionIdRef.current, payload.code ?? lastExitCode);
-          if (!document.hasFocus() && useUIStore.getState().bellNotification) {
-            getCurrentWindow().requestUserAttention(2);
-          }
+          requestInformationalAttention();
           return true;
         }
         if (payload.event === "idle" || payload.event === "stop") {
@@ -255,9 +261,7 @@ export function TerminalView({
         }, 500);
       };
       const requestAttentionIfNeeded = () => {
-        if (!document.hasFocus() && useUIStore.getState().bellNotification) {
-          getCurrentWindow().requestUserAttention(2);
-        }
+        requestInformationalAttention();
       };
       const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
       cleanups.push(() => agentLifecycleDisposable.dispose());
@@ -428,10 +432,7 @@ export function TerminalView({
       });
       cleanups.push(() => dataDisposable.dispose());
       const bellDisposable = term.onBell(() => {
-        if (!useUIStore.getState().bellNotification) return;
-        if (!document.hasFocus()) {
-          getCurrentWindow().requestUserAttention(2);
-        }
+        requestInformationalAttention();
       });
       cleanups.push(() => bellDisposable.dispose());
       const el = containerRef.current!;
