@@ -549,6 +549,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalRuntimeSync = read("src/ui/useTerminalRuntimeSync.ts");
   const terminalWebgl = read("src/ui/useTerminalWebgl.ts");
   const terminalQuickSelect = read("src/modules/terminal/lib/terminal-quick-select.ts");
+  const terminalQuickSelectScope = read("src/modules/terminal/lib/terminal-quick-select-scope.ts");
   const terminalQuickSelectHook = read("src/ui/useTerminalQuickSelect.tsx");
   const terminalQuickSelectOverlay = read("src/ui/TerminalQuickSelect.tsx");
   const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
@@ -613,8 +614,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelect, /findTerminalFileLinkMatches/);
   assert.match(terminalQuickSelect, /resolveTerminalFileLinkPath/);
   assert.match(terminalQuickSelect, /export function quickSelectHint/);
-  assert.match(terminalQuickSelectHook, /readVisibleTerminalLines/);
-  assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readVisibleTerminalLines\(term\), cwd\)/);
+  assert.match(terminalQuickSelectScope, /TERMINAL_QUICK_SELECT_SCOPE_LINES = 1000/);
+  assert.match(terminalQuickSelectScope, /export function terminalQuickSelectRange/);
+  assert.match(terminalQuickSelectHook, /readQuickSelectTerminalLines/);
+  assert.match(terminalQuickSelectHook, /terminalQuickSelectRange\(buffer\.length, buffer\.viewportY, term\.rows\)/);
+  assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readQuickSelectTerminalLines\(term\), cwd\)/);
   assert.match(terminalQuickSelectHook, /URL、文件位置或可复制标识/);
   assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelectHook, /navigator\.clipboard\.writeText\(item\.copyText\)/);
@@ -625,6 +629,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectOverlay, /quickSelectHint\(index\)/);
   assert.match(terminalQuickSelectOverlay, /onCopy\(hintedItems\[exact\]\.item\)/);
   assert.match(commandPalette, /id: "quick-select-visible-output"/);
+  assert.match(commandPalette, /label: "快速选择附近输出"/);
   assert.match(commandPalette, /window\.dispatchEvent\(new CustomEvent\(TERMINAL_QUICK_SELECT_EVENT\)\)/);
   assert.match(keybindings, /"quickSelect"/);
   assert.match(appKeybindings, /case "quickSelect"/);

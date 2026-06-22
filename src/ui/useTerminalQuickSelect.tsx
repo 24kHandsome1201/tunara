@@ -3,6 +3,7 @@ import type { Terminal } from "@xterm/xterm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openInEditor } from "@/modules/editor/open";
 import { collectTerminalQuickSelectItems, TERMINAL_QUICK_SELECT_EVENT, type TerminalQuickSelectItem } from "@/modules/terminal/lib/terminal-quick-select";
+import { terminalQuickSelectRange } from "@/modules/terminal/lib/terminal-quick-select-scope";
 import { useUIStore } from "@/state/ui";
 import { TerminalQuickSelect } from "./TerminalQuickSelect";
 
@@ -12,10 +13,9 @@ interface TerminalQuickSelectOptions {
   sessionId: string;
 }
 
-function readVisibleTerminalLines(term: Terminal): string[] {
+function readQuickSelectTerminalLines(term: Terminal): string[] {
   const buffer = term.buffer.active;
-  const start = buffer.viewportY;
-  const end = Math.min(buffer.baseY + buffer.length - 1, start + term.rows - 1);
+  const { start, end } = terminalQuickSelectRange(buffer.length, buffer.viewportY, term.rows);
   const lines: string[] = [];
   for (let row = start; row <= end; row += 1) {
     const line = buffer.getLine(row);
@@ -38,9 +38,9 @@ export function useTerminalQuickSelect(
     if (!active) return;
     const term = termRef.current;
     if (!term) return;
-    const next = collectTerminalQuickSelectItems(readVisibleTerminalLines(term), cwd);
+    const next = collectTerminalQuickSelectItems(readQuickSelectTerminalLines(term), cwd);
     if (next.length === 0) {
-      notify("没有可快速选择的内容", "当前可见输出里没有 URL、文件位置或可复制标识", "error");
+      notify("没有可快速选择的内容", "附近输出里没有 URL、文件位置或可复制标识", "error");
       return;
     }
     setItems(next);

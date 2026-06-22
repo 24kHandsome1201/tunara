@@ -25,6 +25,10 @@ import {
   quickSelectHint,
 } from "../src/modules/terminal/lib/terminal-quick-select.ts";
 import {
+  TERMINAL_QUICK_SELECT_SCOPE_LINES,
+  terminalQuickSelectRange,
+} from "../src/modules/terminal/lib/terminal-quick-select-scope.ts";
+import {
   TERMINAL_FONT_LOAD_TIMEOUT_MS,
   buildTerminalFontFamily,
   waitForTerminalFontReady,
@@ -285,6 +289,14 @@ test("terminal quick select text tokens skip URL and file-link ranges", () => {
     "IP address",
     "Number",
   ]);
+});
+
+test("terminal quick select range scans a bounded scrollback window around the viewport", () => {
+  assert.equal(TERMINAL_QUICK_SELECT_SCOPE_LINES, 1000);
+  assert.deepEqual(terminalQuickSelectRange(3000, 1500, 40), { start: 500, end: 2539 });
+  assert.deepEqual(terminalQuickSelectRange(80, 0, 24), { start: 0, end: 79 });
+  assert.deepEqual(terminalQuickSelectRange(120, 110, 40), { start: 0, end: 119 });
+  assert.deepEqual(terminalQuickSelectRange(0, 10, 24), { start: 0, end: -1 });
 });
 
 test("terminal quick select hints use one or two character prefixes", () => {

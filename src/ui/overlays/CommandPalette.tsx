@@ -118,7 +118,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
 
       cmds.push({
         id: "quick-select-visible-output",
-        label: "快速选择可见输出",
+        label: "快速选择附近输出",
         shortcut: formatShortcut("mod+shift+space"),
         icon: <CmdIcon d="M9 11.5 12 14l7-8" />,
         section: "操作",
