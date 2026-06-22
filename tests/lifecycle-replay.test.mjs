@@ -29,6 +29,12 @@ import {
   quickSelectHint,
 } from "../src/modules/terminal/lib/terminal-quick-select.ts";
 import {
+  TERMINAL_LARGE_PASTE_WARNING_LENGTH,
+  analyzeTerminalPaste,
+  confirmProtectedTerminalPaste,
+  terminalPasteWarningMessage,
+} from "../src/modules/terminal/lib/terminal-paste-protection.ts";
+import {
   TERMINAL_QUICK_SELECT_SCOPE_LINES,
   terminalQuickSelectRange,
 } from "../src/modules/terminal/lib/terminal-quick-select-scope.ts";
@@ -271,6 +277,35 @@ test("terminal OSC 8 hyperlink handler opens only HTTP URLs", () => {
   assert.equal(handler.allowNonHttpProtocols, false);
   assert.deepEqual(opened, ["https://example.com/linked"]);
   assert.deepEqual(events, ["prevent", "stop", "prevent", "stop"]);
+});
+
+test("terminal paste protection guards multiline and large pastes", () => {
+  assert.equal(analyzeTerminalPaste("echo ok"), null);
+  assert.deepEqual(analyzeTerminalPaste("echo one\necho two"), {
+    charCount: 17,
+    lineCount: 2,
+    large: false,
+    multiline: true,
+  });
+  assert.equal(analyzeTerminalPaste("x".repeat(TERMINAL_LARGE_PASTE_WARNING_LENGTH))?.large, undefined);
+  assert.equal(analyzeTerminalPaste("x".repeat(TERMINAL_LARGE_PASTE_WARNING_LENGTH + 1))?.large, true);
+
+  const warning = analyzeTerminalPaste("echo one\necho two");
+  assert.ok(warning);
+  assert.match(terminalPasteWarningMessage(warning), /2 行/);
+
+  const pasted = [];
+  const prompts = [];
+  assert.equal(confirmProtectedTerminalPaste("echo ok", () => true, (text) => pasted.push(text)), false);
+  assert.equal(confirmProtectedTerminalPaste("echo one\necho two", (message) => {
+    prompts.push(message);
+    return false;
+  }, (text) => pasted.push(text)), true);
+  assert.deepEqual(pasted, []);
+  assert.equal(prompts.length, 1);
+
+  assert.equal(confirmProtectedTerminalPaste("echo one\necho two", () => true, (text) => pasted.push(text)), true);
+  assert.deepEqual(pasted, ["echo one\necho two"]);
 });
 
 test("terminal quick select extracts visible URLs, file positions, and copy tokens", () => {

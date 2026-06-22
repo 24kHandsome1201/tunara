@@ -19,6 +19,7 @@ import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
+import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
@@ -115,6 +116,7 @@ export function TerminalView({
       fitRef.current = fit;
       term.loadAddon(fit);
       term.open(containerRef.current);
+      cleanups.push(registerTerminalPasteProtection(term).dispose);
       if (activeRef.current) webglRef.current = createTerminalWebglRenderer(term);
       const serializeAddon = new SerializeAddon();
       term.loadAddon(serializeAddon);

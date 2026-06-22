@@ -561,6 +561,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalHyperlinks = read("src/modules/terminal/lib/terminal-hyperlinks.ts");
   const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
   const terminalOutput = read("src/modules/terminal/lib/terminal-output-buffer.ts");
+  const terminalPasteProtection = read("src/modules/terminal/lib/terminal-paste-protection.ts");
   const terminalPending = read("src/modules/terminal/lib/terminal-pending-input.ts");
   const terminalSnapshotScheduler = read("src/modules/terminal/lib/terminal-snapshot-scheduler.ts");
   const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
@@ -585,12 +586,14 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ createTerminalHyperlinkHandler \} from "@\/modules\/terminal\/lib\/terminal-hyperlinks"/);
   assert.match(terminal, /import \{ createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
   assert.match(terminal, /import \{ createTerminalOutputBuffer \} from "@\/modules\/terminal\/lib\/terminal-output-buffer"/);
+  assert.match(terminal, /import \{ registerTerminalPasteProtection \} from "@\/modules\/terminal\/lib\/terminal-paste-protection"/);
   assert.match(terminal, /import \{ schedulePendingInput \} from "@\/modules\/terminal\/lib\/terminal-pending-input"/);
   assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
   assert.match(terminal, /import \{ scanTerminalInputBuffer \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
   assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl\)/);
+  assert.match(terminal, /cleanups\.push\(registerTerminalPasteProtection\(term\)\.dispose\)/);
   assert.match(terminal, /createTerminalOutputBuffer\(term\)/);
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
@@ -650,6 +653,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalHyperlinks, /url\.protocol !== "http:" && url\.protocol !== "https:"/);
   assert.match(terminalInstance, /linkHandler\?: ILinkHandler \| null/);
   assert.match(terminalInstance, /linkHandler,/);
+  assert.match(terminalPasteProtection, /TERMINAL_LARGE_PASTE_WARNING_LENGTH = 5 \* 1024/);
+  assert.match(terminalPasteProtection, /export function analyzeTerminalPaste/);
+  assert.match(terminalPasteProtection, /event\.preventDefault\(\)/);
+  assert.match(terminalPasteProtection, /term\.paste\(value\)/);
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocks, /export function findStickyCommandBlock/);
   assert.match(terminalBlocks, /export function findNavigableCommandBlock/);
