@@ -23,6 +23,7 @@ import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-outp
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { registerTerminalProgressHandler } from "@/modules/terminal/lib/terminal-progress";
+import { parseTerminalNotificationOsc777, type TerminalNotification } from "@/modules/terminal/lib/terminal-notification";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
@@ -221,6 +222,11 @@ export function TerminalView({
         }
       };
       const applyAgentLifecycleEvent = (data: string) => {
+        const notification = parseTerminalNotificationOsc777(data);
+        if (notification) {
+          handleTerminalNotification(notification);
+          return true;
+        }
         const payload = parseAgentLifecycleOsc(data);
         if (!payload) return false;
         if (payload.session !== sessionIdRef.current) return true;
@@ -269,11 +275,21 @@ export function TerminalView({
       const requestAttentionIfNeeded = () => {
         requestInformationalAttention();
       };
+      const handleTerminalNotification = (notification: TerminalNotification) => {
+        if (!useUIStore.getState().bellNotification) return;
+        useUIStore.getState().addToast({
+          sessionId: sessionIdRef.current,
+          title: notification.title,
+          subtitle: notification.body ?? "终端通知",
+          variant: "success",
+        });
+        requestInformationalAttention();
+      };
       const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
       cleanups.push(() => agentLifecycleDisposable.dispose());
       cleanups.push(registerTerminalProgressHandler(term, (progress) => {
         useSessionsStore.getState().handleTerminalProgress(sessionIdRef.current, progress);
-      }));
+      }, handleTerminalNotification));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
         const trackedSession = syncAgentTrackingFromStore();

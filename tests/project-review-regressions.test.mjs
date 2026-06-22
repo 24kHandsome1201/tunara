@@ -328,6 +328,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const terminalFileLinkParser = read("src/modules/terminal/lib/terminal-file-link-parser.ts");
   const pendingInput = read("src/modules/terminal/lib/terminal-pending-input.ts");
   const terminalProgress = read("src/modules/terminal/lib/terminal-progress.ts");
+  const terminalNotification = read("src/modules/terminal/lib/terminal-notification.ts");
   const status = read("src/ui/AgentStatusBar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
@@ -362,8 +363,13 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
   assert.match(pendingInput, /clearTimeout\(timer\)/);
   assert.match(terminal, /registerTerminalProgressHandler\(term/);
+  assert.match(terminal, /handleTerminalNotification/);
   assert.match(terminalProgress, /parseTerminalProgressOsc/);
+  assert.match(terminalProgress, /parseTerminalNotificationOsc9/);
   assert.match(terminalProgress, /parts\[0\] !== "4"/);
+  assert.match(terminalNotification, /parseTerminalNotificationOsc9/);
+  assert.match(terminalNotification, /parseTerminalNotificationOsc777/);
+  assert.match(terminalNotification, /\^\\s\*\\d\+\(\?:;\|\$\)/);
 
   assert.doesNotMatch(status, /position: "absolute"/);
   assert.match(status, /margin: "4px 8px 0"/);

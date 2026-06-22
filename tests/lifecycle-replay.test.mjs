@@ -66,6 +66,10 @@ import {
   cwdChangedUpdate,
   terminalProgressUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
+import {
+  parseTerminalNotificationOsc9,
+  parseTerminalNotificationOsc777,
+} from "../src/modules/terminal/lib/terminal-notification.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand } from "../src/ui/useTerminalBlocks.ts";
@@ -471,6 +475,29 @@ test("terminal progress OSC 9;4 is parsed and kept as session runtime state", ()
   const commandUpdate = commandDetectedUpdate(session, "pnpm build", 120);
   session = { ...session, ...commandUpdate.patch };
   assert.equal(session.terminalProgress, undefined);
+});
+
+test("terminal notification OSC sequences avoid ConEmu progress and cwd collisions", () => {
+  assert.deepEqual(parseTerminalNotificationOsc9("Build finished"), {
+    title: "Build finished",
+  });
+  assert.deepEqual(parseTerminalNotificationOsc9("  Needs approval\nnow  "), {
+    title: "Needs approval now",
+  });
+  assert.equal(parseTerminalNotificationOsc9("4;1;42"), null);
+  assert.equal(parseTerminalNotificationOsc9("9;/Users/me/repo"), null);
+  assert.equal(parseTerminalNotificationOsc9(""), null);
+
+  assert.deepEqual(parseTerminalNotificationOsc777("notify;Claude Code;Needs approval"), {
+    title: "Claude Code",
+    body: "Needs approval",
+  });
+  assert.deepEqual(parseTerminalNotificationOsc777("notify;;Only body"), {
+    title: "终端通知",
+    body: "Only body",
+  });
+  assert.equal(parseTerminalNotificationOsc777("conduit-agent;start;s-1;CC;"), null);
+  assert.equal(parseTerminalNotificationOsc777("notify;;"), null);
 });
 
 test("terminal paste protection guards multiline and large pastes", () => {
