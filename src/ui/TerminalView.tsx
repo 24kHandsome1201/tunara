@@ -13,7 +13,8 @@ import { type AgentCode } from "./types";
 import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { extractCommandFromBuffer, extractCommandFromOsc } from "@/modules/terminal/lib/terminal-buffer-read";
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
-import { buildTerminalFontFamily, createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
+import { waitForTerminalFontReady } from "@/modules/terminal/lib/terminal-font";
+import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
@@ -92,7 +93,7 @@ export function TerminalView({
     let disposed = false;
     const cleanups: Array<() => void> = [];
     (async () => {
-      await document.fonts.load(`${fontSize}px ${buildTerminalFontFamily(fontFamily, nerdFontFallback)}`);
+      await waitForTerminalFontReady({ fontSize, fontFamily, nerdFontFallback });
       if (disposed || !containerRef.current) return;
       const term = createTerminalInstance({
         fontSize,

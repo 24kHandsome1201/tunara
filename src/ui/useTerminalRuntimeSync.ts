@@ -5,7 +5,7 @@ import { type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { type CursorStyle } from "@/state/ui";
 import { type TerminalThemeName, type ThemeType } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
-import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-instance";
+import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
 

@@ -2,24 +2,7 @@ import { Terminal } from "@xterm/xterm";
 import { type CursorStyle } from "@/state/ui";
 import { type TerminalThemeName, type ThemeType } from "@/ui/types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
-
-export const TERMINAL_FONT_FAMILY = '"JetBrains Mono", SFMono-Regular, Menlo, monospace';
-
-function quoteSingleFamily(fontFamily: string): string {
-  const trimmed = fontFamily.trim();
-  if (!trimmed) return '"JetBrains Mono"';
-  if (trimmed.includes(",") || trimmed.startsWith("\"") || trimmed.startsWith("'")) return trimmed;
-  if (/^(monospace|serif|sans-serif|cursive|fantasy|system-ui)$/i.test(trimmed)) return trimmed;
-  return `"${trimmed.replace(/"/g, "\\\"")}"`;
-}
-
-export function buildTerminalFontFamily(fontFamily: string, nerdFontFallback: boolean): string {
-  const base = quoteSingleFamily(fontFamily);
-  const fallback = nerdFontFallback
-    ? '"Symbols Nerd Font Mono", "Symbols Nerd Font", "MesloLGS NF", SFMono-Regular, Menlo, monospace'
-    : "SFMono-Regular, Menlo, monospace";
-  return `${base}, ${fallback}`;
-}
+import { buildTerminalFontFamily } from "./terminal-font.ts";
 
 interface TerminalInstanceOptions {
   fontSize: number;

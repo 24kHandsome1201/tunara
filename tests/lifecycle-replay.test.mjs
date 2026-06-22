@@ -18,6 +18,11 @@ import {
   findTerminalFileLinkMatches,
   resolveTerminalFileLinkPath,
 } from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
+import {
+  TERMINAL_FONT_LOAD_TIMEOUT_MS,
+  buildTerminalFontFamily,
+  waitForTerminalFontReady,
+} from "../src/modules/terminal/lib/terminal-font.ts";
 import { findProgrammingLigatureRanges } from "../src/modules/terminal/lib/terminal-ligatures.ts";
 import {
   agentBusyUpdate,
@@ -205,6 +210,27 @@ test("terminal ligature joiner prefers the longest programming sequences", () =>
     [0, 5],
     [12, 15],
   ]);
+});
+
+test("terminal font loader falls back quickly when font loading stalls", async () => {
+  let loadedSpec = "";
+  const result = await waitForTerminalFontReady({
+    fontSize: 13,
+    fontFamily: "JetBrains Mono",
+    nerdFontFallback: true,
+    timeoutMs: 5,
+    load: (fontSpec) => {
+      loadedSpec = fontSpec;
+      return new Promise(() => {});
+    },
+  });
+
+  assert.equal(result, "timeout");
+  assert.equal(
+    loadedSpec,
+    `13px ${buildTerminalFontFamily("JetBrains Mono", true)}`,
+  );
+  assert.equal(TERMINAL_FONT_LOAD_TIMEOUT_MS, 200);
 });
 
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {

@@ -69,6 +69,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const runtimeSync = read("src/ui/useTerminalRuntimeSync.ts");
   const terminalLigatures = read("src/modules/terminal/lib/terminal-ligatures.ts");
   const terminalLigatureSync = read("src/modules/terminal/lib/terminal-ligature-sync.ts");
+  const terminalFont = read("src/modules/terminal/lib/terminal-font.ts");
   const settings = read("src/ui/overlays/Settings.tsx");
 
   assert.match(cargo, /^toml = "0\.8"$/m);
@@ -94,8 +95,9 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.doesNotMatch(ui, /localStorage/);
   assert.doesNotMatch(ui, /sessionStorage/);
   assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
-  assert.match(terminalInstance, /buildTerminalFontFamily/);
+  assert.match(terminalFont, /buildTerminalFontFamily/);
   assert.match(terminalInstance, /wordSeparator: " \(\)\[\]\{\}'\\";,"/);
+  assert.match(runtimeSync, /from "@\/modules\/terminal\/lib\/terminal-font"/);
   assert.match(runtimeSync, /term\.options\.fontFamily = buildTerminalFontFamily/);
   assert.match(terminalLigatures, /registerCharacterJoiner/);
   assert.match(terminalLigatures, /deregisterCharacterJoiner/);
@@ -536,6 +538,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
   const terminalCodexState = read("src/modules/terminal/lib/terminal-codex-state.ts");
   const terminalCommand = read("src/modules/terminal/lib/terminal-command.ts");
+  const terminalFont = read("src/modules/terminal/lib/terminal-font.ts");
   const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
   const terminalOutput = read("src/modules/terminal/lib/terminal-output-buffer.ts");
   const terminalPending = read("src/modules/terminal/lib/terminal-pending-input.ts");
@@ -554,7 +557,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
   assert.match(terminal, /import \{ createCodexScreenStateTracker \} from "@\/modules\/terminal\/lib\/terminal-codex-state"/);
   assert.match(terminal, /import \{ isMeaningfulCommand \} from "@\/modules\/terminal\/lib\/terminal-command"/);
-  assert.match(terminal, /import \{ buildTerminalFontFamily, createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
+  assert.match(terminal, /import \{ waitForTerminalFontReady \} from "@\/modules\/terminal\/lib\/terminal-font"/);
+  assert.match(terminal, /import \{ createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
   assert.match(terminal, /import \{ createTerminalOutputBuffer \} from "@\/modules\/terminal\/lib\/terminal-output-buffer"/);
   assert.match(terminal, /import \{ schedulePendingInput \} from "@\/modules\/terminal\/lib\/terminal-pending-input"/);
   assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
@@ -597,6 +601,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalCodexState, /CODEX_DATA_BURST_BUSY_THRESHOLD/);
   assert.match(terminalCodexState, /detectCodexScreenState\(tail\)/);
   assert.match(terminalCommand, /export function isMeaningfulCommand/);
+  assert.match(terminalFont, /export const TERMINAL_FONT_LOAD_TIMEOUT_MS = 200/);
+  assert.match(terminalFont, /export function buildTerminalFontFamily/);
+  assert.match(terminalFont, /export async function waitForTerminalFontReady/);
+  assert.match(terminal, /waitForTerminalFontReady\(\{ fontSize, fontFamily, nerdFontFallback \}\)/);
   assert.match(terminalInstance, /export function createTerminalInstance/);
   assert.match(terminalOutput, /export function createTerminalOutputBuffer/);
   assert.match(terminalPending, /export function schedulePendingInput/);
