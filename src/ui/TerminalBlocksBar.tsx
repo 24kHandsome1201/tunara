@@ -97,16 +97,65 @@ function CopyButton({ id, disabled, onCopy }: { id: string; disabled: boolean; o
 interface TerminalBlocksBarProps {
   blocks: TerminalCommandBlock[];
   collapsedBlockIds: Record<string, true>;
+  stickyBlock: TerminalCommandBlock | null;
   onCopy: (id: string) => void;
   onToggle: (id: string) => void;
+  onReveal: (id: string) => void;
 }
 
-export function TerminalBlocksBar({ blocks, collapsedBlockIds, onCopy, onToggle }: TerminalBlocksBarProps) {
+export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopy, onToggle, onReveal }: TerminalBlocksBarProps) {
   const visibleBlocks = blocks.slice(-5).reverse();
   if (visibleBlocks.length === 0) return null;
 
   return (
     <div style={{ minHeight: 32, flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "4px 8px 0", overflowX: "auto" }} className="no-scrollbar">
+      {stickyBlock && (
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            minWidth: 0,
+            maxWidth: 300,
+            border: "1px solid color-mix(in srgb, var(--c-accent) 28%, var(--c-border-1))",
+            background: "var(--c-accent-bg-light)",
+            borderRadius: "var(--r-btn)",
+            padding: "3px 8px",
+            flexShrink: 0,
+            boxShadow: "var(--shadow-card)",
+          }}
+        >
+          <span style={{
+            fontSize: "var(--fs-badge)",
+            color: "var(--c-accent)",
+            fontWeight: 700,
+            flexShrink: 0,
+          }}>
+            当前输出
+          </span>
+          <ExitCodeBadge code={stickyBlock.exitCode} completed={!!stickyBlock.completedAt} />
+          <button
+            onClick={() => onReveal(stickyBlock.id)}
+            title={stickyBlock.command}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--c-text-primary)",
+              fontSize: "var(--fs-meta)",
+              fontFamily: "var(--font-mono)",
+              fontWeight: 600,
+              cursor: "pointer",
+              maxWidth: 170,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              padding: 0,
+            }}
+          >
+            {stickyBlock.command}
+          </button>
+        </div>
+      )}
       {visibleBlocks.map((block) => {
         const collapsed = !!collapsedBlockIds[block.id];
         const completed = !!block.completedAt;

@@ -9,8 +9,10 @@ interface TerminalViewChromeProps {
   search: ReturnType<typeof useTerminalSearch>;
   blocks: TerminalCommandBlock[];
   collapsedBlockIds: Record<string, true>;
+  stickyBlock: TerminalCommandBlock | null;
   onCopyBlock: (id: string) => void;
   onToggleBlock: (id: string) => void;
+  onRevealBlock: (id: string) => void;
 }
 
 export function TerminalViewChrome({
@@ -18,8 +20,10 @@ export function TerminalViewChrome({
   search,
   blocks,
   collapsedBlockIds,
+  stickyBlock,
   onCopyBlock,
   onToggleBlock,
+  onRevealBlock,
 }: TerminalViewChromeProps) {
   return (
     <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -41,8 +45,10 @@ export function TerminalViewChrome({
       <TerminalBlocksBar
         blocks={blocks}
         collapsedBlockIds={collapsedBlockIds}
+        stickyBlock={stickyBlock}
         onCopy={onCopyBlock}
         onToggle={onToggleBlock}
+        onReveal={onRevealBlock}
       />
       <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
     </div>

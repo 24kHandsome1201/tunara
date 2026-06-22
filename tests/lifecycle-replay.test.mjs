@@ -18,6 +18,7 @@ import {
   cwdChangedUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
+import { findStickyCommandBlock } from "../src/ui/useTerminalBlocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 
 function makeSession(overrides = {}) {
@@ -134,6 +135,20 @@ test("keybinding parser accepts plus as a literal key", () => {
     ctrl: false,
     meta: false,
   });
+});
+
+test("sticky command block appears only after scrolling into hidden block output", () => {
+  const blocks = [
+    { id: "a", command: "pnpm test", startRow: 10, endRow: 80, startedAt: 1, completedAt: 2, exitCode: 0 },
+    { id: "b", command: "cargo clippy", startRow: 90, endRow: 160, startedAt: 3 },
+  ];
+
+  assert.equal(findStickyCommandBlock(blocks, 10, 40, 200), null);
+  assert.equal(findStickyCommandBlock(blocks, 30, 40, 200)?.id, "a");
+  assert.equal(findStickyCommandBlock(blocks, 90, 30, 200), null);
+  assert.equal(findStickyCommandBlock(blocks, 110, 30, 200)?.id, "b");
+  assert.equal(findStickyCommandBlock(blocks, 110, 30, 110), null);
+  assert.equal(findStickyCommandBlock(blocks, 170, 30, 200), null);
 });
 
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {

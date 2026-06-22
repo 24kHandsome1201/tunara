@@ -537,6 +537,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /createTerminalOutputBuffer\(term\)/);
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
+  assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
+  assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
@@ -550,8 +552,12 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalRuntimeSync, /getTerminalTheme\(theme, terminalTheme, accent\)/);
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
+  assert.match(terminalBlocks, /export function findStickyCommandBlock/);
+  assert.match(terminalBlocks, /term\.onScroll/);
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
+  assert.match(terminalBlocksBar, /当前输出/);
+  assert.match(terminalBlocksBar, /stickyBlock/);
   assert.match(terminalBlocksBar, /const visibleBlocks = blocks\.slice\(-5\)\.reverse\(\)/);
   assert.match(terminalBlocksBar, /completed=\{completed\}/);
   assert.match(terminalBlocksBar, /disabled=\{!completed\}/);

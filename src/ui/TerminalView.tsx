@@ -129,6 +129,7 @@ export function TerminalView({
       term.loadAddon(searchAddon);
       const searchResultDisposable = search.registerSearchAddon(searchAddon);
       cleanups.push(() => searchResultDisposable.dispose());
+      cleanups.push(blocks.registerScrollTracking(term));
       term.attachCustomKeyEventHandler(search.handleCustomKeyEvent);
       // OSC 133 shell integration:
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
@@ -345,6 +346,7 @@ export function TerminalView({
           {
             onData: (bytes) => {
               outputBuffer.push(bytes);
+              blocks.updateActiveBlockEnd(currentBufferRow());
               scheduleSnapshot();
               if (hasAgent && currentAgentCode) {
                 if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
@@ -471,5 +473,5 @@ export function TerminalView({
     // when `dir` changes would close and recreate the terminal on every `cd`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} onCopyBlock={blocks.copyBlock} onToggleBlock={blocks.toggleBlock} />;
+  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlock={blocks.copyBlock} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} />;
 }
