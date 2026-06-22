@@ -36,11 +36,21 @@ mod platform {
     }
 
     impl HookListenerState {
+        pub(super) fn disabled() -> Self {
+            Self {
+                sock_path: PathBuf::new(),
+                shutdown: Arc::new(AtomicBool::new(false)),
+            }
+        }
+
         pub fn sock_path(&self) -> &str {
             self.sock_path.to_str().unwrap_or("")
         }
 
         pub fn shutdown(&self) {
+            if self.sock_path.as_os_str().is_empty() {
+                return;
+            }
             self.shutdown.store(true, Ordering::Release);
             let _ = UnixStream::connect(&self.sock_path);
             let _ = std::fs::remove_file(&self.sock_path);
@@ -51,25 +61,39 @@ mod platform {
         let sock_dir = std::env::temp_dir().join("conduit-sockets");
         if let Err(e) = fs::create_dir_all(&sock_dir) {
             log::error!("failed to create hooks socket dir: {e}");
+            return HookListenerState::disabled();
         }
         #[cfg(unix)]
         {
-            let _ = fs::set_permissions(&sock_dir, fs::Permissions::from_mode(0o700));
+            if let Err(e) = fs::set_permissions(&sock_dir, fs::Permissions::from_mode(0o700)) {
+                log::warn!("failed to restrict hooks socket dir permissions: {e}");
+            }
         }
         let sock_path = sock_dir.join(format!("hooks-{}.sock", std::process::id()));
 
         let _ = fs::remove_file(&sock_path);
 
-        let listener = UnixListener::bind(&sock_path).expect("bind conduit hooks socket");
-        listener
-            .set_nonblocking(false)
-            .expect("set socket blocking");
+        let listener = match UnixListener::bind(&sock_path) {
+            Ok(listener) => listener,
+            Err(e) => {
+                log::error!(
+                    "hooks listener disabled, bind {} failed: {e}",
+                    sock_path.display()
+                );
+                return HookListenerState::disabled();
+            }
+        };
+        if let Err(e) = listener.set_nonblocking(false) {
+            log::error!("hooks listener disabled, configure blocking mode failed: {e}");
+            let _ = fs::remove_file(&sock_path);
+            return HookListenerState::disabled();
+        }
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_t = shutdown.clone();
         let sock_path_t = sock_path.clone();
 
-        thread::Builder::new()
+        if let Err(e) = thread::Builder::new()
             .name("conduit-hooks-listener".into())
             .spawn(move || {
                 log::info!("hooks listener started on {}", sock_path_t.display());
@@ -117,7 +141,11 @@ mod platform {
                 }
                 log::info!("hooks listener stopped");
             })
-            .expect("spawn hooks listener thread");
+        {
+            log::error!("hooks listener disabled, thread spawn failed: {e}");
+            let _ = fs::remove_file(&sock_path);
+            return HookListenerState::disabled();
+        }
 
         HookListenerState {
             sock_path,
@@ -149,6 +177,15 @@ pub use platform::{start_listener, HookListenerState};
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn disabled_hook_listener_exports_no_socket_path() {
+        let state = super::platform::HookListenerState::disabled();
+
+        assert_eq!(state.sock_path(), "");
+        state.shutdown();
+    }
+
     #[test]
     fn hookable_agent_wrappers_match_cli_settings_support() {
         const ZSHRC: &str = include_str!("../pty/scripts/zshrc.zsh");
