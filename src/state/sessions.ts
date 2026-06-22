@@ -11,6 +11,7 @@ import {
   commandFinishedUpdate,
   cwdChangedUpdate,
   shellTitleUpdate,
+  terminalProgressUpdate,
 } from "@/modules/terminal/lib/session-lifecycle";
 import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
@@ -48,6 +49,7 @@ interface SessionsState {
   handleCommandFinished: (id: string, exitCode: number) => void;
   handleCwdChange: (id: string, cwd: string) => void;
   handleShellTitle: (id: string, title: string) => void;
+  handleTerminalProgress: (id: string, progress: Session["terminalProgress"] | undefined) => void;
 
   renameSession: (id: string, name: string) => void;
   startRenaming: (id: string) => void;
@@ -402,6 +404,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (update) get().updateSession(id, update.patch);
   },
 
+  handleTerminalProgress: (id, progress) => {
+    const session = get().sessions.find((s) => s.id === id);
+    const update = terminalProgressUpdate(session, progress);
+    if (update) get().updateSession(id, update.patch);
+  },
+
   renameSession: (id, name) => {
     const trimmed = name.trim();
     get().updateSession(id, { customTitle: trimmed || undefined });
@@ -486,8 +494,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (survivor && get().sessions.some((s) => s.id === survivor)) {
       set({ activeSessionId: survivor });
     }
-    if (get().sessions.length === 0) {
-      get().addSession(createSession("~", { title: "终端" }));
-    }
+    if (get().sessions.length === 0) get().addSession(createSession("~", { title: "终端" }));
   },
 }));

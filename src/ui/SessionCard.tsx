@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { type Session, type RunState, deriveTitle } from "./types";
+import { type Session, type RunState, type TerminalProgress, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
@@ -157,6 +157,52 @@ function BusyProgress() {
   );
 }
 
+function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
+  const color = progress.state === "error"
+    ? "var(--c-error)"
+    : progress.state === "warning"
+      ? "var(--c-warning)"
+      : "var(--c-accent)";
+  const indeterminate = progress.state === "indeterminate";
+  const hasValue = progress.value !== undefined;
+  const width = indeterminate ? "38%" : hasValue ? `${progress.value}%` : "100%";
+  const statusLabel = progress.state === "error"
+    ? "终端任务错误"
+    : progress.state === "warning"
+      ? "终端任务警告"
+      : "终端任务进行中";
+  const progressLabel = hasValue ? `终端任务进度 ${progress.value}%` : statusLabel;
+  return (
+    <div
+      aria-label={progressLabel}
+      title={progressLabel}
+      style={{
+        position: "absolute",
+        left: 10,
+        right: 10,
+        bottom: 0,
+        height: 2,
+        overflow: "hidden",
+        borderRadius: 999,
+        background: "color-mix(in srgb, var(--c-text-primary) 8%, transparent)",
+        animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          width,
+          minWidth: indeterminate ? undefined : 2,
+          height: "100%",
+          borderRadius: 999,
+          background: color,
+          animation: indeterminate ? "indeterminate 1.2s var(--ease-in-out) infinite" : undefined,
+        }}
+      />
+    </div>
+  );
+}
+
 function formatElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -213,7 +259,8 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
-  const showBusyProgress = !!session.agent && busy;
+  const showTerminalProgress = !!session.terminalProgress;
+  const showBusyProgress = !!session.agent && busy && !showTerminalProgress;
   const elapsed = useElapsed(session.startedAt, busy);
   const renamingSessionId = useSessionsStore((s) => s.renamingSessionId);
   const isRenaming = renamingSessionId === session.id;
@@ -434,6 +481,7 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
         </div>
       )}
 
+      {session.terminalProgress && <TerminalProgressBar progress={session.terminalProgress} />}
       {showBusyProgress && <BusyProgress />}
     </div>
   );

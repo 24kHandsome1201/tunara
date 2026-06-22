@@ -1,4 +1,4 @@
-import type { AgentCode, Session } from "../../../ui/types.ts";
+import type { AgentCode, Session, TerminalProgress } from "../../../ui/types.ts";
 import { AGENT_NAMES, isPromptLikeShellTitle } from "../../../ui/types.ts";
 import { initialAgentActivity, isAgentShellTitle } from "./agent-lifecycle.ts";
 
@@ -24,6 +24,7 @@ export function agentDetectedUpdate(
       lastCommand: undefined,
       shellTitle: undefined,
       suppressShellTitle: false,
+      terminalProgress: undefined,
     },
   };
 }
@@ -77,6 +78,7 @@ export function agentExitedUpdate(
       lastExitCode: exitCode,
       shellTitle: undefined,
       suppressShellTitle: true,
+      terminalProgress: undefined,
       runState: "idle",
       completedAt: now,
       ...(!isActive ? { unread: true } : {}),
@@ -97,6 +99,7 @@ export function commandDetectedUpdate(
       runState: "running",
       startedAt: now,
       suppressShellTitle: false,
+      terminalProgress: undefined,
     },
   };
 }
@@ -157,4 +160,16 @@ export function shellTitleUpdate(
     return null;
   }
   return { patch: { shellTitle: title } };
+}
+
+export function terminalProgressUpdate(
+  session: Session | undefined,
+  progress: TerminalProgress | undefined,
+): SessionLifecycleUpdate | null {
+  if (!session) return null;
+  const previousValue = session.terminalProgress?.value;
+  const nextProgress = progress && progress.value === undefined && progress.state !== "indeterminate" && previousValue !== undefined
+    ? { ...progress, value: previousValue }
+    : progress;
+  return { patch: { terminalProgress: nextProgress } };
 }

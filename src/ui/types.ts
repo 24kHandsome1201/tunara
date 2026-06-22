@@ -14,6 +14,14 @@ export type AgentActivity = "starting" | "idle" | "running";
 /** Git 探测状态 */
 export type GitState = "unknown" | "repo" | "notGit";
 
+export type TerminalProgressState = "normal" | "error" | "indeterminate" | "warning";
+
+export interface TerminalProgress {
+  state: TerminalProgressState;
+  value?: number;
+  updatedAt: number;
+}
+
 export interface AgentResumeIntent {
   agent: AgentCode | string;
   command: string;
@@ -47,6 +55,7 @@ export interface Session {
   lastExitCode?: number;
   shellTitle?: string;
   suppressShellTitle?: boolean;
+  terminalProgress?: TerminalProgress;
 
   pendingInput?: string;
   pendingInputSubmit?: boolean;

@@ -320,6 +320,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const terminalLineCwd = read("src/modules/terminal/lib/terminal-line-cwd.ts");
   const terminalFileLinkParser = read("src/modules/terminal/lib/terminal-file-link-parser.ts");
   const pendingInput = read("src/modules/terminal/lib/terminal-pending-input.ts");
+  const terminalProgress = read("src/modules/terminal/lib/terminal-progress.ts");
   const status = read("src/ui/AgentStatusBar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
@@ -353,6 +354,9 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
   assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
   assert.match(pendingInput, /clearTimeout\(timer\)/);
+  assert.match(terminal, /registerTerminalProgressHandler\(term/);
+  assert.match(terminalProgress, /parseTerminalProgressOsc/);
+  assert.match(terminalProgress, /parts\[0\] !== "4"/);
 
   assert.doesNotMatch(status, /position: "absolute"/);
   assert.match(status, /margin: "4px 8px 0"/);
@@ -513,6 +517,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(sessionCard, /tabIndex=\{tabIndex \?\? 0\}/);
   assert.match(sessionCard, /aria-current=\{active \? "page" : undefined\}/);
   assert.match(sessionCard, /boxShadow: focused \?/);
+  assert.match(sessionCard, /function TerminalProgressBar/);
+  assert.match(sessionCard, /session\.terminalProgress && <TerminalProgressBar/);
   assert.match(main, /inset 0 2px 0 var\(--c-accent\)/);
   assert.doesNotMatch(main, /outline: .*var\(--c-accent\)/);
   assert.match(main, /function SplitIcon/);

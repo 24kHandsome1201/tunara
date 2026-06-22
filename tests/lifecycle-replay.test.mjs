@@ -59,7 +59,9 @@ import {
   agentReadyUpdate,
   commandDetectedUpdate,
   cwdChangedUpdate,
+  terminalProgressUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
+import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand } from "../src/ui/useTerminalBlocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
@@ -393,6 +395,36 @@ test("terminal OSC 8 hyperlink handler opens only HTTP URLs", () => {
   assert.equal(handler.allowNonHttpProtocols, false);
   assert.deepEqual(opened, ["https://example.com/linked"]);
   assert.deepEqual(events, ["prevent", "stop", "prevent", "stop"]);
+});
+
+test("terminal progress OSC 9;4 is parsed and kept as session runtime state", () => {
+  assert.deepEqual(parseTerminalProgressOsc("4;1;42.4", 100), {
+    progress: { state: "normal", value: 42, updatedAt: 100 },
+  });
+  assert.deepEqual(parseTerminalProgressOsc("4;2", 101), {
+    progress: { state: "error", updatedAt: 101 },
+  });
+  assert.deepEqual(parseTerminalProgressOsc("4;3;88", 102), {
+    progress: { state: "indeterminate", updatedAt: 102 },
+  });
+  assert.deepEqual(parseTerminalProgressOsc("4;4;140", 103), {
+    progress: { state: "warning", value: 100, updatedAt: 103 },
+  });
+  assert.deepEqual(parseTerminalProgressOsc("4;0", 104), { progress: null });
+  assert.equal(parseTerminalProgressOsc("1;hello", 105), null);
+  assert.equal(parseTerminalProgressOsc("4;1", 106), null);
+
+  let session = makeSession();
+  const progressUpdate = terminalProgressUpdate(session, { state: "normal", value: 50, updatedAt: 110 });
+  session = { ...session, ...progressUpdate.patch };
+  assert.equal(session.terminalProgress.value, 50);
+  const warningUpdate = terminalProgressUpdate(session, { state: "warning", updatedAt: 111 });
+  session = { ...session, ...warningUpdate.patch };
+  assert.equal(session.terminalProgress.value, 50);
+  assert.equal(session.terminalProgress.state, "warning");
+  const commandUpdate = commandDetectedUpdate(session, "pnpm build", 120);
+  session = { ...session, ...commandUpdate.patch };
+  assert.equal(session.terminalProgress, undefined);
 });
 
 test("terminal paste protection guards multiline and large pastes", () => {

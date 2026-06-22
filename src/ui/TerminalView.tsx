@@ -22,6 +22,7 @@ import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-li
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
+import { registerTerminalProgressHandler } from "@/modules/terminal/lib/terminal-progress";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
@@ -270,6 +271,9 @@ export function TerminalView({
       };
       const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
       cleanups.push(() => agentLifecycleDisposable.dispose());
+      cleanups.push(registerTerminalProgressHandler(term, (progress) => {
+        useSessionsStore.getState().handleTerminalProgress(sessionIdRef.current, progress);
+      }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
         const trackedSession = syncAgentTrackingFromStore();
