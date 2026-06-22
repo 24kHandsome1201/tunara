@@ -70,6 +70,7 @@ import {
   parseTerminalNotificationOsc9,
   parseTerminalNotificationOsc777,
 } from "../src/modules/terminal/lib/terminal-notification.ts";
+import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand } from "../src/ui/useTerminalBlocks.ts";
@@ -498,6 +499,16 @@ test("terminal notification OSC sequences avoid ConEmu progress and cwd collisio
   });
   assert.equal(parseTerminalNotificationOsc777("conduit-agent;start;s-1;CC;"), null);
   assert.equal(parseTerminalNotificationOsc777("notify;;"), null);
+});
+
+test("ConEmu OSC 9;9 cwd is parsed as a terminal cwd fallback", () => {
+  assert.equal(parseConEmuCwdOsc9("9;/Users/me/repo"), "/Users/me/repo");
+  assert.equal(parseConEmuCwdOsc9('9;"/Users/me/repo"'), "/Users/me/repo");
+  assert.equal(parseConEmuCwdOsc9("9;~/work"), "~/work");
+  assert.equal(parseConEmuCwdOsc9("9;file://localhost/Users/me/repo"), "/Users/me/repo");
+  assert.equal(parseConEmuCwdOsc9("4;1;42"), null);
+  assert.equal(parseConEmuCwdOsc9("9;relative/path"), null);
+  assert.equal(parseConEmuCwdOsc9("9;/tmp/\nrepo"), null);
 });
 
 test("terminal paste protection guards multiline and large pastes", () => {

@@ -5,7 +5,6 @@ import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getCurrentWindow, UserAttentionType } from "@tauri-apps/api/window";
 import { openPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
@@ -22,8 +21,8 @@ import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-li
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
-import { registerTerminalProgressHandler } from "@/modules/terminal/lib/terminal-progress";
-import { parseTerminalNotificationOsc777, type TerminalNotification } from "@/modules/terminal/lib/terminal-notification";
+import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
+import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
@@ -38,6 +37,7 @@ import { useTerminalBlocks } from "./useTerminalBlocks";
 import { useTerminalQuickSelect } from "./useTerminalQuickSelect";
 import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl";
 import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
+import { emitTerminalNotification, requestInformationalAttention } from "./terminal-attention";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -45,13 +45,6 @@ interface TerminalViewProps {
   pendingInput?: string;
   pendingInputSubmit?: boolean;
   onPendingInputConsumed?: () => void;
-}
-
-function requestInformationalAttention() {
-  if (document.hasFocus() || !useUIStore.getState().bellNotification) return;
-  getCurrentWindow()
-    .requestUserAttention(UserAttentionType.Informational)
-    .catch(() => {});
 }
 
 export function TerminalView({
@@ -165,6 +158,10 @@ export function TerminalView({
       let idleTimer: ReturnType<typeof setTimeout> | null = null;
       const getCurrentSession = () =>
         useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
+      const handleCwdChange = (cwd: string) => {
+        lineCwdTracker.record(cwd, term.registerMarker(0));
+        useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
+      };
       const codexStateTracker = createCodexScreenStateTracker({
         terminal: term,
         getSessionId: () => sessionIdRef.current,
@@ -224,7 +221,7 @@ export function TerminalView({
       const applyAgentLifecycleEvent = (data: string) => {
         const notification = parseTerminalNotificationOsc777(data);
         if (notification) {
-          handleTerminalNotification(notification);
+          emitTerminalNotification(sessionIdRef.current, notification);
           return true;
         }
         const payload = parseAgentLifecycleOsc(data);
@@ -260,36 +257,22 @@ export function TerminalView({
           }
         }),
       );
-      cleanups.push(
-        registerCwdHandler(term, (cwd) => {
-          lineCwdTracker.record(cwd, term.registerMarker(0));
-          useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
-        }),
-      );
+      cleanups.push(registerCwdHandler(term, handleCwdChange));
       const titleDisposable = term.onTitleChange((title) => {
         const clean = cleanTerminalText(title);
         if (clean) useSessionsStore.getState().handleShellTitle(sessionIdRef.current, clean);
       });
       cleanups.push(() => titleDisposable.dispose());
       const currentBufferRow = () => term.buffer.active.cursorY + term.buffer.active.baseY;
-      const requestAttentionIfNeeded = () => {
-        requestInformationalAttention();
-      };
-      const handleTerminalNotification = (notification: TerminalNotification) => {
-        if (!useUIStore.getState().bellNotification) return;
-        useUIStore.getState().addToast({
-          sessionId: sessionIdRef.current,
-          title: notification.title,
-          subtitle: notification.body ?? "终端通知",
-          variant: "success",
-        });
-        requestInformationalAttention();
-      };
       const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
       cleanups.push(() => agentLifecycleDisposable.dispose());
-      cleanups.push(registerTerminalProgressHandler(term, (progress) => {
-        useSessionsStore.getState().handleTerminalProgress(sessionIdRef.current, progress);
-      }, handleTerminalNotification));
+      cleanups.push(registerTerminalOsc9Handler(term, {
+        onProgress: (progress) => {
+          useSessionsStore.getState().handleTerminalProgress(sessionIdRef.current, progress);
+        },
+        onNotification: (notification) => emitTerminalNotification(sessionIdRef.current, notification),
+        onCwd: handleCwdChange,
+      }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
         const trackedSession = syncAgentTrackingFromStore();
@@ -299,7 +282,7 @@ export function TerminalView({
             blocks.finishBlock(exitCode, currentBufferRow());
             clearAgentTracking();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
-            requestAttentionIfNeeded();
+            requestInformationalAttention();
             osc133Active = true;
           } else if (marker === "D") {
             const exitCode = parseInt(data.slice(2), 10) || 0;
@@ -307,7 +290,7 @@ export function TerminalView({
             blocks.finishBlock(exitCode, currentBufferRow());
             clearAgentTracking();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
-            requestAttentionIfNeeded();
+            requestInformationalAttention();
           }
           return true;
         }

@@ -144,7 +144,8 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /agentStartupPending = sess\?\.agent === agent[\s\S]*HOOK_READY_AGENTS\.has\(agent\);/);
   assert.match(terminal, /const syncAgentTrackingFromStore = \(\) => \{[\s\S]*!hasAgent \|\| currentAgentCode !== sess\.agent[\s\S]*currentAgentCode = sess\.agent;/);
   assert.match(terminal, /useSessionsStore\.subscribe[\s\S]*!hasAgent \|\| currentAgentCode !== sess\.agent[\s\S]*currentAgentCode = sess\.agent;/);
-  assert.match(terminal, /registerCwdHandler\(term, \(cwd\) => \{[\s\S]*handleCwdChange\(sessionIdRef\.current, cwd\);[\s\S]*\}\),/);
+  assert.match(terminal, /const handleCwdChange = \(cwd: string\) => \{[\s\S]*lineCwdTracker\.record\(cwd, term\.registerMarker\(0\)\);[\s\S]*handleCwdChange\(sessionIdRef\.current, cwd\);[\s\S]*\};/);
+  assert.match(terminal, /registerCwdHandler\(term, handleCwdChange\)/);
   assert.doesNotMatch(terminal, /registerCwdHandler\(term, \(cwd\) => \{[\s\S]{0,400}handleAgentExited/);
   assert.match(terminal, /const trackedSession = syncAgentTrackingFromStore\(\);[\s\S]*if \(hasAgent \|\| trackedSession\?\.agent\) \{/);
   assert.match(terminal, /if \(PROMPT_READY_AGENTS\.has\(currentAgentCode\)\) \{[\s\S]*?codexStateTracker\.schedule\(\);[\s\S]*?return;/);

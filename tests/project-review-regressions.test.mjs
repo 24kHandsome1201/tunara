@@ -328,6 +328,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const terminalFileLinkParser = read("src/modules/terminal/lib/terminal-file-link-parser.ts");
   const pendingInput = read("src/modules/terminal/lib/terminal-pending-input.ts");
   const terminalProgress = read("src/modules/terminal/lib/terminal-progress.ts");
+  const terminalOsc9 = read("src/modules/terminal/lib/terminal-osc9.ts");
   const terminalNotification = read("src/modules/terminal/lib/terminal-notification.ts");
   const status = read("src/ui/AgentStatusBar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
@@ -362,11 +363,14 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
   assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
   assert.match(pendingInput, /clearTimeout\(timer\)/);
-  assert.match(terminal, /registerTerminalProgressHandler\(term/);
-  assert.match(terminal, /handleTerminalNotification/);
+  assert.match(terminal, /registerTerminalOsc9Handler\(term/);
+  assert.match(terminal, /emitTerminalNotification\(sessionIdRef\.current, notification\)/);
   assert.match(terminalProgress, /parseTerminalProgressOsc/);
-  assert.match(terminalProgress, /parseTerminalNotificationOsc9/);
   assert.match(terminalProgress, /parts\[0\] !== "4"/);
+  assert.match(terminalOsc9, /parseTerminalProgressOsc\(data\)/);
+  assert.match(terminalOsc9, /parseConEmuCwdOsc9\(data\)/);
+  assert.match(terminalOsc9, /parseTerminalNotificationOsc9\(data\)/);
+  assert.match(terminalOsc9, /registerOscHandler\(9/);
   assert.match(terminalNotification, /parseTerminalNotificationOsc9/);
   assert.match(terminalNotification, /parseTerminalNotificationOsc777/);
   assert.match(terminalNotification, /\^\\s\*\\d\+\(\?:;\|\$\)/);
@@ -588,6 +592,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalQuickSelectScope = read("src/modules/terminal/lib/terminal-quick-select-scope.ts");
   const terminalQuickSelectHook = read("src/ui/useTerminalQuickSelect.tsx");
   const terminalQuickSelectOverlay = read("src/ui/TerminalQuickSelect.tsx");
+  const terminalAttention = read("src/ui/terminal-attention.ts");
   const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
   const terminalBlocksBar = read("src/ui/TerminalBlocksBar.tsx");
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
@@ -609,9 +614,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
   assert.match(terminal, /import \{ TerminalViewChrome \} from "\.\/TerminalViewChrome"/);
-  assert.match(terminal, /import \{ getCurrentWindow, UserAttentionType \} from "@tauri-apps\/api\/window"/);
-  assert.match(terminal, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
+  assert.match(terminal, /import \{ emitTerminalNotification, requestInformationalAttention \} from "\.\/terminal-attention"/);
+  assert.match(terminalAttention, /import \{ getCurrentWindow, UserAttentionType \} from "@tauri-apps\/api\/window"/);
+  assert.match(terminalAttention, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
+  assert.doesNotMatch(terminalAttention, /requestUserAttention\(2\)/);
   assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
   assert.match(terminal, /import \{ useTerminalQuickSelect \} from "\.\/useTerminalQuickSelect"/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);

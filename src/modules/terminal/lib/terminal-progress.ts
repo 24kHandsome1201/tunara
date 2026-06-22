@@ -1,6 +1,4 @@
-import type { Terminal } from "@xterm/xterm";
 import type { TerminalProgress } from "../../../ui/types.ts";
-import { parseTerminalNotificationOsc9, type TerminalNotification } from "./terminal-notification.ts";
 
 export interface TerminalProgressSignal {
   progress: TerminalProgress | null;
@@ -31,26 +29,6 @@ export function parseTerminalProgressOsc(
       updatedAt: now,
     },
   };
-}
-
-export function registerTerminalProgressHandler(
-  term: Terminal,
-  onProgress: (progress: TerminalProgress | undefined) => void,
-  onNotification?: (notification: TerminalNotification) => void,
-): () => void {
-  const disposable = term.parser.registerOscHandler(9, (data) => {
-    const signal = parseTerminalProgressOsc(data);
-    if (signal) {
-      onProgress(signal.progress ?? undefined);
-      return true;
-    }
-
-    const notification = parseTerminalNotificationOsc9(data);
-    if (!notification) return false;
-    onNotification?.(notification);
-    return true;
-  });
-  return () => disposable.dispose();
 }
 
 function parseProgressValue(raw: string | undefined): number | null {
