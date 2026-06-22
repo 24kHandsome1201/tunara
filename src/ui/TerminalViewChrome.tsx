@@ -10,7 +10,7 @@ interface TerminalViewChromeProps {
   blocks: TerminalCommandBlock[];
   collapsedBlockIds: Record<string, true>;
   stickyBlock: TerminalCommandBlock | null;
-  onCopyBlock: (id: string) => void;
+  onCopyBlock: (id: string) => boolean | Promise<boolean>;
   onToggleBlock: (id: string) => void;
   onRevealBlock: (id: string) => void;
 }

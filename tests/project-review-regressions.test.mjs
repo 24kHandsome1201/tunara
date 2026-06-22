@@ -591,10 +591,17 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /export function collectTerminalBlockOutputText/);
   assert.match(terminalBlocks, /block\.startRow \+ 1/);
   assert.match(terminalBlocks, /readBlockOutputText/);
+  assert.match(terminalBlocks, /const copyBlock = useCallback\(async \(id: string\): Promise<boolean> =>/);
+  assert.match(terminalBlocks, /if \(!term \|\| !block\) return false/);
   assert.match(terminalBlocks, /writeText\(readBlockOutputText\(term, block\)\)/);
+  assert.match(terminalBlocks, /return true/);
+  assert.match(terminalBlocks, /catch \{[\s\S]*return false/);
   assert.match(terminalBlocks, /term\.onScroll/);
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
+  assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
+  assert.match(terminalBlocksBar, /const copySucceeded = await Promise\.resolve\(onCopy\(id\)\)\.catch\(\(\) => false\)/);
+  assert.match(terminalBlocksBar, /if \(!copySucceeded\) return;[\s\S]*setCopied\(true\)/);
   assert.match(terminalBlocksBar, /当前输出/);
   assert.match(terminalBlocksBar, /stickyBlock/);
   assert.match(terminalBlocksBar, /const visibleBlocks = blocks\.slice\(-5\)\.reverse\(\)/);

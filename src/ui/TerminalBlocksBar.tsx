@@ -59,14 +59,17 @@ function ExitCodeBadge({ code, completed }: { code: number | undefined; complete
   );
 }
 
-function CopyButton({ id, disabled, onCopy }: { id: string; disabled: boolean; onCopy: (id: string) => void }) {
+type CopyBlockResult = boolean | Promise<boolean>;
+
+function CopyButton({ id, disabled, onCopy }: { id: string; disabled: boolean; onCopy: (id: string) => CopyBlockResult }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      onClick={(e) => {
+      onClick={async (e) => {
         e.stopPropagation();
         if (disabled) return;
-        onCopy(id);
+        const copySucceeded = await Promise.resolve(onCopy(id)).catch(() => false);
+        if (!copySucceeded) return;
         setCopied(true);
         setTimeout(() => setCopied(false), 1200);
       }}
@@ -98,7 +101,7 @@ interface TerminalBlocksBarProps {
   blocks: TerminalCommandBlock[];
   collapsedBlockIds: Record<string, true>;
   stickyBlock: TerminalCommandBlock | null;
-  onCopy: (id: string) => void;
+  onCopy: (id: string) => CopyBlockResult;
   onToggle: (id: string) => void;
   onReveal: (id: string) => void;
 }

@@ -115,11 +115,16 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     setStickyBlock((current) => current?.id === active.id ? next : current);
   }, []);
 
-  const copyBlock = useCallback((id: string) => {
+  const copyBlock = useCallback(async (id: string): Promise<boolean> => {
     const term = termRef.current;
     const block = blocksRef.current.find((item) => item.id === id);
-    if (!term || !block) return;
-    navigator.clipboard.writeText(readBlockOutputText(term, block)).catch(() => {});
+    if (!term || !block) return false;
+    try {
+      await navigator.clipboard.writeText(readBlockOutputText(term, block));
+      return true;
+    } catch {
+      return false;
+    }
   }, [termRef]);
 
   const toggleBlock = useCallback((id: string) => {
