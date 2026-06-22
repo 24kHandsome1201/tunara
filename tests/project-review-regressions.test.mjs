@@ -83,6 +83,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.doesNotMatch(ui, /sessionStorage/);
   assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
   assert.match(terminalInstance, /buildTerminalFontFamily/);
+  assert.match(terminalInstance, /wordSeparator: " \(\)\[\]\{\}'\\";,"/);
   assert.match(runtimeSync, /term\.options\.fontFamily = buildTerminalFontFamily/);
   assert.match(settings, /setFontFamily\(fontDraft\)/);
   assert.match(settings, /Nerd Font/);
@@ -444,7 +445,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.doesNotMatch(iconUsers, /<line x1="18" y1="6" x2="6" y2="18"/);
   assert.doesNotMatch(iconUsers, /<path d="m21 21-4\.35-4\.35"/);
   assert.match(iconUsers, /<CloseIcon/);
-  assert.match(terminalSearch, /<SearchIcon \/>/);
+  assert.match(terminalSearch, /<SearchIcon size=\{13\} color=\{hasResults \? "var\(--c-accent\)" : noMatch \? "var\(--c-error\)" : "var\(--c-text-5\)"\} \/>/);
   assert.match(palette, /<SearchIcon size=\{14\} \/>/);
   assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
   assert.match(sessionCard, /paddingLeft: 6/);
@@ -459,7 +460,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(main, /title="上下分栏 ⌘⇧D"/);
   assert.match(main, /aria-label="左右分栏"/);
   assert.match(status, /\}, 1500\)/);
-  assert.match(status, /transition: "opacity 0\.3s ease"/);
+  assert.match(status, /transition: "opacity 0\.3s ease, transform 0\.3s var\(--ease-out-expo\)"/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
   assert.match(settings, /const previewBg =/);
   assert.match(settings, /const sidebarBg =/);
@@ -545,6 +546,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
+  assert.match(terminalBlocksBar, /const visibleBlocks = blocks\.slice\(-5\)\.reverse\(\)/);
+  assert.match(terminalBlocksBar, /completed=\{completed\}/);
+  assert.match(terminalBlocksBar, /disabled=\{!completed\}/);
+  assert.match(terminalBlocksBar, /运行/);
+  assert.doesNotMatch(terminalBlocksBar, /code === 0 \|\| code === undefined/);
   assert.match(terminalBufferRead, /export function extractCommandFromBuffer/);
   assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
   assert.match(terminalBufferRead, /export function getTerminalTailText/);

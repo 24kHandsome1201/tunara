@@ -49,6 +49,9 @@ export function TerminalSearchBar({
   onToggleRegex,
   onToggleCaseSensitive,
 }: TerminalSearchBarProps) {
+  const hasResults = count && count.total > 0;
+  const noMatch = count && count.total === 0 && query.length > 0;
+
   return (
     <div
       style={{
@@ -56,17 +59,18 @@ export function TerminalSearchBar({
         top: 6,
         right: 12,
         zIndex: 30,
-        background: "var(--c-bg-1)",
+        background: "var(--c-bg-white)",
         border: "1px solid var(--c-border-2)",
-        borderRadius: "var(--r-btn)",
-        padding: "4px 8px",
+        borderRadius: "var(--r-input)",
+        padding: "5px 6px 5px 10px",
         display: "flex",
         alignItems: "center",
-        gap: 4,
-        boxShadow: "var(--shadow-card)",
+        gap: 3,
+        boxShadow: "var(--shadow-menu)",
+        animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
       }}
     >
-      <SearchIcon />
+      <SearchIcon size={13} color={hasResults ? "var(--c-accent)" : noMatch ? "var(--c-error)" : "var(--c-text-5)"} />
       <input
         ref={inputRef}
         type="text"
@@ -91,14 +95,23 @@ export function TerminalSearchBar({
           fontSize: "var(--fs-body)",
           color: "var(--c-text-primary)",
           fontFamily: "var(--font-ui)",
-          width: 200,
+          width: 180,
         }}
       />
+
+      <div style={{ width: 1, height: 16, background: "var(--c-border-2)", flexShrink: 0, margin: "0 2px" }} />
+
       <button
         onClick={onToggleRegex}
         title="正则表达式"
         className="hover-bg"
-        style={{ ...TOGGLE_STYLE, color: useRegex ? "var(--c-accent)" : undefined, background: useRegex ? "var(--c-accent-bg-light)" : undefined }}
+        style={{
+          ...TOGGLE_STYLE,
+          color: useRegex ? "var(--c-accent)" : "var(--c-text-5)",
+          background: useRegex ? "var(--c-accent-bg-light)" : undefined,
+          border: useRegex ? "1px solid var(--c-accent-border)" : "1px solid transparent",
+          borderRadius: 5,
+        }}
       >
         .*
       </button>
@@ -106,15 +119,34 @@ export function TerminalSearchBar({
         onClick={onToggleCaseSensitive}
         title="区分大小写"
         className="hover-bg"
-        style={{ ...TOGGLE_STYLE, color: caseSensitive ? "var(--c-accent)" : undefined, background: caseSensitive ? "var(--c-accent-bg-light)" : undefined }}
+        style={{
+          ...TOGGLE_STYLE,
+          color: caseSensitive ? "var(--c-accent)" : "var(--c-text-5)",
+          background: caseSensitive ? "var(--c-accent-bg-light)" : undefined,
+          border: caseSensitive ? "1px solid var(--c-accent-border)" : "1px solid transparent",
+          borderRadius: 5,
+        }}
       >
         Aa
       </button>
+
       {count && (
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", flexShrink: 0 }}>
-          {count.current}/{count.total}
+        <span style={{
+          fontSize: "var(--fs-meta)",
+          color: noMatch ? "var(--c-error)" : "var(--c-text-4)",
+          fontFamily: "var(--font-mono)",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          minWidth: 32,
+          textAlign: "center",
+        }}>
+          {count.total === 0 ? "0" : `${count.current}/${count.total}`}
         </span>
       )}
+
+      <div style={{ width: 1, height: 16, background: "var(--c-border-2)", flexShrink: 0, margin: "0 2px" }} />
+
       <button onClick={onPrev} title="上一个 ⇧Enter" className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="18 15 12 9 6 15" />

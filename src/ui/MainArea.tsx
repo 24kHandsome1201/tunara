@@ -195,109 +195,129 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           borderTop: "1px solid var(--c-border-1)",
           display: "flex",
           alignItems: "center",
-          padding: "0 14px",
-          gap: 8,
+          padding: "0 12px",
+          gap: 0,
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "1 1 96px", minWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
+        {/* 路径区 */}
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
           {compactPath(active?.dir ?? "")}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", letterSpacing: "0.02em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1 }}>
-            ⎇ {active?.branch || "-"}
+
+        {/* Git 分支 */}
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", marginLeft: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
+          ⎇ {active?.branch || "-"}
+        </span>
+
+        {/* Remote ahead/behind */}
+        {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
+          <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", marginLeft: 6, flexShrink: 0, display: "inline-flex", gap: 3 }}>
+            {remote.ahead > 0 && (
+              <span style={{ color: "var(--c-success)", fontWeight: 600 }}>↑{remote.ahead}</span>
+            )}
+            {remote.behind > 0 && (
+              <span style={{ color: "var(--c-warning)", fontWeight: 600 }}>↓{remote.behind}</span>
+            )}
           </span>
-          {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
+        )}
+
+        {/* Agent 状态 */}
+        {active?.agent && (
+          <span style={{
+            fontSize: "var(--fs-badge)",
+            fontFamily: "var(--font-mono)",
+            fontWeight: 700,
+            color: "var(--c-accent)",
+            background: "var(--c-accent-bg-light)",
+            borderRadius: 4,
+            padding: "1px 6px",
+            lineHeight: "14px",
+            marginLeft: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            flexShrink: 0,
+          }}>
+            {isAgentActivityBusy(active.agentActivity) && (
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0, animation: "pulseDot 1.5s var(--ease-in-out) infinite", boxShadow: "0 0 4px color-mix(in srgb, var(--c-accent) 40%, transparent)" }} />
+            )}
+            {AGENT_NAMES[active.agent] ?? active.agent}
+          </span>
+        )}
+
+        <span style={{ flex: 1 }} />
+
+        {/* 分栏控制 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {isSplit ? (
+            <button
+              onClick={() => {
+                const ui = useUIStore.getState();
+                const paneBId = ui.split.paneB;
+                if (paneBId) useSessionsStore.getState().closeSession(paneBId);
+                else ui.closeSplit();
+              }}
+              title="关闭分栏"
+              aria-label="关闭分栏"
+              style={{
+                width: 24,
+                height: 22,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "var(--r-btn)",
+              }}
+              className="hover-bg"
+            >
+              <SplitIcon direction="single" />
+            </button>
+          ) : (
             <>
-              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-                {remote.ahead > 0 && `↑${remote.ahead}`}{remote.ahead > 0 && remote.behind > 0 && " "}{remote.behind > 0 && `↓${remote.behind}`}
-              </span>
-            </>
-          )}
-          {active?.agent && (
-            <>
-              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>·</span>
-              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-accent)", fontFamily: "var(--font-mono)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1 }}>
-                {AGENT_NAMES[active.agent] ?? active.agent}
-                {isAgentActivityBusy(active.agentActivity) && (
-                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0, animation: "pulseDot 1.5s var(--ease-in-out) infinite", boxShadow: "0 0 4px color-mix(in srgb, var(--c-accent) 40%, transparent)" }} />
-                )}
-              </span>
+              <button
+                onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
+                title="左右分栏 ⌘D"
+                aria-label="左右分栏"
+                style={{
+                  width: 24,
+                  height: 22,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "var(--r-btn)",
+                }}
+                className="hover-bg"
+              >
+                <SplitIcon direction="columns" />
+              </button>
+              <button
+                onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
+                title="上下分栏 ⌘⇧D"
+                aria-label="上下分栏"
+                style={{
+                  width: 24,
+                  height: 22,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "var(--r-btn)",
+                }}
+                className="hover-bg"
+              >
+                <SplitIcon direction="rows" />
+              </button>
             </>
           )}
         </div>
-
-        <span style={{ marginLeft: "auto" }} />
-
-        {isSplit ? (
-          <button
-            onClick={() => {
-              const ui = useUIStore.getState();
-              const paneBId = ui.split.paneB;
-              if (paneBId) useSessionsStore.getState().closeSession(paneBId);
-              else ui.closeSplit();
-            }}
-            title="关闭分栏"
-            aria-label="关闭分栏"
-            style={{
-              width: 24,
-              height: 24,
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: "var(--r-btn)",
-            }}
-            className="hover-bg"
-          >
-            <SplitIcon direction="single" />
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
-              title="左右分栏 ⌘D"
-              aria-label="左右分栏"
-              style={{
-                width: 26,
-                height: 22,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "var(--r-btn)",
-              }}
-              className="hover-bg"
-            >
-              <SplitIcon direction="columns" />
-            </button>
-            <button
-              onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
-              title="上下分栏 ⌘⇧D"
-              aria-label="上下分栏"
-              style={{
-                width: 26,
-                height: 22,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "var(--r-btn)",
-              }}
-              className="hover-bg"
-            >
-              <SplitIcon direction="rows" />
-            </button>
-          </>
-        )}
       </div>
     </div>
   );

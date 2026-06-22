@@ -55,6 +55,13 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
     });
   };
 
+  const statusLabel = resumeCommand && !session.agent ? "可恢复" : isBusy ? (isStarting ? "加载中" : "运行中") : "已完成";
+  const statusColor = resumeCommand && !session.agent
+    ? "var(--c-warning)"
+    : isBusy
+      ? "var(--c-accent)"
+      : "var(--c-success)";
+
   return (
     <div
       style={{
@@ -70,7 +77,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         gap: 8,
         opacity: fading ? 0 : 1,
         transform: fading ? "translateY(-4px) scale(0.98)" : "translateY(0) scale(1)",
-        transition: "opacity 0.3s ease",
+        transition: "opacity 0.3s ease, transform 0.3s var(--ease-out-expo)",
         animation: !fading ? "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)" : undefined,
       }}
     >
@@ -78,29 +85,75 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)" }}>
         {agentName}
       </span>
-      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>·</span>
-      <span style={{ fontSize: "var(--fs-meta)", color: isBusy ? "var(--c-accent)" : "var(--c-text-5)", fontFamily: "var(--font-mono)", display: "flex", alignItems: "center", gap: 4 }}>
-        {resumeCommand && !session.agent ? "可恢复" : isBusy ? (isStarting ? "加载中" : "运行中") : "已完成"}
+      <span style={{
+        fontSize: "var(--fs-badge)",
+        fontFamily: "var(--font-mono)",
+        fontWeight: 700,
+        color: statusColor,
+        background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
+        borderRadius: 4,
+        padding: "1px 6px",
+        lineHeight: "16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        flexShrink: 0,
+      }}>
         {isBusy && (
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.5s var(--ease-in-out) infinite", boxShadow: "0 0 6px color-mix(in srgb, var(--c-accent) 40%, transparent)" }} />
+          <span style={{
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: statusColor,
+            animation: "pulseDot 1.5s var(--ease-in-out) infinite",
+            boxShadow: `0 0 6px color-mix(in srgb, ${statusColor} 40%, transparent)`,
+            flexShrink: 0,
+          }} />
         )}
+        {statusLabel}
       </span>
       {resumeCommand && !session.agent && (
         <button
           onClick={fillResumeCommand}
-          style={{ marginLeft: "auto", height: 22, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-meta)", fontWeight: 600, cursor: "pointer", padding: "0 8px" }}
-          className="hover-bg"
+          className="hover-accent-bg"
+          style={{
+            marginLeft: "auto",
+            height: 22,
+            borderRadius: "var(--r-btn)",
+            border: "1px solid var(--c-accent-border)",
+            background: "var(--c-accent-bg-soft)",
+            color: "var(--c-accent)",
+            fontSize: "var(--fs-meta)",
+            fontWeight: 600,
+            cursor: "pointer",
+            padding: "0 10px",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
+          }}
         >
-          填入
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          恢复
         </button>
       )}
       {fileCount > 0 && (
-        <>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>·</span>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
-            已编辑 {fileCount} 文件
-          </span>
-        </>
+        <span style={{
+          marginLeft: resumeCommand && !session.agent ? 0 : "auto",
+          fontSize: "var(--fs-badge)",
+          fontFamily: "var(--font-mono)",
+          fontWeight: 600,
+          color: "var(--c-text-4)",
+          background: "var(--c-bg-3)",
+          borderRadius: 4,
+          padding: "1px 6px",
+          lineHeight: "14px",
+          flexShrink: 0,
+        }}>
+          {fileCount} 文件
+        </span>
       )}
     </div>
   );

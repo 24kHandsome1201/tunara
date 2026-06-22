@@ -53,6 +53,7 @@ export function createTerminalInstance({
     cursorStyle,
     cursorInactiveStyle: "outline",
     scrollback,
+    wordSeparator: " ()[]{}'\";,",
     allowProposedApi: true,
   });
 }
