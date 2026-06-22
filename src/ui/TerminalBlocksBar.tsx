@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { TerminalCommandBlock } from "./useTerminalBlocks";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 function CopyIcon() {
   return (
@@ -129,14 +130,30 @@ interface TerminalBlocksBarProps {
   collapsedBlockIds: Record<string, true>;
   stickyBlock: TerminalCommandBlock | null;
   onCopyCommand: (id: string) => CopyBlockResult;
+  onCopyCommandAndOutput: (id: string) => CopyBlockResult;
   onCopyOutput: (id: string) => CopyBlockResult;
   onToggle: (id: string) => void;
   onReveal: (id: string) => void;
 }
 
-export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopyCommand, onCopyOutput, onToggle, onReveal }: TerminalBlocksBarProps) {
+export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopyCommand, onCopyCommandAndOutput, onCopyOutput, onToggle, onReveal }: TerminalBlocksBarProps) {
+  const [contextMenu, setContextMenu] = useState<{
+    block: TerminalCommandBlock;
+    completed: boolean;
+    collapsed: boolean;
+    position: { x: number; y: number };
+  } | null>(null);
   const visibleBlocks = blocks.slice(-5).reverse();
   if (visibleBlocks.length === 0) return null;
+
+  const contextItems: MenuEntry[] = contextMenu ? [
+    { id: "block:copy-command", label: "复制命令", icon: "copy", action: () => { onCopyCommand(contextMenu.block.id); } },
+    { id: "block:copy-output", label: "复制输出", icon: "copy", disabled: !contextMenu.completed, action: () => { onCopyOutput(contextMenu.block.id); } },
+    { id: "block:copy-both", label: "复制命令和输出", icon: "copy", disabled: !contextMenu.completed, action: () => { onCopyCommandAndOutput(contextMenu.block.id); } },
+    null,
+    { id: "block:reveal", label: "滚动到命令", icon: "terminal", action: () => onReveal(contextMenu.block.id) },
+    { id: "block:toggle", label: contextMenu.collapsed ? "展开输出" : "折叠输出", icon: "terminal", action: () => onToggle(contextMenu.block.id) },
+  ] : [];
 
   return (
     <div style={{ minHeight: 32, flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "4px 8px 0", overflowX: "auto" }} className="no-scrollbar">
@@ -194,6 +211,15 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
         return (
           <div
             key={block.id}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({
+                block,
+                completed,
+                collapsed,
+                position: { x: e.clientX, y: e.clientY },
+              });
+            }}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -239,6 +265,13 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
           </div>
         );
       })}
+      {contextMenu && (
+        <ContextMenu
+          items={contextItems}
+          position={contextMenu.position}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

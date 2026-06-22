@@ -33,7 +33,7 @@ import {
   cwdChangedUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
-import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, normalizeBlockCommand } from "../src/ui/useTerminalBlocks.ts";
+import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand } from "../src/ui/useTerminalBlocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 
 function makeSession(overrides = {}) {
@@ -197,6 +197,14 @@ test("terminal block command copy source is normalized without truncation", () =
   const command = `pnpm   exec\n  vitest ${longArg}`;
   assert.equal(normalizeBlockCommand(command), `pnpm exec vitest ${longArg}`);
   assert.equal(normalizeBlockCommand(command).includes("..."), false);
+});
+
+test("terminal block combined copy keeps command before output", () => {
+  assert.equal(
+    formatTerminalBlockCommandAndOutput("pnpm test", "pass 1\npass 2"),
+    "pnpm test\npass 1\npass 2",
+  );
+  assert.equal(formatTerminalBlockCommandAndOutput("true", ""), "true");
 });
 
 test("terminal command block navigation follows prompt marks around the viewport", () => {

@@ -596,6 +596,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /export function findNavigableCommandBlock/);
   assert.match(terminalBlocks, /export function normalizeBlockCommand/);
   assert.match(terminalBlocks, /export function collectTerminalBlockOutputText/);
+  assert.match(terminalBlocks, /export function formatTerminalBlockCommandAndOutput/);
   assert.doesNotMatch(terminalBlocks, /slice\(0, 77\) \+ "\.\.\."/);
   assert.match(terminalBlocks, /block\.startRow \+ 1/);
   assert.match(terminalBlocks, /readBlockOutputText/);
@@ -603,6 +604,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /if \(!term \|\| !block\) return false/);
   assert.match(terminalBlocks, /writeText\(readBlockOutputText\(term, block\)\)/);
   assert.match(terminalBlocks, /const copyBlockCommand = useCallback\(async \(id: string\): Promise<boolean> =>/);
+  assert.match(terminalBlocks, /const copyBlockCommandAndOutput = useCallback\(async \(id: string\): Promise<boolean> =>/);
+  assert.match(terminalBlocks, /formatTerminalBlockCommandAndOutput\(block\.command, output\)/);
   assert.match(terminalBlocks, /writeText\(block\.command\)/);
   assert.match(terminalBlocks, /return true/);
   assert.match(terminalBlocks, /catch \{[\s\S]*return false/);
@@ -612,8 +615,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
+  assert.match(terminalBlocksBar, /import \{ ContextMenu, type MenuEntry \} from "\.\/ContextMenu"/);
   assert.match(terminalBlocksBar, /title="复制命令"[\s\S]*onCopy=\{onCopyCommand\}/);
   assert.match(terminalBlocksBar, /title="复制输出"[\s\S]*onCopy=\{onCopyOutput\}/);
+  assert.match(terminalBlocksBar, /id: "block:copy-both"[\s\S]*label: "复制命令和输出"[\s\S]*onCopyCommandAndOutput/);
+  assert.match(terminalBlocksBar, /onContextMenu=\{\(e\) => \{[\s\S]*setContextMenu/);
   assert.match(terminalBlocksBar, /const copySucceeded = await Promise\.resolve\(onCopy\(id\)\)\.catch\(\(\) => false\)/);
   assert.match(terminalBlocksBar, /if \(!copySucceeded\) return;[\s\S]*setCopied\(true\)/);
   assert.match(terminalBlocksBar, /当前输出/);

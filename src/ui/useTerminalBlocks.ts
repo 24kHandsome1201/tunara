@@ -41,6 +41,10 @@ export function collectTerminalBlockOutputText(
   return lines.slice(start, end + 1).join("\n").trimEnd();
 }
 
+export function formatTerminalBlockCommandAndOutput(command: string, output: string): string {
+  return output ? `${command}\n${output}` : command;
+}
+
 export function findNavigableCommandBlock(
   blocks: readonly TerminalCommandBlock[],
   viewportY: number,
@@ -151,6 +155,20 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     }
   }, []);
 
+  const copyBlockCommandAndOutput = useCallback(async (id: string): Promise<boolean> => {
+    const term = termRef.current;
+    const block = blocksRef.current.find((item) => item.id === id);
+    if (!term || !block?.command) return false;
+    const output = readBlockOutputText(term, block);
+    const text = formatTerminalBlockCommandAndOutput(block.command, output);
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [termRef]);
+
   const toggleBlock = useCallback((id: string) => {
     const term = termRef.current;
     const block = blocksRef.current.find((item) => item.id === id);
@@ -209,6 +227,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     finishBlock,
     updateActiveBlockEnd,
     copyBlockCommand,
+    copyBlockCommandAndOutput,
     copyBlockOutput,
     toggleBlock,
     revealBlock,
