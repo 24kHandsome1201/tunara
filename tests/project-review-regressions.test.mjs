@@ -96,6 +96,10 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(ui, /font_ligatures: s\.fontLigatures/);
   assert.doesNotMatch(ui, /localStorage/);
   assert.doesNotMatch(ui, /sessionStorage/);
+  assert.match(keys, /function hasPlatformModifier\(e: KeyboardEvent\): boolean/);
+  assert.match(keys, /return isMac \? e\.metaKey : e\.ctrlKey/);
+  assert.match(keys, /isEditableTarget\(e\.target\) && !hasPlatformModifier\(e\)/);
+  assert.doesNotMatch(keys, /isEditableTarget\(e\.target\) && !e\.metaKey/);
   assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
   assert.match(keys, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalFont, /buildTerminalFontFamily/);

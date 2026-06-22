@@ -18,6 +18,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
+function hasPlatformModifier(e: KeyboardEvent): boolean {
+  return isMac ? e.metaKey : e.ctrlKey;
+}
+
 export function useKeybindings() {
   useEffect(() => {
     const runAction = (action: KeybindingAction) => {
@@ -104,7 +108,7 @@ export function useKeybindings() {
           return;
         }
       }
-      if (isEditableTarget(e.target) && !e.metaKey) return;
+      if (isEditableTarget(e.target) && !hasPlatformModifier(e)) return;
       const bindings = useUIStore.getState().keybindings;
       for (const action of KEYBINDING_ACTIONS) {
         if (!matchesKeybinding(e, bindings[action], isMac)) continue;
