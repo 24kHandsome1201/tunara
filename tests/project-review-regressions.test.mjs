@@ -308,6 +308,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const sidebar = read("src/ui/Sidebar.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
   const sessions = read("src/state/sessions.ts");
+  const ui = read("src/state/ui.ts");
   const contextMenu = read("src/ui/ContextMenu.tsx");
   const settings = read("src/ui/overlays/Settings.tsx");
   const docs = read("docs/设计-右键菜单与批量启动Agent.md");
@@ -361,6 +362,9 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /已找到 \$\{installedCliCount\}\/\$\{CLI_LIST\.length\}/);
   assert.match(settings, /未在当前应用 PATH 中找到/);
   assert.match(settings, /activeTab === "外观"/);
+  assert.match(settings, /onClick=\{\(\) => useUIStore\.getState\(\)\.resetAppearance\(\)\}/);
+  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings \}\)\)/);
+  assert.doesNotMatch(ui, /resetAppearance: \(\) => set\(\{ \.\.\.DEFAULT_SETTINGS, keybindings: \{ \.\.\.DEFAULT_KEYBINDINGS \} \}\)/);
 });
 
 test("follow-up review fixes keep agent registry and batch close behavior centralized", () => {

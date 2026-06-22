@@ -313,7 +313,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
     resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
-    resetAppearance: () => set({ ...DEFAULT_SETTINGS, keybindings: { ...DEFAULT_KEYBINDINGS } }),
+    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings })),
   };
 }));
 
