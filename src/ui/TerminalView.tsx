@@ -462,5 +462,5 @@ export function TerminalView({
     // when `dir` changes would close and recreate the terminal on every `cd`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlock={blocks.copyBlock} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} />;
+  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockOutput={blocks.copyBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} />;
 }

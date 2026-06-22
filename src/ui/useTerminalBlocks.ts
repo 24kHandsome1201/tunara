@@ -27,9 +27,8 @@ export function findStickyCommandBlock(
   return null;
 }
 
-function compactCommand(command: string): string {
-  const singleLine = command.replace(/\s+/g, " ").trim();
-  return singleLine.length > 80 ? singleLine.slice(0, 77) + "..." : singleLine;
+export function normalizeBlockCommand(command: string): string {
+  return command.replace(/\s+/g, " ").trim();
 }
 
 export function collectTerminalBlockOutputText(
@@ -95,7 +94,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     const now = Date.now();
     const block: TerminalCommandBlock = {
       id: `block-${now}-${Math.max(0, startRow)}`,
-      command: compactCommand(command),
+      command: normalizeBlockCommand(command),
       startRow: Math.max(0, startRow),
       endRow: Math.max(0, startRow),
       startedAt: now,
@@ -129,7 +128,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     setStickyBlock((current) => current?.id === active.id ? next : current);
   }, []);
 
-  const copyBlock = useCallback(async (id: string): Promise<boolean> => {
+  const copyBlockOutput = useCallback(async (id: string): Promise<boolean> => {
     const term = termRef.current;
     const block = blocksRef.current.find((item) => item.id === id);
     if (!term || !block) return false;
@@ -140,6 +139,17 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
       return false;
     }
   }, [termRef]);
+
+  const copyBlockCommand = useCallback(async (id: string): Promise<boolean> => {
+    const block = blocksRef.current.find((item) => item.id === id);
+    if (!block?.command) return false;
+    try {
+      await navigator.clipboard.writeText(block.command);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const toggleBlock = useCallback((id: string) => {
     const term = termRef.current;
@@ -198,7 +208,8 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     beginBlock,
     finishBlock,
     updateActiveBlockEnd,
-    copyBlock,
+    copyBlockCommand,
+    copyBlockOutput,
     toggleBlock,
     revealBlock,
     handleCustomKeyEvent,

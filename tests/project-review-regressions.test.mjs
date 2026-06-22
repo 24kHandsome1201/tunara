@@ -594,12 +594,16 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocks, /export function findStickyCommandBlock/);
   assert.match(terminalBlocks, /export function findNavigableCommandBlock/);
+  assert.match(terminalBlocks, /export function normalizeBlockCommand/);
   assert.match(terminalBlocks, /export function collectTerminalBlockOutputText/);
+  assert.doesNotMatch(terminalBlocks, /slice\(0, 77\) \+ "\.\.\."/);
   assert.match(terminalBlocks, /block\.startRow \+ 1/);
   assert.match(terminalBlocks, /readBlockOutputText/);
-  assert.match(terminalBlocks, /const copyBlock = useCallback\(async \(id: string\): Promise<boolean> =>/);
+  assert.match(terminalBlocks, /const copyBlockOutput = useCallback\(async \(id: string\): Promise<boolean> =>/);
   assert.match(terminalBlocks, /if \(!term \|\| !block\) return false/);
   assert.match(terminalBlocks, /writeText\(readBlockOutputText\(term, block\)\)/);
+  assert.match(terminalBlocks, /const copyBlockCommand = useCallback\(async \(id: string\): Promise<boolean> =>/);
+  assert.match(terminalBlocks, /writeText\(block\.command\)/);
   assert.match(terminalBlocks, /return true/);
   assert.match(terminalBlocks, /catch \{[\s\S]*return false/);
   assert.match(terminalBlocks, /term\.onScroll/);
@@ -608,6 +612,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
+  assert.match(terminalBlocksBar, /title="复制命令"[\s\S]*onCopy=\{onCopyCommand\}/);
+  assert.match(terminalBlocksBar, /title="复制输出"[\s\S]*onCopy=\{onCopyOutput\}/);
   assert.match(terminalBlocksBar, /const copySucceeded = await Promise\.resolve\(onCopy\(id\)\)\.catch\(\(\) => false\)/);
   assert.match(terminalBlocksBar, /if \(!copySucceeded\) return;[\s\S]*setCopied\(true\)/);
   assert.match(terminalBlocksBar, /当前输出/);

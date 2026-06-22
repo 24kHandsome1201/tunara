@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { TerminalCommandBlock } from "./useTerminalBlocks";
 
 function CopyIcon() {
@@ -15,6 +15,19 @@ function CheckMiniIcon() {
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
     </svg>
+  );
+}
+
+function PromptIcon() {
+  return (
+    <span style={{
+      fontSize: 11,
+      fontFamily: "var(--font-mono)",
+      fontWeight: 800,
+      lineHeight: "11px",
+    }}>
+      $
+    </span>
   );
 }
 
@@ -61,7 +74,21 @@ function ExitCodeBadge({ code, completed }: { code: number | undefined; complete
 
 type CopyBlockResult = boolean | Promise<boolean>;
 
-function CopyButton({ id, disabled, onCopy }: { id: string; disabled: boolean; onCopy: (id: string) => CopyBlockResult }) {
+function CopyButton({
+  id,
+  disabled,
+  title,
+  disabledTitle,
+  onCopy,
+  children,
+}: {
+  id: string;
+  disabled: boolean;
+  title: string;
+  disabledTitle?: string;
+  onCopy: (id: string) => CopyBlockResult;
+  children: ReactNode;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -74,7 +101,7 @@ function CopyButton({ id, disabled, onCopy }: { id: string; disabled: boolean; o
         setTimeout(() => setCopied(false), 1200);
       }}
       className="hover-bg"
-      title={disabled ? "命令运行中" : "复制输出"}
+      title={disabled ? disabledTitle ?? title : title}
       disabled={disabled}
       style={{
         width: 22,
@@ -92,7 +119,7 @@ function CopyButton({ id, disabled, onCopy }: { id: string; disabled: boolean; o
         transition: "color var(--duration-fast) var(--ease-smooth)",
       }}
     >
-      {copied ? <CheckMiniIcon /> : <CopyIcon />}
+      {copied ? <CheckMiniIcon /> : children}
     </button>
   );
 }
@@ -101,12 +128,13 @@ interface TerminalBlocksBarProps {
   blocks: TerminalCommandBlock[];
   collapsedBlockIds: Record<string, true>;
   stickyBlock: TerminalCommandBlock | null;
-  onCopy: (id: string) => CopyBlockResult;
+  onCopyCommand: (id: string) => CopyBlockResult;
+  onCopyOutput: (id: string) => CopyBlockResult;
   onToggle: (id: string) => void;
   onReveal: (id: string) => void;
 }
 
-export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopy, onToggle, onReveal }: TerminalBlocksBarProps) {
+export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopyCommand, onCopyOutput, onToggle, onReveal }: TerminalBlocksBarProps) {
   const visibleBlocks = blocks.slice(-5).reverse();
   if (visibleBlocks.length === 0) return null;
 
@@ -192,7 +220,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
                 fontFamily: "var(--font-mono)",
                 fontWeight: collapsed ? 600 : 400,
                 cursor: "pointer",
-                maxWidth: 180,
+                maxWidth: 154,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -202,7 +230,12 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
             >
               {block.command}
             </button>
-            <CopyButton id={block.id} disabled={!completed} onCopy={onCopy} />
+            <CopyButton id={block.id} disabled={false} title="复制命令" onCopy={onCopyCommand}>
+              <PromptIcon />
+            </CopyButton>
+            <CopyButton id={block.id} disabled={!completed} title="复制输出" disabledTitle="命令运行中" onCopy={onCopyOutput}>
+              <CopyIcon />
+            </CopyButton>
           </div>
         );
       })}

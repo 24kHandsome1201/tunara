@@ -10,7 +10,8 @@ interface TerminalViewChromeProps {
   blocks: TerminalCommandBlock[];
   collapsedBlockIds: Record<string, true>;
   stickyBlock: TerminalCommandBlock | null;
-  onCopyBlock: (id: string) => boolean | Promise<boolean>;
+  onCopyBlockCommand: (id: string) => boolean | Promise<boolean>;
+  onCopyBlockOutput: (id: string) => boolean | Promise<boolean>;
   onToggleBlock: (id: string) => void;
   onRevealBlock: (id: string) => void;
 }
@@ -21,7 +22,8 @@ export function TerminalViewChrome({
   blocks,
   collapsedBlockIds,
   stickyBlock,
-  onCopyBlock,
+  onCopyBlockCommand,
+  onCopyBlockOutput,
   onToggleBlock,
   onRevealBlock,
 }: TerminalViewChromeProps) {
@@ -46,7 +48,8 @@ export function TerminalViewChrome({
         blocks={blocks}
         collapsedBlockIds={collapsedBlockIds}
         stickyBlock={stickyBlock}
-        onCopy={onCopyBlock}
+        onCopyCommand={onCopyBlockCommand}
+        onCopyOutput={onCopyBlockOutput}
         onToggle={onToggleBlock}
         onReveal={onRevealBlock}
       />
