@@ -32,11 +32,21 @@ function compactCommand(command: string): string {
   return singleLine.length > 80 ? singleLine.slice(0, 77) + "..." : singleLine;
 }
 
-function readBlockText(term: Terminal, block: TerminalCommandBlock): string {
+export function collectTerminalBlockOutputText(
+  lines: readonly string[],
+  block: Pick<TerminalCommandBlock, "startRow" | "endRow">,
+): string {
+  const start = Math.max(0, block.startRow + 1);
+  const end = Math.min(block.endRow, lines.length - 1);
+  if (end < start) return "";
+  return lines.slice(start, end + 1).join("\n").trimEnd();
+}
+
+function readBlockOutputText(term: Terminal, block: TerminalCommandBlock): string {
   const buffer = term.buffer.active;
   const end = Math.min(block.endRow, buffer.baseY + buffer.length);
   const lines: string[] = [];
-  for (let row = Math.max(0, block.startRow); row <= end; row += 1) {
+  for (let row = Math.max(0, block.startRow + 1); row <= end; row += 1) {
     const line = buffer.getLine(row);
     if (line) lines.push(line.translateToString(true));
   }
@@ -109,7 +119,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     const term = termRef.current;
     const block = blocksRef.current.find((item) => item.id === id);
     if (!term || !block) return;
-    navigator.clipboard.writeText(readBlockText(term, block)).catch(() => {});
+    navigator.clipboard.writeText(readBlockOutputText(term, block)).catch(() => {});
   }, [termRef]);
 
   const toggleBlock = useCallback((id: string) => {

@@ -33,7 +33,7 @@ import {
   cwdChangedUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
-import { findStickyCommandBlock } from "../src/ui/useTerminalBlocks.ts";
+import { collectTerminalBlockOutputText, findStickyCommandBlock } from "../src/ui/useTerminalBlocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 
 function makeSession(overrides = {}) {
@@ -181,6 +181,15 @@ test("sticky command block appears only after scrolling into hidden block output
   assert.equal(findStickyCommandBlock(blocks, 110, 30, 200)?.id, "b");
   assert.equal(findStickyCommandBlock(blocks, 110, 30, 110), null);
   assert.equal(findStickyCommandBlock(blocks, 170, 30, 200), null);
+});
+
+test("terminal block copy output skips the command row", () => {
+  const block = { startRow: 0, endRow: 3 };
+  assert.equal(
+    collectTerminalBlockOutputText(["$ pnpm test", "pass 1", "pass 2", ""], block),
+    "pass 1\npass 2",
+  );
+  assert.equal(collectTerminalBlockOutputText(["$ true"], { startRow: 0, endRow: 0 }), "");
 });
 
 test("terminal file links recognize local file positions without treating URLs as files", () => {

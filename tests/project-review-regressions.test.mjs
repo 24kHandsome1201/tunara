@@ -588,6 +588,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocks, /export function findStickyCommandBlock/);
+  assert.match(terminalBlocks, /export function collectTerminalBlockOutputText/);
+  assert.match(terminalBlocks, /block\.startRow \+ 1/);
+  assert.match(terminalBlocks, /readBlockOutputText/);
+  assert.match(terminalBlocks, /writeText\(readBlockOutputText\(term, block\)\)/);
   assert.match(terminalBlocks, /term\.onScroll/);
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
