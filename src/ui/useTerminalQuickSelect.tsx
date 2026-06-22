@@ -40,7 +40,7 @@ export function useTerminalQuickSelect(
     if (!term) return;
     const next = collectTerminalQuickSelectItems(readVisibleTerminalLines(term), cwd);
     if (next.length === 0) {
-      notify("没有可快速选择的内容", "当前可见输出里没有 URL 或文件位置", "error");
+      notify("没有可快速选择的内容", "当前可见输出里没有 URL、文件位置或可复制标识", "error");
       return;
     }
     setItems(next);
@@ -68,13 +68,17 @@ export function useTerminalQuickSelect(
   }, [notify]);
 
   const openItem = useCallback((item: TerminalQuickSelectItem) => {
+    if (item.kind === "text") {
+      copyItem(item);
+      return;
+    }
     const run = item.kind === "url"
       ? openUrl(item.target)
       : openInEditor(useUIStore.getState().externalEditor, item.target, item.line, item.column);
     run
       .then(() => setItems(null))
       .catch(() => notify("打开失败", item.label, "error"));
-  }, [notify]);
+  }, [copyItem, notify]);
 
   return {
     openQuickSelect,

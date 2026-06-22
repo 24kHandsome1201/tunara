@@ -20,6 +20,7 @@ import {
 } from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
 import {
   collectTerminalQuickSelectItems,
+  findTerminalQuickSelectTextTokens,
   findTerminalUrlTokens,
   quickSelectHint,
 } from "../src/modules/terminal/lib/terminal-quick-select.ts";
@@ -241,14 +242,15 @@ test("terminal file links recognize local file positions without treating URLs a
   assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
 });
 
-test("terminal quick select extracts visible URLs and file positions", () => {
+test("terminal quick select extracts visible URLs, file positions, and copy tokens", () => {
   const items = collectTerminalQuickSelectItems([
     "open https://example.com/docs.",
     "error TS2322: src/ui/TerminalView.tsx:128:9 - type mismatch",
+    "commit 7ec8346468c6ec404df5e0e1ed16648bee660839 reached 192.168.1.12 with exit code 42",
     "repeat https://example.com/docs",
   ], "/Users/me/repo");
 
-  assert.equal(items.length, 2);
+  assert.equal(items.length, 5);
   assert.equal(items[0].kind, "url");
   assert.equal(items[0].target, "https://example.com/docs");
   assert.equal(items[0].copyText, "https://example.com/docs");
@@ -259,7 +261,30 @@ test("terminal quick select extracts visible URLs and file positions", () => {
   assert.equal(items[1].target, "/Users/me/repo/src/ui/TerminalView.tsx");
   assert.equal(items[1].line, 128);
   assert.equal(items[1].column, 9);
+  assert.deepEqual(items.slice(2).map((item) => [item.kind, item.detail, item.copyText]), [
+    ["text", "Git hash", "7ec8346468c6ec404df5e0e1ed16648bee660839"],
+    ["text", "IP address", "192.168.1.12"],
+    ["text", "Number", "42"],
+  ]);
   assert.deepEqual(findTerminalUrlTokens("see http://a.test/x, and https://b.test/y!"), ["http://a.test/x", "https://b.test/y"]);
+});
+
+test("terminal quick select text tokens skip URL and file-link ranges", () => {
+  const urlLine = "see https://example.com/192.168.1.12/7ec8346 and 7ec8346";
+  const fileLine = "at src/app.ts:42:7 then count 42";
+
+  const items = collectTerminalQuickSelectItems([urlLine, fileLine], "/repo");
+  assert.deepEqual(items.map((item) => [item.kind, item.copyText]), [
+    ["url", "https://example.com/192.168.1.12/7ec8346"],
+    ["text", "7ec8346"],
+    ["file", "src/app.ts:42:7"],
+    ["text", "42"],
+  ]);
+  assert.deepEqual(findTerminalQuickSelectTextTokens("abc1234 10.0.0.1 17").map((item) => item.detail), [
+    "Git hash",
+    "IP address",
+    "Number",
+  ]);
 });
 
 test("terminal quick select hints use one or two character prefixes", () => {

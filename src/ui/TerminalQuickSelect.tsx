@@ -77,7 +77,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
             e.preventDefault();
             const item = hintedItems[selectedIndex]?.item;
             if (item) {
-              if (e.metaKey || e.ctrlKey) onOpen(item);
+              if ((e.metaKey || e.ctrlKey) && item.kind !== "text") onOpen(item);
               else onCopy(item);
             }
           } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -117,7 +117,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                 key={item.id}
                 data-quick-select-index={index}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onDoubleClick={() => onOpen(item)}
+                onDoubleClick={() => item.kind === "text" ? onCopy(item) : onOpen(item)}
                 style={{
                   margin: "0 6px",
                   padding: "7px 8px",
@@ -138,7 +138,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button onClick={() => onCopy(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>复制</button>
-                  <button onClick={() => onOpen(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>打开</button>
+                  {item.kind !== "text" && <button onClick={() => onOpen(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>打开</button>}
                 </div>
               </div>
             );
