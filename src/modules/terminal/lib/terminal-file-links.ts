@@ -3,7 +3,7 @@ import { openInEditor } from "@/modules/editor/open";
 import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
 
 interface TerminalFileLinkOptions {
-  getCwd: () => string | undefined;
+  getCwd: (bufferLineNumber: number) => string | undefined;
   getEditor: () => string;
 }
 
@@ -35,7 +35,7 @@ export function registerTerminalFileLinkProvider(
         activate(event) {
           event.preventDefault();
           event.stopPropagation();
-          const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd());
+          const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(bufferLineNumber));
           openInEditor(options.getEditor(), path, match.line, match.column).catch(() => {});
         },
       }));

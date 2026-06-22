@@ -313,6 +313,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const editorBridge = read("src/modules/editor/open.ts");
   const terminal = read("src/ui/TerminalView.tsx");
   const terminalFileLinks = read("src/modules/terminal/lib/terminal-file-links.ts");
+  const terminalLineCwd = read("src/modules/terminal/lib/terminal-line-cwd.ts");
   const terminalFileLinkParser = read("src/modules/terminal/lib/terminal-file-link-parser.ts");
   const pendingInput = read("src/modules/terminal/lib/terminal-pending-input.ts");
   const status = read("src/ui/AgentStatusBar.tsx");
@@ -338,7 +339,11 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminal, /pty\.write\(data\)\.catch/);
   assert.match(terminal, /schedulePendingInput\(\{/);
   assert.match(terminal, /registerTerminalFileLinkProvider\(term/);
+  assert.match(terminal, /createTerminalLineCwdTracker\(\)/);
+  assert.match(terminal, /lineCwdTracker\.record\(cwd, term\.registerMarker\(0\)\)/);
   assert.match(terminalFileLinks, /term\.registerLinkProvider/);
+  assert.match(terminalFileLinks, /options\.getCwd\(bufferLineNumber\)/);
+  assert.match(terminalLineCwd, /last\?\.cwd === normalized/);
   assert.match(terminalFileLinks, /openInEditor\(options\.getEditor\(\), path, match\.line, match\.column\)/);
   assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);

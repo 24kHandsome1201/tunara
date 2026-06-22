@@ -18,6 +18,7 @@ import {
   findTerminalFileLinkMatches,
   resolveTerminalFileLinkPath,
 } from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
+import { createTerminalLineCwdTracker } from "../src/modules/terminal/lib/terminal-line-cwd.ts";
 import {
   createTerminalHyperlinkHandler,
   normalizeTerminalHyperlink,
@@ -308,6 +309,29 @@ test("terminal file links recognize local file positions without treating URLs a
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo"), "/Users/me/repo/src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("../lib.rs", "/Users/me/repo"), "/Users/me/lib.rs");
   assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
+});
+
+test("terminal file links resolve relative paths from the cwd active for that line", () => {
+  const marker = (line) => ({
+    line,
+    isDisposed: false,
+    dispose() {
+      this.isDisposed = true;
+    },
+  });
+  const tracker = createTerminalLineCwdTracker();
+  const duplicateMarker = marker(3);
+  tracker.record("/Users/me/repo-a", marker(0));
+  tracker.record("/Users/me/repo-a", duplicateMarker);
+  tracker.record("/Users/me/repo-b", marker(8));
+
+  assert.equal(duplicateMarker.isDisposed, true);
+  assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(4)), "/Users/me/repo-a/src/main.rs");
+  assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(12)), "/Users/me/repo-b/src/main.rs");
+  assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(1, "/fallback")), "/Users/me/repo-a/src/main.rs");
+
+  tracker.dispose();
+  assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(12, "/fallback")), "/fallback/src/main.rs");
 });
 
 test("terminal OSC 8 hyperlink handler opens only HTTP URLs", () => {

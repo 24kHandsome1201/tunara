@@ -17,6 +17,7 @@ import { waitForTerminalFontReady } from "@/modules/terminal/lib/terminal-font";
 import { createTerminalHyperlinkHandler } from "@/modules/terminal/lib/terminal-hyperlinks";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
+import { createTerminalLineCwdTracker } from "@/modules/terminal/lib/terminal-line-cwd";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
@@ -128,8 +129,12 @@ export function TerminalView({
           }
         } catch { /* malformed URL, ignore */ }
       }));
+      const lineCwdTracker = createTerminalLineCwdTracker();
+      const initialCwd = dir === "~" ? undefined : dir;
+      if (initialCwd) lineCwdTracker.record(initialCwd, term.registerMarker(0));
+      cleanups.push(lineCwdTracker.dispose);
       const fileLinkDisposable = registerTerminalFileLinkProvider(term, {
-        getCwd: () => useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)?.dir ?? dir,
+        getCwd: (line) => lineCwdTracker.getCwdForLine(line, useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)?.dir ?? dir),
         getEditor: () => useUIStore.getState().externalEditor,
       });
       cleanups.push(() => fileLinkDisposable.dispose());
@@ -250,6 +255,7 @@ export function TerminalView({
       );
       cleanups.push(
         registerCwdHandler(term, (cwd) => {
+          lineCwdTracker.record(cwd, term.registerMarker(0));
           useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
         }),
       );
