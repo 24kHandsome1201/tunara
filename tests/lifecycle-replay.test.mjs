@@ -70,6 +70,11 @@ import {
   parseTerminalNotificationOsc9,
   parseTerminalNotificationOsc777,
 } from "../src/modules/terminal/lib/terminal-notification.ts";
+import {
+  handleTerminalClipboardOsc52,
+  MAX_OSC52_CLIPBOARD_BYTES,
+  parseTerminalClipboardWriteOsc52,
+} from "../src/modules/terminal/lib/terminal-clipboard.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
@@ -509,6 +514,37 @@ test("ConEmu OSC 9;9 cwd is parsed as a terminal cwd fallback", () => {
   assert.equal(parseConEmuCwdOsc9("4;1;42"), null);
   assert.equal(parseConEmuCwdOsc9("9;relative/path"), null);
   assert.equal(parseConEmuCwdOsc9("9;/tmp/\nrepo"), null);
+});
+
+test("OSC 52 clipboard writes decode text only within the safety limit", () => {
+  assert.deepEqual(parseTerminalClipboardWriteOsc52("c;aGVsbG8gd29ybGQ="), {
+    target: "c",
+    text: "hello world",
+  });
+  assert.deepEqual(parseTerminalClipboardWriteOsc52(";5Lit5paH"), {
+    target: "c",
+    text: "中文",
+  });
+  assert.equal(parseTerminalClipboardWriteOsc52("c;?"), null);
+  assert.equal(parseTerminalClipboardWriteOsc52("c;not base64!"), null);
+  assert.equal(parseTerminalClipboardWriteOsc52("c;////"), null);
+  assert.equal(parseTerminalClipboardWriteOsc52("c;aGVsbG8=", 4), null);
+  assert.equal(MAX_OSC52_CLIPBOARD_BYTES, 256 * 1024);
+});
+
+test("OSC 52 clipboard handler only writes when explicitly allowed", () => {
+  const writes = [];
+  const writeText = async (text) => {
+    writes.push(text);
+  };
+
+  assert.equal(handleTerminalClipboardOsc52("c;aGVsbG8=", { isWriteAllowed: () => false, writeText }), true);
+  assert.deepEqual(writes, []);
+  assert.equal(handleTerminalClipboardOsc52("c;?", { isWriteAllowed: () => true, writeText }), true);
+  assert.deepEqual(writes, []);
+  assert.equal(handleTerminalClipboardOsc52("c;aGVsbG8=", { isWriteAllowed: () => true, writeText }), true);
+  assert.deepEqual(writes, ["hello"]);
+  assert.equal(handleTerminalClipboardOsc52("malformed", { isWriteAllowed: () => true, writeText }), false);
 });
 
 test("terminal paste protection guards multiline and large pastes", () => {

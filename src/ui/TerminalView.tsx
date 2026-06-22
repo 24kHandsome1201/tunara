@@ -21,6 +21,7 @@ import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-li
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
+import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/terminal-clipboard";
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
@@ -113,6 +114,9 @@ export function TerminalView({
       term.loadAddon(fit);
       term.open(containerRef.current);
       cleanups.push(registerTerminalPasteProtection(term).dispose);
+      cleanups.push(registerTerminalClipboardHandler(term, {
+        isWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
+      }));
       if (activeRef.current) webglRef.current = createTerminalWebglRenderer(term);
       const serializeAddon = new SerializeAddon();
       term.loadAddon(serializeAddon);

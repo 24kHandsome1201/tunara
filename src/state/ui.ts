@@ -30,6 +30,7 @@ export interface AppearanceSettings {
   terminalTheme: TerminalThemeName;
   externalEditor: ExternalEditor;
   bellNotification: boolean;
+  terminalClipboardWrite: boolean;
   keybindings: KeybindingConfig;
 }
 
@@ -57,6 +58,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   terminalTheme: "default",
   externalEditor: "vscode",
   bellNotification: true,
+  terminalClipboardWrite: false,
   keybindings: { ...DEFAULT_KEYBINDINGS },
 };
 
@@ -118,6 +120,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     terminalTheme: isTerminalTheme(raw?.terminal_theme) ? raw.terminal_theme : DEFAULT_SETTINGS.terminalTheme,
     externalEditor: isExternalEditor(raw?.external_editor) ? raw.external_editor : DEFAULT_SETTINGS.externalEditor,
     bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
+    terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
     keybindings: { ...DEFAULT_KEYBINDINGS },
   };
 }
@@ -147,6 +150,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawConduitConfig {
       terminal_theme: s.terminalTheme,
       external_editor: s.externalEditor,
       bell_notification: s.bellNotification,
+      terminal_clipboard_write: s.terminalClipboardWrite,
     },
     keybindings: keybindingsToConfigKeys(s.keybindings),
   };
@@ -230,6 +234,7 @@ interface UIState extends AppearanceSettings {
   recordCommandUse: (id: string) => void;
   setExternalEditor: (e: ExternalEditor) => void;
   setBellNotification: (b: boolean) => void;
+  setTerminalClipboardWrite: (enabled: boolean) => void;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
   resetAppearance: () => void;
@@ -310,6 +315,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       }),
     setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
+    setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
     resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
@@ -341,7 +347,7 @@ export async function loadUserConfig(): Promise<void> {
   }
 }
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "keybindings"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "keybindings"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(

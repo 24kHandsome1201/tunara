@@ -80,12 +80,15 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
   assert.match(configRs, /pub font_ligatures: bool/);
   assert.match(configRs, /font_ligatures: false/);
+  assert.match(configRs, /pub terminal_clipboard_write: bool/);
+  assert.match(configRs, /terminal_clipboard_write: false/);
   assert.match(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
   const defaultConfigKeys = [...configRs.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
   assert.equal(new Set(defaultConfigKeys).size, defaultConfigKeys.length);
   assert.match(bridge, /invoke<LoadedConduitConfig>\("load_config"\)/);
   assert.match(bridge, /invoke\("save_config", \{ config \}\)/);
   assert.match(bridge, /font_ligatures: boolean/);
+  assert.match(bridge, /terminal_clipboard_write: boolean/);
   assert.match(keybindings, /export const DEFAULT_KEYBINDINGS/);
   assert.match(keybindings, /newTerminalAlt: "Mod\+N"/);
   assert.match(keybindings, /quickSelect: "Mod\+Shift\+Space"/);
@@ -96,6 +99,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(ui, /saveConduitConfig\(settingsToRawConfig/);
   assert.match(ui, /fontLigatures: false/);
   assert.match(ui, /font_ligatures: s\.fontLigatures/);
+  assert.match(ui, /terminalClipboardWrite: false/);
+  assert.match(ui, /terminal_clipboard_write: s\.terminalClipboardWrite/);
   assert.doesNotMatch(ui, /localStorage/);
   assert.doesNotMatch(ui, /sessionStorage/);
   assert.match(keys, /hasPlatformModKey\(e, isMac\)/);
@@ -112,6 +117,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(terminalLigatureSync, /registerTerminalLigatures\(term\)/);
   assert.match(settings, /setFontFamily\(fontDraft\)/);
   assert.match(settings, /setFontLigatures\(!fontLigatures\)/);
+  assert.match(settings, /setTerminalClipboardWrite\(!terminalClipboardWrite\)/);
   assert.match(settings, /Nerd Font/);
   assert.match(settings, /连字/);
   assert.match(settings, /configPath/);
@@ -604,6 +610,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalOutput = read("src/modules/terminal/lib/terminal-output-buffer.ts");
   const terminalPasteProtection = read("src/modules/terminal/lib/terminal-paste-protection.ts");
   const terminalPending = read("src/modules/terminal/lib/terminal-pending-input.ts");
+  const terminalClipboard = read("src/modules/terminal/lib/terminal-clipboard.ts");
   const terminalSnapshotScheduler = read("src/modules/terminal/lib/terminal-snapshot-scheduler.ts");
   const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
   const terminalInput = read("src/modules/terminal/lib/terminal-input-buffer.ts");
@@ -615,6 +622,14 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
 
   assert.match(terminal, /import \{ TerminalViewChrome \} from "\.\/TerminalViewChrome"/);
   assert.match(terminal, /import \{ emitTerminalNotification, requestInformationalAttention \} from "\.\/terminal-attention"/);
+  assert.match(terminal, /registerTerminalClipboardHandler\(term/);
+  assert.match(terminal, /terminalClipboardWrite/);
+  assert.match(terminalClipboard, /registerOscHandler\(52/);
+  assert.match(terminalClipboard, /handleTerminalClipboardOsc52/);
+  assert.match(terminalClipboard, /if \(!options\.isWriteAllowed\(\)\) return true/);
+  assert.match(terminalClipboard, /payload\.data === "\?"/);
+  assert.match(terminalClipboard, /MAX_OSC52_CLIPBOARD_BYTES = 256 \* 1024/);
+  assert.doesNotMatch(terminalClipboard, /readText/);
   assert.match(terminalAttention, /import \{ getCurrentWindow, UserAttentionType \} from "@tauri-apps\/api\/window"/);
   assert.match(terminalAttention, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);

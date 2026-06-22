@@ -21,6 +21,7 @@ pub struct AppearanceConfig {
     pub terminal_theme: String,
     pub external_editor: String,
     pub bell_notification: bool,
+    pub terminal_clipboard_write: bool,
 }
 
 impl Default for AppearanceConfig {
@@ -40,6 +41,7 @@ impl Default for AppearanceConfig {
             terminal_theme: "default".into(),
             external_editor: "vscode".into(),
             bell_notification: true,
+            terminal_clipboard_write: false,
         }
     }
 }

@@ -118,6 +118,8 @@ export function Settings({ onClose }: SettingsProps) {
   const setExternalEditor = useUIStore((s) => s.setExternalEditor);
   const bellNotification = useUIStore((s) => s.bellNotification);
   const setBellNotification = useUIStore((s) => s.setBellNotification);
+  const terminalClipboardWrite = useUIStore((s) => s.terminalClipboardWrite);
+  const setTerminalClipboardWrite = useUIStore((s) => s.setTerminalClipboardWrite);
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
 
@@ -298,6 +300,28 @@ export function Settings({ onClose }: SettingsProps) {
                   </button>
                 </div>
                 <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: -6 }}>窗口不在前台时，终端 bell 或 Agent 完成将触发 Dock 弹跳</div>
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={SECTION_LABEL}>OSC 52 剪贴板写入</div>
+                  <button
+                    onClick={() => setTerminalClipboardWrite(!terminalClipboardWrite)}
+                    style={{
+                      width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
+                      background: terminalClipboardWrite ? "var(--c-accent)" : "var(--c-bg-3)",
+                      transition: "background var(--duration-normal) var(--ease-smooth)",
+                      display: "flex", alignItems: "center", marginBottom: 10,
+                    }}
+                  >
+                    <div style={{
+                      width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
+                      boxShadow: "var(--shadow-card)",
+                      transform: terminalClipboardWrite ? "translateX(16px)" : "translateX(0)",
+                      transition: "transform var(--duration-normal) var(--ease-out-back)",
+                    }} />
+                  </button>
+                </div>
+                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: -6 }}>默认关闭；开启后终端程序可写入系统剪贴板</div>
               </div>
               <div>
                 <div style={SECTION_LABEL}>终端配色</div>

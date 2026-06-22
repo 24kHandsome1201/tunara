@@ -15,6 +15,7 @@ export interface RawAppearanceConfig {
   terminal_theme: string;
   external_editor: string;
   bell_notification: boolean;
+  terminal_clipboard_write: boolean;
 }
 
 export interface RawConduitConfig {
