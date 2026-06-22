@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type MenuIconName = "terminal" | "editor" | "copy" | "rename" | "close";
+export type MenuIconName = "terminal" | "editor" | "copy" | "rename" | "search" | "close";
 
 export interface MenuItem {
   id?: string;
@@ -62,6 +62,14 @@ function MenuIcon({ name }: { name: MenuIconName }) {
         <path d="M4 7h10" />
         <path d="M4 17h8" />
         <path d="M16 15l3 3 3-7Z" />
+      </svg>
+    );
+  }
+  if (name === "search") {
+    return (
+      <svg {...common}>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-4-4" />
       </svg>
     );
   }

@@ -143,17 +143,23 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     setStickyBlock((current) => current?.id === active.id ? next : current);
   }, []);
 
-  const copyBlockOutput = useCallback(async (id: string): Promise<boolean> => {
+  const readBlockOutput = useCallback((id: string): string | null => {
     const term = termRef.current;
     const block = blocksRef.current.find((item) => item.id === id);
-    if (!term || !block) return false;
+    if (!term || !block) return null;
+    return readBlockOutputText(term, block);
+  }, [termRef]);
+
+  const copyBlockOutput = useCallback(async (id: string): Promise<boolean> => {
+    const output = readBlockOutput(id);
+    if (output === null) return false;
     try {
-      await navigator.clipboard.writeText(readBlockOutputText(term, block));
+      await navigator.clipboard.writeText(output);
       return true;
     } catch {
       return false;
     }
-  }, [termRef]);
+  }, [readBlockOutput]);
 
   const copyBlockCommand = useCallback(async (id: string): Promise<boolean> => {
     const block = blocksRef.current.find((item) => item.id === id);
@@ -240,6 +246,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     copyBlockCommand,
     copyBlockCommandAndOutput,
     copyBlockOutput,
+    readBlockOutput,
     toggleBlock,
     revealBlock,
     handleCustomKeyEvent,

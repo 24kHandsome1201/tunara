@@ -132,11 +132,12 @@ interface TerminalBlocksBarProps {
   onCopyCommand: (id: string) => CopyBlockResult;
   onCopyCommandAndOutput: (id: string) => CopyBlockResult;
   onCopyOutput: (id: string) => CopyBlockResult;
+  onFilterBlock: (block: TerminalCommandBlock) => void;
   onToggle: (id: string) => void;
   onReveal: (id: string) => void;
 }
 
-export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopyCommand, onCopyCommandAndOutput, onCopyOutput, onToggle, onReveal }: TerminalBlocksBarProps) {
+export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopyCommand, onCopyCommandAndOutput, onCopyOutput, onFilterBlock, onToggle, onReveal }: TerminalBlocksBarProps) {
   const [contextMenu, setContextMenu] = useState<{
     block: TerminalCommandBlock;
     completed: boolean;
@@ -150,6 +151,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
     { id: "block:copy-command", label: "复制命令", icon: "copy", action: () => { onCopyCommand(contextMenu.block.id); } },
     { id: "block:copy-output", label: "复制输出", icon: "copy", disabled: !contextMenu.completed, action: () => { onCopyOutput(contextMenu.block.id); } },
     { id: "block:copy-both", label: "复制命令和输出", icon: "copy", disabled: !contextMenu.completed, action: () => { onCopyCommandAndOutput(contextMenu.block.id); } },
+    { id: "block:filter-output", label: "筛选输出", icon: "search", disabled: !contextMenu.completed, action: () => onFilterBlock(contextMenu.block) },
     null,
     { id: "block:reveal", label: "滚动到命令", icon: "terminal", action: () => onReveal(contextMenu.block.id) },
     { id: "block:toggle", label: contextMenu.collapsed ? "展开输出" : "折叠输出", icon: "terminal", action: () => onToggle(contextMenu.block.id) },

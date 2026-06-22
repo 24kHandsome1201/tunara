@@ -35,6 +35,10 @@ import {
   terminalPasteWarningMessage,
 } from "../src/modules/terminal/lib/terminal-paste-protection.ts";
 import {
+  filterTerminalBlockOutput,
+  formatTerminalBlockFilterText,
+} from "../src/modules/terminal/lib/terminal-block-filter.ts";
+import {
   TERMINAL_QUICK_SELECT_SCOPE_LINES,
   terminalQuickSelectRange,
 } from "../src/modules/terminal/lib/terminal-quick-select-scope.ts";
@@ -225,6 +229,56 @@ test("terminal block combined copy keeps command before output", () => {
     "pnpm test\npass 1\npass 2",
   );
   assert.equal(formatTerminalBlockCommandAndOutput("true", ""), "true");
+});
+
+test("terminal block output filter keeps scoped matches and context lines", () => {
+  const output = [
+    "compile app",
+    "warning: unused import",
+    "test passed",
+    "ERROR: failed snapshot",
+    "cleanup done",
+  ].join("\n");
+
+  assert.deepEqual(filterTerminalBlockOutput(output, {
+    query: "",
+    regex: false,
+    caseSensitive: false,
+    invert: false,
+    contextLines: 0,
+  }).lines.map((line) => line.text), output.split("\n"));
+
+  const plain = filterTerminalBlockOutput(output, {
+    query: "error",
+    regex: false,
+    caseSensitive: false,
+    invert: false,
+    contextLines: 1,
+  });
+  assert.equal(plain.selectedCount, 1);
+  assert.deepEqual(plain.lines.map((line) => [line.index, line.selected, line.context]), [
+    [2, false, true],
+    [3, true, false],
+    [4, false, true],
+  ]);
+  assert.equal(formatTerminalBlockFilterText(plain), "test passed\nERROR: failed snapshot\ncleanup done");
+
+  const inverted = filterTerminalBlockOutput(output, {
+    query: "^(warning|ERROR)",
+    regex: true,
+    caseSensitive: true,
+    invert: true,
+    contextLines: 0,
+  });
+  assert.deepEqual(inverted.lines.map((line) => line.text), ["compile app", "test passed", "cleanup done"]);
+
+  assert.equal(filterTerminalBlockOutput(output, {
+    query: "[",
+    regex: true,
+    caseSensitive: false,
+    invert: false,
+    contextLines: 0,
+  }).invalidRegex, true);
 });
 
 test("terminal command block navigation follows prompt marks around the viewport", () => {
