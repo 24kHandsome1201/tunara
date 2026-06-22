@@ -13,6 +13,7 @@ import {
   findTerminalFileLinkMatches,
   resolveTerminalFileLinkPath,
 } from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
+import { findProgrammingLigatureRanges } from "../src/modules/terminal/lib/terminal-ligatures.ts";
 import {
   agentBusyUpdate,
   agentDetectedUpdate,
@@ -169,6 +170,19 @@ test("terminal file links recognize local file positions without treating URLs a
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo"), "/Users/me/repo/src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("../lib.rs", "/Users/me/repo"), "/Users/me/lib.rs");
   assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
+});
+
+test("terminal ligature joiner prefers the longest programming sequences", () => {
+  assert.deepEqual(findProgrammingLigatureRanges("a !=== b && c -> d"), [
+    [2, 6],
+    [9, 11],
+    [14, 16],
+  ]);
+  assert.deepEqual(findProgrammingLigatureRanges("plain text"), []);
+  assert.deepEqual(findProgrammingLigatureRanges("<!--- block -->"), [
+    [0, 5],
+    [12, 15],
+  ]);
 });
 
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {

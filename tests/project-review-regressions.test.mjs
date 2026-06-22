@@ -67,6 +67,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const keys = read("src/app/useKeybindings.ts");
   const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
   const runtimeSync = read("src/ui/useTerminalRuntimeSync.ts");
+  const terminalLigatures = read("src/modules/terminal/lib/terminal-ligatures.ts");
   const settings = read("src/ui/overlays/Settings.tsx");
 
   assert.match(cargo, /^toml = "0\.8"$/m);
@@ -75,21 +76,30 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(lib, /modules::config::save_config/);
   assert.match(configRs, /\.join\("\.config"\)[\s\S]*\.join\("conduit"\)[\s\S]*\.join\("config\.toml"\)/);
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
+  assert.match(configRs, /pub font_ligatures: bool/);
+  assert.match(configRs, /font_ligatures: false/);
   assert.match(bridge, /invoke<LoadedConduitConfig>\("load_config"\)/);
   assert.match(bridge, /invoke\("save_config", \{ config \}\)/);
+  assert.match(bridge, /font_ligatures: boolean/);
   assert.match(keybindings, /export const DEFAULT_KEYBINDINGS/);
   assert.match(keybindings, /newTerminalAlt: "Mod\+N"/);
   assert.match(keybindings, /export function matchesKeybinding/);
   assert.match(ui, /loadConduitConfig/);
   assert.match(ui, /saveConduitConfig\(settingsToRawConfig/);
+  assert.match(ui, /fontLigatures: false/);
+  assert.match(ui, /font_ligatures: s\.fontLigatures/);
   assert.doesNotMatch(ui, /localStorage/);
   assert.doesNotMatch(ui, /sessionStorage/);
   assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
   assert.match(terminalInstance, /buildTerminalFontFamily/);
   assert.match(terminalInstance, /wordSeparator: " \(\)\[\]\{\}'\\";,"/);
   assert.match(runtimeSync, /term\.options\.fontFamily = buildTerminalFontFamily/);
+  assert.match(terminalLigatures, /registerCharacterJoiner/);
+  assert.match(terminalLigatures, /deregisterCharacterJoiner/);
   assert.match(settings, /setFontFamily\(fontDraft\)/);
+  assert.match(settings, /setFontLigatures\(!fontLigatures\)/);
   assert.match(settings, /Nerd Font/);
+  assert.match(settings, /连字/);
   assert.match(settings, /configPath/);
 });
 

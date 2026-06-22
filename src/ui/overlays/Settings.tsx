@@ -100,6 +100,7 @@ export function Settings({ onClose }: SettingsProps) {
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const fontSize = useUIStore((s) => s.fontSize);
   const fontFamily = useUIStore((s) => s.fontFamily);
+  const fontLigatures = useUIStore((s) => s.fontLigatures);
   const nerdFontFallback = useUIStore((s) => s.nerdFontFallback);
   const scrollback = useUIStore((s) => s.scrollback);
   const setTheme = useUIStore((s) => s.setTheme);
@@ -108,6 +109,7 @@ export function Settings({ onClose }: SettingsProps) {
   const setCursorBlink = useUIStore((s) => s.setCursorBlink);
   const setFontSize = useUIStore((s) => s.setFontSize);
   const setFontFamily = useUIStore((s) => s.setFontFamily);
+  const setFontLigatures = useUIStore((s) => s.setFontLigatures);
   const setNerdFontFallback = useUIStore((s) => s.setNerdFontFallback);
   const setScrollback = useUIStore((s) => s.setScrollback);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
@@ -253,6 +255,17 @@ export function Settings({ onClose }: SettingsProps) {
                     }}
                   >
                     Nerd Font
+                  </button>
+                  <button
+                    onClick={() => setFontLigatures(!fontLigatures)}
+                    style={{
+                      height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
+                      background: fontLigatures ? "var(--c-accent)" : "var(--c-bg-white)",
+                      color: fontLigatures ? "var(--c-btn-primary-text)" : "var(--c-text-3)",
+                      fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
+                    }}
+                  >
+                    连字
                   </button>
                 </div>
               </div>

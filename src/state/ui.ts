@@ -22,6 +22,7 @@ export interface AppearanceSettings {
   cursorBlink: boolean;
   fontSize: number;
   fontFamily: string;
+  fontLigatures: boolean;
   nerdFontFallback: boolean;
   scrollback: number;
   sidebarWidth: number;
@@ -48,6 +49,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   cursorBlink: true,
   fontSize: 14,
   fontFamily: "JetBrains Mono",
+  fontLigatures: false,
   nerdFontFallback: true,
   scrollback: 2000,
   sidebarWidth: 272,
@@ -108,6 +110,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     cursorBlink: typeof raw?.cursor_blink === "boolean" ? raw.cursor_blink : DEFAULT_SETTINGS.cursorBlink,
     fontSize: clampNumber(raw?.font_size, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
     fontFamily: sanitizeFontFamily(raw?.font_family),
+    fontLigatures: typeof raw?.font_ligatures === "boolean" ? raw.font_ligatures : DEFAULT_SETTINGS.fontLigatures,
     nerdFontFallback: typeof raw?.nerd_font_fallback === "boolean" ? raw.nerd_font_fallback : DEFAULT_SETTINGS.nerdFontFallback,
     scrollback: clampNumber(raw?.scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback),
     sidebarWidth: clampNumber(raw?.sidebar_width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
@@ -136,6 +139,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawConduitConfig {
       cursor_blink: s.cursorBlink,
       font_size: s.fontSize,
       font_family: s.fontFamily,
+      font_ligatures: s.fontLigatures,
       nerd_font_fallback: s.nerdFontFallback,
       scrollback: s.scrollback,
       sidebar_width: s.sidebarWidth,
@@ -206,6 +210,7 @@ interface UIState extends AppearanceSettings {
   setCursorBlink: (b: boolean) => void;
   setFontSize: (n: number) => void;
   setFontFamily: (name: string) => void;
+  setFontLigatures: (enabled: boolean) => void;
   setNerdFontFallback: (enabled: boolean) => void;
   setScrollback: (n: number) => void;
   setTerminalTheme: (t: TerminalThemeName) => void;
@@ -260,6 +265,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setCursorBlink: (cursorBlink) => set({ cursorBlink: typeof cursorBlink === "boolean" ? cursorBlink : DEFAULT_SETTINGS.cursorBlink }),
     setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
     setFontFamily: (fontFamily) => set({ fontFamily: sanitizeFontFamily(fontFamily) }),
+    setFontLigatures: (fontLigatures) => set({ fontLigatures: typeof fontLigatures === "boolean" ? fontLigatures : DEFAULT_SETTINGS.fontLigatures }),
     setNerdFontFallback: (nerdFontFallback) => set({ nerdFontFallback: typeof nerdFontFallback === "boolean" ? nerdFontFallback : DEFAULT_SETTINGS.nerdFontFallback }),
     setScrollback: (scrollback) => set({ scrollback: clampNumber(scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback) }),
     setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
@@ -335,7 +341,7 @@ export async function loadUserConfig(): Promise<void> {
   }
 }
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "keybindings"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "keybindings"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(

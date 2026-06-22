@@ -7,6 +7,7 @@ export interface RawAppearanceConfig {
   cursor_blink: boolean;
   font_size: number;
   font_family: string;
+  font_ligatures: boolean;
   nerd_font_fallback: boolean;
   scrollback: number;
   sidebar_width: number;
