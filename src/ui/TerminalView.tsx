@@ -15,7 +15,7 @@ import { extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText } 
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
 import { buildTerminalFontFamily, createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
-import { registerTerminalLigatures, type TerminalLigatureRegistration } from "@/modules/terminal/lib/terminal-ligatures";
+import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
@@ -125,15 +125,7 @@ export function TerminalView({
         getEditor: () => useUIStore.getState().externalEditor,
       });
       cleanups.push(() => fileLinkDisposable.dispose());
-      let ligatures: TerminalLigatureRegistration | null = null;
-      const syncLigatures = (enabled: boolean) => {
-        ligatures?.dispose();
-        ligatures = enabled ? registerTerminalLigatures(term) : null;
-        term.refresh(0, term.rows - 1);
-      };
-      syncLigatures(useUIStore.getState().fontLigatures);
-      cleanups.push(useUIStore.subscribe((s) => s.fontLigatures, syncLigatures));
-      cleanups.push(() => ligatures?.dispose());
+      cleanups.push(registerTerminalLigatureSync(term));
       // Fit after WebGL addon loads — the addon replaces the renderer and
       // changes cell metrics; fitting before it loads would measure stale
       // dimensions, causing a cols/rows mismatch with the PTY that shows

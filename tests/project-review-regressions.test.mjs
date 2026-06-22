@@ -68,6 +68,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
   const runtimeSync = read("src/ui/useTerminalRuntimeSync.ts");
   const terminalLigatures = read("src/modules/terminal/lib/terminal-ligatures.ts");
+  const terminalLigatureSync = read("src/modules/terminal/lib/terminal-ligature-sync.ts");
   const settings = read("src/ui/overlays/Settings.tsx");
 
   assert.match(cargo, /^toml = "0\.8"$/m);
@@ -78,6 +79,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
   assert.match(configRs, /pub font_ligatures: bool/);
   assert.match(configRs, /font_ligatures: false/);
+  const defaultConfigKeys = [...configRs.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
+  assert.equal(new Set(defaultConfigKeys).size, defaultConfigKeys.length);
   assert.match(bridge, /invoke<LoadedConduitConfig>\("load_config"\)/);
   assert.match(bridge, /invoke\("save_config", \{ config \}\)/);
   assert.match(bridge, /font_ligatures: boolean/);
@@ -96,6 +99,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(runtimeSync, /term\.options\.fontFamily = buildTerminalFontFamily/);
   assert.match(terminalLigatures, /registerCharacterJoiner/);
   assert.match(terminalLigatures, /deregisterCharacterJoiner/);
+  assert.match(terminalLigatureSync, /useUIStore\.subscribe\(\(s\) => s\.fontLigatures/);
+  assert.match(terminalLigatureSync, /registerTerminalLigatures\(term\)/);
   assert.match(settings, /setFontFamily\(fontDraft\)/);
   assert.match(settings, /setFontLigatures\(!fontLigatures\)/);
   assert.match(settings, /Nerd Font/);
@@ -601,6 +606,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminal, /const NOISE_COMMANDS = new Set/);
   assert.doesNotMatch(terminal, /function getTerminalTailText/);
 
-  assert.ok(terminal.split("\n").length < 560);
+  assert.ok(terminal.split("\n").length < 500);
   assert.ok(sidebar.split("\n").length < 380);
 });
