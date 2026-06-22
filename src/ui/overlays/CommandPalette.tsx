@@ -5,11 +5,8 @@ import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "../shared";
 import { formatShortcut } from "../formatShortcut";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
+import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
-
-interface CommandPaletteProps {
-  onClose: () => void;
-}
 
 interface Command {
   id: string;
@@ -19,6 +16,7 @@ interface Command {
   icon?: React.ReactNode;
   action: () => void;
   section: string;
+  scopes: CommandPaletteScope[];
   originalIndex: number;
 }
 
@@ -30,7 +28,7 @@ function CmdIcon({ d, size = 14 }: { d: string; size?: number }) {
   );
 }
 
-export function CommandPalette({ onClose }: CommandPaletteProps) {
+export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +69,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
           subtitle,
           icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
           section: "会话",
+          scopes: ["session"],
           originalIndex: idx++,
           action: () => { setActive(s.id); uiStore.getState().recordCommandUse(`switch-${s.id}`); onClose(); },
         });
@@ -82,6 +81,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: formatShortcut("mod+t"),
       icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
       section: "操作",
+      scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("new-terminal");
@@ -97,6 +97,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         subtitle: activeSession.dir,
         icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 5v14M5 12h14" /><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>,
         section: "操作",
+        scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("new-terminal-current-dir");
@@ -108,14 +109,14 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       for (const entry of collectRecentTerminalDirs(recentDirs, activeSession.dir)) cmds.push({
         id: `new-terminal-recent-dir-${entry.dir}`, label: `在 ${entry.label} 新建终端`, subtitle: entry.dir,
         icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-        section: "最近目录", originalIndex: idx++,
+        section: "最近目录", scopes: ["action", "terminal", "recent"], originalIndex: idx++,
         action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-dir-${entry.dir}`); useSessionsStore.getState().newTerminalInDir(entry.dir); onClose(); },
       });
 
       for (const entry of collectRecentTerminalCommands(recentCommands, activeSession.lastCommand)) cmds.push({
         id: `new-terminal-recent-command-${entry.command}`, label: `填入最近命令: ${entry.label}`, subtitle: activeSession.dir,
         icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
-        section: "最近命令", originalIndex: idx++,
+        section: "最近命令", scopes: ["action", "terminal", "recent"], originalIndex: idx++,
         action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`); useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir); onClose(); },
       });
 
@@ -125,6 +126,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         subtitle: activeSession.dir,
         icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
         section: "操作",
+        scopes: ["action"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("refresh-git-current");
@@ -139,6 +141,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         shortcut: formatShortcut("mod+shift+space"),
         icon: <CmdIcon d="M9 11.5 12 14l7-8" />,
         section: "操作",
+        scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("quick-select-visible-output");
@@ -152,6 +155,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         label: "重命名当前会话",
         icon: <CmdIcon d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />,
         section: "操作",
+        scopes: ["action"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("rename-current-session");
@@ -166,6 +170,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         shortcut: formatShortcut("mod+w"),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
         section: "操作",
+        scopes: ["action"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-current-session");
@@ -181,6 +186,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: formatShortcut("mod+\\"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
+      scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("toggle-sidebar"); uiStore.getState().toggleSidebar(); onClose(); },
     });
@@ -191,6 +197,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: formatShortcut("mod+shift+\\"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
+      scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("toggle-panel"); uiStore.getState().togglePanel(); onClose(); },
     });
@@ -201,6 +208,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: formatShortcut("mod+d"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="8" y1="1.5" x2="8" y2="14.5" /></svg>,
       section: "操作",
+      scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-horizontal");
@@ -216,6 +224,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: formatShortcut("mod+shift+d"),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="1.5" y1="8" x2="14.5" y2="8" /></svg>,
       section: "操作",
+      scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-vertical");
@@ -231,6 +240,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       shortcut: formatShortcut("mod+,"),
       icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
       section: "操作",
+      scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("settings"); uiStore.getState().setOverlay("settings"); },
     });
@@ -240,6 +250,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       label: "刷新所有 Git 状态",
       icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
       section: "批量",
+      scopes: ["action", "batch"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("refresh-all-git");
@@ -255,6 +266,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         label: "关闭所有会话",
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
         section: "批量",
+        scopes: ["action", "batch"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-all-sessions");
@@ -270,6 +282,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         label: "关闭其他会话",
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
         section: "批量",
+        scopes: ["action", "batch"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-other-sessions");
@@ -284,25 +297,9 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     return cmds;
   }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore]);
 
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? commands.filter((c) =>
-        c.label.toLowerCase().includes(q) ||
-        c.subtitle?.toLowerCase().includes(q) ||
-        c.section.toLowerCase().includes(q))
-    : commands;
-
-  const ranked = [...filtered].sort((a, b) => {
-    if (q) {
-      const ia = a.label.toLowerCase().indexOf(q);
-      const ib = b.label.toLowerCase().indexOf(q);
-      if (ia !== ib) return ia - ib;
-    }
-    const ua = usage[a.id] ?? 0;
-    const ub = usage[b.id] ?? 0;
-    if (ua !== ub) return ub - ua;
-    return a.originalIndex - b.originalIndex;
-  });
+  const parsedQuery = parseCommandPaletteQuery(query);
+  const filtered = filterCommandPaletteItems(commands, parsedQuery);
+  const ranked = rankCommandPaletteItems(filtered, parsedQuery, usage);
 
   useEffect(() => {
     setSelectedIndex(0);

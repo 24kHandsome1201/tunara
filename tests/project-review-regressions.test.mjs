@@ -284,6 +284,7 @@ test("file previews and markdown rendering stay bounded", () => {
 test("appearance settings are sanitized and command palette exposes useful actions", () => {
   const ui = read("src/state/ui.ts");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const paletteFilter = read("src/ui/overlays/command-palette-filter.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
   const toast = read("src/ui/Toast.tsx");
   const css = read("src/styles/globals.css");
@@ -297,6 +298,12 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(palette, /label: "在当前目录新建终端"/);
   assert.match(palette, /label: "刷新当前 Git 状态"/);
   assert.match(palette, /label: "关闭当前会话"/);
+  assert.match(palette, /parseCommandPaletteQuery\(query\)/);
+  assert.match(palette, /rankCommandPaletteItems\(filtered, parsedQuery, usage\)/);
+  assert.match(paletteFilter, /actions: "action"/);
+  assert.match(paletteFilter, /sessions: "session"/);
+  assert.match(paletteFilter, /terminal: "terminal"/);
+  assert.match(paletteFilter, /labelMatchIndex/);
   assert.match(palette, /ranked\.length === 0 \? 0 : Math\.min\(index, ranked\.length - 1\)/);
   assert.match(palette, /for \(const \[globalIdx, cmd\] of ranked\.entries\(\)\)/);
   assert.doesNotMatch(palette, /ranked\.indexOf/);

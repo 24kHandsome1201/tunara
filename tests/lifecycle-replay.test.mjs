@@ -29,6 +29,11 @@ import {
   findTerminalUrlTokens,
   quickSelectHint,
 } from "../src/modules/terminal/lib/terminal-quick-select.ts";
+import {
+  filterCommandPaletteItems,
+  parseCommandPaletteQuery,
+  rankCommandPaletteItems,
+} from "../src/ui/overlays/command-palette-filter.ts";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "../src/ui/overlays/command-palette-recents.ts";
 import { pushRecentCommand, sanitizeRecentCommands } from "../src/state/recent-commands.ts";
 import { pushRecentDir, sanitizeRecentDirs } from "../src/state/recent-dirs.ts";
@@ -333,6 +338,47 @@ test("command palette recent commands are deduped and prepared for safe prefill"
   ]);
   assert.deepEqual(pushRecentCommand(recentCommands, "echo one\necho two"), recentCommands);
   assert.deepEqual(sanitizeRecentCommands(["", "pnpm test", "pnpm test", 42, "cargo clippy", "echo one\necho two"]), ["pnpm test", "cargo clippy"]);
+});
+
+test("command palette typed filters narrow results by scope before text matching", () => {
+  const items = [
+    { id: "switch-api", label: "api", subtitle: "/repo/api", section: "会话", scopes: ["session"], originalIndex: 0 },
+    { id: "new-terminal", label: "新建终端", section: "操作", scopes: ["action", "terminal"], originalIndex: 1 },
+    { id: "recent-command", label: "填入最近命令: pnpm test", subtitle: "/repo/web", section: "最近命令", scopes: ["action", "terminal", "recent"], originalIndex: 2 },
+    { id: "settings", label: "设置", section: "操作", scopes: ["action", "app"], originalIndex: 3 },
+  ];
+
+  assert.deepEqual(
+    filterCommandPaletteItems(items, parseCommandPaletteQuery("sessions: api")).map((item) => item.id),
+    ["switch-api"],
+  );
+  assert.deepEqual(
+    filterCommandPaletteItems(items, parseCommandPaletteQuery("terminal: pnpm")).map((item) => item.id),
+    ["recent-command"],
+  );
+  assert.deepEqual(
+    filterCommandPaletteItems(items, parseCommandPaletteQuery("actions:")).map((item) => item.id),
+    ["new-terminal", "recent-command", "settings"],
+  );
+  assert.deepEqual(
+    filterCommandPaletteItems(items, parseCommandPaletteQuery("unknown: api")).map((item) => item.id),
+    [],
+  );
+});
+
+test("command palette ranking prefers label matches before subtitle-only matches", () => {
+  const items = [
+    { id: "subtitle-hit", label: "打开设置", subtitle: "/repo/api", section: "操作", scopes: ["action"], originalIndex: 0 },
+    { id: "label-hit", label: "api", section: "会话", scopes: ["session"], originalIndex: 1 },
+    { id: "used-action", label: "刷新 Git", section: "操作", scopes: ["action"], originalIndex: 2 },
+  ];
+
+  const parsed = parseCommandPaletteQuery("api");
+  const filtered = filterCommandPaletteItems(items, parsed);
+  assert.deepEqual(filtered.map((item) => item.id), ["subtitle-hit", "label-hit"]);
+  assert.deepEqual(rankCommandPaletteItems(filtered, parsed, {}).map((item) => item.id), ["label-hit", "subtitle-hit"]);
+  const actions = filterCommandPaletteItems(items, parseCommandPaletteQuery("actions:"));
+  assert.deepEqual(rankCommandPaletteItems(actions, parseCommandPaletteQuery("actions:"), { "used-action": 4 }).map((item) => item.id), ["used-action", "subtitle-hit"]);
 });
 
 test("terminal file links recognize local file positions without treating URLs as files", () => {
