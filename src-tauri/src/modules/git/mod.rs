@@ -1,7 +1,7 @@
 //! Git 集成：读操作（实施文档 §3.4.1）。
 //!
 //! `git_status` / `git_diff` / `git_ahead_behind` 用 git2 做结构化读取，不 spawn 子进程。
-//! 写操作（commit/push）在 [`commit`] 模块里走系统 `git` CLI（D4）。
+//! `commit` 模块只在 `cfg(test)` 下保留旧写路径的 pathspec 回归 fixture，不暴露 Tauri IPC。
 //!
 //! 关键设计：
 //! - `git_status` 两步 diff：`diff_tree_to_index` (staged) + `diff_index_to_workdir` (unstaged/untracked)，带 stage 字段。

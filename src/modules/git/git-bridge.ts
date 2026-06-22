@@ -1,7 +1,7 @@
 // Git 前端桥（实施文档 §4.3 / §3.4）
 //
 // invoke 封装：git_status / git_diff / git_ahead_behind。
-// 与后端 git/mod.rs + git/commit.rs 的命令契约对齐。
+// 与后端 git/mod.rs 的只读 IPC 契约对齐；commit.rs 仅是 Rust 测试 fixture。
 
 import { invoke } from "@tauri-apps/api/core";
 

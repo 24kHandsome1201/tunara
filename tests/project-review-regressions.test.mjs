@@ -255,6 +255,7 @@ test("file previews and markdown rendering stay bounded", () => {
   const bridge = read("src/modules/fs/fs-bridge.ts");
   const preview = read("src/ui/FilePreview.tsx");
   const git = read("src-tauri/src/modules/git/mod.rs");
+  const gitBridge = read("src/modules/git/git-bridge.ts");
 
   assert.match(rust, /const MAX_TEXT_PREVIEW_BYTES: u64 = 256 \* 1024/);
   assert.match(rust, /truncated: bool/);
@@ -264,6 +265,9 @@ test("file previews and markdown rendering stay bounded", () => {
   assert.match(preview, /useMemo/);
   assert.match(preview, /result\.truncated \? "\\n… 已截断" : ""/);
   assert.match(git, /out\.len\(\) \+ content\.len\(\) \+ prefix_len > DIFF_MAX_BYTES/);
+  assert.match(git, /commit` 模块只在 `cfg\(test\)` 下保留旧写路径的 pathspec 回归 fixture/);
+  assert.match(gitBridge, /git\/mod\.rs 的只读 IPC 契约/);
+  assert.doesNotMatch(gitBridge, /git\/mod\.rs \+ git\/commit\.rs 的命令契约/);
 });
 
 test("appearance settings are sanitized and command palette exposes useful actions", () => {
