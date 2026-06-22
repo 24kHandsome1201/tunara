@@ -10,6 +10,10 @@ import {
 import { scanTerminalInputBuffer } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
 import { parseOsc7 } from "../src/modules/terminal/lib/osc-handlers.ts";
 import {
+  findTerminalFileLinkMatches,
+  resolveTerminalFileLinkPath,
+} from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
+import {
   agentBusyUpdate,
   agentDetectedUpdate,
   agentExitedUpdate,
@@ -149,6 +153,22 @@ test("sticky command block appears only after scrolling into hidden block output
   assert.equal(findStickyCommandBlock(blocks, 110, 30, 200)?.id, "b");
   assert.equal(findStickyCommandBlock(blocks, 110, 30, 110), null);
   assert.equal(findStickyCommandBlock(blocks, 170, 30, 200), null);
+});
+
+test("terminal file links recognize local file positions without treating URLs as files", () => {
+  const line = "error TS2322: src/ui/TerminalView.tsx:128:9 - type mismatch";
+  const [match] = findTerminalFileLinkMatches(line);
+  assert.equal(match.text, "src/ui/TerminalView.tsx:128:9");
+  assert.equal(match.rawPath, "src/ui/TerminalView.tsx");
+  assert.equal(match.line, 128);
+  assert.equal(match.column, 9);
+  assert.equal(match.startIndex, line.indexOf("src/ui/TerminalView.tsx"));
+
+  assert.equal(findTerminalFileLinkMatches("see https://example.com/path:12").length, 0);
+  assert.equal(findTerminalFileLinkMatches("panic at main.rs:7.")[0].text, "main.rs:7");
+  assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo"), "/Users/me/repo/src/main.rs");
+  assert.equal(resolveTerminalFileLinkPath("../lib.rs", "/Users/me/repo"), "/Users/me/lib.rs");
+  assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
 });
 
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {

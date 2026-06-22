@@ -20,6 +20,7 @@ pub fn open_in_editor(
     editor: String,
     path: String,
     line: Option<u32>,
+    column: Option<u32>,
 ) -> Result<(), String> {
     let (bin, goto_style) = match editor.as_str() {
         "vscode" => ("code", GotoStyle::Flag),
@@ -36,9 +37,10 @@ pub fn open_in_editor(
     };
 
     let expanded_path = expand_tilde(&path);
-    let target = match line {
-        Some(l) => format!("{expanded_path}:{l}"),
-        None => expanded_path,
+    let target = match (line, column) {
+        (Some(l), Some(c)) => format!("{expanded_path}:{l}:{c}"),
+        (Some(l), None) => format!("{expanded_path}:{l}"),
+        (None, _) => expanded_path,
     };
 
     let mut cmd = Command::new(resolved_path);

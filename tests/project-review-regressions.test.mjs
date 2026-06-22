@@ -282,7 +282,10 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const html = read("index.html");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const editor = read("src-tauri/src/modules/editor/mod.rs");
+  const editorBridge = read("src/modules/editor/open.ts");
   const terminal = read("src/ui/TerminalView.tsx");
+  const terminalFileLinks = read("src/modules/terminal/lib/terminal-file-links.ts");
+  const terminalFileLinkParser = read("src/modules/terminal/lib/terminal-file-link-parser.ts");
   const pendingInput = read("src/modules/terminal/lib/terminal-pending-input.ts");
   const status = read("src/ui/AgentStatusBar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
@@ -299,10 +302,17 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(sessionCard, /e\.key === "Escape"[\s\S]*stopRenaming\(\)/);
   assert.match(editor, /use crate::modules::util::expand_tilde;/);
   assert.match(editor, /let expanded_path = expand_tilde\(&path\);/);
+  assert.match(editor, /column: Option<u32>/);
+  assert.match(editorBridge, /column\?: number/);
 
   assert.match(terminal, /const writePty = \(data: string\) => \{/);
   assert.match(terminal, /pty\.write\(data\)\.catch/);
   assert.match(terminal, /schedulePendingInput\(\{/);
+  assert.match(terminal, /registerTerminalFileLinkProvider\(term/);
+  assert.match(terminalFileLinks, /term\.registerLinkProvider/);
+  assert.match(terminalFileLinks, /openInEditor\(options\.getEditor\(\), path, match\.line, match\.column\)/);
+  assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
+  assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
   assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
   assert.match(pendingInput, /clearTimeout\(timer\)/);
 

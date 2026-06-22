@@ -14,6 +14,7 @@ import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText } from "@/modules/terminal/lib/terminal-buffer-read";
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
 import { buildTerminalFontFamily, createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
+import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
@@ -118,6 +119,11 @@ export function TerminalView({
           }
         } catch { /* malformed URL, ignore */ }
       }));
+      const fileLinkDisposable = registerTerminalFileLinkProvider(term, {
+        getCwd: () => useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)?.dir ?? dir,
+        getEditor: () => useUIStore.getState().externalEditor,
+      });
+      cleanups.push(() => fileLinkDisposable.dispose());
       // Fit after WebGL addon loads — the addon replaces the renderer and
       // changes cell metrics; fitting before it loads would measure stale
       // dimensions, causing a cols/rows mismatch with the PTY that shows
