@@ -558,6 +558,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalCodexState = read("src/modules/terminal/lib/terminal-codex-state.ts");
   const terminalCommand = read("src/modules/terminal/lib/terminal-command.ts");
   const terminalFont = read("src/modules/terminal/lib/terminal-font.ts");
+  const terminalHyperlinks = read("src/modules/terminal/lib/terminal-hyperlinks.ts");
   const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
   const terminalOutput = read("src/modules/terminal/lib/terminal-output-buffer.ts");
   const terminalPending = read("src/modules/terminal/lib/terminal-pending-input.ts");
@@ -581,6 +582,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ createCodexScreenStateTracker \} from "@\/modules\/terminal\/lib\/terminal-codex-state"/);
   assert.match(terminal, /import \{ isMeaningfulCommand \} from "@\/modules\/terminal\/lib\/terminal-command"/);
   assert.match(terminal, /import \{ waitForTerminalFontReady \} from "@\/modules\/terminal\/lib\/terminal-font"/);
+  assert.match(terminal, /import \{ createTerminalHyperlinkHandler \} from "@\/modules\/terminal\/lib\/terminal-hyperlinks"/);
   assert.match(terminal, /import \{ createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
   assert.match(terminal, /import \{ createTerminalOutputBuffer \} from "@\/modules\/terminal\/lib\/terminal-output-buffer"/);
   assert.match(terminal, /import \{ schedulePendingInput \} from "@\/modules\/terminal\/lib\/terminal-pending-input"/);
@@ -588,6 +590,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ scanTerminalInputBuffer \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
+  assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl\)/);
   assert.match(terminal, /createTerminalOutputBuffer\(term\)/);
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
@@ -642,6 +645,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
   assert.match(terminalRuntimeSync, /getTerminalTheme\(theme, terminalTheme, accent\)/);
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
+  assert.match(terminalHyperlinks, /export function normalizeTerminalHyperlink/);
+  assert.match(terminalHyperlinks, /allowNonHttpProtocols: false/);
+  assert.match(terminalHyperlinks, /url\.protocol !== "http:" && url\.protocol !== "https:"/);
+  assert.match(terminalInstance, /linkHandler\?: ILinkHandler \| null/);
+  assert.match(terminalInstance, /linkHandler,/);
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocks, /export function findStickyCommandBlock/);
   assert.match(terminalBlocks, /export function findNavigableCommandBlock/);

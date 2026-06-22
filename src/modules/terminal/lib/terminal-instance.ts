@@ -1,4 +1,4 @@
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type ILinkHandler } from "@xterm/xterm";
 import { type CursorStyle } from "@/state/ui";
 import { type TerminalThemeName, type ThemeType } from "@/ui/types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
@@ -14,6 +14,7 @@ interface TerminalInstanceOptions {
   accent: string;
   cursorBlink: boolean;
   cursorStyle: CursorStyle;
+  linkHandler?: ILinkHandler | null;
 }
 
 export function createTerminalInstance({
@@ -26,6 +27,7 @@ export function createTerminalInstance({
   accent,
   cursorBlink,
   cursorStyle,
+  linkHandler,
 }: TerminalInstanceOptions): Terminal {
   return new Terminal({
     fontFamily: buildTerminalFontFamily(fontFamily, nerdFontFallback),
@@ -38,5 +40,6 @@ export function createTerminalInstance({
     scrollback,
     wordSeparator: " ()[]{}'\";,",
     allowProposedApi: true,
+    linkHandler,
   });
 }

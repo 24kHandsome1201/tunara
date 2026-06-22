@@ -19,6 +19,10 @@ import {
   resolveTerminalFileLinkPath,
 } from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
 import {
+  createTerminalHyperlinkHandler,
+  normalizeTerminalHyperlink,
+} from "../src/modules/terminal/lib/terminal-hyperlinks.ts";
+import {
   collectTerminalQuickSelectItems,
   findTerminalQuickSelectTextTokens,
   findTerminalUrlTokens,
@@ -244,6 +248,29 @@ test("terminal file links recognize local file positions without treating URLs a
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo"), "/Users/me/repo/src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("../lib.rs", "/Users/me/repo"), "/Users/me/lib.rs");
   assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
+});
+
+test("terminal OSC 8 hyperlink handler opens only HTTP URLs", () => {
+  assert.equal(normalizeTerminalHyperlink("https://example.com/docs"), "https://example.com/docs");
+  assert.equal(normalizeTerminalHyperlink("http://example.com/a b"), "http://example.com/a%20b");
+  assert.equal(normalizeTerminalHyperlink("javascript:alert(1)"), null);
+  assert.equal(normalizeTerminalHyperlink("file:///tmp/secrets.txt"), null);
+  assert.equal(normalizeTerminalHyperlink("not a url"), null);
+
+  const opened = [];
+  const events = [];
+  const handler = createTerminalHyperlinkHandler((url) => opened.push(url));
+  const event = {
+    preventDefault: () => events.push("prevent"),
+    stopPropagation: () => events.push("stop"),
+  };
+  const range = { start: { x: 1, y: 1 }, end: { x: 4, y: 1 } };
+  handler.activate(event, "https://example.com/linked", range);
+  handler.activate(event, "ssh://example.com", range);
+
+  assert.equal(handler.allowNonHttpProtocols, false);
+  assert.deepEqual(opened, ["https://example.com/linked"]);
+  assert.deepEqual(events, ["prevent", "stop", "prevent", "stop"]);
 });
 
 test("terminal quick select extracts visible URLs, file positions, and copy tokens", () => {

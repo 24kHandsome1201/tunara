@@ -14,6 +14,7 @@ import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { extractCommandFromBuffer, extractCommandFromOsc } from "@/modules/terminal/lib/terminal-buffer-read";
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
 import { waitForTerminalFontReady } from "@/modules/terminal/lib/terminal-font";
+import { createTerminalHyperlinkHandler } from "@/modules/terminal/lib/terminal-hyperlinks";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
@@ -107,6 +108,7 @@ export function TerminalView({
         accent,
         cursorBlink,
         cursorStyle,
+        linkHandler: createTerminalHyperlinkHandler(openUrl),
       });
       termRef.current = term;
       const fit = new FitAddon();
