@@ -239,7 +239,9 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /if \(s\.agentResume\) agentResume\[s\.id\] = s\.agentResume/);
   assert.match(init, /agentResume,/);
   assert.match(init, /recentDirs: st\.recentDirs/);
+  assert.match(init, /recentCommands: st\.recentCommands/);
   assert.match(init, /recentDirs: snapshot\.recentDirs/);
+  assert.match(init, /recentCommands: snapshot\.recentCommands/);
   assert.match(init, /agentResume: snapshot\.agentResume\[p\.id\]/);
 });
 
@@ -443,6 +445,10 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(palette, /notifyBatchCloseConfirmation/);
   assert.match(palette, /collectRecentTerminalDirs\(recentDirs, activeSession\.dir\)/);
   assert.match(palette, /newTerminalInDir\(entry\.dir\)/);
+  assert.match(palette, /collectRecentTerminalCommands\(recentCommands, activeSession\.lastCommand\)/);
+  assert.match(palette, /newTerminalWithInput\(entry\.command, activeSession\.dir\)/);
+  assert.match(sessions, /recordRecentCommand: \(command\)/);
+  assert.match(sessions, /pendingInputSubmit: false/);
   assert.match(toast, /exitingRef/);
 });
 

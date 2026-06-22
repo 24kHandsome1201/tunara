@@ -5,7 +5,7 @@ import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "../shared";
 import { formatShortcut } from "../formatShortcut";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
-import { collectRecentTerminalDirs } from "./command-palette-recents";
+import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -39,6 +39,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
   const recentDirs = useSessionsStore((s) => s.recentDirs);
+  const recentCommands = useSessionsStore((s) => s.recentCommands);
   const setActive = useSessionsStore((s) => s.setActive);
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const uiStore = useUIStore;
@@ -104,21 +105,19 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         },
       });
 
-      for (const entry of collectRecentTerminalDirs(recentDirs, activeSession.dir)) {
-        cmds.push({
-          id: `new-terminal-recent-dir-${entry.dir}`,
-          label: `在 ${entry.label} 新建终端`,
-          subtitle: entry.dir,
-          icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-          section: "最近目录",
-          originalIndex: idx++,
-          action: () => {
-            uiStore.getState().recordCommandUse(`new-terminal-recent-dir-${entry.dir}`);
-            useSessionsStore.getState().newTerminalInDir(entry.dir);
-            onClose();
-          },
-        });
-      }
+      for (const entry of collectRecentTerminalDirs(recentDirs, activeSession.dir)) cmds.push({
+        id: `new-terminal-recent-dir-${entry.dir}`, label: `在 ${entry.label} 新建终端`, subtitle: entry.dir,
+        icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+        section: "最近目录", originalIndex: idx++,
+        action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-dir-${entry.dir}`); useSessionsStore.getState().newTerminalInDir(entry.dir); onClose(); },
+      });
+
+      for (const entry of collectRecentTerminalCommands(recentCommands, activeSession.lastCommand)) cmds.push({
+        id: `new-terminal-recent-command-${entry.command}`, label: `填入最近命令: ${entry.label}`, subtitle: activeSession.dir,
+        icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
+        section: "最近命令", originalIndex: idx++,
+        action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`); useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir); onClose(); },
+      });
 
       cmds.push({
         id: "refresh-git-current",
@@ -283,7 +282,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, setActive, onClose, uiStore]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore]);
 
   const q = query.trim().toLowerCase();
   const filtered = q

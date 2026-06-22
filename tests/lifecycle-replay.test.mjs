@@ -29,7 +29,8 @@ import {
   findTerminalUrlTokens,
   quickSelectHint,
 } from "../src/modules/terminal/lib/terminal-quick-select.ts";
-import { collectRecentTerminalDirs } from "../src/ui/overlays/command-palette-recents.ts";
+import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "../src/ui/overlays/command-palette-recents.ts";
+import { pushRecentCommand, sanitizeRecentCommands } from "../src/state/recent-commands.ts";
 import { pushRecentDir, sanitizeRecentDirs } from "../src/state/recent-dirs.ts";
 import {
   TERMINAL_LARGE_PASTE_WARNING_LENGTH,
@@ -313,6 +314,23 @@ test("command palette surfaces recently used terminal directories without duplic
     { dir: "/Users/me/api", label: "api" },
   ]);
   assert.deepEqual(sanitizeRecentDirs(["", "/tmp/a", "/tmp/a", 42, "/tmp/b"]), ["/tmp/a", "/tmp/b"]);
+});
+
+test("command palette recent commands are deduped and prepared for safe prefill", () => {
+  let recentCommands = [];
+  recentCommands = pushRecentCommand(recentCommands, "pnpm test");
+  recentCommands = pushRecentCommand(recentCommands, "cargo clippy");
+  recentCommands = pushRecentCommand(recentCommands, "pnpm test");
+
+  assert.deepEqual(recentCommands, ["pnpm test", "cargo clippy"]);
+  assert.deepEqual(collectRecentTerminalCommands(recentCommands, "cargo clippy"), [
+    { command: "pnpm test", label: "pnpm test" },
+  ]);
+  assert.deepEqual(collectRecentTerminalCommands(["echo one\necho two", "pnpm test"], undefined), [
+    { command: "pnpm test", label: "pnpm test" },
+  ]);
+  assert.deepEqual(pushRecentCommand(recentCommands, "echo one\necho two"), recentCommands);
+  assert.deepEqual(sanitizeRecentCommands(["", "pnpm test", "pnpm test", 42, "cargo clippy", "echo one\necho two"]), ["pnpm test", "cargo clippy"]);
 });
 
 test("terminal file links recognize local file positions without treating URLs as files", () => {

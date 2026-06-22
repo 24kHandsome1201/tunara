@@ -1,6 +1,7 @@
 import { load } from "@tauri-apps/plugin-store";
 import type { Session } from "@/ui/types";
 import { sanitizeRecentDirs } from "./recent-dirs";
+import { sanitizeRecentCommands } from "./recent-commands";
 
 const STORE_FILE = "conduit-sessions.json";
 const SESSIONS_KEY = "sessions";
@@ -56,6 +57,7 @@ export interface WorkspaceSnapshotV1 {
   terminals: Record<string, PersistedTerminalSnapshot>;
   agentResume: Record<string, PersistedAgentResumeIntent>;
   recentDirs: string[];
+  recentCommands: string[];
 }
 
 interface PersistedUILayout {
@@ -143,6 +145,7 @@ export async function saveSessions(
       terminals: snapshot?.terminals ?? {},
       agentResume: snapshot?.agentResume ?? {},
       recentDirs: snapshot?.recentDirs ?? sanitizeRecentDirs(persisted.map((s) => s.dir)),
+      recentCommands: snapshot?.recentCommands ?? [],
     };
     await store.set(WORKSPACE_SNAPSHOT_KEY, updated);
     await store.save();
@@ -321,8 +324,19 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     obj.recentDirs,
   );
   const fallbackRecentDirs = sanitizeRecentDirs(sessions.map((s) => s.dir));
+  const recentCommands = sanitizeRecentCommands(obj.recentCommands);
 
-  return { version: 1, savedAt, activeSessionId, sessions, ui, terminals, agentResume, recentDirs: recentDirs.length ? recentDirs : fallbackRecentDirs };
+  return {
+    version: 1,
+    savedAt,
+    activeSessionId,
+    sessions,
+    ui,
+    terminals,
+    agentResume,
+    recentDirs: recentDirs.length ? recentDirs : fallbackRecentDirs,
+    recentCommands,
+  };
 }
 
 export async function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1): Promise<void> {
@@ -374,6 +388,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | nul
       terminals: {},
       agentResume: {},
       recentDirs: sanitizeRecentDirs(sessions.map((s) => s.dir)),
+      recentCommands: [],
     };
 
     await store.set(WORKSPACE_SNAPSHOT_KEY, migrated);

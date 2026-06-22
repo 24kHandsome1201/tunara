@@ -14,6 +14,7 @@ import {
 } from "@/modules/terminal/lib/session-lifecycle";
 import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
+import { pushRecentCommand } from "./recent-commands";
 
 interface SessionsState {
   sessions: Session[];
@@ -24,6 +25,7 @@ interface SessionsState {
   closeConfirmations: Record<string, number>;
   dirCloseConfirmations: Record<string, number>;
   recentDirs: string[];
+  recentCommands: string[];
 
   addSession: (s: Session) => void;
   removeSession: (id: string) => void;
@@ -36,6 +38,7 @@ interface SessionsState {
   closeSessionsInDir: (dir: string) => void;
   clearDirCloseConfirmation: (dir: string) => void;
   recordRecentDir: (dir: string) => void;
+  recordRecentCommand: (command: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
   handleAgentReady: (id: string) => void;
@@ -52,6 +55,7 @@ interface SessionsState {
   reorderInGroup: (dir: string, fromIndex: number, toIndex: number) => void;
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
+  newTerminalWithInput: (input: string, dir?: string) => void;
   splitWithNewSession: (direction: "horizontal" | "vertical") => void;
   closeSession: (id: string) => void;
 }
@@ -67,7 +71,7 @@ export function makeSessionId(): string {
 
 export function createSession(
   dir: string,
-  opts?: { agent?: AgentCode; title?: string; branch?: string; pendingInput?: string },
+  opts?: { agent?: AgentCode; title?: string; branch?: string; pendingInput?: string; pendingInputSubmit?: boolean },
 ): Session {
   const id = makeSessionId();
   return {
@@ -80,7 +84,7 @@ export function createSession(
     gitState: "unknown",
     runState: "idle" as const,
     pendingInput: opts?.pendingInput,
-    pendingInputSubmit: undefined,
+    pendingInputSubmit: opts?.pendingInputSubmit,
     updatedAt: Date.now(),
   };
 }
@@ -154,6 +158,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   closeConfirmations: {},
   dirCloseConfirmations: {},
   recentDirs: [],
+  recentCommands: [],
 
   addSession: (s) => {
     set((state) => ({
@@ -228,6 +233,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   recordRecentDir: (dir) =>
     set((state) => ({ recentDirs: pushRecentDir(state.recentDirs, dir) })),
+
+  recordRecentCommand: (command) =>
+    set((state) => ({ recentCommands: pushRecentCommand(state.recentCommands, command) })),
 
   closeSessions: (ids) => {
     const uniqueIds = new Set(ids);
@@ -347,7 +355,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleCommandDetected: (id, command) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = commandDetectedUpdate(session, command);
-    if (update) get().updateSession(id, update.patch);
+    if (update) {
+      get().recordRecentCommand(command);
+      get().updateSession(id, update.patch);
+    }
   },
 
   handleCommandFinished: (id, exitCode) => {
@@ -422,6 +433,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   newTerminalInDir: (dir) => {
     get().addSession(createSession(dir, { title: "终端" }));
+  },
+
+  newTerminalWithInput: (input, dir) => {
+    const active = get().sessions.find((s) => s.id === get().activeSessionId);
+    get().addSession(createSession(dir ?? active?.dir ?? "~", {
+      title: "终端",
+      pendingInput: input,
+      pendingInputSubmit: false,
+    }));
   },
 
   splitWithNewSession: (direction) => {

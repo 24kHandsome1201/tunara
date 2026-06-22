@@ -39,6 +39,7 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
     terminals: getAllTerminalSnapshots(),
     agentResume,
     recentDirs: st.recentDirs,
+    recentCommands: st.recentCommands,
   };
 }
 
@@ -104,7 +105,13 @@ export function useInit() {
         }
       }
 
-      useSessionsStore.setState({ sessions: merged, activeSessionId, launchedSessionIds, recentDirs: snapshot.recentDirs });
+      useSessionsStore.setState({
+        sessions: merged,
+        activeSessionId,
+        launchedSessionIds,
+        recentDirs: snapshot.recentDirs,
+        recentCommands: snapshot.recentCommands,
+      });
 
       useUIStore.setState({
         sidebarVisible: snapshot.ui.sidebarVisible,
