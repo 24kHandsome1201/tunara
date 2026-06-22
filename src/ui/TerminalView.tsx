@@ -30,6 +30,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { TerminalViewChrome } from "./TerminalViewChrome";
 import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks";
+import { useTerminalQuickSelect } from "./useTerminalQuickSelect";
 import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl";
 import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 interface TerminalViewProps {
@@ -66,6 +67,7 @@ export function TerminalView({
   activeRef.current = active;
   const search = useTerminalSearch(termRef);
   const blocks = useTerminalBlocks(termRef);
+  const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
   const pendingInputRef = useRef(pendingInput);
   pendingInputRef.current = pendingInput;
   const pendingInputSubmitRef = useRef(pendingInputSubmit);
@@ -462,5 +464,5 @@ export function TerminalView({
     // when `dir` changes would close and recreate the terminal on every `cd`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} />;
+  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />;
 }

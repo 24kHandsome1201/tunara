@@ -80,6 +80,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
   assert.match(configRs, /pub font_ligatures: bool/);
   assert.match(configRs, /font_ligatures: false/);
+  assert.match(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
   const defaultConfigKeys = [...configRs.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
   assert.equal(new Set(defaultConfigKeys).size, defaultConfigKeys.length);
   assert.match(bridge, /invoke<LoadedConduitConfig>\("load_config"\)/);
@@ -87,6 +88,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(bridge, /font_ligatures: boolean/);
   assert.match(keybindings, /export const DEFAULT_KEYBINDINGS/);
   assert.match(keybindings, /newTerminalAlt: "Mod\+N"/);
+  assert.match(keybindings, /quickSelect: "Mod\+Shift\+Space"/);
   assert.match(keybindings, /export function matchesKeybinding/);
   assert.match(ui, /loadConduitConfig/);
   assert.match(ui, /saveConduitConfig\(settingsToRawConfig/);
@@ -95,6 +97,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.doesNotMatch(ui, /localStorage/);
   assert.doesNotMatch(ui, /sessionStorage/);
   assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
+  assert.match(keys, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalFont, /buildTerminalFontFamily/);
   assert.match(terminalInstance, /wordSeparator: " \(\)\[\]\{\}'\\";,"/);
   assert.match(runtimeSync, /from "@\/modules\/terminal\/lib\/terminal-font"/);
@@ -541,6 +544,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalSearchHook = read("src/ui/useTerminalSearch.ts");
   const terminalRuntimeSync = read("src/ui/useTerminalRuntimeSync.ts");
   const terminalWebgl = read("src/ui/useTerminalWebgl.ts");
+  const terminalQuickSelect = read("src/modules/terminal/lib/terminal-quick-select.ts");
+  const terminalQuickSelectHook = read("src/ui/useTerminalQuickSelect.tsx");
+  const terminalQuickSelectOverlay = read("src/ui/TerminalQuickSelect.tsx");
   const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
   const terminalBlocksBar = read("src/ui/TerminalBlocksBar.tsx");
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
@@ -553,6 +559,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalSnapshotScheduler = read("src/modules/terminal/lib/terminal-snapshot-scheduler.ts");
   const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
   const terminalInput = read("src/modules/terminal/lib/terminal-input-buffer.ts");
+  const commandPalette = read("src/ui/overlays/CommandPalette.tsx");
+  const keybindings = read("src/modules/config/keybindings.ts");
+  const appKeybindings = read("src/app/useKeybindings.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
@@ -561,6 +570,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
   assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
+  assert.match(terminal, /import \{ useTerminalQuickSelect \} from "\.\/useTerminalQuickSelect"/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
   assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
   assert.match(terminal, /import \{ createCodexScreenStateTracker \} from "@\/modules\/terminal\/lib\/terminal-codex-state"/);
@@ -576,6 +586,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /createTerminalOutputBuffer\(term\)/);
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
+  assert.match(terminal, /useTerminalQuickSelect\(termRef, \{ active, cwd: dir, sessionId \}\)/);
+  assert.match(terminal, /quickSelectOverlay=\{quickSelect\.quickSelectOverlay\}/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
   assert.match(terminal, /term\.attachCustomKeyEventHandler\(\(e\) => search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)\)/);
@@ -584,6 +596,24 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
   assert.match(terminalChrome, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
   assert.match(terminalChrome, /import \{ TerminalBlocksBar \} from "\.\/TerminalBlocksBar"/);
+  assert.match(terminalChrome, /quickSelectOverlay\?: ReactNode/);
+  assert.match(terminalChrome, /\{quickSelectOverlay\}/);
+  assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);
+  assert.match(terminalQuickSelect, /export function collectTerminalQuickSelectItems/);
+  assert.match(terminalQuickSelect, /findTerminalFileLinkMatches/);
+  assert.match(terminalQuickSelect, /resolveTerminalFileLinkPath/);
+  assert.match(terminalQuickSelect, /export function quickSelectHint/);
+  assert.match(terminalQuickSelectHook, /readVisibleTerminalLines/);
+  assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readVisibleTerminalLines\(term\), cwd\)/);
+  assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
+  assert.match(terminalQuickSelectHook, /openInEditor\(useUIStore\.getState\(\)\.externalEditor, item\.target, item\.line, item\.column\)/);
+  assert.match(terminalQuickSelectOverlay, /export function TerminalQuickSelect/);
+  assert.match(terminalQuickSelectOverlay, /quickSelectHint\(index\)/);
+  assert.match(terminalQuickSelectOverlay, /onCopy\(hintedItems\[exact\]\.item\)/);
+  assert.match(commandPalette, /id: "quick-select-visible-output"/);
+  assert.match(commandPalette, /window\.dispatchEvent\(new CustomEvent\(TERMINAL_QUICK_SELECT_EVENT\)\)/);
+  assert.match(keybindings, /"quickSelect"/);
+  assert.match(appKeybindings, /case "quickSelect"/);
   assert.match(terminalSearch, /export function TerminalSearchBar/);
   assert.match(terminalSearchHook, /export function useTerminalSearch/);
   assert.match(terminalSearchHook, /registerSearchAddon/);

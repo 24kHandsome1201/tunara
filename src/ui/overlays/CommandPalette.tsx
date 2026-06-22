@@ -4,6 +4,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "../shared";
 import { formatShortcut } from "../formatShortcut";
+import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -111,6 +112,20 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         action: () => {
           uiStore.getState().recordCommandUse("refresh-git-current");
           useSessionsStore.getState().refreshGit(activeSession.id);
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "quick-select-visible-output",
+        label: "快速选择可见输出",
+        shortcut: formatShortcut("mod+shift+space"),
+        icon: <CmdIcon d="M9 11.5 12 14l7-8" />,
+        section: "操作",
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("quick-select-visible-output");
+          window.dispatchEvent(new CustomEvent(TERMINAL_QUICK_SELECT_EVENT));
           onClose();
         },
       });

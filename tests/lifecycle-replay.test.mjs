@@ -19,6 +19,11 @@ import {
   resolveTerminalFileLinkPath,
 } from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
 import {
+  collectTerminalQuickSelectItems,
+  findTerminalUrlTokens,
+  quickSelectHint,
+} from "../src/modules/terminal/lib/terminal-quick-select.ts";
+import {
   TERMINAL_FONT_LOAD_TIMEOUT_MS,
   buildTerminalFontFamily,
   waitForTerminalFontReady,
@@ -234,6 +239,32 @@ test("terminal file links recognize local file positions without treating URLs a
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo"), "/Users/me/repo/src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("../lib.rs", "/Users/me/repo"), "/Users/me/lib.rs");
   assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
+});
+
+test("terminal quick select extracts visible URLs and file positions", () => {
+  const items = collectTerminalQuickSelectItems([
+    "open https://example.com/docs.",
+    "error TS2322: src/ui/TerminalView.tsx:128:9 - type mismatch",
+    "repeat https://example.com/docs",
+  ], "/Users/me/repo");
+
+  assert.equal(items.length, 2);
+  assert.equal(items[0].kind, "url");
+  assert.equal(items[0].target, "https://example.com/docs");
+  assert.equal(items[0].detail, "example.com");
+  assert.equal(items[1].kind, "file");
+  assert.equal(items[1].label, "src/ui/TerminalView.tsx:128:9");
+  assert.equal(items[1].target, "/Users/me/repo/src/ui/TerminalView.tsx");
+  assert.equal(items[1].line, 128);
+  assert.equal(items[1].column, 9);
+  assert.deepEqual(findTerminalUrlTokens("see http://a.test/x, and https://b.test/y!"), ["http://a.test/x", "https://b.test/y"]);
+});
+
+test("terminal quick select hints use one or two character prefixes", () => {
+  assert.equal(quickSelectHint(0), "a");
+  assert.equal(quickSelectHint(25), "m");
+  assert.equal(quickSelectHint(26), "aa");
+  assert.equal(quickSelectHint(27), "as");
 });
 
 test("terminal ligature joiner prefers the longest programming sequences", () => {

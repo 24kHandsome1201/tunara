@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import type { ReactNode } from "react";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalBlocksBar } from "./TerminalBlocksBar";
 import type { useTerminalSearch } from "./useTerminalSearch";
@@ -15,6 +16,7 @@ interface TerminalViewChromeProps {
   onCopyBlockOutput: (id: string) => boolean | Promise<boolean>;
   onToggleBlock: (id: string) => void;
   onRevealBlock: (id: string) => void;
+  quickSelectOverlay?: ReactNode;
 }
 
 export function TerminalViewChrome({
@@ -28,6 +30,7 @@ export function TerminalViewChrome({
   onCopyBlockOutput,
   onToggleBlock,
   onRevealBlock,
+  quickSelectOverlay,
 }: TerminalViewChromeProps) {
   return (
     <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -57,6 +60,7 @@ export function TerminalViewChrome({
         onReveal={onRevealBlock}
       />
       <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
+      {quickSelectOverlay}
     </div>
   );
 }

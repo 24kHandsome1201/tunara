@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 import { KEYBINDING_ACTIONS, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
+import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { platform } from "@tauri-apps/plugin-os";
 
 const isMac = platform() === "macos";
@@ -59,6 +60,9 @@ export function useKeybindings() {
         }
         case "commandPalette":
           ui.setOverlay("command-palette");
+          break;
+        case "quickSelect":
+          window.dispatchEvent(new CustomEvent(TERMINAL_QUICK_SELECT_EVENT));
           break;
         case "fontSizeUp":
           ui.setFontSize(ui.fontSize + 1);
