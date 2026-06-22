@@ -57,6 +57,7 @@ test("release cleanup removes orphan Rust modules from the source tree", () => {
 });
 
 test("text config drives appearance, keybindings, and terminal font settings", () => {
+  const agents = read("AGENTS.md");
   const cargo = read("src-tauri/Cargo.toml");
   const modules = read("src-tauri/src/modules/mod.rs");
   const lib = read("src-tauri/src/lib.rs");
@@ -82,6 +83,9 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /font_ligatures: false/);
   assert.match(configRs, /pub terminal_clipboard_write: bool/);
   assert.match(configRs, /terminal_clipboard_write: false/);
+  assert.match(agents, /OSC 52 剪贴板是安全 sink/);
+  assert.match(agents, /terminal_clipboard_write = true/);
+  assert.match(agents, /不要实现剪贴板读取响应/);
   assert.match(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
   const defaultConfigKeys = [...configRs.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
   assert.equal(new Set(defaultConfigKeys).size, defaultConfigKeys.length);
