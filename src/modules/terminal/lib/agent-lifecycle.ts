@@ -66,6 +66,7 @@ export const CODEX_BUSY_INDICATORS = [
   /Pursuing goal/i,
   /background terminal running/i,
 ] as const;
+export const CODEX_SCREEN_STATE_RECENT_LINE_LIMIT = 12;
 
 function isCodexPromptLine(line: string): boolean {
   return CODEX_PROMPT_PATTERN.test(line);
@@ -80,7 +81,7 @@ export function detectCodexScreenState(text: string): AgentScreenState {
     .split("\n")
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
-  const recent = lines.slice(-12);
+  const recent = lines.slice(-CODEX_SCREEN_STATE_RECENT_LINE_LIMIT);
   let promptIndex = -1;
   for (let i = recent.length - 1; i >= 0; i -= 1) {
     if (isCodexPromptLine(recent[i])) {

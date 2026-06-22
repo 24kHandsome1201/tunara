@@ -8,6 +8,11 @@ import {
   parseAgentLifecycleOsc,
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
 import { scanTerminalInputBuffer } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
+import {
+  CODEX_DATA_BURST_BUSY_THRESHOLD,
+  CODEX_STATE_CHECK_DELAY_MS,
+  createCodexScreenStateTracker,
+} from "../src/modules/terminal/lib/terminal-codex-state.ts";
 import { parseOsc7 } from "../src/modules/terminal/lib/osc-handlers.ts";
 import {
   findTerminalFileLinkMatches,
@@ -75,6 +80,23 @@ function createHarness(initial = makeSession()) {
     },
     get gitRefreshes() {
       return gitRefreshes;
+    },
+  };
+}
+
+function makeTailTerminal(lines) {
+  return {
+    buffer: {
+      active: {
+        baseY: 0,
+        cursorY: lines.length - 1,
+        getLine(row) {
+          const text = lines[row];
+          return text === undefined
+            ? undefined
+            : { translateToString: () => text };
+        },
+      },
     },
   };
 }
@@ -239,6 +261,38 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
   assert.equal(h.apply(agentReadyUpdate(h.session, true, 30)), true);
   assert.equal(h.session.agentActivity, "idle");
   assert.equal(isSessionBusy(h.session), false);
+});
+
+test("Codex screen tracker names burst and settle policy outside TerminalView", async () => {
+  let session = makeSession({ agent: "CX", agentActivity: "idle" });
+  let busyCount = 0;
+  let readyCount = 0;
+  const tracker = createCodexScreenStateTracker({
+    terminal: makeTailTerminal(["Codex", "› "]),
+    getSessionId: () => "s-1",
+    getCurrentSession: () => session,
+    isTrackingCodex: () => true,
+    onBusy: () => {
+      busyCount += 1;
+      session = { ...session, agentActivity: "running" };
+    },
+    onReady: () => {
+      readyCount += 1;
+      session = { ...session, agentActivity: "idle" };
+    },
+  });
+
+  for (let i = 1; i < CODEX_DATA_BURST_BUSY_THRESHOLD; i += 1) {
+    tracker.schedule();
+    assert.equal(busyCount, 0);
+  }
+  tracker.schedule();
+  assert.equal(busyCount, 1);
+
+  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(readyCount, 1);
+
+  tracker.dispose();
 });
 
 test("OSC 7 cwd replay updates sidebar directory and clears stale git context", () => {

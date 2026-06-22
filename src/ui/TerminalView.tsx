@@ -11,7 +11,7 @@ import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
 import { type AgentCode } from "./types";
 import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
-import { extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText } from "@/modules/terminal/lib/terminal-buffer-read";
+import { extractCommandFromBuffer, extractCommandFromOsc } from "@/modules/terminal/lib/terminal-buffer-read";
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
 import { buildTerminalFontFamily, createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
@@ -21,7 +21,8 @@ import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-in
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
-import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
+import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
+import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { useSessionsStore } from "@/state/sessions";
@@ -148,9 +149,16 @@ export function TerminalView({
       let promptEndRow = -1;
       let lastExitCode = 0;
       let idleTimer: ReturnType<typeof setTimeout> | null = null;
-      let codexStateTimer: ReturnType<typeof setTimeout> | null = null;
       const getCurrentSession = () =>
         useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
+      const codexStateTracker = createCodexScreenStateTracker({
+        terminal: term,
+        getSessionId: () => sessionIdRef.current,
+        getCurrentSession,
+        isTrackingCodex: () => hasAgent && currentAgentCode === "CX",
+        onBusy: (id) => useSessionsStore.getState().handleAgentBusy(id),
+        onReady: (id) => useSessionsStore.getState().handleAgentReady(id),
+      });
       const syncAgentTrackingFromStore = () => {
         const sess = getCurrentSession();
         if (sess?.agent && (!hasAgent || currentAgentCode !== sess.agent)) {
@@ -168,10 +176,7 @@ export function TerminalView({
           clearTimeout(idleTimer);
           idleTimer = null;
         }
-        if (codexStateTimer) {
-          clearTimeout(codexStateTimer);
-          codexStateTimer = null;
-        }
+        codexStateTracker.reset();
       };
       const scheduleQuietAgentReady = (delay = 3000) => {
         if (idleTimer) clearTimeout(idleTimer);
@@ -246,29 +251,7 @@ export function TerminalView({
         if (clean) useSessionsStore.getState().handleShellTitle(sessionIdRef.current, clean);
       });
       cleanups.push(() => titleDisposable.dispose());
-      let codexDataBurstCount = 0;
       const currentBufferRow = () => term.buffer.active.cursorY + term.buffer.active.baseY;
-      const scheduleCodexStateCheck = () => {
-        codexDataBurstCount += 1;
-        const store = useSessionsStore.getState();
-        const sess = getCurrentSession();
-        if (sess?.agent && sess.agentActivity !== "running" && codexDataBurstCount >= 3) {
-          store.handleAgentBusy(sessionIdRef.current);
-        }
-        if (codexStateTimer) clearTimeout(codexStateTimer);
-        codexStateTimer = setTimeout(() => {
-          codexStateTimer = null;
-          codexDataBurstCount = 0;
-          if (!hasAgent || currentAgentCode !== "CX") return;
-          const s = getCurrentSession();
-          if (!s?.agent) return;
-          const tail = getTerminalTailText(term);
-          const screenState = detectCodexScreenState(tail);
-          if (screenState === "ready" && s.agentActivity !== "idle") {
-            store.handleAgentReady(sessionIdRef.current);
-          }
-        }, 500);
-      };
       const requestAttentionIfNeeded = () => {
         requestInformationalAttention();
       };
@@ -358,7 +341,7 @@ export function TerminalView({
               scheduleSnapshot();
               if (hasAgent && currentAgentCode) {
                 if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
-                  scheduleCodexStateCheck();
+                  codexStateTracker.schedule();
                   return;
                 }
                 const sess = getCurrentSession();
@@ -458,10 +441,7 @@ export function TerminalView({
           clearTimeout(idleTimer);
           idleTimer = null;
         }
-        if (codexStateTimer) {
-          clearTimeout(codexStateTimer);
-          codexStateTimer = null;
-        }
+        codexStateTracker.dispose();
       });
       if (active) term.focus();
     })();

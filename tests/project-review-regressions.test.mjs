@@ -534,6 +534,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
   const terminalBlocksBar = read("src/ui/TerminalBlocksBar.tsx");
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
+  const terminalCodexState = read("src/modules/terminal/lib/terminal-codex-state.ts");
   const terminalCommand = read("src/modules/terminal/lib/terminal-command.ts");
   const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
   const terminalOutput = read("src/modules/terminal/lib/terminal-output-buffer.ts");
@@ -550,7 +551,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
   assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
-  assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
+  assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
+  assert.match(terminal, /import \{ createCodexScreenStateTracker \} from "@\/modules\/terminal\/lib\/terminal-codex-state"/);
   assert.match(terminal, /import \{ isMeaningfulCommand \} from "@\/modules\/terminal\/lib\/terminal-command"/);
   assert.match(terminal, /import \{ buildTerminalFontFamily, createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
   assert.match(terminal, /import \{ createTerminalOutputBuffer \} from "@\/modules\/terminal\/lib\/terminal-output-buffer"/);
@@ -591,6 +593,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBufferRead, /export function extractCommandFromBuffer/);
   assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
   assert.match(terminalBufferRead, /export function getTerminalTailText/);
+  assert.match(terminalCodexState, /export function createCodexScreenStateTracker/);
+  assert.match(terminalCodexState, /CODEX_DATA_BURST_BUSY_THRESHOLD/);
+  assert.match(terminalCodexState, /detectCodexScreenState\(tail\)/);
   assert.match(terminalCommand, /export function isMeaningfulCommand/);
   assert.match(terminalInstance, /export function createTerminalInstance/);
   assert.match(terminalOutput, /export function createTerminalOutputBuffer/);

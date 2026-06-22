@@ -1,5 +1,5 @@
 import { type Terminal } from "@xterm/xterm";
-import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils";
+import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 
 export function extractCommandFromBuffer(term: Terminal, promptEndRow: number): string {
   const cursorY = term.buffer.active.cursorY + term.buffer.active.baseY;
