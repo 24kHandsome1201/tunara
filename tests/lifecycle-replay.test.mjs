@@ -251,9 +251,11 @@ test("terminal quick select extracts visible URLs and file positions", () => {
   assert.equal(items.length, 2);
   assert.equal(items[0].kind, "url");
   assert.equal(items[0].target, "https://example.com/docs");
+  assert.equal(items[0].copyText, "https://example.com/docs");
   assert.equal(items[0].detail, "example.com");
   assert.equal(items[1].kind, "file");
   assert.equal(items[1].label, "src/ui/TerminalView.tsx:128:9");
+  assert.equal(items[1].copyText, "src/ui/TerminalView.tsx:128:9");
   assert.equal(items[1].target, "/Users/me/repo/src/ui/TerminalView.tsx");
   assert.equal(items[1].line, 128);
   assert.equal(items[1].column, 9);

@@ -59,9 +59,9 @@ export function useTerminalQuickSelect(
   const closeQuickSelect = useCallback(() => setItems(null), []);
 
   const copyItem = useCallback((item: TerminalQuickSelectItem) => {
-    navigator.clipboard.writeText(item.target)
+    navigator.clipboard.writeText(item.copyText)
       .then(() => {
-        notify("已复制", item.kind === "url" ? item.label : item.detail, "success");
+        notify("已复制", item.copyText, "success");
         setItems(null);
       })
       .catch(() => notify("复制失败", item.label, "error"));

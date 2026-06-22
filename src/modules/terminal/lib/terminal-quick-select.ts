@@ -9,6 +9,7 @@ export interface TerminalQuickSelectItem {
   kind: TerminalQuickSelectKind;
   label: string;
   detail: string;
+  copyText: string;
   target: string;
   line?: number;
   column?: number;
@@ -70,6 +71,7 @@ export function collectTerminalQuickSelectItems(
         kind: "url",
         label: url,
         detail: hostLabel(url),
+        copyText: url,
         target: url,
       });
     }
@@ -81,6 +83,7 @@ export function collectTerminalQuickSelectItems(
         kind: "file",
         label: match.text,
         detail: target,
+        copyText: match.text,
         target,
         line: match.line,
         column: match.column,

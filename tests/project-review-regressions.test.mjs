@@ -600,12 +600,14 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalChrome, /\{quickSelectOverlay\}/);
   assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelect, /export function collectTerminalQuickSelectItems/);
+  assert.match(terminalQuickSelect, /copyText: match\.text/);
   assert.match(terminalQuickSelect, /findTerminalFileLinkMatches/);
   assert.match(terminalQuickSelect, /resolveTerminalFileLinkPath/);
   assert.match(terminalQuickSelect, /export function quickSelectHint/);
   assert.match(terminalQuickSelectHook, /readVisibleTerminalLines/);
   assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readVisibleTerminalLines\(term\), cwd\)/);
   assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
+  assert.match(terminalQuickSelectHook, /navigator\.clipboard\.writeText\(item\.copyText\)/);
   assert.match(terminalQuickSelectHook, /openInEditor\(useUIStore\.getState\(\)\.externalEditor, item\.target, item\.line, item\.column\)/);
   assert.match(terminalQuickSelectOverlay, /export function TerminalQuickSelect/);
   assert.match(terminalQuickSelectOverlay, /quickSelectHint\(index\)/);
