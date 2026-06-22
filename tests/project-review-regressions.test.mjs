@@ -578,6 +578,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
+  assert.match(terminal, /term\.attachCustomKeyEventHandler\(\(e\) => search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)\)/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
@@ -592,6 +593,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocks, /export function findStickyCommandBlock/);
+  assert.match(terminalBlocks, /export function findNavigableCommandBlock/);
   assert.match(terminalBlocks, /export function collectTerminalBlockOutputText/);
   assert.match(terminalBlocks, /block\.startRow \+ 1/);
   assert.match(terminalBlocks, /readBlockOutputText/);
@@ -601,6 +603,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /return true/);
   assert.match(terminalBlocks, /catch \{[\s\S]*return false/);
   assert.match(terminalBlocks, /term\.onScroll/);
+  assert.match(terminalBlocks, /e\.key === "ArrowUp"[\s\S]*navigateBlock\("previous"\)/);
+  assert.match(terminalBlocks, /e\.key === "ArrowDown"[\s\S]*navigateBlock\("next"\)/);
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);

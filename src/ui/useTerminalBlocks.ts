@@ -42,6 +42,20 @@ export function collectTerminalBlockOutputText(
   return lines.slice(start, end + 1).join("\n").trimEnd();
 }
 
+export function findNavigableCommandBlock(
+  blocks: readonly TerminalCommandBlock[],
+  viewportY: number,
+  direction: "previous" | "next",
+): TerminalCommandBlock | null {
+  if (direction === "previous") {
+    for (let i = blocks.length - 1; i >= 0; i -= 1) {
+      if (blocks[i].startRow < viewportY) return blocks[i];
+    }
+    return null;
+  }
+  return blocks.find((block) => block.startRow > viewportY) ?? null;
+}
+
 function readBlockOutputText(term: Terminal, block: TerminalCommandBlock): string {
   const buffer = term.buffer.active;
   const end = Math.min(block.endRow, buffer.baseY + buffer.length);
@@ -149,6 +163,28 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     term.scrollToLine(block.startRow);
   }, [termRef]);
 
+  const navigateBlock = useCallback((direction: "previous" | "next") => {
+    const term = termRef.current;
+    if (!term) return false;
+    const block = findNavigableCommandBlock(blocksRef.current, term.buffer.active.viewportY, direction);
+    if (!block) return false;
+    term.scrollToLine(block.startRow);
+    return true;
+  }, [termRef]);
+
+  const handleCustomKeyEvent = useCallback((e: KeyboardEvent) => {
+    if (e.type !== "keydown" || !e.metaKey || !e.shiftKey || e.altKey || e.ctrlKey) return true;
+    if (e.key === "ArrowUp") {
+      navigateBlock("previous");
+      return false;
+    }
+    if (e.key === "ArrowDown") {
+      navigateBlock("next");
+      return false;
+    }
+    return true;
+  }, [navigateBlock]);
+
   const registerScrollTracking = useCallback((term: Terminal) => {
     const scrollDisposable = term.onScroll(() => refreshStickyBlock(term));
     refreshStickyBlock(term);
@@ -165,6 +201,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     copyBlock,
     toggleBlock,
     revealBlock,
+    handleCustomKeyEvent,
     registerScrollTracking,
   };
 }

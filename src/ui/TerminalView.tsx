@@ -140,7 +140,7 @@ export function TerminalView({
       const searchResultDisposable = search.registerSearchAddon(searchAddon);
       cleanups.push(() => searchResultDisposable.dispose());
       cleanups.push(blocks.registerScrollTracking(term));
-      term.attachCustomKeyEventHandler(search.handleCustomKeyEvent);
+      term.attachCustomKeyEventHandler((e) => search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
       // OSC 133 shell integration:
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
       let hasAgent = false;

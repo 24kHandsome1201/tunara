@@ -33,7 +33,7 @@ import {
   cwdChangedUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
-import { collectTerminalBlockOutputText, findStickyCommandBlock } from "../src/ui/useTerminalBlocks.ts";
+import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock } from "../src/ui/useTerminalBlocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 
 function makeSession(overrides = {}) {
@@ -190,6 +190,19 @@ test("terminal block copy output skips the command row", () => {
     "pass 1\npass 2",
   );
   assert.equal(collectTerminalBlockOutputText(["$ true"], { startRow: 0, endRow: 0 }), "");
+});
+
+test("terminal command block navigation follows prompt marks around the viewport", () => {
+  const blocks = [
+    { id: "a", command: "pnpm test", startRow: 10, endRow: 30, startedAt: 1, completedAt: 2, exitCode: 0 },
+    { id: "b", command: "cargo clippy", startRow: 80, endRow: 120, startedAt: 3, completedAt: 4, exitCode: 0 },
+    { id: "c", command: "pnpm build", startRow: 160, endRow: 190, startedAt: 5 },
+  ];
+
+  assert.equal(findNavigableCommandBlock(blocks, 100, "previous")?.id, "b");
+  assert.equal(findNavigableCommandBlock(blocks, 80, "previous")?.id, "a");
+  assert.equal(findNavigableCommandBlock(blocks, 100, "next")?.id, "c");
+  assert.equal(findNavigableCommandBlock(blocks, 160, "next"), null);
 });
 
 test("terminal file links recognize local file positions without treating URLs as files", () => {
