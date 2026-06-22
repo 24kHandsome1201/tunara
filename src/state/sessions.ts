@@ -13,6 +13,7 @@ import {
   shellTitleUpdate,
 } from "@/modules/terminal/lib/session-lifecycle";
 import { useUIStore } from "./ui";
+import { pushRecentDir } from "./recent-dirs";
 
 interface SessionsState {
   sessions: Session[];
@@ -22,6 +23,7 @@ interface SessionsState {
   gitNonce: Record<string, number>;
   closeConfirmations: Record<string, number>;
   dirCloseConfirmations: Record<string, number>;
+  recentDirs: string[];
 
   addSession: (s: Session) => void;
   removeSession: (id: string) => void;
@@ -33,6 +35,7 @@ interface SessionsState {
   closeSessions: (ids: string[]) => boolean;
   closeSessionsInDir: (dir: string) => void;
   clearDirCloseConfirmation: (dir: string) => void;
+  recordRecentDir: (dir: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
   handleAgentReady: (id: string) => void;
@@ -150,12 +153,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   gitNonce: {},
   closeConfirmations: {},
   dirCloseConfirmations: {},
+  recentDirs: [],
 
   addSession: (s) => {
     set((state) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
       launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
+      recentDirs: pushRecentDir(state.recentDirs, s.dir),
     }));
     ensureSessionVisibleInSplit(s.id);
   },
@@ -220,6 +225,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       return { dirCloseConfirmations };
     });
   },
+
+  recordRecentDir: (dir) =>
+    set((state) => ({ recentDirs: pushRecentDir(state.recentDirs, dir) })),
 
   closeSessions: (ids) => {
     const uniqueIds = new Set(ids);
@@ -373,6 +381,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         ? { agentResume: { ...agentResume, cwd, lastSeenAt: Date.now() } }
         : {}),
     });
+    get().recordRecentDir(cwd);
     if (update.refreshGit) get().refreshGit(id);
   },
 

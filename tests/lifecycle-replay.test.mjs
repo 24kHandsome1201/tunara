@@ -29,6 +29,8 @@ import {
   findTerminalUrlTokens,
   quickSelectHint,
 } from "../src/modules/terminal/lib/terminal-quick-select.ts";
+import { collectRecentTerminalDirs } from "../src/ui/overlays/command-palette-recents.ts";
+import { pushRecentDir, sanitizeRecentDirs } from "../src/state/recent-dirs.ts";
 import {
   TERMINAL_LARGE_PASTE_WARNING_LENGTH,
   analyzeTerminalPaste,
@@ -293,6 +295,24 @@ test("terminal command block navigation follows prompt marks around the viewport
   assert.equal(findNavigableCommandBlock(blocks, 80, "previous")?.id, "a");
   assert.equal(findNavigableCommandBlock(blocks, 100, "next")?.id, "c");
   assert.equal(findNavigableCommandBlock(blocks, 160, "next"), null);
+});
+
+test("command palette surfaces recently used terminal directories without duplicating active cwd", () => {
+  let recentDirs = [];
+  recentDirs = pushRecentDir(recentDirs, "/Users/me/current");
+  recentDirs = pushRecentDir(recentDirs, "/Users/me/api");
+  recentDirs = pushRecentDir(recentDirs, "/Users/me/web");
+  recentDirs = pushRecentDir(recentDirs, "/Users/me/api");
+
+  assert.deepEqual(recentDirs, ["/Users/me/api", "/Users/me/web", "/Users/me/current"]);
+  assert.deepEqual(collectRecentTerminalDirs(recentDirs, "/Users/me/current"), [
+    { dir: "/Users/me/api", label: "api" },
+    { dir: "/Users/me/web", label: "web" },
+  ]);
+  assert.deepEqual(collectRecentTerminalDirs(recentDirs, "/Users/me/current", 1), [
+    { dir: "/Users/me/api", label: "api" },
+  ]);
+  assert.deepEqual(sanitizeRecentDirs(["", "/tmp/a", "/tmp/a", 42, "/tmp/b"]), ["/tmp/a", "/tmp/b"]);
 });
 
 test("terminal file links recognize local file positions without treating URLs as files", () => {

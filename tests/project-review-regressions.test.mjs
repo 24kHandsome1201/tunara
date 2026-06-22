@@ -238,6 +238,8 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /const agentResume: WorkspaceSnapshotV1\["agentResume"\] = \{\}/);
   assert.match(init, /if \(s\.agentResume\) agentResume\[s\.id\] = s\.agentResume/);
   assert.match(init, /agentResume,/);
+  assert.match(init, /recentDirs: st\.recentDirs/);
+  assert.match(init, /recentDirs: snapshot\.recentDirs/);
   assert.match(init, /agentResume: snapshot\.agentResume\[p\.id\]/);
 });
 
@@ -439,6 +441,8 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sidebar, /label: "关闭全部会话", icon: "close"/);
   assert.match(palette, /st\.closeSessions\(st\.sessions\.map/);
   assert.match(palette, /notifyBatchCloseConfirmation/);
+  assert.match(palette, /collectRecentTerminalDirs\(recentDirs, activeSession\.dir\)/);
+  assert.match(palette, /newTerminalInDir\(entry\.dir\)/);
   assert.match(toast, /exitingRef/);
 });
 
