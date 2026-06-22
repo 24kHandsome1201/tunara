@@ -148,10 +148,14 @@ export function keybindingsToConfigKeys(keybindings: KeybindingConfig): Record<s
   );
 }
 
+export function hasPlatformModKey(e: Pick<KeyboardEvent, "metaKey" | "ctrlKey">, isMac: boolean): boolean {
+  return isMac ? e.metaKey : e.ctrlKey;
+}
+
 export function matchesKeybinding(e: KeyboardEvent, binding: string, isMac: boolean): boolean {
   const parsed = parseKeybinding(binding);
   if (!parsed) return false;
-  const modPressed = isMac ? e.metaKey : e.ctrlKey;
+  const modPressed = hasPlatformModKey(e, isMac);
   const explicitCtrl = parsed.ctrl;
   const explicitMeta = parsed.meta;
   const actualKey = normalizeKey(e.key);

@@ -1,5 +1,12 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
+import { hasPlatformModKey } from "../modules/config/keybindings.ts";
+
+function detectMacPlatform(): boolean {
+  return typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
+}
+
+const isMac = detectMacPlatform();
 
 export interface TerminalCommandBlock {
   id: string;
@@ -68,6 +75,10 @@ function readBlockOutputText(term: Terminal, block: TerminalCommandBlock): strin
     if (line) lines.push(line.translateToString(true));
   }
   return lines.join("\n").trimEnd();
+}
+
+function hasBlockNavigationModifier(e: KeyboardEvent): boolean {
+  return hasPlatformModKey(e, isMac) && (isMac ? !e.ctrlKey : !e.metaKey);
 }
 
 export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
@@ -201,7 +212,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
   }, [termRef]);
 
   const handleCustomKeyEvent = useCallback((e: KeyboardEvent) => {
-    if (e.type !== "keydown" || !e.metaKey || !e.shiftKey || e.altKey || e.ctrlKey) return true;
+    if (e.type !== "keydown" || !hasBlockNavigationModifier(e) || !e.shiftKey || e.altKey) return true;
     if (e.key === "ArrowUp") {
       navigateBlock("previous");
       return false;
