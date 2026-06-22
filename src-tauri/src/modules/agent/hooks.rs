@@ -81,31 +81,29 @@ mod platform {
                         Ok(conn) => {
                             let mut raw = String::new();
                             match conn.take(65536).read_to_string(&mut raw) {
-                                Ok(n) if n > 0 => {
-                                    match serde_json::from_str::<HookPayload>(&raw) {
-                                        Ok(payload) => {
-                                            log::info!(
-                                                "hook event: {} session={} agent={:?} code={:?}",
-                                                payload.event,
-                                                payload.session,
-                                                payload.agent,
-                                                payload.code
-                                            );
-                                            let _ = app.emit(
-                                                "agent-hook",
-                                                AgentHookEvent {
-                                                    event: payload.event,
-                                                    session: payload.session,
-                                                    agent: payload.agent,
-                                                    code: payload.code,
-                                                },
-                                            );
-                                        }
-                                        Err(e) => {
-                                            log::debug!("hooks: invalid JSON: {e} raw={raw}");
-                                        }
+                                Ok(n) if n > 0 => match serde_json::from_str::<HookPayload>(&raw) {
+                                    Ok(payload) => {
+                                        log::info!(
+                                            "hook event: {} session={} agent={:?} code={:?}",
+                                            payload.event,
+                                            payload.session,
+                                            payload.agent,
+                                            payload.code
+                                        );
+                                        let _ = app.emit(
+                                            "agent-hook",
+                                            AgentHookEvent {
+                                                event: payload.event,
+                                                session: payload.session,
+                                                agent: payload.agent,
+                                                code: payload.code,
+                                            },
+                                        );
                                     }
-                                }
+                                    Err(e) => {
+                                        log::debug!("hooks: invalid JSON: {e} raw={raw}");
+                                    }
+                                },
                                 _ => {}
                             }
                         }

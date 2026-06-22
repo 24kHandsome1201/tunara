@@ -299,7 +299,7 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
           background: "var(--c-accent)",
           borderRadius: "0 2px 2px 0",
           opacity: active ? 1 : 0,
-          transition: "opacity var(--duration-normal) var(--ease-smooth)",
+          transition: "opacity var(--duration-fast) ease",
         }}
       />
 

@@ -19,12 +19,14 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   const cargo = read("src-tauri/Cargo.toml");
   const lock = read("src-tauri/Cargo.lock");
   const cask = read("homebrew/conduit.rb");
+  const changelog = read("CHANGELOG.md");
 
   const version = pkg.version;
   assert.equal(tauri.version, version);
   assert.match(cargo, new RegExp(`^version = "${version}"$`, "m"));
   assert.match(lock, new RegExp(`name = "conduit"\\nversion = "${version}"`));
   assert.match(cask, new RegExp(`version "${version}"`));
+  assert.match(changelog, new RegExp(`## \\[${version}\\]`));
 
   assert.equal(tauri.identifier, "dev.conduit.app");
   assert.match(cask, /github\.com\/24kHandsome1201\/conduit/);
@@ -33,6 +35,58 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   assert.doesNotMatch(cask, /com\.conduit\.app/);
   assert.match(cask, /Application Support\/dev\.conduit\.app/);
   assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/conduit/);
+});
+
+test("release cleanup removes orphan Rust modules from the source tree", () => {
+  assert.equal(existsSync(resolve(root, "src-tauri/src/modules/secrets.rs")), false);
+  assert.equal(existsSync(resolve(root, "src-tauri/src/modules/shell/mod.rs")), false);
+
+  const modules = read("src-tauri/src/modules/mod.rs");
+  const readme = read("README.md");
+  const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
+  const desktopCapability = JSON.parse(read("src-tauri/capabilities/desktop.json"));
+
+  assert.doesNotMatch(modules, /\bsecrets\b/);
+  assert.doesNotMatch(modules, /\bshell\b/);
+  assert.doesNotMatch(readme, /├── shell\//);
+  assert.deepEqual(defaultCapability.windows, ["main"]);
+  assert.deepEqual(desktopCapability.windows, ["main"]);
+});
+
+test("text config drives appearance, keybindings, and terminal font settings", () => {
+  const cargo = read("src-tauri/Cargo.toml");
+  const modules = read("src-tauri/src/modules/mod.rs");
+  const lib = read("src-tauri/src/lib.rs");
+  const configRs = read("src-tauri/src/modules/config.rs");
+  const bridge = read("src/modules/config/config-bridge.ts");
+  const keybindings = read("src/modules/config/keybindings.ts");
+  const ui = read("src/state/ui.ts");
+  const keys = read("src/app/useKeybindings.ts");
+  const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
+  const runtimeSync = read("src/ui/useTerminalRuntimeSync.ts");
+  const settings = read("src/ui/overlays/Settings.tsx");
+
+  assert.match(cargo, /^toml = "0\.8"$/m);
+  assert.match(modules, /pub mod config;/);
+  assert.match(lib, /modules::config::load_config/);
+  assert.match(lib, /modules::config::save_config/);
+  assert.match(configRs, /\.join\("\.config"\)[\s\S]*\.join\("conduit"\)[\s\S]*\.join\("config\.toml"\)/);
+  assert.match(configRs, /fs::rename\(&tmp, path\)/);
+  assert.match(bridge, /invoke<LoadedConduitConfig>\("load_config"\)/);
+  assert.match(bridge, /invoke\("save_config", \{ config \}\)/);
+  assert.match(keybindings, /export const DEFAULT_KEYBINDINGS/);
+  assert.match(keybindings, /newTerminalAlt: "Mod\+N"/);
+  assert.match(keybindings, /export function matchesKeybinding/);
+  assert.match(ui, /loadConduitConfig/);
+  assert.match(ui, /saveConduitConfig\(settingsToRawConfig/);
+  assert.doesNotMatch(ui, /localStorage/);
+  assert.doesNotMatch(ui, /sessionStorage/);
+  assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
+  assert.match(terminalInstance, /buildTerminalFontFamily/);
+  assert.match(runtimeSync, /term\.options\.fontFamily = buildTerminalFontFamily/);
+  assert.match(settings, /setFontFamily\(fontDraft\)/);
+  assert.match(settings, /Nerd Font/);
+  assert.match(settings, /configPath/);
 });
 
 test("session persistence keeps custom titles and rejects invalid stored payloads", () => {
@@ -153,6 +207,10 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /const merged = current\.sessions\.length === 0/);
   assert.match(init, /sidebarVisible: snapshot\.ui\.sidebarVisible/);
   assert.match(init, /panelVisible: snapshot\.ui\.panelVisible/);
+  assert.match(init, /const agentResume: WorkspaceSnapshotV1\["agentResume"\] = \{\}/);
+  assert.match(init, /if \(s\.agentResume\) agentResume\[s\.id\] = s\.agentResume/);
+  assert.match(init, /agentResume,/);
+  assert.match(init, /agentResume: snapshot\.agentResume\[p\.id\]/);
 });
 
 test("terminal panes keep stable keyed mounts across single/split so the agent PTY survives", () => {
@@ -221,6 +279,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const sessionCard = read("src/ui/SessionCard.tsx");
   const editor = read("src-tauri/src/modules/editor/mod.rs");
   const terminal = read("src/ui/TerminalView.tsx");
+  const pendingInput = read("src/modules/terminal/lib/terminal-pending-input.ts");
   const status = read("src/ui/AgentStatusBar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
@@ -239,8 +298,9 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
 
   assert.match(terminal, /const writePty = \(data: string\) => \{/);
   assert.match(terminal, /pty\.write\(data\)\.catch/);
-  assert.match(terminal, /pty\.write\(cmd \+ "\\n"\)[\s\S]*\.then\(\(\) => onPendingInputConsumedRef/);
-  assert.match(terminal, /clearTimeout\(pendingInputTimer\)/);
+  assert.match(terminal, /schedulePendingInput\(\{/);
+  assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
+  assert.match(pendingInput, /clearTimeout\(timer\)/);
 
   assert.doesNotMatch(status, /position: "absolute"/);
   assert.match(status, /margin: "4px 8px 0"/);
@@ -291,12 +351,20 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(registry, /export const AGENT_COMMANDS/);
   assert.match(registry, /export const AGENT_NAMES/);
   assert.match(registry, /cliBin: string/);
-  assert.match(read("src/modules/agent/registry-data.json"), /"cliBin": "gh"/);
+  const registryData = read("src/modules/agent/registry-data.json");
+  assert.match(registryData, /"cliBin": "gh"/);
+  assert.match(registryData, /"commands": \["cursor-agent"\]/);
+  assert.match(registryData, /"cliBin": "cursor-agent"/);
+  assert.doesNotMatch(registryData, /"commands": \["agent"\]/);
   assert.match(lifecycle, /from "\.\.\/\.\.\/agent\/registry\.ts"/);
   assert.doesNotMatch(lifecycle, /const AGENT_COMMANDS: Record/);
   assert.match(settings, /const CLI_LIST = AGENT_REGISTRY\.map/);
   assert.match(resolver, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/src\/modules\/agent\/registry-data\.json"\)/);
   assert.match(resolver, /fn resolver_uses_shared_agent_registry_data/);
+  const preflight = read("src-tauri/src/modules/agent/preflight.rs");
+  assert.match(preflight, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/src\/modules\/agent\/registry-data\.json"\)/);
+  assert.match(preflight, /fn preflight_uses_shared_agent_registry_data/);
+  assert.doesNotMatch(preflight, /"cline" => Some/);
   assert.match(types, /export const TERMINAL_THEME_NAMES = \[/);
   assert.match(types, /totalAdded: number; totalRemoved: number/);
   assert.match(types, /for \(const file of s\.changes\.files\)/);
@@ -429,45 +497,62 @@ test("follow-up review fixes polish dense UI surfaces", () => {
 
 test("review follow-up keeps terminal and sidebar hotspots split into focused pieces", () => {
   const terminal = read("src/ui/TerminalView.tsx");
+  const terminalChrome = read("src/ui/TerminalViewChrome.tsx");
   const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
   const terminalSearchHook = read("src/ui/useTerminalSearch.ts");
   const terminalRuntimeSync = read("src/ui/useTerminalRuntimeSync.ts");
+  const terminalWebgl = read("src/ui/useTerminalWebgl.ts");
+  const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
+  const terminalBlocksBar = read("src/ui/TerminalBlocksBar.tsx");
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
   const terminalCommand = read("src/modules/terminal/lib/terminal-command.ts");
   const terminalInstance = read("src/modules/terminal/lib/terminal-instance.ts");
   const terminalOutput = read("src/modules/terminal/lib/terminal-output-buffer.ts");
+  const terminalPending = read("src/modules/terminal/lib/terminal-pending-input.ts");
+  const terminalSnapshotScheduler = read("src/modules/terminal/lib/terminal-snapshot-scheduler.ts");
   const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
   const terminalInput = read("src/modules/terminal/lib/terminal-input-buffer.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
-  assert.match(terminal, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
+  assert.match(terminal, /import \{ TerminalViewChrome \} from "\.\/TerminalViewChrome"/);
   assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
   assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
   assert.match(terminal, /import \{ isMeaningfulCommand \} from "@\/modules\/terminal\/lib\/terminal-command"/);
-  assert.match(terminal, /import \{ createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
+  assert.match(terminal, /import \{ buildTerminalFontFamily, createTerminalInstance \} from "@\/modules\/terminal\/lib\/terminal-instance"/);
   assert.match(terminal, /import \{ createTerminalOutputBuffer \} from "@\/modules\/terminal\/lib\/terminal-output-buffer"/);
+  assert.match(terminal, /import \{ schedulePendingInput \} from "@\/modules\/terminal\/lib\/terminal-pending-input"/);
   assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
   assert.match(terminal, /import \{ scanTerminalInputBuffer \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
+  assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
   assert.match(terminal, /createTerminalOutputBuffer\(term\)/);
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
+  assert.match(terminal, /useTerminalBlocks\(termRef\)/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
+  assert.match(terminalChrome, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
+  assert.match(terminalChrome, /import \{ TerminalBlocksBar \} from "\.\/TerminalBlocksBar"/);
   assert.match(terminalSearch, /export function TerminalSearchBar/);
   assert.match(terminalSearchHook, /export function useTerminalSearch/);
   assert.match(terminalSearchHook, /registerSearchAddon/);
   assert.match(terminalSearchHook, /handleCustomKeyEvent/);
   assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
   assert.match(terminalRuntimeSync, /getTerminalTheme\(theme, terminalTheme, accent\)/);
+  assert.match(terminalWebgl, /export function useTerminalWebgl/);
+  assert.match(terminalBlocks, /export function useTerminalBlocks/);
+  assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
+  assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBufferRead, /export function extractCommandFromBuffer/);
   assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
   assert.match(terminalBufferRead, /export function getTerminalTailText/);
   assert.match(terminalCommand, /export function isMeaningfulCommand/);
   assert.match(terminalInstance, /export function createTerminalInstance/);
   assert.match(terminalOutput, /export function createTerminalOutputBuffer/);
+  assert.match(terminalPending, /export function schedulePendingInput/);
+  assert.match(terminalSnapshotScheduler, /export function createTerminalSnapshotScheduler/);
   assert.match(terminalResize, /export function observeTerminalResize/);
   assert.match(terminalResize, /new ResizeObserver/);
   assert.match(terminalInput, /export function scanTerminalInputBuffer/);

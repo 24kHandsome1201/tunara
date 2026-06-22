@@ -59,15 +59,20 @@ export function sessionDisplayRunState(session: Session): RunState {
 
 export type AgentScreenState = "ready" | "busy" | null;
 
+export const CODEX_PROMPT_PATTERN = /^\s*›(?:\s|$)/;
+export const CODEX_BUSY_INDICATORS = [
+  /\bWorking\b/i,
+  /esc to interrupt/i,
+  /Pursuing goal/i,
+  /background terminal running/i,
+] as const;
+
 function isCodexPromptLine(line: string): boolean {
-  return /^\s*›(?:\s|$)/.test(line);
+  return CODEX_PROMPT_PATTERN.test(line);
 }
 
 function hasCodexBusyIndicator(text: string): boolean {
-  return /\bWorking\b/i.test(text)
-    || /esc to interrupt/i.test(text)
-    || /Pursuing goal/i.test(text)
-    || /background terminal running/i.test(text);
+  return CODEX_BUSY_INDICATORS.some((pattern) => pattern.test(text));
 }
 
 export function detectCodexScreenState(text: string): AgentScreenState {

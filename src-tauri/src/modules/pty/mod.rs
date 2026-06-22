@@ -37,14 +37,8 @@ impl Default for PtyState {
 
 impl PtyState {
     pub fn close_all(&self) {
-        let sessions: Vec<(u32, Arc<Session>)> = self
-            .sessions
-            .write()
-            .drain()
-            .collect();
-        self.logical_sessions
-            .write()
-            .clear();
+        let sessions: Vec<(u32, Arc<Session>)> = self.sessions.write().drain().collect();
+        self.logical_sessions.write().clear();
         for (id, session) in sessions {
             if let Err(e) = session.killer.lock().kill() {
                 log::debug!("pty close_all: kill id={id} returned {e}");
@@ -65,15 +59,9 @@ pub fn pty_open(
     on_event: Channel<PtyEvent>,
 ) -> Result<u32, String> {
     if let Some(logical_id) = logical_session_id.as_deref() {
-        let old_id = state
-            .logical_sessions
-            .write()
-            .remove(logical_id);
+        let old_id = state.logical_sessions.write().remove(logical_id);
         if let Some(old_id) = old_id {
-            let old_session = state
-                .sessions
-                .write()
-                .remove(&old_id);
+            let old_session = state.sessions.write().remove(&old_id);
             if let Some(session) = old_session {
                 if let Err(e) = session.killer.lock().kill() {
                     log::debug!("pty_open replace: kill id={old_id} returned {e}");
@@ -97,10 +85,7 @@ pub fn pty_open(
         e
     })?;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
-    state
-        .sessions
-        .write()
-        .insert(id, session);
+    state.sessions.write().insert(id, session);
     if let Some(logical_id) = logical_session_id {
         state
             .logical_sessions
@@ -115,15 +100,10 @@ pub fn pty_open(
 
 #[tauri::command]
 pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result<(), String> {
-    let session = state
-        .sessions
-        .read()
-        .get(&id)
-        .cloned()
-        .ok_or_else(|| {
-            log::warn!("pty_write: unknown id={id}");
-            "no session".to_string()
-        })?;
+    let session = state.sessions.read().get(&id).cloned().ok_or_else(|| {
+        log::warn!("pty_write: unknown id={id}");
+        "no session".to_string()
+    })?;
     let result = session
         .writer
         .lock()
@@ -143,15 +123,10 @@ pub fn pty_resize(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    let session = state
-        .sessions
-        .read()
-        .get(&id)
-        .cloned()
-        .ok_or_else(|| {
-            log::warn!("pty_resize: unknown id={id}");
-            "no session".to_string()
-        })?;
+    let session = state.sessions.read().get(&id).cloned().ok_or_else(|| {
+        log::warn!("pty_resize: unknown id={id}");
+        "no session".to_string()
+    })?;
     let result = session
         .master
         .lock()
@@ -170,14 +145,9 @@ pub fn pty_resize(
 
 #[tauri::command]
 pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
-    let session = state
-        .sessions
-        .write()
-        .remove(&id);
+    let session = state.sessions.write().remove(&id);
     let removed_logical: Option<String> = {
-        let mut ls = state
-            .logical_sessions
-            .write();
+        let mut ls = state.logical_sessions.write();
         let key = ls
             .iter()
             .find(|(_, sid)| **sid == id)

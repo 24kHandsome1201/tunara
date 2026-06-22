@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
+import { KEYBINDING_ACTIONS, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
 import { platform } from "@tauri-apps/plugin-os";
 
 const isMac = platform() === "macos";
@@ -16,12 +17,70 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
-function hasAppModifier(e: KeyboardEvent): boolean {
-  return isMac ? e.metaKey : e.ctrlKey;
-}
-
 export function useKeybindings() {
   useEffect(() => {
+    const runAction = (action: KeybindingAction) => {
+      const ui = useUIStore.getState();
+      const st = useSessionsStore.getState();
+      switch (action) {
+        case "newTerminal":
+        case "newTerminalAlt":
+          st.newTerminal();
+          break;
+        case "closeSession":
+          if (ui.split.mode !== "single" && ui.split.paneB) {
+            st.closeSession(ui.split.paneB);
+          } else if (st.activeSessionId) {
+            st.closeSession(st.activeSessionId);
+          }
+          break;
+        case "openSettings":
+          ui.setOverlay("settings");
+          break;
+        case "toggleSidebar":
+          ui.toggleSidebar();
+          break;
+        case "togglePanel":
+          ui.togglePanel();
+          break;
+        case "splitHorizontal":
+          if (ui.split.mode === "single") st.splitWithNewSession("horizontal");
+          break;
+        case "splitVertical":
+          if (ui.split.mode === "single") st.splitWithNewSession("vertical");
+          break;
+        case "focusSplitLeft":
+        case "focusSplitRight": {
+          const { paneA, paneB } = ui.split;
+          if (ui.split.mode !== "single" && paneA && paneB) {
+            st.setActive(st.activeSessionId === paneB ? paneA : paneB);
+          }
+          break;
+        }
+        case "commandPalette":
+          ui.setOverlay("command-palette");
+          break;
+        case "fontSizeUp":
+          ui.setFontSize(ui.fontSize + 1);
+          break;
+        case "fontSizeDown":
+          ui.setFontSize(ui.fontSize - 1);
+          break;
+        case "fontSizeReset":
+          ui.setFontSize(DEFAULT_SETTINGS.fontSize);
+          break;
+        case "selectLastTab":
+          if (st.sessions.length > 0) st.setActive(st.sessions[st.sessions.length - 1].id);
+          break;
+        default: {
+          const tabMatch = action.match(/^selectTab([1-8])$/);
+          if (!tabMatch) break;
+          const idx = Number(tabMatch[1]) - 1;
+          if (idx < st.sessions.length) st.setActive(st.sessions[idx].id);
+        }
+      }
+    };
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         const ui = useUIStore.getState();
@@ -41,71 +100,13 @@ export function useKeybindings() {
           return;
         }
       }
-      if (!hasAppModifier(e) || e.altKey) return;
       if (isEditableTarget(e.target) && !e.metaKey) return;
-      const k = e.key.toLowerCase();
-      if (k === "t" || k === "n") {
+      const bindings = useUIStore.getState().keybindings;
+      for (const action of KEYBINDING_ACTIONS) {
+        if (!matchesKeybinding(e, bindings[action], isMac)) continue;
         e.preventDefault();
-        useSessionsStore.getState().newTerminal();
-      } else if (k === "w") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        const st = useSessionsStore.getState();
-        if (ui.split.mode !== "single" && ui.split.paneB) {
-          st.closeSession(ui.split.paneB);
-        } else if (st.activeSessionId) {
-          st.closeSession(st.activeSessionId);
-        }
-      } else if (k === ",") {
-        e.preventDefault();
-        useUIStore.getState().setOverlay("settings");
-      } else if (k === "\\") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          useUIStore.getState().togglePanel();
-        } else {
-          useUIStore.getState().toggleSidebar();
-        }
-      } else if (k === "d") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        if (ui.split.mode !== "single") return;
-        useSessionsStore.getState().splitWithNewSession(e.shiftKey ? "vertical" : "horizontal");
-      } else if (k === "]" || k === "[") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        const st = useSessionsStore.getState();
-        const { paneA, paneB } = ui.split;
-        if (ui.split.mode !== "single" && paneA && paneB) {
-          st.setActive(st.activeSessionId === paneB ? paneA : paneB);
-        }
-      } else if (k === "k") {
-        e.preventDefault();
-        useUIStore.getState().setOverlay("command-palette");
-      } else if (k === "=" || k === "+") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        ui.setFontSize(ui.fontSize + 1);
-      } else if (k === "-") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        ui.setFontSize(ui.fontSize - 1);
-      } else if (k === "0") {
-        e.preventDefault();
-        useUIStore.getState().setFontSize(DEFAULT_SETTINGS.fontSize);
-      } else if (k >= "1" && k <= "8") {
-        e.preventDefault();
-        const idx = parseInt(k) - 1;
-        const sessions = useSessionsStore.getState().sessions;
-        if (idx < sessions.length) {
-          useSessionsStore.getState().setActive(sessions[idx].id);
-        }
-      } else if (k === "9") {
-        e.preventDefault();
-        const sessions = useSessionsStore.getState().sessions;
-        if (sessions.length > 0) {
-          useSessionsStore.getState().setActive(sessions[sessions.length - 1].id);
-        }
+        runAction(action);
+        return;
       }
     };
     window.addEventListener("keydown", onKey, { capture: true });

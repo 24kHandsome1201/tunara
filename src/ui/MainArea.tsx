@@ -113,7 +113,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           dir={s.dir}
           active={isActive}
           pendingInput={s.pendingInput}
-          onPendingInputConsumed={() => useSessionsStore.getState().updateSession(s.id, { pendingInput: undefined })}
+          pendingInputSubmit={s.pendingInputSubmit}
+          onPendingInputConsumed={() => useSessionsStore.getState().updateSession(s.id, { pendingInput: undefined, pendingInputSubmit: undefined })}
         />
       </div>
     );

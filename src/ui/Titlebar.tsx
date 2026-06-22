@@ -10,6 +10,8 @@ try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toL
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DragStyle = React.CSSProperties & { WebkitAppRegion?: string; [key: string]: any };
 
+const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
+
 interface TitlebarProps {
   sessions: Session[];
   activeSessionId: string;
@@ -25,7 +27,7 @@ interface TitlebarProps {
 
 function PanelLeftIcon({ active }: { active: boolean }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none">
       <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
       <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill={active ? "var(--c-accent)" : "currentColor"} fillOpacity={active ? 0.3 : 0.1} />
     </svg>
@@ -34,7 +36,7 @@ function PanelLeftIcon({ active }: { active: boolean }) {
 
 function GearIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <line x1="4" y1="21" x2="4" y2="14" />
       <line x1="4" y1="10" x2="4" y2="3" />
       <line x1="12" y1="21" x2="12" y2="12" />

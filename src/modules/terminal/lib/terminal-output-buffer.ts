@@ -1,7 +1,13 @@
 import { type Terminal } from "@xterm/xterm";
 
+const MAX_PENDING_BYTES = 2 * 1024 * 1024;
+const OVERFLOW_NOTICE = new TextEncoder().encode(
+  "\x1bc\x1b[2m[conduit: dropped frontend output backlog]\x1b[0m\r\n",
+);
+
 export function createTerminalOutputBuffer(term: Terminal) {
   let pendingData: Uint8Array[] = [];
+  let pendingBytes = 0;
   let writeRafId = 0;
 
   const flush = () => {
@@ -9,9 +15,7 @@ export function createTerminalOutputBuffer(term: Terminal) {
     if (pendingData.length === 1) {
       term.write(pendingData[0]);
     } else if (pendingData.length > 1) {
-      let totalLen = 0;
-      for (const data of pendingData) totalLen += data.length;
-      const merged = new Uint8Array(totalLen);
+      const merged = new Uint8Array(pendingBytes);
       let offset = 0;
       for (const data of pendingData) {
         merged.set(data, offset);
@@ -20,17 +24,29 @@ export function createTerminalOutputBuffer(term: Terminal) {
       term.write(merged);
     }
     pendingData = [];
+    pendingBytes = 0;
+  };
+
+  const replacePendingWithOverflowNotice = () => {
+    pendingData = [OVERFLOW_NOTICE];
+    pendingBytes = OVERFLOW_NOTICE.byteLength;
   };
 
   return {
     push(data: Uint8Array) {
-      pendingData.push(data);
+      if (pendingBytes + data.byteLength > MAX_PENDING_BYTES) {
+        replacePendingWithOverflowNotice();
+      } else {
+        pendingData.push(data);
+        pendingBytes += data.byteLength;
+      }
       if (!writeRafId) writeRafId = requestAnimationFrame(flush);
     },
     dispose() {
       if (writeRafId) cancelAnimationFrame(writeRafId);
       writeRafId = 0;
       pendingData = [];
+      pendingBytes = 0;
     },
   };
 }

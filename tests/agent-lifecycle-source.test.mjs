@@ -70,7 +70,11 @@ test("agent lifecycle policy preserves line structure for Codex", () => {
   assert.match(policy, /export function sessionDisplayRunState\(session: Session\): RunState/);
   assert.match(policy, /export function detectCodexScreenState\(text: string\): AgentScreenState/);
   assert.match(policy, /cleanTerminalLines\(text\)[\s\S]*\.split\("\\n"\)/);
-  assert.match(policy, /function hasCodexBusyIndicator\(text: string\): boolean \{[\s\S]*\\bWorking\\b[\s\S]*Pursuing goal[\s\S]*background terminal running/);
+  assert.match(policy, /export const CODEX_BUSY_INDICATORS = \[/);
+  assert.match(policy, /\\bWorking\\b/);
+  assert.match(policy, /Pursuing goal/);
+  assert.match(policy, /background terminal running/);
+  assert.match(policy, /return CODEX_BUSY_INDICATORS\.some\(\(pattern\) => pattern\.test\(text\)\);/);
   assert.match(policy, /return hasCodexBusyIndicator\(recentJoined\) \? "busy" : "ready";/);
   assert.match(policy, /export function parseAgentLifecycleOsc\(data: string\): AgentLifecycleEvent \| null/);
   assert.match(utils, /export function cleanTerminalLines\(text: string\): string/);
@@ -83,6 +87,8 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
 
   assert.match(types, /export type AgentActivity = "starting" \| "idle" \| "running";/);
   assert.match(types, /agentActivity\?: AgentActivity;/);
+  assert.match(types, /export interface AgentResumeIntent/);
+  assert.match(types, /agentResume\?: AgentResumeIntent;/);
   assert.match(types, /suppressShellTitle\?: boolean;/);
   assert.match(types, /export function isPromptLikeShellTitle\(title: string\): boolean/);
   assert.match(types, /const lastCommand = s\.lastCommand && !isPromptLikeShellTitle\(s\.lastCommand\)/);
@@ -90,6 +96,9 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(types, /primary = s\.title && !isPromptLikeShellTitle\(s\.title\) \? s\.title : "终端";/);
   assert.match(source, /agentActivity: opts\?\.agent \? initialAgentActivity\(opts\.agent\) : undefined,/);
   assert.match(source, /agentDetectedUpdate\(session, agent\)/);
+  assert.match(source, /function buildAgentResumeIntent/);
+  assert.match(source, /handleAgentDetected: \(id, agent, command\)/);
+  assert.match(source, /agentResume: buildAgentResumeIntent|const agentResume = buildAgentResumeIntent/);
   assert.match(source, /agentReadyUpdate\(session, isActive\)/);
   assert.match(source, /agentBusyUpdate\(session\)/);
   assert.match(source, /agentExitedUpdate\(session, exitCode, isActive\)/);

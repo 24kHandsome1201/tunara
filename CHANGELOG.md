@@ -10,6 +10,10 @@ All notable changes to Conduit are documented in this file. Format follows [Keep
 
 ### Fixed
 - 终端分栏切换时保持 pane 挂载，agent 进程不再因 tab 切换被销毁
+- Homebrew cask 版本对齐到 1.2.0
+- 快照恢复为空时也会结束启动流程，避免卡在 Splash
+- 后台会话释放 WebGL renderer 并节流快照，降低多会话常驻内存
+- 删除未纳入编译图的 secrets/shell 遗留模块，避免 CI 假绿
 
 ## [1.1.0] - 2026-06-21
 

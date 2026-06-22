@@ -17,6 +17,7 @@ import {
   commandDetectedUpdate,
   cwdChangedUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
+import { parseKeybinding } from "../src/modules/config/keybindings.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 
 function makeSession(overrides = {}) {
@@ -109,10 +110,30 @@ test("agent command detection maps first shell command token only", () => {
   assert.equal(detectAgentCommand("claude --dangerously-skip-permissions"), "CC");
   assert.equal(detectAgentCommand("\x1b[32mcodex\x1b[0m exec"), "CX");
   assert.equal(detectAgentCommand("ampcode"), "AM");
-  assert.equal(detectAgentCommand("agent run task"), "CR");
+  assert.equal(detectAgentCommand("cursor-agent run task"), "CR");
+  assert.equal(detectAgentCommand("agent run task"), null);
   assert.equal(detectAgentCommand("copilot suggest"), "CP");
   assert.equal(detectAgentCommand("ls claude"), null);
   assert.equal(detectAgentCommand(""), null);
+});
+
+test("keybinding parser accepts plus as a literal key", () => {
+  assert.deepEqual(parseKeybinding("Mod++"), {
+    key: "+",
+    mod: true,
+    shift: false,
+    alt: false,
+    ctrl: false,
+    meta: false,
+  });
+  assert.deepEqual(parseKeybinding("Mod+Plus"), {
+    key: "+",
+    mod: true,
+    shift: false,
+    alt: false,
+    ctrl: false,
+    meta: false,
+  });
 });
 
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {

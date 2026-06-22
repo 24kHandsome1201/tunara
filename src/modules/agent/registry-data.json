@@ -37,9 +37,9 @@
   {
     "code": "CR",
     "name": "Cursor",
-    "commands": ["agent"],
+    "commands": ["cursor-agent"],
     "shellTitleFragments": ["cursor"],
-    "cliBin": "cursor"
+    "cliBin": "cursor-agent"
   },
   {
     "code": "DR",

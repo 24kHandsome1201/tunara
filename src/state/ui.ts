@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName } from "@/ui/types";
+import { loadConduitConfig, saveConduitConfig, type RawAppearanceConfig, type RawConduitConfig } from "@/modules/config/config-bridge";
+import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 
 export type CursorStyle = "bar" | "block" | "underline";
 
@@ -13,25 +15,27 @@ export interface SplitState {
   ratio: number;
 }
 
-interface AppearanceSettings {
+export interface AppearanceSettings {
   theme: ThemeType;
   accent: string;
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
   fontSize: number;
+  fontFamily: string;
+  nerdFontFallback: boolean;
   scrollback: number;
   sidebarWidth: number;
   panelWidth: number;
   terminalTheme: TerminalThemeName;
   externalEditor: ExternalEditor;
   bellNotification: boolean;
+  keybindings: KeybindingConfig;
 }
 
-const SETTINGS_KEY = "conduit-appearance";
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 22;
 const MIN_SCROLLBACK = 1000;
-const MAX_SCROLLBACK = 50000;
+const MAX_SCROLLBACK = 20000;
 const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 400;
 const MIN_PANEL_WIDTH = 240;
@@ -43,12 +47,15 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   cursorStyle: "bar",
   cursorBlink: true,
   fontSize: 14,
-  scrollback: 5000,
+  fontFamily: "JetBrains Mono",
+  nerdFontFallback: true,
+  scrollback: 2000,
   sidebarWidth: 272,
   panelWidth: 320,
   terminalTheme: "default",
   externalEditor: "vscode",
   bellNotification: true,
+  keybindings: { ...DEFAULT_KEYBINDINGS },
 };
 
 function isExternalEditor(v: unknown): v is ExternalEditor {
@@ -84,58 +91,69 @@ function sanitizeAccent(value: unknown): string {
     : DEFAULT_SETTINGS.accent;
 }
 
-function loadSettings(): AppearanceSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<AppearanceSettings>;
-    return {
-      ...DEFAULT_SETTINGS,
-      theme: isTheme(parsed.theme) ? parsed.theme : DEFAULT_SETTINGS.theme,
-      accent: sanitizeAccent(parsed.accent),
-      cursorStyle: isCursorStyle(parsed.cursorStyle) ? parsed.cursorStyle : DEFAULT_SETTINGS.cursorStyle,
-      cursorBlink: typeof parsed.cursorBlink === "boolean" ? parsed.cursorBlink : DEFAULT_SETTINGS.cursorBlink,
-      fontSize: clampNumber(parsed.fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
-      scrollback: clampNumber(parsed.scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback),
-      sidebarWidth: clampNumber(parsed.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
-      panelWidth: clampNumber(parsed.panelWidth, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
-      terminalTheme: isTerminalTheme(parsed.terminalTheme) ? parsed.terminalTheme : DEFAULT_SETTINGS.terminalTheme,
-      externalEditor: isExternalEditor(parsed.externalEditor) ? parsed.externalEditor : DEFAULT_SETTINGS.externalEditor,
-      bellNotification: typeof parsed.bellNotification === "boolean" ? parsed.bellNotification : DEFAULT_SETTINGS.bellNotification,
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
+function sanitizeFontFamily(value: unknown): string {
+  if (typeof value !== "string") return DEFAULT_SETTINGS.fontFamily;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= 160 && !/[\r\n;]/.test(trimmed)
+    ? trimmed
+    : DEFAULT_SETTINGS.fontFamily;
 }
 
-function persistSettings(s: AppearanceSettings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-  } catch {
-    // localStorage 不可用时静默忽略
-  }
+function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): AppearanceSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    theme: isTheme(raw?.theme) ? raw.theme : DEFAULT_SETTINGS.theme,
+    accent: sanitizeAccent(raw?.accent),
+    cursorStyle: isCursorStyle(raw?.cursor_style) ? raw.cursor_style : DEFAULT_SETTINGS.cursorStyle,
+    cursorBlink: typeof raw?.cursor_blink === "boolean" ? raw.cursor_blink : DEFAULT_SETTINGS.cursorBlink,
+    fontSize: clampNumber(raw?.font_size, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
+    fontFamily: sanitizeFontFamily(raw?.font_family),
+    nerdFontFallback: typeof raw?.nerd_font_fallback === "boolean" ? raw.nerd_font_fallback : DEFAULT_SETTINGS.nerdFontFallback,
+    scrollback: clampNumber(raw?.scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback),
+    sidebarWidth: clampNumber(raw?.sidebar_width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
+    panelWidth: clampNumber(raw?.panel_width, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
+    terminalTheme: isTerminalTheme(raw?.terminal_theme) ? raw.terminal_theme : DEFAULT_SETTINGS.terminalTheme,
+    externalEditor: isExternalEditor(raw?.external_editor) ? raw.external_editor : DEFAULT_SETTINGS.externalEditor,
+    bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
+    keybindings: { ...DEFAULT_KEYBINDINGS },
+  };
 }
 
-const COMMAND_USAGE_KEY = "conduit-command-usage";
+function sanitizeConfig(config: RawConduitConfig | undefined): AppearanceSettings {
+  const appearance = sanitizeRawAppearance(config?.appearance);
+  return {
+    ...appearance,
+    keybindings: sanitizeKeybindings(config?.keybindings),
+  };
+}
+
+function settingsToRawConfig(s: AppearanceSettings): RawConduitConfig {
+  return {
+    appearance: {
+      theme: s.theme,
+      accent: s.accent,
+      cursor_style: s.cursorStyle,
+      cursor_blink: s.cursorBlink,
+      font_size: s.fontSize,
+      font_family: s.fontFamily,
+      nerd_font_fallback: s.nerdFontFallback,
+      scrollback: s.scrollback,
+      sidebar_width: s.sidebarWidth,
+      panel_width: s.panelWidth,
+      terminal_theme: s.terminalTheme,
+      external_editor: s.externalEditor,
+      bell_notification: s.bellNotification,
+    },
+    keybindings: keybindingsToConfigKeys(s.keybindings),
+  };
+}
 
 function loadCommandUsage(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem(COMMAND_USAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") return parsed;
-    return {};
-  } catch {
-    return {};
-  }
+  return {};
 }
 
 function persistCommandUsage(usage: Record<string, number>) {
-  try {
-    localStorage.setItem(COMMAND_USAGE_KEY, JSON.stringify(usage));
-  } catch {
-    // localStorage 不可用时静默忽略
-  }
+  void usage;
 }
 
 export type InspectorTab = "changes" | "files";
@@ -162,6 +180,9 @@ export interface Toast {
 
 interface UIState extends AppearanceSettings {
   ready: boolean;
+  configLoaded: boolean;
+  configPath: string;
+  configError: string | null;
   sidebarVisible: boolean;
   panelVisible: boolean;
   overlay: OverlayType;
@@ -184,6 +205,8 @@ interface UIState extends AppearanceSettings {
   setCursorStyle: (c: CursorStyle) => void;
   setCursorBlink: (b: boolean) => void;
   setFontSize: (n: number) => void;
+  setFontFamily: (name: string) => void;
+  setNerdFontFallback: (enabled: boolean) => void;
   setScrollback: (n: number) => void;
   setTerminalTheme: (t: TerminalThemeName) => void;
   setSidebarWidth: (w: number) => void;
@@ -202,13 +225,17 @@ interface UIState extends AppearanceSettings {
   recordCommandUse: (id: string) => void;
   setExternalEditor: (e: ExternalEditor) => void;
   setBellNotification: (b: boolean) => void;
+  setKeybinding: (action: KeybindingAction, binding: string) => void;
+  resetKeybindings: () => void;
   resetAppearance: () => void;
 }
 
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
-  const initial = loadSettings();
   return {
     ready: false,
+    configLoaded: false,
+    configPath: "",
+    configError: null,
     sidebarVisible: true,
     panelVisible: true,
     overlay: null,
@@ -219,7 +246,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     toasts: [],
     collapsedDirs: {},
     commandUsage: loadCommandUsage(),
-    ...initial,
+    ...DEFAULT_SETTINGS,
 
     setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
     setPanelVisible: (panelVisible) => set({ panelVisible }),
@@ -232,6 +259,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
     setCursorBlink: (cursorBlink) => set({ cursorBlink: typeof cursorBlink === "boolean" ? cursorBlink : DEFAULT_SETTINGS.cursorBlink }),
     setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
+    setFontFamily: (fontFamily) => set({ fontFamily: sanitizeFontFamily(fontFamily) }),
+    setNerdFontFallback: (nerdFontFallback) => set({ nerdFontFallback: typeof nerdFontFallback === "boolean" ? nerdFontFallback : DEFAULT_SETTINGS.nerdFontFallback }),
     setScrollback: (scrollback) => set({ scrollback: clampNumber(scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback) }),
     setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
     setSidebarWidth: (sidebarWidth) => {
@@ -275,20 +304,49 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       }),
     setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
-    resetAppearance: () => set({ ...DEFAULT_SETTINGS }),
+    setKeybinding: (action, binding) =>
+      set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
+    resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
+    resetAppearance: () => set({ ...DEFAULT_SETTINGS, keybindings: { ...DEFAULT_KEYBINDINGS } }),
   };
 }));
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification"];
+let configHydrating = false;
+
+export async function loadUserConfig(): Promise<void> {
+  try {
+    const loaded = await loadConduitConfig();
+    const sanitized = sanitizeConfig(loaded.config);
+    configHydrating = true;
+    useUIStore.setState({
+      ...sanitized,
+      configLoaded: true,
+      configPath: loaded.path,
+      configError: loaded.error ?? null,
+    });
+    configHydrating = false;
+  } catch (e) {
+    configHydrating = true;
+    useUIStore.setState({
+      configLoaded: true,
+      configError: e instanceof Error ? e.message : String(e),
+    });
+    configHydrating = false;
+  }
+}
+
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "keybindings"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(
   (s) => PERSIST_KEYS.map((k) => s[k]),
   () => {
+    const state = useUIStore.getState();
+    if (!state.configLoaded || configHydrating) return;
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      const { theme, accent, cursorStyle, cursorBlink, fontSize, scrollback, sidebarWidth, panelWidth, terminalTheme, externalEditor, bellNotification } = useUIStore.getState();
-      persistSettings({ theme, accent, cursorStyle, cursorBlink, fontSize, scrollback, sidebarWidth, panelWidth, terminalTheme, externalEditor, bellNotification });
+      saveConduitConfig(settingsToRawConfig(useUIStore.getState()))
+        .catch((e) => useUIStore.setState({ configError: e instanceof Error ? e.message : String(e) }));
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },

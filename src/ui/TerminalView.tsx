@@ -1,11 +1,6 @@
-// TerminalView — 单会话终端（真实 xterm.js + PTY）
-// 每个 shell 会话拥有独立、常驻的 PTY/xterm 实例,切 tab 时用 display 隐藏而非销毁,
-// 因此后台终端的输出与运行中的进程会保留。读取设置（字号/光标/主题）并实时生效。
-
 import { useEffect, useRef } from "react";
 import { type Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -18,30 +13,35 @@ import { type AgentCode } from "./types";
 import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { extractCommandFromBuffer, extractCommandFromOsc, getTerminalTailText } from "@/modules/terminal/lib/terminal-buffer-read";
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
-import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
+import { buildTerminalFontFamily, createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
+import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
+import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, detectCodexScreenState, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
-import { updateTerminalSnapshot, getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
+import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
+import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { useSessionsStore } from "@/state/sessions";
-import { TerminalSearchBar } from "./TerminalSearchBar";
+import { TerminalViewChrome } from "./TerminalViewChrome";
 import { useTerminalSearch } from "./useTerminalSearch";
+import { useTerminalBlocks } from "./useTerminalBlocks";
+import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl";
 import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
-
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
   active: boolean;
   pendingInput?: string;
+  pendingInputSubmit?: boolean;
   onPendingInputConsumed?: () => void;
 }
-
 export function TerminalView({
   sessionId,
   dir,
   active,
   pendingInput,
+  pendingInputSubmit,
   onPendingInputConsumed,
 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -49,49 +49,44 @@ export function TerminalView({
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
   const initRef = useRef(false);
+  const webglRef = useRef<TerminalWebglRenderer | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const search = useTerminalSearch(termRef);
+  const blocks = useTerminalBlocks(termRef);
   const pendingInputRef = useRef(pendingInput);
   pendingInputRef.current = pendingInput;
+  const pendingInputSubmitRef = useRef(pendingInputSubmit);
+  pendingInputSubmitRef.current = pendingInputSubmit;
   const onPendingInputConsumedRef = useRef(onPendingInputConsumed);
   onPendingInputConsumedRef.current = onPendingInputConsumed;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
-
   const theme = useUIStore((s) => s.theme);
   const fontSize = useUIStore((s) => s.fontSize);
+  const fontFamily = useUIStore((s) => s.fontFamily);
+  const nerdFontFallback = useUIStore((s) => s.nerdFontFallback);
   const scrollback = useUIStore((s) => s.scrollback);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
   const accent = useUIStore((s) => s.accent);
-
   useTerminalRuntimeSync({
-    active,
-    termRef,
-    fitRef,
-    ptyRef,
-    fontSize,
-    scrollback,
-    cursorStyle,
-    cursorBlink,
-    theme,
-    terminalTheme,
-    accent,
+    active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
-
+  useTerminalWebgl(termRef, active, webglRef);
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
     initRef.current = true;
-
     let disposed = false;
     const cleanups: Array<() => void> = [];
-
     (async () => {
-      await document.fonts.load(`${fontSize}px "JetBrains Mono"`);
+      await document.fonts.load(`${fontSize}px ${buildTerminalFontFamily(fontFamily, nerdFontFallback)}`);
       if (disposed || !containerRef.current) return;
-
       const term = createTerminalInstance({
         fontSize,
+        fontFamily,
+        nerdFontFallback,
         scrollback,
         theme,
         terminalTheme,
@@ -100,23 +95,13 @@ export function TerminalView({
         cursorStyle,
       });
       termRef.current = term;
-
       const fit = new FitAddon();
       fitRef.current = fit;
       term.loadAddon(fit);
       term.open(containerRef.current);
-
-      try {
-        const webgl = new WebglAddon();
-        webgl.onContextLoss(() => webgl.dispose());
-        term.loadAddon(webgl);
-      } catch {
-        // WebGL unavailable, canvas fallback
-      }
-
+      if (activeRef.current) webglRef.current = createTerminalWebglRenderer(term);
       const serializeAddon = new SerializeAddon();
       term.loadAddon(serializeAddon);
-
       term.loadAddon(new WebLinksAddon((_event, uri) => {
         try {
           const url = new URL(uri);
@@ -125,7 +110,6 @@ export function TerminalView({
           }
         } catch { /* malformed URL, ignore */ }
       }));
-
       // Fit after WebGL addon loads — the addon replaces the renderer and
       // changes cell metrics; fitting before it loads would measure stale
       // dimensions, causing a cols/rows mismatch with the PTY that shows
@@ -133,14 +117,11 @@ export function TerminalView({
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       if (disposed || !containerRef.current) return;
       fit.fit();
-
       const searchAddon = new SearchAddon();
       term.loadAddon(searchAddon);
       const searchResultDisposable = search.registerSearchAddon(searchAddon);
       cleanups.push(() => searchResultDisposable.dispose());
-
       term.attachCustomKeyEventHandler(search.handleCustomKeyEvent);
-
       // OSC 133 shell integration:
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
       let hasAgent = false;
@@ -187,8 +168,7 @@ export function TerminalView({
           useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
         }, delay);
       };
-
-      const markAgentDetected = (agent: AgentCode) => {
+      const markAgentDetected = (agent: AgentCode, command?: string) => {
         const sess = getCurrentSession();
         hasAgent = true;
         currentAgentCode = agent;
@@ -200,23 +180,21 @@ export function TerminalView({
           idleTimer = null;
         }
         if (sess?.agent !== agent) {
-          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent);
+          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent, command);
+        } else if (command) {
+          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent, command);
         }
       };
-
       const applyAgentLifecycleEvent = (data: string) => {
         const payload = parseAgentLifecycleOsc(data);
         if (!payload) return false;
         if (payload.session !== sessionIdRef.current) return true;
-
         if (payload.event === "start") {
           markAgentDetected(payload.agent);
           return true;
         }
-
         const current = getCurrentSession();
         if (!current?.agent || current.agent !== payload.agent) return true;
-
         if (payload.event === "exit") {
           clearAgentTracking();
           useSessionsStore.getState().handleAgentExited(sessionIdRef.current, payload.code ?? lastExitCode);
@@ -225,15 +203,12 @@ export function TerminalView({
           }
           return true;
         }
-
         if (payload.event === "idle" || payload.event === "stop") {
           agentStartupPending = false;
           useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
         }
-
         return true;
       };
-
       cleanups.push(
         useSessionsStore.subscribe((state) => {
           const sess = state.sessions.find((s) => s.id === sessionIdRef.current);
@@ -246,7 +221,6 @@ export function TerminalView({
           }
         }),
       );
-
       cleanups.push(
         registerCwdHandler(term, (cwd) => {
           useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
@@ -257,9 +231,8 @@ export function TerminalView({
         if (clean) useSessionsStore.getState().handleShellTitle(sessionIdRef.current, clean);
       });
       cleanups.push(() => titleDisposable.dispose());
-
       let codexDataBurstCount = 0;
-
+      const currentBufferRow = () => term.buffer.active.cursorY + term.buffer.active.baseY;
       const scheduleCodexStateCheck = () => {
         codexDataBurstCount += 1;
         const store = useSessionsStore.getState();
@@ -267,7 +240,6 @@ export function TerminalView({
         if (sess?.agent && sess.agentActivity !== "running" && codexDataBurstCount >= 3) {
           store.handleAgentBusy(sessionIdRef.current);
         }
-
         if (codexStateTimer) clearTimeout(codexStateTimer);
         codexStateTimer = setTimeout(() => {
           codexStateTimer = null;
@@ -275,41 +247,38 @@ export function TerminalView({
           if (!hasAgent || currentAgentCode !== "CX") return;
           const s = getCurrentSession();
           if (!s?.agent) return;
-
           const tail = getTerminalTailText(term);
           const screenState = detectCodexScreenState(tail);
-
           if (screenState === "ready" && s.agentActivity !== "idle") {
             store.handleAgentReady(sessionIdRef.current);
           }
         }, 500);
       };
-
+      const requestAttentionIfNeeded = () => {
+        if (!document.hasFocus() && useUIStore.getState().bellNotification) {
+          getCurrentWindow().requestUserAttention(2);
+        }
+      };
       const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
       cleanups.push(() => agentLifecycleDisposable.dispose());
-
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
         const trackedSession = syncAgentTrackingFromStore();
-
         if (hasAgent || trackedSession?.agent) {
           if (marker === "A") {
             const exitCode = lastExitCode;
+            blocks.finishBlock(exitCode, currentBufferRow());
             clearAgentTracking();
-
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
-            if (!document.hasFocus() && useUIStore.getState().bellNotification) {
-              getCurrentWindow().requestUserAttention(2);
-            }
+            requestAttentionIfNeeded();
             osc133Active = true;
           } else if (marker === "D") {
             const exitCode = parseInt(data.slice(2), 10) || 0;
             lastExitCode = exitCode;
+            blocks.finishBlock(exitCode, currentBufferRow());
             clearAgentTracking();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
-            if (!document.hasFocus() && useUIStore.getState().bellNotification) {
-              getCurrentWindow().requestUserAttention(2);
-            }
+            requestAttentionIfNeeded();
           }
           return true;
         }
@@ -324,10 +293,11 @@ export function TerminalView({
             if (cmd) {
               if (isMeaningfulCommand(cmd)) {
                 useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
+                blocks.beginBlock(cmd, promptEndRow >= 0 ? promptEndRow : currentBufferRow());
               }
               const agent = detectAgentCommand(cmd);
               if (agent) {
-                markAgentDetected(agent);
+                markAgentDetected(agent, cmd);
               }
             }
           }
@@ -335,12 +305,12 @@ export function TerminalView({
         } else if (marker === "D") {
           const exitCode = parseInt(data.slice(2), 10) || 0;
           lastExitCode = exitCode;
+          blocks.finishBlock(exitCode, currentBufferRow());
           useSessionsStore.getState().handleCommandFinished(sessionIdRef.current, exitCode);
         }
         return true;
       });
       cleanups.push(() => promptDisposable.dispose());
-
       const existingSnapshot = getTerminalSnapshot(sessionIdRef.current);
       if (existingSnapshot) {
         term.write(existingSnapshot.serialized);
@@ -351,31 +321,14 @@ export function TerminalView({
           }
         });
       }
-
-      let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
-      const scheduleSnapshot = () => {
-        if (snapshotTimer) clearTimeout(snapshotTimer);
-        snapshotTimer = setTimeout(() => {
-          snapshotTimer = null;
-          if (!termRef.current) return;
-          updateTerminalSnapshot(sessionIdRef.current, {
-            serialized: serializeAddon.serialize(),
-            viewportY: term.buffer.active.viewportY,
-            baseY: term.buffer.active.baseY,
-            cols: term.cols,
-            rows: term.rows,
-            capturedAt: Date.now(),
-            truncated: false,
-          });
-        }, 1000);
-      };
-      cleanups.push(() => {
-        if (snapshotTimer) {
-          clearTimeout(snapshotTimer);
-          snapshotTimer = null;
-        }
+      const snapshotScheduler = createTerminalSnapshotScheduler({
+        term,
+        serializeAddon,
+        sessionId: () => sessionIdRef.current,
+        isActive: () => activeRef.current,
       });
-
+      const scheduleSnapshot = snapshotScheduler.schedule;
+      cleanups.push(snapshotScheduler.dispose);
       const cwd = dir === "~" ? undefined : dir;
       const outputBuffer = createTerminalOutputBuffer(term);
       cleanups.push(() => outputBuffer.dispose());
@@ -394,7 +347,6 @@ export function TerminalView({
                   scheduleCodexStateCheck();
                   return;
                 }
-
                 const sess = getCurrentSession();
                 if (agentStartupPending && sess?.agentActivity === "idle") {
                   useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
@@ -415,13 +367,11 @@ export function TerminalView({
         term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
         return;
       }
-
       if (disposed) {
         pty.close().catch(() => {});
         return;
       }
       ptyRef.current = pty;
-
       const writePty = (data: string) => {
         pty.write(data).catch(() => {
           /* PTY may already be closed by the time xterm flushes input. */
@@ -432,24 +382,12 @@ export function TerminalView({
           /* Resize can race with process exit or pane teardown. */
         });
       };
-      let pendingInputTimer: ReturnType<typeof setTimeout> | null = null;
-      cleanups.push(() => {
-        if (pendingInputTimer) {
-          clearTimeout(pendingInputTimer);
-          pendingInputTimer = null;
-        }
-      });
-
-      if (pendingInputRef.current) {
-        const cmd = pendingInputRef.current;
-        pendingInputTimer = setTimeout(() => {
-          pendingInputTimer = null;
-          pty.write(cmd + "\n")
-            .then(() => onPendingInputConsumedRef.current?.())
-            .catch(() => {});
-        }, 300);
-      }
-
+      cleanups.push(schedulePendingInput({
+        pty,
+        input: pendingInputRef.current,
+        submit: pendingInputSubmitRef.current !== false,
+        onConsumed: onPendingInputConsumedRef.current,
+      }).dispose);
       let inputBuffer = "";
       // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = (submitted: string) => {
@@ -461,7 +399,7 @@ export function TerminalView({
         if (!hasAgent) {
           const agent = detectAgentCommand(submitted);
           if (agent) {
-            markAgentDetected(agent);
+            markAgentDetected(agent, submitted);
           }
         }
       };
@@ -489,7 +427,6 @@ export function TerminalView({
         }
       });
       cleanups.push(() => dataDisposable.dispose());
-
       const bellDisposable = term.onBell(() => {
         if (!useUIStore.getState().bellNotification) return;
         if (!document.hasFocus()) {
@@ -497,7 +434,6 @@ export function TerminalView({
         }
       });
       cleanups.push(() => bellDisposable.dispose());
-
       const el = containerRef.current!;
       cleanups.push(observeTerminalResize({
         element: el,
@@ -506,7 +442,6 @@ export function TerminalView({
         resizePty,
         isDisposed: () => disposed,
       }));
-
       cleanups.push(() => {
         if (idleTimer) {
           clearTimeout(idleTimer);
@@ -517,10 +452,8 @@ export function TerminalView({
           codexStateTimer = null;
         }
       });
-
       if (active) term.focus();
     })();
-
     return () => {
       disposed = true;
       cleanups.forEach((fn) => fn());
@@ -528,6 +461,8 @@ export function TerminalView({
         ptyRef.current.close().catch(() => {});
         ptyRef.current = null;
       }
+      webglRef.current?.dispose();
+      webglRef.current = null;
       termRef.current?.dispose();
       termRef.current = null;
     };
@@ -535,25 +470,5 @@ export function TerminalView({
     // when `dir` changes would close and recreate the terminal on every `cd`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  return (
-    <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
-      {search.searchOpen && (
-        <TerminalSearchBar
-          inputRef={search.searchInputRef}
-          query={search.searchQuery}
-          count={search.searchCount}
-          useRegex={search.useRegex}
-          caseSensitive={search.caseSensitive}
-          onQueryChange={search.handleSearchChange}
-          onNext={search.handleSearchNext}
-          onPrev={search.handleSearchPrev}
-          onClose={search.closeSearch}
-          onToggleRegex={search.toggleRegex}
-          onToggleCaseSensitive={search.toggleCaseSensitive}
-        />
-      )}
-      <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
-    </div>
-  );
+  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} onCopyBlock={blocks.copyBlock} onToggleBlock={blocks.toggleBlock} />;
 }

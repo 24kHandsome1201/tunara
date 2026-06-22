@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useSessionsStore, createSession } from "@/state/sessions";
-import { useUIStore } from "@/state/ui";
+import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
 import { getAllTerminalSnapshots, restoreTerminalSnapshots } from "@/modules/terminal/lib/terminal-snapshot";
 import { platform } from "@tauri-apps/plugin-os";
@@ -10,6 +10,10 @@ import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
   const ui = useUIStore.getState();
+  const agentResume: WorkspaceSnapshotV1["agentResume"] = {};
+  for (const s of st.sessions) {
+    if (s.agentResume) agentResume[s.id] = s.agentResume;
+  }
   return {
     version: 1,
     savedAt: Date.now(),
@@ -33,7 +37,7 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
       inspectorTab: ui.inspectorTab,
     },
     terminals: getAllTerminalSnapshots(),
-    agentResume: {},
+    agentResume,
   };
 }
 
@@ -44,6 +48,8 @@ export function useInit() {
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
+
+    void loadUserConfig();
 
     loadWorkspaceSnapshot().then((snapshot) => {
       const current = useSessionsStore.getState();
@@ -60,6 +66,7 @@ export function useInit() {
         ...p,
         title: p.title.trim() || "终端",
         customTitle: p.customTitle || undefined,
+        agentResume: snapshot.agentResume[p.id],
         runState: "idle" as const,
       }));
 
@@ -72,6 +79,7 @@ export function useInit() {
 
       if (merged.length === 0) {
         addSession(createSession("~", { title: "终端" }));
+        useUIStore.setState({ ready: true });
         return;
       }
 

@@ -142,6 +142,13 @@ export default function App() {
   useTheme();
   useKeybindings();
 
+  useEffect(() => {
+    const syncWidth = () => setViewportWidth(window.innerWidth);
+    syncWidth();
+    window.addEventListener("resize", syncWidth);
+    return () => window.removeEventListener("resize", syncWidth);
+  }, [setViewportWidth]);
+
   if (!ready) return <AppSplash />;
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
@@ -154,12 +161,6 @@ export default function App() {
     ? (panelOverlay ? Math.min(panelWidth, Math.max(220, viewportWidth - 24)) : panelWidth)
     : 0;
 
-  useEffect(() => {
-    const syncWidth = () => setViewportWidth(window.innerWidth);
-    syncWidth();
-    window.addEventListener("resize", syncWidth);
-    return () => window.removeEventListener("resize", syncWidth);
-  }, [setViewportWidth]);
 
   return (
     <div

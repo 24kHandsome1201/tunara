@@ -14,11 +14,21 @@ export type AgentActivity = "starting" | "idle" | "running";
 /** Git 探测状态 */
 export type GitState = "unknown" | "repo" | "notGit";
 
+export interface AgentResumeIntent {
+  agent: AgentCode | string;
+  command: string;
+  cwd: string;
+  resumeId?: string;
+  lastSeenAt: number;
+  confidence: "exact" | "continue" | "unknown";
+}
+
 /** 会话数据 */
 export interface Session {
   id: string;
   agent?: AgentCode;
   agentActivity?: AgentActivity;
+  agentResume?: AgentResumeIntent;
   title: string;
   dir: string;
   branch: string;
@@ -39,6 +49,7 @@ export interface Session {
   suppressShellTitle?: boolean;
 
   pendingInput?: string;
+  pendingInputSubmit?: boolean;
 
   // ── git 改动 ──
   gitState?: GitState;

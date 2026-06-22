@@ -13,13 +13,13 @@ use tauri::ipc::Channel;
 
 use super::shell_init;
 
-const FLUSH_INTERVAL: Duration = Duration::from_millis(8);
-const READ_BUF: usize = 16 * 1024;
+const FLUSH_INTERVAL: Duration = Duration::from_millis(16);
+const READ_BUF: usize = 8 * 1024;
 // Cap on buffered-but-not-yet-flushed bytes. On overflow we discard the
 // entire pending buffer and emit an SGR-reset + notice in its place.
 // Dropping a partial prefix would slice a CSI sequence in half and corrupt
-// xterm's screen state. 4 MiB is ~1000 full 80x24 screens.
-const MAX_PENDING: usize = 4 * 1024 * 1024;
+// xterm's screen state. 1 MiB is ~250 full 80x24 screens.
+const MAX_PENDING: usize = 1024 * 1024;
 // Hard reset (ESC c) + dim notice. Written verbatim into the stream when
 // we're forced to discard backlog.
 const OVERFLOW_NOTICE: &[u8] =

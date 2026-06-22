@@ -30,7 +30,7 @@ function ThemeCard({ label, themeType, selected, onClick }: { label: string; the
   const contentBg = isDark ? "rgba(255,255,255,0.12)" : isSystem ? "rgba(255,255,255,0.72)" : "#ffffff";
   return (
     <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 56, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 6, display: "flex", gap: 5 }}>
+      <div style={{ height: 62, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 6, display: "flex", gap: 5 }}>
         <div style={{ width: 28, borderRadius: 4, background: sidebarBg }} />
         <div style={{ flex: 1, minWidth: 0, borderRadius: 4, background: contentBg, position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", left: 6, top: 8, width: 16, height: 2, borderRadius: 1, background: "var(--c-accent)", opacity: 0.7 }} />
@@ -99,12 +99,16 @@ export function Settings({ onClose }: SettingsProps) {
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const fontSize = useUIStore((s) => s.fontSize);
+  const fontFamily = useUIStore((s) => s.fontFamily);
+  const nerdFontFallback = useUIStore((s) => s.nerdFontFallback);
   const scrollback = useUIStore((s) => s.scrollback);
   const setTheme = useUIStore((s) => s.setTheme);
   const setAccent = useUIStore((s) => s.setAccent);
   const setCursorStyle = useUIStore((s) => s.setCursorStyle);
   const setCursorBlink = useUIStore((s) => s.setCursorBlink);
   const setFontSize = useUIStore((s) => s.setFontSize);
+  const setFontFamily = useUIStore((s) => s.setFontFamily);
+  const setNerdFontFallback = useUIStore((s) => s.setNerdFontFallback);
   const setScrollback = useUIStore((s) => s.setScrollback);
   const terminalTheme = useUIStore((s) => s.terminalTheme);
   const setTerminalTheme = useUIStore((s) => s.setTerminalTheme);
@@ -112,11 +116,15 @@ export function Settings({ onClose }: SettingsProps) {
   const setExternalEditor = useUIStore((s) => s.setExternalEditor);
   const bellNotification = useUIStore((s) => s.bellNotification);
   const setBellNotification = useUIStore((s) => s.setBellNotification);
+  const configPath = useUIStore((s) => s.configPath);
+  const configError = useUIStore((s) => s.configError);
 
   const isDark = isDarkTheme(theme);
   const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
+  const [fontDraft, setFontDraft] = useState(fontFamily);
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
+  useEffect(() => { setFontDraft(fontFamily); }, [fontFamily]);
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
   const [cliError, setCliError] = useState(false);
 
@@ -220,11 +228,40 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
+                <div style={SECTION_LABEL}>字体族</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input
+                    value={fontDraft}
+                    onChange={(e) => setFontDraft(e.target.value)}
+                    onBlur={() => setFontFamily(fontDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setFontFamily(fontDraft);
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    spellCheck={false}
+                    style={{ flex: "1 1 260px", minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-body)", outline: "none" }}
+                  />
+                  <button
+                    onClick={() => setNerdFontFallback(!nerdFontFallback)}
+                    style={{
+                      height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
+                      background: nerdFontFallback ? "var(--c-accent)" : "var(--c-bg-white)",
+                      color: nerdFontFallback ? "var(--c-btn-primary-text)" : "var(--c-text-3)",
+                      fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
+                    }}
+                  >
+                    Nerd Font
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>回滚行数</div>
                 <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", overflow: "hidden" }}>
                   <button onClick={() => setScrollback(Math.max(1000, scrollback - 1000))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderRight: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
                   <span style={{ minWidth: 64, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{scrollback}</span>
-                  <button onClick={() => setScrollback(Math.min(50000, scrollback + 1000))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderLeft: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                  <button onClick={() => setScrollback(Math.min(20000, scrollback + 1000))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderLeft: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
@@ -383,7 +420,12 @@ export function Settings({ onClose }: SettingsProps) {
               恢复默认
             </button>
           ) : <span />}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            {configError ? (
+              <span title={configError} style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>config error</span>
+            ) : configPath ? (
+              <span title={configPath} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{configPath}</span>
+            ) : null}
             <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", background: "var(--c-bg-3)", padding: "2px 6px", borderRadius: "var(--r-btn)" }}>ESC</span>
             <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)" }}>
               完成

@@ -200,11 +200,11 @@ mod tests {
             .map(|entry| (entry.code.as_str(), entry.cli_bin.as_str()))
             .collect();
 
-        assert_eq!(entries.len(), 11);
+        assert_eq!(entries.len(), 12);
         assert!(pairs.contains(&("CC", "claude")));
         assert!(pairs.contains(&("CX", "codex")));
         assert!(pairs.contains(&("CP", "gh")));
-        assert!(pairs.contains(&("CR", "cursor")));
+        assert!(pairs.contains(&("CR", "cursor-agent")));
         assert!(pairs.contains(&("DV", "devin")));
     }
 }

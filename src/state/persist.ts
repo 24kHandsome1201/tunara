@@ -298,9 +298,17 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
         typeof a.command === "string" &&
         typeof a.cwd === "string" &&
         typeof a.lastSeenAt === "number" &&
+        Number.isFinite(a.lastSeenAt) &&
         (a.confidence === "exact" || a.confidence === "continue" || a.confidence === "unknown")
       ) {
-        agentResume[k] = a as unknown as PersistedAgentResumeIntent;
+        agentResume[k] = {
+          agent: a.agent,
+          command: a.command,
+          cwd: a.cwd,
+          ...(typeof a.resumeId === "string" ? { resumeId: a.resumeId } : {}),
+          lastSeenAt: a.lastSeenAt,
+          confidence: a.confidence,
+        };
       }
     }
   }

@@ -5,6 +5,9 @@ import { type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { type CursorStyle } from "@/state/ui";
 import { type TerminalThemeName, type ThemeType } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
+import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-instance";
+
+const INACTIVE_SCROLLBACK_LIMIT = 1000;
 
 interface TerminalRuntimeSyncOptions {
   active: boolean;
@@ -12,6 +15,8 @@ interface TerminalRuntimeSyncOptions {
   fitRef: RefObject<FitAddon | null>;
   ptyRef: RefObject<PtySession | null>;
   fontSize: number;
+  fontFamily: string;
+  nerdFontFallback: boolean;
   scrollback: number;
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
@@ -26,6 +31,8 @@ export function useTerminalRuntimeSync({
   fitRef,
   ptyRef,
   fontSize,
+  fontFamily,
+  nerdFontFallback,
   scrollback,
   cursorStyle,
   cursorBlink,
@@ -55,8 +62,10 @@ export function useTerminalRuntimeSync({
     const term = termRef.current;
     const fit = fitRef.current;
     if (!term) return;
+    const effectiveScrollback = active ? scrollback : Math.min(scrollback, INACTIVE_SCROLLBACK_LIMIT);
+    term.options.fontFamily = buildTerminalFontFamily(fontFamily, nerdFontFallback);
     term.options.fontSize = fontSize;
-    term.options.scrollback = scrollback;
+    term.options.scrollback = effectiveScrollback;
     term.options.cursorStyle = cursorStyle;
     term.options.cursorBlink = cursorBlink;
     term.options.theme = getTerminalTheme(theme, terminalTheme, accent);
@@ -66,5 +75,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontSize, ptyRef, scrollback, termRef, terminalTheme, theme]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, scrollback, termRef, terminalTheme, theme]);
 }

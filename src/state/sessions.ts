@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Session, AgentCode } from "@/ui/types";
+import type { Session, AgentCode, AgentResumeIntent } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import {
@@ -34,7 +34,7 @@ interface SessionsState {
   closeSessionsInDir: (dir: string) => void;
   clearDirCloseConfirmation: (dir: string) => void;
 
-  handleAgentDetected: (id: string, agent: AgentCode) => void;
+  handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
   handleAgentReady: (id: string) => void;
   handleAgentBusy: (id: string) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
@@ -77,6 +77,7 @@ export function createSession(
     gitState: "unknown",
     runState: "idle" as const,
     pendingInput: opts?.pendingInput,
+    pendingInputSubmit: undefined,
     updatedAt: Date.now(),
   };
 }
@@ -118,6 +119,27 @@ function scheduleDirCloseConfirmationExpiry(dir: string, clear: (dir: string) =>
     clear(dir);
   }, CLOSE_CONFIRM_WINDOW_MS);
   dirCloseConfirmationTimers.set(dir, timer);
+}
+
+function buildAgentResumeIntent(
+  session: Session | undefined,
+  agent: AgentCode,
+  command?: string,
+): AgentResumeIntent | undefined {
+  if (!session) return undefined;
+  const normalized = command?.trim() || session.agentResume?.command || session.lastCommand?.trim() || "";
+  if (!normalized) return undefined;
+
+  const resumeMatch = normalized.match(/(?:^|\s)(?:--resume|resume)\s+([^\s]+)/);
+  const continueMatch = /(?:^|\s)(?:--continue|continue)(?:\s|$)/.test(normalized);
+  return {
+    agent,
+    command: normalized,
+    cwd: session.dir,
+    ...(resumeMatch ? { resumeId: resumeMatch[1] } : {}),
+    lastSeenAt: Date.now(),
+    confidence: resumeMatch ? "exact" : continueMatch ? "continue" : "unknown",
+  };
 }
 
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
@@ -265,10 +287,16 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
   },
 
-  handleAgentDetected: (id, agent) => {
+  handleAgentDetected: (id, agent, command) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = agentDetectedUpdate(session, agent);
-    if (update) get().updateSession(id, update.patch);
+    const agentResume = buildAgentResumeIntent(session, agent, command);
+    if (update || agentResume) {
+      get().updateSession(id, {
+        ...(update?.patch ?? {}),
+        ...(agentResume ? { agentResume } : {}),
+      });
+    }
   },
 
   handleAgentReady: (id) => {
@@ -336,9 +364,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   handleCwdChange: (id, cwd) => {
     const session = get().sessions.find((s) => s.id === id);
+    const agentResume = session?.agentResume;
     const update = cwdChangedUpdate(session, cwd);
     if (!update) return;
-    get().updateSession(id, update.patch);
+    get().updateSession(id, {
+      ...update.patch,
+      ...(agentResume
+        ? { agentResume: { ...agentResume, cwd, lastSeenAt: Date.now() } }
+        : {}),
+    });
     if (update.refreshGit) get().refreshGit(id);
   },
 

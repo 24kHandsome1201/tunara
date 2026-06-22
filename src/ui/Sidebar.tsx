@@ -162,7 +162,7 @@ export function Sidebar({
       aria-label="会话侧栏"
     >
       {onNewTerminal && (
-        <div style={{ padding: "8px 12px" }}>
+        <div style={{ padding: "8px 12px 6px" }}>
           <button
             onClick={onNewTerminal}
             style={{

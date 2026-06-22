@@ -78,6 +78,9 @@ pub fn run() {
             modules::git::git_ahead_behind,
             // Conduit 新增（§6.3 外部编辑器跳转）
             modules::editor::open_in_editor,
+            // Text config: ~/.config/conduit/config.toml
+            modules::config::load_config,
+            modules::config::save_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
