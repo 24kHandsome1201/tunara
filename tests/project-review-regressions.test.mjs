@@ -74,11 +74,19 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const settings = read("src/ui/overlays/Settings.tsx");
 
   assert.match(cargo, /^toml = "0\.8"$/m);
+  assert.match(cargo, /^toml_edit = "0\.20"$/m);
   assert.match(modules, /pub mod config;/);
   assert.match(lib, /modules::config::load_config/);
   assert.match(lib, /modules::config::save_config/);
   assert.match(configRs, /\.join\("\.config"\)[\s\S]*\.join\("conduit"\)[\s\S]*\.join\("config\.toml"\)/);
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
+  assert.match(configRs, /use toml_edit::\{value, Document, Item, Table\}/);
+  assert.match(configRs, /merge_known_config/);
+  assert.match(configRs, /MAX_SCROLLBACK: u32 = 20_000/);
+  assert.doesNotMatch(configRs, /MAX_PANEL_WIDTH/);
+  assert.match(configRs, /upper bound is viewport-dependent in src\/state\/ui\.ts/);
+  assert.match(configRs, /Err\(_\) => serialize_new_config\(&config\)\?/);
+  assert.match(configRs, /config\.clamp\(\)/);
   assert.match(configRs, /pub font_ligatures: bool/);
   assert.match(configRs, /font_ligatures: false/);
   assert.match(configRs, /pub terminal_clipboard_write: bool/);

@@ -3,6 +3,15 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use toml_edit::{value, Document, Item, Table};
+
+const MIN_FONT_SIZE: u16 = 10;
+const MAX_FONT_SIZE: u16 = 22;
+const MIN_SCROLLBACK: u32 = 1000;
+const MAX_SCROLLBACK: u32 = 20_000;
+const MIN_SIDEBAR_WIDTH: u16 = 200;
+const MAX_SIDEBAR_WIDTH: u16 = 400;
+const MIN_PANEL_WIDTH: u16 = 240;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
@@ -46,6 +55,19 @@ impl Default for AppearanceConfig {
     }
 }
 
+impl AppearanceConfig {
+    fn clamp(&mut self) {
+        self.font_size = self.font_size.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE);
+        self.scrollback = self.scrollback.clamp(MIN_SCROLLBACK, MAX_SCROLLBACK);
+        self.sidebar_width = self
+            .sidebar_width
+            .clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+        // The upper bound is viewport-dependent in src/state/ui.ts; the backend must preserve
+        // wider-screen values that the frontend already accepted.
+        self.panel_width = self.panel_width.max(MIN_PANEL_WIDTH);
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ConduitConfig {
@@ -59,6 +81,12 @@ impl Default for ConduitConfig {
             appearance: AppearanceConfig::default(),
             keybindings: default_keybindings(),
         }
+    }
+}
+
+impl ConduitConfig {
+    fn clamp(&mut self) {
+        self.appearance.clamp();
     }
 }
 
@@ -122,23 +150,100 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 15] {
+    [
+        ("theme", value(config.theme.clone())),
+        ("accent", value(config.accent.clone())),
+        ("cursor_style", value(config.cursor_style.clone())),
+        ("cursor_blink", value(config.cursor_blink)),
+        ("font_size", value(i64::from(config.font_size))),
+        ("font_family", value(config.font_family.clone())),
+        ("font_ligatures", value(config.font_ligatures)),
+        ("nerd_font_fallback", value(config.nerd_font_fallback)),
+        ("scrollback", value(i64::from(config.scrollback))),
+        ("sidebar_width", value(i64::from(config.sidebar_width))),
+        ("panel_width", value(i64::from(config.panel_width))),
+        ("terminal_theme", value(config.terminal_theme.clone())),
+        ("external_editor", value(config.external_editor.clone())),
+        ("bell_notification", value(config.bell_notification)),
+        (
+            "terminal_clipboard_write",
+            value(config.terminal_clipboard_write),
+        ),
+    ]
+}
+
+fn ensure_document_table<'a>(doc: &'a mut Document, key: &str) -> Result<&'a mut Table, String> {
+    let item = doc
+        .as_table_mut()
+        .entry(key)
+        .or_insert(Item::Table(Table::new()));
+    if !item.is_table() {
+        *item = Item::Table(Table::new());
+    }
+    item.as_table_mut()
+        .ok_or_else(|| format!("config section `{key}` is not a table"))
+}
+
+fn set_table_item(table: &mut Table, key: &str, item: Item) {
+    if let Some(existing) = table.get_mut(key) {
+        *existing = item;
+    } else {
+        table.insert(key, item);
+    }
+}
+
+fn merge_known_config(raw: &str, config: &ConduitConfig) -> Result<String, String> {
+    let mut doc = raw
+        .parse::<Document>()
+        .map_err(|e| format!("parse existing config failed: {e}"))?;
+
+    {
+        let appearance = ensure_document_table(&mut doc, "appearance")?;
+        for (key, item) in known_appearance_items(&config.appearance) {
+            set_table_item(appearance, key, item);
+        }
+    }
+
+    {
+        let keybindings = ensure_document_table(&mut doc, "keybindings")?;
+        for (key, binding) in &config.keybindings {
+            set_table_item(keybindings, key, value(binding.clone()));
+        }
+    }
+
+    Ok(doc.to_string())
+}
+
+fn serialize_new_config(config: &ConduitConfig) -> Result<String, String> {
+    toml::to_string_pretty(config).map_err(|e| format!("serialize config failed: {e}"))
+}
+
 fn write_config(path: &Path, config: &ConduitConfig) -> Result<(), String> {
     ensure_parent(path)?;
-    let body =
-        toml::to_string_pretty(config).map_err(|e| format!("serialize config failed: {e}"))?;
+    let mut config = config.clone();
+    config.clamp();
+    let body = if path.exists() {
+        let raw = fs::read_to_string(path).map_err(|e| format!("read config failed: {e}"))?;
+        match merge_known_config(&raw, &config) {
+            Ok(body) => body,
+            Err(_) => serialize_new_config(&config)?,
+        }
+    } else {
+        serialize_new_config(&config)?
+    };
     let tmp = path.with_extension("toml.tmp");
     fs::write(&tmp, body).map_err(|e| format!("write config failed: {e}"))?;
     fs::rename(&tmp, path).map_err(|e| format!("replace config failed: {e}"))?;
     Ok(())
 }
 
-#[tauri::command]
-pub fn load_config() -> Result<LoadedConduitConfig, String> {
-    let path = config_path()?;
+fn load_config_from_path(path: &Path) -> Result<LoadedConduitConfig, String> {
     let path_string = path.to_string_lossy().to_string();
     if !path.exists() {
-        let config = ConduitConfig::default();
-        write_config(&path, &config)?;
+        let mut config = ConduitConfig::default();
+        config.clamp();
+        write_config(path, &config)?;
         return Ok(LoadedConduitConfig {
             path: path_string,
             config,
@@ -146,23 +251,147 @@ pub fn load_config() -> Result<LoadedConduitConfig, String> {
         });
     }
 
-    let raw = fs::read_to_string(&path).map_err(|e| format!("read config failed: {e}"))?;
+    let raw = fs::read_to_string(path).map_err(|e| format!("read config failed: {e}"))?;
     match toml::from_str::<ConduitConfig>(&raw) {
-        Ok(config) => Ok(LoadedConduitConfig {
-            path: path_string,
-            config,
-            error: None,
-        }),
-        Err(e) => Ok(LoadedConduitConfig {
-            path: path_string,
-            config: ConduitConfig::default(),
-            error: Some(format!("parse config failed: {e}")),
-        }),
+        Ok(mut config) => {
+            config.clamp();
+            Ok(LoadedConduitConfig {
+                path: path_string,
+                config,
+                error: None,
+            })
+        }
+        Err(e) => {
+            let mut config = ConduitConfig::default();
+            config.clamp();
+            Ok(LoadedConduitConfig {
+                path: path_string,
+                config,
+                error: Some(format!("parse config failed: {e}")),
+            })
+        }
     }
+}
+
+#[tauri::command]
+pub fn load_config() -> Result<LoadedConduitConfig, String> {
+    let path = config_path()?;
+    load_config_from_path(&path)
 }
 
 #[tauri::command]
 pub fn save_config(config: ConduitConfig) -> Result<(), String> {
     let path = config_path()?;
     write_config(&path, &config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_config_path(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before Unix epoch")
+            .as_nanos();
+        std::env::temp_dir()
+            .join(format!("conduit-config-test-{name}-{unique}"))
+            .join("conduit")
+            .join("config.toml")
+    }
+
+    #[test]
+    fn config_write_preserves_comments_unknown_keys_and_clamps_loaded_values() {
+        let path = temp_config_path("preserve");
+        ensure_parent(&path).expect("create temp config dir");
+        fs::write(
+            &path,
+            r##"# user-owned header
+[appearance]
+# keep this with appearance
+future_flag = true
+font_size = 999
+scrollback = 99999999
+sidebar_width = 1
+panel_width = 1
+accent = "#123456"
+
+[keybindings]
+future_action = "Mod+F"
+"##,
+        )
+        .expect("write existing config");
+
+        let loaded_before_save = load_config_from_path(&path).expect("load existing config");
+        assert_eq!(
+            loaded_before_save.config.appearance.panel_width,
+            MIN_PANEL_WIDTH
+        );
+
+        let mut config = ConduitConfig::default();
+        config.appearance.accent = "#abcdef".into();
+        config.appearance.scrollback = 99999999;
+        config.appearance.font_size = 999;
+        config.appearance.sidebar_width = 1;
+        config.appearance.panel_width = 810;
+        config
+            .keybindings
+            .insert("new_terminal".into(), "Mod+Shift+T".into());
+
+        write_config(&path, &config).expect("merge existing config");
+        let saved = fs::read_to_string(&path).expect("read saved config");
+        assert!(saved.contains("# user-owned header"));
+        assert!(saved.contains("# keep this with appearance"));
+        assert!(saved.contains("future_flag = true"));
+        assert!(saved.contains("future_action = \"Mod+F\""));
+        assert!(saved.contains("scrollback = 20000"));
+        assert!(saved.contains("font_size = 22"));
+        assert!(saved.contains("sidebar_width = 200"));
+        assert!(saved.contains("panel_width = 810"));
+
+        let loaded = load_config_from_path(&path).expect("load merged config");
+        assert_eq!(loaded.config.appearance.scrollback, MAX_SCROLLBACK);
+        assert_eq!(loaded.config.appearance.font_size, MAX_FONT_SIZE);
+        assert_eq!(loaded.config.appearance.sidebar_width, MIN_SIDEBAR_WIDTH);
+        assert_eq!(loaded.config.appearance.panel_width, 810);
+
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
+
+    #[test]
+    fn malformed_existing_config_can_be_replaced_by_saving() {
+        let path = temp_config_path("malformed");
+        ensure_parent(&path).expect("create temp config dir");
+        fs::write(&path, "[appearance\nscrollback = 99999999\n").expect("write malformed config");
+
+        let mut config = ConduitConfig::default();
+        config.appearance.scrollback = 99999999;
+        config.appearance.panel_width = 810;
+
+        write_config(&path, &config).expect("replace malformed config");
+        let saved = fs::read_to_string(&path).expect("read saved config");
+        assert!(saved.contains("[appearance]"));
+        assert!(saved.contains("scrollback = 20000"));
+        assert!(saved.contains("panel_width = 810"));
+        let loaded = load_config_from_path(&path).expect("load repaired config");
+        assert_eq!(loaded.error, None);
+        assert_eq!(loaded.config.appearance.scrollback, MAX_SCROLLBACK);
+        assert_eq!(loaded.config.appearance.panel_width, 810);
+
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
+
+    #[test]
+    fn missing_config_file_writes_default_template() {
+        let path = temp_config_path("missing");
+        let loaded = load_config_from_path(&path).expect("write default config");
+        assert_eq!(loaded.config.appearance.scrollback, 2000);
+        let saved = fs::read_to_string(&path).expect("read default config");
+        assert!(saved.contains("[appearance]"));
+        assert!(saved.contains("[keybindings]"));
+        assert!(saved.contains("scrollback = 2000"));
+
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
 }
