@@ -42,6 +42,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const uiStore = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
+  const keybindings = useUIStore((s) => s.keybindings);
 
   function notifyBatchCloseConfirmation(subtitle: string) {
     const st = useSessionsStore.getState();
@@ -78,7 +79,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     cmds.push({
       id: "new-terminal",
       label: "新建终端",
-      shortcut: formatShortcut("mod+t"),
+      shortcut: formatShortcut(keybindings.newTerminal),
       icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
       section: "操作",
       scopes: ["action", "terminal"],
@@ -138,7 +139,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       cmds.push({
         id: "quick-select-visible-output",
         label: "快速选择附近输出",
-        shortcut: formatShortcut("mod+shift+space"),
+        shortcut: formatShortcut(keybindings.quickSelect),
         icon: <CmdIcon d="M9 11.5 12 14l7-8" />,
         section: "操作",
         scopes: ["action", "terminal"],
@@ -167,7 +168,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       cmds.push({
         id: "close-current-session",
         label: "关闭当前会话",
-        shortcut: formatShortcut("mod+w"),
+        shortcut: formatShortcut(keybindings.closeSession),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
         section: "操作",
         scopes: ["action"],
@@ -183,7 +184,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     cmds.push({
       id: "toggle-sidebar",
       label: "切换侧栏",
-      shortcut: formatShortcut("mod+\\"),
+      shortcut: formatShortcut(keybindings.toggleSidebar),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       scopes: ["action", "app"],
@@ -194,7 +195,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     cmds.push({
       id: "toggle-panel",
       label: "切换审查面板",
-      shortcut: formatShortcut("mod+shift+\\"),
+      shortcut: formatShortcut(keybindings.togglePanel),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
       section: "操作",
       scopes: ["action", "app"],
@@ -205,7 +206,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     cmds.push({
       id: "split-horizontal",
       label: "水平分栏",
-      shortcut: formatShortcut("mod+d"),
+      shortcut: formatShortcut(keybindings.splitHorizontal),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="8" y1="1.5" x2="8" y2="14.5" /></svg>,
       section: "操作",
       scopes: ["action", "terminal"],
@@ -221,7 +222,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     cmds.push({
       id: "split-vertical",
       label: "垂直分栏",
-      shortcut: formatShortcut("mod+shift+d"),
+      shortcut: formatShortcut(keybindings.splitVertical),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="1.5" y1="8" x2="14.5" y2="8" /></svg>,
       section: "操作",
       scopes: ["action", "terminal"],
@@ -237,7 +238,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     cmds.push({
       id: "settings",
       label: "设置",
-      shortcut: formatShortcut("mod+,"),
+      shortcut: formatShortcut(keybindings.openSettings),
       icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
       section: "操作",
       scopes: ["action", "app"],
@@ -295,7 +296,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

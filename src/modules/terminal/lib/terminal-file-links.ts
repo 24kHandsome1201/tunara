@@ -1,4 +1,4 @@
-import { type IBufferLine, type IDisposable, type ILink, type Terminal } from "@xterm/xterm";
+import type { IBufferLine, IDisposable, ILink, Terminal } from "@xterm/xterm";
 import { openInEditor } from "@/modules/editor/open";
 import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
 

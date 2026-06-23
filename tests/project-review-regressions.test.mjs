@@ -358,7 +358,8 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const docs = read("docs/设计-右键菜单与批量启动Agent.md");
   const shared = read("src/ui/shared.tsx");
 
-  assert.match(html, /: "#c2683c"/);
+  assert.match(html, /var accent = "#c2683c"/);
+  assert.doesNotMatch(html, /localStorage/);
   assert.doesNotMatch(html, /#e09070/);
 
   assert.match(sessionCard, /e\.key === "Escape"[\s\S]*stopRenaming\(\)/);
@@ -612,6 +613,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalQuickSelectOverlay = read("src/ui/TerminalQuickSelect.tsx");
   const terminalAttention = read("src/ui/terminal-attention.ts");
   const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
+  const terminalBlocksPure = read("src/modules/terminal/lib/terminal-blocks.ts");
   const terminalBlocksBar = read("src/ui/TerminalBlocksBar.tsx");
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
   const terminalCodexState = read("src/modules/terminal/lib/terminal-codex-state.ts");
@@ -747,18 +749,18 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalPasteProtection, /event\.preventDefault\(\)/);
   assert.match(terminalPasteProtection, /term\.paste\(value\)/);
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
-  assert.match(terminalBlocks, /export function findStickyCommandBlock/);
-  assert.match(terminalBlocks, /export function findNavigableCommandBlock/);
-  assert.match(terminalBlocks, /export function normalizeBlockCommand/);
-  assert.match(terminalBlocks, /export function collectTerminalBlockOutputText/);
-  assert.match(terminalBlocks, /export function formatTerminalBlockCommandAndOutput/);
+  assert.match(terminalBlocksPure, /export function findStickyCommandBlock/);
+  assert.match(terminalBlocksPure, /export function findNavigableCommandBlock/);
+  assert.match(terminalBlocksPure, /export function normalizeBlockCommand/);
+  assert.match(terminalBlocksPure, /export function collectTerminalBlockOutputText/);
+  assert.match(terminalBlocksPure, /export function formatTerminalBlockCommandAndOutput/);
   assert.match(terminalBlocks, /import \{ hasPlatformModKey \} from "\.\.\/modules\/config\/keybindings\.ts"/);
   assert.match(terminalBlocks, /function detectMacPlatform\(\): boolean/);
   assert.match(terminalBlocks, /function hasBlockNavigationModifier\(e: KeyboardEvent\): boolean/);
   assert.match(terminalBlocks, /hasPlatformModKey\(e, isMac\) && \(isMac \? !e\.ctrlKey : !e\.metaKey\)/);
   assert.doesNotMatch(terminalBlocks, /@tauri-apps\/plugin-os/);
   assert.doesNotMatch(terminalBlocks, /slice\(0, 77\) \+ "\.\.\."/);
-  assert.match(terminalBlocks, /block\.startRow \+ 1/);
+  assert.match(terminalBlocksPure, /block\.startRow \+ 1/);
   assert.match(terminalBlocks, /readBlockOutputText/);
   assert.match(terminalBlocks, /const copyBlockOutput = useCallback\(async \(id: string\): Promise<boolean> =>/);
   assert.match(terminalBlocks, /const output = readBlockOutput\(id\)/);

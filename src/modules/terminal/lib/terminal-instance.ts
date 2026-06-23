@@ -1,6 +1,6 @@
 import { Terminal, type ILinkHandler } from "@xterm/xterm";
-import { type CursorStyle } from "@/state/ui";
-import { type TerminalThemeName, type ThemeType } from "@/ui/types";
+import type { CursorStyle } from "@/state/ui";
+import type { TerminalThemeName, ThemeType } from "@/ui/types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { buildTerminalFontFamily } from "./terminal-font.ts";
 

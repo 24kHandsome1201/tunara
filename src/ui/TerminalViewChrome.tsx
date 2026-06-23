@@ -4,7 +4,7 @@ import { TerminalBlockFilterPanel } from "./TerminalBlockFilterPanel";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalBlocksBar } from "./TerminalBlocksBar";
 import type { useTerminalSearch } from "./useTerminalSearch";
-import type { TerminalCommandBlock } from "./useTerminalBlocks";
+import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 
 interface TerminalViewChromeProps {
   containerRef: RefObject<HTMLDivElement | null>;

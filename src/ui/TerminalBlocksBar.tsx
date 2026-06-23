@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { TerminalCommandBlock } from "./useTerminalBlocks";
+import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 function CopyIcon() {

@@ -1,5 +1,5 @@
-import { type Terminal } from "@xterm/xterm";
-import { type Session } from "../../../ui/types.ts";
+import type { Terminal } from "@xterm/xterm";
+import type { Session } from "../../../ui/types.ts";
 import {
   CODEX_SCREEN_STATE_RECENT_LINE_LIMIT,
   detectCodexScreenState,

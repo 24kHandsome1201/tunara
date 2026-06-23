@@ -1,4 +1,4 @@
-import { type Terminal } from "@xterm/xterm";
+import type { Terminal } from "@xterm/xterm";
 
 const MAX_PENDING_BYTES = 2 * 1024 * 1024;
 const OVERFLOW_NOTICE = new TextEncoder().encode(

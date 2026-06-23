@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
-import { type Terminal } from "@xterm/xterm";
+import type { Terminal } from "@xterm/xterm";
 import { SearchAddon } from "@xterm/addon-search";
 
 const SEARCH_DECORATIONS = {

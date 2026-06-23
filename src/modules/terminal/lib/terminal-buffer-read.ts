@@ -1,4 +1,4 @@
-import { type Terminal } from "@xterm/xterm";
+import type { Terminal } from "@xterm/xterm";
 import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 
 export function extractCommandFromBuffer(term: Terminal, promptEndRow: number): string {

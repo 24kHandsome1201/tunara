@@ -1,9 +1,9 @@
 import { useEffect, type RefObject } from "react";
-import { type Terminal } from "@xterm/xterm";
-import { type FitAddon } from "@xterm/addon-fit";
-import { type PtySession } from "@/modules/terminal/lib/pty-bridge";
-import { type CursorStyle } from "@/state/ui";
-import { type TerminalThemeName, type ThemeType } from "./types";
+import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
+import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
+import type { CursorStyle } from "@/state/ui";
+import type { TerminalThemeName, ThemeType } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 

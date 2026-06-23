@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { type Terminal } from "@xterm/xterm";
+import type { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
@@ -8,7 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { openPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
-import { type AgentCode } from "./types";
+import type { AgentCode } from "./types";
 import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { extractCommandFromBuffer, extractCommandFromOsc } from "@/modules/terminal/lib/terminal-buffer-read";
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
@@ -89,6 +89,11 @@ export function TerminalView({
     active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
   useTerminalWebgl(termRef, active, webglRef);
+  useEffect(() => {
+    const pty = ptyRef.current;
+    if (!pendingInput || !pty) return;
+    return schedulePendingInput({ pty, input: pendingInput, submit: pendingInputSubmit !== false, onConsumed: onPendingInputConsumed }).dispose;
+  }, [pendingInput, pendingInputSubmit, onPendingInputConsumed]);
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
     initRef.current = true;

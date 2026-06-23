@@ -4,7 +4,7 @@ import {
   formatTerminalBlockFilterText,
 } from "@/modules/terminal/lib/terminal-block-filter";
 import { CloseIcon, SearchIcon } from "./shared";
-import type { TerminalCommandBlock } from "./useTerminalBlocks";
+import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 
 const ICON_BUTTON_STYLE = {
   width: 24,

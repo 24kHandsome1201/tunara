@@ -1,5 +1,5 @@
 import { WebglAddon } from "@xterm/addon-webgl";
-import { type Terminal } from "@xterm/xterm";
+import type { Terminal } from "@xterm/xterm";
 
 export function createTerminalWebglRenderer(term: Terminal): WebglAddon | null {
   try {

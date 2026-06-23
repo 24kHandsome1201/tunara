@@ -255,14 +255,10 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
         ? Math.max(0.2, Math.min(0.8, splitRaw.ratio))
         : 0.5;
 
-      if (splitRaw.mode !== "single") {
-        if ((paneA && !sessionIds.has(paneA)) || (paneB && !sessionIds.has(paneB))) {
-          split = { mode: "single", paneA: null, paneB: null, ratio: 0.5 };
-        } else {
-          split = { mode: splitRaw.mode, paneA, paneB, ratio };
-        }
+      if (splitRaw.mode !== "single" && paneA && paneB && paneA !== paneB && sessionIds.has(paneA) && sessionIds.has(paneB)) {
+        split = { mode: splitRaw.mode, paneA, paneB, ratio };
       } else {
-        split = { mode: "single", paneA: null, paneB: null, ratio };
+        split = { mode: "single", paneA: null, paneB: null, ratio: 0.5 };
       }
     }
 
@@ -271,6 +267,10 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     ui = { sidebarVisible, panelVisible, collapsedDirs, split, inspectorTab };
   } else {
     ui = { ...DEFAULT_UI_LAYOUT_V2 };
+  }
+
+  if (ui.split.mode !== "single" && activeSessionId !== ui.split.paneA && activeSessionId !== ui.split.paneB) {
+    activeSessionId = ui.split.paneB ?? ui.split.paneA ?? activeSessionId;
   }
 
   const terminals: Record<string, PersistedTerminalSnapshot> = {};

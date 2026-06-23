@@ -36,6 +36,7 @@ export function Sidebar({
     position: { x: number; y: number };
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
+  const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
   const dragRef = useRef<DragState | null>(null);
   const dragStartY = useRef(0);
   const dragStarted = useRef(false);
@@ -198,7 +199,7 @@ export function Sidebar({
                 marginLeft: "auto",
               }}
             >
-              {formatShortcut("mod+t")}
+              {formatShortcut(newTerminalShortcut)}
             </span>
           </button>
         </div>

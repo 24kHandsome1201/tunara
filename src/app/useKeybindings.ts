@@ -28,13 +28,11 @@ export function useKeybindings() {
         case "newTerminalAlt":
           st.newTerminal();
           break;
-        case "closeSession":
-          if (ui.split.mode !== "single" && ui.split.paneB) {
-            st.closeSession(ui.split.paneB);
-          } else if (st.activeSessionId) {
-            st.closeSession(st.activeSessionId);
-          }
+        case "closeSession": {
+          const targetId = st.activeSessionId ?? (ui.split.mode !== "single" ? ui.split.paneB : null);
+          if (targetId) st.closeSession(targetId);
           break;
+        }
         case "openSettings":
           ui.setOverlay("settings");
           break;
