@@ -75,6 +75,10 @@ import {
   MAX_OSC52_CLIPBOARD_BYTES,
   parseTerminalClipboardWriteOsc52,
 } from "../src/modules/terminal/lib/terminal-clipboard.ts";
+import {
+  buildPrimaryDeviceAttributesResponse,
+  handlePrimaryDeviceAttributesQuery,
+} from "../src/modules/terminal/lib/terminal-device-attributes.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { parseKeybinding } from "../src/modules/config/keybindings.ts";
@@ -545,6 +549,24 @@ test("OSC 52 clipboard handler only writes when explicitly allowed", () => {
   assert.equal(handleTerminalClipboardOsc52("c;aGVsbG8=", { isWriteAllowed: () => true, writeText }), true);
   assert.deepEqual(writes, ["hello"]);
   assert.equal(handleTerminalClipboardOsc52("malformed", { isWriteAllowed: () => true, writeText }), false);
+});
+
+test("primary device attributes advertise OSC 52 only when clipboard writes are enabled", () => {
+  assert.equal(buildPrimaryDeviceAttributesResponse(false), "\x1b[?1;2c");
+  assert.equal(buildPrimaryDeviceAttributesResponse(true), "\x1b[?1;2;52c");
+
+  const writes = [];
+  const options = {
+    isOsc52ClipboardWriteAllowed: () => true,
+    sendInput: (data) => writes.push(data),
+  };
+  assert.equal(handlePrimaryDeviceAttributesQuery([], options), true);
+  assert.equal(handlePrimaryDeviceAttributesQuery([0], options), true);
+  assert.deepEqual(writes, ["\x1b[?1;2;52c", "\x1b[?1;2;52c"]);
+
+  assert.equal(handlePrimaryDeviceAttributesQuery([1], options), true);
+  assert.deepEqual(writes, ["\x1b[?1;2;52c", "\x1b[?1;2;52c"]);
+  assert.equal(handlePrimaryDeviceAttributesQuery([0, 1], options), false);
 });
 
 test("terminal paste protection guards multiline and large pastes", () => {

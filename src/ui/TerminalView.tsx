@@ -22,6 +22,7 @@ import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-outp
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/terminal-clipboard";
+import { registerTerminalDeviceAttributesHandler } from "@/modules/terminal/lib/terminal-device-attributes";
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification";
 import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
@@ -116,6 +117,9 @@ export function TerminalView({
       cleanups.push(registerTerminalPasteProtection(term).dispose);
       cleanups.push(registerTerminalClipboardHandler(term, {
         isWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
+      }));
+      cleanups.push(registerTerminalDeviceAttributesHandler(term, {
+        isOsc52ClipboardWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
       }));
       if (activeRef.current) webglRef.current = createTerminalWebglRenderer(term);
       const serializeAddon = new SerializeAddon();

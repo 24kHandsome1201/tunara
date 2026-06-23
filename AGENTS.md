@@ -143,7 +143,7 @@ shell 通过 OSC 7（cwd）+ OSC 133 A/B/C/D（prompt-start / prompt-end / pre-e
 - **CSP 已锁死**（`tauri.conf.json`）：`script-src 'self'`、无 `unsafe-eval`。不要为了省事加 `unsafe-eval` 或放开 `connect-src`。
 - **Capabilities 最小权限**（`capabilities/default.json`）：新增 IPC 能力要显式、按需，不要整组放开。
 - **不要把密钥/token 写进 world-readable 的 `/tmp`。** 现有 hooks socket（`/tmp/conduit-hooks-{pid}.sock`）和注入文件（`/tmp/conduit-agent-{sid}.json`）已是已知的弱点；若加固，往 `$XDG_RUNTIME_DIR` 或 0700 目录移、payload 带 per-session nonce，别新增可预测的 `/tmp` 文件。
-- **OSC 52 剪贴板是安全 sink。** 终端程序写系统剪贴板必须默认关闭，只能通过 `~/.config/conduit/config.toml` 的 `terminal_clipboard_write = true` 或设置页显式开启；不要实现剪贴板读取响应（`OSC 52 ; Pc ; ?`），不要静默默认允许，payload 必须保持 UTF-8 文本和大小上限。
+- **OSC 52 剪贴板是安全 sink。** 终端程序写系统剪贴板必须默认关闭，只能通过 `~/.config/conduit/config.toml` 的 `terminal_clipboard_write = true` 或设置页显式开启；Primary DA（`CSI c` / `CSI 0 c`）只有在该配置开启时才能声明扩展能力 `52`；不要实现剪贴板读取响应（`OSC 52 ; Pc ; ?`），不要静默默认允许，payload 必须保持 UTF-8 文本和大小上限。
 - agent 圆形图标等颜色走 `--c-agent-*` token；阴影走 `--shadow-*`。**不要硬编码颜色**。
 
 ---

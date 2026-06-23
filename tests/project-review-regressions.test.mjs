@@ -615,6 +615,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalPasteProtection = read("src/modules/terminal/lib/terminal-paste-protection.ts");
   const terminalPending = read("src/modules/terminal/lib/terminal-pending-input.ts");
   const terminalClipboard = read("src/modules/terminal/lib/terminal-clipboard.ts");
+  const terminalDeviceAttributes = read("src/modules/terminal/lib/terminal-device-attributes.ts");
   const terminalSnapshotScheduler = read("src/modules/terminal/lib/terminal-snapshot-scheduler.ts");
   const terminalResize = read("src/modules/terminal/lib/terminal-resize.ts");
   const terminalInput = read("src/modules/terminal/lib/terminal-input-buffer.ts");
@@ -627,6 +628,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ TerminalViewChrome \} from "\.\/TerminalViewChrome"/);
   assert.match(terminal, /import \{ emitTerminalNotification, requestInformationalAttention \} from "\.\/terminal-attention"/);
   assert.match(terminal, /registerTerminalClipboardHandler\(term/);
+  assert.match(terminal, /registerTerminalDeviceAttributesHandler\(term/);
   assert.match(terminal, /terminalClipboardWrite/);
   assert.match(terminalClipboard, /registerOscHandler\(52/);
   assert.match(terminalClipboard, /handleTerminalClipboardOsc52/);
@@ -634,6 +636,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalClipboard, /payload\.data === "\?"/);
   assert.match(terminalClipboard, /MAX_OSC52_CLIPBOARD_BYTES = 256 \* 1024/);
   assert.doesNotMatch(terminalClipboard, /readText/);
+  assert.match(terminalDeviceAttributes, /registerCsiHandler\(\{ final: "c" \}/);
+  assert.match(terminalDeviceAttributes, /buildPrimaryDeviceAttributesResponse/);
+  assert.match(terminalDeviceAttributes, /"1;2;52"/);
+  assert.match(terminalDeviceAttributes, /isOsc52ClipboardWriteAllowed/);
   assert.match(terminalAttention, /import \{ getCurrentWindow, UserAttentionType \} from "@tauri-apps\/api\/window"/);
   assert.match(terminalAttention, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
