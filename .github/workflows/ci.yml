@@ -8,11 +8,21 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: linux
+          - os: macos-latest
+            label: macos
+    runs-on: ${{ matrix.os }}
+    name: test (${{ matrix.label }})
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux build dependencies
+        if: matrix.label == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -38,6 +48,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri -> target
+          key: ${{ matrix.label }}
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -53,3 +64,10 @@ jobs:
 
       - name: Run test suite
         run: pnpm test
+
+      # Verify the Tauri binary actually links on macOS — the dev/release CI
+      # flows have skipped this in the past, so vibrancy, macos-private-api,
+      # and window-state surfaces went unchecked until tag time.
+      - name: Build Tauri binary (release)
+        if: matrix.label == 'macos'
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin tunara
