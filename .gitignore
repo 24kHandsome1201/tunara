@@ -2,6 +2,8 @@
 *.zip
 _unzipped_design/
 terax-icon.png
+# 外部 review 资料（截图等参考素材，仅本地保留）
+review/*.png
 # macOS
 .DS_Store
 
