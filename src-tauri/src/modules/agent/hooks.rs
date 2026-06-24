@@ -16,7 +16,7 @@ mod platform {
     use std::io::Read;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::{UnixListener, UnixStream};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::thread;
@@ -47,6 +47,10 @@ mod platform {
             self.sock_path.to_str().unwrap_or("")
         }
 
+        pub fn agent_config_dir(&self) -> Option<&Path> {
+            self.sock_path.parent()
+        }
+
         pub fn shutdown(&self) {
             if self.sock_path.as_os_str().is_empty() {
                 return;
@@ -58,16 +62,16 @@ mod platform {
     }
 
     pub fn start_listener(app: AppHandle) -> HookListenerState {
-        let sock_dir = std::env::temp_dir().join("tunara-sockets");
-        if let Err(e) = fs::create_dir_all(&sock_dir) {
-            log::error!("failed to create hooks socket dir: {e}");
-            return HookListenerState::disabled();
-        }
-        #[cfg(unix)]
-        {
-            if let Err(e) = fs::set_permissions(&sock_dir, fs::Permissions::from_mode(0o700)) {
-                log::warn!("failed to restrict hooks socket dir permissions: {e}");
+        let sock_dir = match hooks_runtime_dir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                log::error!("hooks listener disabled, runtime dir unavailable: {e}");
+                return HookListenerState::disabled();
             }
+        };
+        if let Err(e) = ensure_private_dir(&sock_dir) {
+            log::error!("hooks listener disabled, insecure runtime dir: {e}");
+            return HookListenerState::disabled();
         }
         let sock_path = sock_dir.join(format!("hooks-{}.sock", std::process::id()));
 
@@ -152,6 +156,42 @@ mod platform {
             shutdown,
         }
     }
+
+    fn hooks_runtime_dir() -> Result<PathBuf, String> {
+        if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+            let dir = PathBuf::from(runtime_dir);
+            if dir.is_absolute() {
+                return Ok(dir.join("tunara"));
+            }
+        }
+        if let Some(home) = std::env::var_os("HOME") {
+            return Ok(PathBuf::from(home)
+                .join(".cache")
+                .join("tunara")
+                .join("runtime"));
+        }
+        Err("neither XDG_RUNTIME_DIR nor HOME is set".to_string())
+    }
+
+    fn ensure_private_dir(path: &Path) -> Result<(), String> {
+        fs::create_dir_all(path).map_err(|e| format!("create {}: {e}", path.display()))?;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("chmod 0700 {}: {e}", path.display()))?;
+        let link_meta =
+            fs::symlink_metadata(path).map_err(|e| format!("lstat {}: {e}", path.display()))?;
+        if link_meta.file_type().is_symlink() {
+            return Err(format!("{} must not be a symlink", path.display()));
+        }
+        let meta = fs::metadata(path).map_err(|e| format!("stat {}: {e}", path.display()))?;
+        if !meta.is_dir() {
+            return Err(format!("{} is not a directory", path.display()));
+        }
+        let mode = meta.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(format!("{} mode {mode:o} is not private", path.display()));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(unix))]
@@ -163,6 +203,10 @@ mod platform {
     impl HookListenerState {
         pub fn sock_path(&self) -> &str {
             ""
+        }
+
+        pub fn agent_config_dir(&self) -> Option<&std::path::Path> {
+            None
         }
 
         pub fn shutdown(&self) {}
@@ -183,6 +227,7 @@ mod tests {
         let state = super::platform::HookListenerState::disabled();
 
         assert_eq!(state.sock_path(), "");
+        assert!(state.agent_config_dir().is_none());
         state.shutdown();
     }
 

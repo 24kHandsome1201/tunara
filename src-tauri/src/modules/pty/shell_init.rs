@@ -69,6 +69,9 @@ pub fn build_command(
     }
     if let Some(sp) = sock_path {
         cmd.env("TUNARA_HOOKS_SOCK", sp);
+        if let Some(dir) = Path::new(sp).parent() {
+            cmd.env("TUNARA_AGENT_CONFIG_DIR", dir);
+        }
     }
 
     let resolved_cwd = cwd

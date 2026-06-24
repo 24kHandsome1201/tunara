@@ -20,6 +20,11 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     assert.match(script, /_tunara_agent_emit exit "\$agent" "\$ret"/);
     assert.match(script, /TUNARA_HOOKS_SOCK[\s\S]*return 0/);
     assert.match(script, /if \[\[? -n "\$sock"/);
+    assert.match(script, /TUNARA_AGENT_CONFIG_DIR/);
+    assert.match(script, /mktemp "\$config_dir\/tunara-agent-\$\{sid\}\.XXXXXX\.json"/);
+    assert.match(script, /chmod 600 "\$f"/);
+    assert.match(script, /nc -U \\"\\\$TUNARA_HOOKS_SOCK\\"/);
+    assert.doesNotMatch(script, /\/tmp\/tunara-agent/);
     assert.match(script, /command "\$real_bin" --settings "\$f" "\$@"/);
     assert.match(script, /else[\s\S]*command "\$real_bin" "\$@"/);
     assert.match(script, /claude\(\) \{ _tunara_agent_run claude CC/);
@@ -45,6 +50,11 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(fish, /printf '\\e\]777;tunara-agent;%s;%s;%s;%s\\e\\\\'/);
   assert.match(fish, /function claude[\s\S]*_tunara_agent_run claude CC/);
   assert.match(fish, /function codex[\s\S]*_tunara_agent_plain_run codex CX/);
+  assert.match(fish, /TUNARA_AGENT_CONFIG_DIR/);
+  assert.match(fish, /mktemp "\$config_dir\/tunara-agent-\$sid\.XXXXXX\.json"/);
+  assert.match(fish, /chmod 600 "\$f"/);
+  assert.match(fish, /nc -U \\\\"\$TUNARA_HOOKS_SOCK\\\\"/);
+  assert.doesNotMatch(fish, /\/tmp\/tunara-agent/);
 
   assert.match(rust, /const FISH_CONFIG: &str = include_str!\("scripts\/config\.fish"\);/);
   assert.match(rust, /Fish,/);
@@ -52,6 +62,32 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(rust, /Shell::Fish => (?:match prepare_fish_config\(\)|\{[\s\S]*prepare_fish_config\(\))/);
   assert.match(rust, /cmd\.arg\("-C"\);[\s\S]*format!\("source \{\}", fish_quote_path\(&config\)\)/);
   assert.match(rust, /fn prepare_fish_config\(\) -> Result<PathBuf, String>/);
+  assert.match(rust, /TUNARA_AGENT_CONFIG_DIR/);
+  assert.match(rust, /Path::new\(sp\)\.parent\(\)/);
+});
+
+test("agent hook runtime files avoid predictable shared tmp paths", () => {
+  const hooks = read("src-tauri/src/modules/agent/hooks.rs");
+  const wrapper = read("src-tauri/src/modules/agent/wrapper.rs");
+  const pty = read("src-tauri/src/modules/pty/mod.rs");
+
+  assert.match(hooks, /fn hooks_runtime_dir\(\) -> Result<PathBuf, String>/);
+  assert.match(hooks, /XDG_RUNTIME_DIR/);
+  assert.match(hooks, /\.join\("\.cache"\)[\s\S]*\.join\("tunara"\)[\s\S]*\.join\("runtime"\)/);
+  assert.match(hooks, /fn ensure_private_dir\(path: &Path\) -> Result<\(\), String>/);
+  assert.match(hooks, /fs::set_permissions\(path, fs::Permissions::from_mode\(0o700\)\)/);
+  assert.match(hooks, /fs::symlink_metadata\(path\)/);
+  assert.match(hooks, /file_type\(\)\.is_symlink\(\)/);
+  assert.match(hooks, /pub fn agent_config_dir\(&self\) -> Option<&Path>/);
+  assert.doesNotMatch(hooks, /std::env::temp_dir\(\)\.join\("tunara-sockets"\)/);
+
+  assert.match(wrapper, /pub fn cleanup_hooks_settings\(session_id: &str, config_dir: Option<&Path>\)/);
+  assert.match(wrapper, /let prefix = format!\("tunara-agent-\{session_id\}\."\)/);
+  assert.match(wrapper, /name\.starts_with\(&prefix\) && name\.ends_with\("\.json"\)/);
+  assert.doesNotMatch(wrapper, /\/tmp\/tunara-agent/);
+
+  assert.match(pty, /hooks_state: tauri::State<HookListenerState>[\s\S]*id: u32/);
+  assert.match(pty, /wrapper::cleanup_hooks_settings\(lid, hooks_state\.agent_config_dir\(\)\)/);
 });
 
 test("agent lifecycle policy preserves line structure for Codex", () => {

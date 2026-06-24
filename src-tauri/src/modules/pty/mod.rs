@@ -144,7 +144,11 @@ pub fn pty_resize(
 }
 
 #[tauri::command]
-pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
+pub fn pty_close(
+    state: tauri::State<PtyState>,
+    hooks_state: tauri::State<HookListenerState>,
+    id: u32,
+) -> Result<(), String> {
     let session = state.sessions.write().remove(&id);
     let removed_logical: Option<String> = {
         let mut ls = state.logical_sessions.write();
@@ -158,7 +162,7 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
         key
     };
     if let Some(ref lid) = removed_logical {
-        wrapper::cleanup_hooks_settings(lid);
+        wrapper::cleanup_hooks_settings(lid, hooks_state.agent_config_dir());
     }
     if let Some(s) = session {
         if let Err(e) = s.killer.lock().kill() {

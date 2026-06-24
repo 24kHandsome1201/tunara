@@ -57,10 +57,18 @@ if set -q TUNARA_SESSION_ID
     set -e argv[1]
     set -l sid $TUNARA_SESSION_ID
     set -l sock $TUNARA_HOOKS_SOCK
-    set -l f /tmp/tunara-agent-$sid.json
+    set -l config_dir ""
+    if set -q TUNARA_AGENT_CONFIG_DIR
+      set config_dir $TUNARA_AGENT_CONFIG_DIR
+    end
+    set -l f ""
     _tunara_agent_emit start $agent
-    if test -n "$sock"
-      printf '{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"idle\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U %s"}]}],"Stop":[{"hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"stop\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U %s"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"idle\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U %s"}]}]}}' $sid $agent $sock $sid $agent $sock $sid $agent $sock >$f
+    if test -n "$sock"; and test -n "$config_dir"; and test -d "$config_dir"
+      set f (mktemp "$config_dir/tunara-agent-$sid.XXXXXX.json" 2>/dev/null)
+    end
+    if test -n "$f"
+      chmod 600 "$f" 2>/dev/null; or true
+      printf '{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"idle\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U \\"$TUNARA_HOOKS_SOCK\\""}]}],"Stop":[{"hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"stop\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U \\"$TUNARA_HOOKS_SOCK\\""}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf \'{\\"event\\":\\"idle\\",\\"session\\":\\"%s\\",\\"agent\\":\\"%s\\"}\' | nc -U \\"$TUNARA_HOOKS_SOCK\\""}]}]}}' $sid $agent $sid $agent $sid $agent >$f
       command $real_bin --settings $f $argv
     else
       command $real_bin $argv

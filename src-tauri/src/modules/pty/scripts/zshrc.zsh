@@ -87,11 +87,16 @@ if [[ -n "$TUNARA_SESSION_ID" ]]; then
     local agent="$1"; shift
     local sid="$TUNARA_SESSION_ID"
     local sock="$TUNARA_HOOKS_SOCK"
-    local f="/tmp/tunara-agent-${sid}.json"
+    local config_dir="${TUNARA_AGENT_CONFIG_DIR:-}"
+    local f=""
     _tunara_agent_emit start "$agent"
-    if [[ -n "$sock" ]]; then
+    if [[ -n "$sock" && -n "$config_dir" && -d "$config_dir" ]]; then
+      f="$(mktemp "$config_dir/tunara-agent-${sid}.XXXXXX.json" 2>/dev/null)" || f=""
+    fi
+    if [[ -n "$f" ]]; then
+      chmod 600 "$f" 2>/dev/null || true
       cat > "$f" <<TUNARA_EOF
-{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}],"Stop":[{"hooks":[{"type":"command","command":"printf '{\"event\":\"stop\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}]}}
+{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U \"\$TUNARA_HOOKS_SOCK\""}]}],"Stop":[{"hooks":[{"type":"command","command":"printf '{\"event\":\"stop\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U \"\$TUNARA_HOOKS_SOCK\""}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U \"\$TUNARA_HOOKS_SOCK\""}]}]}}
 TUNARA_EOF
       command "$real_bin" --settings "$f" "$@"
     else
