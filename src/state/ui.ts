@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName } from "@/ui/types";
-import { loadConduitConfig, saveConduitConfig, type RawAppearanceConfig, type RawConduitConfig } from "@/modules/config/config-bridge";
+import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 
 export type CursorStyle = "bar" | "block" | "underline";
@@ -125,7 +125,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
   };
 }
 
-function sanitizeConfig(config: RawConduitConfig | undefined): AppearanceSettings {
+function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
   const appearance = sanitizeRawAppearance(config?.appearance);
   return {
     ...appearance,
@@ -133,7 +133,7 @@ function sanitizeConfig(config: RawConduitConfig | undefined): AppearanceSetting
   };
 }
 
-function settingsToRawConfig(s: AppearanceSettings): RawConduitConfig {
+function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
   return {
     appearance: {
       theme: s.theme,
@@ -327,7 +327,7 @@ let configHydrating = false;
 
 export async function loadUserConfig(): Promise<void> {
   try {
-    const loaded = await loadConduitConfig();
+    const loaded = await loadTunaraConfig();
     const sanitized = sanitizeConfig(loaded.config);
     configHydrating = true;
     useUIStore.setState({
@@ -357,7 +357,7 @@ useUIStore.subscribe(
     if (!state.configLoaded || configHydrating) return;
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      saveConduitConfig(settingsToRawConfig(useUIStore.getState()))
+      saveTunaraConfig(settingsToRawConfig(useUIStore.getState()))
         .catch((e) => useUIStore.setState({ configError: e instanceof Error ? e.message : String(e) }));
     }, 300);
   },

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Conduit",
+  "productName": "Tunara",
   "version": "1.2.0",
-  "identifier": "dev.conduit.app",
+  "identifier": "dev.tunara.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "Conduit",
+        "title": "Tunara",
         "width": 1200,
         "height": 800,
         "minWidth": 720,
@@ -57,13 +57,13 @@
     },
     "category": "DeveloperTool",
     "shortDescription": "Terminal with an intelligent session sidebar",
-    "longDescription": "Conduit is a real Tauri/xterm terminal with an intelligent session sidebar and a read-only review rail for terminal workflows."
+    "longDescription": "Tunara is a real Tauri/xterm terminal with an intelligent session sidebar and a read-only review rail for terminal workflows."
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNCQUJGRDhBQjYwRTM0NjkKUldScE5BNjJpdjJyT3dIN0dqbUpHaDA4QW1GaDVmTTllRXdZVk96dFNTRUZ3Y2hiVGszYjFqRloK",
       "endpoints": [
-        "https://github.com/24kHandsome1201/conduit/releases/latest/download/latest.json"
+        "https://github.com/24kHandsome1201/tunara/releases/latest/download/latest.json"
       ]
     }
   }

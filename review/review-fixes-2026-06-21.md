@@ -1,11 +1,11 @@
-# Conduit 当前分支审查与修复记录
+# Tunara 当前分支审查与修复记录
 
 日期: 2026-06-21
-分支: `fix/conduit-fixes-2026-06-21`
+分支: `fix/tunara-fixes-2026-06-21`
 
 ## 当前口径
 
-这份记录只描述当前仓库分支里的真实改动和本机验证结果。旧的外部目录补丁来自 `/mnt/data/conduit_original` 到 `/mnt/data/conduit_review_work` 的 `diff -ruN`, 不是本仓库生成的 git patch, 已从源码分支移除。
+这份记录只描述当前仓库分支里的真实改动和本机验证结果。旧的外部目录补丁来自 `/mnt/data/tunara_original` 到 `/mnt/data/tunara_review_work` 的 `diff -ruN`, 不是本仓库生成的 git patch, 已从源码分支移除。
 
 更完整的问题清单和 GPT Pro review 校准见:
 

@@ -14,6 +14,8 @@ export interface AgentLifecycleEvent {
   code?: number;
 }
 
+const AGENT_LIFECYCLE_OSC_PREFIXES = new Set(["tunara-agent", "conduit-agent"]);
+
 const AGENT_SHELL_TITLE_ALIASES = new Set(
   [
     ...Object.values(AGENT_NAMES),
@@ -105,7 +107,7 @@ export function detectCodexScreenState(text: string): AgentScreenState {
 
 export function parseAgentLifecycleOsc(data: string): AgentLifecycleEvent | null {
   const parts = data.split(";");
-  if (parts[0] !== "conduit-agent") return null;
+  if (!AGENT_LIFECYCLE_OSC_PREFIXES.has(parts[0] ?? "")) return null;
 
   const event = parts[1] as AgentLifecycleEventName | undefined;
   const session = parts[2] ?? "";

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Conduit are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
+All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [1.2.0] - 2026-06-21
 

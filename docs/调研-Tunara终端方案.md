@@ -1,12 +1,12 @@
-# Conduit 终端 — 前端设计 & 终端核心可复用性调研
+# Tunara 终端 — 前端设计 & 终端核心可复用性调研
 
 > 调研日期：2026-06-18
-> 范围：① 把交付的设计稿（Conduit）研究透；② 调研 Tauri + xterm.js + portable-pty 的现成项目，判断「终端部分能否直接用」。
+> 范围：① 把交付的设计稿（Tunara）研究透；② 调研 Tauri + xterm.js + portable-pty 的现成项目，判断「终端部分能否直接用」。
 > 结论先行：**外壳（UI）需要按设计稿用前端框架重写；终端核心不必从零造，应以 Apache-2.0 的 `terax-ai-tauri-terminal` 为蓝本，它已实现本项目最难的几块（多 PTY 并发、背压、shell 集成、文件树）。**
 
 ---
 
-## 第一部分：设计稿研究（Conduit）
+## 第一部分：设计稿研究（Tunara）
 
 ### 1.1 交付物性质
 
@@ -15,14 +15,14 @@
 | 文件 | 性质 | 用途 |
 |------|------|------|
 | `README.md` | 设计交接文档 | **唯一规范来源**：design tokens、布局、交互、状态模型全部写死 |
-| `Conduit.dc.html` (56K, 508 行) | 可交互高保真原型 | 主参考，三栏 + 全部弹层都能点 |
+| `Tunara.dc.html` (56K, 508 行) | 可交互高保真原型 | 主参考，三栏 + 全部弹层都能点 |
 | `Terminal Concepts.dc.html` (100K) | 5 种风格探索看板 | 结论：**Paper（浅色）即最终方向**，其余仅备选，不实现 |
 
 > ⚠️ **HTML 不是生产代码**。它用了一套内部 DSL（`<x-dc>` / `class Component extends DCLogic` / `{{ }}` 插值 / `<sc-if>` 条件块 / `./support.js`），只描述外观与交互。README 第 9 行明确要求：**用目标框架（React/Svelte/Vanilla TS）按像素复刻视觉壳层，终端区换成真实 xterm.js**。所以 HTML 的价值是「精确的视觉/交互真值」，不是可拷贝的代码。
 
 ### 1.2 产品定位（关键：比"带侧边栏的终端"更进一步）
 
-Conduit 是一个 **AI 原生终端**，不是普通终端：
+Tunara 是一个 **AI 原生终端**，不是普通终端：
 
 - **侧边栏不是文件树**，而是**按工作目录分组的会话列表**。当前实现以真实终端会话为主，用户在终端中启动 Agent CLI 后，侧栏做品牌标记、运行态和 review 辅助，而不是把每个会话都强制建模成独立 Agent。
   - ⚠️ **原型历史信息**：设计稿原型标注三家 agent（CC=Claude Code / CX=Codex / CU=Cursor）。**实际范围以 D2 为准：只接 CC + CX，砍掉 CU**（详见《调研-三大难点深入.md》决策记录）。
@@ -173,7 +173,7 @@ session = {
 
 **能——以 terax 为蓝本复用，而不是从零写。** 它已经实现了本项目最难、最容易出 bug 的几块，且代码是生产级（有详尽注释、处理了真实世界边界情况）：
 
-| Conduit 需要的能力 | terax 是否已实现 | 对应文件 |
+| Tunara 需要的能力 | terax 是否已实现 | 对应文件 |
 |---|---|---|
 | 多 PTY 会话并发管理 | ✅ `HashMap<u32, Arc<Session>>` + 单调 id | `src-tauri/src/modules/pty/mod.rs` |
 | 高频输出不打爆 IPC | ✅ reader/flusher/waiter 三线程 + 8ms 批量 | `pty/session.rs` |
@@ -191,7 +191,7 @@ session = {
 > - **block 化终端**（把 shell 历史切成可独立操作的命令块）；
 > - **AI inline transcript**（在终端流中混排 React AI 回复块）。
 >
-> terax 的 xterm 适合做「真实 shell 面板」；但「AI 回复内联在终端里」是 Conduit 特有需求，xterm + DOM 混排不能自动得到（见 §1.3 渲染模型取舍）。MVP 用「agent 独立 React transcript + shell 用 terax xterm」绕开，目标形态（block 虚拟列表）属二期，届时 xterm 接线需另做。`ai-elements` 仅作为 transcript 视图的 UI 借鉴，非现成方案。
+> terax 的 xterm 适合做「真实 shell 面板」；但「AI 回复内联在终端里」是 Tunara 特有需求，xterm + DOM 混排不能自动得到（见 §1.3 渲染模型取舍）。MVP 用「agent 独立 React transcript + shell 用 terax xterm」绕开，目标形态（block 虚拟列表）属二期，届时 xterm 接线需另做。`ai-elements` 仅作为 transcript 视图的 UI 借鉴，非现成方案。
 
 ### 2.3 terax 后端核心实现（带评注）
 
@@ -217,7 +217,7 @@ PTY master ──read──> [reader 线程] ──> pending Vec<u8> (Mutex)
 - **背压溢出整块丢 + `\x1bc` 硬重置**——绝不切断半个 CSI 转义序列（否则 xterm 屏幕状态错乱）。
 - **base64 over `Channel<T>`**——Tauri v2 的 Channel 走 JSON，`Vec<u8>` 会变成 int 数组膨胀 3 倍；base64 仅 +33%，本地 IPC 可忽略。
 
-**shell 集成（`pty/shell_init.rs`）**：把 OSC 7 / OSC 133 标记注入临时 rc 文件（原子写 tmp+rename），保留用户 ZDOTDIR，每次 prompt 重注入以兼容 p10k/starship。→ Conduit 状态栏的 path/branch、未来 block 化都依赖它。
+**shell 集成（`pty/shell_init.rs`）**：把 OSC 7 / OSC 133 标记注入临时 rc 文件（原子写 tmp+rename），保留用户 ZDOTDIR，每次 prompt 重注入以兼容 p10k/starship。→ Tunara 状态栏的 path/branch、未来 block 化都依赖它。
 
 ### 2.4 terax 前端接线（`pty-bridge.ts`，干净可直接照搬接口）
 
@@ -238,10 +238,10 @@ export async function openPty(cols, rows, handlers, cwd?): Promise<PtySession> {
   };
 }
 ```
-- `useTerminalSession.ts`：xterm 实例 + `FitAddon`/`SearchAddon`/`WebLinksAddon`/`WebglAddon`，`cursorStyle:'bar'`（= Conduit 默认「竖条」），scrollback 5k 行（≈6MB/Tab），并注册 OSC handler（cwd / prompt tracker）+ 自动识别本地 dev URL。
+- `useTerminalSession.ts`：xterm 实例 + `FitAddon`/`SearchAddon`/`WebLinksAddon`/`WebglAddon`，`cursorStyle:'bar'`（= Tunara 默认「竖条」），scrollback 5k 行（≈6MB/Tab），并注册 OSC handler（cwd / prompt tracker）+ 自动识别本地 dev URL。
 - `TerminalPane` / `TerminalStack`：多会话容器，切换 = 切显示，进程保活。
 
-### 2.5 依赖清单（terax，已验证可对齐 Conduit）
+### 2.5 依赖清单（terax，已验证可对齐 Tunara）
 
 **Rust（`src-tauri/Cargo.toml`）**
 ```toml
@@ -272,8 +272,8 @@ tauri-plugin-{log,os,store,process} = "2"
 
 1. **fork / 拉取 terax** 作为脚手架基线（Apache-2.0，保留其 NOTICE/LICENSE 与版权头）。
 2. **保留并复用**：整个 `src-tauri/src/modules/pty`、`fs`、shell 集成、xterm 接线层（`pty-bridge` / `useTerminalSession` / `osc-handlers`）、`WindowControls`。这是「终端核心」，不重写。
-3. **替换前端外壳**：删掉 terax 自带的 UI，按 Conduit 设计稿（§1.3–§1.7）用 React 重写三栏 + 弹层 + 通知中心 + diff 面板。terax 是 React 19 + Tailwind v4，与 Conduit 复刻天然兼容。
-4. **新增 Conduit 特有逻辑**：
+3. **替换前端外壳**：删掉 terax 自带的 UI，按 Tunara 设计稿（§1.3–§1.7）用 React 重写三栏 + 弹层 + 通知中心 + diff 面板。terax 是 React 19 + Tailwind v4，与 Tunara 复刻天然兼容。
+4. **新增 Tunara 特有逻辑**：
    - 会话编排（按目录分组、状态机 running/fresh/done、进度条）。
    - **AI agent 接入**：CC/CX/CU 的实际调用 + 内联回复块（terax 已有 `ai-elements` 与 ai-sdk，可借）。
    - **Git 集成**：diff 面板的 `git status`/diff 解析（terax **没有**，需自建，建议 Rust 端封 `git2`）；commit / push 写操作保留为后端底层能力或终端内 CLI 流程，不作为右栏主 UI。
@@ -295,7 +295,7 @@ tauri-plugin-{log,os,store,process} = "2"
 1. **AI agent 如何接**：是调各 agent 的 CLI（claude/codex/cursor）还是直接调 API？「应用补丁」是 agent 产出 patch 由我们 apply，还是 agent 直接写盘？——决定 §3.2 最后一行的真实难度。
 2. **是否 fork terax**：接受 Apache-2.0 依赖与其代码风格（React19/Tailwind4/ai-sdk），还是只读它的实现、用自己的栈重写后端。
 3. **Git 集成选型**：Rust `git2`（libgit2 绑定，无需系统 git）vs 调 `git` CLI（简单但依赖环境）。
-4. **多窗口 vs 单窗口多 Tab**：Conduit 设计是单窗口 + Tab；terax 的设置走独立 window。
+4. **多窗口 vs 单窗口多 Tab**：Tunara 设计是单窗口 + Tab；terax 的设置走独立 window。
 
 ### 3.4 文档审阅意见（2026-06-18）
 
@@ -328,7 +328,7 @@ tauri-plugin-{log,os,store,process} = "2"
 
 ## 附录：信息来源
 
-- 设计稿：`_unzipped_design/design_handoff_conduit_terminal/`（README + Conduit.dc.html + Terminal Concepts.dc.html）
+- 设计稿：`_unzipped_design/design_handoff_tunara_terminal/`（README + Tunara.dc.html + Terminal Concepts.dc.html）
 - [emee-dev/terax-ai-tauri-terminal](https://github.com/emee-dev/terax-ai-tauri-terminal)（Apache-2.0，核心蓝本）
 - [Tnze/tauri-plugin-pty](https://github.com/Tnze/tauri-plugin-pty)（无 license，思路参考）
 - [Shabari-K-S/terminon](https://github.com/Shabari-K-S/terminon)（无 license，思路参考）

@@ -12,6 +12,8 @@ const MAX_SCROLLBACK: u32 = 20_000;
 const MIN_SIDEBAR_WIDTH: u16 = 200;
 const MAX_SIDEBAR_WIDTH: u16 = 400;
 const MIN_PANEL_WIDTH: u16 = 240;
+const CONFIG_DIR: &str = "tunara";
+const LEGACY_CONFIG_DIR: &str = "conduit";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
@@ -70,12 +72,12 @@ impl AppearanceConfig {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ConduitConfig {
+pub struct TunaraConfig {
     pub appearance: AppearanceConfig,
     pub keybindings: BTreeMap<String, String>,
 }
 
-impl Default for ConduitConfig {
+impl Default for TunaraConfig {
     fn default() -> Self {
         Self {
             appearance: AppearanceConfig::default(),
@@ -84,16 +86,16 @@ impl Default for ConduitConfig {
     }
 }
 
-impl ConduitConfig {
+impl TunaraConfig {
     fn clamp(&mut self) {
         self.appearance.clamp();
     }
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct LoadedConduitConfig {
+pub struct LoadedTunaraConfig {
     pub path: String,
-    pub config: ConduitConfig,
+    pub config: TunaraConfig,
     pub error: Option<String>,
 }
 
@@ -129,18 +131,26 @@ fn default_keybindings() -> BTreeMap<String, String> {
     .collect()
 }
 
-fn config_path() -> Result<PathBuf, String> {
+fn config_path_for_dir(dir_name: &str) -> Result<PathBuf, String> {
     if let Ok(dir) = env::var("XDG_CONFIG_HOME") {
         let trimmed = dir.trim();
         if !trimmed.is_empty() {
-            return Ok(PathBuf::from(trimmed).join("conduit").join("config.toml"));
+            return Ok(PathBuf::from(trimmed).join(dir_name).join("config.toml"));
         }
     }
     let home = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
     Ok(PathBuf::from(home)
         .join(".config")
-        .join("conduit")
+        .join(dir_name)
         .join("config.toml"))
+}
+
+fn config_path() -> Result<PathBuf, String> {
+    config_path_for_dir(CONFIG_DIR)
+}
+
+fn legacy_config_path() -> Result<PathBuf, String> {
+    config_path_for_dir(LEGACY_CONFIG_DIR)
 }
 
 fn ensure_parent(path: &Path) -> Result<(), String> {
@@ -193,7 +203,7 @@ fn set_table_item(table: &mut Table, key: &str, item: Item) {
     }
 }
 
-fn merge_known_config(raw: &str, config: &ConduitConfig) -> Result<String, String> {
+fn merge_known_config(raw: &str, config: &TunaraConfig) -> Result<String, String> {
     let mut doc = raw
         .parse::<Document>()
         .map_err(|e| format!("parse existing config failed: {e}"))?;
@@ -215,11 +225,11 @@ fn merge_known_config(raw: &str, config: &ConduitConfig) -> Result<String, Strin
     Ok(doc.to_string())
 }
 
-fn serialize_new_config(config: &ConduitConfig) -> Result<String, String> {
+fn serialize_new_config(config: &TunaraConfig) -> Result<String, String> {
     toml::to_string_pretty(config).map_err(|e| format!("serialize config failed: {e}"))
 }
 
-fn write_config(path: &Path, config: &ConduitConfig) -> Result<(), String> {
+fn write_config(path: &Path, config: &TunaraConfig) -> Result<(), String> {
     ensure_parent(path)?;
     let mut config = config.clone();
     config.clamp();
@@ -238,13 +248,13 @@ fn write_config(path: &Path, config: &ConduitConfig) -> Result<(), String> {
     Ok(())
 }
 
-fn load_config_from_path(path: &Path) -> Result<LoadedConduitConfig, String> {
+fn load_config_from_path(path: &Path) -> Result<LoadedTunaraConfig, String> {
     let path_string = path.to_string_lossy().to_string();
     if !path.exists() {
-        let mut config = ConduitConfig::default();
+        let mut config = TunaraConfig::default();
         config.clamp();
         write_config(path, &config)?;
-        return Ok(LoadedConduitConfig {
+        return Ok(LoadedTunaraConfig {
             path: path_string,
             config,
             error: None,
@@ -252,19 +262,19 @@ fn load_config_from_path(path: &Path) -> Result<LoadedConduitConfig, String> {
     }
 
     let raw = fs::read_to_string(path).map_err(|e| format!("read config failed: {e}"))?;
-    match toml::from_str::<ConduitConfig>(&raw) {
+    match toml::from_str::<TunaraConfig>(&raw) {
         Ok(mut config) => {
             config.clamp();
-            Ok(LoadedConduitConfig {
+            Ok(LoadedTunaraConfig {
                 path: path_string,
                 config,
                 error: None,
             })
         }
         Err(e) => {
-            let mut config = ConduitConfig::default();
+            let mut config = TunaraConfig::default();
             config.clamp();
-            Ok(LoadedConduitConfig {
+            Ok(LoadedTunaraConfig {
                 path: path_string,
                 config,
                 error: Some(format!("parse config failed: {e}")),
@@ -273,14 +283,25 @@ fn load_config_from_path(path: &Path) -> Result<LoadedConduitConfig, String> {
     }
 }
 
+fn migrate_legacy_config_if_needed(path: &Path, legacy_path: &Path) -> Result<(), String> {
+    if path.exists() || !legacy_path.exists() {
+        return Ok(());
+    }
+    ensure_parent(path)?;
+    fs::copy(legacy_path, path).map_err(|e| format!("migrate legacy config failed: {e}"))?;
+    Ok(())
+}
+
 #[tauri::command]
-pub fn load_config() -> Result<LoadedConduitConfig, String> {
+pub fn load_config() -> Result<LoadedTunaraConfig, String> {
     let path = config_path()?;
+    let legacy_path = legacy_config_path()?;
+    migrate_legacy_config_if_needed(&path, &legacy_path)?;
     load_config_from_path(&path)
 }
 
 #[tauri::command]
-pub fn save_config(config: ConduitConfig) -> Result<(), String> {
+pub fn save_config(config: TunaraConfig) -> Result<(), String> {
     let path = config_path()?;
     write_config(&path, &config)
 }
@@ -296,8 +317,19 @@ mod tests {
             .expect("system clock before Unix epoch")
             .as_nanos();
         std::env::temp_dir()
-            .join(format!("conduit-config-test-{name}-{unique}"))
-            .join("conduit")
+            .join(format!("tunara-config-test-{name}-{unique}"))
+            .join("tunara")
+            .join("config.toml")
+    }
+
+    fn temp_named_config_path(name: &str, dir_name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before Unix epoch")
+            .as_nanos();
+        std::env::temp_dir()
+            .join(format!("tunara-config-test-{name}-{unique}"))
+            .join(dir_name)
             .join("config.toml")
     }
 
@@ -329,7 +361,7 @@ future_action = "Mod+F"
             MIN_PANEL_WIDTH
         );
 
-        let mut config = ConduitConfig::default();
+        let mut config = TunaraConfig::default();
         config.appearance.accent = "#abcdef".into();
         config.appearance.scrollback = 99999999;
         config.appearance.font_size = 999;
@@ -360,12 +392,48 @@ future_action = "Mod+F"
     }
 
     #[test]
+    fn legacy_config_is_copied_to_tunara_path_once() {
+        let legacy_path = temp_named_config_path("legacy", LEGACY_CONFIG_DIR);
+        let path = legacy_path
+            .parent()
+            .and_then(Path::parent)
+            .expect("test config root")
+            .join(CONFIG_DIR)
+            .join("config.toml");
+        ensure_parent(&legacy_path).expect("create legacy config dir");
+        fs::write(
+            &legacy_path,
+            r##"# migrated user config
+[appearance]
+future_flag = true
+font_size = 15
+"##,
+        )
+        .expect("write legacy config");
+
+        migrate_legacy_config_if_needed(&path, &legacy_path).expect("migrate legacy config");
+
+        let migrated = fs::read_to_string(&path).expect("read migrated config");
+        assert!(migrated.contains("# migrated user config"));
+        assert!(migrated.contains("future_flag = true"));
+        let loaded = load_config_from_path(&path).expect("load migrated config");
+        assert_eq!(loaded.config.appearance.font_size, 15);
+
+        fs::write(&legacy_path, "font_size = 20").expect("rewrite legacy config");
+        migrate_legacy_config_if_needed(&path, &legacy_path).expect("skip second migration");
+        let migrated_again = fs::read_to_string(&path).expect("read migrated config again");
+        assert!(migrated_again.contains("# migrated user config"));
+
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
+
+    #[test]
     fn malformed_existing_config_can_be_replaced_by_saving() {
         let path = temp_config_path("malformed");
         ensure_parent(&path).expect("create temp config dir");
         fs::write(&path, "[appearance\nscrollback = 99999999\n").expect("write malformed config");
 
-        let mut config = ConduitConfig::default();
+        let mut config = TunaraConfig::default();
         config.appearance.scrollback = 99999999;
         config.appearance.panel_width = 810;
 

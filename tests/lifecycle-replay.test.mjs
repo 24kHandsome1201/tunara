@@ -506,8 +506,23 @@ test("terminal notification OSC sequences avoid ConEmu progress and cwd collisio
     title: "终端通知",
     body: "Only body",
   });
+  assert.equal(parseTerminalNotificationOsc777("tunara-agent;start;s-1;CC;"), null);
   assert.equal(parseTerminalNotificationOsc777("conduit-agent;start;s-1;CC;"), null);
   assert.equal(parseTerminalNotificationOsc777("notify;;"), null);
+});
+
+test("agent lifecycle OSC accepts current and legacy event prefixes", () => {
+  assert.deepEqual(parseAgentLifecycleOsc("tunara-agent;start;s-1;CC;"), {
+    event: "start",
+    session: "s-1",
+    agent: "CC",
+  });
+  assert.deepEqual(parseAgentLifecycleOsc("conduit-agent;idle;s-1;CC;"), {
+    event: "idle",
+    session: "s-1",
+    agent: "CC",
+  });
+  assert.equal(parseAgentLifecycleOsc("other-agent;idle;s-1;CC;"), null);
 });
 
 test("ConEmu OSC 9;9 cwd is parsed as a terminal cwd fallback", () => {
@@ -695,13 +710,13 @@ test("terminal font loader falls back quickly when font loading stalls", async (
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {
   const h = createHarness();
 
-  assert.equal(h.applyAgentOsc("conduit-agent;start;s-1;CC;", 10), true);
+  assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
   assert.equal(h.session.agent, "CC");
   assert.equal(h.session.agentActivity, "starting");
   assert.equal(deriveTitle(h.session).primary, "Claude Code");
   assert.equal(isSessionBusy(h.session), true);
 
-  assert.equal(h.applyAgentOsc("conduit-agent;idle;s-1;CC;", 20), true);
+  assert.equal(h.applyAgentOsc("tunara-agent;idle;s-1;CC;", 20), true);
   assert.equal(h.session.agent, "CC");
   assert.equal(h.session.agentActivity, "idle");
   assert.equal(isSessionBusy(h.session), false);
@@ -710,7 +725,7 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(h.session.agentActivity, "running");
   assert.equal(isSessionBusy(h.session), true);
 
-  assert.equal(h.applyAgentOsc("conduit-agent;exit;s-1;CC;0", 40), true);
+  assert.equal(h.applyAgentOsc("tunara-agent;exit;s-1;CC;0", 40), true);
   assert.equal(h.session.agent, undefined);
   assert.equal(h.session.agentActivity, undefined);
   assert.equal(h.session.title, "终端");
@@ -723,7 +738,7 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
 test("lifecycle events for another session are ignored", () => {
   const h = createHarness();
 
-  assert.equal(h.applyAgentOsc("conduit-agent;start;s-2;CC;", 10), false);
+  assert.equal(h.applyAgentOsc("tunara-agent;start;s-2;CC;", 10), false);
   assert.equal(h.session.agent, undefined);
   assert.equal(deriveTitle(h.session).primary, "终端");
   assert.equal(isSessionBusy(h.session), false);

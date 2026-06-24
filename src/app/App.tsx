@@ -116,7 +116,7 @@ function AppSplash() {
           animation: "breathe 1.6s ease-in-out infinite",
         }}
       >
-        Conduit
+        Tunara
       </span>
     </div>
   );
@@ -216,7 +216,7 @@ export default function App() {
         )}
 
         <div
-          className="conduit-sidebar"
+          className="tunara-sidebar"
           style={{
             display: "flex",
             minHeight: 0,
@@ -251,7 +251,7 @@ export default function App() {
 
         {activeSession && (
           <div
-            className="conduit-panel"
+            className="tunara-panel"
             style={{
               position: panelOverlay ? "absolute" : "relative",
               top: panelOverlay ? 0 : undefined,

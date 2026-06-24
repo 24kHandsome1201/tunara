@@ -1,7 +1,7 @@
-# Conduit 当前分支复核版审查
+# Tunara 当前分支复核版审查
 
 日期: 2026-06-21
-分支: `fix/conduit-fixes-2026-06-21`
+分支: `fix/tunara-fixes-2026-06-21`
 基线: `main`
 范围: 当前工作区, GPT Pro 新增 review 输入, 本机 build/test/diff-check
 
@@ -26,7 +26,7 @@
 
 ### 合入证据
 
-- 删除外部目录生成的 `review/conduit-review-fixes.patch`。
+- 删除外部目录生成的 `review/tunara-review-fixes.patch`。
 - 重写 `review/review-fixes-2026-06-21.md`, 明确当前分支事实来源。
 - 保留 GPT Pro 输入文档为参考, 不把它们原样当作当前分支结论。
 
@@ -80,7 +80,7 @@
 - `TerminalThemeName` 改由 `TERMINAL_THEME_NAMES` 数组派生, localStorage 校验不再手写另一份枚举。
 - `src-tauri/src/modules/resolver/mod.rs` 读取共享 agent registry JSON, 并增加 Rust 单测锁住 `CP -> gh`, `CR -> cursor` 等跨语言映射。
 - `sessions` store 统一管理单个会话和目录批量关闭确认态的过期 timer, UI 组件不再各自启动 3 秒清理 timer。
-- release metadata 已收口: package, Tauri, Cargo, Cargo.lock 和 Homebrew cask 都对齐 `1.0.2`; Homebrew URL/homepage 对齐当前 GitHub owner; cask zap 路径对齐 `dev.conduit.app`; 回归测试禁止 `PLACEHOLDER_SHA256` 和旧 owner/bundle id 回流。
+- release metadata 已收口: package, Tauri, Cargo, Cargo.lock 和 Homebrew cask 都对齐 `1.0.2`; Homebrew URL/homepage 对齐当前 GitHub owner; cask zap 路径对齐 `dev.tunara.app`; 回归测试禁止 `PLACEHOLDER_SHA256` 和旧 owner/bundle id 回流。
 - `TerminalSearchBar`, `useTerminalSearch`, `useTerminalRuntimeSync`, `terminal-buffer-read`, `terminal-command`, `terminal-instance`, `terminal-output-buffer`, `observeTerminalResize` 和 `scanTerminalInputBuffer` 已从大组件抽出, `TerminalView.tsx` 降到 482 行, `Sidebar.tsx` 降到 338 行, 并新增 line-count 回归测试防止回涨。
 - `terminal-input-buffer`: 终端输入逐字符解析改成纯函数, 覆盖跨 chunk 输入、退格、Ctrl-U、多行提交、OSC title 和 CSI 方向键噪声。
 - `agent-lifecycle`: 新增 `detectAgentCommand` 行为测试, 锁住首 token 识别、ANSI 清理和非首 token 不误判。
@@ -105,29 +105,29 @@
 - `pnpm tauri dev` 失败, Vite 报 `Port 1420 is already in use`。
 - `lsof -nP -iTCP:1420 -sTCP:LISTEN` 显示 `node` PID 22275 正在监听 `[::1]:1420`。
 - 未擅自 kill 端口占用进程。
-- 使用临时 config 改到 1421 后, `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1421","devUrl":"http://127.0.0.1:1421"}}'` 编译通过并启动 `target/debug/conduit`。
+- 使用临时 config 改到 1421 后, `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1421","devUrl":"http://127.0.0.1:1421"}}'` 编译通过并启动 `target/debug/tunara`。
 - Tauri 日志显示 `hooks listener started` 和 `pty opened id=1`, 说明应用进程与 PTY 初始化链路可跑通。
 - Computer Use 和 bundle id 方式读取窗口状态均失败, 错误为 `Apple event error -1743`。
-- 临时 1421 端口在退出后已无监听, 本轮启动的 Tauri 进程已停止。机器上另有既存 `target/debug/conduit` 进程, 未处理。
+- 临时 1421 端口在退出后已无监听, 本轮启动的 Tauri 进程已停止。机器上另有既存 `target/debug/tunara` 进程, 未处理。
 - 当前分支再次使用临时 1422 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1422","devUrl":"http://127.0.0.1:1422"}}'`。
-- 本次 1422 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- 本次 1422 启动编译完成并运行 `target/debug/tunara`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
 - `nc -z 127.0.0.1 1422` 在启动期间成功, 退出后已释放。
-- Computer Use 读取 `Conduit` 和运行应用列表仍失败, 错误仍为 `Apple event error -1743`。
+- Computer Use 读取 `Tunara` 和运行应用列表仍失败, 错误仍为 `Apple event error -1743`。
 - 当前 HEAD `cce53a6` 再次使用临时 1423 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1423","devUrl":"http://127.0.0.1:1423"}}'`。
-- 本次 1423 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- 本次 1423 启动编译完成并运行 `target/debug/tunara`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
 - `nc -z 127.0.0.1 1423` 在启动期间成功, 退出后已释放。
-- `osascript` 读取 `Conduit` 窗口位置/大小仍失败, 错误为 `-1719`, 原因是 `osascript` 不允许辅助访问。
+- `osascript` 读取 `Tunara` 窗口位置/大小仍失败, 错误为 `-1719`, 原因是 `osascript` 不允许辅助访问。
 - 当前未提交拆分后再次使用临时 1424 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1424","devUrl":"http://127.0.0.1:1424"}}'`。
-- 本次 1424 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- 本次 1424 启动编译完成并运行 `target/debug/tunara`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
 - `nc -z 127.0.0.1 1424` 在启动期间成功, 退出后已释放。
-- `osascript` 读取 `Conduit` 窗口位置/大小仍失败, 错误为 `-1719`, 原因仍是 `osascript` 不允许辅助访问。
+- `osascript` 读取 `Tunara` 窗口位置/大小仍失败, 错误为 `-1719`, 原因仍是 `osascript` 不允许辅助访问。
 - 当前 HEAD `304993c` 再次使用临时 1425 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1425","devUrl":"http://127.0.0.1:1425"}}'`。
-- 本次 1425 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
-- Computer Use 读取 `Conduit` 窗口状态失败, 错误为 `Apple event error -1743`。
-- `screencapture -x /tmp/rail-conduit-1425.png` 被安全策略拒绝, 原因是全屏截取可能包含无关敏感窗口内容, 需要用户明确提供截图或授权更窄的视觉验证路径。
+- 本次 1425 启动编译完成并运行 `target/debug/tunara`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- Computer Use 读取 `Tunara` 窗口状态失败, 错误为 `Apple event error -1743`。
+- `screencapture -x /tmp/rail-tunara-1425.png` 被安全策略拒绝, 原因是全屏截取可能包含无关敏感窗口内容, 需要用户明确提供截图或授权更窄的视觉验证路径。
 - `nc -z 127.0.0.1 1425` 在退出后已释放。
 - 当前未提交 CI/测试补强后再次使用临时 1426 启动: `pnpm tauri dev --config '{"build":{"beforeDevCommand":"vite --host 127.0.0.1 --port 1426","devUrl":"http://127.0.0.1:1426"}}'`。
-- 本次 1426 启动编译完成并运行 `target/debug/conduit`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
+- 本次 1426 启动编译完成并运行 `target/debug/tunara`, 日志再次出现 `hooks listener started` 和 `pty opened id=1`。
 - `nc -z 127.0.0.1 1426` 在启动期间成功, 退出后已释放。
 
 仍需人工或授权后验证:
@@ -144,10 +144,10 @@
 证据:
 
 - `package.json` 是 `1.0.2`。
-- `src-tauri/tauri.conf.json` 是 `1.0.2`, identifier 是 `dev.conduit.app`。
+- `src-tauri/tauri.conf.json` 是 `1.0.2`, identifier 是 `dev.tunara.app`。
 - `src-tauri/Cargo.toml` 和 `src-tauri/Cargo.lock` 已对齐 `1.0.2`。
-- `homebrew/conduit.rb` URL/homepage 已指向当前远端 owner `24kHandsome1201/conduit`。
-- cask zap 路径已对齐 `dev.conduit.app`。
+- `homebrew/tunara.rb` URL/homepage 已指向当前远端 owner `24kHandsome1201/tunara`。
+- cask zap 路径已对齐 `dev.tunara.app`。
 - cask 目前使用 `sha256 :no_check`, 避免提交假 checksum, 但这不是最终发布证明。
 
 建议:

@@ -58,7 +58,7 @@ mod platform {
     }
 
     pub fn start_listener(app: AppHandle) -> HookListenerState {
-        let sock_dir = std::env::temp_dir().join("conduit-sockets");
+        let sock_dir = std::env::temp_dir().join("tunara-sockets");
         if let Err(e) = fs::create_dir_all(&sock_dir) {
             log::error!("failed to create hooks socket dir: {e}");
             return HookListenerState::disabled();
@@ -94,7 +94,7 @@ mod platform {
         let sock_path_t = sock_path.clone();
 
         if let Err(e) = thread::Builder::new()
-            .name("conduit-hooks-listener".into())
+            .name("tunara-hooks-listener".into())
             .spawn(move || {
                 log::info!("hooks listener started on {}", sock_path_t.display());
                 for stream in listener.incoming() {
@@ -192,13 +192,13 @@ mod tests {
         const BASHRC: &str = include_str!("../pty/scripts/bashrc.bash");
 
         for script in [ZSHRC, BASHRC] {
-            assert!(script.contains("claude() { _conduit_agent_run claude"));
-            assert!(script.contains("droid() { _conduit_agent_run droid"));
-            assert!(script.contains("codex() { _conduit_agent_plain_run codex"));
-            assert!(!script.contains("codex() { _conduit_agent_run codex"));
-            assert!(!script.contains("devin() { _conduit_agent_run devin"));
-            assert!(script.contains("_conduit_agent_emit start"));
-            assert!(script.contains("_conduit_agent_emit exit"));
+            assert!(script.contains("claude() { _tunara_agent_run claude"));
+            assert!(script.contains("droid() { _tunara_agent_run droid"));
+            assert!(script.contains("codex() { _tunara_agent_plain_run codex"));
+            assert!(!script.contains("codex() { _tunara_agent_run codex"));
+            assert!(!script.contains("devin() { _tunara_agent_run devin"));
+            assert!(script.contains("_tunara_agent_emit start"));
+            assert!(script.contains("_tunara_agent_emit exit"));
         }
     }
 }

@@ -339,7 +339,7 @@ export function TerminalView({
       const existingSnapshot = getTerminalSnapshot(sessionIdRef.current);
       if (existingSnapshot) {
         term.write(existingSnapshot.serialized);
-        term.write("\r\n\x1b[2m[conduit restored snapshot, new shell started below]\x1b[0m\r\n");
+        term.write("\r\n\x1b[2m[tunara restored snapshot, new shell started below]\x1b[0m\r\n");
         requestAnimationFrame(() => {
           if (existingSnapshot.viewportY !== undefined) {
             term.scrollToLine(existingSnapshot.viewportY);

@@ -1,6 +1,6 @@
 import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser.ts";
 
-export const TERMINAL_QUICK_SELECT_EVENT = "conduit:terminal-quick-select";
+export const TERMINAL_QUICK_SELECT_EVENT = "tunara:terminal-quick-select";
 
 export type TerminalQuickSelectKind = "url" | "file" | "text";
 

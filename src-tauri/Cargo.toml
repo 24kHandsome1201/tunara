@@ -1,8 +1,8 @@
 [package]
-name = "conduit"
+name = "tunara"
 version = "1.2.0"
-description = "Conduit — 带智能侧栏的真实终端（基于 Tauri + xterm.js）"
-authors = ["Conduit"]
+description = "Tunara — 带智能侧栏的真实终端（基于 Tauri + xterm.js）"
+authors = ["Tunara"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,7 +11,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "conduit_lib"
+name = "tunara_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -28,7 +28,7 @@ portable-pty = "0.9"
 base64 = "0.22"
 log = "0.4"
 parking_lot = "0.12"
-# Conduit 新增（§3.7 底座 / agent harness / git）
+# Tunara 新增（§3.7 底座 / agent harness / git）
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
 which = "6"
 git2 = "0.19"   # 默认 vendored libgit2：读 status/diff/ahead-behind + baseline 指纹

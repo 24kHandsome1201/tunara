@@ -1,4 +1,4 @@
-# conduit-shell-integration (bashrc)
+# tunara-shell-integration (bashrc)
 #
 # Differences vs zsh integration:
 # - We emulate login-shell init manually (/etc/profile, profile files) because
@@ -7,8 +7,8 @@
 #   skip it — a fragile DEBUG-trap alternative would clobber the user's own
 #   traps and interact badly with debuggers.
 
-if [ -z "$__CONDUIT_HOOKS_LOADED" ]; then
-  __CONDUIT_HOOKS_LOADED=1
+if [ -z "$__TUNARA_HOOKS_LOADED" ]; then
+  __TUNARA_HOOKS_LOADED=1
 
   [ -f /etc/profile ] && source /etc/profile
   [ -f /etc/bashrc ] && source /etc/bashrc
@@ -24,7 +24,7 @@ if [ -z "$__CONDUIT_HOOKS_LOADED" ]; then
   # on reload, guard with a flag.
   [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc"
 
-  _conduit_urlencode() {
+  _tunara_urlencode() {
     local LC_ALL=C s="$1" i c
     for (( i=0; i<${#s}; i++ )); do
       c="${s:i:1}"
@@ -35,20 +35,20 @@ if [ -z "$__CONDUIT_HOOKS_LOADED" ]; then
     done
   }
 
-  _conduit_precmd() {
-    local _conduit_ret=$?
-    printf '\e]133;D;%s\e\\' "$_conduit_ret"
-    printf '\e]7;file://localhost%s\e\\' "$(_conduit_urlencode "$PWD")"
-    if [ -z "$__CONDUIT_PS1_INJECTED" ]; then
+  _tunara_precmd() {
+    local _tunara_ret=$?
+    printf '\e]133;D;%s\e\\' "$_tunara_ret"
+    printf '\e]7;file://localhost%s\e\\' "$(_tunara_urlencode "$PWD")"
+    if [ -z "$__TUNARA_PS1_INJECTED" ]; then
       PS1='\[\e]133;B\e\\\]'"$PS1"
-      __CONDUIT_PS1_INJECTED=1
+      __TUNARA_PS1_INJECTED=1
     fi
     printf '\e]133;A\e\\'
   }
 
   case ":${PROMPT_COMMAND:-}:" in
-    *":_conduit_precmd:"*) ;;
-    *) PROMPT_COMMAND="_conduit_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+    *":_tunara_precmd:"*) ;;
+    *) PROMPT_COMMAND="_tunara_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
   esac
 
   # Pre-exec marker via PS0 (bash 4.4+). PS0 is expanded just before a command
@@ -59,67 +59,67 @@ if [ -z "$__CONDUIT_HOOKS_LOADED" ]; then
     PS0='\[\e]133;C\e\\\]'"${PS0:-}"
   fi
 
-  _conduit_precmd
+  _tunara_precmd
 fi
 
 # Agent wrapper: intercept hookable agents, inject --settings for lifecycle hooks
 # OSC 777 keeps the UI lifecycle reliable even when nc is missing or the hook socket is unavailable.
-if [ -n "$CONDUIT_SESSION_ID" ]; then
-  _conduit_agent_osc() {
+if [ -n "$TUNARA_SESSION_ID" ]; then
+  _tunara_agent_osc() {
     local event="$1"
     local agent="$2"
     local code="${3:-}"
-    printf '\e]777;conduit-agent;%s;%s;%s;%s\e\\' "$event" "$CONDUIT_SESSION_ID" "$agent" "$code"
+    printf '\e]777;tunara-agent;%s;%s;%s;%s\e\\' "$event" "$TUNARA_SESSION_ID" "$agent" "$code"
   }
 
-  _conduit_agent_emit() {
+  _tunara_agent_emit() {
     local event="$1"
     local agent="$2"
     local code="${3:-}"
-    _conduit_agent_osc "$event" "$agent" "$code"
-    if [ -z "$CONDUIT_HOOKS_SOCK" ]; then
+    _tunara_agent_osc "$event" "$agent" "$code"
+    if [ -z "$TUNARA_HOOKS_SOCK" ]; then
       return 0
     fi
     if [ -n "$code" ]; then
-      printf '{"event":"%s","session":"%s","agent":"%s","code":%s}' "$event" "$CONDUIT_SESSION_ID" "$agent" "$code" | nc -U "$CONDUIT_HOOKS_SOCK" >/dev/null 2>&1 || true
+      printf '{"event":"%s","session":"%s","agent":"%s","code":%s}' "$event" "$TUNARA_SESSION_ID" "$agent" "$code" | nc -U "$TUNARA_HOOKS_SOCK" >/dev/null 2>&1 || true
     else
-      printf '{"event":"%s","session":"%s","agent":"%s"}' "$event" "$CONDUIT_SESSION_ID" "$agent" | nc -U "$CONDUIT_HOOKS_SOCK" >/dev/null 2>&1 || true
+      printf '{"event":"%s","session":"%s","agent":"%s"}' "$event" "$TUNARA_SESSION_ID" "$agent" | nc -U "$TUNARA_HOOKS_SOCK" >/dev/null 2>&1 || true
     fi
   }
 
-  _conduit_agent_run() {
+  _tunara_agent_run() {
     local real_bin="$1"; shift
     local agent="$1"; shift
-    local sid="$CONDUIT_SESSION_ID"
-    local sock="$CONDUIT_HOOKS_SOCK"
-    local f="/tmp/conduit-agent-${sid}.json"
-    _conduit_agent_emit start "$agent"
+    local sid="$TUNARA_SESSION_ID"
+    local sock="$TUNARA_HOOKS_SOCK"
+    local f="/tmp/tunara-agent-${sid}.json"
+    _tunara_agent_emit start "$agent"
     if [ -n "$sock" ]; then
-      cat > "$f" <<CONDUIT_EOF
+      cat > "$f" <<TUNARA_EOF
 {"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}],"Stop":[{"hooks":[{"type":"command","command":"printf '{\"event\":\"stop\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U ${sock}"}]}]}}
-CONDUIT_EOF
+TUNARA_EOF
       command "$real_bin" --settings "$f" "$@"
     else
       command "$real_bin" "$@"
     fi
     local ret=$?
-    _conduit_agent_emit exit "$agent" "$ret"
+    _tunara_agent_emit exit "$agent" "$ret"
     rm -f "$f" 2>/dev/null
     return $ret
   }
 
-  _conduit_agent_plain_run() {
+  _tunara_agent_plain_run() {
     local real_bin="$1"; shift
     local agent="$1"; shift
-    _conduit_agent_emit start "$agent"
+    _tunara_agent_emit start "$agent"
     command "$real_bin" "$@"
     local ret=$?
-    _conduit_agent_emit exit "$agent" "$ret"
+    _tunara_agent_emit exit "$agent" "$ret"
     return $ret
   }
 
-  claude() { _conduit_agent_run claude CC "$@"; }
-  droid() { _conduit_agent_run droid DR "$@"; }
-  codex() { _conduit_agent_plain_run codex CX "$@"; }
+  claude() { _tunara_agent_run claude CC "$@"; }
+  droid() { _tunara_agent_run droid DR "$@"; }
+  codex() { _tunara_agent_plain_run codex CX "$@"; }
 fi
 :

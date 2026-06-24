@@ -1,6 +1,6 @@
 # Security
 
-Conduit runs local shells, reads files for review surfaces, and exposes a Tauri IPC boundary to the renderer. Security bugs matter. If you find one, report it privately before posting details publicly.
+Tunara runs local shells, reads files for review surfaces, and exposes a Tauri IPC boundary to the renderer. Security bugs matter. If you find one, report it privately before posting details publicly.
 
 ## Reporting
 
@@ -27,7 +27,7 @@ Until `1.0.0`, only the current development line is expected to receive security
 
 ## What's not
 
-- Bugs in upstream deps such as Tauri, xterm.js, `portable-pty`, or git2. Report those upstream first; Conduit can pick up fixed releases.
+- Bugs in upstream deps such as Tauri, xterm.js, `portable-pty`, or git2. Report those upstream first; Tunara can pick up fixed releases.
 - Anything that needs an already-compromised machine or a local attacker with shell access
 - Old local prototypes or unreleased design artifacts
 
@@ -41,6 +41,6 @@ Until `1.0.0`, only the current development line is expected to receive security
 
 ## What we can't promise
 
-- Conduit runs whatever you type into the terminal, with your user permissions. That is the point of a terminal.
-- Agent CLIs such as Claude Code, Codex, or Amp are external tools. Their authentication, data retention, and network behavior are controlled by those tools, not by Conduit.
+- Tunara runs whatever you type into the terminal, with your user permissions. That is the point of a terminal.
+- Agent CLIs such as Claude Code, Codex, or Amp are external tools. Their authentication, data retention, and network behavior are controlled by those tools, not by Tunara.
 - Any local command, shell startup file, Git hook, or CLI plugin can affect the workspace. Review the tools you run.

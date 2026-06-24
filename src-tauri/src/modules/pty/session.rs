@@ -23,7 +23,7 @@ const MAX_PENDING: usize = 1024 * 1024;
 // Hard reset (ESC c) + dim notice. Written verbatim into the stream when
 // we're forced to discard backlog.
 const OVERFLOW_NOTICE: &[u8] =
-    b"\x1bc\x1b[2m[conduit: dropped output due to backpressure]\x1b[0m\r\n";
+    b"\x1bc\x1b[2m[tunara: dropped output due to backpressure]\x1b[0m\r\n";
 
 #[derive(Serialize, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -81,7 +81,7 @@ pub fn spawn(
 
     let pending_r = pending.clone();
     let reader_thread = thread::Builder::new()
-        .name("conduit-pty-reader".into())
+        .name("tunara-pty-reader".into())
         .spawn(move || {
             let mut buf = [0u8; READ_BUF];
             let mut dropped_bytes: u64 = 0;
@@ -120,7 +120,7 @@ pub fn spawn(
     let done_f = done.clone();
     let killer_f = flusher_killer.clone();
     thread::Builder::new()
-        .name("conduit-pty-flusher".into())
+        .name("tunara-pty-flusher".into())
         .spawn(move || loop {
             thread::sleep(FLUSH_INTERVAL);
             let chunk = {
@@ -154,7 +154,7 @@ pub fn spawn(
     let pending_e = pending;
     let done_e = done;
     thread::Builder::new()
-        .name("conduit-pty-waiter".into())
+        .name("tunara-pty-waiter".into())
         .spawn(move || {
             let code = match child.wait() {
                 Ok(status) => status.exit_code() as i32,

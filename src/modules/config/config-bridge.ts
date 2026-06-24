@@ -18,21 +18,21 @@ export interface RawAppearanceConfig {
   terminal_clipboard_write: boolean;
 }
 
-export interface RawConduitConfig {
+export interface RawTunaraConfig {
   appearance: RawAppearanceConfig;
   keybindings: Record<string, string>;
 }
 
-export interface LoadedConduitConfig {
+export interface LoadedTunaraConfig {
   path: string;
-  config: RawConduitConfig;
+  config: RawTunaraConfig;
   error?: string | null;
 }
 
-export function loadConduitConfig(): Promise<LoadedConduitConfig> {
-  return invoke<LoadedConduitConfig>("load_config");
+export function loadTunaraConfig(): Promise<LoadedTunaraConfig> {
+  return invoke<LoadedTunaraConfig>("load_config");
 }
 
-export function saveConduitConfig(config: RawConduitConfig): Promise<void> {
+export function saveTunaraConfig(config: RawTunaraConfig): Promise<void> {
   return invoke("save_config", { config });
 }

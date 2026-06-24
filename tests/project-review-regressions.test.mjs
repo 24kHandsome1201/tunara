@@ -18,23 +18,23 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
   const cargo = read("src-tauri/Cargo.toml");
   const lock = read("src-tauri/Cargo.lock");
-  const cask = read("homebrew/conduit.rb");
+  const cask = read("homebrew/tunara.rb");
   const changelog = read("CHANGELOG.md");
 
   const version = pkg.version;
   assert.equal(tauri.version, version);
   assert.match(cargo, new RegExp(`^version = "${version}"$`, "m"));
-  assert.match(lock, new RegExp(`name = "conduit"\\nversion = "${version}"`));
+  assert.match(lock, new RegExp(`name = "tunara"\\nversion = "${version}"`));
   assert.match(cask, new RegExp(`version "${version}"`));
   assert.match(changelog, new RegExp(`## \\[${version}\\]`));
 
-  assert.equal(tauri.identifier, "dev.conduit.app");
-  assert.match(cask, /github\.com\/24kHandsome1201\/conduit/);
-  assert.doesNotMatch(cask, /github\.com\/mawei\/conduit/);
+  assert.equal(tauri.identifier, "dev.tunara.app");
+  assert.match(cask, /github\.com\/24kHandsome1201\/tunara/);
+  assert.doesNotMatch(cask, /github\.com\/mawei\/tunara/);
   assert.doesNotMatch(cask, /PLACEHOLDER_SHA256/);
-  assert.doesNotMatch(cask, /com\.conduit\.app/);
-  assert.match(cask, /Application Support\/dev\.conduit\.app/);
-  assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/conduit/);
+  assert.doesNotMatch(cask, /com\.tunara\.app/);
+  assert.match(cask, /Application Support\/dev\.tunara\.app/);
+  assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/tunara/);
 });
 
 test("release cleanup removes orphan Rust modules from the source tree", () => {
@@ -78,7 +78,10 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(modules, /pub mod config;/);
   assert.match(lib, /modules::config::load_config/);
   assert.match(lib, /modules::config::save_config/);
-  assert.match(configRs, /\.join\("\.config"\)[\s\S]*\.join\("conduit"\)[\s\S]*\.join\("config\.toml"\)/);
+  assert.match(configRs, /\.join\("\.config"\)[\s\S]*\.join\("tunara"\)[\s\S]*\.join\("config\.toml"\)/);
+  assert.match(configRs, /const LEGACY_CONFIG_DIR: &str = "conduit";/);
+  assert.match(configRs, /migrate_legacy_config_if_needed/);
+  assert.match(configRs, /fs::copy\(legacy_path, path\)/);
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
   assert.match(configRs, /use toml_edit::\{value, Document, Item, Table\}/);
   assert.match(configRs, /merge_known_config/);
@@ -97,7 +100,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
   const defaultConfigKeys = [...configRs.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
   assert.equal(new Set(defaultConfigKeys).size, defaultConfigKeys.length);
-  assert.match(bridge, /invoke<LoadedConduitConfig>\("load_config"\)/);
+  assert.match(bridge, /invoke<LoadedTunaraConfig>\("load_config"\)/);
   assert.match(bridge, /invoke\("save_config", \{ config \}\)/);
   assert.match(bridge, /font_ligatures: boolean/);
   assert.match(bridge, /terminal_clipboard_write: boolean/);
@@ -107,8 +110,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(keybindings, /export function hasPlatformModKey/);
   assert.match(keybindings, /export function matchesKeybinding/);
   assert.match(keybindings, /const modPressed = hasPlatformModKey\(e, isMac\)/);
-  assert.match(ui, /loadConduitConfig/);
-  assert.match(ui, /saveConduitConfig\(settingsToRawConfig/);
+  assert.match(ui, /loadTunaraConfig/);
+  assert.match(ui, /saveTunaraConfig\(settingsToRawConfig/);
   assert.match(ui, /fontLigatures: false/);
   assert.match(ui, /font_ligatures: s\.fontLigatures/);
   assert.match(ui, /terminalClipboardWrite: false/);
@@ -137,6 +140,10 @@ test("text config drives appearance, keybindings, and terminal font settings", (
 
 test("session persistence keeps custom titles and rejects invalid stored payloads", () => {
   const persist = read("src/state/persist.ts");
+  assert.match(persist, /const STORE_FILE = "tunara-sessions\.json";/);
+  assert.match(persist, /const LEGACY_STORE_FILE = "conduit-sessions\.json";/);
+  assert.match(persist, /async function loadSessionStore\(\): Promise<SessionStore>/);
+  assert.match(persist, /legacyStore\.entries<unknown>\(\)/);
   assert.match(persist, /function isPersistedSession\(value: unknown\): value is PersistedSession/);
   assert.match(persist, /title: p\.title\.trim\(\) \|\| "终端"/);
   assert.match(persist, /store\.get<unknown>\(SESSIONS_KEY\)/);

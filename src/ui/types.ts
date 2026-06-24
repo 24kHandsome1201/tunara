@@ -1,4 +1,4 @@
-// Conduit UI 共用类型定义
+// Tunara UI 共用类型定义
 import { AGENT_NAMES } from "../modules/agent/registry.ts";
 export { AGENT_NAMES };
 

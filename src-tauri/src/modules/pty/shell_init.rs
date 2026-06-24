@@ -8,10 +8,10 @@
 // Safety notes:
 // - Files are written atomically (tmp + rename) to avoid a half-written rc
 //   being sourced by a parallel shell spawn.
-// - $__CONDUIT_HOOKS_LOADED guards re-sourcing within a single shell (e.g. user
+// - $__TUNARA_HOOKS_LOADED guards re-sourcing within a single shell (e.g. user
 //   runs `source ~/.zshrc`). It is intentionally NOT exported — each nested
 //   interactive shell installs its own hooks for its own prompt.
-// - User's existing ZDOTDIR is preserved via CONDUIT_USER_ZDOTDIR — otherwise a
+// - User's existing ZDOTDIR is preserved via TUNARA_USER_ZDOTDIR — otherwise a
 //   user with `ZDOTDIR=~/.config/zsh` would have every `$ZDOTDIR/...` path in
 //   their config silently point at our cache dir.
 // - PS1/PS0 markers are re-injected on every prompt in case the user's framework
@@ -63,12 +63,12 @@ pub fn build_command(
     let mut cmd = CommandBuilder::new(&shell_path);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    cmd.env("CONDUIT_TERMINAL", "1");
+    cmd.env("TUNARA_TERMINAL", "1");
     if let Some(sid) = session_id {
-        cmd.env("CONDUIT_SESSION_ID", sid);
+        cmd.env("TUNARA_SESSION_ID", sid);
     }
     if let Some(sp) = sock_path {
-        cmd.env("CONDUIT_HOOKS_SOCK", sp);
+        cmd.env("TUNARA_HOOKS_SOCK", sp);
     }
 
     let resolved_cwd = cwd
@@ -91,7 +91,7 @@ pub fn build_command(
                     // Preserve the user's ZDOTDIR (if any) so our integration
                     // scripts can source their real config from the right place.
                     if let Ok(user_zd) = std::env::var("ZDOTDIR") {
-                        cmd.env("CONDUIT_USER_ZDOTDIR", user_zd);
+                        cmd.env("TUNARA_USER_ZDOTDIR", user_zd);
                     }
                     cmd.env("ZDOTDIR", zdotdir);
                 }
@@ -144,7 +144,7 @@ fn integration_root() -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let root = PathBuf::from(home)
         .join(".cache")
-        .join("conduit")
+        .join("tunara")
         .join("shell-integration");
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     Ok(root)
@@ -192,7 +192,7 @@ fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {
     // source a half-written file. Suffix (not with_extension) because our
     // dotfile basenames have no extension in the Path sense (.zshrc → "").
     let mut tmp: OsString = path.as_os_str().to_owned();
-    tmp.push(".__conduit_tmp__");
+    tmp.push(".__tunara_tmp__");
     let tmp = PathBuf::from(tmp);
     fs::write(&tmp, content).map_err(|e| format!("write {}: {e}", tmp.display()))?;
     fs::rename(&tmp, path).map_err(|e| {

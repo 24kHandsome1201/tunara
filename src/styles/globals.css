@@ -89,7 +89,7 @@ html[data-chrome="borderless"] {
   --scroll-fade-bg: var(--c-bg-2-glass);
 }
 
-/* Conduit animations */
+/* Tunara animations */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
 @keyframes toastIn {

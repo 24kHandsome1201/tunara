@@ -50,7 +50,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Conduit ${{ github.ref_name }}"
+          releaseName: "Tunara ${{ github.ref_name }}"
           releaseBody: "See the assets to download and install. Auto-update is built in."
           releaseDraft: true
           prerelease: false
@@ -71,19 +71,19 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF_NAME#v}"
           # 优先取 universal/aarch64 dmg
-          DMG_URL=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[] | select(.name | test("Conduit_.*\\.dmg")) | .url' | head -1)
+          DMG_URL=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[] | select(.name | test("Tunara_.*\\.dmg")) | .url' | head -1)
           if [ -z "$DMG_URL" ]; then
             echo "No .dmg asset found, skipping cask update"
             exit 0
           fi
           SHA=$(curl -fsSL "$DMG_URL" | shasum -a 256 | awk '{print $1}')
           echo "Computed sha256: $SHA for version $TAG"
-          # 更新 homebrew/conduit.rb 中的 version 和 sha256
-          sed -i.bak "s/version \".*\"/version \"$TAG\"/" homebrew/conduit.rb
-          sed -i.bak "s/sha256 \".*\"/sha256 \"$SHA\"/" homebrew/conduit.rb
-          rm -f homebrew/conduit.rb.bak
+          # 更新 homebrew/tunara.rb 中的 version 和 sha256
+          sed -i.bak "s/version \".*\"/version \"$TAG\"/" homebrew/tunara.rb
+          sed -i.bak "s/sha256 \".*\"/sha256 \"$SHA\"/" homebrew/tunara.rb
+          rm -f homebrew/tunara.rb.bak
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add homebrew/conduit.rb
+          git add homebrew/tunara.rb
           git commit -m "chore: update homebrew cask to v${TAG} (sha256 ${SHA:0:12}…)" || exit 0
           git push

@@ -13,20 +13,20 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     "src-tauri/src/modules/pty/scripts/bashrc.bash",
   ]) {
     const script = read(path);
-    assert.match(script, /if \[\[? -n "\$CONDUIT_SESSION_ID"/);
-    assert.match(script, /_conduit_agent_osc\(\)/);
-    assert.match(script, /printf '\\e\]777;conduit-agent;%s;%s;%s;%s\\e\\\\'/);
-    assert.match(script, /_conduit_agent_emit start "\$agent"/);
-    assert.match(script, /_conduit_agent_emit exit "\$agent" "\$ret"/);
-    assert.match(script, /CONDUIT_HOOKS_SOCK[\s\S]*return 0/);
+    assert.match(script, /if \[\[? -n "\$TUNARA_SESSION_ID"/);
+    assert.match(script, /_tunara_agent_osc\(\)/);
+    assert.match(script, /printf '\\e\]777;tunara-agent;%s;%s;%s;%s\\e\\\\'/);
+    assert.match(script, /_tunara_agent_emit start "\$agent"/);
+    assert.match(script, /_tunara_agent_emit exit "\$agent" "\$ret"/);
+    assert.match(script, /TUNARA_HOOKS_SOCK[\s\S]*return 0/);
     assert.match(script, /if \[\[? -n "\$sock"/);
     assert.match(script, /command "\$real_bin" --settings "\$f" "\$@"/);
     assert.match(script, /else[\s\S]*command "\$real_bin" "\$@"/);
-    assert.match(script, /claude\(\) \{ _conduit_agent_run claude CC/);
-    assert.match(script, /droid\(\) \{ _conduit_agent_run droid DR/);
-    assert.match(script, /codex\(\) \{ _conduit_agent_plain_run codex CX/);
-    assert.doesNotMatch(script, /\bcodex\(\) \{ _conduit_agent_run codex/);
-    assert.doesNotMatch(script, /\bdevin\(\) \{ _conduit_agent_run devin/);
+    assert.match(script, /claude\(\) \{ _tunara_agent_run claude CC/);
+    assert.match(script, /droid\(\) \{ _tunara_agent_run droid DR/);
+    assert.match(script, /codex\(\) \{ _tunara_agent_plain_run codex CX/);
+    assert.doesNotMatch(script, /\bcodex\(\) \{ _tunara_agent_run codex/);
+    assert.doesNotMatch(script, /\bdevin\(\) \{ _tunara_agent_run devin/);
     assert.match(script, /"SessionStart":\[\{"matcher":"startup\|resume"/);
     assert.match(script, /\\"event\\":\\"idle\\",\\"session\\":\\"\$\{sid\}\\",\\"agent\\":\\"\$\{agent\}\\"/);
     assert.match(script, /\\"event\\":\\"stop\\",\\"session\\":\\"\$\{sid\}\\",\\"agent\\":\\"\$\{agent\}\\"/);
@@ -37,14 +37,14 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   const fish = read("src-tauri/src/modules/pty/scripts/config.fish");
   const rust = read("src-tauri/src/modules/pty/shell_init.rs");
 
-  assert.match(fish, /function _conduit_precmd --on-event fish_prompt/);
-  assert.match(fish, /function _conduit_preexec --on-event fish_preexec/);
+  assert.match(fish, /function _tunara_precmd --on-event fish_prompt/);
+  assert.match(fish, /function _tunara_preexec --on-event fish_preexec/);
   assert.match(fish, /string escape --style=url/);
   assert.match(fish, /printf '\\e\]7;file:\/\/localhost%s\\e\\\\'/);
   assert.match(fish, /printf '\\e\]133;C;%s\\e\\\\'/);
-  assert.match(fish, /printf '\\e\]777;conduit-agent;%s;%s;%s;%s\\e\\\\'/);
-  assert.match(fish, /function claude[\s\S]*_conduit_agent_run claude CC/);
-  assert.match(fish, /function codex[\s\S]*_conduit_agent_plain_run codex CX/);
+  assert.match(fish, /printf '\\e\]777;tunara-agent;%s;%s;%s;%s\\e\\\\'/);
+  assert.match(fish, /function claude[\s\S]*_tunara_agent_run claude CC/);
+  assert.match(fish, /function codex[\s\S]*_tunara_agent_plain_run codex CX/);
 
   assert.match(rust, /const FISH_CONFIG: &str = include_str!\("scripts\/config\.fish"\);/);
   assert.match(rust, /Fish,/);
@@ -79,6 +79,7 @@ test("agent lifecycle policy preserves line structure for Codex", () => {
   assert.match(policy, /lines\.slice\(-CODEX_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
   assert.match(policy, /return CODEX_BUSY_INDICATORS\.some\(\(pattern\) => pattern\.test\(text\)\);/);
   assert.match(policy, /return hasCodexBusyIndicator\(recentJoined\) \? "busy" : "ready";/);
+  assert.match(policy, /new Set\(\["tunara-agent", "conduit-agent"\]\)/);
   assert.match(policy, /export function parseAgentLifecycleOsc\(data: string\): AgentLifecycleEvent \| null/);
   assert.match(tracker, /export const CODEX_DATA_BURST_BUSY_THRESHOLD = 3;/);
   assert.match(tracker, /export const CODEX_STATE_CHECK_DELAY_MS = 500;/);

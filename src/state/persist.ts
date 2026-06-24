@@ -3,11 +3,14 @@ import type { Session } from "@/ui/types";
 import { sanitizeRecentDirs } from "./recent-dirs";
 import { sanitizeRecentCommands } from "./recent-commands";
 
-const STORE_FILE = "conduit-sessions.json";
+const STORE_FILE = "tunara-sessions.json";
+const LEGACY_STORE_FILE = "conduit-sessions.json";
 const SESSIONS_KEY = "sessions";
 const ACTIVE_KEY = "activeSessionId";
 const UI_LAYOUT_KEY = "uiLayout";
 const WORKSPACE_SNAPSHOT_KEY = "workspaceSnapshot";
+
+type SessionStore = Awaited<ReturnType<typeof load>>;
 
 type PersistedSession = Pick<
   Session,
@@ -99,6 +102,21 @@ function fromPersistedSession(p: PersistedSession): Session {
   };
 }
 
+async function loadSessionStore(): Promise<SessionStore> {
+  const store = await load(STORE_FILE, { defaults: {} });
+  if ((await store.length()) > 0) return store;
+
+  const legacyStore = await load(LEGACY_STORE_FILE, { defaults: {} });
+  const legacyEntries = await legacyStore.entries<unknown>();
+  if (legacyEntries.length === 0) return store;
+
+  for (const [key, value] of legacyEntries) {
+    await store.set(key, value);
+  }
+  await store.save();
+  return store;
+}
+
 function isPersistedUILayout(value: unknown): value is PersistedUILayout {
   if (!value || typeof value !== "object") return false;
   const layout = value as Partial<PersistedUILayout>;
@@ -128,7 +146,7 @@ export async function saveSessions(
   activeSessionId?: string | null,
 ): Promise<void> {
   try {
-    const store = await load(STORE_FILE, { defaults: {} });
+    const store = await loadSessionStore();
     const persisted = dedupeById(sessions).map(toPersistedSession);
     await store.set(SESSIONS_KEY, persisted);
     if (activeSessionId !== undefined) {
@@ -159,7 +177,7 @@ export async function loadSessions(): Promise<{
   activeSessionId: string | null;
 }> {
   try {
-    const store = await load(STORE_FILE, { defaults: {} });
+    const store = await loadSessionStore();
     const persisted = await store.get<unknown>(SESSIONS_KEY);
     const activeId = await store.get<unknown>(ACTIVE_KEY);
     if (!Array.isArray(persisted)) return { sessions: [], activeSessionId: null };
@@ -175,7 +193,7 @@ export async function loadSessions(): Promise<{
 
 export async function saveUILayout(layout: PersistedUILayout): Promise<void> {
   try {
-    const store = await load(STORE_FILE, { defaults: {} });
+    const store = await loadSessionStore();
     await store.set(UI_LAYOUT_KEY, layout);
     const existing = await store.get<unknown>(WORKSPACE_SNAPSHOT_KEY);
     const snapshot = sanitizeSnapshot(existing);
@@ -193,7 +211,7 @@ export async function saveUILayout(layout: PersistedUILayout): Promise<void> {
 
 export async function loadUILayout(): Promise<PersistedUILayout | null> {
   try {
-    const store = await load(STORE_FILE, { defaults: {} });
+    const store = await loadSessionStore();
     const layout = await store.get<unknown>(UI_LAYOUT_KEY);
     return isPersistedUILayout(layout) ? layout : null;
   } catch {
@@ -341,7 +359,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
 
 export async function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1): Promise<void> {
   try {
-    const store = await load(STORE_FILE, { defaults: {} });
+    const store = await loadSessionStore();
     await store.set(WORKSPACE_SNAPSHOT_KEY, snapshot);
     await store.save();
   } catch {
@@ -351,7 +369,7 @@ export async function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1): Prom
 
 export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | null> {
   try {
-    const store = await load(STORE_FILE, { defaults: {} });
+    const store = await loadSessionStore();
     const raw = await store.get<unknown>(WORKSPACE_SNAPSHOT_KEY);
     const snapshot = sanitizeSnapshot(raw);
     if (snapshot) return snapshot;

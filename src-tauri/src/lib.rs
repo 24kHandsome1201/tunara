@@ -66,19 +66,19 @@ pub fn run() {
             fs::search::fs_search,
             fs::grep::fs_grep,
             fs::grep::fs_glob,
-            // Conduit 新增（§3.7.2 CLI 路径解析）
+            // Tunara 新增（§3.7.2 CLI 路径解析）
             modules::resolver::resolve_bin,
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
-            // Conduit 新增（agent CLI 检测）
+            // Tunara 新增（agent CLI 检测）
             modules::agent::preflight::agent_preflight,
-            // Conduit 新增（§3.4 git 集成）
+            // Tunara 新增（§3.4 git 集成）
             modules::git::git_status,
             modules::git::git_diff,
             modules::git::git_ahead_behind,
-            // Conduit 新增（§6.3 外部编辑器跳转）
+            // Tunara 新增（§6.3 外部编辑器跳转）
             modules::editor::open_in_editor,
-            // Text config: ~/.config/conduit/config.toml
+            // Text config: ~/.config/tunara/config.toml
             modules::config::load_config,
             modules::config::save_config,
         ])

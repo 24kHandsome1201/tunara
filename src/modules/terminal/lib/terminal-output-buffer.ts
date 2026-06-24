@@ -2,7 +2,7 @@ import type { Terminal } from "@xterm/xterm";
 
 const MAX_PENDING_BYTES = 2 * 1024 * 1024;
 const OVERFLOW_NOTICE = new TextEncoder().encode(
-  "\x1bc\x1b[2m[conduit: dropped frontend output backlog]\x1b[0m\r\n",
+  "\x1bc\x1b[2m[tunara: dropped frontend output backlog]\x1b[0m\r\n",
 );
 
 export function createTerminalOutputBuffer(term: Terminal) {

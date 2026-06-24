@@ -1,10 +1,10 @@
-# AGENTS.md — Conduit 仓库约束（面向 AI coding agent）
+# AGENTS.md — Tunara 仓库约束（面向 AI coding agent）
 
 > 本文件是 agent（Claude Code / Codex / Cursor 等）进入本仓库前必须读取并遵守的硬约束。
 > 它编码的是「读代码看不出、但改错了会出事」的不变量。**绿色 CI 不代表安全**——见 §2。
 > Claude Code 用户可 `ln -s AGENTS.md CLAUDE.md`。
 
-Conduit = **带智能侧栏的真实终端**（Tauri v2 + React 19 + xterm.js 6 + Rust）。
+Tunara = **带智能侧栏的真实终端**（Tauri v2 + React 19 + xterm.js 6 + Rust）。
 它**不是** agent 编排平台 / 聊天工具 / MCP orchestrator / IDE / Git GUI。
 
 ---
@@ -22,12 +22,12 @@ Conduit = **带智能侧栏的真实终端**（Tauri v2 + React 19 + xterm.js 6 
 
 ## 1. 产品边界（最高优先级，违反即回退）
 
-Conduit 的定位是「轻量、好看、带侧栏的现代终端」。真实 xterm/PTY 是主角；侧栏按工作目录组织会话、显示运行状态与 agent 识别；右栏是**只读** diff/文件审查面板。
+Tunara 的定位是「轻量、好看、带侧栏的现代终端」。真实 xterm/PTY 是主角；侧栏按工作目录组织会话、显示运行状态与 agent 识别；右栏是**只读** diff/文件审查面板。
 
 **永远不要新增以下方向（已被明确砍掉，代码里留有「砍除证据」）：**
 
 - ❌ 独立「新建 Agent」弹层 / agent catalog / 从命令面板或设置页「启动 Agent」按钮。
-  用户在真实终端里自己运行 `claude` / `codex` 等 CLI，Conduit **只做识别、品牌标记、状态、review 辅助**。
+  用户在真实终端里自己运行 `claude` / `codex` 等 CLI，Tunara **只做识别、品牌标记、状态、review 辅助**。
 - ❌ 「启动所有 Agent」/ `launchAllAgents` 这类批量启动入口。
 - ❌ DiffPanel 里的 commit / push / stage 按钮。审查面板**保持只读**，写操作交给终端里的 `git` 或 agent 自己。
 - ❌ 内置 AI 聊天 / AI 问答 / BYOK 模型集成。
@@ -37,7 +37,7 @@ Conduit 的定位是「轻量、好看、带侧栏的现代终端」。真实 xt
 - ❌ 为各 agent 写 stdout 结构化 parser（输出格式不稳定，维护成本爆炸）。
 - ❌ 插件系统 / SSH 远程 / 自研渲染引擎。
 
-如果某个「优化」让 Conduit 更像 Warp 或 cmux，那它大概率越界了。
+如果某个「优化」让 Tunara 更像 Warp 或 cmux，那它大概率越界了。
 
 ---
 
@@ -83,9 +83,9 @@ Conduit 的定位是「轻量、好看、带侧栏的现代终端」。真实 xt
 打 release 前，以下 5 处版本必须完全一致：
 
 - `package.json` → `"version"`
-- `src-tauri/Cargo.toml` → `version`（同时跑 `cargo update -p conduit` 让 `Cargo.lock` 跟上）
+- `src-tauri/Cargo.toml` → `version`（同时跑 `cargo update -p tunara` 让 `Cargo.lock` 跟上）
 - `src-tauri/tauri.conf.json` → `"version"`
-- `homebrew/conduit.rb` → `version`
+- `homebrew/tunara.rb` → `version`
 - `CHANGELOG.md` → 必须有对应版本条目（不能只停在 `## Unreleased`）
 
 **规则：** 版本一起 bump；**release tag 上严禁 `sha256 :no_check`**——必须用真实发布 DMG 的 sha256 回填。
@@ -117,9 +117,9 @@ Conduit 的定位是「轻量、好看、带侧栏的现代终端」。真实 xt
 
 ### 5.4 Shell 集成契约（OSC）
 
-shell 通过 OSC 7（cwd）+ OSC 133 A/B/C/D（prompt-start / prompt-end / pre-exec / command-done）+ OSC 777（`conduit-agent;event;session;agent;code` agent 生命周期）与前端通信。rc 脚本在 `src-tauri/src/modules/pty/scripts/*`，通过 `include_str!` 内联（**改脚本=改这些真实文件**，不是改字符串字面量）。原子写（tmp+rename）不要改成直接写。
+shell 通过 OSC 7（cwd）+ OSC 133 A/B/C/D（prompt-start / prompt-end / pre-exec / command-done）+ OSC 777（`tunara-agent;event;session;agent;code` agent 生命周期）与前端通信。rc 脚本在 `src-tauri/src/modules/pty/scripts/*`，通过 `include_str!` 内联（**改脚本=改这些真实文件**，不是改字符串字面量）。原子写（tmp+rename）不要改成直接写。
 
-`agent/hooks.rs` 的测试锁定了哪些 agent 被哪种 wrapper 包裹：`claude`/`droid` → `_conduit_agent_run`（带 hook），`codex` → `_conduit_agent_plain_run`（无 hook）。改 wrapper 必须同步更新该测试。
+`agent/hooks.rs` 的测试锁定了哪些 agent 被哪种 wrapper 包裹：`claude`/`droid` → `_tunara_agent_run`（带 hook），`codex` → `_tunara_agent_plain_run`（无 hook）。改 wrapper 必须同步更新该测试。
 
 ### 5.5 会话状态：存事实，派生展示
 
@@ -142,8 +142,8 @@ shell 通过 OSC 7（cwd）+ OSC 133 A/B/C/D（prompt-start / prompt-end / pre-e
 
 - **CSP 已锁死**（`tauri.conf.json`）：`script-src 'self'`、无 `unsafe-eval`。不要为了省事加 `unsafe-eval` 或放开 `connect-src`。
 - **Capabilities 最小权限**（`capabilities/default.json`）：新增 IPC 能力要显式、按需，不要整组放开。
-- **不要把密钥/token 写进 world-readable 的 `/tmp`。** 现有 hooks socket（`/tmp/conduit-hooks-{pid}.sock`）和注入文件（`/tmp/conduit-agent-{sid}.json`）已是已知的弱点；若加固，往 `$XDG_RUNTIME_DIR` 或 0700 目录移、payload 带 per-session nonce，别新增可预测的 `/tmp` 文件。
-- **OSC 52 剪贴板是安全 sink。** 终端程序写系统剪贴板必须默认关闭，只能通过 `~/.config/conduit/config.toml` 的 `terminal_clipboard_write = true` 或设置页显式开启；Primary DA（`CSI c` / `CSI 0 c`）只有在该配置开启时才能声明扩展能力 `52`；不要实现剪贴板读取响应（`OSC 52 ; Pc ; ?`），不要静默默认允许，payload 必须保持 UTF-8 文本和大小上限。
+- **不要把密钥/token 写进 world-readable 的 `/tmp`。** 现有 hooks socket（`/tmp/tunara-hooks-{pid}.sock`）和注入文件（`/tmp/tunara-agent-{sid}.json`）已是已知的弱点；若加固，往 `$XDG_RUNTIME_DIR` 或 0700 目录移、payload 带 per-session nonce，别新增可预测的 `/tmp` 文件。
+- **OSC 52 剪贴板是安全 sink。** 终端程序写系统剪贴板必须默认关闭，只能通过 `~/.config/tunara/config.toml` 的 `terminal_clipboard_write = true` 或设置页显式开启；Primary DA（`CSI c` / `CSI 0 c`）只有在该配置开启时才能声明扩展能力 `52`；不要实现剪贴板读取响应（`OSC 52 ; Pc ; ?`），不要静默默认允许，payload 必须保持 UTF-8 文本和大小上限。
 - agent 圆形图标等颜色走 `--c-agent-*` token；阴影走 `--shadow-*`。**不要硬编码颜色**。
 
 ---
