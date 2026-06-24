@@ -135,6 +135,9 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
     if (isPaneA || isPaneB) {
       const ratioPct = isPaneA ? split.ratio : 1 - split.ratio;
+      const activeMarker = isHorizontal
+        ? "inset 2px 0 0 var(--c-accent)"
+        : "inset 0 2px 0 var(--c-accent)";
       return {
         [isHorizontal ? "width" : "height"]: `calc(${ratioPct * 100}% - 2.5px)`,
         order: isPaneA ? 0 : 2,
@@ -144,9 +147,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         minHeight: 0,
         overflow: "hidden",
         borderRadius: 6,
-        boxShadow: s.id === activeSessionId
-          ? "inset 0 2px 0 var(--c-accent)"
-          : "none",
+        boxShadow: s.id === activeSessionId ? activeMarker : "none",
         transition: "box-shadow var(--duration-normal) var(--ease-smooth)",
       };
     }
@@ -196,7 +197,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           display: "flex",
           alignItems: "center",
           padding: "0 12px",
-          gap: 0,
+          gap: 10,
           flexShrink: 0,
         }}
       >
@@ -205,14 +206,17 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           {compactPath(active?.dir ?? "")}
         </span>
 
+        {/* 路径与分支分隔线 */}
+        <span aria-hidden="true" style={{ width: 1, height: 12, background: "var(--c-border-2)", flexShrink: 0 }} />
+
         {/* Git 分支 */}
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", marginLeft: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
           ⎇ {active?.branch || "-"}
         </span>
 
         {/* Remote ahead/behind */}
         {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
-          <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", marginLeft: 6, flexShrink: 0, display: "inline-flex", gap: 3 }}>
+          <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", flexShrink: 0, display: "inline-flex", gap: 3 }}>
             {remote.ahead > 0 && (
               <span style={{ color: "var(--c-success)", fontWeight: 600 }}>↑{remote.ahead}</span>
             )}
@@ -233,7 +237,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             borderRadius: 4,
             padding: "1px 6px",
             lineHeight: "14px",
-            marginLeft: 8,
             display: "inline-flex",
             alignItems: "center",
             gap: 4,

@@ -168,35 +168,39 @@ export function Sidebar({
             onClick={onNewTerminal}
             style={{
               width: "100%",
-              padding: "6px 10px",
+              height: 30,
+              padding: "0 8px 0 10px",
               border: "none",
               borderRadius: "var(--r-btn)",
               background: "var(--c-accent-bg-soft)",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
               gap: 6,
               transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-smooth)",
             }}
             className="hover-accent-bg"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-accent)" }}>
+            <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-accent)", lineHeight: 1 }}>
               新建终端
             </span>
             <span
               style={{
+                marginLeft: "auto",
+                height: 18,
+                display: "inline-flex",
+                alignItems: "center",
                 fontSize: "var(--fs-meta)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
-                background: "var(--c-bg-3)",
+                background: "color-mix(in srgb, var(--c-accent) 8%, transparent)",
                 borderRadius: "var(--r-badge)",
-                padding: "2px 6px",
-                marginLeft: "auto",
+                padding: "0 6px",
+                flexShrink: 0,
               }}
             >
               {formatShortcut(newTerminalShortcut)}

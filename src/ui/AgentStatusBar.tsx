@@ -77,7 +77,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         gap: 8,
         opacity: fading ? 0 : 1,
         transform: fading ? "translateY(-4px) scale(0.98)" : "translateY(0) scale(1)",
-        transition: "opacity 0.3s ease, transform 0.3s var(--ease-out-expo)",
+        transition: "opacity var(--duration-normal) var(--ease-smooth), transform var(--duration-normal) var(--ease-out-expo)",
         animation: !fading ? "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)" : undefined,
       }}
     >

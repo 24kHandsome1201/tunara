@@ -97,11 +97,11 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
         className="tab-close hover-close"
         style={{
-          width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center",
+          width: 20, height: 20, borderRadius: 5, display: "flex", alignItems: "center",
           justifyContent: "center", flexShrink: 0,
         }}
       >
-        <CloseIcon size={9} strokeWidth={2.5} />
+        <CloseIcon size={10} strokeWidth={2.2} />
       </span>
     </button>
   );

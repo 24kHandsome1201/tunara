@@ -55,39 +55,27 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
 }
 
 function buildMiniDiffRows(patch: string): Array<{ key: string; line: string; isAdd: boolean; isDel: boolean }> {
-  let oldLine = 0;
-  let newLine = 0;
-  let prelude = 0;
+  let inHunk = false;
   let idx = 0;
 
   return patch.split("\n").map((line) => {
     const i = idx++;
-    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunk) {
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
+    if (/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.test(line)) {
+      inHunk = true;
       return { key: `hunk:${i}`, line, isAdd: false, isDel: false };
     }
     if (line.startsWith("---") || line.startsWith("+++")) {
       return { key: `file:${i}`, line, isAdd: false, isDel: false };
     }
     if (line.startsWith("+")) {
-      const key = `new:${i}`;
-      newLine += 1;
-      return { key, line, isAdd: true, isDel: false };
+      return { key: `new:${i}`, line, isAdd: true, isDel: false };
     }
     if (line.startsWith("-")) {
-      const key = `old:${i}`;
-      oldLine += 1;
-      return { key, line, isAdd: false, isDel: true };
+      return { key: `old:${i}`, line, isAdd: false, isDel: true };
     }
-    if (oldLine > 0 || newLine > 0) {
-      const key = `ctx:${i}`;
-      oldLine += 1;
-      newLine += 1;
-      return { key, line, isAdd: false, isDel: false };
+    if (inHunk) {
+      return { key: `ctx:${i}`, line, isAdd: false, isDel: false };
     }
-    prelude += 1;
     return { key: `prelude:${i}`, line, isAdd: false, isDel: false };
   });
 }
@@ -361,7 +349,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       )}
 
       {embedded && hasChanges && summary && (
-        <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0, display: "flex", alignItems: "center" }}>
+        <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0, display: "flex", alignItems: "center" }}>
           <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)" }}>{summary}</span>
         </div>
       )}

@@ -212,11 +212,11 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
               runItem(i);
             }}
             style={{
-              height: 32,
+              height: 30,
               padding: "0 12px 0 10px",
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 9,
               fontSize: "var(--fs-body)",
               fontFamily: "var(--font-ui)",
               background: active ? "var(--c-bg-hover)" : undefined,
@@ -230,8 +230,8 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             <span
               aria-hidden="true"
               style={{
-                width: 16,
-                height: 16,
+                width: 14,
+                height: 14,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",

@@ -73,7 +73,9 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
       {options.map((opt) => (
         <button
           key={opt.id} onClick={() => onChange(opt.id)}
-          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: opt.id === value ? "var(--r-btn)" : 0, background: opt.id === value ? "var(--c-bg-white)" : "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", boxShadow: opt.id === value ? "var(--shadow-card)" : "none", transition: "all var(--duration-normal) var(--ease-smooth)" }}
+          data-active={opt.id === value ? "true" : "false"}
+          className="settings-segment"
+          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: "var(--r-btn)", background: "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
         >
           {opt.label}
         </button>
@@ -83,6 +85,19 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
 }
 
 const SECTION_LABEL: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 10 };
+const SECTION_LABEL_INLINE: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)" };
+const SECTION_HINT: React.CSSProperties = { fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: 6 };
+const TOGGLE_ROW: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", height: 28, marginBottom: 10 };
+const TOGGLE_BUTTON: React.CSSProperties = {
+  width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
+  display: "flex", alignItems: "center", flexShrink: 0,
+  transition: "background var(--duration-normal) var(--ease-smooth)",
+};
+const TOGGLE_KNOB: React.CSSProperties = {
+  width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
+  boxShadow: "var(--shadow-card)",
+  transition: "transform var(--duration-normal) var(--ease-out-back)",
+};
 
 const CLI_LIST = AGENT_REGISTRY.map(({ code, name }) => ({ code, name }));
 
@@ -169,7 +184,13 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
           <div style={{ display: "inline-flex", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: 3, gap: 2 }}>
             {TABS.map((tab) => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: "4px 12px", borderRadius: "var(--r-pill)", border: "none", background: activeTab === tab ? "var(--c-bg-white)" : "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", boxShadow: activeTab === tab ? "var(--shadow-card)" : "none", transition: "all var(--duration-normal) var(--ease-smooth)" }}>
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                data-active={activeTab === tab ? "true" : "false"}
+                className="settings-tab-pill"
+                style={{ padding: "4px 12px", borderRadius: "var(--r-pill)", border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
+              >
                 {tab}
               </button>
             ))}
@@ -189,35 +210,25 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>强调色</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {ACCENT_COLORS.map((ac) => (
                     <AccentRing key={ac.color} color={ac.color} label={ac.label} selected={accent === ac.color} onClick={() => setAccent(ac.color)} />
                   ))}
-                  <span style={{ marginLeft: 8, fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
-                    {accent} · {ACCENT_COLORS.find((ac) => ac.color === accent)?.label ?? "自定义"}
+                  <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
+                    {ACCENT_COLORS.find((ac) => ac.color === accent)?.label ?? accent}
                   </span>
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={SECTION_LABEL}>终端光标样式</div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 10 }}>
+                <div style={TOGGLE_ROW}>
+                  <span style={SECTION_LABEL_INLINE}>终端光标样式</span>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                     <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>闪烁</span>
                     <button
                       onClick={() => setCursorBlink(!cursorBlink)}
-                      style={{
-                        width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
-                        background: cursorBlink ? "var(--c-accent)" : "var(--c-bg-3)",
-                        transition: "background var(--duration-normal) var(--ease-smooth)",
-                        display: "flex", alignItems: "center",
-                      }}
+                      style={{ ...TOGGLE_BUTTON, background: cursorBlink ? "var(--c-accent)" : "var(--c-bg-3)" }}
                     >
-                      <div style={{
-                        width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
-                        boxShadow: "var(--shadow-card)",
-                        transform: cursorBlink ? "translateX(16px)" : "translateX(0)",
-                        transition: "transform var(--duration-normal) var(--ease-out-back)",
-                      }} />
+                      <div style={{ ...TOGGLE_KNOB, transform: cursorBlink ? "translateX(16px)" : "translateX(0)" }} />
                     </button>
                   </label>
                 </div>
@@ -280,48 +291,28 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={SECTION_LABEL}>完成通知</div>
+                <div style={TOGGLE_ROW}>
+                  <span style={SECTION_LABEL_INLINE}>完成通知</span>
                   <button
                     onClick={() => setBellNotification(!bellNotification)}
-                    style={{
-                      width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
-                      background: bellNotification ? "var(--c-accent)" : "var(--c-bg-3)",
-                      transition: "background var(--duration-normal) var(--ease-smooth)",
-                      display: "flex", alignItems: "center", marginBottom: 10,
-                    }}
+                    style={{ ...TOGGLE_BUTTON, background: bellNotification ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
-                    <div style={{
-                      width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
-                      boxShadow: "var(--shadow-card)",
-                      transform: bellNotification ? "translateX(16px)" : "translateX(0)",
-                      transition: "transform var(--duration-normal) var(--ease-out-back)",
-                    }} />
+                    <div style={{ ...TOGGLE_KNOB, transform: bellNotification ? "translateX(16px)" : "translateX(0)" }} />
                   </button>
                 </div>
-                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: -6 }}>窗口不在前台时，终端 bell 或 Agent 完成将触发 Dock 弹跳</div>
+                <div style={SECTION_HINT}>窗口不在前台时，终端 bell 或 Agent 完成将触发 Dock 弹跳</div>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={SECTION_LABEL}>OSC 52 剪贴板写入</div>
+                <div style={TOGGLE_ROW}>
+                  <span style={SECTION_LABEL_INLINE}>OSC 52 剪贴板写入</span>
                   <button
                     onClick={() => setTerminalClipboardWrite(!terminalClipboardWrite)}
-                    style={{
-                      width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
-                      background: terminalClipboardWrite ? "var(--c-accent)" : "var(--c-bg-3)",
-                      transition: "background var(--duration-normal) var(--ease-smooth)",
-                      display: "flex", alignItems: "center", marginBottom: 10,
-                    }}
+                    style={{ ...TOGGLE_BUTTON, background: terminalClipboardWrite ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
-                    <div style={{
-                      width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
-                      boxShadow: "var(--shadow-card)",
-                      transform: terminalClipboardWrite ? "translateX(16px)" : "translateX(0)",
-                      transition: "transform var(--duration-normal) var(--ease-out-back)",
-                    }} />
+                    <div style={{ ...TOGGLE_KNOB, transform: terminalClipboardWrite ? "translateX(16px)" : "translateX(0)" }} />
                   </button>
                 </div>
-                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: -6 }}>默认关闭；开启后终端程序可写入系统剪贴板</div>
+                <div style={SECTION_HINT}>默认关闭；开启后终端程序可写入系统剪贴板</div>
               </div>
               <div>
                 <div style={SECTION_LABEL}>终端配色</div>
@@ -370,7 +361,9 @@ export function Settings({ onClose }: SettingsProps) {
                     <button
                       key={ed}
                       onClick={() => setExternalEditor(ed)}
-                      style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: ed === externalEditor ? "var(--r-btn)" : 0, background: ed === externalEditor ? "var(--c-bg-white)" : "transparent", color: ed === externalEditor ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: ed === externalEditor ? 600 : 400, cursor: "pointer", boxShadow: ed === externalEditor ? "var(--shadow-card)" : "none", transition: "all var(--duration-normal) var(--ease-smooth)" }}
+                      data-active={ed === externalEditor ? "true" : "false"}
+                      className="settings-segment"
+                      style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: "var(--r-btn)", background: "transparent", color: ed === externalEditor ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: ed === externalEditor ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
                     >
                       {EDITOR_LABELS[ed]}
                     </button>

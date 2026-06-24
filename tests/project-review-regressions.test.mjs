@@ -563,13 +563,14 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(sessionCard, /function TerminalProgressBar/);
   assert.match(sessionCard, /session\.terminalProgress && <TerminalProgressBar/);
   assert.match(main, /inset 0 2px 0 var\(--c-accent\)/);
+  assert.match(main, /inset 2px 0 0 var\(--c-accent\)/);
   assert.doesNotMatch(main, /outline: .*var\(--c-accent\)/);
   assert.match(main, /function SplitIcon/);
   assert.match(main, /title="左右分栏 ⌘D"/);
   assert.match(main, /title="上下分栏 ⌘⇧D"/);
   assert.match(main, /aria-label="左右分栏"/);
   assert.match(status, /\}, 1500\)/);
-  assert.match(status, /transition: "opacity 0\.3s ease, transform 0\.3s var\(--ease-out-expo\)"/);
+  assert.match(status, /transition: "opacity var\(--duration-normal\) var\(--ease-smooth\), transform var\(--duration-normal\) var\(--ease-out-expo\)"/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
   assert.match(settings, /const previewBg =/);
   assert.match(settings, /const sidebarBg =/);

@@ -405,7 +405,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           )}
           {[...sections.entries()].map(([section, cmds], sectionIdx) => (
             <div key={section}>
-              {sectionIdx > 0 && <div style={{ height: 1, background: "var(--c-border-1)", margin: "4px 14px" }} />}
+              {sectionIdx > 0 && <div style={{ height: 1, background: "var(--c-border-1)", margin: "6px 6px" }} />}
               <div style={{ padding: "6px 20px 4px", fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>
                 {section}
               </div>
