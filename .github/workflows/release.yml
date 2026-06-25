@@ -16,8 +16,6 @@ jobs:
         include:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -34,7 +32,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -51,8 +49,8 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Tunara ${{ github.ref_name }}"
-          releaseBody: "See the assets to download and install. Auto-update is built in."
-          releaseDraft: true
+          releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Auto-update is built in."
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
