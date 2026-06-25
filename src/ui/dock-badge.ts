@@ -1,12 +1,13 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { createDockBadgeController } from "./lib/dock-badge-state";
 
-let lastBadge: number | null = null;
+const controller = createDockBadgeController();
 
 export async function setDockBadge(count: number) {
-  if (lastBadge === count) return;
-  lastBadge = count;
+  const { changed, value } = controller.set(count);
+  if (!changed) return;
   try {
-    await getCurrentWindow().setBadgeCount(count > 0 ? count : undefined);
+    await getCurrentWindow().setBadgeCount(value);
   } catch {
     // setBadgeCount is a no-op on platforms that don't support it; ignore failures
   }

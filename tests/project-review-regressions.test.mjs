@@ -611,7 +611,10 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.doesNotMatch(settings, /boxShadow: selected \?/);
   assert.match(settings, /className="no-scrollbar scroll-fade-y"/);
   assert.match(diff, /function remoteLabel\(remote: RemoteState \| null\): string/);
-  assert.match(diff, /function buildMiniDiffRows\(patch: string\)/);
+  // buildMiniDiffRows now lives in src/ui/lib/diff-parse.ts and is consumed via import.
+  const diffParseModule = read("src/ui/lib/diff-parse.ts");
+  assert.match(diffParseModule, /export function buildMiniDiffRows\(patch: string\)/);
+  assert.match(diff, /import \{ buildMiniDiffRows, collectHunkTexts \} from "\.\/lib\/diff-parse"/);
   assert.doesNotMatch(diff, /lines\.map\(\(line, i\)/);
   assert.match(diff, /Git 状态未知/);
   assert.match(diff, /className="no-scrollbar scroll-fade-y"/);

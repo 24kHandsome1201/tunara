@@ -8,6 +8,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
 import { useT } from "@/modules/i18n";
+import { breadcrumbSegments } from "./lib/breadcrumbs";
 
 interface FileExplorerProps {
   rootDir: string;
@@ -41,17 +42,6 @@ function parentPath(path: string): string {
   const idx = trimmed.lastIndexOf("/");
   if (idx <= 0) return trimmed.startsWith("~") ? "~" : "/";
   return trimmed.slice(0, idx);
-}
-
-function pathDisplay(currentPath: string, rootDir: string): string {
-  if (currentPath === rootDir) return rootDir;
-  let display = currentPath;
-  if (rootDir !== "/" && currentPath.startsWith(rootDir + "/")) {
-    display = currentPath.slice(rootDir.length + 1).split("/").join(" › ");
-  }
-  const parts = display.split(/[\/›]/).map((part) => part.trim()).filter(Boolean);
-  if (parts.length <= 4) return parts.join(" › ") || "/";
-  return "… › " + parts.slice(-4).join(" › ");
 }
 
 function compactRelativePath(path: string): string {
@@ -206,9 +196,51 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <span title={currentPath} style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, padding: "0 var(--sp-1)" }}>
-          {pathDisplay(currentPath, rootDir)}
-        </span>
+        <div title={currentPath} style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, minWidth: 0, padding: "0 var(--sp-1)", overflow: "hidden", whiteSpace: "nowrap" }}>
+          {breadcrumbSegments(currentPath, rootDir).map((seg, idx, arr) => {
+            const isLast = idx === arr.length - 1;
+            const isCurrent = seg.targetPath === currentPath;
+            const showSeparator = idx < arr.length - 1;
+            return (
+              <span key={`${idx}:${seg.targetPath}`} style={{ display: "inline-flex", alignItems: "center", gap: 2, minWidth: 0 }}>
+                <button
+                  onClick={() => {
+                    if (isCurrent) return;
+                    setNavDir("out");
+                    setCurrentPath(seg.targetPath);
+                  }}
+                  disabled={isCurrent}
+                  aria-current={isCurrent ? "page" : undefined}
+                  className={isCurrent ? undefined : "hover-bg"}
+                  title={seg.isCollapsed ? seg.targetPath : seg.label}
+                  style={{
+                    height: 20,
+                    padding: "0 5px",
+                    borderRadius: "var(--r-btn)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: isCurrent ? "default" : "pointer",
+                    fontSize: "var(--fs-meta)",
+                    lineHeight: "16px",
+                    fontFamily: "var(--font-mono)",
+                    color: isLast ? "var(--c-text-3)" : undefined,
+                    fontWeight: isLast ? 500 : 400,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: seg.isCollapsed ? undefined : 24,
+                    flexShrink: seg.isCollapsed ? 0 : 1,
+                  }}
+                >
+                  {seg.label}
+                </button>
+                {showSeparator && (
+                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>›</span>
+                )}
+              </span>
+            );
+          })}
+        </div>
         <button
           onClick={refresh}
           className="hover-bg"

@@ -8,6 +8,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
+import { diffWatchedDirs } from "./lib/sync-watches";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
@@ -184,14 +185,15 @@ export function useInit() {
     unlistens.push(startHooksListener());
     unlistens.push(startGitWatcherListener());
 
-    const watchedDirs = new Set<string>();
+    let watchedDirs: ReadonlySet<string> = new Set<string>();
     const syncGitWatches = (sessions: readonly Session[]) => {
-      const next = new Set<string>();
-      for (const s of sessions) if (s.dir) next.add(s.dir);
-      for (const dir of next) if (!watchedDirs.has(dir)) acquireGitWatch(dir);
-      for (const dir of watchedDirs) if (!next.has(dir)) releaseGitWatch(dir);
-      watchedDirs.clear();
-      for (const dir of next) watchedDirs.add(dir);
+      const { toAcquire, toRelease, next } = diffWatchedDirs(
+        watchedDirs,
+        sessions.map((s) => s.dir).filter((d): d is string => Boolean(d)),
+      );
+      for (const dir of toAcquire) acquireGitWatch(dir);
+      for (const dir of toRelease) releaseGitWatch(dir);
+      watchedDirs = next;
     };
     syncGitWatches(useSessionsStore.getState().sessions);
 
@@ -228,7 +230,6 @@ export function useInit() {
       clearInterval(timer);
       window.removeEventListener("focus", onWindowFocus);
       for (const dir of watchedDirs) releaseGitWatch(dir);
-      watchedDirs.clear();
       unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {}));
     };
   }, [addSession]);

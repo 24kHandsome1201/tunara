@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { setDockBadge } from "@/ui/dock-badge";
+import { countUnread } from "./lib/unread-count";
 
 export function useDockBadge() {
   useEffect(() => {
@@ -12,8 +13,7 @@ export function useDockBadge() {
         return;
       }
       const sessions = useSessionsStore.getState().sessions;
-      const count = sessions.reduce((n, s) => (s.unread ? n + 1 : n), 0);
-      setDockBadge(count);
+      setDockBadge(countUnread(sessions));
     };
 
     sync();
