@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: test (${{ matrix.label }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux build dependencies
         if: matrix.label == 'linux'
