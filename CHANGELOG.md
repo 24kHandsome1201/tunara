@@ -2,6 +2,12 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.2] - 2026-06-25
+
+### Fixed
+- Fixed release CI for repositories without Apple Developer signing secrets by using ad-hoc app bundle signing without exporting empty Apple certificate environment variables.
+- Added a GitHub Actions updater signing key so new release artifacts can include a signed updater manifest and signature.
+
 ## [1.5.1] - 2026-06-25
 
 ### Fixed
