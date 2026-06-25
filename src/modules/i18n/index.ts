@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import zhCN from "./locales/zh-CN.json";
 import en from "./locales/en.json";
 
@@ -74,10 +74,10 @@ function getSnapshot(): Exclude<Language, "system"> {
 
 export function useT(): (key: string, params?: Record<string, string | number>) => string {
   const lang = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  return (key, params) => {
+  return useCallback((key, params) => {
     void lang;
     return t(key, params);
-  };
+  }, [lang]);
 }
 
 export function isLanguage(value: unknown): value is Language {
