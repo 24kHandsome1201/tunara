@@ -465,4 +465,32 @@ font_size = 15
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
+
+    #[test]
+    fn existing_config_without_language_field_loads_default_and_merges_on_save() {
+        let path = temp_config_path("no-language");
+        ensure_parent(&path).expect("create temp config dir");
+        fs::write(
+            &path,
+            r##"[appearance]
+theme = "dark"
+accent = "#abcdef"
+"##,
+        )
+        .expect("write pre-i18n config");
+
+        let loaded = load_config_from_path(&path).expect("load pre-i18n config");
+        assert_eq!(loaded.config.appearance.language, "system");
+        assert_eq!(loaded.config.appearance.theme, "dark");
+        assert_eq!(loaded.error, None);
+
+        let mut config = loaded.config.clone();
+        config.appearance.language = "en".into();
+        write_config(&path, &config).expect("save with language");
+        let saved = fs::read_to_string(&path).expect("read saved config");
+        assert!(saved.contains("language = \"en\""));
+        assert!(saved.contains("accent = \"#abcdef\""));
+
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
 }
