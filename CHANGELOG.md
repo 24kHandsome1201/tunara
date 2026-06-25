@@ -2,6 +2,37 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.6.0] - 2026-06-25
+
+整轮设计 review 之后的精打磨：固定槽位字号统一、agent 徽章塌色修复、token 体系收敛、IME 友好、键盘可达性、动画稳定性。
+
+### Added
+- DiffPanel 段折叠状态写入 localStorage（`tunara.diff.collapsedSections`），重开 panel 或重启应用都能保留偏好
+- SplitHandle 键盘支持：方向键 ±2%、Shift+方向键 ±10%、Home/End 跳到极值、Enter/Space 居中；带 `role="separator"` + `aria-valuenow/min/max` 语义
+- Titlebar tab 溢出渐隐：鼠标滚轮转横向、active tab 自动滚入视野、左右边缘 24px mask 提示有更多内容
+- Sidebar 搜索清除按钮：query 非空时显示，跟 FileExplorer 搜索清除一致
+- 拖拽 cursor 反馈：sidebar 卡片可拖拽时 `grab`、拖动中 `grabbing`、搜索中 `pointer`
+- BlockFilterPanel 出场动画：sheetOut keyframe 配合 closing state 实现对称的入/出
+- 设计 token：`--c-info` / `--c-info-bg`（信息蓝）、`--scale-press` / `--scale-press-soft` / `--scale-press-strong`（按压缩放语义）、`--sp-5: 20px`（补 16→24 断层）
+
+### Changed
+- 固定槽位字号统一：AgentStatusBar / TerminalBlocksBar / DiffPanel 段头 / FileExplorer 结果头全部收敛到 `--fs-meta` (11px)，状态切换不再有基线跳变；MainArea 状态栏 path/branch/remote 加 `lineHeight: 16px` + 统一 `fontWeight: 500`
+- 5 个塌色 agent 徽章独立色相：Cursor 深石板、Droid 琥珀金、OpenCode 青、Pi 玫红、Auggie 橄榄绿（light + dark 双套），不再撞色
+- TerminalSearchBar 计数器位置稳定（visibility 切换替代条件渲染），无/有匹配时不会 layout shift
+- 浮层 backdrop 与 dialog 时长统一为 `--duration-normal`：Settings / CommandPalette / TerminalQuickSelect 节奏不再错位
+- AgentStatusBar 出场动画从 transition+setTimeout 改成 `statusBarSlideOut` keyframe + `onAnimationEnd` 卸载，busy 状态在淡出中重新进入也能稳定接管
+- SessionCard 焦点环从 `inset boxShadow`（在 accent-bg-light 上几乎不可见）改成外置 `outline`，键盘焦点终于看得见；ARIA 嵌套 button 拆除，关闭操作通过 Delete/Backspace 完成
+- FileExplorer 顶部工具栏所有控件统一 26px、padding 用 `var(--sp-2)`、gap 用 `var(--sp-1)`
+- 按压缩放从 0.88/0.92/0.96/0.98 四档收敛到 0.94/0.97/0.88 三档语义 token
+- 关闭分栏按钮不再隐式关掉 paneB 的终端会话；改为激活 paneA 后收起分栏，避免误杀正在跑的进程
+
+### Fixed
+- CommandPalette IME 合成期间不再被 Arrow / Enter 误触发：合成中只允许 Escape 关闭，`onCompositionEnd` 手动同步 query 解决 Chromium 时序
+- Settings / CommandPalette 加 `role="dialog"` + `aria-modal` + `aria-label`，屏幕阅读器现在能正确识别浮层
+- Titlebar 四个图标按钮（sidebar toggle / 新建终端 / 设置 / panel toggle）补 `aria-label`、toggle 类按钮加 `aria-pressed`
+- DiffPanel Rename 徽章硬编码 `#3b82f6` 换用 `--c-info` token；"文件过大"提示改用统一 `formatSize()` 与 FileExplorer 对齐
+- 删除未使用的 token：`--fs-block: 13.5px`、`--ease-spring`
+
 ## [1.5.2] - 2026-06-25
 
 ### Fixed

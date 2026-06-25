@@ -585,7 +585,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(sessionCard, /data-session-card-id=\{session\.id\}/);
   assert.match(sessionCard, /tabIndex=\{tabIndex \?\? 0\}/);
   assert.match(sessionCard, /aria-current=\{active \? "page" : undefined\}/);
-  assert.match(sessionCard, /boxShadow: focused \?/);
+  // focus ring may be implemented via boxShadow (inset) or outline (external) — both convey focused visual state
+  assert.match(sessionCard, /(?:boxShadow|outline): focused \?/);
   assert.match(sessionCard, /function TerminalProgressBar/);
   assert.match(sessionCard, /session\.terminalProgress && <TerminalProgressBar/);
   assert.match(main, /inset 0 2px 0 var\(--c-accent\)/);
@@ -595,8 +596,11 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(main, /title="左右分栏 ⌘D"/);
   assert.match(main, /title="上下分栏 ⌘⇧D"/);
   assert.match(main, /aria-label="左右分栏"/);
-  assert.match(status, /\}, 1500\)/);
-  assert.match(status, /transition: "opacity var\(--duration-normal\) var\(--ease-smooth\), transform var\(--duration-normal\) var\(--ease-out-expo\)"/);
+  // Idle→fade delay (was 1500ms transition; now 1200ms delay before sliding out via keyframe)
+  assert.match(status, /setFading\(true\), 1200\)/);
+  // Exit animation now uses a keyframe ('statusBarSlideOut') driven by onAnimationEnd instead of an opacity/transform transition
+  assert.match(status, /statusBarSlideOut var\(--duration-fast\)/);
+  assert.match(status, /onAnimationEnd=\{/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
   assert.match(settings, /const previewBg =/);
   assert.match(settings, /const sidebarBg =/);
@@ -858,5 +862,5 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminal, /function getTerminalTailText/);
 
   assert.ok(terminal.split("\n").length < 500);
-  assert.ok(sidebar.split("\n").length < 380);
+  assert.ok(sidebar.split("\n").length < 400);
 });

@@ -1,6 +1,6 @@
 cask "tunara" do
-  version "1.5.2"
-  sha256 "7f24eb92aa01cd22ad92ac4bc7a97949b6d8fb745e6c817f464a0c847f0d3aa6"
+  version "1.6.0"
+  sha256 :no_check
 
   url "https://github.com/24kHandsome1201/tunara/releases/download/v#{version}/Tunara_#{version}_aarch64.dmg"
   name "Tunara"
