@@ -52,3 +52,34 @@ if otool -L "$EXECUTABLE_PATH" | grep -Eq '[[:space:]](/opt/homebrew|/usr/local)
 fi
 
 codesign --verify --deep --strict --verbose=2 "$APP"
+
+# v1.6.0 shipped ad-hoc + skipped notarization without anyone noticing because
+# `codesign --verify` passes on ad-hoc bundles. The asserts below catch that.
+
+EXPECTED_TEAM_ID=${EXPECTED_TEAM_ID:-GB8P637499}
+SIG_INFO=$(codesign -dv --verbose=2 "$APP" 2>&1)
+
+if echo "$SIG_INFO" | grep -q 'Signature=adhoc'; then
+  echo "Bundle is ad-hoc signed (expected Developer ID)" >&2
+  echo "$SIG_INFO" >&2
+  exit 1
+fi
+
+if ! echo "$SIG_INFO" | grep -q "TeamIdentifier=${EXPECTED_TEAM_ID}"; then
+  echo "Wrong TeamIdentifier (expected ${EXPECTED_TEAM_ID})" >&2
+  echo "$SIG_INFO" >&2
+  exit 1
+fi
+
+ENT=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null || true)
+for key in allow-jit allow-unsigned-executable-memory disable-library-validation allow-dyld-environment-variables; do
+  if ! printf '%s' "$ENT" | grep -q "com.apple.security.cs.$key"; then
+    echo "Missing entitlement: com.apple.security.cs.$key" >&2
+    printf '%s\n' "$ENT" >&2
+    exit 1
+  fi
+done
+
+spctl --assess --type execute --verbose=4 "$APP"
+
+xcrun stapler validate "$APP"

@@ -13,6 +13,7 @@ try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toL
 type DragStyle = React.CSSProperties & { WebkitAppRegion?: string; [key: string]: any };
 
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
+const MAC_TITLEBAR_CONTROL_Y_OFFSET = -7;
 
 interface TitlebarProps {
   sessions: Session[];
@@ -240,6 +241,7 @@ export function Titlebar({
         : overflowEdge === "right"
           ? "linear-gradient(to right, #000 calc(100% - 24px), transparent 100%)"
           : undefined;
+  const titlebarControlTransform = _isMac ? `translateY(${MAC_TITLEBAR_CONTROL_Y_OFFSET}px)` : undefined;
 
   return (
     <div
@@ -262,6 +264,7 @@ export function Titlebar({
           flexShrink: 0,
           height: "100%",
           boxSizing: "border-box",
+          transform: titlebarControlTransform,
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
@@ -302,6 +305,7 @@ export function Titlebar({
             overflowX: "auto",
             overflowY: "hidden",
             animation: "tabsIn var(--duration-normal) ease",
+            transform: titlebarControlTransform,
             WebkitAppRegion: "no-drag",
             maskImage: tabsMask,
             WebkitMaskImage: tabsMask,
@@ -353,6 +357,7 @@ export function Titlebar({
           gap: 4,
           paddingRight: 12,
           flexShrink: 0,
+          transform: titlebarControlTransform,
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >

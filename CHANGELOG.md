@@ -2,6 +2,15 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.6.1] - 2026-06-25
+
+### Fixed
+- macOS 分发链路修复：v1.6.0 的 dmg 因 CI 静默回退到 ad-hoc 签名 + 跳过公证，触发 Gatekeeper 拦截。本版本带真实 Developer ID 签名、Apple 公证 ticket，并嵌入 hardened runtime 所需的 4 条 entitlement（JIT、未签名可执行内存、禁用库校验、继承 DYLD 环境），保证 PTY/spawn 子进程与外部编辑器跳转在 hardened runtime 下正常工作。
+
+### Changed
+- `.github/workflows/release.yml`：缺任一 Apple secret 立即 fail，不再静默回退到 ad-hoc。
+- `scripts/verify-macos-release-bundle.sh`：增加 5 项硬断言（非 adhoc、TeamID 校验、4 条 entitlement、`spctl --assess`、`stapler validate`），防止"签名失败但 release 照发"的回归。
+
 ## [1.6.0] - 2026-06-25
 
 整轮设计 review 之后的精打磨：固定槽位字号统一、agent 徽章塌色修复、token 体系收敛、IME 友好、键盘可达性、动画稳定性。

@@ -45,17 +45,29 @@ jobs:
         if: runner.os == 'macOS'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          # When APPLE_SIGNING_IDENTITY is set we let tauri-action use real Developer ID + notarization.
-          # Otherwise fall back to ad-hoc signing so unsigned builds still produce a dmg.
-          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' > /tmp/tauri-release-ci.json
-          else
-            printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true,"macOS":{"signingIdentity":"-"}}}' > /tmp/tauri-release-ci.json
+          # v1.6.0 regression: when these secrets were empty/missing the workflow
+          # silently fell back to ad-hoc signing + skipped notarization, leaving
+          # Gatekeeper-rejected dmgs on the release page. Fail fast instead.
+          missing=()
+          for var in APPLE_SIGNING_IDENTITY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!var:-}" ]; then missing+=("$var"); fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required Apple secrets: ${missing[*]}"
+            exit 1
           fi
+          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' > /tmp/tauri-release-ci.json
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build and publish Tauri release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -71,7 +83,23 @@ jobs:
           releaseName: "Tunara ${{ github.ref_name }}"
           releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Auto-update is built in."
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: ${{ matrix.args }} --config /tmp/tauri-release-ci.json
+
+      - name: Build Tauri release dry-run
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
           args: ${{ matrix.args }} --config /tmp/tauri-release-ci.json
 
       - name: Verify macOS release artifacts
@@ -98,22 +126,27 @@ jobs:
           test -s "$UPDATER_ARCHIVE"
           test -s "$UPDATER_SIGNATURE"
 
-          ASSETS=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[].name')
-          if ! printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json'; then
-            echo "latest.json was not uploaded to the GitHub release"
-            exit 1
-          fi
-          if ! printf '%s\n' "$ASSETS" | grep -Eq '\.app\.tar\.gz$'; then
-            echo "Updater archive was not uploaded to the GitHub release"
-            exit 1
-          fi
-          if ! printf '%s\n' "$ASSETS" | grep -Eq '\.app\.tar\.gz\.sig$'; then
-            echo "Updater signature was not uploaded to the GitHub release"
-            exit 1
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ASSETS=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[].name')
+            if ! printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json'; then
+              echo "latest.json was not uploaded to the GitHub release"
+              exit 1
+            fi
+            if ! printf '%s\n' "$ASSETS" | grep -Eq '\.app\.tar\.gz$'; then
+              echo "Updater archive was not uploaded to the GitHub release"
+              exit 1
+            fi
+            if ! printf '%s\n' "$ASSETS" | grep -Eq '\.app\.tar\.gz\.sig$'; then
+              echo "Updater signature was not uploaded to the GitHub release"
+              exit 1
+            fi
+          else
+            echo "Skipping GitHub release asset checks for non-tag dry-run (${GITHUB_REF_NAME})."
           fi
 
   update-homebrew-cask:
     needs: publish-tauri
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     permissions:
       contents: write

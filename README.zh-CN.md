@@ -31,7 +31,17 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 
 ## 截图
 
-应用图标和窗口截图见 [Releases 页面](https://github.com/24kHandsome1201/tunara/releases) 与 [GitHub Discussions](https://github.com/24kHandsome1201/tunara/discussions)。本地构建后直接看比静态图更准。
+<p align="center">
+  <img src="assets/screenshots/tunara-split-agents.jpg" width="960" alt="Tunara 在分栏终端工作区里同时运行 Claude Code 和 Codex">
+</p>
+
+<p align="center">
+  <em>真实终端工作区，带智能会话侧栏、agent 识别、分栏和只读 review 面板。</em>
+</p>
+
+| 聚焦终端 | 会话侧栏 | Review 面板 |
+|----------|----------|-------------|
+| <img src="assets/screenshots/tunara-codex-terminal.jpg" width="300" alt="Tunara 聚焦的 Codex 终端会话"> | <img src="assets/screenshots/tunara-sidebar-sessions.jpg" width="300" alt="Tunara 侧栏按目录分组 Claude Code 和 Codex 会话"> | <img src="assets/screenshots/tunara-claude-review-rail.jpg" width="300" alt="Tunara 打开右侧 review 面板的 Claude Code 会话"> |
 
 ## 核心能力
 

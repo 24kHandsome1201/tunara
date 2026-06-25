@@ -31,7 +31,17 @@ It is not a Warp replacement. It is for people who **switched back to iTerm and 
 
 ## Screenshots
 
-App icon and window screenshots live on the [Releases page](https://github.com/24kHandsome1201/tunara/releases) and in [GitHub Discussions](https://github.com/24kHandsome1201/tunara/discussions). Building locally is more honest than a static image anyway.
+<p align="center">
+  <img src="assets/screenshots/tunara-split-agents.jpg" width="960" alt="Tunara running Claude Code and Codex in a split terminal workspace">
+</p>
+
+<p align="center">
+  <em>A real terminal workspace with a smart session sidebar, agent detection, split panes, and a read-only review rail.</em>
+</p>
+
+| Focused terminal | Session sidebar | Review rail |
+|------------------|-----------------|-------------|
+| <img src="assets/screenshots/tunara-codex-terminal.jpg" width="300" alt="Tunara focused Codex terminal session"> | <img src="assets/screenshots/tunara-sidebar-sessions.jpg" width="300" alt="Tunara sidebar grouping Claude Code and Codex sessions by directory"> | <img src="assets/screenshots/tunara-claude-review-rail.jpg" width="300" alt="Tunara Claude Code session with the right review rail open"> |
 
 ## Core capabilities
 

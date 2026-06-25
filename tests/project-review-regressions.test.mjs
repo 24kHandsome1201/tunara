@@ -558,6 +558,9 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   ].join("\n");
 
   assert.match(titlebar, /width: 16, height: 16/);
+  assert.match(titlebar, /const MAC_TITLEBAR_CONTROL_Y_OFFSET = -7/);
+  assert.match(titlebar, /const titlebarControlTransform = _isMac \? `translateY\(\$\{MAC_TITLEBAR_CONTROL_Y_OFFSET\}px\)` : undefined/);
+  assert.equal(titlebar.match(/transform: titlebarControlTransform/g)?.length, 3);
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);
