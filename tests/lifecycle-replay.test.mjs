@@ -81,7 +81,7 @@ import {
 } from "../src/modules/terminal/lib/terminal-device-attributes.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
-import { parseKeybinding } from "../src/modules/config/keybindings.ts";
+import { matchesKeybinding, parseKeybinding } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand } from "../src/modules/terminal/lib/terminal-blocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 
@@ -216,6 +216,14 @@ test("keybinding parser accepts plus as a literal key", () => {
     ctrl: false,
     meta: false,
   });
+});
+
+test("keybinding matcher handles shifted bracket characters", () => {
+  const leftBraceEvent = { key: "{", metaKey: true, ctrlKey: false, shiftKey: true, altKey: false };
+  const rightBraceEvent = { key: "}", metaKey: true, ctrlKey: false, shiftKey: true, altKey: false };
+
+  assert.equal(matchesKeybinding(leftBraceEvent, "Mod+Shift+[", true), true);
+  assert.equal(matchesKeybinding(rightBraceEvent, "Mod+Shift+]", true), true);
 });
 
 test("sticky command block appears only after scrolling into hidden block output", () => {

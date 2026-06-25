@@ -108,6 +108,8 @@ function normalizeKey(key: string): string {
   if (lowered === "plus") return "+";
   if (lowered === "comma") return ",";
   if (lowered === "backslash") return "\\";
+  if (lowered === "{") return "[";
+  if (lowered === "}") return "]";
   return lowered;
 }
 

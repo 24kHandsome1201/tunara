@@ -45,7 +45,7 @@ test("mac window chrome aligns controls and hides main window on close while cle
   assert.equal(tauri.app.windows[0].titleBarStyle, "Overlay");
   assert.deepEqual(tauri.app.windows[0].trafficLightPosition, { x: 18, y: 18 });
   assert.ok(defaultCapability.permissions.includes("core:window:allow-hide"));
-  assert.match(lib, /tauri::RunEvent::Reopen \{ has_visible_windows[\s\S]*?window\.show\(\)[\s\S]*?window\.set_focus\(\)/);
+  assert.match(lib, /tauri::RunEvent::Reopen \{[\s\S]*?has_visible_windows: false,[\s\S]*?window\.show\(\)[\s\S]*?window\.set_focus\(\)/);
   assert.match(lib, /tauri::RunEvent::Exit[\s\S]*?app\.state::<pty::PtyState>\(\)\.close_all\(\);[\s\S]*?app\.state::<HookListenerState>\(\)\.shutdown\(\);/);
 });
 
