@@ -10,6 +10,7 @@ import { useUIStore } from "@/state/ui";
 import { useInit } from "./useInit";
 import { useTheme } from "./useTheme";
 import { useKeybindings } from "./useKeybindings";
+import { useDockBadge } from "./useDockBadge";
 import { useEffect } from "react";
 
 interface ResizeHandleProps {
@@ -141,6 +142,7 @@ export default function App() {
   useInit();
   useTheme();
   useKeybindings();
+  useDockBadge();
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);
