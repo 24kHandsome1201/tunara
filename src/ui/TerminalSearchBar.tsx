@@ -93,6 +93,7 @@ export function TerminalSearchBar({
           background: "transparent",
           outline: "none",
           fontSize: "var(--fs-body)",
+          lineHeight: "20px",
           color: "var(--c-text-primary)",
           fontFamily: "var(--font-ui)",
           width: 180,
@@ -130,20 +131,23 @@ export function TerminalSearchBar({
         Aa
       </button>
 
-      {count && (
-        <span style={{
+      <span
+        aria-hidden={!count}
+        style={{
           fontSize: "var(--fs-meta)",
           color: noMatch ? "var(--c-error)" : "var(--c-text-4)",
           fontFamily: "var(--font-mono)",
           fontWeight: 600,
           whiteSpace: "nowrap",
           flexShrink: 0,
-          minWidth: 32,
+          minWidth: 36,
           textAlign: "center",
-        }}>
-          {count.total === 0 ? "0" : `${count.current}/${count.total}`}
-        </span>
-      )}
+          lineHeight: "20px",
+          visibility: count ? "visible" : "hidden",
+        }}
+      >
+        {!count ? "0" : count.total === 0 ? "0" : `${count.current}/${count.total}`}
+      </span>
 
       <div style={{ width: 1, height: 16, background: "var(--c-border-2)", flexShrink: 0, margin: "0 2px" }} />
 

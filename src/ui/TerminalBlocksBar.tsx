@@ -7,18 +7,18 @@ function ExitCodeBadge({ code, completed }: { code: number | undefined; complete
   if (!completed) {
     return (
       <span style={{
-        fontSize: "var(--fs-badge)",
+        fontSize: "var(--fs-meta)",
         fontFamily: "var(--font-mono)",
         fontWeight: 700,
         color: "var(--c-accent)",
         background: "var(--c-accent-bg-light)",
         borderRadius: 3,
-        padding: "0 4px",
-        lineHeight: "14px",
+        padding: "0 5px",
+        lineHeight: "16px",
         flexShrink: 0,
         display: "inline-flex",
         alignItems: "center",
-        gap: 3,
+        gap: 4,
       }}>
         <span style={{ width: 4, height: 4, borderRadius: "50%", background: "currentColor", animation: "pulseDot 1.5s var(--ease-in-out) infinite" }} />
         运行
@@ -29,14 +29,14 @@ function ExitCodeBadge({ code, completed }: { code: number | undefined; complete
   const ok = code === 0;
   return (
     <span style={{
-      fontSize: "var(--fs-badge)",
+      fontSize: "var(--fs-meta)",
       fontFamily: "var(--font-mono)",
       fontWeight: 700,
       color: ok ? "var(--c-success)" : "var(--c-error)",
       background: ok ? "var(--c-success-bg)" : "var(--c-error-bg)",
       borderRadius: 3,
-      padding: "0 4px",
-      lineHeight: "14px",
+      padding: "0 5px",
+      lineHeight: "16px",
       flexShrink: 0,
     }}>
       {ok ? "✓" : code ?? "?"}
@@ -98,10 +98,11 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
           }}
         >
           <span style={{
-            fontSize: "var(--fs-badge)",
+            fontSize: "var(--fs-meta)",
             color: "var(--c-accent)",
             fontWeight: 700,
             flexShrink: 0,
+            lineHeight: "16px",
           }}>
             当前输出
           </span>
