@@ -108,10 +108,7 @@ pub fn git_watch(
 }
 
 #[tauri::command]
-pub fn git_unwatch(
-    repo_path: String,
-    state: State<'_, GitWatcherState>,
-) -> Result<(), String> {
+pub fn git_unwatch(repo_path: String, state: State<'_, GitWatcherState>) -> Result<(), String> {
     let key = PathBuf::from(&repo_path);
     let mut map = state.inner.lock().map_err(|e| e.to_string())?;
     if let Some(entry) = map.get_mut(&key) {
