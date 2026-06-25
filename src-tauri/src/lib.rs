@@ -28,13 +28,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
         .manage(ResolverState::default())
-        .on_window_event(|window, event| {
-            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
-                window.state::<pty::PtyState>().close_all();
-                window.state::<HookListenerState>().shutdown();
-                window.app_handle().exit(0);
-            }
-        })
         .setup(|app| {
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_bin 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
@@ -83,6 +76,22 @@ pub fn run() {
             modules::config::load_config,
             modules::config::save_config,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| match event {
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { has_visible_windows, .. } => {
+                if !has_visible_windows {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+            tauri::RunEvent::Exit => {
+                app.state::<pty::PtyState>().close_all();
+                app.state::<HookListenerState>().shutdown();
+            }
+            _ => {}
+        });
 }

@@ -168,12 +168,14 @@ export function useInit() {
     };
 
     unlistens.push(
-      win.onCloseRequested(async () => {
+      win.onCloseRequested(async (event) => {
+        event.preventDefault();
         if (saveTimer) {
           clearTimeout(saveTimer);
           saveTimer = null;
         }
         await saveWorkspaceSnapshot(buildSnapshot());
+        await win.hide();
       }),
     );
 

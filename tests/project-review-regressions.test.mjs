@@ -37,14 +37,16 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/tunara/);
 });
 
-test("mac window chrome aligns controls and quits after closing the main window", () => {
+test("mac window chrome aligns controls and hides main window on close while cleaning up on exit", () => {
   const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
   const lib = read("src-tauri/src/lib.rs");
+  const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
 
   assert.equal(tauri.app.windows[0].titleBarStyle, "Overlay");
   assert.deepEqual(tauri.app.windows[0].trafficLightPosition, { x: 18, y: 18 });
-  assert.match(lib, /window\.label\(\) == "main"[\s\S]*?WindowEvent::Destroyed/);
-  assert.match(lib, /window\.state::<pty::PtyState>\(\)\.close_all\(\);[\s\S]*?window\.state::<HookListenerState>\(\)\.shutdown\(\);[\s\S]*?window\.app_handle\(\)\.exit\(0\);/);
+  assert.ok(defaultCapability.permissions.includes("core:window:allow-hide"));
+  assert.match(lib, /tauri::RunEvent::Reopen \{ has_visible_windows[\s\S]*?window\.show\(\)[\s\S]*?window\.set_focus\(\)/);
+  assert.match(lib, /tauri::RunEvent::Exit[\s\S]*?app\.state::<pty::PtyState>\(\)\.close_all\(\);[\s\S]*?app\.state::<HookListenerState>\(\)\.shutdown\(\);/);
 });
 
 test("release cleanup removes orphan Rust modules from the source tree", () => {
@@ -236,7 +238,7 @@ test("session persistence is debounced and still flushed on close", () => {
   assert.match(init, /setTimeout\(\(\) => \{[\s\S]*?persistNow\(\);[\s\S]*?\}, 500\)/);
   assert.match(init, /scheduleSave\(\);/);
   assert.match(init, /const timer = setInterval\(persistNow, 30_000\);/);
-  assert.match(init, /onCloseRequested\(async \(\) => \{[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveWorkspaceSnapshot/);
+  assert.match(init, /onCloseRequested\(async \(event\) => \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveWorkspaceSnapshot[\s\S]*?await win\.hide\(\)/);
 });
 
 test("responsive shells close cleanly and avoid stale remote git badges", () => {
