@@ -3,6 +3,8 @@ import type { ThemeType, TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { platform } from "@tauri-apps/plugin-os";
 import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { CloseIcon, RefreshIcon } from "../shared";
@@ -22,6 +24,9 @@ interface ResolvedCommand {
 type SettingsTab = "appearance" | "cli";
 
 const TABS: SettingsTab[] = ["appearance", "cli"];
+
+let _isMac = true;
+try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
 
 function ThemeCard({ label, themeType, selected, onClick }: { label: string; themeType: ThemeType; selected: boolean; onClick: () => void }) {
   const isDark = themeType === "dark";
@@ -322,6 +327,27 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
                 <div style={SECTION_HINT}>{t("settings.appearance.clipboard_write.hint")}</div>
               </div>
+              {_isMac && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={TOGGLE_ROW}>
+                    <span style={SECTION_LABEL_INLINE}>{t("settings.privacy.title")}</span>
+                    <button
+                      onClick={() => {
+                        openUrl("x-apple.systempreferences:com.apple.preference.security?Privacy_Files").catch(() => {});
+                      }}
+                      style={{
+                        height: 28, padding: "0 12px", borderRadius: "var(--r-btn)",
+                        border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)",
+                        color: "var(--c-text-2)", fontSize: "var(--fs-secondary)",
+                        fontWeight: 500, cursor: "pointer", flexShrink: 0,
+                      }}
+                    >
+                      {t("settings.privacy.open_system")}
+                    </button>
+                  </div>
+                  <div style={SECTION_HINT}>{t("settings.privacy.hint")}</div>
+                </div>
+              )}
               <div>
                 <div style={SECTION_LABEL}>{t("settings.appearance.terminal_theme")}</div>
                 <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>{t("settings.appearance.terminal_theme.hint")}</div>

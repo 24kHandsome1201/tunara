@@ -2,5 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Tunara 需要访问"文稿"文件夹，以便在终端和侧栏中浏览、编辑你的项目文件。</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Tunara 需要访问"下载"文件夹，以便在终端中操作下载的脚本、归档或安装包。</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Tunara 需要访问"桌面"，以便在终端中操作存放在桌面上的项目和文件。</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Tunara 需要访问可移动卷，以便在终端中操作外接磁盘、U 盘上的文件。</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Tunara 需要访问网络卷，以便在终端中操作 NAS、SMB、远程挂载上的项目。</string>
 </dict>
 </plist>

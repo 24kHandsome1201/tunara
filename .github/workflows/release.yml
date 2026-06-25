@@ -43,15 +43,29 @@ jobs:
 
       - name: Prepare macOS release config
         if: runner.os == 'macOS'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
-          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true,"macOS":{"signingIdentity":"-"}}}' > /tmp/tauri-release-ci.json
+          # When APPLE_SIGNING_IDENTITY is set we let tauri-action use real Developer ID + notarization.
+          # Otherwise fall back to ad-hoc signing so unsigned builds still produce a dmg.
+          if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' > /tmp/tauri-release-ci.json
+          else
+            printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true,"macOS":{"signingIdentity":"-"}}}' > /tmp/tauri-release-ci.json
+          fi
 
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Tunara ${{ github.ref_name }}"
