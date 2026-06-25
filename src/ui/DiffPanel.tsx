@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type Session } from "./types";
+import { formatSize, type Session } from "./types";
 import {
   gitDiff,
   gitAheadBehind,
@@ -25,7 +25,7 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>二进制文件</div>;
   }
   if (diff.kind === "tooLarge") {
-    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>文件过大（{Math.round(diff.bytes / 1024)} KB），未展开</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>文件过大（{formatSize(diff.bytes)}），未展开</div>;
   }
   if (diff.kind === "metadataOnly") {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>仅元数据变更（{diff.change}）</div>;
@@ -84,7 +84,7 @@ function FileStatusBadge({ status }: { status: string }) {
     M: { bg: "var(--c-bg-3)", text: "var(--c-text-4)" },
     A: { bg: "var(--c-success-bg)", text: "var(--c-success)" },
     D: { bg: "var(--c-error-bg)", text: "var(--c-error)" },
-    R: { bg: "color-mix(in srgb, #3b82f6 12%, transparent)", text: "#3b82f6" },
+    R: { bg: "var(--c-info-bg)", text: "var(--c-info)" },
     "?": { bg: "transparent", text: "var(--c-text-5)", border: "1px dashed var(--c-border-2)" },
   };
   const style = colors[status] ?? colors["M"];
@@ -130,8 +130,8 @@ function SectionHeader({ title, count, expanded, onToggle, titleColor, accentBor
     >
       {chevronIcon(expanded)}
       {accentBorder && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--c-success)", flexShrink: 0 }} />}
-      <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: titleColor ?? "var(--c-text-4)" }}>{title}</span>
-      <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-text-4)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "1px 6px", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+      <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", fontWeight: 600, color: titleColor ?? "var(--c-text-4)" }}>{title}</span>
+      <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 18, textAlign: "center" }}>
         {count}
       </span>
     </div>
@@ -167,7 +167,24 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [remote, setRemote] = useState<RemoteState | null>(null);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem("tunara.diff.collapsedSections");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("tunara.diff.collapsedSections", JSON.stringify(collapsedSections));
+    } catch {
+      // 配额满 / 隐私模式 — 忽略即可
+    }
+  }, [collapsedSections]);
 
   useEffect(() => {
     let cancelled = false;

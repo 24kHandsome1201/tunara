@@ -157,6 +157,15 @@ html[data-chrome="borderless"] {
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes statusBarSlideOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+@keyframes sheetOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-6px) scale(0.97); }
+}
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
 
 /* Settings segmented controls — light/dark adaptive surface for selected state */
 .settings-tab-pill[data-active="true"],

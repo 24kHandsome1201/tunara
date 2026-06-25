@@ -77,6 +77,14 @@ export function TerminalBlockFilterPanel({
   const [invert, setInvert] = useState(false);
   const [contextLines, setContextLines] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  const requestClose = () => {
+    if (closing) return;
+    setClosing(true);
+    // 与 sheetOut keyframe 时长保持一致（--duration-fast = 120ms）
+    setTimeout(onClose, 120);
+  };
 
   const result = useMemo(() => filterTerminalBlockOutput(output, {
     query,
@@ -110,7 +118,9 @@ export function TerminalBlockFilterPanel({
         border: "1px solid var(--c-border-2)",
         borderRadius: "var(--r-input)",
         boxShadow: "var(--shadow-menu)",
-        animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
+        animation: closing
+          ? "sheetOut var(--duration-fast) var(--ease-smooth) forwards"
+          : "sheetIn var(--duration-normal) var(--ease-out-back)",
       }}
     >
       <div style={{ height: 38, display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
@@ -122,7 +132,7 @@ export function TerminalBlockFilterPanel({
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
-              onClose();
+              requestClose();
             }
           }}
           placeholder="筛选块输出…"
@@ -176,7 +186,7 @@ export function TerminalBlockFilterPanel({
         >
           {copied ? "✓" : copyIcon()}
         </button>
-        <button onClick={onClose} title="关闭 Esc" className="hover-bg" style={ICON_BUTTON_STYLE}>
+        <button onClick={requestClose} title="关闭 Esc" aria-label="关闭" className="hover-bg" style={ICON_BUTTON_STYLE}>
           <CloseIcon size={12} strokeWidth={2.2} />
         </button>
       </div>

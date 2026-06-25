@@ -7,9 +7,38 @@ interface SplitHandleProps {
   order?: number;
 }
 
+const KEY_STEP = 0.02;
+const KEY_STEP_LARGE = 0.1;
+
 export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
   const setSplitRatio = useUIStore((s) => s.setSplitRatio);
+  const ratio = useUIStore((s) => s.split.ratio);
   const dragging = useRef(false);
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const isHorizontal = mode === "horizontal";
+      const decKey = isHorizontal ? "ArrowLeft" : "ArrowUp";
+      const incKey = isHorizontal ? "ArrowRight" : "ArrowDown";
+      if (e.key === decKey) {
+        e.preventDefault();
+        setSplitRatio(ratio - (e.shiftKey ? KEY_STEP_LARGE : KEY_STEP));
+      } else if (e.key === incKey) {
+        e.preventDefault();
+        setSplitRatio(ratio + (e.shiftKey ? KEY_STEP_LARGE : KEY_STEP));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setSplitRatio(0.2);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setSplitRatio(0.8);
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setSplitRatio(0.5);
+      }
+    },
+    [mode, ratio, setSplitRatio],
+  );
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -56,6 +85,14 @@ export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
   return (
     <div
       onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      role="separator"
+      tabIndex={0}
+      aria-orientation={isHorizontal ? "vertical" : "horizontal"}
+      aria-valuenow={Math.round(ratio * 100)}
+      aria-valuemin={20}
+      aria-valuemax={80}
+      aria-label={isHorizontal ? "拖动调整左右分栏比例（方向键、Shift+方向键大幅、Home/End 极值、Enter 居中）" : "拖动调整上下分栏比例（方向键、Shift+方向键大幅、Home/End 极值、Enter 居中）"}
       className={`split-handle ${isHorizontal ? "split-handle-h" : "split-handle-v"}`}
       style={{
         position: "relative",
@@ -68,6 +105,7 @@ export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        outline: "none",
       }}
     >
       <div

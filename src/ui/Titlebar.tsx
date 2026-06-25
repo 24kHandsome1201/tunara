@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { deriveTitle, type Session } from "./types";
 import { useUIStore } from "@/state/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -176,11 +177,69 @@ export function Titlebar({
   const t = useT();
   const showTabs = !sidebarVisible;
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
 
   function tabLabel(s: Session): string {
     const { primary } = deriveTitle(s);
     return primary.length > 24 ? primary.slice(0, 24) + "…" : primary;
   }
+
+  // 监听 tabs 容器滚动，决定哪边显示渐隐提示
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el || !showTabs) return;
+    const update = () => {
+      const canLeft = el.scrollLeft > 1;
+      const canRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setOverflowEdge(canLeft && canRight ? "both" : canLeft ? "left" : canRight ? "right" : "none");
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [showTabs, sessions.length]);
+
+  // 鼠标滚轮 → 横向滚动（trackpad 横滑天生工作，无需介入）
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el || !showTabs) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaX !== 0) return; // trackpad 横滑，浏览器已经处理
+      if (e.deltaY === 0) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll <= 0) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [showTabs]);
+
+  // active tab 自动滚入视野
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el || !showTabs || !activeSessionId) return;
+    const active = el.querySelector<HTMLElement>(`[data-tab-id="${activeSessionId}"]`);
+    if (!active) return;
+    const left = active.offsetLeft;
+    const right = left + active.offsetWidth;
+    if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 16);
+    else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 16;
+  }, [activeSessionId, showTabs, sessions.length]);
+
+  const tabsMask =
+    overflowEdge === "both"
+      ? "linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)"
+      : overflowEdge === "left"
+        ? "linear-gradient(to right, transparent 0, #000 24px)"
+        : overflowEdge === "right"
+          ? "linear-gradient(to right, #000 calc(100% - 24px), transparent 100%)"
+          : undefined;
 
   return (
     <div
@@ -210,6 +269,8 @@ export function Titlebar({
         <button
           onClick={onToggleSidebar}
           title={t("titlebar.toggle_sidebar")}
+          aria-label={t("titlebar.toggle_sidebar")}
+          aria-pressed={sidebarVisible}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",
@@ -229,6 +290,7 @@ export function Titlebar({
 
       {showTabs ? (
         <div
+          ref={tabsRef}
           className="no-scrollbar"
           style={{
             display: "flex",
@@ -241,21 +303,25 @@ export function Titlebar({
             overflowY: "hidden",
             animation: "tabsIn var(--duration-normal) ease",
             WebkitAppRegion: "no-drag",
+            maskImage: tabsMask,
+            WebkitMaskImage: tabsMask,
           } as DragStyle}
         >
           {sessions.map((s) => (
-            <TabButton
-              key={s.id}
-              isActive={s.id === activeSessionId}
-              label={tabLabel(s)}
-              closeLabel={t("titlebar.tab.close")}
-              onSelect={() => onSelectSession(s.id)}
-              onClose={() => onCloseSession(s.id)}
-            />
+            <div key={s.id} data-tab-id={s.id} style={{ flexShrink: 0 }}>
+              <TabButton
+                isActive={s.id === activeSessionId}
+                label={tabLabel(s)}
+                closeLabel={t("titlebar.tab.close")}
+                onSelect={() => onSelectSession(s.id)}
+                onClose={() => onCloseSession(s.id)}
+              />
+            </div>
           ))}
           <button
             onClick={onNewTerminal}
             title={t("titlebar.new_terminal_with_shortcut")}
+            aria-label={t("titlebar.new_terminal_with_shortcut")}
             style={{
               width: "var(--w-titlebar-control)",
               height: "var(--h-titlebar-control)",
@@ -293,6 +359,7 @@ export function Titlebar({
         <button
           onClick={onOpenSettings}
           title={t("titlebar.settings_with_shortcut")}
+          aria-label={t("titlebar.settings_with_shortcut")}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",
@@ -312,6 +379,8 @@ export function Titlebar({
         <button
           onClick={onTogglePanel}
           title={panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show")}
+          aria-label={panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show")}
+          aria-pressed={panelVisible}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",

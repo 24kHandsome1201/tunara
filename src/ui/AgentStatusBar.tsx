@@ -31,11 +31,8 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       setVisible(true);
       setFading(false);
     } else if (isIdleAfterBusy) {
-      setFading(true);
-      const timer = setTimeout(() => {
-        setVisible(false);
-        setFading(false);
-      }, 1500);
+      // 等一段时间让用户看到"已完成"，再触发出场动画
+      const timer = setTimeout(() => setFading(true), 1200);
       return () => clearTimeout(timer);
     } else if (!session.agent) {
       setVisible(false);
@@ -64,6 +61,12 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
 
   return (
     <div
+      onAnimationEnd={(e) => {
+        if (fading && e.animationName === "statusBarSlideOut") {
+          setVisible(false);
+          setFading(false);
+        }
+      }}
       style={{
         height: 30,
         margin: "4px 8px 0",
@@ -75,18 +78,17 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         alignItems: "center",
         padding: "0 10px",
         gap: 8,
-        opacity: fading ? 0 : 1,
-        transform: fading ? "translateY(-4px) scale(0.98)" : "translateY(0) scale(1)",
-        transition: "opacity var(--duration-normal) var(--ease-smooth), transform var(--duration-normal) var(--ease-out-expo)",
-        animation: !fading ? "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)" : undefined,
+        animation: fading
+          ? "statusBarSlideOut var(--duration-fast) var(--ease-smooth) forwards"
+          : "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)",
       }}
     >
       {displayAgent && <AgentBadge agent={displayAgent} size={18} />}
-      <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)" }}>
+      <span style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-primary)", lineHeight: "16px" }}>
         {agentName}
       </span>
       <span style={{
-        fontSize: "var(--fs-badge)",
+        fontSize: "var(--fs-meta)",
         fontFamily: "var(--font-mono)",
         fontWeight: 700,
         color: statusColor,
@@ -142,14 +144,14 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       {fileCount > 0 && (
         <span style={{
           marginLeft: resumeCommand && !session.agent ? 0 : "auto",
-          fontSize: "var(--fs-badge)",
+          fontSize: "var(--fs-meta)",
           fontFamily: "var(--font-mono)",
           fontWeight: 600,
           color: "var(--c-text-4)",
           background: "var(--c-bg-3)",
           borderRadius: 4,
           padding: "1px 6px",
-          lineHeight: "14px",
+          lineHeight: "16px",
           flexShrink: 0,
         }}>
           {fileCount} 文件
