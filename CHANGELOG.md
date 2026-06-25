@@ -2,6 +2,13 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.1] - 2026-06-25
+
+### Fixed
+- Rebuilt macOS release artifacts with complete app bundle signing metadata.
+- Enabled Tauri updater artifacts so GitHub releases include `latest.json`, `.app.tar.gz`, and `.sig`.
+- Vendored OpenSSL for `git2` so the Apple Silicon app no longer depends on Homebrew OpenSSL dylibs.
+
 ## [1.5.0] - 2026-06-25
 
 ### Added
