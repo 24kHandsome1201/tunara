@@ -219,6 +219,10 @@ html[data-chrome="borderless"] {
 .diff-file-row { transition: background var(--duration-fast) var(--ease-smooth); }
 .diff-file-row:hover { background: var(--c-bg-hover) !important; }
 
+/* DiffPanel: hunk copy button reveals on hunk row hover */
+.diff-hunk-row .diff-hunk-copy { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth); }
+.diff-hunk-row:hover .diff-hunk-copy { opacity: 1; display: flex !important; }
+
 /* Focus-visible: uniform keyboard focus ring */
 :focus-visible {
   outline: 2px solid color-mix(in srgb, var(--c-accent) 70%, transparent);

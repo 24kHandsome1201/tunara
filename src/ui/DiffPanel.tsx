@@ -17,7 +17,47 @@ interface DiffPanelProps {
   embedded?: boolean;
 }
 
-function MiniDiff({ diff }: { diff?: FileDiff }) {
+type DiffRow = { key: string; line: string; isAdd: boolean; isDel: boolean; isHunk: boolean; hunkIndex: number };
+
+function renderHighlighted(line: string, query: string): React.ReactNode {
+  if (!query) return line || " ";
+  const lower = line.toLowerCase();
+  const needle = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  let found = lower.indexOf(needle, cursor);
+  let segIdx = 0;
+  while (found !== -1) {
+    if (found > cursor) parts.push(line.slice(cursor, found));
+    parts.push(
+      <mark
+        key={`m${segIdx++}`}
+        style={{
+          background: "var(--c-accent-bg-light)",
+          color: "var(--c-accent)",
+          borderRadius: 2,
+          padding: "0 1px",
+        }}
+      >
+        {line.slice(found, found + needle.length)}
+      </mark>,
+    );
+    cursor = found + needle.length;
+    found = lower.indexOf(needle, cursor);
+  }
+  if (cursor < line.length) parts.push(line.slice(cursor));
+  return parts.length === 0 ? line || " " : parts;
+}
+
+function MiniDiff({
+  diff,
+  searchQuery,
+  onCopyHunk,
+}: {
+  diff?: FileDiff;
+  searchQuery: string;
+  onCopyHunk: (hunkText: string) => void;
+}) {
   if (!diff) {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>加载中…</div>;
   }
@@ -30,10 +70,63 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
   if (diff.kind === "metadataOnly") {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>仅元数据变更（{diff.change}）</div>;
   }
-  const rows = buildMiniDiffRows(diff.patch);
+  const allRows = buildMiniDiffRows(diff.patch);
+  const q = searchQuery.trim();
+  const rows = q ? allRows.filter((r) => r.line.toLowerCase().includes(q.toLowerCase())) : allRows;
+  const hunkTexts = collectHunkTexts(allRows);
+
+  if (rows.length === 0) {
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>未匹配「{q}」</div>;
+  }
+
   return (
     <div style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar scroll-fade-y">
-      {rows.map(({ key, line, isAdd, isDel }) => {
+      {rows.map((row) => {
+        const { key, line, isAdd, isDel, isHunk, hunkIndex } = row;
+        if (isHunk) {
+          return (
+            <div
+              key={key}
+              className="diff-hunk-row"
+              style={{
+                position: "relative",
+                padding: "1px 8px",
+                color: "var(--c-text-5)",
+                whiteSpace: "pre",
+              }}
+            >
+              {renderHighlighted(line, q)}
+              <button
+                className="diff-hunk-copy hover-bg"
+                title="复制此 hunk"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const text = hunkTexts[hunkIndex];
+                  if (text) onCopyHunk(text);
+                }}
+                style={{
+                  position: "absolute",
+                  right: 4,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  border: "none",
+                  background: "var(--c-bg-2)",
+                  color: "var(--c-text-5)",
+                  cursor: "pointer",
+                  padding: "2px 4px",
+                  borderRadius: 3,
+                  display: "none",
+                  alignItems: "center",
+                }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              </button>
+            </div>
+          );
+        }
         return (
           <div
             key={key}
@@ -44,39 +137,51 @@ function MiniDiff({ diff }: { diff?: FileDiff }) {
               whiteSpace: "pre",
             }}
           >
-            {line || " "}
+            {renderHighlighted(line, q)}
           </div>
         );
       })}
-      {diff.truncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)" }}>… 已截断</div>}
+      {diff.truncated && !q && <div style={{ padding: "4px 8px", color: "var(--c-text-5)" }}>… 已截断</div>}
     </div>
   );
 }
 
-function buildMiniDiffRows(patch: string): Array<{ key: string; line: string; isAdd: boolean; isDel: boolean }> {
+function buildMiniDiffRows(patch: string): DiffRow[] {
   let inHunk = false;
   let idx = 0;
+  let hunkIndex = -1;
 
   return patch.split("\n").map((line) => {
     const i = idx++;
     if (/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.test(line)) {
       inHunk = true;
-      return { key: `hunk:${i}`, line, isAdd: false, isDel: false };
+      hunkIndex += 1;
+      return { key: `hunk:${i}`, line, isAdd: false, isDel: false, isHunk: true, hunkIndex };
     }
     if (line.startsWith("---") || line.startsWith("+++")) {
-      return { key: `file:${i}`, line, isAdd: false, isDel: false };
+      return { key: `file:${i}`, line, isAdd: false, isDel: false, isHunk: false, hunkIndex };
     }
     if (line.startsWith("+")) {
-      return { key: `new:${i}`, line, isAdd: true, isDel: false };
+      return { key: `new:${i}`, line, isAdd: true, isDel: false, isHunk: false, hunkIndex };
     }
     if (line.startsWith("-")) {
-      return { key: `old:${i}`, line, isAdd: false, isDel: true };
+      return { key: `old:${i}`, line, isAdd: false, isDel: true, isHunk: false, hunkIndex };
     }
     if (inHunk) {
-      return { key: `ctx:${i}`, line, isAdd: false, isDel: false };
+      return { key: `ctx:${i}`, line, isAdd: false, isDel: false, isHunk: false, hunkIndex };
     }
-    return { key: `prelude:${i}`, line, isAdd: false, isDel: false };
+    return { key: `prelude:${i}`, line, isAdd: false, isDel: false, isHunk: false, hunkIndex };
   });
+}
+
+function collectHunkTexts(rows: DiffRow[]): string[] {
+  const buckets: string[][] = [];
+  for (const row of rows) {
+    if (row.hunkIndex < 0) continue;
+    if (!buckets[row.hunkIndex]) buckets[row.hunkIndex] = [];
+    buckets[row.hunkIndex].push(row.line);
+  }
+  return buckets.map((lines) => lines.join("\n"));
 }
 
 function FileStatusBadge({ status }: { status: string }) {
@@ -167,6 +272,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [remote, setRemote] = useState<RemoteState | null>(null);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
+  const [searchQuery, setSearchQuery] = useState("");
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -206,12 +312,33 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     }
   }, [files, expandedFile]);
 
+  async function copyHunk(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      useUIStore.getState().addToast({
+        sessionId: session.id,
+        title: "已复制 hunk",
+        subtitle: `${text.split("\n").length} 行`,
+        variant: "success",
+      });
+    } catch {
+      useUIStore.getState().addToast({
+        sessionId: session.id,
+        title: "复制失败",
+        subtitle: "剪贴板不可用",
+        variant: "error",
+      });
+    }
+  }
+
   async function toggleFile(path: string) {
     if (expandedFile === path) {
       setExpandedFile(null);
+      setSearchQuery("");
       return;
     }
     setExpandedFile(path);
+    setSearchQuery("");
     if (!diffs[path]) {
       try {
         const d = await gitDiff(repoPath, path);
@@ -290,7 +417,29 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         </div>
         {isExpanded && (
           <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-            <MiniDiff diff={diffs[file.path]} />
+            {diffs[file.path]?.kind === "text" && (
+              <div style={{ padding: "4px 8px 2px", borderBottom: "1px solid var(--c-border-3)" }}>
+                <input
+                  type="text"
+                  placeholder="在此文件中搜索…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") setSearchQuery(""); }}
+                  style={{
+                    width: "100%",
+                    fontSize: "var(--fs-meta)",
+                    fontFamily: "var(--font-mono)",
+                    padding: "3px 6px",
+                    background: "var(--c-bg-1)",
+                    color: "var(--c-text-2)",
+                    border: "1px solid var(--c-border-2)",
+                    borderRadius: "var(--r-btn)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+            )}
+            <MiniDiff diff={diffs[file.path]} searchQuery={searchQuery} onCopyHunk={copyHunk} />
           </div>
         )}
       </div>
