@@ -201,7 +201,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         }}
       >
         {/* 路径区 */}
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
+        <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
           {compactPath(active?.dir ?? "")}
         </span>
 
@@ -209,18 +209,18 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         <span aria-hidden="true" style={{ width: 1, height: 12, background: "var(--c-border-2)", flexShrink: 0 }} />
 
         {/* Git 分支 */}
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
+        <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
           ⎇ {active?.branch || "-"}
         </span>
 
         {/* Remote ahead/behind */}
         {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
-          <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", flexShrink: 0, display: "inline-flex", gap: 3 }}>
+          <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", fontWeight: 500, fontFamily: "var(--font-mono)", flexShrink: 0, display: "inline-flex", gap: 3 }}>
             {remote.ahead > 0 && (
-              <span style={{ color: "var(--c-success)", fontWeight: 600 }}>↑{remote.ahead}</span>
+              <span style={{ color: "var(--c-success)" }}>↑{remote.ahead}</span>
             )}
             {remote.behind > 0 && (
-              <span style={{ color: "var(--c-warning)", fontWeight: 600 }}>↓{remote.behind}</span>
+              <span style={{ color: "var(--c-warning)" }}>↓{remote.behind}</span>
             )}
           </span>
         )}
@@ -233,9 +233,9 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             <button
               onClick={() => {
                 const ui = useUIStore.getState();
-                const paneBId = ui.split.paneB;
-                if (paneBId) useSessionsStore.getState().closeSession(paneBId);
-                else ui.closeSplit();
+                const paneAId = ui.split.paneA;
+                if (paneAId) useSessionsStore.getState().setActive(paneAId);
+                ui.closeSplit();
               }}
               title="关闭分栏"
               aria-label="关闭分栏"
