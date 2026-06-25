@@ -107,6 +107,9 @@ export function useKeybindings() {
       if (isEditableTarget(e.target) && !hasPlatformModKey(e, isMac)) return;
       const bindings = useUIStore.getState().keybindings;
       for (const action of KEYBINDING_ACTIONS) {
+        // Block navigation is handled per-terminal via xterm's custom key handler
+        // because it needs the active terminal instance. Leave the event alone here.
+        if (action === "navigatePrevBlock" || action === "navigateNextBlock") continue;
         if (!matchesKeybinding(e, bindings[action], isMac)) continue;
         e.preventDefault();
         runAction(action);

@@ -797,10 +797,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocksPure, /export function normalizeBlockCommand/);
   assert.match(terminalBlocksPure, /export function collectTerminalBlockOutputText/);
   assert.match(terminalBlocksPure, /export function formatTerminalBlockCommandAndOutput/);
-  assert.match(terminalBlocks, /import \{ hasPlatformModKey \} from "\.\.\/modules\/config\/keybindings\.ts"/);
+  assert.match(terminalBlocks, /import \{ matchesKeybinding \} from "\.\.\/modules\/config\/keybindings\.ts"/);
+  assert.match(terminalBlocks, /import \{ useUIStore \} from "@\/state\/ui"/);
   assert.match(terminalBlocks, /function detectMacPlatform\(\): boolean/);
-  assert.match(terminalBlocks, /function hasBlockNavigationModifier\(e: KeyboardEvent\): boolean/);
-  assert.match(terminalBlocks, /hasPlatformModKey\(e, isMac\) && \(isMac \? !e\.ctrlKey : !e\.metaKey\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigatePrevBlock, isMac\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigateNextBlock, isMac\)/);
   assert.doesNotMatch(terminalBlocks, /@tauri-apps\/plugin-os/);
   assert.doesNotMatch(terminalBlocks, /slice\(0, 77\) \+ "\.\.\."/);
   assert.match(terminalBlocksPure, /block\.startRow \+ 1/);
@@ -818,8 +819,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /return true/);
   assert.match(terminalBlocks, /catch \{[\s\S]*return false/);
   assert.match(terminalBlocks, /term\.onScroll/);
-  assert.match(terminalBlocks, /e\.key === "ArrowUp"[\s\S]*navigateBlock\("previous"\)/);
-  assert.match(terminalBlocks, /e\.key === "ArrowDown"[\s\S]*navigateBlock\("next"\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigatePrevBlock, isMac\)[\s\S]*navigateBlock\("previous"\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigateNextBlock, isMac\)[\s\S]*navigateBlock\("next"\)/);
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);

@@ -25,6 +25,8 @@ export const KEYBINDING_ACTIONS = [
   "selectTab7",
   "selectTab8",
   "selectLastTab",
+  "navigatePrevBlock",
+  "navigateNextBlock",
 ] as const;
 
 export type KeybindingAction = typeof KEYBINDING_ACTIONS[number];
@@ -57,6 +59,8 @@ export const DEFAULT_KEYBINDINGS: Readonly<KeybindingConfig> = {
   selectTab7: "Mod+7",
   selectTab8: "Mod+8",
   selectLastTab: "Mod+9",
+  navigatePrevBlock: "Mod+Shift+ArrowUp",
+  navigateNextBlock: "Mod+Shift+ArrowDown",
 };
 
 export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
@@ -86,6 +90,8 @@ export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
   selectTab7: "select_tab_7",
   selectTab8: "select_tab_8",
   selectLastTab: "select_last_tab",
+  navigatePrevBlock: "navigate_prev_block",
+  navigateNextBlock: "navigate_next_block",
 };
 
 const CONFIG_KEY_TO_ACTION = Object.fromEntries(
