@@ -43,3 +43,11 @@ export function gitDiff(repoPath: string, file: string): Promise<FileDiff> {
 export function gitAheadBehind(repoPath: string): Promise<RemoteState> {
   return invoke<RemoteState>("git_ahead_behind", { repoPath });
 }
+
+export function gitWatch(repoPath: string): Promise<void> {
+  return invoke<void>("git_watch", { repoPath });
+}
+
+export function gitUnwatch(repoPath: string): Promise<void> {
+  return invoke<void>("git_unwatch", { repoPath });
+}

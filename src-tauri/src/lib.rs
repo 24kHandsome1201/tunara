@@ -28,6 +28,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
         .manage(ResolverState::default())
+        .manage(modules::git::GitWatcherState::default())
         .setup(|app| {
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_bin 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
@@ -71,6 +72,8 @@ pub fn run() {
             modules::git::git_status,
             modules::git::git_diff,
             modules::git::git_ahead_behind,
+            modules::git::watcher::git_watch,
+            modules::git::watcher::git_unwatch,
             // Tunara 新增（§6.3 外部编辑器跳转）
             modules::editor::open_in_editor,
             // Text config: ~/.config/tunara/config.toml

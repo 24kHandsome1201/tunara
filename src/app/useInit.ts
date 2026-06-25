@@ -1,11 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useSessionsStore, createSession } from "@/state/sessions";
+import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
 import { getAllTerminalSnapshots, restoreTerminalSnapshots } from "@/modules/terminal/lib/terminal-snapshot";
 import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
+import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
@@ -180,6 +182,18 @@ export function useInit() {
     );
 
     unlistens.push(startHooksListener());
+    unlistens.push(startGitWatcherListener());
+
+    const watchedDirs = new Set<string>();
+    const syncGitWatches = (sessions: readonly Session[]) => {
+      const next = new Set<string>();
+      for (const s of sessions) if (s.dir) next.add(s.dir);
+      for (const dir of next) if (!watchedDirs.has(dir)) acquireGitWatch(dir);
+      for (const dir of watchedDirs) if (!next.has(dir)) releaseGitWatch(dir);
+      watchedDirs.clear();
+      for (const dir of next) watchedDirs.add(dir);
+    };
+    syncGitWatches(useSessionsStore.getState().sessions);
 
     const onWindowFocus = () => {
       const activeId = useSessionsStore.getState().activeSessionId;
@@ -191,6 +205,7 @@ export function useInit() {
     const unsubSessions = useSessionsStore.subscribe((state) => {
       if (state.sessions !== prevSessions) {
         prevSessions = state.sessions;
+        syncGitWatches(state.sessions);
         scheduleSave();
       }
     });
@@ -212,6 +227,8 @@ export function useInit() {
       }
       clearInterval(timer);
       window.removeEventListener("focus", onWindowFocus);
+      for (const dir of watchedDirs) releaseGitWatch(dir);
+      watchedDirs.clear();
       unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {}));
     };
   }, [addSession]);

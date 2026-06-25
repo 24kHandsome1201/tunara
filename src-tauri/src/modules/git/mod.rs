@@ -12,6 +12,9 @@
 #[cfg(test)]
 mod commit;
 
+pub mod watcher;
+pub use watcher::GitWatcherState;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 
