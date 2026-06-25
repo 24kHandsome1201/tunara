@@ -15,8 +15,9 @@ pnpm tauri dev
 
 ```bash
 pnpm typecheck                                  # 前端类型检查
-cargo clippy --manifest-path src-tauri/Cargo.toml  # Rust lint
-cargo fmt --manifest-path src-tauri/Cargo.toml     # Rust 格式化
+pnpm build                                      # 前端构建
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 pnpm test                                        # 全部测试
 ```
 
@@ -49,11 +50,14 @@ pnpm tauri build
 - **Bug 修复** — 随时欢迎
 - **新功能** — 非小改动请先开 Issue
 - **文档/typo/小 UX 修复** — 直接提 PR
-- **新 Agent 识别** — 参考 `src/modules/agent/registry.ts` 和 `public/agents/registry-data.json`
+- **新 Agent 识别** — 参考 `src/modules/agent/registry-data.json` 和 `src/modules/agent/registry.ts`
 - **终端配色方案** — 参考 `src/styles/terminalTheme.ts`
 
 ## 不接受的贡献
 
+- 内置 AI 聊天、模型接入、MCP 编排或云 agent 能力
+- Agent catalog / 启动器 / 批量启动入口
+- DiffPanel 里的 stage、commit、push 等 Git 写操作
 - 遥测、分析或任何回传数据的功能
 - 硬编码 API 密钥或账户
 - 为小功能引入大依赖（保持轻量）
@@ -105,7 +109,6 @@ src-tauri/src/          # Rust 后端
 │   ├── agent/          # Agent CLI 预检 + hooks
 │   ├── editor/         # 编辑器启动
 │   ├── resolver/       # 二进制路径解析
-│   ├── shell/          # 后台命令执行
 │   └── process/        # 子进程管理
 └── lib.rs              # Tauri 命令注册
 ```

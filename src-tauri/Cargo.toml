@@ -2,7 +2,10 @@
 name = "tunara"
 version = "1.2.0"
 description = "Tunara — 带智能侧栏的真实终端（基于 Tauri + xterm.js）"
-authors = ["Tunara"]
+authors = ["Tunara contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/24kHandsome1201/tunara"
+homepage = "https://github.com/24kHandsome1201/tunara"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -28,10 +31,9 @@ portable-pty = "0.9"
 base64 = "0.22"
 log = "0.4"
 parking_lot = "0.12"
-# Tunara 新增（§3.7 底座 / agent harness / git）
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
 which = "6"
-git2 = "0.19"   # 默认 vendored libgit2：读 status/diff/ahead-behind + baseline 指纹
+git2 = "0.19"   # 默认 vendored libgit2: 读 status/diff/ahead-behind + baseline 指纹
 ignore = "0.4"
 grep-regex = "0.1"
 grep-searcher = "0.1"

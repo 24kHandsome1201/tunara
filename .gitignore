@@ -2,8 +2,11 @@
 *.zip
 _unzipped_design/
 terax-icon.png
-# 外部 review 资料（截图等参考素材，仅本地保留）
-review/*.png
+
+# 本地 agent / review 资料（不进公开源码仓库）
+AGENTS.md
+CLAUDE.md
+review/
 # macOS
 .DS_Store
 

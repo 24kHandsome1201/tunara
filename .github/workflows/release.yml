@@ -80,7 +80,7 @@ jobs:
           echo "Computed sha256: $SHA for version $TAG"
           # 更新 homebrew/tunara.rb 中的 version 和 sha256
           sed -i.bak "s/version \".*\"/version \"$TAG\"/" homebrew/tunara.rb
-          sed -i.bak "s/sha256 \".*\"/sha256 \"$SHA\"/" homebrew/tunara.rb
+          sed -i.bak -E "s/^  sha256 .*/  sha256 \"$SHA\"/" homebrew/tunara.rb
           rm -f homebrew/tunara.rb.bak
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -4,7 +4,7 @@ Tunara runs local shells, reads files for review surfaces, and exposes a Tauri I
 
 ## Reporting
 
-Open a private security advisory on GitHub, or email the maintainer for this repository. Include:
+Open a private security advisory on GitHub, or contact the maintainer listed on the repository. Include:
 
 - What the issue is and what it lets an attacker do
 - Steps to reproduce (a small PoC is great)
@@ -22,8 +22,7 @@ Until `1.0.0`, only the current development line is expected to receive security
 
 - The Rust backend in `src-tauri/` (PTY, FS, IPC, plugins)
 - The frontend in `src/` — anywhere untrusted input lands (terminal output, file content, AI tool results, credentials)
-- Release artifacts on GitHub
-- The auto-updater
+- Release artifacts on GitHub and the auto-updater
 
 ## What's not
 
@@ -33,11 +32,12 @@ Until `1.0.0`, only the current development line is expected to receive security
 
 ## What we do to keep things safe
 
-- **Host access is behind Tauri commands.** The frontend reaches PTY, file, Git, resolver, shell, and secrets functionality through the allow-listed IPC surface in `src-tauri/src/lib.rs` and `src-tauri/capabilities/`.
+- **Host access is behind Tauri commands.** The frontend reaches PTY, file, Git, resolver, editor, config, and agent-hook functionality through the allow-listed IPC surface in `src-tauri/src/lib.rs` and `src-tauri/capabilities/`.
 - **No Node in the renderer.** The webview does not receive direct Node-style filesystem or process access.
 - **Git write operations are not part of the main UI.** The current review panel is read-only; users run mutating Git commands from the terminal when they choose to.
+- **Terminal clipboard writes are opt-in.** OSC 52 clipboard writes are disabled by default and only enabled by `terminal_clipboard_write = true`; Tunara does not implement clipboard read responses.
 - **Signed updates.** Tauri updater configuration verifies update signatures before applying releases.
-- **No product telemetry is expected in the current app shell.** Network access is limited to explicit user workflows and update checks.
+- **No product telemetry is expected in the current app shell.** Network access is limited to explicit user workflows, external CLIs launched by the user, and update checks.
 
 ## What we can't promise
 

@@ -1,6 +1,16 @@
 {
   "name": "tunara",
-  "private": true,
+  "description": "A real Tauri/xterm terminal with an intelligent session sidebar and read-only review rail.",
+  "license": "Apache-2.0",
+  "author": "Tunara contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/24kHandsome1201/tunara.git"
+  },
+  "bugs": {
+    "url": "https://github.com/24kHandsome1201/tunara/issues"
+  },
+  "homepage": "https://github.com/24kHandsome1201/tunara#readme",
   "packageManager": "pnpm@9.15.4",
   "version": "1.2.0",
   "type": "module",

@@ -57,10 +57,10 @@ test("release cleanup removes orphan Rust modules from the source tree", () => {
 });
 
 test("text config drives appearance, keybindings, and terminal font settings", () => {
-  const agents = read("AGENTS.md");
   const cargo = read("src-tauri/Cargo.toml");
   const modules = read("src-tauri/src/modules/mod.rs");
   const lib = read("src-tauri/src/lib.rs");
+  const security = read("SECURITY.md");
   const configRs = read("src-tauri/src/modules/config.rs");
   const bridge = read("src/modules/config/config-bridge.ts");
   const keybindings = read("src/modules/config/keybindings.ts");
@@ -94,9 +94,9 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /font_ligatures: false/);
   assert.match(configRs, /pub terminal_clipboard_write: bool/);
   assert.match(configRs, /terminal_clipboard_write: false/);
-  assert.match(agents, /OSC 52 剪贴板是安全 sink/);
-  assert.match(agents, /terminal_clipboard_write = true/);
-  assert.match(agents, /不要实现剪贴板读取响应/);
+  assert.match(security, /OSC 52 clipboard writes are disabled by default/);
+  assert.match(security, /terminal_clipboard_write = true/);
+  assert.match(security, /does not implement clipboard read responses/);
   assert.match(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
   const defaultConfigKeys = [...configRs.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
   assert.equal(new Set(defaultConfigKeys).size, defaultConfigKeys.length);
@@ -362,7 +362,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const ui = read("src/state/ui.ts");
   const contextMenu = read("src/ui/ContextMenu.tsx");
   const settings = read("src/ui/overlays/Settings.tsx");
-  const docs = read("docs/设计-右键菜单与批量启动Agent.md");
+  const contributing = read("CONTRIBUTING.md");
   const shared = read("src/ui/shared.tsx");
 
   assert.match(html, /var accent = "#c2683c"/);
@@ -407,7 +407,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.doesNotMatch(sessions, /launchAllAgents/);
   assert.doesNotMatch(sidebar, /启动所有 Agent/);
   assert.doesNotMatch(explorer, /启动所有 Agent/);
-  assert.match(docs, /不做批量启动 Agent/);
+  assert.match(contributing, /批量启动入口/);
 
   assert.match(contextMenu, /role="menu"/);
   assert.match(contextMenu, /ArrowDown/);
