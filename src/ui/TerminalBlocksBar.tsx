@@ -1,36 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-
-function CopyIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
-function CheckMiniIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
-
-function PromptIcon() {
-  return (
-    <span style={{
-      fontSize: 11,
-      fontFamily: "var(--font-mono)",
-      fontWeight: 800,
-      lineHeight: "11px",
-    }}>
-      $
-    </span>
-  );
-}
 
 function ExitCodeBadge({ code, completed }: { code: number | undefined; completed: boolean }) {
   if (!completed) {
@@ -74,56 +44,6 @@ function ExitCodeBadge({ code, completed }: { code: number | undefined; complete
 }
 
 type CopyBlockResult = boolean | Promise<boolean>;
-
-function CopyButton({
-  id,
-  disabled,
-  title,
-  disabledTitle,
-  onCopy,
-  children,
-}: {
-  id: string;
-  disabled: boolean;
-  title: string;
-  disabledTitle?: string;
-  onCopy: (id: string) => CopyBlockResult;
-  children: ReactNode;
-}) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={async (e) => {
-        e.stopPropagation();
-        if (disabled) return;
-        const copySucceeded = await Promise.resolve(onCopy(id)).catch(() => false);
-        if (!copySucceeded) return;
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      }}
-      className="hover-bg"
-      title={disabled ? disabledTitle ?? title : title}
-      disabled={disabled}
-      style={{
-        width: 22,
-        height: 20,
-        border: "none",
-        borderRadius: "var(--r-btn)",
-        background: "transparent",
-        color: disabled ? "var(--c-text-6)" : copied ? "var(--c-success)" : "var(--c-text-5)",
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        flexShrink: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        transition: "color var(--duration-fast) var(--ease-smooth)",
-      }}
-    >
-      {copied ? <CheckMiniIcon /> : children}
-    </button>
-  );
-}
 
 interface TerminalBlocksBarProps {
   blocks: TerminalCommandBlock[];
@@ -213,6 +133,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
         return (
           <div
             key={block.id}
+            className="cmd-chip"
             onContextMenu={(e) => {
               e.preventDefault();
               setContextMenu({
@@ -231,7 +152,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
               border: `1px solid ${collapsed ? (ok ? "color-mix(in srgb, var(--c-success) 20%, var(--c-border-1))" : "color-mix(in srgb, var(--c-error) 20%, var(--c-border-1))") : "var(--c-border-1)"}`,
               background: collapsed ? "var(--c-bg-3)" : "var(--c-bg-1)",
               borderRadius: "var(--r-btn)",
-              padding: "3px 4px 3px 8px",
+              padding: "3px 4px 3px 10px",
               flexShrink: 0,
               transition: "border-color var(--duration-fast) var(--ease-smooth), background var(--duration-fast) var(--ease-smooth)",
             }}
@@ -258,12 +179,43 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
             >
               {block.command}
             </button>
-            <CopyButton id={block.id} disabled={false} title="复制命令" onCopy={onCopyCommand}>
-              <PromptIcon />
-            </CopyButton>
-            <CopyButton id={block.id} disabled={!completed} title="复制输出" disabledTitle="命令运行中" onCopy={onCopyOutput}>
-              <CopyIcon />
-            </CopyButton>
+            <button
+              type="button"
+              className="cmd-chip-more"
+              title="更多操作"
+              aria-label="更多操作"
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setContextMenu({
+                  block,
+                  completed,
+                  collapsed,
+                  position: { x: rect.left, y: rect.bottom + 4 },
+                });
+              }}
+              style={{
+                width: 18,
+                height: 18,
+                border: "none",
+                background: "transparent",
+                color: "var(--c-text-5)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                borderRadius: 4,
+                flexShrink: 0,
+                marginLeft: 1,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                <circle cx="2" cy="6" r="1.1" />
+                <circle cx="6" cy="6" r="1.1" />
+                <circle cx="10" cy="6" r="1.1" />
+              </svg>
+            </button>
           </div>
         );
       })}

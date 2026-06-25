@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { TerminalView } from "./TerminalView";
-import { type Session, AGENT_NAMES } from "./types";
+import type { Session } from "./types";
 import { gitAheadBehind, gitStatus, type RemoteState } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
-import { isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
 
 interface MainAreaProps {
   sessions: Session[];
@@ -223,29 +222,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             {remote.behind > 0 && (
               <span style={{ color: "var(--c-warning)", fontWeight: 600 }}>↓{remote.behind}</span>
             )}
-          </span>
-        )}
-
-        {/* Agent 状态 */}
-        {active?.agent && (
-          <span style={{
-            fontSize: "var(--fs-badge)",
-            fontFamily: "var(--font-mono)",
-            fontWeight: 700,
-            color: "var(--c-accent)",
-            background: "var(--c-accent-bg-light)",
-            borderRadius: 4,
-            padding: "1px 6px",
-            lineHeight: "14px",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            flexShrink: 0,
-          }}>
-            {isAgentActivityBusy(active.agentActivity) && (
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--c-accent)", flexShrink: 0, animation: "pulseDot 1.5s var(--ease-in-out) infinite", boxShadow: "0 0 4px color-mix(in srgb, var(--c-accent) 40%, transparent)" }} />
-            )}
-            {AGENT_NAMES[active.agent] ?? active.agent}
           </span>
         )}
 

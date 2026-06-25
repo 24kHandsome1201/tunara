@@ -287,6 +287,10 @@
 .tab-btn[data-active="true"]:hover { background: var(--c-accent-bg-light) !important; }
 .tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
 .tab-btn:active { transform: scale(0.96); transition: transform 60ms var(--ease-out-expo); }
+
+.cmd-chip-more { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth); }
+.cmd-chip:hover .cmd-chip-more { opacity: 1; pointer-events: auto; }
+.cmd-chip-more:hover { color: var(--c-text-2); }
 .tab-btn { transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 
 .split-handle:hover .split-handle-line { background: var(--c-accent) !important; }
