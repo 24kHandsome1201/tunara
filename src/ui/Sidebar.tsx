@@ -2,6 +2,7 @@ import { SessionCard } from "./SessionCard";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { groupByDir, deriveTitle, type Session } from "./types";
 import { DirGroupHeader, SidebarSearchIcon } from "./SidebarDirGroupHeader";
+import { CloseIcon } from "./shared";
 import { useState, useRef, useCallback } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -240,8 +241,32 @@ export function Sidebar({
               fontSize: "var(--fs-body)",
               color: "var(--c-text-primary)",
               fontFamily: "var(--font-ui)",
+              minWidth: 0,
             }}
           />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="hover-bg"
+              title={t("common.close")}
+              aria-label={t("common.close")}
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: "var(--r-btn)",
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--c-text-5)",
+                flexShrink: 0,
+              }}
+            >
+              <CloseIcon size={11} strokeWidth={2.4} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -307,6 +332,7 @@ export function Sidebar({
                         opacity: isDragging ? 0.3 : 1,
                         transition: "opacity 120ms ease",
                         touchAction: canReorder ? "none" : "auto",
+                        cursor: !canReorder ? "pointer" : isDragging ? "grabbing" : "grab",
                       }}
                     >
                       <SessionCard

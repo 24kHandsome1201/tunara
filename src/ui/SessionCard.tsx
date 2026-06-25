@@ -316,6 +316,11 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
           onClick();
           return;
         }
+        if ((e.key === "Delete" || e.key === "Backspace") && onClose) {
+          e.preventDefault();
+          onClose();
+          return;
+        }
         onKeyDown?.(e);
       }}
       onFocus={() => setFocused(true)}
@@ -326,13 +331,13 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
         position: "relative",
         padding: "6px 10px 6px 12px",
         borderRadius: "var(--r-btn)",
-        cursor: "pointer",
+        // cursor 由外层 wrapper 控制（grab / grabbing / pointer），允许 inherit
         userSelect: "none",
         background: active ? "var(--c-accent-bg-light)" : "transparent",
         border: "none",
-        boxShadow: focused ? "inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 70%, transparent)" : "none",
-        outline: "none",
-        transition: "background var(--duration-fast) ease",
+        outline: focused ? "2px solid color-mix(in srgb, var(--c-accent) 75%, transparent)" : "none",
+        outlineOffset: focused ? "-1px" : 0,
+        transition: "background var(--duration-fast) ease, outline-color var(--duration-fast) var(--ease-smooth)",
       }}
     >
       <div
@@ -352,11 +357,9 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
 
       {onClose && (
         <span
-          role="button"
-          tabIndex={0}
-          title={confirmClose ? "再次点击确认关闭" : "关闭"}
+          aria-hidden="true"
+          title={confirmClose ? "再次点击确认关闭" : "关闭（Delete）"}
           onClick={handleClose}
-          onKeyDown={(e) => { if (e.key === "Enter") handleClose(e); }}
           className="session-card-close hover-close"
           style={{
             position: "absolute",

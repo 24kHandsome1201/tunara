@@ -35,6 +35,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const composingRef = useRef(false);
 
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
@@ -324,6 +325,15 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   }, [selectedIndex]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    // 中文/日文/韩文 IME 合成期间，Arrow / Enter 应由 IME 接管，
+    // 不要触发列表导航或执行命令。Escape 仍然允许关闭浮层。
+    if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       onClose();
@@ -355,10 +365,13 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           position: "fixed", inset: 0, zIndex: 999,
           background: "var(--backdrop-color)",
           backdropFilter: "var(--backdrop-blur)",
-          animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
+          animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}
       />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("palette.placeholder")}
         onKeyDown={handleKeyDown}
         style={{
           position: "fixed",
@@ -376,7 +389,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          animation: "sheetIn var(--duration-slow) var(--ease-out-back)",
+          animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
         }}
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
@@ -386,6 +399,14 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(e) => {
+              composingRef.current = false;
+              // Chromium 在 compositionend 之后才同步最终值到 input.value，
+              // 这里手动同步一次确保过滤命中合成完成后的字符串。
+              setQuery((e.target as HTMLInputElement).value);
+            }}
+            aria-label={t("palette.placeholder")}
             placeholder={t("palette.placeholder")}
             style={{
               flex: 1,

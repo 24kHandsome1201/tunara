@@ -188,14 +188,15 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ height: 34, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 8px 0 6px", gap: 6, flexShrink: 0 }}>
+      <div style={{ height: 36, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 var(--sp-2)", gap: 4, flexShrink: 0 }}>
         <button
           onClick={goUp}
           disabled={!canGoUp}
           className="hover-bg"
           title="返回上级"
+          aria-label="返回上级"
           style={{
-            width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none",
+            width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none",
             background: "transparent", cursor: canGoUp ? "pointer" : "default",
             display: "flex", alignItems: "center", justifyContent: "center",
             opacity: canGoUp ? 1 : 0.3, flexShrink: 0,
@@ -205,14 +206,15 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+        <span title={currentPath} style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, padding: "0 var(--sp-1)" }}>
           {pathDisplay(currentPath, rootDir)}
         </span>
         <button
           onClick={refresh}
           className="hover-bg"
           title="刷新文件列表"
-          style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          aria-label="刷新文件列表"
+          style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
         >
           <RefreshIcon />
         </button>
@@ -220,10 +222,12 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
           onClick={() => setIncludeHidden((v) => !v)}
           className="hover-bg"
           title={includeHidden ? "隐藏点文件" : "显示点文件"}
+          aria-label={includeHidden ? "隐藏点文件" : "显示点文件"}
+          aria-pressed={includeHidden}
           style={{
-            height: 22,
-            minWidth: 22,
-            padding: "0 6px",
+            height: 26,
+            minWidth: 26,
+            padding: "0 8px",
             borderRadius: "var(--r-btn)",
             border: "none",
             background: includeHidden ? "var(--c-accent-bg-light)" : "transparent",
@@ -233,6 +237,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
             alignItems: "center",
             justifyContent: "center",
             fontSize: "var(--fs-meta)",
+            lineHeight: "16px",
             fontFamily: "var(--font-mono)",
             fontWeight: 700,
             flexShrink: 0,
@@ -276,8 +281,8 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
           ) : (
             <>
               <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>结果</span>
-                <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-text-4)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "1px 6px", fontFamily: "var(--font-mono)" }}>{searchHits.length}</span>
+                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>结果</span>
+                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{searchHits.length}</span>
               </div>
               {searchHits.map((hit) => {
                 const isExpanded = expandedFile === hit.path;

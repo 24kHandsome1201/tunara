@@ -54,7 +54,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
           zIndex: 1100,
           background: "var(--backdrop-color)",
           backdropFilter: "var(--backdrop-blur)",
-          animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
+          animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}
       />
       <div
@@ -102,7 +102,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          animation: "sheetIn var(--duration-slow) var(--ease-out-back)",
+          animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
         }}
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
