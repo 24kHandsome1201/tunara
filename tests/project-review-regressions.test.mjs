@@ -819,13 +819,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
-  assert.match(terminalBlocksBar, /import \{ ContextMenu, type MenuEntry \} from "\.\/ContextMenu"/);
+  assert.match(terminalBlocksBar, /import \{ ContextMenu \} from "\.\/ContextMenu"/);
+  assert.match(terminalBlocksBar, /import \{ buildBlockContextMenuItems \} from "@\/modules\/terminal\/lib\/terminal-blocks-menu"/);
   assert.match(terminalBlocksBar, /className="cmd-chip"/);
   assert.match(terminalBlocksBar, /className="cmd-chip-more"/);
-  assert.match(terminalBlocksBar, /id: "block:copy-command"[\s\S]*label: "复制命令"[\s\S]*onCopyCommand\(contextMenu\.block\.id\)/);
-  assert.match(terminalBlocksBar, /id: "block:copy-output"[\s\S]*label: "复制输出"[\s\S]*disabled: !contextMenu\.completed[\s\S]*onCopyOutput\(contextMenu\.block\.id\)/);
-  assert.match(terminalBlocksBar, /id: "block:copy-both"[\s\S]*label: "复制命令和输出"[\s\S]*onCopyCommandAndOutput/);
-  assert.match(terminalBlocksBar, /id: "block:filter-output"[\s\S]*label: "筛选输出"[\s\S]*icon: "search"/);
+  assert.match(terminalBlocksBar, /buildBlockContextMenuItems\(contextMenu\.block, contextMenu\.completed, contextMenu\.collapsed/);
   assert.match(terminalBlocksBar, /onFilterBlock: \(block: TerminalCommandBlock\) => void/);
   assert.match(terminalBlocksBar, /onContextMenu=\{\(e\) => \{[\s\S]*setContextMenu/);
   assert.match(terminalBlocksBar, /当前输出/);

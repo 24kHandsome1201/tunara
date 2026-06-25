@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
-import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { buildBlockContextMenuItems } from "@/modules/terminal/lib/terminal-blocks-menu";
+import { ContextMenu } from "./ContextMenu";
 
 function ExitCodeBadge({ code, completed }: { code: number | undefined; completed: boolean }) {
   if (!completed) {
@@ -67,15 +68,16 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
   const visibleBlocks = blocks.slice(-5).reverse();
   if (visibleBlocks.length === 0) return null;
 
-  const contextItems: MenuEntry[] = contextMenu ? [
-    { id: "block:copy-command", label: "复制命令", icon: "copy", action: () => { onCopyCommand(contextMenu.block.id); } },
-    { id: "block:copy-output", label: "复制输出", icon: "copy", disabled: !contextMenu.completed, action: () => { onCopyOutput(contextMenu.block.id); } },
-    { id: "block:copy-both", label: "复制命令和输出", icon: "copy", disabled: !contextMenu.completed, action: () => { onCopyCommandAndOutput(contextMenu.block.id); } },
-    { id: "block:filter-output", label: "筛选输出", icon: "search", disabled: !contextMenu.completed, action: () => onFilterBlock(contextMenu.block) },
-    null,
-    { id: "block:reveal", label: "滚动到命令", icon: "terminal", action: () => onReveal(contextMenu.block.id) },
-    { id: "block:toggle", label: contextMenu.collapsed ? "展开输出" : "折叠输出", icon: "terminal", action: () => onToggle(contextMenu.block.id) },
-  ] : [];
+  const contextItems = contextMenu
+    ? buildBlockContextMenuItems(contextMenu.block, contextMenu.completed, contextMenu.collapsed, {
+        onCopyCommand,
+        onCopyOutput,
+        onCopyCommandAndOutput,
+        onFilterBlock,
+        onReveal,
+        onToggle,
+      })
+    : [];
 
   return (
     <div style={{ minHeight: 32, flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "4px 8px 0", overflowX: "auto" }} className="no-scrollbar">
