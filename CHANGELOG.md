@@ -2,6 +2,53 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] - 2026-06-25
+
+### Added
+- 终端命令块导航：在多个 prompt / 命令块之间快速跳转、复制命令、复制输出、右键上下文操作
+- 终端 Quick Select：扫描周围输出，按 token 一键复制（URL、路径、行号、commit hash 等）
+- 终端文件链接：识别 `path:line` 形式的输出，按住修饰键点击直接在外部编辑器对应行打开，按所在行 cwd 解析相对路径
+- 命令历史驱动的新会话：从最近用过的命令 / 目录直接预填新终端
+- Command Palette 范围筛选：按 scope 过滤可执行项
+- 终端进度序列：识别并显示 OSC 9;4 进度，让长任务在 tab / 状态条上有感
+- 终端通知序列：识别终端发出的通知请求并桥接系统通知
+- 终端粘贴防御：粘贴疑似不安全内容（含换行的命令等）前发出确认
+- OSC 8 超链接：解析终端发出的 hyperlink，按统一策略走 opener
+- ConEmu cwd OSC 支持，进一步覆盖 OSC 7 之外的终端工作目录上报
+- OSC 52 写剪贴板：默认关闭，单独开关 `terminal_clipboard_write` 才生效
+- 终端 ligature：作为 opt-in 选项，默认关闭
+- 终端 dotfile 配置：通过项目 dotfile 配置终端行为
+- Sticky command context：滚动时保持当前命令块顶部信息可见
+- Aider agent 检测，agent 总数升至 12
+
+### Changed
+- 重新打磨终端命令 chrome
+- 隔离 Codex 屏幕跟踪逻辑，避免污染其他 agent 的渲染路径
+- 拆分终端视图模块，单文件不再无上限增长
+
+### Fixed
+- Agent hook 监听不可用时优雅降级，不再卡住启动流程
+- Agent hook 文件保留在私有 runtime 目录，避免污染用户工作区
+- 块复制只复制输出区，不复制命令本身；复制结果上报更准确
+- 块导航 / 终端焦点的修饰键与系统约定对齐
+- 终端字体加载延迟封顶，避免字体未到位时长时间空白
+- Quick select 复制文本在重渲染期间保持不变
+- 终端补全提示在某些场景下不再被错误折叠
+- 修复修改配置后被覆盖的问题，保护用户编辑
+- OSC 52 device attributes 路径加上 gate，避免 echo back 风险
+- 重置外观时不再覆盖键位绑定
+- 修剪未使用的 keyring 依赖与 UI 细节
+
+### Security
+- 完整审计 + 修复一批安全相关问题（详见 commit `e3322dd feat: comprehensive audit, security fixes, search UX, and Aider agent`）
+- 明确 git 写操作边界并固化在 fixture
+
+### Docs
+- 仓库为开源做准备：README 重写、CONTRIBUTING / SECURITY / CODE_OF_CONDUCT / THIRD_PARTY_NOTICES 就位
+- 应用更名为 Tunara，文档与产物全面对齐
+- CI 增加 macOS matrix + release 构建验证
+- review 反馈整理为参考资料（不入源码仓库）
+
 ## [1.2.0] - 2026-06-21
 
 ### Added
