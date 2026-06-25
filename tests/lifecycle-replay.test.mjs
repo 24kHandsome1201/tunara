@@ -753,6 +753,8 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
   assert.equal(isSessionBusy(h.session), false);
 
   assert.equal(detectCodexScreenState("Codex\nWorking\nesc to interrupt"), "busy");
+  assert.equal(detectCodexScreenState("Codex\n› fix this\nWorking\nesc to interrupt"), "busy");
+  assert.equal(detectCodexScreenState("Codex\nWorking\nesc to interrupt\n› "), "ready");
   assert.equal(h.apply(agentBusyUpdate(h.session, 20)), true);
   assert.equal(h.session.agentActivity, "running");
   assert.equal(isSessionBusy(h.session), true);
@@ -763,12 +765,12 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
   assert.equal(isSessionBusy(h.session), false);
 });
 
-test("Codex screen tracker names burst and settle policy outside TerminalView", async () => {
+test("Codex screen tracker does not mark ready prompt redraws as busy", async () => {
   let session = makeSession({ agent: "CX", agentActivity: "idle" });
   let busyCount = 0;
   let readyCount = 0;
   const tracker = createCodexScreenStateTracker({
-    terminal: makeTailTerminal(["Codex", "› "]),
+    terminal: makeTailTerminal(["Codex", "Working", "esc to interrupt", "› "]),
     getSessionId: () => "s-1",
     getCurrentSession: () => session,
     isTrackingCodex: () => true,
@@ -787,10 +789,42 @@ test("Codex screen tracker names burst and settle policy outside TerminalView", 
     assert.equal(busyCount, 0);
   }
   tracker.schedule();
-  assert.equal(busyCount, 1);
+  assert.equal(busyCount, 0);
 
   await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
-  assert.equal(readyCount, 1);
+  assert.equal(busyCount, 0);
+  assert.equal(readyCount, 0);
+
+  tracker.dispose();
+});
+
+test("Codex screen tracker marks busy after the active turn shows work", async () => {
+  let session = makeSession({ agent: "CX", agentActivity: "idle" });
+  let busyCount = 0;
+  let readyCount = 0;
+  const tracker = createCodexScreenStateTracker({
+    terminal: makeTailTerminal(["Codex", "› fix this", "Working", "esc to interrupt"]),
+    getSessionId: () => "s-1",
+    getCurrentSession: () => session,
+    isTrackingCodex: () => true,
+    onBusy: () => {
+      busyCount += 1;
+      session = { ...session, agentActivity: "running" };
+    },
+    onReady: () => {
+      readyCount += 1;
+      session = { ...session, agentActivity: "idle" };
+    },
+  });
+
+  for (let i = 0; i < CODEX_DATA_BURST_BUSY_THRESHOLD; i += 1) {
+    tracker.schedule();
+  }
+  assert.equal(busyCount, 0);
+
+  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(busyCount, 1);
+  assert.equal(readyCount, 0);
 
   tracker.dispose();
 });

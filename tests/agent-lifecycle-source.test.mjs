@@ -114,12 +114,15 @@ test("agent lifecycle policy preserves line structure for Codex", () => {
   assert.match(policy, /export const CODEX_SCREEN_STATE_RECENT_LINE_LIMIT = 12;/);
   assert.match(policy, /lines\.slice\(-CODEX_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
   assert.match(policy, /return CODEX_BUSY_INDICATORS\.some\(\(pattern\) => pattern\.test\(text\)\);/);
-  assert.match(policy, /return hasCodexBusyIndicator\(recentJoined\) \? "busy" : "ready";/);
+  assert.match(policy, /const currentTurnText = recent\.slice\(promptIndex \+ 1\)\.join\("\\n"\);/);
+  assert.match(policy, /return hasCodexBusyIndicator\(currentTurnText\) \? "busy" : "ready";/);
   assert.match(policy, /new Set\(\["tunara-agent", "conduit-agent"\]\)/);
   assert.match(policy, /export function parseAgentLifecycleOsc\(data: string\): AgentLifecycleEvent \| null/);
   assert.match(tracker, /export const CODEX_DATA_BURST_BUSY_THRESHOLD = 3;/);
   assert.match(tracker, /export const CODEX_STATE_CHECK_DELAY_MS = 500;/);
   assert.match(tracker, /getTerminalTailText\(terminal, CODEX_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
+  assert.match(tracker, /const screenState = detectCodexScreenState\(tail\);/);
+  assert.match(tracker, /screenState === "busy"[\s\S]*onBusy\(getSessionId\(\)\)/);
   assert.match(utils, /export function cleanTerminalLines\(text: string\): string/);
 });
 

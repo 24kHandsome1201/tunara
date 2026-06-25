@@ -93,8 +93,8 @@ export function detectCodexScreenState(text: string): AgentScreenState {
   }
 
   if (promptIndex >= 0) {
-    const recentJoined = recent.join("\n");
-    return hasCodexBusyIndicator(recentJoined) ? "busy" : "ready";
+    const currentTurnText = recent.slice(promptIndex + 1).join("\n");
+    return hasCodexBusyIndicator(currentTurnText) ? "busy" : "ready";
   }
 
   const recentText = recent.join("\n");

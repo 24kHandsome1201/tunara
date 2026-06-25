@@ -45,18 +45,9 @@ export function createCodexScreenStateTracker({
 
   const schedule = () => {
     dataBurstCount += 1;
-    const session = getCurrentSession();
-    const sessionId = getSessionId();
-    if (
-      session?.agent === "CX" &&
-      session.agentActivity !== "running" &&
-      dataBurstCount >= CODEX_DATA_BURST_BUSY_THRESHOLD
-    ) {
-      onBusy(sessionId);
-    }
-
     if (stateTimer) clearTimeout(stateTimer);
     stateTimer = setTimeout(() => {
+      const burstCount = dataBurstCount;
       stateTimer = null;
       dataBurstCount = 0;
       if (!isTrackingCodex()) return;
@@ -65,7 +56,14 @@ export function createCodexScreenStateTracker({
       if (current?.agent !== "CX") return;
 
       const tail = getTerminalTailText(terminal, CODEX_SCREEN_STATE_RECENT_LINE_LIMIT);
-      if (detectCodexScreenState(tail) === "ready" && current.agentActivity !== "idle") {
+      const screenState = detectCodexScreenState(tail);
+      if (
+        screenState === "busy" &&
+        current.agentActivity !== "running" &&
+        burstCount >= CODEX_DATA_BURST_BUSY_THRESHOLD
+      ) {
+        onBusy(getSessionId());
+      } else if (screenState === "ready" && current.agentActivity !== "idle") {
         onReady(getSessionId());
       }
     }, CODEX_STATE_CHECK_DELAY_MS);
