@@ -33,7 +33,7 @@ log = "0.4"
 parking_lot = "0.12"
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
 which = "6"
-git2 = "0.19"   # 默认 vendored libgit2: 读 status/diff/ahead-behind + baseline 指纹
+git2 = { version = "0.19", features = ["vendored-openssl"] } # keep macOS release bundles independent of Homebrew OpenSSL dylibs
 ignore = "0.4"
 grep-regex = "0.1"
 grep-searcher = "0.1"

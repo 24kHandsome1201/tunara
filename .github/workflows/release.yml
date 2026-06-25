@@ -41,18 +41,76 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare macOS release config
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${APPLE_CERTIFICATE:-}" ] || [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' > /tmp/tauri-release-ci.json
+          else
+            printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true,"macOS":{"signingIdentity":"-"}}}' > /tmp/tauri-release-ci.json
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Tunara ${{ github.ref_name }}"
           releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Auto-update is built in."
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --config /tmp/tauri-release-ci.json
+
+      - name: Verify macOS release artifacts
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          DMG=$(find src-tauri/target -name 'Tunara_*.dmg' -type f -print -quit)
+          if [ -z "$DMG" ]; then
+            echo "No Tunara DMG was produced"
+            exit 1
+          fi
+
+          scripts/verify-macos-release-bundle.sh "$DMG"
+
+          UPDATER_ARCHIVE=$(find src-tauri/target -name '*.app.tar.gz' -type f -print -quit)
+          UPDATER_SIGNATURE=$(find src-tauri/target -name '*.app.tar.gz.sig' -type f -print -quit)
+          if [ -z "$UPDATER_ARCHIVE" ] || [ -z "$UPDATER_SIGNATURE" ]; then
+            echo "Updater archive/signature were not produced"
+            exit 1
+          fi
+          test -s "$UPDATER_ARCHIVE"
+          test -s "$UPDATER_SIGNATURE"
+
+          ASSETS=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[].name')
+          if ! printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json'; then
+            echo "latest.json was not uploaded to the GitHub release"
+            exit 1
+          fi
+          if ! printf '%s\n' "$ASSETS" | grep -Eq '\.app\.tar\.gz$'; then
+            echo "Updater archive was not uploaded to the GitHub release"
+            exit 1
+          fi
+          if ! printf '%s\n' "$ASSETS" | grep -Eq '\.app\.tar\.gz\.sig$'; then
+            echo "Updater signature was not uploaded to the GitHub release"
+            exit 1
+          fi
 
   update-homebrew-cask:
     needs: publish-tauri
