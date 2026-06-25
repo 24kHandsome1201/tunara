@@ -37,6 +37,16 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/tunara/);
 });
 
+test("mac window chrome aligns controls and quits after closing the main window", () => {
+  const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
+  const lib = read("src-tauri/src/lib.rs");
+
+  assert.equal(tauri.app.windows[0].titleBarStyle, "Overlay");
+  assert.deepEqual(tauri.app.windows[0].trafficLightPosition, { x: 18, y: 18 });
+  assert.match(lib, /window\.label\(\) == "main"[\s\S]*?WindowEvent::Destroyed/);
+  assert.match(lib, /window\.state::<pty::PtyState>\(\)\.close_all\(\);[\s\S]*?window\.state::<HookListenerState>\(\)\.shutdown\(\);[\s\S]*?window\.app_handle\(\)\.exit\(0\);/);
+});
+
 test("release cleanup removes orphan Rust modules from the source tree", () => {
   assert.equal(existsSync(resolve(root, "src-tauri/src/modules/secrets.rs")), false);
   assert.equal(existsSync(resolve(root, "src-tauri/src/modules/shell/mod.rs")), false);
@@ -134,7 +144,9 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(settings, /setFontLigatures\(!fontLigatures\)/);
   assert.match(settings, /setTerminalClipboardWrite\(!terminalClipboardWrite\)/);
   assert.match(settings, /Nerd Font/);
-  assert.match(settings, /连字/);
+  const zhDictForLigatures = read("src/modules/i18n/locales/zh-CN.json");
+  assert.match(settings, /t\("settings\.appearance\.ligatures"\)/);
+  assert.match(zhDictForLigatures, /"settings\.appearance\.ligatures": "连字"/);
   assert.match(settings, /configPath/);
 });
 
@@ -313,6 +325,7 @@ test("appearance settings are sanitized and command palette exposes useful actio
   const sidebar = read("src/ui/Sidebar.tsx");
   const toast = read("src/ui/Toast.tsx");
   const css = read("src/styles/globals.css");
+  const zhDict = read("src/modules/i18n/locales/zh-CN.json");
 
   assert.match(ui, /function clampNumber\(value: unknown/);
   assert.match(ui, /function sanitizeAccent\(value: unknown\)/);
@@ -320,9 +333,12 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(ui, /setSidebarVisible: \(sidebarVisible\) => set\(\{ sidebarVisible \}\)/);
   assert.match(ui, /setPanelVisible: \(panelVisible\) => set\(\{ panelVisible \}\)/);
   assert.match(ui, /setExternalEditor: \(externalEditor\) => set\(\{ externalEditor: isExternalEditor\(externalEditor\)/);
-  assert.match(palette, /label: "在当前目录新建终端"/);
-  assert.match(palette, /label: "刷新当前 Git 状态"/);
-  assert.match(palette, /label: "关闭当前会话"/);
+  assert.match(palette, /label: t\("palette\.cmd\.new_terminal_current_dir"\)/);
+  assert.match(palette, /label: t\("palette\.cmd\.refresh_git_current"\)/);
+  assert.match(palette, /label: t\("palette\.cmd\.close_current_session"\)/);
+  assert.match(zhDict, /"palette\.cmd\.new_terminal_current_dir": "在当前目录新建终端"/);
+  assert.match(zhDict, /"palette\.cmd\.refresh_git_current": "刷新当前 Git 状态"/);
+  assert.match(zhDict, /"palette\.cmd\.close_current_session": "关闭当前会话"/);
   assert.match(palette, /parseCommandPaletteQuery\(query\)/);
   assert.match(palette, /rankCommandPaletteItems\(filtered, parsedQuery, usage\)/);
   assert.match(paletteFilter, /actions: "action"/);
@@ -421,16 +437,20 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(shared, /export function SearchIcon/);
   assert.match(shared, /export function CloseIcon/);
 
-  assert.match(settings, /CLI 路径检测失败/);
+  const zhDict = read("src/modules/i18n/locales/zh-CN.json");
+  assert.match(settings, /t\("settings\.cli\.error"\)/);
+  assert.match(zhDict, /"settings\.cli\.error": "CLI 路径检测失败"/);
   assert.match(settings, /const loadCliStatus = useCallback/);
   assert.match(settings, /onClick=\{loadCliStatus\}/);
   assert.match(settings, /<RefreshIcon size=\{12\} \/>/);
-  assert.match(settings, /CLI 路径/);
-  assert.match(settings, /已找到 \$\{installedCliCount\}\/\$\{CLI_LIST\.length\}/);
-  assert.match(settings, /未在当前应用 PATH 中找到/);
-  assert.match(settings, /activeTab === "外观"/);
+  assert.match(settings, /t\("settings\.cli\.path_label"\)/);
+  assert.match(zhDict, /"settings\.cli\.path_label": "CLI 路径"/);
+  assert.match(settings, /t\("settings\.cli\.found", \{ count: installedCliCount, total: CLI_LIST\.length \}\)/);
+  assert.match(settings, /t\("settings\.cli\.not_on_path"\)/);
+  assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
+  assert.match(settings, /activeTab === "appearance"/);
   assert.match(settings, /onClick=\{\(\) => useUIStore\.getState\(\)\.resetAppearance\(\)\}/);
-  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings \}\)\)/);
+  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language \}\)\)/);
   assert.doesNotMatch(ui, /resetAppearance: \(\) => set\(\{ \.\.\.DEFAULT_SETTINGS, keybindings: \{ \.\.\.DEFAULT_KEYBINDINGS \} \}\)/);
 });
 
@@ -485,9 +505,13 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.doesNotMatch(sessionCard, /session\.changes\?\.files\.reduce/);
   assert.doesNotMatch(sidebar, /onClearCloseConfirm/);
   assert.doesNotMatch(sidebar, /clearDirCloseConfirmation/);
-  assert.match(sidebar, /label: "重命名", icon: "rename"/);
-  assert.match(sidebar, /label: "关闭会话", icon: "close"/);
-  assert.match(sidebar, /label: "关闭全部会话", icon: "close"/);
+  const zhDict = read("src/modules/i18n/locales/zh-CN.json");
+  assert.match(sidebar, /label: t\("sidebar\.session\.rename"\), icon: "rename"/);
+  assert.match(sidebar, /label: t\("sidebar\.session\.close"\), icon: "close"/);
+  assert.match(sidebar, /label: t\("sidebar\.dir\.close_all"\), icon: "close"/);
+  assert.match(zhDict, /"sidebar\.session\.rename": "重命名"/);
+  assert.match(zhDict, /"sidebar\.session\.close": "关闭会话"/);
+  assert.match(zhDict, /"sidebar\.dir\.close_all": "关闭全部会话"/);
   assert.match(palette, /st\.closeSessions\(st\.sessions\.map/);
   assert.match(palette, /notifyBatchCloseConfirmation/);
   assert.match(palette, /collectRecentTerminalDirs\(recentDirs, activeSession\.dir\)/);
@@ -543,7 +567,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(sidebar, /Home/);
   assert.match(sidebar, /End/);
   assert.match(sidebar, /role="list"/);
-  assert.match(sidebar, /aria-label="会话列表"/);
+  assert.match(sidebar, /aria-label=\{t\("sidebar\.list\.aria_label"\)\}/);
   assert.doesNotMatch(sidebar, /底部：会话数/);
   assert.doesNotMatch(sidebar, />\s*会话\s*<\/span>/);
   assert.match(sidebarHeader, /padding: "5px 9px"/);
@@ -587,8 +611,11 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(diff, /className="no-scrollbar scroll-fade-y"/);
   assert.match(explorer, /function compactRelativePath/);
   assert.match(explorer, /className="no-scrollbar scroll-fade-y"/);
-  assert.match(explorer, /label: "在此目录新建终端", icon: "terminal"/);
-  assert.match(explorer, /label: "复制路径", icon: "copy"/);
+  const zhDict = read("src/modules/i18n/locales/zh-CN.json");
+  assert.match(explorer, /label: t\("sidebar\.dir\.new_terminal"\), icon: "terminal"/);
+  assert.match(explorer, /label: t\("sidebar\.dir\.copy_path"\), icon: "copy"/);
+  assert.match(zhDict, /"sidebar\.dir\.new_terminal": "在此目录新建终端"/);
+  assert.match(zhDict, /"sidebar\.dir\.copy_path": "复制路径"/);
   assert.doesNotMatch(explorer, /function SearchIcon/);
   assert.match(explorer, /minWidth: 48, textAlign: "right"/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
@@ -726,8 +753,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectOverlay, /item\.kind !== "text"/);
   assert.match(terminalQuickSelectOverlay, /quickSelectHint\(index\)/);
   assert.match(terminalQuickSelectOverlay, /onCopy\(hintedItems\[exact\]\.item\)/);
+  const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(commandPalette, /id: "quick-select-visible-output"/);
-  assert.match(commandPalette, /label: "快速选择附近输出"/);
+  assert.match(commandPalette, /label: t\("palette\.cmd\.quick_select"\)/);
+  assert.match(zhDict, /"palette\.cmd\.quick_select": "快速选择附近输出"/);
   assert.match(commandPalette, /window\.dispatchEvent\(new CustomEvent\(TERMINAL_QUICK_SELECT_EVENT\)\)/);
   assert.match(keybindings, /"quickSelect"/);
   assert.match(appKeybindings, /case "quickSelect"/);

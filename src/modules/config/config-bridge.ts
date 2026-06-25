@@ -16,6 +16,7 @@ export interface RawAppearanceConfig {
   external_editor: string;
   bell_notification: boolean;
   terminal_clipboard_write: boolean;
+  language: string;
 }
 
 export interface RawTunaraConfig {

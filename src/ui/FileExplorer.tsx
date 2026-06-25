@@ -7,6 +7,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
+import { useT } from "@/modules/i18n";
 
 interface FileExplorerProps {
   rootDir: string;
@@ -66,6 +67,7 @@ const folderEmptyIcon = (
 );
 
 export function FileExplorer({ rootDir }: FileExplorerProps) {
+  const t = useT();
   const [currentPath, setCurrentPath] = useState(rootDir);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -323,9 +325,9 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                   setContextMenu({
                     position: { x: e.clientX, y: e.clientY },
                     items: [
-                      { id: "dir:new-terminal", label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
-                      { id: "dir:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                      { id: "dir:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                      { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
+                      { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                      { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                     ],
                   });
                 }}
@@ -355,8 +357,8 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                       setContextMenu({
                         position: { x: e.clientX, y: e.clientY },
                         items: [
-                          { id: "file:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                          { id: "file:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                          { id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                          { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
                         ],
                       });
                     }}

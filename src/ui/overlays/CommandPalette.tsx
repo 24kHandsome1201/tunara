@@ -7,6 +7,7 @@ import { formatShortcut } from "../formatShortcut";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
+import { useT } from "@/modules/i18n";
 
 interface Command {
   id: string;
@@ -29,6 +30,7 @@ function CmdIcon({ d, size = 14 }: { d: string; size?: number }) {
 }
 
 export function CommandPalette({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +52,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     if (!sessionId) return;
     uiStore.getState().addToast({
       sessionId,
-      title: "再次执行以关闭",
+      title: t("palette.toast.confirm_again"),
       subtitle,
       variant: "error",
     });
@@ -69,7 +71,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           label: primary,
           subtitle,
           icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
-          section: "会话",
+          section: t("palette.section.session"),
           scopes: ["session"],
           originalIndex: idx++,
           action: () => { setActive(s.id); uiStore.getState().recordCommandUse(`switch-${s.id}`); onClose(); },
@@ -78,10 +80,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "new-terminal",
-      label: "新建终端",
+      label: t("palette.cmd.new_terminal"),
       shortcut: formatShortcut(keybindings.newTerminal),
       icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
-      section: "操作",
+      section: t("palette.section.action"),
       scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
@@ -94,10 +96,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     if (activeSession) {
       cmds.push({
         id: "new-terminal-current-dir",
-        label: "在当前目录新建终端",
+        label: t("palette.cmd.new_terminal_current_dir"),
         subtitle: activeSession.dir,
         icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 5v14M5 12h14" /><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>,
-        section: "操作",
+        section: t("palette.section.action"),
         scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
@@ -108,25 +110,25 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       });
 
       for (const entry of collectRecentTerminalDirs(recentDirs, activeSession.dir)) cmds.push({
-        id: `new-terminal-recent-dir-${entry.dir}`, label: `在 ${entry.label} 新建终端`, subtitle: entry.dir,
+        id: `new-terminal-recent-dir-${entry.dir}`, label: t("palette.cmd.new_terminal_in_dir", { label: entry.label }), subtitle: entry.dir,
         icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-        section: "最近目录", scopes: ["action", "terminal", "recent"], originalIndex: idx++,
+        section: t("palette.section.recent_dirs"), scopes: ["action", "terminal", "recent"], originalIndex: idx++,
         action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-dir-${entry.dir}`); useSessionsStore.getState().newTerminalInDir(entry.dir); onClose(); },
       });
 
       for (const entry of collectRecentTerminalCommands(recentCommands, activeSession.lastCommand)) cmds.push({
-        id: `new-terminal-recent-command-${entry.command}`, label: `填入最近命令: ${entry.label}`, subtitle: activeSession.dir,
+        id: `new-terminal-recent-command-${entry.command}`, label: t("palette.cmd.fill_recent_command", { label: entry.label }), subtitle: activeSession.dir,
         icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
-        section: "最近命令", scopes: ["action", "terminal", "recent"], originalIndex: idx++,
+        section: t("palette.section.recent_commands"), scopes: ["action", "terminal", "recent"], originalIndex: idx++,
         action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`); useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir); onClose(); },
       });
 
       cmds.push({
         id: "refresh-git-current",
-        label: "刷新当前 Git 状态",
+        label: t("palette.cmd.refresh_git_current"),
         subtitle: activeSession.dir,
         icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
-        section: "操作",
+        section: t("palette.section.action"),
         scopes: ["action"],
         originalIndex: idx++,
         action: () => {
@@ -138,10 +140,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
       cmds.push({
         id: "quick-select-visible-output",
-        label: "快速选择附近输出",
+        label: t("palette.cmd.quick_select"),
         shortcut: formatShortcut(keybindings.quickSelect),
         icon: <CmdIcon d="M9 11.5 12 14l7-8" />,
-        section: "操作",
+        section: t("palette.section.action"),
         scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
@@ -153,9 +155,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
       cmds.push({
         id: "rename-current-session",
-        label: "重命名当前会话",
+        label: t("palette.cmd.rename_current_session"),
         icon: <CmdIcon d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />,
-        section: "操作",
+        section: t("palette.section.action"),
         scopes: ["action"],
         originalIndex: idx++,
         action: () => {
@@ -167,10 +169,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
       cmds.push({
         id: "close-current-session",
-        label: "关闭当前会话",
+        label: t("palette.cmd.close_current_session"),
         shortcut: formatShortcut(keybindings.closeSession),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
-        section: "操作",
+        section: t("palette.section.action"),
         scopes: ["action"],
         originalIndex: idx++,
         action: () => {
@@ -183,10 +185,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "toggle-sidebar",
-      label: "切换侧栏",
+      label: t("palette.cmd.toggle_sidebar"),
       shortcut: formatShortcut(keybindings.toggleSidebar),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
-      section: "操作",
+      section: t("palette.section.action"),
       scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("toggle-sidebar"); uiStore.getState().toggleSidebar(); onClose(); },
@@ -194,10 +196,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "toggle-panel",
-      label: "切换审查面板",
+      label: t("palette.cmd.toggle_panel"),
       shortcut: formatShortcut(keybindings.togglePanel),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
-      section: "操作",
+      section: t("palette.section.action"),
       scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("toggle-panel"); uiStore.getState().togglePanel(); onClose(); },
@@ -205,10 +207,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "split-horizontal",
-      label: "水平分栏",
+      label: t("palette.cmd.split_horizontal"),
       shortcut: formatShortcut(keybindings.splitHorizontal),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="8" y1="1.5" x2="8" y2="14.5" /></svg>,
-      section: "操作",
+      section: t("palette.section.action"),
       scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
@@ -221,10 +223,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "split-vertical",
-      label: "垂直分栏",
+      label: t("palette.cmd.split_vertical"),
       shortcut: formatShortcut(keybindings.splitVertical),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="1.5" y1="8" x2="14.5" y2="8" /></svg>,
-      section: "操作",
+      section: t("palette.section.action"),
       scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
@@ -237,10 +239,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "settings",
-      label: "设置",
+      label: t("palette.cmd.settings"),
       shortcut: formatShortcut(keybindings.openSettings),
       icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
-      section: "操作",
+      section: t("palette.section.action"),
       scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("settings"); uiStore.getState().setOverlay("settings"); },
@@ -248,9 +250,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "refresh-all-git",
-      label: "刷新所有 Git 状态",
+      label: t("palette.cmd.refresh_all_git"),
       icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
-      section: "批量",
+      section: t("palette.section.batch"),
       scopes: ["action", "batch"],
       originalIndex: idx++,
       action: () => {
@@ -264,39 +266,39 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     if (sessions.length > 1) {
       cmds.push({
         id: "close-all-sessions",
-        label: "关闭所有会话",
+        label: t("palette.cmd.close_all_sessions"),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
-        section: "批量",
+        section: t("palette.section.batch"),
         scopes: ["action", "batch"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-all-sessions");
           const st = useSessionsStore.getState();
           const closed = st.closeSessions(st.sessions.map((s) => s.id));
-          if (!closed) notifyBatchCloseConfirmation("运行中的会话需要再次确认");
+          if (!closed) notifyBatchCloseConfirmation(t("palette.toast.running_need_confirm"));
           onClose();
         },
       });
 
       cmds.push({
         id: "close-other-sessions",
-        label: "关闭其他会话",
+        label: t("palette.cmd.close_other_sessions"),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
-        section: "批量",
+        section: t("palette.section.batch"),
         scopes: ["action", "batch"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-other-sessions");
           const st = useSessionsStore.getState();
           const closed = st.closeSessions(st.sessions.filter((s) => s.id !== activeSessionId).map((s) => s.id));
-          if (!closed) notifyBatchCloseConfirmation("运行中的其他会话需要再次确认");
+          if (!closed) notifyBatchCloseConfirmation(t("palette.toast.other_running_need_confirm"));
           onClose();
         },
       });
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);
@@ -384,7 +386,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="输入命令或搜索…"
+            placeholder={t("palette.placeholder")}
             style={{
               flex: 1,
               border: "none",
@@ -400,7 +402,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "6px 0" }} className="no-scrollbar scroll-fade-y">
           {ranked.length === 0 && (
             <div style={{ padding: "20px 16px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-              无匹配结果
+              {t("palette.empty")}
             </div>
           )}
           {[...sections.entries()].map(([section, cmds], sectionIdx) => (

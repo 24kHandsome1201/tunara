@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { CloseIcon, RefreshIcon } from "../shared";
+import { useT, LANGUAGES, type Language } from "@/modules/i18n";
 
 interface SettingsProps {
   onClose: () => void;
@@ -18,9 +19,9 @@ interface ResolvedCommand {
   source: ResolveSource;
 }
 
-type SettingsTab = "外观" | "CLI";
+type SettingsTab = "appearance" | "cli";
 
-const TABS: SettingsTab[] = ["外观", "CLI"];
+const TABS: SettingsTab[] = ["appearance", "cli"];
 
 function ThemeCard({ label, themeType, selected, onClick }: { label: string; themeType: ThemeType; selected: boolean; onClick: () => void }) {
   const isDark = themeType === "dark";
@@ -63,10 +64,11 @@ const ACCENT_COLORS = [
 ];
 
 function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: (v: CursorStyle) => void }) {
+  const t = useT();
   const options: { id: CursorStyle; label: string }[] = [
-    { id: "bar", label: "竖条" },
-    { id: "block", label: "方块" },
-    { id: "underline", label: "下划线" },
+    { id: "bar", label: t("settings.appearance.cursor.bar") },
+    { id: "block", label: t("settings.appearance.cursor.block") },
+    { id: "underline", label: t("settings.appearance.cursor.underline") },
   ];
   return (
     <div style={{ display: "flex", background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2, gap: 0 }}>
@@ -101,14 +103,17 @@ const TOGGLE_KNOB: React.CSSProperties = {
 
 const CLI_LIST = AGENT_REGISTRY.map(({ code, name }) => ({ code, name }));
 
-const SOURCE_LABELS: Record<ResolveSource, string> = {
-  userOverride: "自定义",
-  loginShellPath: "登录 Shell",
-  systemPath: "系统 PATH",
-  notFound: "未找到",
+const SOURCE_LABEL_KEYS: Record<ResolveSource, string> = {
+  userOverride: "settings.cli.source.user_override",
+  loginShellPath: "settings.cli.source.login_shell_path",
+  systemPath: "settings.cli.source.system_path",
+  notFound: "settings.cli.source.not_found",
 };
 
 export function Settings({ onClose }: SettingsProps) {
+  const t = useT();
+  const language = useUIStore((s) => s.language);
+  const setLanguage = useUIStore((s) => s.setLanguage);
   const theme = useUIStore((s) => s.theme);
   const accent = useUIStore((s) => s.accent);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
@@ -139,7 +144,7 @@ export function Settings({ onClose }: SettingsProps) {
   const configError = useUIStore((s) => s.configError);
 
   const isDark = isDarkTheme(theme);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("外观");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const [fontDraft, setFontDraft] = useState(fontFamily);
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
@@ -177,7 +182,7 @@ export function Settings({ onClose }: SettingsProps) {
         style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn var(--duration-slow) var(--ease-out-back)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
         <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>设置</span>
+            <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>{t("settings.title")}</span>
             <button onClick={onClose} style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }} className="hover-bg">
               <CloseIcon size={13} strokeWidth={2.2} />
             </button>
@@ -191,25 +196,25 @@ export function Settings({ onClose }: SettingsProps) {
                 className="settings-tab-pill"
                 style={{ padding: "4px 12px", borderRadius: "var(--r-pill)", border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
               >
-                {tab}
+                {t(`settings.tabs.${tab}`)}
               </button>
             ))}
           </div>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
-          {activeTab === "外观" && (
+          {activeTab === "appearance" && (
             <div>
               <div style={{ marginBottom: 24 }}>
-                <div style={SECTION_LABEL}>主题</div>
+                <div style={SECTION_LABEL}>{t("settings.appearance.theme")}</div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <ThemeCard label="浅色" themeType="light" selected={theme === "light"} onClick={() => setTheme("light")} />
-                  <ThemeCard label="深色" themeType="dark" selected={theme === "dark"} onClick={() => setTheme("dark")} />
-                  <ThemeCard label="跟随系统" themeType="system" selected={theme === "system"} onClick={() => setTheme("system")} />
+                  <ThemeCard label={t("settings.appearance.theme.light")} themeType="light" selected={theme === "light"} onClick={() => setTheme("light")} />
+                  <ThemeCard label={t("settings.appearance.theme.dark")} themeType="dark" selected={theme === "dark"} onClick={() => setTheme("dark")} />
+                  <ThemeCard label={t("settings.appearance.theme.system")} themeType="system" selected={theme === "system"} onClick={() => setTheme("system")} />
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={SECTION_LABEL}>强调色</div>
+                <div style={SECTION_LABEL}>{t("settings.appearance.accent")}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {ACCENT_COLORS.map((ac) => (
                     <AccentRing key={ac.color} color={ac.color} label={ac.label} selected={accent === ac.color} onClick={() => setAccent(ac.color)} />
@@ -221,9 +226,9 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={TOGGLE_ROW}>
-                  <span style={SECTION_LABEL_INLINE}>终端光标样式</span>
+                  <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.cursor_style")}</span>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>闪烁</span>
+                    <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{t("settings.appearance.cursor_blink")}</span>
                     <button
                       onClick={() => setCursorBlink(!cursorBlink)}
                       style={{ ...TOGGLE_BUTTON, background: cursorBlink ? "var(--c-accent)" : "var(--c-bg-3)" }}
@@ -235,7 +240,7 @@ export function Settings({ onClose }: SettingsProps) {
                 <CursorStylePicker value={cursorStyle} onChange={setCursorStyle} />
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={SECTION_LABEL}>字号</div>
+                <div style={SECTION_LABEL}>{t("settings.appearance.font_size")}</div>
                 <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", overflow: "hidden" }}>
                   <button onClick={() => setFontSize(Math.max(10, fontSize - 1))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderRight: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
                   <span style={{ minWidth: 48, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{fontSize}px</span>
@@ -243,7 +248,7 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={SECTION_LABEL}>字体族</div>
+                <div style={SECTION_LABEL}>{t("settings.appearance.font_family")}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <input
                     value={fontDraft}
@@ -278,12 +283,12 @@ export function Settings({ onClose }: SettingsProps) {
                       fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
                     }}
                   >
-                    连字
+                    {t("settings.appearance.ligatures")}
                   </button>
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={SECTION_LABEL}>回滚行数</div>
+                <div style={SECTION_LABEL}>{t("settings.appearance.scrollback")}</div>
                 <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", overflow: "hidden" }}>
                   <button onClick={() => setScrollback(Math.max(1000, scrollback - 1000))} className="hover-bg" style={{ width: 32, height: 30, border: "none", borderRight: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
                   <span style={{ minWidth: 64, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{scrollback}</span>
@@ -292,7 +297,7 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={TOGGLE_ROW}>
-                  <span style={SECTION_LABEL_INLINE}>完成通知</span>
+                  <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.bell_notification")}</span>
                   <button
                     onClick={() => setBellNotification(!bellNotification)}
                     style={{ ...TOGGLE_BUTTON, background: bellNotification ? "var(--c-accent)" : "var(--c-bg-3)" }}
@@ -300,11 +305,11 @@ export function Settings({ onClose }: SettingsProps) {
                     <div style={{ ...TOGGLE_KNOB, transform: bellNotification ? "translateX(16px)" : "translateX(0)" }} />
                   </button>
                 </div>
-                <div style={SECTION_HINT}>窗口不在前台时，终端 bell 或 Agent 完成将触发 Dock 弹跳</div>
+                <div style={SECTION_HINT}>{t("settings.appearance.bell_notification.hint")}</div>
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={TOGGLE_ROW}>
-                  <span style={SECTION_LABEL_INLINE}>OSC 52 剪贴板写入</span>
+                  <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.clipboard_write")}</span>
                   <button
                     onClick={() => setTerminalClipboardWrite(!terminalClipboardWrite)}
                     style={{ ...TOGGLE_BUTTON, background: terminalClipboardWrite ? "var(--c-accent)" : "var(--c-bg-3)" }}
@@ -312,14 +317,14 @@ export function Settings({ onClose }: SettingsProps) {
                     <div style={{ ...TOGGLE_KNOB, transform: terminalClipboardWrite ? "translateX(16px)" : "translateX(0)" }} />
                   </button>
                 </div>
-                <div style={SECTION_HINT}>默认关闭；开启后终端程序可写入系统剪贴板</div>
+                <div style={SECTION_HINT}>{t("settings.appearance.clipboard_write.hint")}</div>
               </div>
               <div>
-                <div style={SECTION_LABEL}>终端配色</div>
-                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>仅影响终端区域，不改变界面主题</div>
+                <div style={SECTION_LABEL}>{t("settings.appearance.terminal_theme")}</div>
+                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>{t("settings.appearance.terminal_theme.hint")}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 8 }}>
                   {([
-                    { id: "default" as TerminalThemeName, label: "默认", bg: isDark ? "#18181b" : "#ffffff", fg: isDark ? "#e4e4e7" : "#27272a" },
+                    { id: "default" as TerminalThemeName, label: t("settings.appearance.terminal_theme.default"), bg: isDark ? "#18181b" : "#ffffff", fg: isDark ? "#e4e4e7" : "#27272a" },
                     { id: "github-light" as TerminalThemeName, label: "GitHub", bg: "#ffffff", fg: "#24292f" },
                     { id: "rose-pine-dawn" as TerminalThemeName, label: "Dawn", bg: "#faf4ed", fg: "#575279" },
                     { id: "catppuccin" as TerminalThemeName, label: "Catppuccin", bg: "#1e1e2e", fg: "#cdd6f4" },
@@ -355,7 +360,7 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               </div>
               <div style={{ marginTop: 24 }}>
-                <div style={SECTION_LABEL}>外部编辑器</div>
+                <div style={SECTION_LABEL}>{t("settings.appearance.external_editor")}</div>
                 <div style={{ display: "flex", background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2, gap: 0 }}>
                   {EXTERNAL_EDITORS.map((ed: ExternalEditor) => (
                     <button
@@ -370,16 +375,32 @@ export function Settings({ onClose }: SettingsProps) {
                   ))}
                 </div>
               </div>
+              <div style={{ marginTop: 24 }}>
+                <div style={SECTION_LABEL}>{t("settings.appearance.language")}</div>
+                <div style={{ display: "flex", background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2, gap: 0 }}>
+                  {LANGUAGES.map((lang: Language) => (
+                    <button
+                      key={lang}
+                      onClick={() => setLanguage(lang)}
+                      data-active={lang === language ? "true" : "false"}
+                      className="settings-segment"
+                      style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: "var(--r-btn)", background: "transparent", color: lang === language ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: lang === language ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
+                    >
+                      {lang === "system" ? t("settings.appearance.language.system") : lang === "zh-CN" ? t("settings.appearance.language.zh_cn") : t("settings.appearance.language.en")}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
-          {activeTab === "CLI" && (
+          {activeTab === "cli" && (
             <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ ...SECTION_LABEL, marginBottom: 4 }}>CLI 路径</div>
+                  <div style={{ ...SECTION_LABEL, marginBottom: 4 }}>{t("settings.cli.path_label")}</div>
                   <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
-                    {resolvedClis === null ? "正在检测当前应用 PATH" : `已找到 ${installedCliCount}/${CLI_LIST.length}`}
+                    {resolvedClis === null ? t("settings.cli.scanning") : t("settings.cli.found", { count: installedCliCount, total: CLI_LIST.length })}
                   </div>
                 </div>
                 <button
@@ -402,15 +423,15 @@ export function Settings({ onClose }: SettingsProps) {
                   }}
                 >
                   <RefreshIcon size={12} />
-                  重新检测
+                  {t("settings.cli.refresh")}
                 </button>
               </div>
               {resolvedClis === null && (
-                <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>检测中…</div>
+                <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-5)" }}>{t("settings.cli.detecting")}</div>
               )}
               {cliError && (
                 <div style={{ fontSize: "var(--fs-body)", color: "var(--c-error)", marginBottom: 10 }}>
-                  CLI 路径检测失败
+                  {t("settings.cli.error")}
                 </div>
               )}
               {resolvedClis !== null && (
@@ -425,11 +446,11 @@ export function Settings({ onClose }: SettingsProps) {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
                           <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-                            {installed ? cli?.path : "未在当前应用 PATH 中找到"}
+                            {installed ? cli?.path : t("settings.cli.not_on_path")}
                           </div>
                         </div>
                         <span style={{ fontSize: "var(--fs-meta)", color: installed ? "var(--c-success)" : "var(--c-text-5)", fontWeight: 600, flexShrink: 0 }}>
-                          {installed ? SOURCE_LABELS[source] : "未找到"}
+                          {installed ? t(SOURCE_LABEL_KEYS[source]) : t("settings.cli.source.not_found")}
                         </span>
                       </div>
                     );
@@ -441,13 +462,13 @@ export function Settings({ onClose }: SettingsProps) {
         </div>
 
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          {activeTab === "外观" ? (
+          {activeTab === "appearance" ? (
             <button
               onClick={() => useUIStore.getState().resetAppearance()}
               style={{ padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
               className="hover-bg"
             >
-              恢复默认
+              {t("common.reset_defaults")}
             </button>
           ) : <span />}
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -458,7 +479,7 @@ export function Settings({ onClose }: SettingsProps) {
             ) : null}
             <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", background: "var(--c-bg-3)", padding: "2px 6px", borderRadius: "var(--r-btn)" }}>ESC</span>
             <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)" }}>
-              完成
+              {t("common.done")}
             </button>
           </div>
         </div>

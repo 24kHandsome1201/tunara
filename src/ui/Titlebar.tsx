@@ -3,6 +3,7 @@ import { useUIStore } from "@/state/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { CloseIcon } from "./shared";
+import { useT } from "@/modules/i18n";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -50,7 +51,7 @@ function GearIcon() {
   );
 }
 
-function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; label: string; onSelect: () => void; onClose: () => void }) {
+function TabButton({ isActive, label, closeLabel, onSelect, onClose }: { isActive: boolean; label: string; closeLabel: string; onSelect: () => void; onClose: () => void }) {
   return (
     <button
       onClick={onSelect}
@@ -92,7 +93,7 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
       <span
         role="button"
         tabIndex={0}
-        title="关闭"
+        title={closeLabel}
         onClick={(e) => { e.stopPropagation(); onClose(); }}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
         className="tab-close hover-close"
@@ -108,6 +109,7 @@ function TabButton({ isActive, label, onSelect, onClose }: { isActive: boolean; 
 }
 
 function WindowControls() {
+  const t = useT();
   const win = getCurrentWindow();
   const btnBase: React.CSSProperties = {
     width: 28,
@@ -126,7 +128,7 @@ function WindowControls() {
     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
       <button
         onClick={() => win.minimize()}
-        title="最小化"
+        title={t("titlebar.window.minimize")}
         className="hover-bg"
         style={btnBase}
       >
@@ -136,7 +138,7 @@ function WindowControls() {
       </button>
       <button
         onClick={() => win.toggleMaximize()}
-        title="最大化"
+        title={t("titlebar.window.maximize")}
         className="hover-bg"
         style={btnBase}
       >
@@ -146,7 +148,7 @@ function WindowControls() {
       </button>
       <button
         onClick={() => win.close()}
-        title="关闭"
+        title={t("titlebar.window.close")}
         className="hover-close"
         style={btnBase}
       >
@@ -171,6 +173,7 @@ export function Titlebar({
   onNewTerminal,
   onOpenSettings,
 }: TitlebarProps) {
+  const t = useT();
   const showTabs = !sidebarVisible;
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
 
@@ -206,7 +209,7 @@ export function Titlebar({
         {trafficLightWidth > 0 && <div style={{ width: trafficLightWidth, flexShrink: 0 }} />}
         <button
           onClick={onToggleSidebar}
-          title="折叠侧边栏"
+          title={t("titlebar.toggle_sidebar")}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",
@@ -245,13 +248,14 @@ export function Titlebar({
               key={s.id}
               isActive={s.id === activeSessionId}
               label={tabLabel(s)}
+              closeLabel={t("titlebar.tab.close")}
               onSelect={() => onSelectSession(s.id)}
               onClose={() => onCloseSession(s.id)}
             />
           ))}
           <button
             onClick={onNewTerminal}
-            title="新建终端 ⌘T"
+            title={t("titlebar.new_terminal_with_shortcut")}
             style={{
               width: "var(--w-titlebar-control)",
               height: "var(--h-titlebar-control)",
@@ -288,7 +292,7 @@ export function Titlebar({
       >
         <button
           onClick={onOpenSettings}
-          title="设置 ⌘,"
+          title={t("titlebar.settings_with_shortcut")}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",
@@ -307,7 +311,7 @@ export function Titlebar({
 
         <button
           onClick={onTogglePanel}
-          title={panelVisible ? "隐藏审查面板" : "显示审查面板"}
+          title={panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show")}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",

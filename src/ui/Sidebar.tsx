@@ -7,6 +7,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
 import { formatShortcut } from "./formatShortcut";
+import { useT } from "@/modules/i18n";
 
 interface DragState {
   draggingId: string;
@@ -29,6 +30,7 @@ export function Sidebar({
   onNewTerminal,
   onCloseSession,
 }: SidebarProps) {
+  const t = useT();
   const [search, setSearch] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [contextMenu, setContextMenu] = useState<{
@@ -160,7 +162,7 @@ export function Sidebar({
         flexShrink: 0,
         overflow: "hidden",
       }}
-      aria-label="会话侧栏"
+      aria-label={t("sidebar.aria_label")}
     >
       {onNewTerminal && (
         <div style={{ padding: "8px 12px 6px" }}>
@@ -186,7 +188,7 @@ export function Sidebar({
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-accent)", lineHeight: 1 }}>
-              新建终端
+              {t("sidebar.new_terminal")}
             </span>
             <span
               style={{
@@ -209,7 +211,6 @@ export function Sidebar({
         </div>
       )}
 
-      {/* 搜索框 */}
       <div style={{ padding: "6px 12px" }}>
         <div
           className="sidebar-search"
@@ -229,8 +230,8 @@ export function Sidebar({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索会话"
-            aria-label="搜索会话"
+            placeholder={t("sidebar.search.placeholder")}
+            aria-label={t("sidebar.search.aria_label")}
             style={{
               flex: 1,
               border: "none",
@@ -244,7 +245,6 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* 会话列表 */}
       <div
         style={{
           flex: 1,
@@ -253,11 +253,11 @@ export function Sidebar({
         }}
         className="no-scrollbar scroll-fade-y scroll-fade-sidebar"
         role="list"
-        aria-label="会话列表"
+        aria-label={t("sidebar.list.aria_label")}
       >
         {filtered.length === 0 && (
           <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-            {q ? "无匹配会话" : "暂无会话"}
+            {q ? t("sidebar.empty.no_match") : t("sidebar.empty.none")}
           </div>
         )}
 
@@ -278,11 +278,11 @@ export function Sidebar({
                 setContextMenu({
                   position: { x: e.clientX, y: e.clientY },
                   items: [
-                    { id: "dir:new-terminal", label: "在此目录新建终端", icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
-                    { id: "dir:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
-                    { id: "dir:copy-path", label: "复制路径", icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
+                    { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
+                    { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
+                    { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
                     null,
-                    { id: "dir:close-all", label: "关闭全部会话", icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
+                    { id: "dir:close-all", label: t("sidebar.dir.close_all"), icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
                   ],
                 });
               }}
@@ -323,11 +323,11 @@ export function Sidebar({
                           setContextMenu({
                             position: { x: e.clientX, y: e.clientY },
                             items: [
-                              { id: "session:rename", label: "重命名", icon: "rename", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
-                              { id: "session:open-editor", label: "在编辑器中打开", icon: "editor", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
-                              { id: "session:copy-dir", label: "复制目录路径", icon: "copy", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
+                              { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
+                              { id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
+                              { id: "session:copy-dir", label: t("sidebar.session.copy_dir"), icon: "copy", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
                               null,
-                              { id: "session:close", label: "关闭会话", icon: "close", danger: true, action: () => { onCloseSession?.(s.id); } },
+                              { id: "session:close", label: t("sidebar.session.close"), icon: "close", danger: true, action: () => { onCloseSession?.(s.id); } },
                             ],
                           });
                         }}

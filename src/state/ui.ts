@@ -3,6 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
+import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
 
 export type CursorStyle = "bar" | "block" | "underline";
 
@@ -32,6 +33,7 @@ export interface AppearanceSettings {
   bellNotification: boolean;
   terminalClipboardWrite: boolean;
   keybindings: KeybindingConfig;
+  language: Language;
 }
 
 const MIN_FONT_SIZE = 10;
@@ -60,6 +62,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   bellNotification: true,
   terminalClipboardWrite: false,
   keybindings: { ...DEFAULT_KEYBINDINGS },
+  language: "system",
 };
 
 function isExternalEditor(v: unknown): v is ExternalEditor {
@@ -122,6 +125,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
     keybindings: { ...DEFAULT_KEYBINDINGS },
+    language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
   };
 }
 
@@ -151,6 +155,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       external_editor: s.externalEditor,
       bell_notification: s.bellNotification,
       terminal_clipboard_write: s.terminalClipboardWrite,
+      language: s.language,
     },
     keybindings: keybindingsToConfigKeys(s.keybindings),
   };
@@ -238,6 +243,7 @@ interface UIState extends AppearanceSettings {
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
   resetAppearance: () => void;
+  setLanguage: (lang: Language) => void;
 }
 
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
@@ -319,7 +325,12 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
     resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
-    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings })),
+    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings, language: s.language })),
+    setLanguage: (language) => {
+      const next = isLanguage(language) ? language : DEFAULT_SETTINGS.language;
+      applyLanguage(next);
+      set({ language: next });
+    },
   };
 }));
 
@@ -330,6 +341,7 @@ export async function loadUserConfig(): Promise<void> {
     const loaded = await loadTunaraConfig();
     const sanitized = sanitizeConfig(loaded.config);
     configHydrating = true;
+    applyLanguage(sanitized.language);
     useUIStore.setState({
       ...sanitized,
       configLoaded: true,
@@ -347,7 +359,7 @@ export async function loadUserConfig(): Promise<void> {
   }
 }
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "keybindings"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "keybindings", "language"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(
