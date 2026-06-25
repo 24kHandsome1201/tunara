@@ -5,9 +5,9 @@ Tunara is a small open-source project and we want it to stay a place people enjo
 ## The rules, briefly
 
 - **Be respectful.** Disagreement is fine; rudeness, condescension, and personal attacks are not.
-- **Assume good faith.** Most miscommunication isn't malicious — clarify before escalating.
+- **Assume good faith.** Most miscommunication isn't malicious, so clarify before escalating.
 - **Stay on topic.** Issues, PRs, and discussions are about Tunara. Take off-topic conversations elsewhere.
-- **No harassment.** Targeted insults, slurs, sustained disruption, sexualized comments, doxxing, or threats are not tolerated — anywhere, against anyone.
+- **No harassment.** Targeted insults, slurs, sustained disruption, sexualized comments, doxxing, or threats are not tolerated, anywhere, against anyone.
 - **No spam.** That includes promotional links, irrelevant cross-posting, and AI-generated noise that doesn't engage with the actual conversation.
 
 This applies to everything inside the project: issues, PRs, discussions, commits, and any community space we create later (Discord, etc.).

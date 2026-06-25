@@ -40,7 +40,7 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 - 修剪未使用的 keyring 依赖与 UI 细节
 
 ### Security
-- 完整审计 + 修复一批安全相关问题（详见 commit `e3322dd feat: comprehensive audit, security fixes, search UX, and Aider agent`）
+- 完整审计 + 修复一批安全相关问题（详见 commit `e33ddd6 feat: comprehensive audit, security fixes, search UX, and Aider agent`）
 - 明确 git 写操作边界并固化在 fixture
 
 ### Docs

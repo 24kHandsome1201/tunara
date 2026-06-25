@@ -47,11 +47,11 @@ pnpm tauri build
 
 ## 欢迎的贡献
 
-- **Bug 修复** — 随时欢迎
-- **新功能** — 非小改动请先开 Issue
-- **文档/typo/小 UX 修复** — 直接提 PR
-- **新 Agent 识别** — 参考 `src/modules/agent/registry-data.json` 和 `src/modules/agent/registry.ts`
-- **终端配色方案** — 参考 `src/styles/terminalTheme.ts`
+- **Bug 修复**：随时欢迎
+- **新功能**：非小改动请先开 Issue
+- **文档 / typo / 小 UX 修复**：直接提 PR
+- **新 Agent 识别**：参考 `src/modules/agent/registry-data.json` 和 `src/modules/agent/registry.ts`
+- **终端配色方案**：参考 `src/styles/terminalTheme.ts`
 
 ## 不接受的贡献
 

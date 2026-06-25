@@ -4,29 +4,33 @@ Tunara runs local shells, reads files for review surfaces, and exposes a Tauri I
 
 ## Reporting
 
-Open a private security advisory on GitHub, or contact the maintainer listed on the repository. Include:
+The preferred channel is GitHub's private security advisory:
+
+**https://github.com/24kHandsome1201/tunara/security/advisories/new**
+
+Include:
 
 - What the issue is and what it lets an attacker do
 - Steps to reproduce (a small PoC is great)
 - Version, OS, arch
 
-We'll get back to you within a few days. Once it's fixed, we'll credit you in the release notes — unless you'd rather stay anonymous.
+We'll get back to you within a few days. Once it's fixed, we'll credit you in the release notes, unless you'd rather stay anonymous.
 
 Please **don't** open a public GitHub issue for security reports.
 
 ## Supported versions
 
-Until `1.0.0`, only the current development line is expected to receive security fixes.
+Only the latest minor release line receives security fixes. At the time of writing, that means the `1.5.x` series. Older versions are not patched.
 
 ## What's in scope
 
 - The Rust backend in `src-tauri/` (PTY, FS, IPC, plugins)
-- The frontend in `src/` — anywhere untrusted input lands (terminal output, file content, AI tool results, credentials)
+- The frontend in `src/`, anywhere untrusted input lands (terminal output, file content, AI tool results, credentials)
 - Release artifacts on GitHub and the auto-updater
 
 ## What's not
 
-- Bugs in upstream deps such as Tauri, xterm.js, `portable-pty`, or git2. Report those upstream first; Tunara can pick up fixed releases.
+- Bugs in upstream deps such as Tauri, xterm.js, `portable-pty`, or git2. Report those upstream first. Tunara can pick up fixed releases.
 - Anything that needs an already-compromised machine or a local attacker with shell access
 - Old local prototypes or unreleased design artifacts
 
