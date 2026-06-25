@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatSize, type Session } from "./types";
 import {
   gitDiff,
@@ -9,8 +9,9 @@ import {
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
+import { useT, t as staticT } from "@/modules/i18n";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
-import { buildMiniDiffRows, collectHunkTexts } from "./lib/diff-parse";
+import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
 
 interface DiffPanelProps {
   session: Session;
@@ -57,29 +58,30 @@ function MiniDiff({
   searchQuery: string;
   onCopyHunk: (hunkText: string) => void;
 }) {
+  const t = useT();
   if (!diff) {
-    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>加载中…</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.loading")}</div>;
   }
   if (diff.kind === "binary") {
-    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>二进制文件</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.binary")}</div>;
   }
   if (diff.kind === "tooLarge") {
-    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>文件过大（{formatSize(diff.bytes)}），未展开</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.too_large", { size: formatSize(diff.bytes) })}</div>;
   }
   if (diff.kind === "metadataOnly") {
-    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>仅元数据变更（{diff.change}）</div>;
+    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.metadata_only", { change: diff.change })}</div>;
   }
   const allRows = buildMiniDiffRows(diff.patch);
   const q = searchQuery.trim();
-  const rows = q ? allRows.filter((r) => r.line.toLowerCase().includes(q.toLowerCase())) : allRows;
+  const rows = filterRowsByQuery(allRows, q);
   const hunkTexts = collectHunkTexts(allRows);
-
-  if (rows.length === 0) {
-    return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>未匹配「{q}」</div>;
-  }
+  const noMatch = rows.length === 0;
 
   return (
     <div style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar scroll-fade-y">
+      {noMatch && (
+        <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.no_match", { query: q })}</div>
+      )}
       {rows.map((row) => {
         const { key, line, isAdd, isDel, isHunk, hunkIndex } = row;
         if (isHunk) {
@@ -97,7 +99,7 @@ function MiniDiff({
               {renderHighlighted(line, q)}
               <button
                 className="diff-hunk-copy hover-bg"
-                title="复制此 hunk"
+                title={t("diff.hunk.copy")}
                 onClick={(e) => {
                   e.stopPropagation();
                   const text = hunkTexts[hunkIndex];
@@ -140,7 +142,7 @@ function MiniDiff({
           </div>
         );
       })}
-      {diff.truncated && !q && <div style={{ padding: "4px 8px", color: "var(--c-text-5)" }}>… 已截断</div>}
+      {diff.truncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)" }}>{t("diff.mini.truncated")}</div>}
     </div>
   );
 }
@@ -210,17 +212,18 @@ function remoteLabel(remote: RemoteState | null): string {
     case "ok":
       return `${remote.upstream} · ↑${remote.ahead} ↓${remote.behind}`;
     case "noUpstream":
-      return `${remote.branch} · 无上游`;
+      return `${remote.branch} · ${staticT("diff.remote.no_upstream")}`;
     case "detached":
-      return `游离 HEAD @ ${remote.oid.slice(0, 7)}`;
+      return staticT("diff.remote.detached", { oid: remote.oid.slice(0, 7) });
     case "unborn":
-      return "尚无提交";
+      return staticT("diff.remote.unborn");
     case "unknown":
-      return "Git 状态未知";
+      return staticT("diff.remote.unknown");
   }
 }
 
 export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
+  const t = useT();
   const repoPath = session.dir;
   const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
 
@@ -234,6 +237,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const isComposingRef = useRef(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -278,15 +282,15 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       await navigator.clipboard.writeText(text);
       useUIStore.getState().addToast({
         sessionId: session.id,
-        title: "已复制 hunk",
-        subtitle: `${text.split("\n").length} 行`,
+        title: t("diff.toast.hunk_copied"),
+        subtitle: t("diff.toast.hunk_copied_lines", { count: text.split("\n").length }),
         variant: "success",
       });
     } catch {
       useUIStore.getState().addToast({
         sessionId: session.id,
-        title: "复制失败",
-        subtitle: "剪贴板不可用",
+        title: t("diff.toast.copy_failed"),
+        subtitle: t("diff.toast.clipboard_unavailable"),
         variant: "error",
       });
     }
@@ -337,14 +341,14 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
             role="button"
             tabIndex={0}
             className="diff-file-open hover-bg"
-            title="在外部编辑器打开"
+            title={t("diff.open_in_editor")}
             onClick={(e) => {
               e.stopPropagation();
               const editor = useUIStore.getState().externalEditor;
               openInEditor(editor, `${repoPath}/${file.path}`).catch(() => {
                 useUIStore.getState().addToast({
                   sessionId: session.id,
-                  title: "未找到编辑器",
+                  title: t("diff.toast.editor_not_found"),
                   subtitle: editor,
                   variant: "error",
                 });
@@ -382,10 +386,21 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
               <div style={{ padding: "4px 8px 2px", borderBottom: "1px solid var(--c-border-3)" }}>
                 <input
                   type="text"
-                  placeholder="在此文件中搜索…"
+                  placeholder={t("diff.search.placeholder")}
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Escape") setSearchQuery(""); }}
+                  onCompositionStart={() => { isComposingRef.current = true; }}
+                  onCompositionEnd={(e) => {
+                    isComposingRef.current = false;
+                    setSearchQuery((e.target as HTMLInputElement).value);
+                  }}
+                  onChange={(e) => {
+                    if (isComposingRef.current) return;
+                    setSearchQuery(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing) return;
+                    if (e.key === "Escape") setSearchQuery("");
+                  }}
                   style={{
                     width: "100%",
                     fontSize: "var(--fs-meta)",
@@ -415,14 +430,14 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     <div style={outerStyle}>
       {!embedded && (
         <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
-          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)" }}>改动</span>
+          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)" }}>{t("diff.title")}</span>
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>⎇ {branch || "-"}</span>
           {hasChanges && summary && (
             <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
           )}
           <button
             onClick={refresh}
-            title="刷新 Git 状态"
+            title={t("diff.refresh")}
             className="hover-bg"
             style={{
               marginLeft: hasChanges && summary ? 4 : "auto",
@@ -443,7 +458,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           {onClose && (
             <button
               onClick={onClose}
-              title="关闭面板"
+              title={t("diff.close_panel")}
               style={{
                 marginLeft: 4,
                 width: "var(--h-titlebar-control)",
@@ -475,16 +490,16 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         {loading ? (
           <PanelLoadingState label="git status" />
         ) : notGit ? (
-          <PanelEmptyState label="非 Git 仓库" sublabel={repoPath} />
+          <PanelEmptyState label={t("diff.empty.not_git")} sublabel={repoPath} />
         ) : !hasChanges ? (
-          <PanelEmptyState icon={checkIcon} label="工作区干净" />
+          <PanelEmptyState icon={checkIcon} label={t("diff.empty.clean")} />
         ) : (
           <div style={{ padding: "6px" }}>
             {(() => {
               const sections = [
-                { key: "staged", title: "已暂存", files: stagedFiles, titleColor: "var(--c-success)", accentBorder: true },
-                { key: "unstaged", title: "未暂存", files: unstagedFiles, titleColor: "var(--c-text-4)", accentBorder: false },
-                { key: "untracked", title: "未追踪", files: untrackedFiles, titleColor: "var(--c-text-5)", accentBorder: false },
+                { key: "staged", title: t("diff.section.staged"), files: stagedFiles, titleColor: "var(--c-success)", accentBorder: true },
+                { key: "unstaged", title: t("diff.section.unstaged"), files: unstagedFiles, titleColor: "var(--c-text-4)", accentBorder: false },
+                { key: "untracked", title: t("diff.section.untracked"), files: untrackedFiles, titleColor: "var(--c-text-5)", accentBorder: false },
               ].filter((s) => s.files.length > 0);
               return sections.map((section) => {
                 const collapsed = !!collapsedSections[section.key];

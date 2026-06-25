@@ -614,9 +614,24 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   // buildMiniDiffRows now lives in src/ui/lib/diff-parse.ts and is consumed via import.
   const diffParseModule = read("src/ui/lib/diff-parse.ts");
   assert.match(diffParseModule, /export function buildMiniDiffRows\(patch: string\)/);
-  assert.match(diff, /import \{ buildMiniDiffRows, collectHunkTexts \} from "\.\/lib\/diff-parse"/);
+  assert.match(diff, /import \{ buildMiniDiffRows, collectHunkTexts, filterRowsByQuery \} from "\.\/lib\/diff-parse"/);
   assert.doesNotMatch(diff, /lines\.map\(\(line, i\)/);
-  assert.match(diff, /Git 状态未知/);
+  // DiffPanel is fully i18n-wired — UI literals route through t() / staticT and live in the dictionaries.
+  assert.match(diff, /import \{ useT, t as staticT \} from "@\/modules\/i18n"/);
+  assert.match(diff, /staticT\("diff\.remote\.unknown"\)/);
+  const zhDictForDiff = read("src/modules/i18n/locales/zh-CN.json");
+  const enDictForDiff = read("src/modules/i18n/locales/en.json");
+  assert.match(zhDictForDiff, /"diff\.remote\.unknown": "Git 状态未知"/);
+  assert.match(enDictForDiff, /"diff\.remote\.unknown": "Git status unknown"/);
+  // Truncated hint must render whenever the diff is truncated — including under a no-match search.
+  assert.match(diff, /diff\.truncated && <div[^>]*>\{t\("diff\.mini\.truncated"\)\}<\/div>/);
+  assert.doesNotMatch(diff, /diff\.truncated && !q/);
+  // Search input is IME-safe: composition events gate setSearchQuery so CJK typing doesn't flicker.
+  assert.match(diff, /isComposingRef = useRef\(false\)/);
+  assert.match(diff, /onCompositionStart=\{\(\) => \{ isComposingRef\.current = true; \}\}/);
+  assert.match(diff, /onCompositionEnd=\{/);
+  assert.match(diff, /if \(isComposingRef\.current\) return;\s*setSearchQuery\(e\.target\.value\)/);
+  assert.match(diff, /if \(e\.nativeEvent\.isComposing\) return;/);
   assert.match(diff, /className="no-scrollbar scroll-fade-y"/);
   assert.match(explorer, /function compactRelativePath/);
   assert.match(explorer, /className="no-scrollbar scroll-fade-y"/);

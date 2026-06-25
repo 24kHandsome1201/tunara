@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildMiniDiffRows, collectHunkTexts } from "../src/ui/lib/diff-parse.ts";
+import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "../src/ui/lib/diff-parse.ts";
 
 const SAMPLE_PATCH = [
   "diff --git a/foo.txt b/foo.txt",
@@ -74,3 +74,15 @@ test("collectHunkTexts returns an empty array when the patch has no @@ markers",
   assert.deepEqual(collectHunkTexts(rows), []);
 });
 
+test("filterRowsByQuery returns rows unchanged when query is blank or whitespace", () => {
+  const rows = buildMiniDiffRows(SAMPLE_PATCH);
+  assert.equal(filterRowsByQuery(rows, "").length, rows.length);
+  assert.equal(filterRowsByQuery(rows, "   ").length, rows.length);
+});
+
+test("filterRowsByQuery is case-insensitive and substring-based", () => {
+  const rows = buildMiniDiffRows(SAMPLE_PATCH);
+  const hits = filterRowsByQuery(rows, "HELLO");
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].line, "+hello");
+});

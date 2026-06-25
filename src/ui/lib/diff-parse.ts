@@ -44,3 +44,9 @@ export function collectHunkTexts(rows: DiffRow[]): string[] {
   }
   return buckets.map((lines) => lines.join("\n"));
 }
+
+export function filterRowsByQuery(rows: DiffRow[], query: string): DiffRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((r) => r.line.toLowerCase().includes(q));
+}
