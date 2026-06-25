@@ -29,9 +29,10 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(ResolverState::default())
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::Destroyed) {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<pty::PtyState>().close_all();
                 window.state::<HookListenerState>().shutdown();
+                window.app_handle().exit(0);
             }
         })
         .setup(|app| {
