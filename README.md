@@ -5,7 +5,11 @@
 <h1 align="center">Tunara</h1>
 
 <p align="center">
-  轻量好看的 AI 原生侧栏终端
+  A lightweight, good-looking, AI-native sidebar terminal.
+</p>
+
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
@@ -17,77 +21,77 @@
 
 ---
 
-## 为什么有这个项目
+## Why this exists
 
-Warp 想做的事太多，启动慢、内存占用高，离一个"每天打开就用"的终端越来越远。cmux、Wave 这类新工具方向是对的，但样式做得让人不太想留它在 Dock。系统自带的 Terminal 和 iTerm2 一直没有侧栏，多个项目同时跑就只能开十几个 tab，靠肌肉记忆切换。
+Warp keeps adding features it doesn't need. It boots slowly, eats memory, and drifts further from being a terminal you reach for every day. cmux and Wave have the right instincts, but their styling is the kind you don't want sitting in your Dock. macOS Terminal and iTerm2 never grew a sidebar, so juggling several projects means a forest of tabs you switch through by muscle memory.
 
-Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xterm.js、WebGL**，没有云、没有账号、没有埋点。左边一条侧栏按工作目录把会话分好组，看一眼就知道哪个项目在跑、跑的是哪个 AI agent。右边一条只读 review 面板，让你在 commit 之前快速过一遍 diff。安装包大约 30 MB，启动几乎瞬开。
+Tunara is built for that gap. A local terminal — **real PTY, xterm.js, WebGL** — no cloud, no account, no telemetry. A sidebar on the left groups sessions by working directory so a glance tells you which project is running and which AI agent is in it. A read-only review rail on the right lets you eyeball your diff before you commit. The installer is about 30 MB and the app opens nearly instantly.
 
-它不是 Warp 的替代品。它是给那些**装回 iTerm 又总觉得缺点什么**的人准备的。
+It is not a Warp replacement. It is for people who **switched back to iTerm and still feel something is missing**.
 
-## 截图
+## Screenshots
 
-应用图标和窗口截图见 [Releases 页面](https://github.com/24kHandsome1201/tunara/releases) 与 [GitHub Discussions](https://github.com/24kHandsome1201/tunara/discussions)。本地构建后直接看比静态图更准。
+App icon and window screenshots live on the [Releases page](https://github.com/24kHandsome1201/tunara/releases) and in [GitHub Discussions](https://github.com/24kHandsome1201/tunara/discussions). Building locally is more honest than a static image anyway.
 
-## 核心能力
+## Core capabilities
 
-### 终端
+### Terminal
 
-终端是主角，不是配件。跑的是真实 `portable-pty`，前端用 xterm.js 6 加 WebGL renderer，滚动和大批量输出都不掉帧。输出经过 RAF 合批和双层背压（PTY 1MiB / 前端 2MiB），即使 `cat` 一个大日志也不会卡住界面。
+The terminal is the product, not an accessory. Sessions run real `portable-pty`; the frontend uses xterm.js 6 with the WebGL renderer, so scrolling and bursty output stay smooth. Output is batched with `requestAnimationFrame` and protected by a two-layer backpressure budget (1 MiB PTY / 2 MiB frontend), so `cat`-ing a large log will not lock the UI.
 
-- 多会话 PTY，水平/垂直分栏，最深 2 pane（不做递归 tile，保持可预测）
-- ⌘F 终端内搜索 + 匹配计数
-- 命令块输出筛选：文本 / 正则 / 大小写 / 反选 / 上下文行
-- 可点击 URL，可配置 scrollback（1k 到 20k 行）
-- OSC 7 跟踪 cwd，OSC 133 接 shell integration
-- 7 套终端配色：default、catppuccin、tokyo-night、one-dark、solarized、github-light、rose-pine-dawn
+- Multi-session PTYs, horizontal/vertical split, max two panes (no recursive tiling — predictability wins)
+- ⌘F in-terminal search with match counts
+- Command-block output filters: text / regex / case / invert / context lines
+- Clickable URLs, configurable scrollback (1k–20k lines)
+- OSC 7 cwd tracking, OSC 133 shell integration
+- 7 terminal themes: default, catppuccin, tokyo-night, one-dark, solarized, github-light, rose-pine-dawn
 
-### 智能侧栏
+### Smart sidebar
 
-侧栏是 Tunara 跟其他终端最直观的区别。会话按工作目录自动分组，进同一个项目下的多个会话会折叠到一起；目录组可以折叠、批量关闭、整组拖动；会话本身可以重命名、搜索、模糊匹配。
+The sidebar is what visually separates Tunara from every other terminal. Sessions group by working directory; multiple sessions in the same project fold together; directory groups collapse, batch-close, and drag as a unit; sessions themselves rename, search, and fuzzy-match in place.
 
-- 目录组折叠 / 展开 / 批量关闭
-- 拖拽排序，搜索过滤（fuzzy），就地重命名
-- Unread 指示器 + 运行状态脉动
-- 关闭确认：running 状态需要双击，避免误关跑到一半的任务
-- 跨重启恢复会话列表和 UI 布局
+- Directory groups: collapse / expand / batch close
+- Drag to reorder, fuzzy search filter, inline rename
+- Unread indicator + running-state pulse
+- Close-confirm guard: a running session needs a double click — no accidental kills mid-task
+- Restores session list and UI layout across restarts
 
-### AI Agent 识别
+### AI agent detection
 
-如果你日常用 Claude Code、Codex、Aider 这些命令行 agent，Tunara 会自动认出来并在会话上挂一个品牌角标。不需要配置，启动时 PTY 一旦匹配到 agent 命令就生效。
+If you use CLI agents like Claude Code, Codex, or Aider day to day, Tunara recognizes them and pins a brand badge on the session. No setup — it kicks in the moment the PTY matches a known agent command.
 
-- 自动识别 12 种 agent CLI：Claude Code、Codex、Amp、Gemini、Copilot、Cursor、Droid、OpenCode、Pi、Auggie、Devin、Aider
-- 顶部浮条显示 agent 状态：starting / idle / running
-- Agent hooks 监听结构化生命周期事件（启动、思考中、工具调用、结束）
-- Agent 改动文件计数 + 改动文件预览入口
+- Auto-detects 12 agent CLIs: Claude Code, Codex, Amp, Gemini, Copilot, Cursor, Droid, OpenCode, Pi, Auggie, Devin, Aider
+- Top status bar shows agent state: starting / idle / running
+- Agent hooks listen for structured lifecycle events (start, thinking, tool call, done)
+- File-change counts per agent, plus an entry point to preview those changes
 
-明确不做：内置 AI 聊天、模型接入、MCP 编排、agent 启动器、agent stdout 结构化解析。Tunara 只是认出谁在跑，不替你管 agent。
+What it explicitly does **not** do: bundled AI chat, model integration, MCP orchestration, agent launcher, or structured parsing of agent stdout. Tunara recognizes who is running. It does not run the agent for you.
 
-### Review 面板
+### Review rail
 
-右栏是只读的 Git diff，给你"在 commit 之前再看一眼"用。读 git 走 git2（零进程开销），写永远走系统 `git` CLI，也就是说，**Tunara 自己永远不会替你 commit 或 push**。
+The right pane is a read-only git diff for "one more look before commit." Reads go through git2 (zero-process overhead); writes always go through the system `git` CLI — meaning, **Tunara will never commit or push on your behalf**.
 
-- Staged / Unstaged / Untracked 三段式分区
-- 文件浏览器 + 代码预览，语法高亮 + Markdown 渲染
-- 一键跳转外部编辑器：VS Code / Cursor / Zed / Sublime
-- 二进制 / 超大文件友好降级
-- Ahead/Behind 远程状态展示
+- Staged / Unstaged / Untracked, three-section layout
+- File browser + code preview, syntax highlighting + Markdown rendering
+- One-click jump to an external editor: VS Code / Cursor / Zed / Sublime
+- Graceful fallback for binary / oversized files
+- Ahead / behind remote indicator
 
-### 桌面体验
+### Desktop experience
 
-- ⌘K Command Palette，权重排序，覆盖所有动作和会话切换
-- 深浅色模式 + 跟随系统，5 色 accent
-- macOS 毛玻璃 + 自定义标题栏
-- Toast 通知：退出动画、hover 暂停、进度条
-- 右键菜单覆盖会话、目录组、文件
-- 响应式布局：窄窗自动收起侧栏 / 右栏
-- 窗口状态持久化（位置、尺寸）
+- ⌘K Command Palette with weighted ranking, covers every action and session switch
+- Light/dark mode + system follow, 5 accent colors
+- macOS vibrancy + custom titlebar
+- Toast notifications: exit animation, hover pause, progress bar
+- Right-click menus on sessions, directory groups, and files
+- Responsive layout: narrow windows auto-collapse sidebar / right rail
+- Window-state persistence (position, size)
 
-## 安装
+## Install
 
-### 从 Release 下载（推荐）
+### From a Release (recommended)
 
-到 [Releases](https://github.com/24kHandsome1201/tunara/releases/latest) 下载最新版的 `.dmg`。当前仅签名 macOS Apple Silicon 构建。
+Grab the latest `.dmg` from [Releases](https://github.com/24kHandsome1201/tunara/releases/latest). Only signed macOS Apple Silicon builds for now.
 
 ### Homebrew
 
@@ -96,122 +100,122 @@ brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
 brew install --cask tunara
 ```
 
-升级走应用内 Tauri updater，不需要 `brew upgrade`。
+Updates go through the in-app Tauri updater, not `brew upgrade`.
 
-### 从源码构建
+### From source
 
 ```bash
 pnpm install
 pnpm tauri build
 ```
 
-前置：Rust stable、Node 20+、pnpm 9+，加上平台对应的 [Tauri 依赖](https://tauri.app/start/prerequisites/)。
+Prerequisites: Rust stable, Node 20+, pnpm 9+, plus the platform-specific [Tauri dependencies](https://tauri.app/start/prerequisites/).
 
-## 开发
+## Development
 
 ```bash
-pnpm install          # 装依赖
-pnpm tauri dev        # 开发模式
-pnpm build            # 前端构建
-pnpm typecheck        # 类型检查
-pnpm test             # 全部测试（Node + Rust）
+pnpm install          # install dependencies
+pnpm tauri dev        # dev mode
+pnpm build            # frontend build
+pnpm typecheck        # type-check
+pnpm test             # all tests (Node + Rust)
 ```
 
-## 快捷键
+## Keybindings
 
-| 操作 | macOS | Windows / Linux |
-|------|-------|-----------------|
-| 新建终端 | ⌘T | Ctrl+T |
-| 关闭会话 | ⌘W | Ctrl+W |
-| 水平分栏 | ⌘D | Ctrl+D |
-| 垂直分栏 | ⌘⇧D | Ctrl+Shift+D |
-| 切换 pane 焦点 | ⌘] / ⌘[ | Ctrl+] / Ctrl+[ |
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| New terminal | ⌘T | Ctrl+T |
+| Close session | ⌘W | Ctrl+W |
+| Split horizontal | ⌘D | Ctrl+D |
+| Split vertical | ⌘⇧D | Ctrl+Shift+D |
+| Switch pane focus | ⌘] / ⌘[ | Ctrl+] / Ctrl+[ |
 | Command Palette | ⌘K | Ctrl+K |
-| 终端内搜索 | ⌘F | Ctrl+F |
-| 切到第 N 个会话 | ⌘1 ~ ⌘9 | Ctrl+1 ~ Ctrl+9 |
-| 字号 +/- | ⌘+ / ⌘- | Ctrl++ / Ctrl+- |
-| 切换侧栏 | ⌘\ | Ctrl+\ |
-| 设置 | ⌘, | Ctrl+, |
+| Find in terminal | ⌘F | Ctrl+F |
+| Switch to session N | ⌘1 – ⌘9 | Ctrl+1 – Ctrl+9 |
+| Font size +/- | ⌘+ / ⌘- | Ctrl++ / Ctrl+- |
+| Toggle sidebar | ⌘\ | Ctrl+\ |
+| Settings | ⌘, | Ctrl+, |
 
-## 技术栈
+## Stack
 
-| 层 | 选型 |
-|----|------|
-| 前端 | React 19、Zustand 5、xterm.js 6 + WebGL、Vite 7、TypeScript 5.8 |
-| 后端 | Tauri 2、Rust、portable-pty、git2、tokio、which |
-| 字体 | Inter Variable（UI）、JetBrains Mono（终端 / 代码） |
-| 构建 | pnpm 9 |
+| Layer | Choice |
+|-------|--------|
+| Frontend | React 19, Zustand 5, xterm.js 6 + WebGL, Vite 7, TypeScript 5.8 |
+| Backend | Tauri 2, Rust, portable-pty, git2, tokio, which |
+| Fonts | Inter Variable (UI), JetBrains Mono (terminal / code) |
+| Build | pnpm 9 |
 
-最终安装包大约 30 MB，对比 Warp 的 150 MB 量级。
+Final installer is around 30 MB, against Warp's ~150 MB.
 
-## 目录结构
+## Layout
 
 ```
-src/                    # React 前端
-├── app/                # 入口、初始化、快捷键、主题
+src/                    # React frontend
+├── app/                # entry, init, keybindings, theme
 ├── modules/            # terminal / git / fs / agent / editor
-├── state/              # Zustand（sessions + ui + persist）
-├── styles/             # CSS tokens + 终端配色
-└── ui/                 # Sidebar、MainArea、DiffPanel 等组件
+├── state/              # Zustand (sessions + ui + persist)
+├── styles/             # CSS tokens + terminal themes
+└── ui/                 # Sidebar, MainArea, DiffPanel, etc.
 
-src-tauri/src/          # Rust 后端
+src-tauri/src/          # Rust backend
 ├── modules/
-│   ├── pty/            # portable-pty 会话管理
-│   ├── git/            # git2 只读操作
-│   ├── fs/             # 目录树、搜索、grep
-│   ├── agent/          # CLI 预检 + hooks 监听
-│   ├── editor/         # 外部编辑器跳转
-│   ├── resolver/       # 二进制路径解析
-│   └── process/        # 子进程管理
-└── lib.rs              # Tauri 命令注册
+│   ├── pty/            # portable-pty session management
+│   ├── git/            # git2 read-only operations
+│   ├── fs/             # directory tree, search, grep
+│   ├── agent/          # CLI pre-check + hooks listener
+│   ├── editor/         # external editor jump
+│   ├── resolver/       # binary path resolution
+│   └── process/        # subprocess management
+└── lib.rs              # Tauri command registration
 ```
 
-## 路线图
+## Roadmap
 
-1.0 已发布，主线功能在 1.5.0 全面收口（终端块导航 / quick select / OSC 8 / Aider agent 等）：
+1.0 shipped; mainline features were fully wrapped in 1.5.0 (terminal-block navigation / quick select / OSC 8 / Aider agent and more):
 
-| 里程碑 | 状态 | 内容 |
-|--------|------|------|
-| M0 Store | done | Zustand 双 store + Tauri Store 持久化 |
-| M1 多会话 | done | 多 PTY、侧栏分组、tab 导航 |
-| M2 Agent | done | 12 种 agent CLI 自动检测 |
-| M3 Git Diff | done | git2 + 只读 review 面板 |
-| P0 Split Pane | done | 水平 / 垂直分栏 + 拖拽分割线 |
-| P0 Session 生命周期 | done | runState 状态机 + 脉动动画 |
-| P1 持久化 | done | 会话 + UI 布局跨重启 |
-| P1 侧栏标题 | done | OSC 133 命令 / agent 推导 |
-| P2 Command Palette | done | ⌘K、模糊匹配、权重排序 |
-| P3 Agent 状态条 | done | 浮条 + 改动计数 |
-| Session Recovery | done (1.2) | xterm buffer 快照 + 滚动恢复 |
+| Milestone | Status | Contents |
+|-----------|--------|----------|
+| M0 Store | done | Zustand dual-store + Tauri Store persistence |
+| M1 Multi-session | done | Multi-PTY, sidebar grouping, tab navigation |
+| M2 Agent | done | 12 agent CLIs auto-detected |
+| M3 Git Diff | done | git2 + read-only review rail |
+| P0 Split Pane | done | Horizontal / vertical split + draggable divider |
+| P0 Session lifecycle | done | runState state machine + pulse animation |
+| P1 Persistence | done | Sessions + UI layout across restarts |
+| P1 Sidebar titles | done | OSC 133 command / agent inference |
+| P2 Command Palette | done | ⌘K, fuzzy match, weighted ranking |
+| P3 Agent status bar | done | Floating bar + change counts |
+| Session Recovery | done (1.2) | xterm buffer snapshot + scrollback restore |
 
-详见 [CHANGELOG](CHANGELOG.md)。
+See [CHANGELOG](CHANGELOG.md).
 
-## 明确不做
+## Explicit non-goals
 
-跟"做什么"同样重要。下面这些功能在路线图之外，PR 也不会被合并：
+What we will not build matters as much as what we will. These are off the roadmap, and PRs adding them will not be merged:
 
-- 内置 AI 聊天 / 模型接入 / MCP 编排
-- Agent catalog、agent 启动器、批量启动入口
-- Agent stdout 结构化解析、Agent 改动时间线
-- DiffPanel 里的 stage、commit、push 等写操作
-- 插件系统、自研渲染、递归 tile 分栏
-- SSH / 远程会话管理
-- 遥测、analytics、任何回传数据
+- Bundled AI chat / model integration / MCP orchestration
+- Agent catalog, agent launcher, batch-launch entry points
+- Structured parsing of agent stdout, agent change timeline
+- Stage / commit / push or any write operations in the DiffPanel
+- Plugin system, custom renderer, recursive tile splits
+- SSH / remote session management
+- Telemetry, analytics, any kind of phone-home
 
-判断标准很简单：让终端继续是终端，而不是变成下一个 IDE 或下一个 agent 控制台。
+The test is simple: keep the terminal a terminal, not the next IDE or the next agent console.
 
-## 贡献
+## Contributing
 
-欢迎 Bug 修复、新 agent 识别、新终端配色。非小改动请先开 Issue 讨论。详见 [CONTRIBUTING](CONTRIBUTING.md) 和 [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)。
+Bug fixes, new agent detection, and new terminal themes are welcome. For anything larger, please open an Issue first. See [CONTRIBUTING](CONTRIBUTING.md) and [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md).
 
-安全问题请走 [SECURITY](SECURITY.md) 里说的私有渠道，不要直接开 Issue。
+Security issues go through the private channel described in [SECURITY](SECURITY.md) — please do not open a public Issue.
 
-## 致谢
+## Credits
 
-- 项目最早从 [terax-ai-tauri-terminal](https://github.com/emee-dev/terax-ai-tauri-terminal) 的 Tauri + xterm 脚手架起步，后续完全重写。原始版权与许可见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
-- 终端核心来自 [xterm.js](https://xtermjs.org/)、[portable-pty](https://github.com/wez/wezterm/tree/main/pty)、[git2-rs](https://github.com/rust-lang/git2-rs)。
-- 桌面壳来自 [Tauri](https://tauri.app/)。
+- The project began from the [terax-ai-tauri-terminal](https://github.com/emee-dev/terax-ai-tauri-terminal) Tauri + xterm scaffold, and has been fully rewritten since. Original copyright and license: [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md).
+- Terminal core thanks to [xterm.js](https://xtermjs.org/), [portable-pty](https://github.com/wez/wezterm/tree/main/pty), and [git2-rs](https://github.com/rust-lang/git2-rs).
+- Desktop shell thanks to [Tauri](https://tauri.app/).
 
-## 许可证
+## License
 
 [Apache-2.0](LICENSE)
