@@ -66,6 +66,7 @@ pub fn run() {
             modules::resolver::set_bin_override,
             // Tunara 新增（agent CLI 检测）
             modules::agent::preflight::agent_preflight,
+            modules::agent::preflight::agent_preflight_invalidate,
             // Tunara 新增（§3.4 git 集成）
             modules::git::git_status,
             modules::git::git_diff,

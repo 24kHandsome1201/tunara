@@ -9,7 +9,6 @@ import {
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
-import { isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 
 interface DiffPanelProps {
@@ -158,7 +157,6 @@ function remoteLabel(remote: RemoteState | null): string {
 export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const repoPath = session.dir;
   const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
-  const busy = isSessionBusy(session);
 
   const files = session.changes?.files ?? [];
   const branch = session.branch || "";
@@ -190,14 +188,6 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       setExpandedFile(null);
     }
   }, [files, expandedFile]);
-
-  useEffect(() => {
-    if (!busy) return;
-    const timer = setInterval(() => {
-      useSessionsStore.getState().refreshGit(session.id);
-    }, 10_000);
-    return () => clearInterval(timer);
-  }, [busy, session.id]);
 
   async function toggleFile(path: string) {
     if (expandedFile === path) {

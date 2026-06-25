@@ -49,7 +49,9 @@ export function useKeybindings() {
           if (ui.split.mode === "single") st.splitWithNewSession("vertical");
           break;
         case "focusSplitLeft":
-        case "focusSplitRight": {
+        case "focusSplitRight":
+        case "focusSplitUp":
+        case "focusSplitDown": {
           const { paneA, paneB } = ui.split;
           if (ui.split.mode !== "single" && paneA && paneB) {
             st.setActive(st.activeSessionId === paneB ? paneA : paneB);

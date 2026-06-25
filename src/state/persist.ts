@@ -293,8 +293,12 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
 
   const terminals: Record<string, PersistedTerminalSnapshot> = {};
   if (obj.terminals && typeof obj.terminals === "object") {
+    const orphanTerminalIds: string[] = [];
     for (const [k, v] of Object.entries(obj.terminals as Record<string, unknown>)) {
-      if (!sessionIds.has(k)) continue;
+      if (!sessionIds.has(k)) {
+        orphanTerminalIds.push(k);
+        continue;
+      }
       if (!v || typeof v !== "object") continue;
       const t = v as Record<string, unknown>;
       if (
@@ -308,6 +312,9 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
       ) {
         terminals[k] = t as unknown as PersistedTerminalSnapshot;
       }
+    }
+    if (orphanTerminalIds.length) {
+      console.warn("[persist] dropped orphan terminal snapshots", orphanTerminalIds);
     }
   }
 

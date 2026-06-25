@@ -79,7 +79,7 @@ export function agentExitedUpdate(
       shellTitle: undefined,
       suppressShellTitle: true,
       terminalProgress: undefined,
-      runState: "idle",
+      runState: exitCode === 0 ? "done" : "failed",
       completedAt: now,
       ...(!isActive ? { unread: true } : {}),
     },
@@ -112,7 +112,7 @@ export function commandFinishedUpdate(
 ): SessionLifecycleUpdate | null {
   if (!session) return null;
   if (session.agent || !session.lastCommand) {
-    return { patch: { lastExitCode: exitCode } };
+    return { patch: { lastExitCode: exitCode }, refreshGit: true };
   }
   return {
     patch: {

@@ -67,6 +67,10 @@ const CLOSE_CONFIRM_WINDOW_MS = 3_000;
 const closeConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const dirCloseConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+const GIT_REFRESH_THROTTLE_MS = 1500;
+const lastGitRefreshAt = new Map<string, number>();
+const pendingGitRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function makeSessionId(): string {
   return `s-${Date.now()}-${nextId++}`;
 }
@@ -103,6 +107,15 @@ function cancelCloseConfirmationTimer(id: string) {
   if (!timer) return;
   clearTimeout(timer);
   closeConfirmationTimers.delete(id);
+}
+
+function cancelPendingGitRefresh(id: string) {
+  const timer = pendingGitRefreshTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    pendingGitRefreshTimers.delete(id);
+  }
+  lastGitRefreshAt.delete(id);
 }
 
 function cancelDirCloseConfirmationTimer(dir: string) {
@@ -174,6 +187,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   removeSession: (id) => {
     cancelCloseConfirmationTimer(id);
+    cancelPendingGitRefresh(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
@@ -212,10 +226,32 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (accepted) ensureSessionVisibleInSplit(id);
   },
 
-  refreshGit: (id) =>
-    set((state) => ({
-      gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
-    })),
+  refreshGit: (id) => {
+    const now = Date.now();
+    const last = lastGitRefreshAt.get(id) ?? 0;
+    const elapsed = now - last;
+    if (elapsed >= GIT_REFRESH_THROTTLE_MS) {
+      lastGitRefreshAt.set(id, now);
+      const pending = pendingGitRefreshTimers.get(id);
+      if (pending) {
+        clearTimeout(pending);
+        pendingGitRefreshTimers.delete(id);
+      }
+      set((state) => ({
+        gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
+      }));
+      return;
+    }
+    if (pendingGitRefreshTimers.has(id)) return;
+    const timer = setTimeout(() => {
+      pendingGitRefreshTimers.delete(id);
+      lastGitRefreshAt.set(id, Date.now());
+      set((state) => ({
+        gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
+      }));
+    }, GIT_REFRESH_THROTTLE_MS - elapsed);
+    pendingGitRefreshTimers.set(id, timer);
+  },
 
   clearCloseConfirmation: (id) => {
     cancelCloseConfirmationTimer(id);
