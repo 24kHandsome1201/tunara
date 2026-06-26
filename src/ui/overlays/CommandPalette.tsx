@@ -8,6 +8,7 @@ import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-qui
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
 import { useT } from "@/modules/i18n";
+import { useFocusTrap } from "./useFocusTrap";
 
 interface Command {
   id: string;
@@ -35,7 +36,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
+  useFocusTrap(dialogRef);
 
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
@@ -384,6 +387,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={t("palette.placeholder")}

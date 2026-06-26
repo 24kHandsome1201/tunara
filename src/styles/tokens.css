@@ -323,14 +323,15 @@
 /* Context menu items */
 .ctx-item {
   background: transparent; color: var(--c-text-2);
+  padding: 0 12px 0 10px;
   transition: background var(--duration-fast) var(--ease-smooth),
               color var(--duration-fast) var(--ease-smooth),
               padding-left var(--duration-fast) var(--ease-out-expo);
 }
-.ctx-item:hover { background: var(--c-bg-hover); color: var(--c-text-primary); padding-left: 14px; }
+.ctx-item:hover, .ctx-item[data-active='true'] { background: var(--c-bg-hover); color: var(--c-text-primary); padding-left: 14px; }
 .ctx-item:active { opacity: 0.7; transform: scale(var(--scale-press-soft)); }
 .ctx-item-danger { color: var(--c-error); }
-.ctx-item-danger:hover { background: var(--c-error-bg-light); color: var(--c-error); }
+.ctx-item-danger:hover, .ctx-item-danger[data-active='true'] { background: var(--c-error-bg-light); color: var(--c-error); }
 .ctx-item-disabled { color: var(--c-text-6); pointer-events: none; }
 .ctx-divider { height: 1px; background: var(--c-border-2); margin: var(--sp-1) 0; }
 

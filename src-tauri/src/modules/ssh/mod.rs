@@ -53,8 +53,14 @@ pub async fn ssh_open(
             key_passphrase,
             password,
         },
-        policy: HostKeyPolicy {
-            accept_unknown: accept_unknown_host_key.unwrap_or(true),
+        // Default to Prompt (the safe TOFU behavior): an unknown/unverifiable
+        // host key now asks the user to confirm the fingerprint instead of
+        // being silently trusted. `Some(true)` is an explicit "trust without
+        // prompting" opt-in from the UI.
+        policy: if accept_unknown_host_key == Some(true) {
+            HostKeyPolicy::AcceptUnknown
+        } else {
+            HostKeyPolicy::Prompt
         },
         cols,
         rows,
@@ -72,4 +78,16 @@ pub async fn ssh_open(
         None => log::info!("ssh opened id={id} host={host}"),
     }
     Ok(id)
+}
+
+/// Answer a pending host-key prompt (emitted as `PtyEvent::HostKeyPrompt`). The
+/// in-flight `ssh_open` call is parked inside `check_server_key` waiting on this.
+#[tauri::command]
+pub fn ssh_host_key_decision(prompt_id: String, accept: bool) -> Result<(), String> {
+    if connection::resolve_host_key_prompt(&prompt_id, accept) {
+        Ok(())
+    } else {
+        // Unknown id = already resolved or timed out; not fatal.
+        Err("host-key prompt no longer pending".into())
+    }
 }

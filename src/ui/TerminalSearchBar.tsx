@@ -30,7 +30,7 @@ const SEARCH_BUTTON_STYLE: CSSProperties = {
 
 const TOGGLE_STYLE: CSSProperties = {
   ...SEARCH_BUTTON_STYLE,
-  fontSize: 11,
+  fontSize: "var(--fs-meta)",
   fontWeight: 700,
   fontFamily: "var(--font-mono)",
   lineHeight: 1,

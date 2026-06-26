@@ -1,8 +1,58 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { useUIStore } from "@/state/ui";
+import { useSessionsStore } from "@/state/sessions";
+import { t } from "@/modules/i18n";
+import type { RemoteInfo } from "@/ui/types";
 
 export type PtyEvent =
   | { type: "data"; data: string }
-  | { type: "exit"; code: number };
+  | { type: "exit"; code: number }
+  | {
+      type: "hostKeyPrompt";
+      promptId: string;
+      host: string;
+      port: number;
+      fingerprint: string;
+      keyType: string;
+    };
+
+/** Reply to a pending SSH host-key prompt (backend ssh_open is parked on it). */
+export async function answerHostKeyPrompt(promptId: string, accept: boolean): Promise<void> {
+  try {
+    await invoke("ssh_host_key_decision", { promptId, accept });
+  } catch {
+    /* prompt may have already resolved/timed out; nothing to do */
+  }
+}
+
+/** Map a raw ssh_open error into a short, localized failure reason. */
+function sshFailureReason(error: string): string {
+  const e = error.toLowerCase();
+  if (e.includes("authentication failed") || e.includes("auth")) return t("ssh.fail.auth");
+  if (e.includes("mismatch") || e.includes("host key") || e.includes("host-key")) return t("ssh.fail.hostKey");
+  if (e.includes("connect") || e.includes("refused") || e.includes("timed out") || e.includes("timeout")) return t("ssh.fail.connect");
+  return t("ssh.fail.generic");
+}
+
+/**
+ * Surface a failed SSH connection consistently: mark the session failed and
+ * raise an error Toast (matching the rest of the app's error handling). No-op
+ * for local sessions, which already show the inline red error line.
+ */
+export function reportSshOpenFailure(
+  sessionId: string,
+  remote: RemoteInfo | undefined,
+  error: string,
+): void {
+  if (!remote) return;
+  useSessionsStore.getState().updateSession(sessionId, { runState: "failed" });
+  useUIStore.getState().addToast({
+    sessionId,
+    title: `${remote.user}@${remote.host}`,
+    subtitle: sshFailureReason(error),
+    variant: "error",
+  });
+}
 
 export type PtyHandlers = {
   onData: (bytes: Uint8Array) => void;
@@ -64,6 +114,10 @@ export type RemoteOpenInfo = {
   port: number;
   user: string;
   identityFile?: string;
+  /** 加密私钥口令，仅本次连接，绝不持久化。 */
+  keyPassphrase?: string;
+  /** 密码认证，仅本次连接，绝不持久化。 */
+  password?: string;
   /** Phase 4：注入远程 shell 集成（远程 cwd / 命令边界 / agent 检测）。 */
   injectShellIntegration?: boolean;
 };
@@ -85,6 +139,8 @@ export function openSessionPty(
       port: opts.remote.port,
       user: opts.remote.user,
       identityFile: opts.remote.identityFile,
+      keyPassphrase: opts.remote.keyPassphrase,
+      password: opts.remote.password,
       injectShellIntegration: opts.remote.injectShellIntegration,
     });
   }
@@ -127,6 +183,18 @@ export async function openSshPty(
         break;
       case "exit":
         handlers.onExit?.(event.code);
+        break;
+      case "hostKeyPrompt":
+        // Park the confirmation in the UI store; an app-level dialog renders it
+        // and calls answerHostKeyPrompt with the user's decision. The backend
+        // ssh_open call is blocked inside check_server_key until then.
+        useUIStore.getState().setHostKeyPrompt({
+          promptId: event.promptId,
+          host: event.host,
+          port: event.port,
+          fingerprint: event.fingerprint,
+          keyType: event.keyType,
+        });
         break;
     }
   };

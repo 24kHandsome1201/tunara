@@ -53,7 +53,7 @@ function ToggleButton({
         background: active ? "var(--c-accent-bg-light)" : "transparent",
         borderColor: active ? "var(--c-accent-border)" : "transparent",
         fontFamily: "var(--font-mono)",
-        fontSize: 11,
+        fontSize: "var(--fs-meta)",
         fontWeight: 800,
       }}
     >

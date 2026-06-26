@@ -183,6 +183,16 @@ export interface Toast {
   agentCode?: string;
 }
 
+/** A pending SSH host-key confirmation (TOFU). The backend ssh_open call is
+ * blocked until the user accepts/rejects the fingerprint. */
+export interface HostKeyPrompt {
+  promptId: string;
+  host: string;
+  port: number;
+  fingerprint: string;
+  keyType: string;
+}
+
 interface UIState extends AppearanceSettings {
   ready: boolean;
   configLoaded: boolean;
@@ -196,6 +206,7 @@ interface UIState extends AppearanceSettings {
   split: SplitState;
   inspectorTab: InspectorTab;
   toasts: Toast[];
+  hostKeyPrompt: HostKeyPrompt | null;
   collapsedDirs: Record<string, true>;
   commandUsage: Record<string, number>;
 
@@ -227,6 +238,7 @@ interface UIState extends AppearanceSettings {
   setSplitPaneA: (sessionId: string | null) => void;
   addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
+  setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
   toggleDirCollapsed: (dir: string) => void;
   recordCommandUse: (id: string) => void;
   setExternalEditor: (e: ExternalEditor) => void;
@@ -252,6 +264,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
     inspectorTab: "changes" as InspectorTab,
     toasts: [],
+    hostKeyPrompt: null,
     collapsedDirs: {},
     // Hydrated from the workspace snapshot in useInit; starts empty.
     commandUsage: {},
@@ -298,6 +311,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((s) => ({ toasts: [...s.toasts.slice(-2), { ...toast, id }] }));
     },
     removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+    setHostKeyPrompt: (hostKeyPrompt) => set({ hostKeyPrompt }),
     toggleDirCollapsed: (dir) =>
       set((s) => {
         if (s.collapsedDirs[dir]) {

@@ -10,6 +10,8 @@ import {
   makeHostId,
   type SshHostProfile,
 } from "@/modules/ssh/hosts-bridge";
+import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
+import { useFocusTrap } from "./useFocusTrap";
 
 interface SshConnectProps {
   onClose: () => void;
@@ -30,9 +32,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [port, setPort] = useState("22");
   const [user, setUser] = useState("");
   const [identityFile, setIdentityFile] = useState("");
+  const [keyPassphrase, setKeyPassphrase] = useState("");
+  const [password, setPassword] = useState("");
   const [saveProfile, setSaveProfile] = useState(false);
   const [injectIntegration, setInjectIntegration] = useState(false);
   const [hosts, setHosts] = useState<SshHostProfile[]>([]);
+
+  useFocusTrap(containerRef);
 
   // 自动聚焦首个输入，符合 overlay 进场习惯。
   useEffect(() => {
@@ -88,6 +94,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
       user: trimmedUser,
       identityFile: trimmedId || undefined,
       injectShellIntegration: injectIntegration || undefined,
+    });
+    // Password / passphrase live OUTSIDE the Session object (which is persisted)
+    // so credentials are never written to disk — consumed once when the PTY opens.
+    stashSshCredentials(session.id, {
+      password: password || undefined,
+      keyPassphrase: keyPassphrase || undefined,
     });
     addSession(session); // addSession 已将其设为活动会话
     setOverlay(null);
@@ -223,7 +235,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                       }}
                     >
                       {h.label || `${h.user}@${h.host}`}
-                      <span style={{ color: "var(--c-text-4)", fontSize: "var(--fs-caption)", marginLeft: 6 }}>
+                      <span style={{ color: "var(--c-text-4)", fontSize: "var(--fs-meta)", marginLeft: 6 }}>
                         {h.user}@{h.host}
                         {h.port !== 22 ? `:${h.port}` : ""}
                       </span>
@@ -299,10 +311,38 @@ export function SshConnect({ onClose }: SshConnectProps) {
               spellCheck={false}
               autoCapitalize="off"
             />
-            <span style={{ display: "block", marginTop: 5, fontSize: "var(--fs-caption)", color: "var(--c-text-4)" }}>
+            <span style={{ display: "block", marginTop: 5, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>
               {t("ssh.authHint")}
             </span>
           </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>{t("ssh.keyPassphrase")}</label>
+              <input
+                style={fieldStyle}
+                type="password"
+                value={keyPassphrase}
+                onChange={(e) => setKeyPassphrase(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>{t("ssh.password")}</label>
+              <input
+                style={fieldStyle}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+          </div>
+          <span style={{ display: "block", marginTop: -6, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>
+            {t("ssh.credentialsHint")}
+          </span>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
             <input type="checkbox" checked={saveProfile} onChange={(e) => setSaveProfile(e.target.checked)} />
@@ -313,7 +353,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <input type="checkbox" checked={injectIntegration} onChange={(e) => setInjectIntegration(e.target.checked)} style={{ marginTop: 2 }} />
             <span>
               {t("ssh.injectIntegration")}
-              <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-caption)", color: "var(--c-text-4)" }}>
+              <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>
                 {t("ssh.injectIntegrationHint")}
               </span>
             </span>

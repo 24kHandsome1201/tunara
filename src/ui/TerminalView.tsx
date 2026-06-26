@@ -5,7 +5,8 @@ import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openSessionPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { openSessionPty, reportSshOpenFailure, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
 import type { AgentCode } from "./types";
@@ -388,12 +389,21 @@ function TerminalViewImpl({
       try {
         // Remote (SSH) and local sessions share the PtySession interface and
         // the pty_write/resize/close commands; openSessionPty picks the opener.
+        const sessionRemote = getCurrentSession()?.remote;
+        // One-shot credentials (password / passphrase) live outside the Session
+        // object so they're never persisted; merge them in only for this open.
+        const creds = sessionRemote ? takeSshCredentials(sessionIdRef.current) : undefined;
         pty = await openSessionPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
           cwd,
-          remote: getCurrentSession()?.remote,
+          remote: sessionRemote
+            ? { ...sessionRemote, password: creds?.password, keyPassphrase: creds?.keyPassphrase }
+            : undefined,
         });
       } catch (e) {
         term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
+        // Surface SSH/connection failures as a Toast + failed state too (a lone
+        // red line is easy to miss / indistinguishable from "still connecting").
+        reportSshOpenFailure(sessionIdRef.current, getCurrentSession()?.remote, String(e));
         return;
       }
       if (disposed) {

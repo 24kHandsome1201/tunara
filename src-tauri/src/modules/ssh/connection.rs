@@ -5,33 +5,60 @@
 // tell local from remote. The `Handle` is kept alive (later phases open an
 // SFTP channel on the same connection).
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use russh::client::{self, Handle};
-use russh::keys::ssh_key::PublicKey;
+use russh::keys::ssh_key::{HashAlg, PublicKey};
 use russh::ChannelMsg;
 use tauri::ipc::Channel as IpcChannel;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use super::auth::{self, AuthOptions};
 use super::known_hosts::{self, Verdict};
 use crate::modules::pty::PtyEvent;
 
-/// Whether to accept an unknown host key on first use. The frontend decides
-/// (it may want to prompt); Phase 1 defaults to accept-and-remember.
-#[derive(Clone, Copy)]
-pub struct HostKeyPolicy {
-    pub accept_unknown: bool,
+/// How to handle a host key the store can't confirm (Unknown / Unverifiable).
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum HostKeyPolicy {
+    /// Ask the user to confirm the fingerprint via a frontend dialog (default,
+    /// the safe TOFU behavior). A Match still proceeds silently; a Mismatch is
+    /// always refused.
+    #[default]
+    Prompt,
+    /// Accept and persist without asking. Only set when the user has already
+    /// confirmed (e.g. an explicit "trust without prompting" opt-in).
+    AcceptUnknown,
 }
 
-impl Default for HostKeyPolicy {
-    fn default() -> Self {
-        Self {
-            accept_unknown: true,
-        }
+/// Pending host-key confirmations, keyed by a per-prompt id. `check_server_key`
+/// parks a oneshot here while the frontend dialog is up; `resolve_host_key_prompt`
+/// (driven by the `ssh_host_key_decision` command) wakes it.
+static PENDING_PROMPTS: OnceLock<Mutex<HashMap<String, oneshot::Sender<bool>>>> = OnceLock::new();
+
+fn pending_prompts() -> &'static Mutex<HashMap<String, oneshot::Sender<bool>>> {
+    PENDING_PROMPTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Resolve a host-key prompt the frontend answered. Returns false if the prompt
+/// id is unknown (already resolved / timed out).
+pub fn resolve_host_key_prompt(prompt_id: &str, accept: bool) -> bool {
+    let tx = pending_prompts().lock().ok().and_then(|mut m| m.remove(prompt_id));
+    match tx {
+        Some(tx) => tx.send(accept).is_ok(),
+        None => false,
     }
+}
+
+/// Monotonic-ish unique prompt id without pulling in a uuid/rng dep: a counter
+/// plus the host. Uniqueness only needs to hold among concurrently-open prompts.
+fn next_prompt_id(host: &str, port: u16) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("hkp-{host}-{port}-{n}")
 }
 
 /// russh client handler. Host-key verification happens in `check_server_key`.
@@ -39,6 +66,44 @@ pub struct ClientHandler {
     host: String,
     port: u16,
     policy: HostKeyPolicy,
+    /// Used to emit a HostKeyPrompt to the frontend when policy is Prompt.
+    on_event: IpcChannel<PtyEvent>,
+}
+
+impl ClientHandler {
+    /// Ask the frontend to confirm a fingerprint, blocking until it replies (or
+    /// the channel/dialog goes away, treated as "reject").
+    async fn prompt_user(&self, key: &PublicKey) -> bool {
+        let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
+        let key_type = key.algorithm().to_string();
+        let prompt_id = next_prompt_id(&self.host, self.port);
+        let (tx, rx) = oneshot::channel();
+        if let Ok(mut m) = pending_prompts().lock() {
+            m.insert(prompt_id.clone(), tx);
+        } else {
+            return false;
+        }
+        let sent = self.on_event.send(PtyEvent::HostKeyPrompt {
+            prompt_id: prompt_id.clone(),
+            host: self.host.clone(),
+            port: self.port,
+            fingerprint,
+            key_type,
+        });
+        if sent.is_err() {
+            // Frontend channel gone — clean up and refuse.
+            let _ = pending_prompts().lock().map(|mut m| m.remove(&prompt_id));
+            return false;
+        }
+        match rx.await {
+            Ok(accept) => accept,
+            Err(_) => {
+                // Sender dropped (e.g. shutdown) — refuse and clean up.
+                let _ = pending_prompts().lock().map(|mut m| m.remove(&prompt_id));
+                false
+            }
+        }
+    }
 }
 
 impl client::Handler for ClientHandler {
@@ -55,31 +120,44 @@ impl client::Handler for ClientHandler {
                 );
                 Ok(false)
             }
-            Verdict::Unknown => {
-                if self.policy.accept_unknown {
+            Verdict::Unknown => match self.policy {
+                HostKeyPolicy::AcceptUnknown => {
                     if let Err(e) = known_hosts::remember(&self.host, self.port, key) {
                         log::warn!("ssh: failed to persist new host key: {e}");
                     }
                     Ok(true)
-                } else {
-                    Ok(false)
                 }
-            }
+                HostKeyPolicy::Prompt => {
+                    if self.prompt_user(key).await {
+                        // User confirmed first-use → trust and persist.
+                        if let Err(e) = known_hosts::remember(&self.host, self.port, key) {
+                            log::warn!("ssh: failed to persist new host key: {e}");
+                        }
+                        Ok(true)
+                    } else {
+                        Ok(false)
+                    }
+                }
+            },
             Verdict::Unverifiable => {
-                // known_hosts has hashed entries we can't match; this could be a
-                // rotated key on a known host. Accept only under allow-unknown,
-                // and deliberately do NOT remember it — persisting would mask a
-                // real mismatch on the next connection.
-                if self.policy.accept_unknown {
-                    log::warn!(
-                        "ssh host {}:{} not verifiable against hashed known_hosts — \
-                         accepting without persisting (rotated-key risk)",
-                        self.host,
-                        self.port
-                    );
-                    Ok(true)
-                } else {
-                    Ok(false)
+                // known_hosts has hashed/wildcard entries we can't match; this
+                // could be a rotated key on a known host. Accept only after an
+                // explicit decision, and deliberately do NOT remember it —
+                // persisting would mask a real mismatch on the next connection.
+                match self.policy {
+                    HostKeyPolicy::AcceptUnknown => {
+                        log::warn!(
+                            "ssh host {}:{} not verifiable against hashed/wildcard known_hosts — \
+                             accepting without persisting (rotated-key risk)",
+                            self.host,
+                            self.port
+                        );
+                        Ok(true)
+                    }
+                    HostKeyPolicy::Prompt => {
+                        // Prompt, but never persist on Unverifiable.
+                        Ok(self.prompt_user(key).await)
+                    }
                 }
             }
         }
@@ -146,6 +224,9 @@ impl SshSession {
             host: params.host.clone(),
             port: params.port,
             policy: params.policy,
+            // Cloned so the handler can emit a HostKeyPrompt during connect;
+            // the original still feeds the output pump below.
+            on_event: on_event.clone(),
         };
 
         let mut handle = client::connect(config, (params.host.as_str(), params.port), handler)

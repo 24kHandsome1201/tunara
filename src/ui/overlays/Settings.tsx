@@ -9,6 +9,7 @@ import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { CloseIcon, RefreshIcon } from "../shared";
 import { useT, LANGUAGES, type Language } from "@/modules/i18n";
+import { useFocusTrap } from "./useFocusTrap";
 
 interface SettingsProps {
   onClose: () => void;
@@ -153,6 +154,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [fontDraft, setFontDraft] = useState(fontFamily);
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
+  useFocusTrap(sheetRef);
   useEffect(() => { setFontDraft(fontFamily); }, [fontFamily]);
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
   const [cliError, setCliError] = useState(false);

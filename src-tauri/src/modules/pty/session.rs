@@ -30,6 +30,18 @@ const OVERFLOW_NOTICE: &[u8] =
 pub enum PtyEvent {
     Data { data: String },
     Exit { code: i32 },
+    /// An unknown/unverifiable SSH host key needs the user to confirm the
+    /// fingerprint before the connection proceeds (TOFU). The frontend shows a
+    /// dialog and replies via the `ssh_host_key_decision` command keyed by
+    /// `prompt_id`. Emitted only on the SSH path.
+    #[serde(rename_all = "camelCase")]
+    HostKeyPrompt {
+        prompt_id: String,
+        host: String,
+        port: u16,
+        fingerprint: String,
+        key_type: String,
+    },
 }
 
 /// A terminal session backend. Both variants feed xterm.js through the same
