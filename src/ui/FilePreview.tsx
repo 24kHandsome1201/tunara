@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fsReadFile, type ReadResult } from "@/modules/fs/fs-bridge";
+import { sshReadFile } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { CloseIcon } from "./shared";
 
@@ -7,6 +8,8 @@ interface FilePreviewProps {
   filePath: string;
   fileName: string;
   onClose: () => void;
+  /** 远程 SSH 会话的 PTY id；存在则经 SFTP 读取。 */
+  remotePtyId?: number;
 }
 
 function MarkdownPreview({ content }: { content: string }) {
@@ -231,7 +234,7 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-export function FilePreview({ filePath, fileName, onClose }: FilePreviewProps) {
+export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePreviewProps) {
   const [result, setResult] = useState<ReadResult | null>(null);
   const [error, setError] = useState(false);
 
@@ -239,11 +242,13 @@ export function FilePreview({ filePath, fileName, onClose }: FilePreviewProps) {
     let cancelled = false;
     setResult(null);
     setError(false);
-    fsReadFile(filePath)
+    const read =
+      remotePtyId !== undefined ? sshReadFile(remotePtyId, filePath) : fsReadFile(filePath);
+    read
       .then((r) => { if (!cancelled) setResult(r); })
       .catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; };
-  }, [filePath]);
+  }, [filePath, remotePtyId]);
 
   const isMarkdown = /\.md$/i.test(fileName);
   const textContent = result?.kind === "text"

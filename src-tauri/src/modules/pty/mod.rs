@@ -60,6 +60,12 @@ impl PtyState {
         }
     }
 
+    /// Look up a live session by physical id (used by the SFTP commands to
+    /// reach the SSH connection behind a session).
+    pub fn get(&self, id: u32) -> Option<Arc<Session>> {
+        self.sessions.read().get(&id).cloned()
+    }
+
     /// Register an already-built session under a fresh id, optionally bound to
     /// a logical id. Returns the physical id. Used by ssh_open.
     pub fn insert(&self, session: Session, logical_id: Option<&str>) -> u32 {

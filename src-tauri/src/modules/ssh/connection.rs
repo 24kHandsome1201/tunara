@@ -81,10 +81,14 @@ pub struct ConnectParams {
 
 /// A connected, authenticated SSH session with a live shell channel.
 /// Owns the input sender (frontend keystrokes → channel) and resize/close
-/// controls. The `Handle` stays alive for later SFTP use.
+/// controls. The `Handle` stays alive so an SFTP channel can be opened on the
+/// same connection (Phase 3).
 pub struct SshSession {
     handle: Handle<ClientHandler>,
     input_tx: mpsc::UnboundedSender<InputMsg>,
+    /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
+    /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
+    sftp: tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>,
 }
 
 enum InputMsg {
@@ -192,7 +196,35 @@ impl SshSession {
             let _ = on_event.send(PtyEvent::Exit { code: exit_code });
         });
 
-        Ok(SshSession { handle, input_tx })
+        Ok(SshSession {
+            handle,
+            input_tx,
+            sftp: tokio::sync::Mutex::new(None),
+        })
+    }
+
+    /// Get (opening on first use) the SFTP session for this connection. The
+    /// SFTP subsystem runs on its own channel, separate from the shell.
+    pub async fn sftp(&self) -> Result<std::sync::Arc<russh_sftp::client::SftpSession>, String> {
+        let mut guard = self.sftp.lock().await;
+        if let Some(s) = guard.as_ref() {
+            return Ok(s.clone());
+        }
+        let channel = self
+            .handle
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("open sftp channel failed: {e}"))?;
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| format!("request sftp subsystem failed: {e}"))?;
+        let session = russh_sftp::client::SftpSession::new(channel.into_stream())
+            .await
+            .map_err(|e| format!("sftp init failed: {e}"))?;
+        let arc = std::sync::Arc::new(session);
+        *guard = Some(arc.clone());
+        Ok(arc)
     }
 
     pub fn write(&self, data: &[u8]) -> Result<(), String> {
@@ -211,12 +243,6 @@ impl SshSession {
     /// itself is dropped when the SshSession is dropped.
     pub fn close(&self) {
         let _ = self.input_tx.send(InputMsg::Close);
-    }
-
-    /// Borrow the live connection handle (Phase 3 opens SFTP on it).
-    #[allow(dead_code)] // used by the SFTP file panel in Phase 3
-    pub fn handle(&self) -> &Handle<ClientHandler> {
-        &self.handle
     }
 }
 

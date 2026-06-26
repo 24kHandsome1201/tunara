@@ -9,6 +9,7 @@ pub mod auth;
 pub mod connection;
 pub mod hosts;
 pub mod known_hosts;
+pub mod sftp;
 
 use auth::AuthOptions;
 use connection::{ConnectParams, HostKeyPolicy, SshSession};

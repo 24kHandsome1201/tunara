@@ -62,6 +62,9 @@ export interface Session {
 
   // ── SSH 远程会话（§ssh-client）。存在即为远程会话，否则为本地。 ──
   remote?: RemoteInfo;
+  // 活动 PTY 的物理 id（运行时字段，不持久化）。远程会话的 SFTP 文件操作
+  // 需要它来定位后端的 SSH 连接。
+  ptyId?: number;
 
   // ── git 改动 ──
   gitState?: GitState;

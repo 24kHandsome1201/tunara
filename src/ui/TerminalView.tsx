@@ -5,7 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openPty, openSshPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { openSessionPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
 import type { AgentCode } from "./types";
@@ -383,20 +383,12 @@ export function TerminalView({
       };
       let pty;
       try {
-        // Remote sessions (SSH) and local shells share the same PtySession
-        // interface and the same pty_write/resize/close commands — only the
-        // open call differs. xterm.js never knows which it is.
-        const remote = getCurrentSession()?.remote;
-        if (remote) {
-          pty = await openSshPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
-            host: remote.host,
-            port: remote.port,
-            user: remote.user,
-            identityFile: remote.identityFile,
-          });
-        } else {
-          pty = await openPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, cwd);
-        }
+        // Remote (SSH) and local sessions share the PtySession interface and
+        // the pty_write/resize/close commands; openSessionPty picks the opener.
+        pty = await openSessionPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
+          cwd,
+          remote: getCurrentSession()?.remote,
+        });
       } catch (e) {
         term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
         return;
@@ -406,6 +398,9 @@ export function TerminalView({
         return;
       }
       ptyRef.current = pty;
+      // Expose the live PTY id on the session so the remote file panel can
+      // locate the backend SSH connection for SFTP commands.
+      useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
       const writePty = (data: string) => {
         pty.write(data).catch(() => {
           /* PTY may already be closed by the time xterm flushes input. */

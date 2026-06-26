@@ -34,14 +34,20 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 }
 
 export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
-  const tab = useUIStore((s) => s.inspectorTab);
+  const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
+  // Remote sessions have no local git working tree, so the "changes" tab is
+  // meaningless — force the files tab for them.
+  const isRemote = !!session.remote;
+  const tab = isRemote ? "files" : storeTab;
 
   return (
     <div style={{ width: "100%", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
       {/* title bar */}
       <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
-        <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>改动</TabButton>
+        {!isRemote && (
+          <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>改动</TabButton>
+        )}
         <TabButton active={tab === "files"} onClick={() => setTab("files")}>文件</TabButton>
 
         <span style={{ flex: 1 }} />
@@ -70,11 +76,19 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
 
       {/* content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-          <DiffPanel session={session} embedded />
-        </div>
+        {!isRemote && (
+          <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
+            <DiffPanel session={session} embedded />
+          </div>
+        )}
         <div key={`files-${tab}`} style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "files" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-          <FileExplorer rootDir={session.dir} />
+          {isRemote && session.ptyId === undefined ? (
+            <div style={{ padding: 16, fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>
+              连接远程会话后可浏览文件…
+            </div>
+          ) : (
+            <FileExplorer rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
+          )}
         </div>
       </div>
     </div>

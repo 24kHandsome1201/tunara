@@ -204,7 +204,7 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /export interface SearchHit/);
   assert.match(bridge, /fsReadDir\(path: string, includeHidden = false\)/);
   assert.match(bridge, /fsSearch\([\s\S]*includeHidden = false/);
-  assert.match(explorer, /fsSearch\(rootDir, q, 80, includeHidden\)/);
+  assert.match(explorer, /fsSearch\(baseDir, q, 80, includeHidden\)/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
   assert.match(explorer, /placeholder="搜索当前项目"/);

@@ -58,6 +58,36 @@ export async function openPty(
   };
 }
 
+/** 远程会话连接信息（与 Session.remote / RemoteInfo 对齐）。 */
+export type RemoteOpenInfo = {
+  host: string;
+  port: number;
+  user: string;
+  identityFile?: string;
+};
+
+/**
+ * 按会话类型开 PTY：有 remote 走 SSH，否则走本地 shell。
+ * 两者返回同一个 PtySession 接口，调用方（TerminalView）无需分支。
+ */
+export function openSessionPty(
+  logicalSessionId: string,
+  cols: number,
+  rows: number,
+  handlers: PtyHandlers,
+  opts: { cwd?: string; remote?: RemoteOpenInfo },
+): Promise<PtySession> {
+  if (opts.remote) {
+    return openSshPty(logicalSessionId, cols, rows, handlers, {
+      host: opts.remote.host,
+      port: opts.remote.port,
+      user: opts.remote.user,
+      identityFile: opts.remote.identityFile,
+    });
+  }
+  return openPty(logicalSessionId, cols, rows, handlers, opts.cwd);
+}
+
 /** SSH 连接参数（与后端 ssh_open 命令对齐）。无密码持久化。 */
 export type SshConnectOptions = {
   host: string;
