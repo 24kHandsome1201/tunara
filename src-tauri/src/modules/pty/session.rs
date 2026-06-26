@@ -166,7 +166,7 @@ pub fn spawn(
     let pending_f = pending.clone();
     let done_f = done.clone();
     let killer_f = flusher_killer.clone();
-    thread::Builder::new()
+    let flusher_thread = thread::Builder::new()
         .name("tunara-pty-flusher".into())
         .spawn(move || loop {
             thread::sleep(FLUSH_INTERVAL);
@@ -210,11 +210,24 @@ pub fn spawn(
                     -1
                 }
             };
-            // Wait for the reader to hit EOF before taking a final snapshot of
-            // `pending`, so the last line of output never races the Exit event.
+            // Wait for the reader to hit EOF so `pending` stops growing, then
+            // drain the flusher before taking a final snapshot. Setting `done`
+            // and joining the flusher guarantees every Data it had taken is sent
+            // before we emit Exit — otherwise a chunk the flusher grabbed but
+            // hadn't yet encoded could land AFTER Exit, appending output below
+            // the "[process exited]" line on the frontend.
             if let Err(e) = reader_thread.join() {
                 log::error!("pty reader thread panicked: {e:?}");
             }
+            done_e.store(true, Ordering::Release);
+            // The flusher loop breaks once `pending` is empty AND `done` is set,
+            // so on join it has flushed everything it took. Costs at most one
+            // FLUSH_INTERVAL of extra latency on Exit — negligible.
+            if let Err(e) = flusher_thread.join() {
+                log::error!("pty flusher thread panicked: {e:?}");
+            }
+            // Any residue (almost always empty now) is sent before Exit so the
+            // Exit event is guaranteed last on this channel.
             let tail = std::mem::take(&mut *pending_e.lock());
             if !tail.is_empty() {
                 if let Err(e) = on_event_exit.send(PtyEvent::Data {
@@ -223,7 +236,6 @@ pub fn spawn(
                     log::debug!("pty final-data send failed (channel closed): {e}");
                 }
             }
-            done_e.store(true, Ordering::Release);
             if let Err(e) = on_event_exit.send(PtyEvent::Exit { code }) {
                 log::debug!("pty exit send failed (channel closed): {e}");
             }

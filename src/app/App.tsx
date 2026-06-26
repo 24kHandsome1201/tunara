@@ -14,6 +14,13 @@ import { useKeybindings } from "./useKeybindings";
 import { useDockBadge } from "./useDockBadge";
 import { useEffect } from "react";
 
+// Module-level stable callbacks. These close over nothing render-scoped, so
+// hoisting them keeps their identity constant across App re-renders — which
+// lets the memoized Titlebar skip re-rendering when only unrelated state moved.
+const closeSessionById = (id: string) => useSessionsStore.getState().closeSession(id);
+const newTerminal = () => useSessionsStore.getState().newTerminal();
+const openSettings = () => useUIStore.getState().setOverlay("settings");
+
 interface ResizeHandleProps {
   edge: "left" | "right";
   getWidth: () => number;
@@ -184,9 +191,9 @@ export default function App() {
         onToggleSidebar={toggleSidebar}
         onTogglePanel={togglePanel}
         onSelectSession={setActive}
-        onCloseSession={(id) => useSessionsStore.getState().closeSession(id)}
-        onNewTerminal={() => useSessionsStore.getState().newTerminal()}
-        onOpenSettings={() => setOverlay("settings")}
+        onCloseSession={closeSessionById}
+        onNewTerminal={newTerminal}
+        onOpenSettings={openSettings}
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
@@ -239,8 +246,8 @@ export default function App() {
             sessions={sessions}
             activeSessionId={activeSessionId ?? ""}
             onSelectSession={setActive}
-            onNewTerminal={() => useSessionsStore.getState().newTerminal()}
-            onCloseSession={(id) => useSessionsStore.getState().closeSession(id)}
+            onNewTerminal={newTerminal}
+            onCloseSession={closeSessionById}
           />
           {sidebarVisible && <SidebarResizeHandle />}
         </div>

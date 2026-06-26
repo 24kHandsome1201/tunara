@@ -3,7 +3,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { groupByDir, deriveTitle, type Session } from "./types";
 import { DirGroupHeader, SidebarSearchIcon } from "./SidebarDirGroupHeader";
 import { CloseIcon } from "./shared";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
@@ -48,19 +48,28 @@ export function Sidebar({
   const collapsedDirs = useUIStore((s) => s.collapsedDirs);
   const toggleDirCollapsed = useUIStore((s) => s.toggleDirCollapsed);
   const q = search.trim().toLowerCase();
-  const filtered = q
-    ? sessions.filter((s) => {
-        const { primary, subtitle } = deriveTitle(s);
-        return (
-          primary.toLowerCase().includes(q) ||
-          subtitle.toLowerCase().includes(q) ||
-          s.dir.toLowerCase().includes(q)
-        );
-      })
-    : sessions;
-  const groups = groupByDir(filtered);
+  // Derived view of the session list. Memoized so an unrelated sessions-store
+  // update (e.g. an agent heartbeat that rebuilds the sessions array) doesn't
+  // re-run filter/group/flatten on every render.
+  const filtered = useMemo(
+    () =>
+      q
+        ? sessions.filter((s) => {
+            const { primary, subtitle } = deriveTitle(s);
+            return (
+              primary.toLowerCase().includes(q) ||
+              subtitle.toLowerCase().includes(q) ||
+              s.dir.toLowerCase().includes(q)
+            );
+          })
+        : sessions,
+    [sessions, q],
+  );
   const canReorder = q.length === 0;
-  const groupEntries = Object.entries(groups);
+  const groupEntries = useMemo(() => Object.entries(groupByDir(filtered)), [filtered]);
+  // Kept as a plain derivation (cheap flatMap) — a structure-regression test
+  // locks this exact line shape; the heavy work (filter/group) is already
+  // memoized above.
   const visibleSessionIds = groupEntries.flatMap(([dir, groupSessions]) =>
     !!collapsedDirs[dir] && !q ? [] : groupSessions.map((s) => s.id)
   );

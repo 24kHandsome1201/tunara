@@ -61,6 +61,8 @@ export interface WorkspaceSnapshotV1 {
   agentResume: Record<string, PersistedAgentResumeIntent>;
   recentDirs: string[];
   recentCommands: string[];
+  /** Command-palette usage timestamps, keyed by command id, for recency ranking. */
+  commandUsage: Record<string, number>;
 }
 
 interface PersistedUILayout {
@@ -169,6 +171,7 @@ export async function saveSessions(
       agentResume: snapshot?.agentResume ?? {},
       recentDirs: snapshot?.recentDirs ?? sanitizeRecentDirs(persisted.map((s) => s.dir)),
       recentCommands: snapshot?.recentCommands ?? [],
+      commandUsage: snapshot?.commandUsage ?? {},
     };
     await store.set(WORKSPACE_SNAPSHOT_KEY, updated);
     await store.save();
@@ -355,6 +358,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
   );
   const fallbackRecentDirs = sanitizeRecentDirs(sessions.map((s) => s.dir));
   const recentCommands = sanitizeRecentCommands(obj.recentCommands);
+  const commandUsage = sanitizeCommandUsage(obj.commandUsage);
 
   return {
     version: 1,
@@ -366,7 +370,20 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     agentResume,
     recentDirs: recentDirs.length ? recentDirs : fallbackRecentDirs,
     recentCommands,
+    commandUsage,
   };
+}
+
+/** Keep at most the 50 most-recent command-usage entries (matches the cap in
+ * the UI store's recordCommandUse) and drop any non-finite values. */
+function sanitizeCommandUsage(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object") return {};
+  const entries: [string, number][] = [];
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) entries.push([k, v]);
+  }
+  entries.sort((a, b) => b[1] - a[1]);
+  return Object.fromEntries(entries.slice(0, 50));
 }
 
 export async function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1): Promise<void> {
@@ -419,6 +436,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | nul
       agentResume: {},
       recentDirs: sanitizeRecentDirs(sessions.map((s) => s.dir)),
       recentCommands: [],
+      commandUsage: {},
     };
 
     await store.set(WORKSPACE_SNAPSHOT_KEY, migrated);

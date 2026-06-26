@@ -161,14 +161,6 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
   };
 }
 
-function loadCommandUsage(): Record<string, number> {
-  return {};
-}
-
-function persistCommandUsage(usage: Record<string, number>) {
-  void usage;
-}
-
 export type InspectorTab = "changes" | "files";
 
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
@@ -261,7 +253,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     inspectorTab: "changes" as InspectorTab,
     toasts: [],
     collapsedDirs: {},
-    commandUsage: loadCommandUsage(),
+    // Hydrated from the workspace snapshot in useInit; starts empty.
+    commandUsage: {},
     ...DEFAULT_SETTINGS,
 
     setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
@@ -376,13 +369,3 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
 );
 
-let commandUsagePersistTimer: ReturnType<typeof setTimeout> | null = null;
-useUIStore.subscribe(
-  (s) => s.commandUsage,
-  () => {
-    if (commandUsagePersistTimer) clearTimeout(commandUsagePersistTimer);
-    commandUsagePersistTimer = setTimeout(() => {
-      persistCommandUsage(useUIStore.getState().commandUsage);
-    }, 500);
-  },
-);

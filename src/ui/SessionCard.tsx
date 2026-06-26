@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { memo, useEffect, useState, useRef, useCallback } from "react";
 import { type Session, type RunState, type TerminalProgress, deriveTitle } from "./types";
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
@@ -255,7 +255,7 @@ interface SessionCardProps {
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function SessionCard({ session, active, confirmClose, tabIndex, onClick, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
+function SessionCardImpl({ session, active, confirmClose, tabIndex, onClick, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
@@ -501,3 +501,13 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
     </div>
   );
 }
+
+// Memoized so an unrelated session's update doesn't re-render every card. A
+// card only re-renders when its own data props (session/active/confirmClose/
+// tabIndex) change. NOTE: the callback props from Sidebar are currently inline
+// arrows (new identity each render), so until those are stabilized this memo
+// won't skip renders in practice — it makes the component memo-ready and is
+// zero-risk. We deliberately do NOT add a custom comparator that ignores the
+// callbacks: those closures capture live values (externalEditor, t) and
+// skipping renders on their change could surface stale context-menu actions.
+export const SessionCard = memo(SessionCardImpl);

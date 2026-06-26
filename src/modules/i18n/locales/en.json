@@ -141,5 +141,21 @@
   "diff.remote.no_upstream": "no upstream",
   "diff.remote.detached": "detached HEAD @ {{oid}}",
   "diff.remote.unborn": "no commits yet",
-  "diff.remote.unknown": "Git status unknown"
+  "diff.remote.unknown": "Git status unknown",
+
+  "explorer.go_up": "Go to parent",
+  "explorer.refresh": "Refresh file list",
+  "explorer.hide_dotfiles": "Hide dotfiles",
+  "explorer.show_dotfiles": "Show dotfiles",
+  "explorer.clear_search": "Clear search",
+  "explorer.loading": "Loading",
+  "explorer.searching": "Searching",
+  "explorer.search_failed": "Search failed",
+  "explorer.no_match": "No matching files",
+  "explorer.results": "Results",
+  "explorer.read_dir_failed": "Cannot read directory",
+  "explorer.dir_empty": "Directory is empty",
+
+  "inspector.tab.files": "Files",
+  "inspector.remote_hint": "Browse files after connecting the remote session…"
 }

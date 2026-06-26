@@ -50,6 +50,65 @@ fn host_token(host: &str, port: u16) -> String {
     }
 }
 
+/// Match a single OpenSSH host pattern (supporting `*` and `?` wildcards)
+/// against a host token. Plain patterns reduce to exact equality. Implemented
+/// as a classic two-pointer glob matcher to avoid pulling in a regex crate.
+fn host_pattern_match(pattern: &str, token: &str) -> bool {
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = token.chars().collect();
+    let (mut pi, mut ti) = (0usize, 0usize);
+    // Backtrack points for the most recent `*`.
+    let (mut star, mut mark): (Option<usize>, usize) = (None, 0);
+    while ti < t.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == t[ti]) {
+            pi += 1;
+            ti += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = Some(pi);
+            mark = ti;
+            pi += 1;
+        } else if let Some(s) = star {
+            pi = s + 1;
+            mark += 1;
+            ti = mark;
+        } else {
+            return false;
+        }
+    }
+    while pi < p.len() && p[pi] == '*' {
+        pi += 1;
+    }
+    pi == p.len()
+}
+
+/// Whether a comma-separated OpenSSH hosts field matches `token`, honoring
+/// `*`/`?` wildcards and `!` negation. A negated pattern that matches excludes
+/// the line entirely (OpenSSH: a negation wins as soon as it matches), even if
+/// another positive pattern on the same line also matches.
+fn hosts_field_matches(hosts_field: &str, token: &str) -> bool {
+    let mut positive = false;
+    for raw in hosts_field.split(',') {
+        let pat = raw.trim();
+        if pat.is_empty() {
+            continue;
+        }
+        if let Some(neg) = pat.strip_prefix('!') {
+            if host_pattern_match(neg, token) {
+                return false; // explicit exclusion takes precedence
+            }
+        } else if host_pattern_match(pat, token) {
+            positive = true;
+        }
+    }
+    positive
+}
+
+/// Whether a pattern contains wildcard metacharacters (so a single entry can
+/// legitimately cover many hosts with different keys).
+fn is_wildcard_field(hosts_field: &str) -> bool {
+    hosts_field.contains('*') || hosts_field.contains('?')
+}
+
 /// OpenSSH stores keys as `host keytype base64`. We compare on the
 /// `keytype base64` portion, which is exactly `PublicKey::to_openssh`
 /// minus the trailing comment.
@@ -76,7 +135,13 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
     };
     let token = host_token(host, port);
 
-    let mut host_seen = false;
+    // Exact (non-wildcard) entry for this host existed but no key matched.
+    let mut exact_seen = false;
+    // A wildcard entry (e.g. `*.example.com`) covered this host but its key
+    // differs. Because one wildcard line legitimately spans many hosts with
+    // different keys, that is NOT proof of a mismatch — but we also can't
+    // confirm trust, so it must downgrade to Unverifiable, never auto-trust.
+    let mut wildcard_seen = false;
     // Track whether the file has any hashed entries. If we don't find a
     // plaintext match, a hashed entry could be this host with a rotated key —
     // we can't tell, so we must not silently accept+remember (that would be the
@@ -102,12 +167,11 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
             hashed_present = true;
             continue;
         }
-        // A hosts field may list several comma-separated patterns.
-        let matches_host = hosts_field.split(',').any(|h| h == token);
-        if !matches_host {
+        // Honor comma-separated patterns, `*`/`?` wildcards, and `!` negation.
+        if !hosts_field_matches(hosts_field, &token) {
             continue;
         }
-        host_seen = true;
+        let is_wildcard = is_wildcard_field(hosts_field);
         // `rest` is "keytype base64 [comment]"; compare type+blob.
         let mut rit = rest.split_whitespace();
         if let (Some(kind), Some(blob)) = (rit.next(), rit.next()) {
@@ -115,14 +179,21 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
                 return Verdict::Match;
             }
         }
+        if is_wildcard {
+            wildcard_seen = true;
+        } else {
+            exact_seen = true;
+        }
     }
 
-    if host_seen {
-        // A plaintext entry for this host existed but no key matched → mismatch.
+    if exact_seen {
+        // A non-wildcard entry for this host existed but no key matched → MITM.
         Verdict::Mismatch
-    } else if hashed_present {
-        // No plaintext match, but hashed entries exist that could be this host.
-        // Fail safe: don't auto-trust+persist a possibly-rotated key.
+    } else if wildcard_seen || hashed_present {
+        // A wildcard covered this host (key differs, but that's expected across
+        // hosts) or hashed entries could be this host. Either way we can neither
+        // confirm nor disprove — fail safe: accept only under allow-unknown and
+        // never persist.
         Verdict::Unverifiable
     } else {
         // Genuinely first contact — standard TOFU.
@@ -173,5 +244,42 @@ mod tests {
         assert!(!auto_trusts(&Verdict::Mismatch));
         assert!(!auto_trusts(&Verdict::Match));
         assert!(auto_trusts(&Verdict::Unknown));
+    }
+
+    #[test]
+    fn wildcard_patterns_match_like_openssh() {
+        assert!(host_pattern_match("*.example.com", "host01.example.com"));
+        assert!(host_pattern_match("host??.example.com", "host01.example.com"));
+        assert!(host_pattern_match("*", "anything.at.all"));
+        assert!(!host_pattern_match("*.example.com", "example.com"));
+        assert!(!host_pattern_match("host?.example.com", "host01.example.com"));
+        // Plain patterns are exact.
+        assert!(host_pattern_match("example.com", "example.com"));
+        assert!(!host_pattern_match("example.com", "evil.com"));
+    }
+
+    #[test]
+    fn negation_excludes_even_when_a_wildcard_matches() {
+        // `!secret.example.com,*.example.com` must reject the negated host.
+        assert!(!hosts_field_matches(
+            "!secret.example.com,*.example.com",
+            "secret.example.com"
+        ));
+        // A non-negated host on the same line still matches.
+        assert!(hosts_field_matches(
+            "!secret.example.com,*.example.com",
+            "host01.example.com"
+        ));
+        // Comma-separated exact tokens still work (regression).
+        assert!(hosts_field_matches("a.com,b.com", "b.com"));
+        assert!(!hosts_field_matches("a.com,b.com", "c.com"));
+    }
+
+    #[test]
+    fn wildcard_field_detection() {
+        assert!(is_wildcard_field("*.example.com"));
+        assert!(is_wildcard_field("host?.example.com"));
+        assert!(!is_wildcard_field("plain.example.com"));
+        assert!(!is_wildcard_field("[host]:2222"));
     }
 }

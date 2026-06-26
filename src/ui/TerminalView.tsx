@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -46,10 +46,11 @@ interface TerminalViewProps {
   active: boolean;
   pendingInput?: string;
   pendingInputSubmit?: boolean;
-  onPendingInputConsumed?: () => void;
+  /** Called with this view's session id once pendingInput has been delivered. */
+  onPendingInputConsumed?: (sessionId: string) => void;
 }
 
-export function TerminalView({
+function TerminalViewImpl({
   sessionId,
   dir,
   active,
@@ -62,18 +63,14 @@ export function TerminalView({
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
   const initRef = useRef(false);
+  // Gates the pendingInput effect to fire once when the PTY is ready.
+  const [ptyReady, setPtyReady] = useState(false);
   const webglRef = useRef<TerminalWebglRenderer | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
   const search = useTerminalSearch(termRef);
   const blocks = useTerminalBlocks(termRef);
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
-  const pendingInputRef = useRef(pendingInput);
-  pendingInputRef.current = pendingInput;
-  const pendingInputSubmitRef = useRef(pendingInputSubmit);
-  pendingInputSubmitRef.current = pendingInputSubmit;
-  const onPendingInputConsumedRef = useRef(onPendingInputConsumed);
-  onPendingInputConsumedRef.current = onPendingInputConsumed;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const theme = useUIStore((s) => s.theme);
@@ -89,11 +86,17 @@ export function TerminalView({
     active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
   useTerminalWebgl(termRef, active, webglRef);
+  // Sole delivery path for pendingInput (init effect must NOT also schedule it).
   useEffect(() => {
     const pty = ptyRef.current;
     if (!pendingInput || !pty) return;
-    return schedulePendingInput({ pty, input: pendingInput, submit: pendingInputSubmit !== false, onConsumed: onPendingInputConsumed }).dispose;
-  }, [pendingInput, pendingInputSubmit, onPendingInputConsumed]);
+    return schedulePendingInput({
+      pty,
+      input: pendingInput,
+      submit: pendingInputSubmit !== false,
+      onConsumed: () => onPendingInputConsumed?.(sessionIdRef.current),
+    }).dispose;
+  }, [pendingInput, pendingInputSubmit, onPendingInputConsumed, ptyReady]);
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
     initRef.current = true;
@@ -398,6 +401,8 @@ export function TerminalView({
         return;
       }
       ptyRef.current = pty;
+      setPtyReady(true); // triggers the pendingInput effect once, now that pty is live
+
       // Expose the live PTY id on the session so the remote file panel can
       // locate the backend SSH connection for SFTP commands.
       useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
@@ -411,12 +416,7 @@ export function TerminalView({
           /* Resize can race with process exit or pane teardown. */
         });
       };
-      cleanups.push(schedulePendingInput({
-        pty,
-        input: pendingInputRef.current,
-        submit: pendingInputSubmitRef.current !== false,
-        onConsumed: onPendingInputConsumedRef.current,
-      }).dispose);
+      // pendingInput is delivered solely by the top-level effect (keyed on ptyReady).
       let inputBuffer = "";
       // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = (submitted: string) => {
@@ -495,3 +495,7 @@ export function TerminalView({
   }, []);
   return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />;
 }
+
+// Memoized (with stable props from MainArea) so a MainArea re-render on each
+// agent heartbeat doesn't re-render every mounted terminal.
+export const TerminalView = memo(TerminalViewImpl);

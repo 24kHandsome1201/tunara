@@ -141,5 +141,21 @@
   "diff.remote.no_upstream": "无上游",
   "diff.remote.detached": "游离 HEAD @ {{oid}}",
   "diff.remote.unborn": "尚无提交",
-  "diff.remote.unknown": "Git 状态未知"
+  "diff.remote.unknown": "Git 状态未知",
+
+  "explorer.go_up": "返回上级",
+  "explorer.refresh": "刷新文件列表",
+  "explorer.hide_dotfiles": "隐藏点文件",
+  "explorer.show_dotfiles": "显示点文件",
+  "explorer.clear_search": "清空搜索",
+  "explorer.loading": "加载中",
+  "explorer.searching": "搜索中",
+  "explorer.search_failed": "搜索失败",
+  "explorer.no_match": "没有找到匹配文件",
+  "explorer.results": "结果",
+  "explorer.read_dir_failed": "无法读取目录",
+  "explorer.dir_empty": "目录为空",
+
+  "inspector.tab.files": "文件",
+  "inspector.remote_hint": "连接远程会话后可浏览文件…"
 }

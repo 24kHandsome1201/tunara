@@ -221,8 +221,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           onClick={goUp}
           disabled={!canGoUp}
           className="hover-bg"
-          title="返回上级"
-          aria-label="返回上级"
+          title={t("explorer.go_up")}
+          aria-label={t("explorer.go_up")}
           style={{
             width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none",
             background: "transparent", cursor: canGoUp ? "pointer" : "default",
@@ -282,8 +282,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         <button
           onClick={refresh}
           className="hover-bg"
-          title="刷新文件列表"
-          aria-label="刷新文件列表"
+          title={t("explorer.refresh")}
+          aria-label={t("explorer.refresh")}
           style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
         >
           <RefreshIcon />
@@ -291,8 +291,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         <button
           onClick={() => setIncludeHidden((v) => !v)}
           className="hover-bg"
-          title={includeHidden ? "隐藏点文件" : "显示点文件"}
-          aria-label={includeHidden ? "隐藏点文件" : "显示点文件"}
+          title={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
+          aria-label={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
           aria-pressed={includeHidden}
           style={{
             height: 26,
@@ -331,7 +331,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             <button
               onClick={() => setSearchQuery("")}
               className="hover-bg"
-              title="清空搜索"
+              title={t("explorer.clear_search")}
+              aria-label={t("explorer.clear_search")}
               style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)", flexShrink: 0 }}
             >
               <CloseIcon size={11} strokeWidth={2.4} />
@@ -343,15 +344,15 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }} className="no-scrollbar scroll-fade-y">
         {isSearching ? (
           searchLoading ? (
-            <PanelLoadingState label="搜索中" />
+            <PanelLoadingState label={t("explorer.searching")} />
           ) : searchError ? (
-            <PanelEmptyState label="搜索失败" sublabel={searchQuery.trim()} />
+            <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
           ) : searchHits.length === 0 ? (
-            <PanelEmptyState label="没有找到匹配文件" sublabel={searchQuery.trim()} />
+            <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
           ) : (
             <>
               <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>结果</span>
+                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
                 <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{searchHits.length}</span>
               </div>
               {searchHits.map((hit) => {
@@ -382,11 +383,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             </>
           )
         ) : loading ? (
-          <PanelLoadingState />
+          <PanelLoadingState label={t("explorer.loading")} />
         ) : error ? (
-          <PanelEmptyState label="无法读取目录" sublabel={currentPath} />
+          <PanelEmptyState label={t("explorer.read_dir_failed")} sublabel={currentPath} />
         ) : entries.length === 0 ? (
-          <PanelEmptyState icon={folderEmptyIcon} label="目录为空" />
+          <PanelEmptyState icon={folderEmptyIcon} label={t("explorer.dir_empty")} />
         ) : (
           <>
             {dirs.map((entry) => {
