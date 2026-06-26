@@ -87,6 +87,11 @@ export interface RemoteInfo {
   user: string;
   /** 私钥文件路径（如 ~/.ssh/id_ed25519），可选；缺省时走 agent。 */
   identityFile?: string;
+  /**
+   * Phase 4：连接时向远程 shell 注入集成脚本，启用远程 cwd / 命令边界 /
+   * agent 检测。默认关闭——失败时静默降级。
+   */
+  injectShellIntegration?: boolean;
 }
 
 /** 改动文件（与后端 git FileChange 对齐） */

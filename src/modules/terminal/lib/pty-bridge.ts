@@ -64,6 +64,8 @@ export type RemoteOpenInfo = {
   port: number;
   user: string;
   identityFile?: string;
+  /** Phase 4：注入远程 shell 集成（远程 cwd / 命令边界 / agent 检测）。 */
+  injectShellIntegration?: boolean;
 };
 
 /**
@@ -83,6 +85,7 @@ export function openSessionPty(
       port: opts.remote.port,
       user: opts.remote.user,
       identityFile: opts.remote.identityFile,
+      injectShellIntegration: opts.remote.injectShellIntegration,
     });
   }
   return openPty(logicalSessionId, cols, rows, handlers, opts.cwd);
@@ -101,6 +104,8 @@ export type SshConnectOptions = {
   password?: string;
   /** 首连未知主机密钥是否接受（TOFU），默认 true。 */
   acceptUnknownHostKey?: boolean;
+  /** Phase 4：注入远程 shell 集成（OSC 7 / OSC 133），默认 false。 */
+  injectShellIntegration?: boolean;
 };
 
 /**
@@ -135,6 +140,7 @@ export async function openSshPty(
     keyPassphrase: conn.keyPassphrase ?? null,
     password: conn.password ?? null,
     acceptUnknownHostKey: conn.acceptUnknownHostKey ?? null,
+    injectShellIntegration: conn.injectShellIntegration ?? null,
     cols,
     rows,
     onEvent: channel,

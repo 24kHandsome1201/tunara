@@ -31,6 +31,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [user, setUser] = useState("");
   const [identityFile, setIdentityFile] = useState("");
   const [saveProfile, setSaveProfile] = useState(false);
+  const [injectIntegration, setInjectIntegration] = useState(false);
   const [hosts, setHosts] = useState<SshHostProfile[]>([]);
 
   // 自动聚焦首个输入，符合 overlay 进场习惯。
@@ -86,6 +87,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       port: safePort,
       user: trimmedUser,
       identityFile: trimmedId || undefined,
+      injectShellIntegration: injectIntegration || undefined,
     });
     addSession(session); // addSession 已将其设为活动会话
     setOverlay(null);
@@ -305,6 +307,16 @@ export function SshConnect({ onClose }: SshConnectProps) {
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
             <input type="checkbox" checked={saveProfile} onChange={(e) => setSaveProfile(e.target.checked)} />
             {t("ssh.saveProfile")}
+          </label>
+
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
+            <input type="checkbox" checked={injectIntegration} onChange={(e) => setInjectIntegration(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>
+              {t("ssh.injectIntegration")}
+              <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-caption)", color: "var(--c-text-4)" }}>
+                {t("ssh.injectIntegrationHint")}
+              </span>
+            </span>
           </label>
         </div>
 

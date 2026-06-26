@@ -34,6 +34,7 @@ pub async fn ssh_open(
     key_passphrase: Option<String>,
     password: Option<String>,
     accept_unknown_host_key: Option<bool>,
+    inject_shell_integration: Option<bool>,
     cols: u16,
     rows: u16,
     on_event: Channel<PtyEvent>,
@@ -57,6 +58,7 @@ pub async fn ssh_open(
         },
         cols,
         rows,
+        inject_shell_integration: inject_shell_integration.unwrap_or(false),
     };
 
     let ssh = SshSession::open(params, on_event).await.map_err(|e| {

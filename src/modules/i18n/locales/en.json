@@ -13,6 +13,8 @@
   "ssh.connect": "Connect",
   "ssh.saved": "Saved hosts",
   "ssh.saveProfile": "Save this host (no password)",
+  "ssh.injectIntegration": "Enable remote shell integration",
+  "ssh.injectIntegrationHint": "Injects a lightweight script for cwd / command boundaries / agent detection. bash/zsh only; silently ignored if unsupported.",
   "palette.cmd.new_ssh_session": "New SSH connection",
   "titlebar.new_ssh_session": "New SSH connection",
 

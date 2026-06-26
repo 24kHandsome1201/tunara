@@ -69,6 +69,10 @@ impl client::Handler for ClientHandler {
     }
 }
 
+/// Remote shell-integration bootstrap (OSC 7 + OSC 133 hooks for bash/zsh).
+/// Sent base64-decoded via `eval` so it installs cleanly in one short line.
+const REMOTE_INTEGRATION: &str = include_str!("scripts/remote-integration.sh");
+
 /// Parameters to open an SSH session.
 pub struct ConnectParams {
     pub host: String,
@@ -77,6 +81,10 @@ pub struct ConnectParams {
     pub policy: HostKeyPolicy,
     pub cols: u16,
     pub rows: u16,
+    /// Opt-in (Phase 4): inject remote shell integration so the remote shell
+    /// emits OSC 7 / OSC 133, giving the host remote cwd + command/agent
+    /// detection. Off by default — degrades silently on unsupported shells.
+    pub inject_shell_integration: bool,
 }
 
 /// A connected, authenticated SSH session with a live shell channel.
@@ -145,6 +153,21 @@ impl SshSession {
             .request_shell(true)
             .await
             .map_err(|e| format!("request shell failed: {e}"))?;
+
+        // Phase 4 (opt-in): install remote shell integration. We base64 the
+        // bootstrap and `eval` it in one leading-space line (leading space
+        // keeps it out of the remote shell's history). Output is suppressed so
+        // the only visible trace is the (echoed) command line itself.
+        if params.inject_shell_integration {
+            let encoded = B64.encode(REMOTE_INTEGRATION.as_bytes());
+            // Try GNU then BSD base64 flag; redirect stderr so failures are quiet.
+            let line = format!(
+                " eval \"$(printf %s {encoded} | base64 --decode 2>/dev/null || printf %s {encoded} | base64 -D 2>/dev/null)\"\n"
+            );
+            if let Err(e) = channel.data(line.as_bytes()).await {
+                log::debug!("ssh shell-integration inject failed: {e}");
+            }
+        }
 
         let (input_tx, mut input_rx) = mpsc::unbounded_channel::<InputMsg>();
 
