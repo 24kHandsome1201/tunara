@@ -83,6 +83,18 @@ impl ClientHandler {
         } else {
             return false;
         }
+        // Guard removes the registry entry on every exit path — normal return,
+        // channel-send failure, sender-dropped, AND if this future is cancelled
+        // mid-await (e.g. the connect attempt is dropped). Prevents a leaked
+        // oneshot sender lingering in PENDING_PROMPTS.
+        struct PromptGuard<'a>(&'a str);
+        impl Drop for PromptGuard<'_> {
+            fn drop(&mut self) {
+                let _ = pending_prompts().lock().map(|mut m| m.remove(self.0));
+            }
+        }
+        let _guard = PromptGuard(&prompt_id);
+
         let sent = self.on_event.send(PtyEvent::HostKeyPrompt {
             prompt_id: prompt_id.clone(),
             host: self.host.clone(),
@@ -91,18 +103,10 @@ impl ClientHandler {
             key_type,
         });
         if sent.is_err() {
-            // Frontend channel gone — clean up and refuse.
-            let _ = pending_prompts().lock().map(|mut m| m.remove(&prompt_id));
-            return false;
+            return false; // frontend channel gone; guard cleans up
         }
-        match rx.await {
-            Ok(accept) => accept,
-            Err(_) => {
-                // Sender dropped (e.g. shutdown) — refuse and clean up.
-                let _ = pending_prompts().lock().map(|mut m| m.remove(&prompt_id));
-                false
-            }
-        }
+        // Ok(accept) → user's choice; Err → sender dropped (shutdown) → refuse.
+        rx.await.unwrap_or(false)
     }
 }
 

@@ -18,13 +18,18 @@ export function stashSshCredentials(sessionId: string, creds: PendingSshCredenti
   }
 }
 
-/** Take (and remove) the one-shot credentials for a session, if any. */
+/**
+ * Take (and remove) the one-shot credentials for a session, if any.
+ *
+ * NOTE: consumed on the FIRST PTY-open attempt, before knowing whether the
+ * connection succeeded. This matches the "credentials for a single attempt"
+ * security model — a typo'd password or rejected host key burns them, and there
+ * is no re-entry to supply new ones for an existing session (SshConnect only
+ * creates new sessions). That's an accepted usability trade-off for never
+ * holding credentials longer than one attempt.
+ */
 export function takeSshCredentials(sessionId: string): PendingSshCredentials | undefined {
   const creds = pending.get(sessionId);
   if (creds) pending.delete(sessionId);
   return creds;
-}
-
-export function clearSshCredentials(sessionId: string): void {
-  pending.delete(sessionId);
 }

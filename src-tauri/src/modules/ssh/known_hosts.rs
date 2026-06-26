@@ -81,12 +81,26 @@ fn host_pattern_match(pattern: &str, token: &str) -> bool {
     pi == p.len()
 }
 
-/// Whether a comma-separated OpenSSH hosts field matches `token`, honoring
+/// Result of matching a comma-separated OpenSSH hosts field against a token.
+enum HostMatch {
+    /// No positive pattern matched (or a negation excluded the line).
+    None,
+    /// Matched via an exact (non-wildcard) pattern — a key mismatch here is a
+    /// genuine MITM signal.
+    Exact,
+    /// Matched only via a wildcard pattern — one such line legitimately spans
+    /// many hosts with different keys, so a key mismatch isn't proof of MITM.
+    Wildcard,
+}
+
+/// Match a comma-separated OpenSSH hosts field against `token`, honoring
 /// `*`/`?` wildcards and `!` negation. A negated pattern that matches excludes
-/// the line entirely (OpenSSH: a negation wins as soon as it matches), even if
-/// another positive pattern on the same line also matches.
-fn hosts_field_matches(hosts_field: &str, token: &str) -> bool {
-    let mut positive = false;
+/// the line entirely (OpenSSH: a negation wins as soon as it matches). When a
+/// positive match occurs, reports whether the *specific matching pattern* was a
+/// wildcard — so an exact entry sharing a line with an unrelated wildcard isn't
+/// coarsely treated as wildcard.
+fn match_hosts_field(hosts_field: &str, token: &str) -> HostMatch {
+    let mut result = HostMatch::None;
     for raw in hosts_field.split(',') {
         let pat = raw.trim();
         if pat.is_empty() {
@@ -94,19 +108,21 @@ fn hosts_field_matches(hosts_field: &str, token: &str) -> bool {
         }
         if let Some(neg) = pat.strip_prefix('!') {
             if host_pattern_match(neg, token) {
-                return false; // explicit exclusion takes precedence
+                return HostMatch::None; // explicit exclusion takes precedence
             }
         } else if host_pattern_match(pat, token) {
-            positive = true;
+            // An exact match is the strongest signal; don't let a later wildcard
+            // on the same line weaken it.
+            if pat.contains('*') || pat.contains('?') {
+                if matches!(result, HostMatch::None) {
+                    result = HostMatch::Wildcard;
+                }
+            } else {
+                result = HostMatch::Exact;
+            }
         }
     }
-    positive
-}
-
-/// Whether a pattern contains wildcard metacharacters (so a single entry can
-/// legitimately cover many hosts with different keys).
-fn is_wildcard_field(hosts_field: &str) -> bool {
-    hosts_field.contains('*') || hosts_field.contains('?')
+    result
 }
 
 /// OpenSSH stores keys as `host keytype base64`. We compare on the
@@ -167,11 +183,12 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
             hashed_present = true;
             continue;
         }
-        // Honor comma-separated patterns, `*`/`?` wildcards, and `!` negation.
-        if !hosts_field_matches(hosts_field, &token) {
+        // Honor comma-separated patterns, `*`/`?` wildcards, and `!` negation;
+        // distinguish whether the matching pattern was exact or a wildcard.
+        let matched = match_hosts_field(hosts_field, &token);
+        if matches!(matched, HostMatch::None) {
             continue;
         }
-        let is_wildcard = is_wildcard_field(hosts_field);
         // `rest` is "keytype base64 [comment]"; compare type+blob.
         let mut rit = rest.split_whitespace();
         if let (Some(kind), Some(blob)) = (rit.next(), rit.next()) {
@@ -179,10 +196,10 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
                 return Verdict::Match;
             }
         }
-        if is_wildcard {
-            wildcard_seen = true;
-        } else {
-            exact_seen = true;
+        match matched {
+            HostMatch::Exact => exact_seen = true,
+            HostMatch::Wildcard => wildcard_seen = true,
+            HostMatch::None => {}
         }
     }
 
@@ -261,25 +278,32 @@ mod tests {
     #[test]
     fn negation_excludes_even_when_a_wildcard_matches() {
         // `!secret.example.com,*.example.com` must reject the negated host.
-        assert!(!hosts_field_matches(
-            "!secret.example.com,*.example.com",
-            "secret.example.com"
+        assert!(matches!(
+            match_hosts_field("!secret.example.com,*.example.com", "secret.example.com"),
+            HostMatch::None
         ));
-        // A non-negated host on the same line still matches.
-        assert!(hosts_field_matches(
-            "!secret.example.com,*.example.com",
-            "host01.example.com"
+        // A non-negated host on the same line still matches (via wildcard).
+        assert!(matches!(
+            match_hosts_field("!secret.example.com,*.example.com", "host01.example.com"),
+            HostMatch::Wildcard
         ));
         // Comma-separated exact tokens still work (regression).
-        assert!(hosts_field_matches("a.com,b.com", "b.com"));
-        assert!(!hosts_field_matches("a.com,b.com", "c.com"));
+        assert!(matches!(match_hosts_field("a.com,b.com", "b.com"), HostMatch::Exact));
+        assert!(matches!(match_hosts_field("a.com,b.com", "c.com"), HostMatch::None));
     }
 
     #[test]
-    fn wildcard_field_detection() {
-        assert!(is_wildcard_field("*.example.com"));
-        assert!(is_wildcard_field("host?.example.com"));
-        assert!(!is_wildcard_field("plain.example.com"));
-        assert!(!is_wildcard_field("[host]:2222"));
+    fn exact_match_not_weakened_by_unrelated_wildcard_on_same_line() {
+        // `host.com,*.other` matching `host.com` must report Exact, so a rotated
+        // key for host.com surfaces as Mismatch — not downgraded to Unverifiable.
+        assert!(matches!(
+            match_hosts_field("host.com,*.other", "host.com"),
+            HostMatch::Exact
+        ));
+        // A pure wildcard line still reports Wildcard.
+        assert!(matches!(
+            match_hosts_field("*.example.com", "host01.example.com"),
+            HostMatch::Wildcard
+        ));
     }
 }
