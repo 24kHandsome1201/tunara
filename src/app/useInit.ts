@@ -3,6 +3,7 @@ import { useSessionsStore, createSession } from "@/state/sessions";
 import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
+import { useWorkflowsStore } from "@/state/workflows";
 import { getAllTerminalSnapshots, restoreTerminalSnapshots } from "@/modules/terminal/lib/terminal-snapshot";
 import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -45,6 +46,7 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
     recentDirs: st.recentDirs,
     recentCommands: st.recentCommands,
     commandUsage: ui.commandUsage,
+    workflows: useWorkflowsStore.getState().workflows,
   };
 }
 
@@ -126,6 +128,10 @@ export function useInit() {
         inspectorTab: snapshot.ui.inspectorTab,
         commandUsage: snapshot.commandUsage ?? {},
       });
+
+      if (snapshot.workflows?.length) {
+        useWorkflowsStore.getState().setWorkflows(snapshot.workflows);
+      }
 
       if (snapshot.terminals && Object.keys(snapshot.terminals).length > 0) {
         restoreTerminalSnapshots(snapshot.terminals);
@@ -228,10 +234,19 @@ export function useInit() {
       { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
     );
 
+    let prevWorkflows = useWorkflowsStore.getState().workflows;
+    const unsubWorkflows = useWorkflowsStore.subscribe((state) => {
+      if (state.workflows !== prevWorkflows) {
+        prevWorkflows = state.workflows;
+        scheduleSave();
+      }
+    });
+
     const timer = setInterval(persistNow, 30_000);
     return () => {
       unsubSessions();
       unsubUI();
+      unsubWorkflows();
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;

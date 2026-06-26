@@ -20,6 +20,7 @@ import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/termina
 import { createTerminalLineCwdTracker } from "@/modules/terminal/lib/terminal-line-cwd";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
+import { registerTerminalImage } from "@/modules/terminal/lib/terminal-image";
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/terminal-clipboard";
@@ -131,6 +132,11 @@ function TerminalViewImpl({
         isOsc52ClipboardWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
       }));
       if (activeRef.current) webglRef.current = createTerminalWebglRenderer(term);
+      // Inline images (SIXEL + iTerm IIP), loaded after WebGL so it adopts the
+      // active renderer. Opt-out via Settings; takes effect on the next terminal.
+      if (useUIStore.getState().terminalInlineImages) {
+        cleanups.push(registerTerminalImage(term));
+      }
       const serializeAddon = new SerializeAddon();
       term.loadAddon(serializeAddon);
       term.loadAddon(new WebLinksAddon((_event, uri) => {

@@ -33,6 +33,7 @@ pub struct AppearanceConfig {
     pub external_editor: String,
     pub bell_notification: bool,
     pub terminal_clipboard_write: bool,
+    pub terminal_inline_images: bool,
     pub language: String,
 }
 
@@ -54,6 +55,7 @@ impl Default for AppearanceConfig {
             external_editor: "vscode".into(),
             bell_notification: true,
             terminal_clipboard_write: false,
+            terminal_inline_images: true,
             language: "system".into(),
         }
     }
@@ -162,7 +164,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 16] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 17] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -181,6 +183,10 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 1
         (
             "terminal_clipboard_write",
             value(config.terminal_clipboard_write),
+        ),
+        (
+            "terminal_inline_images",
+            value(config.terminal_inline_images),
         ),
         ("language", value(config.language.clone())),
     ]

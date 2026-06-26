@@ -10,6 +10,7 @@ import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { CloseIcon, RefreshIcon } from "../shared";
 import { useT, LANGUAGES, type Language } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
+import { WorkflowsSettings } from "./WorkflowsSettings";
 
 interface SettingsProps {
   onClose: () => void;
@@ -22,9 +23,9 @@ interface ResolvedCommand {
   source: ResolveSource;
 }
 
-type SettingsTab = "appearance" | "cli";
+type SettingsTab = "appearance" | "workflows" | "cli";
 
-const TABS: SettingsTab[] = ["appearance", "cli"];
+const TABS: SettingsTab[] = ["appearance", "workflows", "cli"];
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -146,6 +147,8 @@ export function Settings({ onClose }: SettingsProps) {
   const setBellNotification = useUIStore((s) => s.setBellNotification);
   const terminalClipboardWrite = useUIStore((s) => s.terminalClipboardWrite);
   const setTerminalClipboardWrite = useUIStore((s) => s.setTerminalClipboardWrite);
+  const terminalInlineImages = useUIStore((s) => s.terminalInlineImages);
+  const setTerminalInlineImages = useUIStore((s) => s.setTerminalInlineImages);
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
 
@@ -329,6 +332,18 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
                 <div style={SECTION_HINT}>{t("settings.appearance.clipboard_write.hint")}</div>
               </div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={TOGGLE_ROW}>
+                  <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.inline_images")}</span>
+                  <button
+                    onClick={() => setTerminalInlineImages(!terminalInlineImages)}
+                    style={{ ...TOGGLE_BUTTON, background: terminalInlineImages ? "var(--c-accent)" : "var(--c-bg-3)" }}
+                  >
+                    <div style={{ ...TOGGLE_KNOB, transform: terminalInlineImages ? "translateX(16px)" : "translateX(0)" }} />
+                  </button>
+                </div>
+                <div style={SECTION_HINT}>{t("settings.appearance.inline_images.hint")}</div>
+              </div>
               {_isMac && (
                 <div style={{ marginBottom: 24 }}>
                   <div style={TOGGLE_ROW}>
@@ -422,6 +437,12 @@ export function Settings({ onClose }: SettingsProps) {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === "workflows" && (
+            <div>
+              <WorkflowsSettings />
             </div>
           )}
 

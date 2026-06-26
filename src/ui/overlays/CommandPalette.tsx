@@ -7,6 +7,8 @@ import { formatShortcut } from "../formatShortcut";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
+import { useWorkflowsStore } from "@/state/workflows";
+import { applyParams, hasParams } from "@/modules/workflows/template";
 import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 
@@ -49,6 +51,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const uiStore = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
+  const workflows = useWorkflowsStore((s) => s.workflows);
 
   function notifyBatchCloseConfirmation(subtitle: string) {
     const st = useSessionsStore.getState();
@@ -138,6 +141,32 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
         section: t("palette.section.recent_commands"), scopes: ["action", "terminal", "recent"], originalIndex: idx++,
         action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`); useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir); onClose(); },
+      });
+
+      // Saved command-template workflows. No params → run straight away; with
+      // {{params}} → hand off to the app-level param prompt to fill them in.
+      for (const wf of workflows) cmds.push({
+        id: `workflow-${wf.id}`,
+        label: wf.name,
+        subtitle: wf.description || wf.template,
+        icon: <CmdIcon d="M13 2L3 14h7l-1 8 10-12h-7z" />,
+        section: t("palette.section.workflows"),
+        scopes: ["action", "terminal", "workflow"],
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse(`workflow-${wf.id}`);
+          if (hasParams(wf.template)) {
+            uiStore.getState().setPendingWorkflow({
+              workflowId: wf.id,
+              name: wf.name,
+              template: wf.template,
+              dir: activeSession.dir,
+            });
+          } else {
+            useSessionsStore.getState().newTerminalWithInput(applyParams(wf.template, {}), activeSession.dir);
+          }
+          onClose();
+        },
       });
 
       // Remote sessions have no local git working tree — refreshGit no-ops for
@@ -317,7 +346,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

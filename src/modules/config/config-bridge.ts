@@ -16,6 +16,7 @@ export interface RawAppearanceConfig {
   external_editor: string;
   bell_notification: boolean;
   terminal_clipboard_write: boolean;
+  terminal_inline_images: boolean;
   language: string;
 }
 
