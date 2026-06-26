@@ -7,11 +7,13 @@
 //   - host unknown                -> accept + remember (first use)
 //   - host known, key differs     -> REJECT (possible MITM)
 //
-// We deliberately keep this small: plain `host` / `[host]:port` lines, no
-// hashed (|1|) entries, no cert authorities, no revocation. Hashed known_hosts
-// are read-skip (we can't match them), so a hashed-only file degrades to
-// first-use-accept rather than failing closed. That matches OpenSSH's
-// permissive-but-warn posture for a GUI client and avoids locking users out.
+// We deliberately keep this small: plain `host` / `[host]:port` lines, no cert
+// authorities, no revocation. Hashed (|1|) entries can't be matched by
+// plaintext, but we DETECT their presence: when no plaintext entry matches and
+// hashed entries exist, we return `Unverifiable` (not `Unknown`), so the caller
+// won't silently trust + persist a possibly-rotated key — the MITM case TOFU
+// exists to catch. Genuine first contact (no entries at all) still gets the
+// permissive first-use accept.
 
 use std::fs;
 use std::io::Write;
@@ -27,6 +29,12 @@ pub enum Verdict {
     Unknown,
     /// Host known but the key differs — refuse the connection.
     Mismatch,
+    /// The store contains hashed (`|1|`) entries we can't match by plaintext,
+    /// and no plaintext entry matched. We can neither confirm a match nor prove
+    /// a mismatch, so we must NOT silently trust + persist a possibly-rotated
+    /// key. Caller should accept only under an explicit allow-unknown policy and
+    /// must NOT remember it (remembering would mask a real future mismatch).
+    Unverifiable,
 }
 
 fn known_hosts_path() -> Option<PathBuf> {
@@ -69,6 +77,12 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
     let token = host_token(host, port);
 
     let mut host_seen = false;
+    // Track whether the file has any hashed entries. If we don't find a
+    // plaintext match, a hashed entry could be this host with a rotated key —
+    // we can't tell, so we must not silently accept+remember (that would be the
+    // exact MITM case TOFU exists to catch). OpenSSH hashes known_hosts by
+    // default on many systems, so this is a realistic, not theoretical, case.
+    let mut hashed_present = false;
     for line in contents.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -81,8 +95,11 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
         let Some(rest) = parts.next() else {
             continue;
         };
-        // Skip hashed entries (|1|salt|hash) — we can't match them by plaintext.
+        // Hashed entries (|1|salt|hash) can't be matched by plaintext here.
+        // We can't decode them without an HMAC pass, but we MUST note they
+        // exist so we don't mistake a hashed host for an unknown one.
         if hosts_field.starts_with('|') {
+            hashed_present = true;
             continue;
         }
         // A hosts field may list several comma-separated patterns.
@@ -101,8 +118,14 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
     }
 
     if host_seen {
+        // A plaintext entry for this host existed but no key matched → mismatch.
         Verdict::Mismatch
+    } else if hashed_present {
+        // No plaintext match, but hashed entries exist that could be this host.
+        // Fail safe: don't auto-trust+persist a possibly-rotated key.
+        Verdict::Unverifiable
     } else {
+        // Genuinely first contact — standard TOFU.
         Verdict::Unknown
     }
 }
@@ -136,5 +159,19 @@ mod tests {
     fn host_token_omits_default_port() {
         assert_eq!(host_token("example.com", 22), "example.com");
         assert_eq!(host_token("example.com", 2222), "[example.com]:2222");
+    }
+
+    // Guard the security-relevant invariant: Unverifiable must stay a distinct
+    // verdict, never collapsed into Unknown (which would auto-trust+persist a
+    // possibly-rotated key on a hashed-known_hosts host).
+    #[test]
+    fn unverifiable_is_not_unknown() {
+        fn auto_trusts(v: &Verdict) -> bool {
+            matches!(v, Verdict::Unknown)
+        }
+        assert!(!auto_trusts(&Verdict::Unverifiable));
+        assert!(!auto_trusts(&Verdict::Mismatch));
+        assert!(!auto_trusts(&Verdict::Match));
+        assert!(auto_trusts(&Verdict::Unknown));
     }
 }

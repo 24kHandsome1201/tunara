@@ -162,8 +162,41 @@ pub async fn ssh_fs_read_file(
     }
 }
 
-/// Download a remote file to a local path. Streams within the SFTP whole-file
-/// read; intended for ordinary files, not huge blobs.
+// Cap a single download so a malicious/compromised remote can't exhaust memory
+// (whole file is buffered before writing). 100 MiB is generous for a file
+// browser's download affordance.
+const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
+
+/// Validate the caller-supplied local destination. The remote fully controls
+/// the downloaded bytes, so an unvetted `local_path` would let a compromised
+/// SSH server write attacker content to e.g. ~/.zshrc or ~/.ssh/authorized_keys
+/// (local code execution / persistence). We require: an absolute path inside
+/// the user's home, not under sensitive dotfile dirs, and no overwrite.
+fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::Path::new(local_path);
+    if !path.is_absolute() {
+        return Err("download path must be absolute".into());
+    }
+    let home = dirs::home_dir().ok_or_else(|| "cannot resolve home dir".to_string())?;
+    if !path.starts_with(&home) {
+        return Err("download path must be under the home directory".into());
+    }
+    // Reject sensitive locations even within home.
+    for sensitive in [".ssh", ".config", ".gnupg"] {
+        if path.starts_with(home.join(sensitive)) {
+            return Err(format!("refusing to write into ~/{sensitive}"));
+        }
+    }
+    // Don't clobber existing files — a download must not silently overwrite.
+    if path.exists() {
+        return Err("destination already exists".into());
+    }
+    Ok(path.to_path_buf())
+}
+
+/// Download a remote file to a local path. The destination is validated to a
+/// safe location (see `validate_download_target`) because the bytes are
+/// remote-controlled. Whole-file buffered, capped at MAX_DOWNLOAD_BYTES.
 #[tauri::command]
 pub async fn ssh_fs_download(
     state: tauri::State<'_, PtyState>,
@@ -171,13 +204,28 @@ pub async fn ssh_fs_download(
     remote_path: String,
     local_path: String,
 ) -> Result<u64, String> {
+    let target = validate_download_target(&local_path)?;
     let sftp = sftp_for(&state, id).await?;
+
+    // Reject oversized files before buffering them into memory.
+    if let Ok(meta) = sftp.metadata(&remote_path).await {
+        if meta.size.unwrap_or(0) > MAX_DOWNLOAD_BYTES {
+            return Err(format!(
+                "remote file exceeds download limit ({} MiB)",
+                MAX_DOWNLOAD_BYTES / (1024 * 1024)
+            ));
+        }
+    }
+
     let bytes = sftp
         .read(&remote_path)
         .await
         .map_err(|e| format!("download read failed: {e}"))?;
+    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
+        return Err("remote file exceeds download limit".into());
+    }
     let len = bytes.len() as u64;
-    tokio::fs::write(&local_path, &bytes)
+    tokio::fs::write(&target, &bytes)
         .await
         .map_err(|e| format!("write local file failed: {e}"))?;
     Ok(len)

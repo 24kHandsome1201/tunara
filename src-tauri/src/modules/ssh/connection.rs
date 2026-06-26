@@ -65,6 +65,23 @@ impl client::Handler for ClientHandler {
                     Ok(false)
                 }
             }
+            Verdict::Unverifiable => {
+                // known_hosts has hashed entries we can't match; this could be a
+                // rotated key on a known host. Accept only under allow-unknown,
+                // and deliberately do NOT remember it — persisting would mask a
+                // real mismatch on the next connection.
+                if self.policy.accept_unknown {
+                    log::warn!(
+                        "ssh host {}:{} not verifiable against hashed known_hosts — \
+                         accepting without persisting (rotated-key risk)",
+                        self.host,
+                        self.port
+                    );
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
         }
     }
 }
