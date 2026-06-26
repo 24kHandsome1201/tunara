@@ -451,8 +451,20 @@ export function SessionCard({ session, active, confirmClose, tabIndex, onClick, 
               overflow: "hidden",
             }}
           >
+            {session.remote && (
+              // Remote (SSH) marker: a small plug glyph so local vs. remote
+              // sessions are distinguishable at a glance. session.dir already
+              // shows user@host for remote sessions.
+              <span
+                title={`${session.remote.user}@${session.remote.host}${session.remote.port !== 22 ? `:${session.remote.port}` : ""}`}
+                style={{ flexShrink: 0, color: "var(--c-accent)", fontSize: "var(--fs-meta)" }}
+                aria-label="SSH"
+              >
+                ⇄
+              </span>
+            )}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
-              {session.dir.split("/").pop() || session.dir}
+              {session.remote ? session.dir : session.dir.split("/").pop() || session.dir}
             </span>
             {session.branch && (
               <>

@@ -94,6 +94,19 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       },
     });
 
+    cmds.push({
+      id: "new-ssh-session",
+      label: t("palette.cmd.new_ssh_session"),
+      icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m6 9 3 3-3 3" /><line x1="12" y1="15" x2="16" y2="15" /></svg>,
+      section: t("palette.section.action"),
+      scopes: ["action", "terminal"],
+      originalIndex: idx++,
+      action: () => {
+        uiStore.getState().recordCommandUse("new-ssh-session");
+        uiStore.getState().setOverlay("ssh");
+      },
+    });
+
     if (activeSession) {
       cmds.push({
         id: "new-terminal-current-dir",
@@ -124,7 +137,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`); useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir); onClose(); },
       });
 
-      cmds.push({
+      // Remote sessions have no local git working tree — refreshGit no-ops for
+      // them (sessions.ts), so don't show the command as a dead affordance.
+      if (!activeSession.remote) cmds.push({
         id: "refresh-git-current",
         label: t("palette.cmd.refresh_git_current"),
         subtitle: activeSession.dir,

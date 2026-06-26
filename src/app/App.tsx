@@ -4,6 +4,7 @@ import { MainArea } from "@/ui/MainArea";
 import { InspectorPanel } from "@/ui/InspectorPanel";
 import { Settings } from "@/ui/overlays/Settings";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
+import { SshConnect } from "@/ui/overlays/SshConnect";
 import { ToastContainer } from "@/ui/Toast";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -276,6 +277,7 @@ export default function App() {
 
       {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
+      {overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
       <ToastContainer />
     </div>
   );

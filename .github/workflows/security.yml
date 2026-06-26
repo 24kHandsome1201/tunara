@@ -43,7 +43,10 @@ jobs:
         run: cargo install cargo-audit --locked
       - name: Run cargo audit
         working-directory: src-tauri
-        run: cargo audit
+        # RUSTSEC-2023-0071 (rsa Marvin attack) is a transitive russh dep with
+        # no upstream fix; ignored with rationale in src-tauri/.cargo/audit.toml.
+        # Passed explicitly too so the exception is visible in the workflow.
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
   pnpm-audit:
     name: pnpm audit

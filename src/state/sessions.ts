@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Session, AgentCode, AgentResumeIntent } from "@/ui/types";
+import type { Session, AgentCode, AgentResumeIntent, RemoteInfo } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import {
@@ -77,7 +77,14 @@ export function makeSessionId(): string {
 
 export function createSession(
   dir: string,
-  opts?: { agent?: AgentCode; title?: string; branch?: string; pendingInput?: string; pendingInputSubmit?: boolean },
+  opts?: {
+    agent?: AgentCode;
+    title?: string;
+    branch?: string;
+    pendingInput?: string;
+    pendingInputSubmit?: boolean;
+    remote?: RemoteInfo;
+  },
 ): Session {
   const id = makeSessionId();
   return {
@@ -91,8 +98,18 @@ export function createSession(
     runState: "idle" as const,
     pendingInput: opts?.pendingInput,
     pendingInputSubmit: opts?.pendingInputSubmit,
+    remote: opts?.remote,
     updatedAt: Date.now(),
   };
+}
+
+/**
+ * 远程 SSH 会话的 dir 显示为 user@host，且不参与本地 git/文件操作。
+ * 真实远程 cwd 由 Phase 4 的远程 shell 集成提供（若启用）。
+ */
+export function createRemoteSession(remote: RemoteInfo, title?: string): Session {
+  const label = `${remote.user}@${remote.host}`;
+  return createSession(label, { title: title ?? label, remote });
 }
 
 function ensureSessionVisibleInSplit(sessionId: string) {
@@ -180,7 +197,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
       launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
-      recentDirs: pushRecentDir(state.recentDirs, s.dir),
+      // Remote sessions' dir is "user@host", not a local path — keep it out
+      // of the recent-dirs affordance.
+      recentDirs: s.remote ? state.recentDirs : pushRecentDir(state.recentDirs, s.dir),
     }));
     ensureSessionVisibleInSplit(s.id);
   },
@@ -227,6 +246,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   refreshGit: (id) => {
+    // Remote (SSH) sessions have no local working tree — git2 would fail on
+    // the "user@host" pseudo-path. Skip the refresh entirely.
+    if (get().sessions.find((s) => s.id === id)?.remote) return;
     const now = Date.now();
     const last = lastGitRefreshAt.get(id) ?? 0;
     const elapsed = now - last;
@@ -430,7 +452,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         ? { agentResume: { ...agentResume, cwd, lastSeenAt: Date.now() } }
         : {}),
     });
-    get().recordRecentDir(cwd);
+    // Remote sessions' cwd is a remote path (and the dir label is user@host) —
+    // keep it out of the local recent-dirs affordance, matching addSession.
+    if (!session?.remote) get().recordRecentDir(cwd);
     if (update.refreshGit) get().refreshGit(id);
   },
 

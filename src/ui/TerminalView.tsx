@@ -5,7 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { openSessionPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
 import type { AgentCode } from "./types";
@@ -357,38 +357,38 @@ export function TerminalView({
       const cwd = dir === "~" ? undefined : dir;
       const outputBuffer = createTerminalOutputBuffer(term);
       cleanups.push(() => outputBuffer.dispose());
+      const ptyHandlers = {
+        onData: (bytes: Uint8Array) => {
+          outputBuffer.push(bytes);
+          blocks.updateActiveBlockEnd(currentBufferRow());
+          scheduleSnapshot();
+          if (hasAgent && currentAgentCode) {
+            if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
+              codexStateTracker.schedule();
+              return;
+            }
+            const sess = getCurrentSession();
+            if (agentStartupPending && sess?.agentActivity === "idle") {
+              useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
+            }
+            if (agentStartupPending || sess?.agentActivity === "running") {
+              scheduleQuietAgentReady();
+            }
+          }
+        },
+        onExit: (code: number) => {
+          term.write(`\r\n\x1b[2m[process exited: ${code}]\x1b[0m\r\n`);
+          term.options.disableStdin = true;
+        },
+      };
       let pty;
       try {
-        pty = await openPty(
-          sessionIdRef.current,
-          term.cols,
-          term.rows,
-          {
-            onData: (bytes) => {
-              outputBuffer.push(bytes);
-              blocks.updateActiveBlockEnd(currentBufferRow());
-              scheduleSnapshot();
-              if (hasAgent && currentAgentCode) {
-                if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
-                  codexStateTracker.schedule();
-                  return;
-                }
-                const sess = getCurrentSession();
-                if (agentStartupPending && sess?.agentActivity === "idle") {
-                  useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
-                }
-                if (agentStartupPending || sess?.agentActivity === "running") {
-                  scheduleQuietAgentReady();
-                }
-              }
-            },
-            onExit: (code) => {
-              term.write(`\r\n\x1b[2m[process exited: ${code}]\x1b[0m\r\n`);
-              term.options.disableStdin = true;
-            },
-          },
+        // Remote (SSH) and local sessions share the PtySession interface and
+        // the pty_write/resize/close commands; openSessionPty picks the opener.
+        pty = await openSessionPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
           cwd,
-        );
+          remote: getCurrentSession()?.remote,
+        });
       } catch (e) {
         term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
         return;
@@ -398,6 +398,9 @@ export function TerminalView({
         return;
       }
       ptyRef.current = pty;
+      // Expose the live PTY id on the session so the remote file panel can
+      // locate the backend SSH connection for SFTP commands.
+      useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
       const writePty = (data: string) => {
         pty.write(data).catch(() => {
           /* PTY may already be closed by the time xterm flushes input. */

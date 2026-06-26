@@ -2,17 +2,15 @@ mod session;
 mod shell_init;
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use portable_pty::PtySize;
 use tauri::ipc::Channel;
 
 pub use session::PtyEvent;
-use session::Session;
+pub use session::Session;
 
 use super::agent::hooks::HookListenerState;
 use super::agent::wrapper;
@@ -40,11 +38,43 @@ impl PtyState {
         let sessions: Vec<(u32, Arc<Session>)> = self.sessions.write().drain().collect();
         self.logical_sessions.write().clear();
         for (id, session) in sessions {
-            if let Err(e) = session.killer.lock().kill() {
+            if let Err(e) = session.kill() {
                 log::debug!("pty close_all: kill id={id} returned {e}");
             }
             log::info!("pty closed id={id}");
         }
+    }
+
+    /// Remove (and kill) any session bound to a logical id. Used by both
+    /// pty_open and ssh_open on the reopen/replace path.
+    pub fn remove_logical(&self, logical_id: &str) {
+        let old_id = self.logical_sessions.write().remove(logical_id);
+        if let Some(old_id) = old_id {
+            let old_session = self.sessions.write().remove(&old_id);
+            if let Some(session) = old_session {
+                if let Err(e) = session.kill() {
+                    log::debug!("remove_logical: kill id={old_id} returned {e}");
+                }
+                log::info!("session replaced id={old_id} logical_session_id={logical_id}");
+            }
+        }
+    }
+
+    /// Look up a live session by physical id (used by the SFTP commands to
+    /// reach the SSH connection behind a session).
+    pub fn get(&self, id: u32) -> Option<Arc<Session>> {
+        self.sessions.read().get(&id).cloned()
+    }
+
+    /// Register an already-built session under a fresh id, optionally bound to
+    /// a logical id. Returns the physical id. Used by ssh_open.
+    pub fn insert(&self, session: Session, logical_id: Option<&str>) -> u32 {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.sessions.write().insert(id, Arc::new(session));
+        if let Some(lid) = logical_id {
+            self.logical_sessions.write().insert(lid.to_string(), id);
+        }
+        id
     }
 }
 
@@ -59,16 +89,7 @@ pub fn pty_open(
     on_event: Channel<PtyEvent>,
 ) -> Result<u32, String> {
     if let Some(logical_id) = logical_session_id.as_deref() {
-        let old_id = state.logical_sessions.write().remove(logical_id);
-        if let Some(old_id) = old_id {
-            let old_session = state.sessions.write().remove(&old_id);
-            if let Some(session) = old_session {
-                if let Err(e) = session.killer.lock().kill() {
-                    log::debug!("pty_open replace: kill id={old_id} returned {e}");
-                }
-                log::info!("pty replaced id={old_id} logical_session_id={logical_id}");
-            }
-        }
+        state.remove_logical(logical_id);
     }
 
     let sock = hooks_state.sock_path();
@@ -104,16 +125,11 @@ pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result
         log::warn!("pty_write: unknown id={id}");
         "no session".to_string()
     })?;
-    let result = session
-        .writer
-        .lock()
-        .write_all(data.as_bytes())
-        .map_err(|e| {
-            // EPIPE is expected if the child already exited.
-            log::debug!("pty_write id={id} failed: {e}");
-            e.to_string()
-        });
-    result
+    session.write(data.as_bytes()).map_err(|e| {
+        // EPIPE / closed channel is expected if the remote already exited.
+        log::debug!("pty_write id={id} failed: {e}");
+        e
+    })
 }
 
 #[tauri::command]
@@ -127,20 +143,10 @@ pub fn pty_resize(
         log::warn!("pty_resize: unknown id={id}");
         "no session".to_string()
     })?;
-    let result = session
-        .master
-        .lock()
-        .resize(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|e| {
-            log::warn!("pty_resize id={id} failed: {e}");
-            e.to_string()
-        });
-    result
+    session.resize(cols, rows).map_err(|e| {
+        log::warn!("pty_resize id={id} failed: {e}");
+        e
+    })
 }
 
 #[tauri::command]
@@ -165,7 +171,7 @@ pub fn pty_close(
         wrapper::cleanup_hooks_settings(lid, hooks_state.agent_config_dir());
     }
     if let Some(s) = session {
-        if let Err(e) = s.killer.lock().kill() {
+        if let Err(e) = s.kill() {
             log::debug!("pty_close: kill id={id} returned {e}");
         }
         log::info!("pty closed id={id}");

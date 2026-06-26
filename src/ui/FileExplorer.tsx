@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
+import { sshReadDir, sshHome } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -12,6 +13,11 @@ import { breadcrumbSegments } from "./lib/breadcrumbs";
 
 interface FileExplorerProps {
   rootDir: string;
+  /**
+   * 远程 SSH 会话的 PTY id。存在则文件操作走 SFTP；否则走本地 fs。
+   * 远程模式下 rootDir 形如 user@host，需先解析远程 home 作为起点。
+   */
+  remotePtyId?: number;
 }
 
 function FolderIcon() {
@@ -56,9 +62,13 @@ const folderEmptyIcon = (
   </svg>
 );
 
-export function FileExplorer({ rootDir }: FileExplorerProps) {
+export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const t = useT();
-  const [currentPath, setCurrentPath] = useState(rootDir);
+  const isRemote = remotePtyId !== undefined;
+  // For local sessions the base is rootDir directly; for remote we resolve the
+  // remote $HOME via SFTP (rootDir is user@host, not a path). null = unresolved.
+  const [baseDir, setBaseDir] = useState<string | null>(isRemote ? null : rootDir);
+  const [currentPath, setCurrentPath] = useState(isRemote ? "" : rootDir);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -76,19 +86,46 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
 
+  // Resolve the starting directory. Local: rootDir. Remote: SFTP-resolved home.
   useEffect(() => {
     setNavDir(null);
-    setCurrentPath(rootDir);
     setExpandedFile(null);
     setSearchQuery("");
-  }, [rootDir]);
+    if (isRemote && remotePtyId !== undefined) {
+      let cancelled = false;
+      setBaseDir(null);
+      setLoading(true);
+      sshHome(remotePtyId)
+        .then((home) => {
+          if (!cancelled) {
+            setBaseDir(home);
+            setCurrentPath(home);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            // Fall back to "/" so the panel is still usable on home-resolve fail.
+            setBaseDir("/");
+            setCurrentPath("/");
+          }
+        });
+      return () => { cancelled = true; };
+    }
+    setBaseDir(rootDir);
+    setCurrentPath(rootDir);
+  }, [rootDir, isRemote, remotePtyId]);
 
   useEffect(() => {
+    if (baseDir === null) return; // remote home not resolved yet
     let cancelled = false;
     setLoading(true);
     setError(false);
     setExpandedFile(null);
-    fsReadDir(currentPath, includeHidden)
+    const read =
+      isRemote && remotePtyId !== undefined
+        ? sshReadDir(remotePtyId, currentPath, includeHidden)
+        : fsReadDir(currentPath, includeHidden);
+    read
       .then((e) => {
         if (!cancelled) {
           setEntries(e);
@@ -103,11 +140,12 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, reloadKey]);
+  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId]);
 
   useEffect(() => {
     const q = searchQuery.trim();
-    if (!q) {
+    // Remote search has no SFTP backend — search is local-only.
+    if (!q || isRemote || baseDir === null) {
       setSearchHits([]);
       setSearchLoading(false);
       setSearchError(false);
@@ -118,7 +156,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
     setSearchLoading(true);
     setSearchError(false);
     const timer = window.setTimeout(() => {
-      fsSearch(rootDir, q, 80, includeHidden)
+      fsSearch(baseDir, q, 80, includeHidden)
         .then((hits) => {
           if (!cancelled) {
             setSearchHits(hits);
@@ -138,9 +176,9 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [rootDir, searchQuery, includeHidden, reloadKey]);
+  }, [baseDir, searchQuery, includeHidden, reloadKey, isRemote]);
 
-  const canGoUp = currentPath !== "/" && currentPath !== rootDir;
+  const canGoUp = currentPath !== "/" && currentPath !== baseDir;
   const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
   const files = useMemo(() => entries.filter((e) => e.kind !== "dir"), [entries]);
   const isSearching = searchQuery.trim().length > 0;
@@ -197,7 +235,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
           </svg>
         </button>
         <div title={currentPath} style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, minWidth: 0, padding: "0 var(--sp-1)", overflow: "hidden", whiteSpace: "nowrap" }}>
-          {breadcrumbSegments(currentPath, rootDir).map((seg, idx, arr) => {
+          {breadcrumbSegments(currentPath, baseDir ?? currentPath).map((seg, idx, arr) => {
             const isLast = idx === arr.length - 1;
             const isCurrent = seg.targetPath === currentPath;
             const showSeparator = idx < arr.length - 1;
@@ -335,7 +373,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                     </button>
                     {isExpanded && !hit.isDir && (
                       <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-                        <FilePreview filePath={hit.path} fileName={hit.name} onClose={() => setExpandedFile(null)} />
+                        <FilePreview filePath={hit.path} fileName={hit.name} remotePtyId={remotePtyId} onClose={() => setExpandedFile(null)} />
                       </div>
                     )}
                   </div>
@@ -412,7 +450,7 @@ export function FileExplorer({ rootDir }: FileExplorerProps) {
                   </button>
                   {isExpanded && (
                     <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-                      <FilePreview filePath={fullPath} fileName={entry.name} onClose={() => setExpandedFile(null)} />
+                      <FilePreview filePath={fullPath} fileName={entry.name} remotePtyId={remotePtyId} onClose={() => setExpandedFile(null)} />
                     </div>
                   )}
                 </div>
