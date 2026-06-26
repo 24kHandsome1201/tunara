@@ -54,7 +54,7 @@ export function PanelEmptyState({ icon, label, sublabel }: { icon?: React.ReactN
   );
 }
 
-export function PanelLoadingState({ label = "加载中" }: { label?: string }) {
+export function PanelLoadingState({ label }: { label: string }) {
   return (
     <div style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite" }} />

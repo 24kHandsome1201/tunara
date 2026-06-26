@@ -32,6 +32,7 @@ export interface AppearanceSettings {
   externalEditor: ExternalEditor;
   bellNotification: boolean;
   terminalClipboardWrite: boolean;
+  terminalInlineImages: boolean;
   keybindings: KeybindingConfig;
   language: Language;
 }
@@ -61,6 +62,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   externalEditor: "vscode",
   bellNotification: true,
   terminalClipboardWrite: false,
+  terminalInlineImages: true,
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
 };
@@ -124,6 +126,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     externalEditor: isExternalEditor(raw?.external_editor) ? raw.external_editor : DEFAULT_SETTINGS.externalEditor,
     bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
+    terminalInlineImages: typeof raw?.terminal_inline_images === "boolean" ? raw.terminal_inline_images : DEFAULT_SETTINGS.terminalInlineImages,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
   };
@@ -155,18 +158,11 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       external_editor: s.externalEditor,
       bell_notification: s.bellNotification,
       terminal_clipboard_write: s.terminalClipboardWrite,
+      terminal_inline_images: s.terminalInlineImages,
       language: s.language,
     },
     keybindings: keybindingsToConfigKeys(s.keybindings),
   };
-}
-
-function loadCommandUsage(): Record<string, number> {
-  return {};
-}
-
-function persistCommandUsage(usage: Record<string, number>) {
-  void usage;
 }
 
 export type InspectorTab = "changes" | "files";
@@ -191,6 +187,26 @@ export interface Toast {
   agentCode?: string;
 }
 
+/** A pending SSH host-key confirmation (TOFU). The backend ssh_open call is
+ * blocked until the user accepts/rejects the fingerprint. */
+export interface HostKeyPrompt {
+  promptId: string;
+  host: string;
+  port: number;
+  fingerprint: string;
+  keyType: string;
+}
+
+/** A workflow chosen from the palette whose template has {{params}} still to
+ * fill. An app-level prompt collects the values, then runs it. */
+export interface PendingWorkflow {
+  workflowId: string;
+  name: string;
+  template: string;
+  /** Directory to launch the resulting command in. */
+  dir: string;
+}
+
 interface UIState extends AppearanceSettings {
   ready: boolean;
   configLoaded: boolean;
@@ -204,6 +220,8 @@ interface UIState extends AppearanceSettings {
   split: SplitState;
   inspectorTab: InspectorTab;
   toasts: Toast[];
+  hostKeyPrompt: HostKeyPrompt | null;
+  pendingWorkflow: PendingWorkflow | null;
   collapsedDirs: Record<string, true>;
   commandUsage: Record<string, number>;
 
@@ -235,11 +253,14 @@ interface UIState extends AppearanceSettings {
   setSplitPaneA: (sessionId: string | null) => void;
   addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
+  setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
+  setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
   toggleDirCollapsed: (dir: string) => void;
   recordCommandUse: (id: string) => void;
   setExternalEditor: (e: ExternalEditor) => void;
   setBellNotification: (b: boolean) => void;
   setTerminalClipboardWrite: (enabled: boolean) => void;
+  setTerminalInlineImages: (enabled: boolean) => void;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
   resetAppearance: () => void;
@@ -260,8 +281,11 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
     inspectorTab: "changes" as InspectorTab,
     toasts: [],
+    hostKeyPrompt: null,
+    pendingWorkflow: null,
     collapsedDirs: {},
-    commandUsage: loadCommandUsage(),
+    // Hydrated from the workspace snapshot in useInit; starts empty.
+    commandUsage: {},
     ...DEFAULT_SETTINGS,
 
     setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
@@ -305,6 +329,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((s) => ({ toasts: [...s.toasts.slice(-2), { ...toast, id }] }));
     },
     removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+    setHostKeyPrompt: (hostKeyPrompt) => set({ hostKeyPrompt }),
+    setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
     toggleDirCollapsed: (dir) =>
       set((s) => {
         if (s.collapsedDirs[dir]) {
@@ -322,6 +348,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
+    setTerminalInlineImages: (terminalInlineImages) => set({ terminalInlineImages: typeof terminalInlineImages === "boolean" ? terminalInlineImages : DEFAULT_SETTINGS.terminalInlineImages }),
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
     resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
@@ -359,7 +386,7 @@ export async function loadUserConfig(): Promise<void> {
   }
 }
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "keybindings", "language"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "keybindings", "language"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(
@@ -376,13 +403,3 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
 );
 
-let commandUsagePersistTimer: ReturnType<typeof setTimeout> | null = null;
-useUIStore.subscribe(
-  (s) => s.commandUsage,
-  () => {
-    if (commandUsagePersistTimer) clearTimeout(commandUsagePersistTimer);
-    commandUsagePersistTimer = setTimeout(() => {
-      persistCommandUsage(useUIStore.getState().commandUsage);
-    }, 500);
-  },
-);

@@ -1,11 +1,12 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openSessionPty, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { openSessionPty, reportSshOpenFailure, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui";
 import type { AgentCode } from "./types";
@@ -19,6 +20,7 @@ import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/termina
 import { createTerminalLineCwdTracker } from "@/modules/terminal/lib/terminal-line-cwd";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
+import { registerTerminalImage } from "@/modules/terminal/lib/terminal-image";
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/terminal-clipboard";
@@ -46,10 +48,11 @@ interface TerminalViewProps {
   active: boolean;
   pendingInput?: string;
   pendingInputSubmit?: boolean;
-  onPendingInputConsumed?: () => void;
+  /** Called with this view's session id once pendingInput has been delivered. */
+  onPendingInputConsumed?: (sessionId: string) => void;
 }
 
-export function TerminalView({
+function TerminalViewImpl({
   sessionId,
   dir,
   active,
@@ -62,18 +65,14 @@ export function TerminalView({
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
   const initRef = useRef(false);
+  // Gates the pendingInput effect to fire once when the PTY is ready.
+  const [ptyReady, setPtyReady] = useState(false);
   const webglRef = useRef<TerminalWebglRenderer | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
   const search = useTerminalSearch(termRef);
   const blocks = useTerminalBlocks(termRef);
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
-  const pendingInputRef = useRef(pendingInput);
-  pendingInputRef.current = pendingInput;
-  const pendingInputSubmitRef = useRef(pendingInputSubmit);
-  pendingInputSubmitRef.current = pendingInputSubmit;
-  const onPendingInputConsumedRef = useRef(onPendingInputConsumed);
-  onPendingInputConsumedRef.current = onPendingInputConsumed;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const theme = useUIStore((s) => s.theme);
@@ -89,11 +88,17 @@ export function TerminalView({
     active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
   useTerminalWebgl(termRef, active, webglRef);
+  // Sole delivery path for pendingInput (init effect must NOT also schedule it).
   useEffect(() => {
     const pty = ptyRef.current;
     if (!pendingInput || !pty) return;
-    return schedulePendingInput({ pty, input: pendingInput, submit: pendingInputSubmit !== false, onConsumed: onPendingInputConsumed }).dispose;
-  }, [pendingInput, pendingInputSubmit, onPendingInputConsumed]);
+    return schedulePendingInput({
+      pty,
+      input: pendingInput,
+      submit: pendingInputSubmit !== false,
+      onConsumed: () => onPendingInputConsumed?.(sessionIdRef.current),
+    }).dispose;
+  }, [pendingInput, pendingInputSubmit, onPendingInputConsumed, ptyReady]);
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
     initRef.current = true;
@@ -127,6 +132,11 @@ export function TerminalView({
         isOsc52ClipboardWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
       }));
       if (activeRef.current) webglRef.current = createTerminalWebglRenderer(term);
+      // Inline images (SIXEL + iTerm IIP), loaded after WebGL so it adopts the
+      // active renderer. Opt-out via Settings; takes effect on the next terminal.
+      if (useUIStore.getState().terminalInlineImages) {
+        cleanups.push(registerTerminalImage(term));
+      }
       const serializeAddon = new SerializeAddon();
       term.loadAddon(serializeAddon);
       term.loadAddon(new WebLinksAddon((_event, uri) => {
@@ -385,12 +395,21 @@ export function TerminalView({
       try {
         // Remote (SSH) and local sessions share the PtySession interface and
         // the pty_write/resize/close commands; openSessionPty picks the opener.
+        const sessionRemote = getCurrentSession()?.remote;
+        // One-shot credentials (password / passphrase) live outside the Session
+        // object so they're never persisted; merge them in only for this open.
+        const creds = sessionRemote ? takeSshCredentials(sessionIdRef.current) : undefined;
         pty = await openSessionPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
           cwd,
-          remote: getCurrentSession()?.remote,
+          remote: sessionRemote
+            ? { ...sessionRemote, password: creds?.password, keyPassphrase: creds?.keyPassphrase }
+            : undefined,
         });
       } catch (e) {
         term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
+        // Surface SSH/connection failures as a Toast + failed state too (a lone
+        // red line is easy to miss / indistinguishable from "still connecting").
+        reportSshOpenFailure(sessionIdRef.current, getCurrentSession()?.remote, String(e));
         return;
       }
       if (disposed) {
@@ -398,6 +417,8 @@ export function TerminalView({
         return;
       }
       ptyRef.current = pty;
+      setPtyReady(true); // triggers the pendingInput effect once, now that pty is live
+
       // Expose the live PTY id on the session so the remote file panel can
       // locate the backend SSH connection for SFTP commands.
       useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
@@ -411,12 +432,7 @@ export function TerminalView({
           /* Resize can race with process exit or pane teardown. */
         });
       };
-      cleanups.push(schedulePendingInput({
-        pty,
-        input: pendingInputRef.current,
-        submit: pendingInputSubmitRef.current !== false,
-        onConsumed: onPendingInputConsumedRef.current,
-      }).dispose);
+      // pendingInput is delivered solely by the top-level effect (keyed on ptyReady).
       let inputBuffer = "";
       // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = (submitted: string) => {
@@ -495,3 +511,7 @@ export function TerminalView({
   }, []);
   return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />;
 }
+
+// Memoized (with stable props from MainArea) so a MainArea re-render on each
+// agent heartbeat doesn't re-render every mounted terminal.
+export const TerminalView = memo(TerminalViewImpl);

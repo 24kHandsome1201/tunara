@@ -3,11 +3,13 @@ import { useSessionsStore, createSession } from "@/state/sessions";
 import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
+import { useWorkflowsStore } from "@/state/workflows";
 import { getAllTerminalSnapshots, restoreTerminalSnapshots } from "@/modules/terminal/lib/terminal-snapshot";
 import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
+import { normalizeRepoPath } from "@/modules/git/lib/path-normalize";
 import { diffWatchedDirs } from "./lib/sync-watches";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
@@ -43,6 +45,8 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
     agentResume,
     recentDirs: st.recentDirs,
     recentCommands: st.recentCommands,
+    commandUsage: ui.commandUsage,
+    workflows: useWorkflowsStore.getState().workflows,
   };
 }
 
@@ -122,7 +126,12 @@ export function useInit() {
         collapsedDirs: snapshot.ui.collapsedDirs,
         split: snapshot.ui.split,
         inspectorTab: snapshot.ui.inspectorTab,
+        commandUsage: snapshot.commandUsage ?? {},
       });
+
+      if (snapshot.workflows?.length) {
+        useWorkflowsStore.getState().setWorkflows(snapshot.workflows);
+      }
 
       if (snapshot.terminals && Object.keys(snapshot.terminals).length > 0) {
         restoreTerminalSnapshots(snapshot.terminals);
@@ -189,7 +198,14 @@ export function useInit() {
     const syncGitWatches = (sessions: readonly Session[]) => {
       const { toAcquire, toRelease, next } = diffWatchedDirs(
         watchedDirs,
-        sessions.map((s) => s.dir).filter((d): d is string => Boolean(d)),
+        // Normalize here (single entry point) so the refcount Set dedupe, the
+        // watch refcount keys, and the git-changed callback's sameRepoPath all
+        // compare the same canonical form — otherwise `/repo` and `/repo/` are
+        // treated as two repos (two backend watchers) on one side but one on
+        // the other.
+        sessions
+          .map((s) => s.dir && normalizeRepoPath(s.dir))
+          .filter((d): d is string => Boolean(d)),
       );
       for (const dir of toAcquire) acquireGitWatch(dir);
       for (const dir of toRelease) releaseGitWatch(dir);
@@ -213,15 +229,24 @@ export function useInit() {
     });
 
     const unsubUI = useUIStore.subscribe(
-      (s) => [s.collapsedDirs, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible] as const,
+      (s) => [s.collapsedDirs, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage] as const,
       () => scheduleSave(),
       { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
     );
+
+    let prevWorkflows = useWorkflowsStore.getState().workflows;
+    const unsubWorkflows = useWorkflowsStore.subscribe((state) => {
+      if (state.workflows !== prevWorkflows) {
+        prevWorkflows = state.workflows;
+        scheduleSave();
+      }
+    });
 
     const timer = setInterval(persistNow, 30_000);
     return () => {
       unsubSessions();
       unsubUI();
+      unsubWorkflows();
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;

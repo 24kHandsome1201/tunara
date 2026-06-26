@@ -205,6 +205,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             aria-disabled={item.disabled ? true : undefined}
             tabIndex={-1}
             className={cls}
+            data-active={active ? "true" : undefined}
             onMouseEnter={() => {
               if (!item.disabled) setActiveIndex(i);
             }}
@@ -213,14 +214,11 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             }}
             style={{
               height: 30,
-              padding: "0 12px 0 10px",
               display: "flex",
               alignItems: "center",
               gap: 9,
               fontSize: "var(--fs-body)",
               fontFamily: "var(--font-ui)",
-              background: active ? "var(--c-bg-hover)" : undefined,
-              color: active ? "var(--c-text-primary)" : undefined,
               cursor: item.disabled ? "default" : "pointer",
               whiteSpace: "nowrap",
               overflow: "hidden",

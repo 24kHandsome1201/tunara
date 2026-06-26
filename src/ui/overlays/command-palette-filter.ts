@@ -1,4 +1,4 @@
-export type CommandPaletteScope = "action" | "app" | "batch" | "recent" | "session" | "terminal";
+export type CommandPaletteScope = "action" | "app" | "batch" | "recent" | "session" | "terminal" | "workflow";
 
 export interface CommandPaletteFilterItem {
   label: string;
@@ -33,6 +33,10 @@ const SCOPE_ALIASES: Record<string, CommandPaletteScope> = {
   t: "terminal",
   term: "terminal",
   terminal: "terminal",
+  w: "workflow",
+  wf: "workflow",
+  workflow: "workflow",
+  workflows: "workflow",
 };
 
 export function parseCommandPaletteQuery(rawQuery: string): CommandPaletteParsedQuery {

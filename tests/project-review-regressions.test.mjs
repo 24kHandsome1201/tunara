@@ -291,7 +291,10 @@ test("terminal panes keep stable keyed mounts across single/split so the agent P
   // Single stable-keyed mount list (no dual single/split render branches that
   // would unmount the active session's TerminalView and kill its PTY).
   assert.match(main, /function paneWrapperStyle\(s: Session\): React\.CSSProperties/);
-  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?renderTerminalPane\(s, s\.id === activeSessionId\)/);
+  // Single stable-keyed mount list rendering a memoized TerminalPane (extracted
+  // so MainArea re-renders on agent heartbeats don't re-render every terminal).
+  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{s\.id === activeSessionId\} \/>/);
+  assert.match(main, /const TerminalPane = memo\(function TerminalPane/);
   assert.match(main, /order: isPaneA \? 0 : 2/);
   // Regression shape from the removed single-mode branch must be gone.
   assert.doesNotMatch(main, /display: isActive \? "flex" : "none"/);
@@ -883,6 +886,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminal, /const NOISE_COMMANDS = new Set/);
   assert.doesNotMatch(terminal, /function getTerminalTailText/);
 
-  assert.ok(terminal.split("\n").length < 500);
+  // Keep these hotspots focused (they were split out of a monolith). Bumped
+  // from 500→520 for TerminalView when it gained React.memo + the ptyReady gate
+  // that fixed the double-submit bug; still a guard against re-monolithizing.
+  assert.ok(terminal.split("\n").length < 520);
   assert.ok(sidebar.split("\n").length < 400);
 });

@@ -171,5 +171,18 @@ export function terminalProgressUpdate(
   const nextProgress = progress && progress.value === undefined && progress.state !== "indeterminate" && previousValue !== undefined
     ? { ...progress, value: previousValue }
     : progress;
+  // Short-circuit when nothing actually changed. This runs on the PTY output
+  // hot path, so returning a patch for an identical progress would needlessly
+  // rebuild the sessions array and re-render subscribers every frame.
+  const current = session.terminalProgress;
+  if (current === nextProgress) return null;
+  if (
+    current && nextProgress
+    && current.value === nextProgress.value
+    && current.state === nextProgress.state
+  ) {
+    return null;
+  }
+  if (!current && !nextProgress) return null;
   return { patch: { terminalProgress: nextProgress } };
 }

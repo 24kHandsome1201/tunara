@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { TerminalView } from "./TerminalView";
 import type { Session } from "./types";
 import { gitAheadBehind, gitStatus, type RemoteState } from "@/modules/git/git-bridge";
@@ -6,6 +6,38 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
+
+// Stable, module-level callback: clearing pendingInput only needs the session
+// id, so it never needs to close over render scope. Passing a fresh arrow per
+// render would defeat TerminalView's memo.
+function clearPendingInput(id: string) {
+  useSessionsStore.getState().updateSession(id, { pendingInput: undefined, pendingInputSubmit: undefined });
+}
+
+// One mounted terminal pane. Memoized and given only primitive props so it
+// re-renders solely when its own session's pendingInput/active state changes —
+// not on every agent heartbeat that re-renders MainArea.
+const TerminalPane = memo(function TerminalPane({
+  session,
+  isActive,
+}: {
+  session: Session;
+  isActive: boolean;
+}) {
+  return (
+    <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <AgentStatusBar session={session} />
+      <TerminalView
+        sessionId={session.id}
+        dir={session.dir}
+        active={isActive}
+        pendingInput={session.pendingInput}
+        pendingInputSubmit={session.pendingInputSubmit}
+        onPendingInputConsumed={clearPendingInput}
+      />
+    </div>
+  );
+});
 
 interface MainAreaProps {
   sessions: Session[];
@@ -103,22 +135,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
     return `${parts[0]}/.../${parts.slice(-2).join("/")}`;
   }
 
-  function renderTerminalPane(s: Session, isActive: boolean) {
-    return (
-      <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <AgentStatusBar session={s} />
-        <TerminalView
-          sessionId={s.id}
-          dir={s.dir}
-          active={isActive}
-          pendingInput={s.pendingInput}
-          pendingInputSubmit={s.pendingInputSubmit}
-          onPendingInputConsumed={() => useSessionsStore.getState().updateSession(s.id, { pendingInput: undefined, pendingInputSubmit: undefined })}
-        />
-      </div>
-    );
-  }
-
   const isSplit = split.mode !== "single" && paneASession && paneBSession && paneASession.id !== paneBSession.id;
   const isHorizontal = split.mode === "horizontal";
 
@@ -176,7 +192,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             style={paneWrapperStyle(s)}
           >
-            {renderTerminalPane(s, s.id === activeSessionId)}
+            <TerminalPane session={s} isActive={s.id === activeSessionId} />
           </div>
         ))}
         {isSplit && (

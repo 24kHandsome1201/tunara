@@ -5,6 +5,8 @@ import { InspectorPanel } from "@/ui/InspectorPanel";
 import { Settings } from "@/ui/overlays/Settings";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
 import { SshConnect } from "@/ui/overlays/SshConnect";
+import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
+import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { ToastContainer } from "@/ui/Toast";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -13,6 +15,13 @@ import { useTheme } from "./useTheme";
 import { useKeybindings } from "./useKeybindings";
 import { useDockBadge } from "./useDockBadge";
 import { useEffect } from "react";
+
+// Module-level stable callbacks. These close over nothing render-scoped, so
+// hoisting them keeps their identity constant across App re-renders — which
+// lets the memoized Titlebar skip re-rendering when only unrelated state moved.
+const closeSessionById = (id: string) => useSessionsStore.getState().closeSession(id);
+const newTerminal = () => useSessionsStore.getState().newTerminal();
+const openSettings = () => useUIStore.getState().setOverlay("settings");
 
 interface ResizeHandleProps {
   edge: "left" | "right";
@@ -184,9 +193,9 @@ export default function App() {
         onToggleSidebar={toggleSidebar}
         onTogglePanel={togglePanel}
         onSelectSession={setActive}
-        onCloseSession={(id) => useSessionsStore.getState().closeSession(id)}
-        onNewTerminal={() => useSessionsStore.getState().newTerminal()}
-        onOpenSettings={() => setOverlay("settings")}
+        onCloseSession={closeSessionById}
+        onNewTerminal={newTerminal}
+        onOpenSettings={openSettings}
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
@@ -239,8 +248,8 @@ export default function App() {
             sessions={sessions}
             activeSessionId={activeSessionId ?? ""}
             onSelectSession={setActive}
-            onNewTerminal={() => useSessionsStore.getState().newTerminal()}
-            onCloseSession={(id) => useSessionsStore.getState().closeSession(id)}
+            onNewTerminal={newTerminal}
+            onCloseSession={closeSessionById}
           />
           {sidebarVisible && <SidebarResizeHandle />}
         </div>
@@ -278,6 +287,8 @@ export default function App() {
       {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
       {overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
+      <HostKeyPromptDialog />
+      <WorkflowParamPrompt />
       <ToastContainer />
     </div>
   );
