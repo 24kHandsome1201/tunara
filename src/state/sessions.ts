@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Session, AgentCode, AgentResumeIntent } from "@/ui/types";
+import type { Session, AgentCode, AgentResumeIntent, RemoteInfo } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import {
@@ -77,7 +77,14 @@ export function makeSessionId(): string {
 
 export function createSession(
   dir: string,
-  opts?: { agent?: AgentCode; title?: string; branch?: string; pendingInput?: string; pendingInputSubmit?: boolean },
+  opts?: {
+    agent?: AgentCode;
+    title?: string;
+    branch?: string;
+    pendingInput?: string;
+    pendingInputSubmit?: boolean;
+    remote?: RemoteInfo;
+  },
 ): Session {
   const id = makeSessionId();
   return {
@@ -91,8 +98,18 @@ export function createSession(
     runState: "idle" as const,
     pendingInput: opts?.pendingInput,
     pendingInputSubmit: opts?.pendingInputSubmit,
+    remote: opts?.remote,
     updatedAt: Date.now(),
   };
+}
+
+/**
+ * 远程 SSH 会话的 dir 显示为 user@host，且不参与本地 git/文件操作。
+ * 真实远程 cwd 由 Phase 4 的远程 shell 集成提供（若启用）。
+ */
+export function createRemoteSession(remote: RemoteInfo, title?: string): Session {
+  const label = `${remote.user}@${remote.host}`;
+  return createSession(label, { title: title ?? label, remote });
 }
 
 function ensureSessionVisibleInSplit(sessionId: string) {

@@ -1,7 +1,18 @@
 {
   "common.done": "完成",
   "common.close": "关闭",
+  "common.cancel": "取消",
   "common.reset_defaults": "恢复默认",
+
+  "ssh.title": "SSH 连接",
+  "ssh.host": "主机",
+  "ssh.port": "端口",
+  "ssh.user": "用户名",
+  "ssh.identityFile": "私钥文件（可选）",
+  "ssh.authHint": "认证优先用 ssh-agent，其次为此私钥文件。不保存任何密码。",
+  "ssh.connect": "连接",
+  "palette.cmd.new_ssh_session": "新建 SSH 连接",
+  "titlebar.new_ssh_session": "新建 SSH 连接",
 
   "settings.title": "设置",
   "settings.tabs.appearance": "外观",

@@ -32,13 +32,61 @@ pub enum PtyEvent {
     Exit { code: i32 },
 }
 
-pub struct Session {
+/// A terminal session backend. Both variants feed xterm.js through the same
+/// `PtyEvent` channel, so the `pty_write` / `pty_resize` / `pty_close`
+/// commands dispatch on this enum without the frontend caring which it is.
+pub enum Session {
+    /// Local login shell over a real PTY (portable-pty).
+    Local(LocalSession),
+    /// Remote interactive shell over an SSH channel (russh).
+    Ssh(crate::modules::ssh::connection::SshSession),
+}
+
+impl Session {
+    pub fn write(&self, data: &[u8]) -> Result<(), String> {
+        match self {
+            Session::Local(s) => s.writer.lock().write_all(data).map_err(|e| e.to_string()),
+            Session::Ssh(s) => s.write(data),
+        }
+    }
+
+    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        match self {
+            Session::Local(s) => s
+                .master
+                .lock()
+                .resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .map_err(|e| e.to_string()),
+            Session::Ssh(s) => s.resize(cols, rows),
+        }
+    }
+
+    /// Terminate the session. For local that's killing the child; for SSH it
+    /// closes the channel (the connection drops with the SshSession).
+    pub fn kill(&self) -> Result<(), String> {
+        match self {
+            Session::Local(s) => s.killer.lock().kill().map_err(|e| e.to_string()),
+            Session::Ssh(s) => {
+                s.close();
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Local PTY-backed session: master (for resize), writer (for input), killer.
+pub struct LocalSession {
     pub master: Mutex<Box<dyn MasterPty + Send>>,
     pub writer: Mutex<Box<dyn Write + Send>>,
     pub killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 }
 
-impl Drop for Session {
+impl Drop for LocalSession {
     fn drop(&mut self) {
         let _ = self.killer.lock().kill();
     }
@@ -70,11 +118,11 @@ pub fn spawn(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
-    let session = Arc::new(Session {
+    let session = Arc::new(Session::Local(LocalSession {
         master: Mutex::new(pair.master),
         writer: Mutex::new(writer),
         killer: Mutex::new(killer),
-    });
+    }));
 
     let pending: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(READ_BUF)));
     let done = Arc::new(AtomicBool::new(false));

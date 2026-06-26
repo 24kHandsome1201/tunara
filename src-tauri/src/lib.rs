@@ -79,6 +79,8 @@ pub fn run() {
             // Text config: ~/.config/tunara/config.toml
             modules::config::load_config,
             modules::config::save_config,
+            // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
+            modules::ssh::ssh_open,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

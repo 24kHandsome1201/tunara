@@ -60,6 +60,9 @@ export interface Session {
   pendingInput?: string;
   pendingInputSubmit?: boolean;
 
+  // ── SSH 远程会话（§ssh-client）。存在即为远程会话，否则为本地。 ──
+  remote?: RemoteInfo;
+
   // ── git 改动 ──
   gitState?: GitState;
   changes?: {
@@ -69,6 +72,18 @@ export interface Session {
   };
 
   updatedAt: number;
+}
+
+/**
+ * 远程 SSH 会话连接信息。无密码字段——认证走 ssh-agent / 密钥文件，
+ * 密码仅在连接时临时输入，绝不持久化。
+ */
+export interface RemoteInfo {
+  host: string;
+  port: number;
+  user: string;
+  /** 私钥文件路径（如 ~/.ssh/id_ed25519），可选；缺省时走 agent。 */
+  identityFile?: string;
 }
 
 /** 改动文件（与后端 git FileChange 对齐） */
@@ -82,7 +97,7 @@ export interface ChangedFile {
 }
 
 /** 覆盖层类型 */
-export type OverlayType = null | "settings" | "command-palette";
+export type OverlayType = null | "settings" | "command-palette" | "ssh";
 
 /** 主题 */
 export type ThemeType = "light" | "dark" | "system";

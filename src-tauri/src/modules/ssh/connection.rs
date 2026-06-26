@@ -1,0 +1,231 @@
+// A live SSH connection: one russh `Handle` multiplexing channels.
+//
+// Phase 1 uses a single interactive shell channel bridged to xterm.js through
+// the SAME `PtyEvent` + base64 path the local PTY uses, so the frontend can't
+// tell local from remote. The `Handle` is kept alive (later phases open an
+// SFTP channel on the same connection).
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use russh::client::{self, Handle};
+use russh::keys::ssh_key::PublicKey;
+use russh::ChannelMsg;
+use tauri::ipc::Channel as IpcChannel;
+use tokio::sync::mpsc;
+
+use super::auth::{self, AuthOptions};
+use super::known_hosts::{self, Verdict};
+use crate::modules::pty::PtyEvent;
+
+/// Whether to accept an unknown host key on first use. The frontend decides
+/// (it may want to prompt); Phase 1 defaults to accept-and-remember.
+#[derive(Clone, Copy)]
+pub struct HostKeyPolicy {
+    pub accept_unknown: bool,
+}
+
+impl Default for HostKeyPolicy {
+    fn default() -> Self {
+        Self {
+            accept_unknown: true,
+        }
+    }
+}
+
+/// russh client handler. Host-key verification happens in `check_server_key`.
+pub struct ClientHandler {
+    host: String,
+    port: u16,
+    policy: HostKeyPolicy,
+}
+
+impl client::Handler for ClientHandler {
+    type Error = russh::Error;
+
+    async fn check_server_key(&mut self, key: &PublicKey) -> Result<bool, Self::Error> {
+        match known_hosts::verify(&self.host, self.port, key) {
+            Verdict::Match => Ok(true),
+            Verdict::Mismatch => {
+                log::warn!(
+                    "ssh host-key MISMATCH for {}:{} — refusing (possible MITM)",
+                    self.host,
+                    self.port
+                );
+                Ok(false)
+            }
+            Verdict::Unknown => {
+                if self.policy.accept_unknown {
+                    if let Err(e) = known_hosts::remember(&self.host, self.port, key) {
+                        log::warn!("ssh: failed to persist new host key: {e}");
+                    }
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+        }
+    }
+}
+
+/// Parameters to open an SSH session.
+pub struct ConnectParams {
+    pub host: String,
+    pub port: u16,
+    pub auth: AuthOptions,
+    pub policy: HostKeyPolicy,
+    pub cols: u16,
+    pub rows: u16,
+}
+
+/// A connected, authenticated SSH session with a live shell channel.
+/// Owns the input sender (frontend keystrokes → channel) and resize/close
+/// controls. The `Handle` stays alive for later SFTP use.
+pub struct SshSession {
+    handle: Handle<ClientHandler>,
+    input_tx: mpsc::UnboundedSender<InputMsg>,
+}
+
+enum InputMsg {
+    Data(Vec<u8>),
+    Resize { cols: u16, rows: u16 },
+    Close,
+}
+
+impl SshSession {
+    /// Connect, authenticate, open a shell PTY, and start pumping output into
+    /// `on_event`. Returns once the shell is live; output streaming continues
+    /// on a background tokio task.
+    pub async fn open(
+        params: ConnectParams,
+        on_event: IpcChannel<PtyEvent>,
+    ) -> Result<SshSession, String> {
+        let config = Arc::new(client::Config {
+            // Keep long-lived terminals alive; max>0 so a single missed reply
+            // doesn't drop the session (Tabby hit KeepaliveTimeout otherwise).
+            keepalive_interval: Some(Duration::from_secs(30)),
+            keepalive_max: 3,
+            ..Default::default()
+        });
+
+        let handler = ClientHandler {
+            host: params.host.clone(),
+            port: params.port,
+            policy: params.policy,
+        };
+
+        let mut handle = client::connect(config, (params.host.as_str(), params.port), handler)
+            .await
+            .map_err(|e| format!("connect {}:{} failed: {e}", params.host, params.port))?;
+
+        auth::authenticate(&mut handle, &params.auth).await?;
+
+        let mut channel = handle
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("open session channel failed: {e}"))?;
+        channel
+            .request_pty(
+                false,
+                "xterm-256color",
+                params.cols as u32,
+                params.rows as u32,
+                0,
+                0,
+                &[],
+            )
+            .await
+            .map_err(|e| format!("request pty failed: {e}"))?;
+        channel
+            .request_shell(true)
+            .await
+            .map_err(|e| format!("request shell failed: {e}"))?;
+
+        let (input_tx, mut input_rx) = mpsc::unbounded_channel::<InputMsg>();
+
+        // Pump: remote output → PtyEvent::Data; frontend input → channel.
+        tauri::async_runtime::spawn(async move {
+            let mut exit_code: i32 = 0;
+            loop {
+                tokio::select! {
+                    msg = channel.wait() => {
+                        let Some(msg) = msg else { break };
+                        match msg {
+                            ChannelMsg::Data { ref data } => {
+                                let ev = PtyEvent::Data { data: B64.encode(data) };
+                                if on_event.send(ev).is_err() { break; }
+                            }
+                            // stderr (ext=1) is interleaved into the same stream;
+                            // a terminal shows both on one screen.
+                            ChannelMsg::ExtendedData { ref data, ext: 1 } => {
+                                let ev = PtyEvent::Data { data: B64.encode(data) };
+                                if on_event.send(ev).is_err() { break; }
+                            }
+                            ChannelMsg::ExitStatus { exit_status } => {
+                                exit_code = exit_status as i32;
+                            }
+                            ChannelMsg::ExitSignal { .. } => {
+                                // Killed by a signal rather than a clean exit.
+                                exit_code = -1;
+                            }
+                            ChannelMsg::Eof | ChannelMsg::Close => break,
+                            _ => {}
+                        }
+                    }
+                    input = input_rx.recv() => {
+                        match input {
+                            Some(InputMsg::Data(bytes)) => {
+                                if channel.data(&bytes[..]).await.is_err() { break; }
+                            }
+                            Some(InputMsg::Resize { cols, rows }) => {
+                                let _ = channel.window_change(cols as u32, rows as u32, 0, 0).await;
+                            }
+                            Some(InputMsg::Close) | None => {
+                                let _ = channel.eof().await;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            let _ = on_event.send(PtyEvent::Exit { code: exit_code });
+        });
+
+        Ok(SshSession { handle, input_tx })
+    }
+
+    pub fn write(&self, data: &[u8]) -> Result<(), String> {
+        self.input_tx
+            .send(InputMsg::Data(data.to_vec()))
+            .map_err(|_| "ssh session closed".to_string())
+    }
+
+    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        self.input_tx
+            .send(InputMsg::Resize { cols, rows })
+            .map_err(|_| "ssh session closed".to_string())
+    }
+
+    /// Signal the pump task to close the channel. The connection `Handle`
+    /// itself is dropped when the SshSession is dropped.
+    pub fn close(&self) {
+        let _ = self.input_tx.send(InputMsg::Close);
+    }
+
+    /// Borrow the live connection handle (Phase 3 opens SFTP on it).
+    #[allow(dead_code)] // used by the SFTP file panel in Phase 3
+    pub fn handle(&self) -> &Handle<ClientHandler> {
+        &self.handle
+    }
+}
+
+impl Drop for SshSession {
+    fn drop(&mut self) {
+        // Signal the pump task to send EOF and stop; dropping the `Handle`
+        // (held by this struct) tears down the SSH connection. A polite
+        // SSH_MSG_DISCONNECT would need an async context we don't have in
+        // Drop — channel EOF + handle drop is sufficient for cleanup.
+        self.close();
+    }
+}

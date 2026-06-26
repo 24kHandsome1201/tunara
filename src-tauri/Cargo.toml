@@ -41,6 +41,14 @@ grep-matcher = "0.1"
 globset = "0.4"
 notify = "6"
 notify-debouncer-mini = "0.4"
+# SSH client (§ssh-client): russh 0.61 carries key handling in russh::keys
+# (the standalone russh-keys crate is legacy). russh-sftp adds the SFTP
+# subsystem on a russh channel. Pinned to a minor — russh is pre-1.0 and
+# breaks across 0.x minors, so expect churn on upgrade.
+russh = "0.61"
+russh-sftp = "2.3"
+# ~/.ssh & known_hosts path resolution (XDG/home dirs).
+dirs = "5"
 tauri-plugin-log = "2"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"

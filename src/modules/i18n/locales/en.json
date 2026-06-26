@@ -1,7 +1,18 @@
 {
   "common.done": "Done",
   "common.close": "Close",
+  "common.cancel": "Cancel",
   "common.reset_defaults": "Reset to defaults",
+
+  "ssh.title": "SSH Connection",
+  "ssh.host": "Host",
+  "ssh.port": "Port",
+  "ssh.user": "User",
+  "ssh.identityFile": "Identity file (optional)",
+  "ssh.authHint": "Auth uses ssh-agent first, then this key file. No password is ever stored.",
+  "ssh.connect": "Connect",
+  "palette.cmd.new_ssh_session": "New SSH connection",
+  "titlebar.new_ssh_session": "New SSH connection",
 
   "settings.title": "Settings",
   "settings.tabs.appearance": "Appearance",
