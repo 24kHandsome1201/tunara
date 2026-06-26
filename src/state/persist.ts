@@ -15,7 +15,7 @@ type SessionStore = Awaited<ReturnType<typeof load>>;
 type PersistedSession = Pick<
   Session,
   "id" | "title" | "dir" | "branch" | "updatedAt"
-> & { customTitle?: string };
+> & { customTitle?: string; remote?: Session["remote"] };
 
 export type PersistedSessionV2 = PersistedSession;
 
@@ -77,6 +77,10 @@ function toPersistedSession(s: Session): PersistedSession {
     updatedAt: s.updatedAt,
   };
   if (s.customTitle) p.customTitle = s.customTitle;
+  // Persist remote connection info (no secrets) so an SSH session can be
+  // re-established after restart. The connection itself is re-opened lazily
+  // when the terminal mounts.
+  if (s.remote) p.remote = s.remote;
   return p;
 }
 
@@ -98,6 +102,7 @@ function fromPersistedSession(p: PersistedSession): Session {
     ...p,
     title: p.title.trim() || "终端",
     customTitle: p.customTitle || undefined,
+    remote: p.remote,
     runState: "idle",
   };
 }

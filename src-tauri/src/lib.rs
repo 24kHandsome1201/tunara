@@ -81,6 +81,10 @@ pub fn run() {
             modules::config::save_config,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,
+            // §ssh-client Phase 2 主机 profile 管理(无凭证存储)
+            modules::ssh::hosts::ssh_hosts_load,
+            modules::ssh::hosts::ssh_hosts_save,
+            modules::ssh::hosts::ssh_hosts_remove,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

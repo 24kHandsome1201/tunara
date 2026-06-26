@@ -11,6 +11,8 @@
   "ssh.identityFile": "Identity file (optional)",
   "ssh.authHint": "Auth uses ssh-agent first, then this key file. No password is ever stored.",
   "ssh.connect": "Connect",
+  "ssh.saved": "Saved hosts",
+  "ssh.saveProfile": "Save this host (no password)",
   "palette.cmd.new_ssh_session": "New SSH connection",
   "titlebar.new_ssh_session": "New SSH connection",
 

@@ -197,7 +197,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
       launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
-      recentDirs: pushRecentDir(state.recentDirs, s.dir),
+      // Remote sessions' dir is "user@host", not a local path — keep it out
+      // of the recent-dirs affordance.
+      recentDirs: s.remote ? state.recentDirs : pushRecentDir(state.recentDirs, s.dir),
     }));
     ensureSessionVisibleInSplit(s.id);
   },
@@ -244,6 +246,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   refreshGit: (id) => {
+    // Remote (SSH) sessions have no local working tree — git2 would fail on
+    // the "user@host" pseudo-path. Skip the refresh entirely.
+    if (get().sessions.find((s) => s.id === id)?.remote) return;
     const now = Date.now();
     const last = lastGitRefreshAt.get(id) ?? 0;
     const elapsed = now - last;

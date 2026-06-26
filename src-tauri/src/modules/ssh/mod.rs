@@ -7,6 +7,7 @@
 
 pub mod auth;
 pub mod connection;
+pub mod hosts;
 pub mod known_hosts;
 
 use auth::AuthOptions;
