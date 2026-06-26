@@ -45,7 +45,10 @@ fn pending_prompts() -> &'static Mutex<HashMap<String, oneshot::Sender<bool>>> {
 /// Resolve a host-key prompt the frontend answered. Returns false if the prompt
 /// id is unknown (already resolved / timed out).
 pub fn resolve_host_key_prompt(prompt_id: &str, accept: bool) -> bool {
-    let tx = pending_prompts().lock().ok().and_then(|mut m| m.remove(prompt_id));
+    let tx = pending_prompts()
+        .lock()
+        .ok()
+        .and_then(|mut m| m.remove(prompt_id));
     match tx {
         Some(tx) => tx.send(accept).is_ok(),
         None => false,

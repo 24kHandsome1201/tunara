@@ -28,8 +28,12 @@ const OVERFLOW_NOTICE: &[u8] =
 #[derive(Serialize, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PtyEvent {
-    Data { data: String },
-    Exit { code: i32 },
+    Data {
+        data: String,
+    },
+    Exit {
+        code: i32,
+    },
     /// An unknown/unverifiable SSH host key needs the user to confirm the
     /// fingerprint before the connection proceeds (TOFU). The frontend shows a
     /// dialog and replies via the `ssh_host_key_decision` command keyed by

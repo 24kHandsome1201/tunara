@@ -266,10 +266,16 @@ mod tests {
     #[test]
     fn wildcard_patterns_match_like_openssh() {
         assert!(host_pattern_match("*.example.com", "host01.example.com"));
-        assert!(host_pattern_match("host??.example.com", "host01.example.com"));
+        assert!(host_pattern_match(
+            "host??.example.com",
+            "host01.example.com"
+        ));
         assert!(host_pattern_match("*", "anything.at.all"));
         assert!(!host_pattern_match("*.example.com", "example.com"));
-        assert!(!host_pattern_match("host?.example.com", "host01.example.com"));
+        assert!(!host_pattern_match(
+            "host?.example.com",
+            "host01.example.com"
+        ));
         // Plain patterns are exact.
         assert!(host_pattern_match("example.com", "example.com"));
         assert!(!host_pattern_match("example.com", "evil.com"));
@@ -288,8 +294,14 @@ mod tests {
             HostMatch::Wildcard
         ));
         // Comma-separated exact tokens still work (regression).
-        assert!(matches!(match_hosts_field("a.com,b.com", "b.com"), HostMatch::Exact));
-        assert!(matches!(match_hosts_field("a.com,b.com", "c.com"), HostMatch::None));
+        assert!(matches!(
+            match_hosts_field("a.com,b.com", "b.com"),
+            HostMatch::Exact
+        ));
+        assert!(matches!(
+            match_hosts_field("a.com,b.com", "c.com"),
+            HostMatch::None
+        ));
     }
 
     #[test]
