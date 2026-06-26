@@ -1,0 +1,22 @@
+# cargo-audit configuration.
+#
+# RUSTSEC-2023-0071 — "Marvin Attack" RSA timing sidechannel in the `rsa` crate.
+# We pull `rsa` ONLY transitively through `russh`/`ssh-key` (RSA host-key and
+# RSA pubkey auth support); see `cargo tree -i rsa`. There is no fixed `rsa`
+# release — the advisory is an unresolved upstream timing sidechannel that every
+# russh-based SSH client currently ships with.
+#
+# Why the residual risk is acceptable for Tunara:
+#  - The attack requires an active network MITM positioned to harvest many
+#    RSA decryption timing samples; Tunara is an interactive desktop SSH client,
+#    not a server doing high-volume RSA operations.
+#  - Tunara prefers ed25519 keys (auth chain tries agent keys / configured key
+#    first); RSA is a fallback, not the default path.
+#  - Dropping `rsa` would mean dropping RSA-server compatibility entirely, which
+#    is worse for users than the timing-sidechannel exposure.
+#
+# Revisit when `rsa` ships a fixed release or russh exposes a way to build
+# without the RSA feature.
+
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]

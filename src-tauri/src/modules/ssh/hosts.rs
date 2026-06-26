@@ -131,7 +131,7 @@ mod tests {
             user: "root".into(),
             identity_file: "~/.ssh/id_ed25519".into(),
         };
-        write_hosts(&path, &[p.clone()]).unwrap();
+        write_hosts(&path, std::slice::from_ref(&p)).unwrap();
         let loaded = read_hosts(&path).unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].host, "example.com");
