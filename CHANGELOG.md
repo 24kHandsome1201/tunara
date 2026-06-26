@@ -2,13 +2,27 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.7.0] - 2026-06-26
+
+### Added
+- **SSH 客户端**：SSH 会话成为一等公民。基于 `russh` 的长连接，一条连接多路复用 channel——交互 shell 喂给终端，SFTP channel 喂给文件面板。
+  - 会话：连接 + 认证（ssh-agent → 密钥文件 → 密码，**不存储任何凭证**）+ 远程交互 shell；host key 走 `~/.ssh/known_hosts` TOFU（哈希条目密钥轮换不会被静默信任）。
+  - 主机管理：host profile（host/port/user/identity 路径，无密码）存入 `~/.config/tunara/hosts.toml`，可保存与重连。
+  - 文件：同连接 SFTP 子系统，远程文件树 + 只读预览 + 下载（下载目标限制在用户 home 下、拒敏感目录、限 100 MiB）。不做远程编辑。
+  - 可选远程 shell 集成：向远程 bash/zsh 注入轻量 bootstrap 以获得远程 cwd / 命令边界 / agent 检测；默认关闭，不支持的 shell 静默降级。
+  - 本地 PTY 路径完全未改——SSH 是新增的并行后端，russh 对某服务器失败时用户仍可在本地终端敲 `ssh`。
+
+### Changed
+- `.github/workflows/release.yml`：发布拆成 direct 与 legacy 两条 macOS 安装通道。direct 要求 Developer ID 签名、公证、updater 资产与 Homebrew cask；legacy 产出带 `-legacy` 后缀的旧式手动安装 dmg，不参与 Homebrew 或自动更新。
+- `scripts/verify-macos-legacy-bundle.sh`：新增 legacy 包验证，只允许 ad-hoc 手动安装包通过，并保留 bundle 结构、签名资源和系统 dylib 依赖检查。
+- `cargo audit`：忽略 RUSTSEC-2023-0071（`rsa` Marvin 时序侧信道，russh 间接依赖、上游无修复），理由记录在 `src-tauri/.cargo/audit.toml`。
+
 ## [1.6.1] - 2026-06-25
 
 ### Fixed
 - macOS 分发链路修复：v1.6.0 的 dmg 因 CI 静默回退到 ad-hoc 签名 + 跳过公证，触发 Gatekeeper 拦截。本版本带真实 Developer ID 签名、Apple 公证 ticket，并嵌入 hardened runtime 所需的 4 条 entitlement（JIT、未签名可执行内存、禁用库校验、继承 DYLD 环境），保证 PTY/spawn 子进程与外部编辑器跳转在 hardened runtime 下正常工作。
 
 ### Changed
-- `.github/workflows/release.yml`：缺任一 Apple secret 立即 fail，不再静默回退到 ad-hoc。
 - `scripts/verify-macos-release-bundle.sh`：增加 5 项硬断言（非 adhoc、TeamID 校验、4 条 entitlement、`spctl --assess`、`stapler validate`），防止"签名失败但 release 照发"的回归。
 
 ## [1.6.0] - 2026-06-25

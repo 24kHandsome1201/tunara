@@ -101,7 +101,9 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 
 ### 从 Release 下载（推荐）
 
-到 [Releases](https://github.com/24kHandsome1201/tunara/releases/latest) 下载最新版的 `.dmg`。当前仅签名 macOS Apple Silicon 构建。
+到 [Releases](https://github.com/24kHandsome1201/tunara/releases/latest) 下载最新版的 `.dmg`。普通用户请用默认的 `Tunara_<version>_aarch64.dmg` 直接安装；当前仅支持签名的 macOS Apple Silicon 构建。
+
+Release 页面也可能带 `Tunara_<version>_aarch64-legacy.dmg`。这是保留旧行为的手动安装包，用于 Apple 公证延迟时兜底；它不用于 Homebrew 或应用内自动更新，首次打开可能需要在 Finder 里右键打开。
 
 ### Homebrew
 

@@ -101,7 +101,9 @@ The right pane is a read-only git diff for "one more look before commit." Reads 
 
 ### From a Release (recommended)
 
-Grab the latest `.dmg` from [Releases](https://github.com/24kHandsome1201/tunara/releases/latest). Only signed macOS Apple Silicon builds for now.
+Grab the latest `.dmg` from [Releases](https://github.com/24kHandsome1201/tunara/releases/latest). Use the normal `Tunara_<version>_aarch64.dmg` for direct install. Only signed macOS Apple Silicon builds are supported for the direct installer.
+
+Release pages may also include `Tunara_<version>_aarch64-legacy.dmg`. That is the previous manual install path for cases where Apple notarization is delayed; it is not used by Homebrew or the in-app updater and may require right-click Open in Finder.
 
 ### Homebrew
 

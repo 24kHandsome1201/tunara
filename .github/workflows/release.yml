@@ -5,9 +5,20 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      release_mode:
+        description: "Which macOS installer lane to build"
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - direct
+          - legacy
 
 jobs:
   publish-tauri:
+    if: github.event_name == 'push' || inputs.release_mode == 'both' || inputs.release_mode == 'direct'
     permissions:
       contents: write
     strategy:
@@ -18,6 +29,7 @@ jobs:
             args: --target aarch64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
 
@@ -81,7 +93,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Tunara ${{ github.ref_name }}"
-          releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Auto-update is built in."
+          releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Use the normal dmg for direct install. The -legacy dmg is the previous manual install path and is not used by Homebrew or auto-update."
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }} --config /tmp/tauri-release-ci.json
@@ -143,6 +155,111 @@ jobs:
           else
             echo "Skipping GitHub release asset checks for non-tag dry-run (${GITHUB_REF_NAME})."
           fi
+
+  publish-legacy:
+    if: github.event_name == 'push' || inputs.release_mode == 'both' || inputs.release_mode == 'legacy'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare legacy macOS release config
+        run: |
+          set -euo pipefail
+          # Legacy is intentionally the old install path: ad-hoc signed, not
+          # notarized, and manual-only. It must not produce updater metadata.
+          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":false}}' > /tmp/tauri-legacy-ci.json
+
+      - name: Build legacy macOS installer
+        run: pnpm tauri build ${{ matrix.args }} --config /tmp/tauri-legacy-ci.json
+
+      - name: Re-sign legacy macOS app
+        run: |
+          set -euo pipefail
+          APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Tunara.app"
+          if [ ! -d "$APP" ]; then
+            echo "No legacy Tunara.app was produced"
+            exit 1
+          fi
+          codesign --force --deep --sign - --options runtime --entitlements src-tauri/Entitlements.plist "$APP"
+
+      - name: Rebuild legacy macOS dmg
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Tunara.app"
+          STAGING=$(mktemp -d "${TMPDIR:-/tmp}/tunara-legacy-dmg-stage.XXXXXX")
+          trap 'rm -rf "$STAGING"' EXIT
+          cp -R "$APP" "$STAGING/Tunara.app"
+          ln -s /Applications "$STAGING/Applications"
+          LEGACY_DMG="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Tunara_${VERSION}_aarch64-legacy.dmg"
+          hdiutil create -volname "Tunara" -srcfolder "$STAGING" -ov -format UDZO "$LEGACY_DMG"
+          echo "LEGACY_DMG=$LEGACY_DMG" >> "$GITHUB_ENV"
+
+      - name: Verify legacy macOS installer
+        run: |
+          set -euo pipefail
+          DMG=${LEGACY_DMG:-}
+          if [ -z "$DMG" ]; then
+            echo "No legacy Tunara DMG was produced"
+            exit 1
+          fi
+          scripts/verify-macos-legacy-bundle.sh "$DMG"
+
+      - name: Upload legacy macOS installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [ -z "${LEGACY_DMG:-}" ] || [ ! -f "$LEGACY_DMG" ]; then
+            echo "No legacy Tunara DMG was produced"
+            exit 1
+          fi
+
+          release_args=(
+            --title "Tunara ${TAG}"
+            --notes "Tunara ${TAG}. Direct install assets are signed and notarized when Apple notarization completes. The legacy DMG is the previous manual install path and is not used by Homebrew or auto-update."
+          )
+          if [[ "$TAG" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" "${release_args[@]}"
+          fi
+
+          gh release upload "$TAG" "$LEGACY_DMG" --clobber
 
   update-homebrew-cask:
     needs: publish-tauri
