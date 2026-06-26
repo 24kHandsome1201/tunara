@@ -267,15 +267,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       # Tag push 触发的 workflow 默认 checkout 到 detached HEAD（tag ref），
-      # 而我们要把 cask 改动 commit 到 main 上，所以显式 checkout main。
+      # 而我们要基于 main 改 cask，所以显式 checkout main。
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Compute dmg sha256 and update cask
+      # Direct push to main is rejected by branch protection (GH013) for the
+      # github-actions bot, so we open a PR instead of pushing main directly.
+      # The default GITHUB_TOKEN can create PRs (pull-requests: write) without
+      # any bypass credential.
+      - name: Compute dmg sha256 and open cask-update PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -298,13 +303,27 @@ jobs:
           rm -f homebrew/tunara.rb.bak
 
           if git diff --quiet homebrew/tunara.rb; then
-            echo "Homebrew cask already up to date; nothing to commit."
+            echo "Homebrew cask already up to date; nothing to do."
             exit 0
           fi
 
+          BRANCH="chore/homebrew-cask-v${TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add homebrew/tunara.rb
           git commit -m "chore: update homebrew cask to v${TAG} (sha256 ${SHA:0:12}…)"
-          # 显式推到 main；detached HEAD 时 `git push` 会失败而无声 exit 0
-          git push origin HEAD:main
+          # Force-push the branch so a re-run on the same tag overwrites a stale
+          # branch from a previous attempt rather than failing.
+          git push -f origin "$BRANCH"
+
+          # Open the PR if one isn't already open for this branch (idempotent).
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: update homebrew cask to v${TAG}" \
+              --body "Automated cask bump for the v${TAG} release. sha256 computed from the released \`Tunara_${TAG}_aarch64.dmg\`. Merging keeps \`brew install tunara\` and the release-metadata regression test in sync. Direct push to main is blocked by branch protection, so this goes through a PR."
+          else
+            echo "A cask-update PR for $BRANCH is already open; updated its branch."
+          fi
