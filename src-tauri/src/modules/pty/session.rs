@@ -67,14 +67,13 @@ impl Session {
     }
 
     /// Terminate the session. For local that's killing the child; for SSH it
-    /// closes the channel (the connection drops with the SshSession).
+    /// closes the channel (the connection drops with the SshSession). Both
+    /// variants propagate their teardown error so callers log failures
+    /// symmetrically.
     pub fn kill(&self) -> Result<(), String> {
         match self {
             Session::Local(s) => s.killer.lock().kill().map_err(|e| e.to_string()),
-            Session::Ssh(s) => {
-                s.close();
-                Ok(())
-            }
+            Session::Ssh(s) => s.close(),
         }
     }
 }

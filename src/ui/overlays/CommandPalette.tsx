@@ -137,7 +137,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`); useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir); onClose(); },
       });
 
-      cmds.push({
+      // Remote sessions have no local git working tree — refreshGit no-ops for
+      // them (sessions.ts), so don't show the command as a dead affordance.
+      if (!activeSession.remote) cmds.push({
         id: "refresh-git-current",
         label: t("palette.cmd.refresh_git_current"),
         subtitle: activeSession.dir,

@@ -452,7 +452,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         ? { agentResume: { ...agentResume, cwd, lastSeenAt: Date.now() } }
         : {}),
     });
-    get().recordRecentDir(cwd);
+    // Remote sessions' cwd is a remote path (and the dir label is user@host) —
+    // keep it out of the local recent-dirs affordance, matching addSession.
+    if (!session?.remote) get().recordRecentDir(cwd);
     if (update.refreshGit) get().refreshGit(id);
   },
 

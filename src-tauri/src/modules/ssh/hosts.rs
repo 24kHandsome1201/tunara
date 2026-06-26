@@ -43,11 +43,10 @@ fn hosts_path() -> Result<PathBuf, String> {
             return Ok(PathBuf::from(trimmed).join(CONFIG_DIR).join("hosts.toml"));
         }
     }
-    let home = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
-    Ok(PathBuf::from(home)
-        .join(".config")
-        .join(CONFIG_DIR)
-        .join("hosts.toml"))
+    // Use dirs::home_dir() (not $HOME) so host profiles resolve to the same
+    // home as known_hosts/auth under macOS GUI launch where $HOME may be unset.
+    let home = dirs::home_dir().ok_or_else(|| "cannot resolve home dir".to_string())?;
+    Ok(home.join(".config").join(CONFIG_DIR).join("hosts.toml"))
 }
 
 fn read_hosts(path: &Path) -> Result<Vec<SshHostProfile>, String> {

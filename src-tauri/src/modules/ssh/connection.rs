@@ -90,6 +90,10 @@ impl client::Handler for ClientHandler {
 /// Sent base64-decoded via `eval` so it installs cleanly in one short line.
 const REMOTE_INTEGRATION: &str = include_str!("scripts/remote-integration.sh");
 
+/// Bound on queued input messages (keystrokes/resizes) waiting for the pump.
+/// Far above human input rate; on overflow we drop rather than buffer forever.
+const INPUT_QUEUE_CAP: usize = 1024;
+
 /// Parameters to open an SSH session.
 pub struct ConnectParams {
     pub host: String,
@@ -110,7 +114,7 @@ pub struct ConnectParams {
 /// same connection (Phase 3).
 pub struct SshSession {
     handle: Handle<ClientHandler>,
-    input_tx: mpsc::UnboundedSender<InputMsg>,
+    input_tx: mpsc::Sender<InputMsg>,
     /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
     sftp: tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>,
@@ -186,9 +190,21 @@ impl SshSession {
             }
         }
 
-        let (input_tx, mut input_rx) = mpsc::unbounded_channel::<InputMsg>();
+        // Bounded so a fast typist / large paste on a slow link can't grow the
+        // queue without limit while the pump is parked on `channel.data().await`.
+        // 1024 keystroke/resize messages is far beyond human input rate; on
+        // overflow `write` drops with an error rather than buffering unboundedly.
+        let (input_tx, mut input_rx) = mpsc::channel::<InputMsg>(INPUT_QUEUE_CAP);
 
         // Pump: remote output → PtyEvent::Data; frontend input → channel.
+        //
+        // Unlike the local PTY (which has a reader thread feeding a shared
+        // buffer drained by a 16ms flusher, hence its MAX_PENDING cap), the SSH
+        // path has NO intermediate accumulator: each `ChannelMsg::Data` is
+        // encoded and sent immediately, and russh's own per-channel flow-control
+        // window bounds how much the server can have in flight. `on_event.send`
+        // is non-blocking. So there is no unbounded buffer to cap here — don't
+        // "add MAX_PENDING" without first reintroducing a buffer that needs it.
         tauri::async_runtime::spawn(async move {
             let mut exit_code: i32 = 0;
             loop {
@@ -267,22 +283,33 @@ impl SshSession {
         Ok(arc)
     }
 
+    // These run on the sync Tauri command thread, so they use `try_send`
+    // (non-blocking). A full queue means the remote is far behind; dropping a
+    // keystroke is the same backpressure posture the local PTY takes on output
+    // overflow, and is preferable to blocking the UI thread.
     pub fn write(&self, data: &[u8]) -> Result<(), String> {
         self.input_tx
-            .send(InputMsg::Data(data.to_vec()))
-            .map_err(|_| "ssh session closed".to_string())
+            .try_send(InputMsg::Data(data.to_vec()))
+            .map_err(|e| match e {
+                mpsc::error::TrySendError::Full(_) => "ssh input queue full".to_string(),
+                mpsc::error::TrySendError::Closed(_) => "ssh session closed".to_string(),
+            })
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
         self.input_tx
-            .send(InputMsg::Resize { cols, rows })
-            .map_err(|_| "ssh session closed".to_string())
+            .try_send(InputMsg::Resize { cols, rows })
+            .map_err(|_| "ssh session closed or busy".to_string())
     }
 
-    /// Signal the pump task to close the channel. The connection `Handle`
-    /// itself is dropped when the SshSession is dropped.
-    pub fn close(&self) {
-        let _ = self.input_tx.send(InputMsg::Close);
+    /// Signal the pump task to close the channel. Returns Err if the pump task
+    /// is already gone (channel closed) — callers that surface close errors
+    /// (Session::kill) can then report it, matching the local-PTY path. The
+    /// connection `Handle` itself is dropped when the SshSession is dropped.
+    pub fn close(&self) -> Result<(), String> {
+        self.input_tx
+            .try_send(InputMsg::Close)
+            .map_err(|_| "ssh session already closed".to_string())
     }
 }
 
@@ -291,7 +318,8 @@ impl Drop for SshSession {
         // Signal the pump task to send EOF and stop; dropping the `Handle`
         // (held by this struct) tears down the SSH connection. A polite
         // SSH_MSG_DISCONNECT would need an async context we don't have in
-        // Drop — channel EOF + handle drop is sufficient for cleanup.
-        self.close();
+        // Drop — channel EOF + handle drop is sufficient for cleanup. Ignore
+        // the result: if the pump is already gone there's nothing to signal.
+        let _ = self.close();
     }
 }

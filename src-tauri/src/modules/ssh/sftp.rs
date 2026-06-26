@@ -103,16 +103,14 @@ pub async fn ssh_fs_read_dir(
         });
     }
 
-    out.sort_by(|a, b| {
-        fn rank(k: &EntryKind) -> u8 {
-            match k {
-                EntryKind::Dir => 0,
-                _ => 1,
-            }
-        }
-        rank(&a.kind)
-            .cmp(&rank(&b.kind))
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    // Dirs first, then case-insensitive by name. Cache the lowercased key so
+    // to_lowercase() runs once per entry (n) instead of per comparison (n log n).
+    out.sort_by_cached_key(|e| {
+        let rank: u8 = match e.kind {
+            EntryKind::Dir => 0,
+            _ => 1,
+        };
+        (rank, e.name.to_lowercase())
     });
     Ok(out)
 }
@@ -145,6 +143,17 @@ pub async fn ssh_fs_read_file(
         .read(&path)
         .await
         .map_err(|e| format!("read remote file failed: {e}"))?;
+
+    // Re-check against the actual byte count: stat (which follows symlinks and
+    // can report a stale/zero size for special or growing files) may have
+    // under-reported. Don't hand back a multi-MiB preview we meant to cap.
+    let real_size = bytes.len() as u64;
+    if real_size > MAX_READ_BYTES {
+        return Ok(RemoteReadResult::TooLarge {
+            size: real_size,
+            limit: MAX_READ_BYTES,
+        });
+    }
 
     // Null-byte heuristic for binary detection, like the local reader.
     let preview_len = bytes.len().min(MAX_TEXT_PREVIEW_BYTES as usize);
@@ -187,7 +196,12 @@ fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, Stri
             return Err(format!("refusing to write into ~/{sensitive}"));
         }
     }
-    // Don't clobber existing files — a download must not silently overwrite.
+    // UX guard (not a security boundary): refuse an existing destination so a
+    // download doesn't silently clobber. This is best-effort — there's an
+    // inherent gap between this check and the later write, but since the path is
+    // confined to the user's own home in a desktop app, no attacker is racing
+    // local file creation here; the real protections are the home-confinement
+    // and dotfile-dir rejection above.
     if path.exists() {
         return Err("destination already exists".into());
     }

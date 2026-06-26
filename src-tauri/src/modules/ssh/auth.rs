@@ -132,11 +132,45 @@ async fn try_key_file(
     Ok(res.success())
 }
 
+// Expand a leading `~` against the user's home. Uses `dirs::home_dir()` (not
+// $HOME) so it works under macOS GUI launch where $HOME may be unset — the same
+// resolution known_hosts and host profiles use, keeping all SSH paths
+// consistent. The local-fs `util::expand_tilde` deliberately differs (it's
+// env-HOME based for the terminal cwd path); we don't reuse it here.
 fn expand_tilde(path: &str) -> std::path::PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
+    if path == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home;
+        }
+    } else if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
             return home.join(rest);
         }
     }
     Path::new(path).to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_tilde_handles_bare_and_prefixed() {
+        let home = dirs::home_dir().expect("home dir in test env");
+        // Bare "~" must expand to home, not pass through literally (the bug
+        // this fix closes — an identity_file of "~" previously became "~").
+        assert_eq!(expand_tilde("~"), home);
+        // "~/x" expands under home.
+        assert_eq!(
+            expand_tilde("~/.ssh/id_ed25519"),
+            home.join(".ssh/id_ed25519")
+        );
+        // Non-tilde paths pass through unchanged.
+        assert_eq!(
+            expand_tilde("/etc/key"),
+            Path::new("/etc/key").to_path_buf()
+        );
+        // A tilde not at the start is not expanded.
+        assert_eq!(expand_tilde("/a/~/b"), Path::new("/a/~/b").to_path_buf());
+    }
 }
