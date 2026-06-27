@@ -19,12 +19,20 @@ pub mod tree;
 use std::path::PathBuf;
 
 pub fn expand_tilde(path: &str) -> PathBuf {
-    if path.starts_with('~') {
+    // Only `~` and `~/...` expand; `~user` and any non-leading `~` pass through.
+    // Slicing `&path[2..]` (the previous approach) panics when byte index 2 lands
+    // inside a multi-byte UTF-8 char (e.g. `~é`) — and with `panic = "abort"` in
+    // release that takes the whole app down — and silently drops a char for the
+    // slash-less `~x` form. `strip_prefix` always splits on a char boundary, so
+    // it is both panic-safe and correct. Mirrors `util::expand_tilde` /
+    // `ssh::auth::expand_tilde`, which already use this shape.
+    if path == "~" {
         if let Ok(home) = std::env::var("HOME") {
-            if path == "~" {
-                return PathBuf::from(home);
-            }
-            return PathBuf::from(home).join(&path[2..]);
+            return PathBuf::from(home);
+        }
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
         }
     }
     PathBuf::from(path)
@@ -48,11 +56,20 @@ mod tests {
             return;
         };
         assert_eq!(expand_tilde("~"), PathBuf::from(&home));
-        // NOTE: the implementation slices path[2..] for the prefixed case, so
-        // "~/projects" joins "projects" onto home. This pins that contract.
+        // "~/projects" joins "projects" onto home.
         assert_eq!(
             expand_tilde("~/projects"),
             PathBuf::from(&home).join("projects")
         );
+    }
+
+    #[test]
+    fn expand_tilde_does_not_panic_on_tricky_tilde_inputs() {
+        // Regression for the old `&path[2..]` slice: `~é` has a multi-byte char
+        // straddling byte 2, which used to panic (fatal under panic=abort). The
+        // slash-less `~x` form must pass through literally rather than dropping a
+        // char. Neither should expand, since only `~` and `~/...` are tilde forms.
+        assert_eq!(expand_tilde("~é"), PathBuf::from("~é"));
+        assert_eq!(expand_tilde("~x"), PathBuf::from("~x"));
     }
 }

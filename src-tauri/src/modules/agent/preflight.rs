@@ -32,8 +32,14 @@ pub struct Preflight {
 static PREFLIGHT_CACHE: LazyLock<Mutex<HashMap<String, (Preflight, Instant)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn agent_registry_entries() -> Vec<AgentRegistryEntry> {
+/// Parse the embedded agent registry once (it's `include_str!`-baked at build
+/// time), instead of re-parsing on every `agent_bin` lookup.
+static AGENT_REGISTRY: LazyLock<Vec<AgentRegistryEntry>> = LazyLock::new(|| {
     serde_json::from_str(AGENT_REGISTRY_JSON).expect("agent registry JSON must stay valid")
+});
+
+fn agent_registry_entries() -> Vec<AgentRegistryEntry> {
+    AGENT_REGISTRY.clone()
 }
 
 fn agent_bin(agent: &str) -> Option<String> {

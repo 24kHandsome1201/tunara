@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{LazyLock, RwLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -41,8 +41,15 @@ struct AgentRegistryEntry {
 
 const AGENT_REGISTRY_JSON: &str = include_str!("../../../../src/modules/agent/registry-data.json");
 
-fn agent_registry_entries() -> Vec<AgentRegistryEntry> {
+/// Parse the embedded agent registry once. The JSON is `include_str!`-baked at
+/// build time (CI validates it), so this can't fail at runtime; memoizing avoids
+/// re-parsing on every `resolve_all_bins` call.
+static AGENT_REGISTRY: LazyLock<Vec<AgentRegistryEntry>> = LazyLock::new(|| {
     serde_json::from_str(AGENT_REGISTRY_JSON).expect("agent registry JSON must stay valid")
+});
+
+fn agent_registry_entries() -> Vec<AgentRegistryEntry> {
+    AGENT_REGISTRY.clone()
 }
 
 /// 全局解析器状态：用户覆盖项 + 启动时探测到的 login-shell PATH。
