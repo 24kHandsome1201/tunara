@@ -82,7 +82,7 @@ import {
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { matchesKeybinding, parseKeybinding } from "../src/modules/config/keybindings.ts";
-import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand } from "../src/modules/terminal/lib/terminal-blocks.ts";
+import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand, resolveTerminalBlockRows } from "../src/modules/terminal/lib/terminal-blocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 
 function makeSession(overrides = {}) {
@@ -151,6 +151,17 @@ function makeTailTerminal(lines) {
             : { translateToString: () => text };
         },
       },
+    },
+  };
+}
+
+function makeMarker(line) {
+  return {
+    line,
+    isDisposed: false,
+    dispose() {
+      this.isDisposed = true;
+      this.line = -1;
     },
   };
 }
@@ -247,6 +258,35 @@ test("terminal block copy output skips the command row", () => {
     "pass 1\npass 2",
   );
   assert.equal(collectTerminalBlockOutputText(["$ true"], { startRow: 0, endRow: 0 }), "");
+});
+
+test("terminal block output reads marker-adjusted rows after scrollback movement", () => {
+  const block = {
+    startRow: 10,
+    endRow: 12,
+    startMarker: makeMarker(1),
+    endMarker: makeMarker(3),
+  };
+
+  assert.deepEqual(resolveTerminalBlockRows(block), { startRow: 1, endRow: 3 });
+  assert.equal(
+    collectTerminalBlockOutputText(["old", "$ pnpm test", "pass 1", "pass 2"], block),
+    "pass 1\npass 2",
+  );
+});
+
+test("terminal block output does not fall back to stale rows after markers are disposed", () => {
+  const startMarker = makeMarker(1);
+  const block = {
+    startRow: 0,
+    endRow: 2,
+    startMarker,
+    endMarker: makeMarker(2),
+  };
+
+  startMarker.dispose();
+  assert.equal(resolveTerminalBlockRows(block), null);
+  assert.equal(collectTerminalBlockOutputText(["$ stale", "wrong output", ""], block), "");
 });
 
 test("terminal block command copy source is normalized without truncation", () => {

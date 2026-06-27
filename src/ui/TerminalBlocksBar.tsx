@@ -68,6 +68,15 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
   const visibleBlocks = blocks.slice(-5).reverse();
   if (visibleBlocks.length === 0) return null;
 
+  const openContextMenu = (
+    block: TerminalCommandBlock,
+    completed: boolean,
+    collapsed: boolean,
+    position: { x: number; y: number },
+  ) => {
+    setContextMenu({ block, completed, collapsed, position });
+  };
+
   const contextItems = contextMenu
     ? buildBlockContextMenuItems(contextMenu.block, contextMenu.completed, contextMenu.collapsed, {
         onCopyCommand,
@@ -83,6 +92,11 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
     <div style={{ minHeight: 32, flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "4px 8px 0", overflowX: "auto" }} className="no-scrollbar">
       {stickyBlock && (
         <div
+          className="cmd-chip"
+          onContextMenu={(e) => {
+            e.preventDefault();
+            openContextMenu(stickyBlock, !!stickyBlock.completedAt, !!collapsedBlockIds[stickyBlock.id], { x: e.clientX, y: e.clientY });
+          }}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -127,6 +141,38 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
           >
             {stickyBlock.command}
           </button>
+          <button
+            type="button"
+            className="cmd-chip-more"
+            title="更多操作"
+            aria-label="更多操作"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              openContextMenu(stickyBlock, !!stickyBlock.completedAt, !!collapsedBlockIds[stickyBlock.id], { x: rect.left, y: rect.bottom + 4 });
+            }}
+            style={{
+              width: 18,
+              height: 18,
+              border: "none",
+              background: "transparent",
+              color: "var(--c-text-5)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              borderRadius: 4,
+              flexShrink: 0,
+              marginLeft: 1,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <circle cx="2" cy="6" r="1.1" />
+              <circle cx="6" cy="6" r="1.1" />
+              <circle cx="10" cy="6" r="1.1" />
+            </svg>
+          </button>
         </div>
       )}
       {visibleBlocks.map((block) => {
@@ -139,12 +185,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
             className="cmd-chip"
             onContextMenu={(e) => {
               e.preventDefault();
-              setContextMenu({
-                block,
-                completed,
-                collapsed,
-                position: { x: e.clientX, y: e.clientY },
-              });
+              openContextMenu(block, completed, collapsed, { x: e.clientX, y: e.clientY });
             }}
             style={{
               display: "inline-flex",
@@ -190,12 +231,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
               onClick={(e) => {
                 e.stopPropagation();
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                setContextMenu({
-                  block,
-                  completed,
-                  collapsed,
-                  position: { x: rect.left, y: rect.bottom + 4 },
-                });
+                openContextMenu(block, completed, collapsed, { x: rect.left, y: rect.bottom + 4 });
               }}
               style={{
                 width: 18,

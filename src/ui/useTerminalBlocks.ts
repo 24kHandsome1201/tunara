@@ -8,6 +8,8 @@ import {
   findStickyCommandBlock,
   formatTerminalBlockCommandAndOutput,
   normalizeBlockCommand,
+  resolveTerminalBlockRows,
+  type TerminalBlockMarker,
   type TerminalCommandBlock,
 } from "@/modules/terminal/lib/terminal-blocks";
 
@@ -17,11 +19,47 @@ function detectMacPlatform(): boolean {
 
 const isMac = detectMacPlatform();
 
-function readBlockOutputText(term: Terminal, block: TerminalCommandBlock): string {
+function currentBufferRow(term: Terminal): number {
   const buffer = term.buffer.active;
-  const end = Math.min(block.endRow, buffer.baseY + buffer.length);
+  return buffer.cursorY + buffer.baseY;
+}
+
+function createBlockMarker(term: Terminal, row: number): TerminalBlockMarker | undefined {
+  const buffer = term.buffer.active;
+  if (buffer.length <= 0) return undefined;
+  const boundedRow = Math.max(0, Math.min(Math.floor(row), buffer.length - 1));
+  return term.registerMarker(boundedRow - currentBufferRow(term));
+}
+
+function disposeBlockMarker(marker?: TerminalBlockMarker) {
+  if (marker && !marker.isDisposed) marker.dispose();
+}
+
+function disposeBlockMarkers(block: TerminalCommandBlock) {
+  disposeBlockMarker(block.startMarker);
+  if (block.endMarker !== block.startMarker) disposeBlockMarker(block.endMarker);
+}
+
+function withEndMarker(term: Terminal, block: TerminalCommandBlock, endRow: number): TerminalCommandBlock {
+  const rows = resolveTerminalBlockRows(block);
+  const startRow = rows?.startRow ?? block.startRow;
+  const nextEndRow = Math.max(startRow, Math.floor(endRow));
+  const nextMarker = createBlockMarker(term, nextEndRow);
+  if (block.endMarker && block.endMarker !== block.startMarker && block.endMarker !== nextMarker) {
+    disposeBlockMarker(block.endMarker);
+  }
+  return { ...block, endRow: nextEndRow, endMarker: nextMarker };
+}
+
+function readBlockOutputText(term: Terminal, block: TerminalCommandBlock): string | null {
+  const rows = resolveTerminalBlockRows(block);
+  if (!rows) return null;
+  const buffer = term.buffer.active;
+  const end = Math.min(rows.endRow, buffer.length - 1);
+  const start = Math.max(0, rows.startRow + 1);
+  if (end < start) return "";
   const lines: string[] = [];
-  for (let row = Math.max(0, block.startRow + 1); row <= end; row += 1) {
+  for (let row = start; row <= end; row += 1) {
     const line = buffer.getLine(row);
     if (line) lines.push(line.translateToString(true));
   }
@@ -47,6 +85,10 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
   const updateBlocks = useCallback((updater: (blocks: TerminalCommandBlock[]) => TerminalCommandBlock[]) => {
     setBlocks((current) => {
       const next = updater(current).slice(-24);
+      const retained = new Set(next.map((item) => item.id));
+      for (const item of current) {
+        if (!retained.has(item.id)) disposeBlockMarkers(item);
+      }
       blocksRef.current = next;
       return next;
     });
@@ -54,41 +96,54 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
 
   const beginBlock = useCallback((command: string, startRow: number) => {
     const now = Date.now();
+    const term = termRef.current;
+    const normalizedStartRow = Math.max(0, Math.floor(startRow));
+    const startMarker = term ? createBlockMarker(term, normalizedStartRow) : undefined;
     const block: TerminalCommandBlock = {
-      id: `block-${now}-${Math.max(0, startRow)}`,
+      id: `block-${now}-${normalizedStartRow}`,
       command: normalizeBlockCommand(command),
-      startRow: Math.max(0, startRow),
-      endRow: Math.max(0, startRow),
+      startRow: normalizedStartRow,
+      endRow: normalizedStartRow,
+      startMarker,
+      endMarker: startMarker,
       startedAt: now,
     };
     activeBlockRef.current = block;
     updateBlocks((items) => [...items, block]);
-  }, [updateBlocks]);
+  }, [termRef, updateBlocks]);
 
   const finishBlock = useCallback((exitCode: number, endRow: number) => {
     const active = activeBlockRef.current;
     if (!active) return;
-    const completed = {
+    const term = termRef.current;
+    const rows = resolveTerminalBlockRows(active);
+    const startRow = rows?.startRow ?? active.startRow;
+    const completedBase = {
       ...active,
-      endRow: Math.max(active.startRow, endRow),
+      endRow: Math.max(startRow, endRow),
       exitCode,
       completedAt: Date.now(),
     };
+    const completed = term ? withEndMarker(term, completedBase, endRow) : completedBase;
     activeBlockRef.current = null;
     setStickyBlock((current) => current?.id === active.id ? completed : current);
     updateBlocks((items) => items.map((item) => item.id === active.id ? completed : item));
-  }, [updateBlocks]);
+  }, [termRef, updateBlocks]);
 
   const updateActiveBlockEnd = useCallback((endRow: number) => {
     const active = activeBlockRef.current;
     if (!active) return;
-    const nextEnd = Math.max(active.endRow, endRow);
-    if (nextEnd === active.endRow) return;
-    const next = { ...active, endRow: nextEnd };
+    const rows = resolveTerminalBlockRows(active);
+    const currentEnd = rows?.endRow ?? active.endRow;
+    const nextEnd = Math.max(currentEnd, Math.floor(endRow));
+    if (nextEnd === currentEnd && nextEnd === active.endRow) return;
+    const term = termRef.current;
+    const nextBase = { ...active, endRow: nextEnd };
+    const next = term ? withEndMarker(term, nextBase, nextEnd) : nextBase;
     activeBlockRef.current = next;
     blocksRef.current = blocksRef.current.map((item) => item.id === active.id ? next : item);
     setStickyBlock((current) => current?.id === active.id ? next : current);
-  }, []);
+  }, [termRef]);
 
   const readBlockOutput = useCallback((id: string): string | null => {
     const term = termRef.current;
@@ -99,7 +154,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
 
   const copyBlockOutput = useCallback(async (id: string): Promise<boolean> => {
     const output = readBlockOutput(id);
-    if (output === null) return false;
+    if (output === null || output.length === 0) return false;
     try {
       await navigator.clipboard.writeText(output);
       return true;
@@ -124,6 +179,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     const block = blocksRef.current.find((item) => item.id === id);
     if (!term || !block?.command) return false;
     const output = readBlockOutputText(term, block);
+    if (output === null) return false;
     const text = formatTerminalBlockCommandAndOutput(block.command, output);
     try {
       await navigator.clipboard.writeText(text);
