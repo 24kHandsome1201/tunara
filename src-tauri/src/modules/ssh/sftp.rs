@@ -293,3 +293,91 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
         .await
         .map_err(|e| format!("resolve remote home failed: {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::validate_download_target;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // The validator confines downloads under the *real* home dir, so test
+    // fixtures must be created inside home (temp_dir() lives outside home on
+    // macOS, which is itself a useful negative case).
+    fn unique_home_dir(tag: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let home = dirs::home_dir().expect("home dir in test env");
+        home.join(format!(".tunara-sftp-test-{tag}-{unique}"))
+    }
+
+    #[test]
+    fn rejects_non_absolute_paths() {
+        let err = validate_download_target("relative/file.txt").unwrap_err();
+        assert!(err.contains("absolute"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_parent_traversal_components() {
+        let home = dirs::home_dir().unwrap();
+        let sneaky = home.join("dir/../../etc/passwd");
+        let err = validate_download_target(sneaky.to_str().unwrap()).unwrap_err();
+        assert!(err.contains(".."), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_paths_without_a_file_name() {
+        let err = validate_download_target("/").unwrap_err();
+        assert!(err.contains("file") || err.contains("parent"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_a_parent_directory_outside_home() {
+        // /tmp exists and is absolute but is not under the home directory.
+        let err = validate_download_target("/tmp/tunara-escape.bin").unwrap_err();
+        assert!(err.contains("home"), "got: {err}");
+    }
+
+    #[test]
+    fn accepts_a_fresh_target_inside_home() {
+        let dir = unique_home_dir("ok");
+        fs::create_dir_all(&dir).expect("create fixture dir");
+        let target = dir.join("download.bin");
+        let resolved = validate_download_target(target.to_str().unwrap());
+        let cleanup = fs::remove_dir_all(&dir);
+        let resolved = resolved.expect("valid target under home");
+        assert!(resolved.ends_with("download.bin"));
+        cleanup.ok();
+    }
+
+    #[test]
+    fn refuses_to_clobber_an_existing_destination() {
+        let dir = unique_home_dir("exists");
+        fs::create_dir_all(&dir).expect("create fixture dir");
+        let target = dir.join("already.bin");
+        fs::write(&target, b"old").expect("write existing file");
+        let result = validate_download_target(target.to_str().unwrap());
+        let cleanup = fs::remove_dir_all(&dir);
+        let err = result.unwrap_err();
+        assert!(err.contains("exists"), "got: {err}");
+        cleanup.ok();
+    }
+
+    #[test]
+    fn refuses_sensitive_directories_inside_home() {
+        // Only run when ~/.ssh actually exists (canonicalize requires the parent
+        // to exist); on CI without it, skip rather than fail.
+        let ssh_dir = dirs::home_dir().unwrap().join(".ssh");
+        if !ssh_dir.is_dir() {
+            return;
+        }
+        let target = ssh_dir.join("tunara-evil-authorized_keys");
+        if target.exists() {
+            return; // never clobber a real key file in a test
+        }
+        let err = validate_download_target(target.to_str().unwrap()).unwrap_err();
+        assert!(err.contains(".ssh"), "got: {err}");
+    }
+}

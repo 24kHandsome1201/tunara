@@ -204,3 +204,34 @@ fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {
         format!("rename {} -> {}: {e}", tmp.display(), path.display())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::fish_quote_path;
+    use std::path::Path;
+
+    #[test]
+    fn fish_quote_path_wraps_plain_paths_in_single_quotes() {
+        assert_eq!(
+            fish_quote_path(Path::new("/home/u/.cache/tunara/fish/config.fish")),
+            "'/home/u/.cache/tunara/fish/config.fish'"
+        );
+    }
+
+    #[test]
+    fn fish_quote_path_escapes_embedded_single_quotes() {
+        // A single quote inside the path must be backslash-escaped so it cannot
+        // close the surrounding quote and inject a `source ...` token.
+        assert_eq!(
+            fish_quote_path(Path::new("/a/o'brien/c.fish")),
+            "'/a/o\\'brien/c.fish'"
+        );
+    }
+
+    #[test]
+    fn fish_quote_path_escapes_backslashes_before_quotes() {
+        // Backslashes are escaped first, so a literal backslash stays a single
+        // escaped backslash and does not consume a following quote.
+        assert_eq!(fish_quote_path(Path::new("/a/b\\c")), "'/a/b\\\\c'");
+    }
+}

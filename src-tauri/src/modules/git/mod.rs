@@ -393,3 +393,25 @@ fn delta_mark(delta: &git2::DiffDelta) -> char {
         _ => 'M',
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::status_cache_key;
+
+    #[test]
+    fn status_cache_key_strips_trailing_slashes() {
+        // Must stay byte-for-byte identical to the frontend normalizeRepoPath:
+        // a mismatch means a trailing-slash dir never gets its cache invalidated.
+        assert_eq!(status_cache_key("/a/b"), "/a/b");
+        assert_eq!(status_cache_key("/a/b/"), "/a/b");
+        assert_eq!(status_cache_key("/a/b///"), "/a/b");
+    }
+
+    #[test]
+    fn status_cache_key_leaves_non_trailing_slashes_intact() {
+        assert_eq!(status_cache_key("/a/b/c"), "/a/b/c");
+        assert_eq!(status_cache_key(""), "");
+        // Root: every char is a trailing slash, so it collapses to empty.
+        assert_eq!(status_cache_key("/"), "");
+    }
+}

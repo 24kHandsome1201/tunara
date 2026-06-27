@@ -28,3 +28,36 @@ fn home_dir() -> Option<String> {
         .filter(|s| !s.is_empty())
         .or_else(|| std::env::var("USERPROFILE").ok().filter(|s| !s.is_empty()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::expand_tilde;
+
+    fn home() -> Option<String> {
+        std::env::var("HOME")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| std::env::var("USERPROFILE").ok().filter(|s| !s.is_empty()))
+    }
+
+    #[test]
+    fn expand_tilde_passes_through_non_tilde_paths() {
+        assert_eq!(expand_tilde("/etc/hosts"), "/etc/hosts");
+        assert_eq!(expand_tilde("relative/path"), "relative/path");
+        assert_eq!(expand_tilde(""), "");
+        // A tilde not at the start is not expanded.
+        assert_eq!(expand_tilde("/a/~/b"), "/a/~/b");
+    }
+
+    #[test]
+    fn expand_tilde_expands_bare_and_prefixed_tilde_against_home() {
+        // Read (don't mutate) HOME to avoid racing other parallel tests.
+        let Some(home) = home() else { return };
+        assert_eq!(expand_tilde("~"), home);
+        let expected = std::path::PathBuf::from(&home)
+            .join("projects/foo")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(expand_tilde("~/projects/foo"), expected);
+    }
+}
