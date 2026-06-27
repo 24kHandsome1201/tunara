@@ -39,6 +39,9 @@ export function createTerminalInstance({
     cursorInactiveStyle: "outline",
     scrollback,
     wordSeparator: " ()[]{}'\";,",
+    // Right-click selects the word under the cursor (iTerm/Terminal.app behaviour)
+    // when there's no existing selection, so the context-menu Copy targets it.
+    rightClickSelectsWord: true,
     allowProposedApi: true,
     linkHandler,
   });

@@ -47,8 +47,10 @@ export function TerminalViewChrome({
 
   const handleContextMenu = (e: React.MouseEvent) => {
     const term = getTerminal();
-    if (!term) return;
+    if (!term) return; // before init: let the browser's default menu through (dev only)
     e.preventDefault();
+    // xterm's rightClickSelectsWord has already selected the word under the cursor
+    // by the time this contextmenu event fires, so getSelection() reflects it.
     setMenu({ x: e.clientX, y: e.clientY, hasSelection: !!term.getSelection() });
   };
 
