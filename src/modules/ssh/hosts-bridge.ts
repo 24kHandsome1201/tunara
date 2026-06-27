@@ -15,7 +15,7 @@ export interface SshHostProfile {
 }
 
 // 后端用 snake_case（serde 默认），前端用 camelCase，在边界转换。
-interface RawHostProfile {
+export interface RawHostProfile {
   id: string;
   label: string;
   host: string;
@@ -24,7 +24,7 @@ interface RawHostProfile {
   identity_file: string;
 }
 
-function toProfile(r: RawHostProfile): SshHostProfile {
+export function toProfile(r: RawHostProfile): SshHostProfile {
   return {
     id: r.id,
     label: r.label,
@@ -35,7 +35,7 @@ function toProfile(r: RawHostProfile): SshHostProfile {
   };
 }
 
-function toRaw(p: SshHostProfile): RawHostProfile {
+export function toRaw(p: SshHostProfile): RawHostProfile {
   return {
     id: p.id,
     label: p.label,

@@ -3,6 +3,7 @@ import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { t } from "@/modules/i18n";
 import type { RemoteInfo } from "@/ui/types";
+import { classifySshFailure } from "@/modules/ssh/failure-reason";
 
 export type PtyEvent =
   | { type: "data"; data: string }
@@ -26,12 +27,8 @@ export async function answerHostKeyPrompt(promptId: string, accept: boolean): Pr
 }
 
 /** Map a raw ssh_open error into a short, localized failure reason. */
-function sshFailureReason(error: string): string {
-  const e = error.toLowerCase();
-  if (e.includes("authentication failed") || e.includes("auth")) return t("ssh.fail.auth");
-  if (e.includes("mismatch") || e.includes("host key") || e.includes("host-key")) return t("ssh.fail.hostKey");
-  if (e.includes("connect") || e.includes("refused") || e.includes("timed out") || e.includes("timeout")) return t("ssh.fail.connect");
-  return t("ssh.fail.generic");
+export function sshFailureReason(error: string): string {
+  return t(`ssh.fail.${classifySshFailure(error)}`);
 }
 
 /**

@@ -20,11 +20,12 @@ Please **don't** open a public GitHub issue for security reports.
 
 ## Supported versions
 
-Only the latest minor release line receives security fixes. At the time of writing, that means the `1.5.x` series. Older versions are not patched.
+Only the latest minor release line receives security fixes. At the time of writing, that means the `1.7.x` series. Older versions are not patched.
 
 ## What's in scope
 
 - The Rust backend in `src-tauri/` (PTY, FS, IPC, plugins)
+- The SSH client in `src-tauri/src/modules/ssh/` (host-key TOFU, authentication, remote PTY, SFTP browse + download)
 - The frontend in `src/`, anywhere untrusted input lands (terminal output, file content, AI tool results, credentials)
 - Release artifacts on GitHub and the auto-updater
 

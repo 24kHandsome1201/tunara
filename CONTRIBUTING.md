@@ -96,6 +96,7 @@ src/                    # React 前端
 │   ├── fs/             # 文件系统桥接
 │   ├── git/            # Git 桥接
 │   ├── agent/          # Agent 注册表
+│   ├── ssh/            # SSH 主机 profile / 凭证桥接 / SFTP 桥接
 │   └── editor/         # 外部编辑器跳转
 ├── state/              # Zustand store（sessions + ui + persist）
 ├── styles/             # CSS tokens + 终端主题
@@ -107,6 +108,7 @@ src-tauri/src/          # Rust 后端
 │   ├── git/            # Git 操作（git2）
 │   ├── fs/             # 文件系统（目录树、搜索、grep）
 │   ├── agent/          # Agent CLI 预检 + hooks
+│   ├── ssh/            # SSH 客户端（russh、SFTP、host profile、known_hosts TOFU）
 │   ├── editor/         # 编辑器启动
 │   ├── resolver/       # 二进制路径解析
 │   └── process/        # 子进程管理
