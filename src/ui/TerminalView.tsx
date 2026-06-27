@@ -16,6 +16,7 @@ import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
 import { waitForTerminalFontReady } from "@/modules/terminal/lib/terminal-font";
 import { createTerminalHyperlinkHandler } from "@/modules/terminal/lib/terminal-hyperlinks";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
+import { handleCopyKeyEvent } from "@/modules/terminal/lib/terminal-copy";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
 import { createTerminalLineCwdTracker } from "@/modules/terminal/lib/terminal-line-cwd";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
@@ -168,7 +169,9 @@ function TerminalViewImpl({
       const searchResultDisposable = search.registerSearchAddon(searchAddon);
       cleanups.push(() => searchResultDisposable.dispose());
       cleanups.push(blocks.registerScrollTracking(term));
-      term.attachCustomKeyEventHandler((e) => search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
+      // ⌘C copy runs first: on a selection it copies and short-circuits the chain
+      // (returns false) so search/blocks don't see the key; otherwise it passes through.
+      term.attachCustomKeyEventHandler((e) => handleCopyKeyEvent(term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
       // OSC 133 shell integration:
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
       let hasAgent = false;
@@ -507,7 +510,7 @@ function TerminalViewImpl({
     // when `dir` changes would close and recreate the terminal on every `cd`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <TerminalViewChrome containerRef={containerRef} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />;
+  return <TerminalViewChrome containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />;
 }
 
 // Memoized (with stable props from MainArea) so a MainArea re-render on each

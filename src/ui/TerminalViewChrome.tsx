@@ -1,13 +1,18 @@
 import { useState, type RefObject } from "react";
 import type { ReactNode } from "react";
+import type { Terminal } from "@xterm/xterm";
 import { TerminalBlockFilterPanel } from "./TerminalBlockFilterPanel";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalBlocksBar } from "./TerminalBlocksBar";
+import { ContextMenu } from "./ContextMenu";
+import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 
 interface TerminalViewChromeProps {
   containerRef: RefObject<HTMLDivElement | null>;
+  /** Returns the live xterm instance for copy/paste actions, or null before init. */
+  getTerminal: () => Terminal | null;
   search: ReturnType<typeof useTerminalSearch>;
   blocks: TerminalCommandBlock[];
   collapsedBlockIds: Record<string, true>;
@@ -23,6 +28,7 @@ interface TerminalViewChromeProps {
 
 export function TerminalViewChrome({
   containerRef,
+  getTerminal,
   search,
   blocks,
   collapsedBlockIds,
@@ -35,9 +41,39 @@ export function TerminalViewChrome({
   onRevealBlock,
   quickSelectOverlay,
 }: TerminalViewChromeProps) {
+  const t = useT();
   const [blockFilter, setBlockFilter] = useState<{ block: TerminalCommandBlock; output: string } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const term = getTerminal();
+    if (!term) return;
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, hasSelection: !!term.getSelection() });
+  };
+
+  const copySelection = () => {
+    const term = getTerminal();
+    const sel = term?.getSelection();
+    if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+  };
+
+  const pasteClipboard = async () => {
+    const term = getTerminal();
+    if (!term) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) term.paste(text); // routes through bracketed-paste protection
+    } catch {
+      /* clipboard read denied / unavailable */
+    }
+  };
+
   return (
-    <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <div
+      style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}
+      onContextMenu={handleContextMenu}
+    >
       {search.searchOpen && (
         <TerminalSearchBar
           inputRef={search.searchInputRef}
@@ -77,6 +113,16 @@ export function TerminalViewChrome({
         />
       )}
       {quickSelectOverlay}
+      {menu && (
+        <ContextMenu
+          position={{ x: menu.x, y: menu.y }}
+          onClose={() => setMenu(null)}
+          items={[
+            { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: copySelection },
+            { id: "paste", label: t("term.paste"), action: pasteClipboard },
+          ]}
+        />
+      )}
     </div>
   );
 }

@@ -791,7 +791,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /quickSelectOverlay=\{quickSelect\.quickSelectOverlay\}/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
-  assert.match(terminal, /term\.attachCustomKeyEventHandler\(\(e\) => search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)\)/);
+  assert.match(terminal, /term\.attachCustomKeyEventHandler\(\(e\) => handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)\)/);
+  assert.match(terminal, /import \{ handleCopyKeyEvent \} from "@\/modules\/terminal\/lib\/terminal-copy"/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
@@ -805,6 +806,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalChrome, /setBlockFilter\(\{ block, output \}\)/);
   assert.match(terminalChrome, /<TerminalBlockFilterPanel/);
   assert.match(terminalChrome, /\{quickSelectOverlay\}/);
+  assert.match(terminalChrome, /onContextMenu=\{handleContextMenu\}/);
+  assert.match(terminalChrome, /term\.paste\(text\)/);
   assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelect, /export type TerminalQuickSelectKind = "url" \| "file" \| "text"/);
   assert.match(terminalQuickSelect, /export function collectTerminalQuickSelectItems/);
