@@ -82,6 +82,7 @@ import {
   buildPrimaryDeviceAttributesResponse,
   handlePrimaryDeviceAttributesQuery,
 } from "../src/modules/terminal/lib/terminal-device-attributes.ts";
+import { buildAgentResumeCommand } from "../src/modules/terminal/lib/agent-resume.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { matchesKeybinding, parseKeybinding } from "../src/modules/config/keybindings.ts";
@@ -216,6 +217,40 @@ test("agent command detection maps first shell command token only", () => {
   assert.equal(detectAgentCommand("copilot suggest"), "CP");
   assert.equal(detectAgentCommand("ls claude"), null);
   assert.equal(detectAgentCommand(""), null);
+});
+
+test("agent resume command never falls back to the bare startup command", () => {
+  assert.equal(
+    buildAgentResumeCommand({
+      agent: "CX",
+      command: "codex",
+      cwd: "/repo",
+      lastSeenAt: 1,
+      confidence: "unknown",
+    }),
+    "codex exec resume --last",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      agent: "CC",
+      command: "claude",
+      cwd: "/repo",
+      lastSeenAt: 1,
+      confidence: "unknown",
+    }),
+    "claude --continue",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      agent: "CX",
+      command: "codex exec resume 019eef70-c6e4-7430-845c-26b1b68ecac5",
+      cwd: "/repo",
+      resumeId: "019eef70-c6e4-7430-845c-26b1b68ecac5",
+      lastSeenAt: 1,
+      confidence: "exact",
+    }),
+    "codex exec resume 019eef70-c6e4-7430-845c-26b1b68ecac5",
+  );
 });
 
 test("keybinding parser accepts plus as a literal key", () => {

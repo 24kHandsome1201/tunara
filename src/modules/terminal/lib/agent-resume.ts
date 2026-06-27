@@ -13,14 +13,14 @@ export function buildAgentResumeCommand(intent: AgentResumeIntent | undefined): 
       return `claude --resume ${shellQuoteToken(intent.resumeId)}`;
     }
     if (intent.confidence === "continue") return "claude --continue";
-    return intent.command.startsWith("claude ") || intent.command === "claude" ? intent.command : null;
+    return "claude --continue";
   }
   if (intent.agent === "CX") {
     if (intent.resumeId && intent.confidence === "exact") {
       return `codex exec resume ${shellQuoteToken(intent.resumeId)}`;
     }
     if (intent.confidence === "continue") return "codex exec resume --last";
-    return intent.command.startsWith("codex ") || intent.command === "codex" ? intent.command : null;
+    return "codex exec resume --last";
   }
   return null;
 }
