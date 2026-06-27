@@ -102,6 +102,8 @@ test("agent lifecycle policy preserves line structure for Codex", () => {
   assert.match(policy, /export function initialAgentActivity\(agent: AgentCode\): AgentActivity/);
   assert.match(policy, /if \(HOOK_READY_AGENTS\.has\(agent\)\) return "starting";/);
   assert.match(policy, /if \(PROMPT_READY_AGENTS\.has\(agent\)\) return "idle";/);
+  assert.match(policy, /export function shouldUseStartupQuietReadyFallback\(/);
+  assert.match(policy, /HOOK_READY_AGENTS\.has\(agent\)[\s\S]*startupPending[\s\S]*activity === "starting"/);
   assert.match(policy, /export function isSessionBusy\(session: Session\): boolean/);
   assert.match(policy, /session\.agent[\s\S]*isAgentActivityBusy\(session\.agentActivity\)[\s\S]*session\.runState === "running"/);
   assert.match(policy, /export function sessionDisplayRunState\(session: Session\): RunState/);
@@ -181,7 +183,7 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(listener, /if \(\(event === "stop" \|\| event === "idle"\) && agent\) \{[\s\S]*?if \(current\?\.agent === agent\) \{[\s\S]*?store\.handleAgentReady\(session\);/);
   assert.doesNotMatch(listener, /if \(!current\?\.agent\) store\.handleAgentDetected/);
   assert.match(zshrc, /printf '\\e\]133;C;%s\\e\\\\' "\$\(.*"\$1"\)"/);
-  assert.match(terminal, /import \{ detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS \}/);
+  assert.match(terminal, /import \{ detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback \}/);
   assert.match(terminal, /import \{ createCodexScreenStateTracker \}/);
   assert.match(terminal, /const agentLifecycleDisposable = term\.parser\.registerOscHandler\(777, applyAgentLifecycleEvent\);/);
   assert.doesNotMatch(terminal, /const HOOKABLE_AGENTS/);
@@ -197,6 +199,8 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /createCodexScreenStateTracker\(\{[\s\S]*isTrackingCodex: \(\) => hasAgent && currentAgentCode === "CX"/);
   assert.match(terminal, /codexStateTracker\.schedule\(\);/);
   assert.doesNotMatch(terminal, /codexDataBurstCount/);
+  assert.match(terminal, /shouldUseStartupQuietReadyFallback\(currentAgentCode, sess\?\.agentActivity, agentStartupPending\)[\s\S]*scheduleStartupQuietReady\(\);/);
+  assert.doesNotMatch(terminal, /sess\?\.agentActivity === "running"[\s\S]{0,120}scheduleStartupQuietReady/);
   assert.match(terminal, /const submitAgentInput = \(submitted: string\) => \{[\s\S]*const trimmed = cleanTerminalText\(submitted\)\.trim\(\);[\s\S]*if \(!trimmed\) return;[\s\S]*handleAgentBusy\(sessionIdRef\.current\)/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)[\s\S]*for \(const submitted of result\.submissions\) \{[\s\S]*submitAgentInput\(submitted\);[\s\S]*submitCommandBuffer\(submitted\);/);
   assert.match(terminal, /const oscCommand = extractCommandFromOsc\(data\);[\s\S]*promptEndRow >= 0 \|\| oscCommand/);

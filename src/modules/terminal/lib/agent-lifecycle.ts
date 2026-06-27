@@ -44,6 +44,17 @@ export function initialAgentActivity(agent: AgentCode): AgentActivity {
   return "running";
 }
 
+export function shouldUseStartupQuietReadyFallback(
+  agent: AgentCode | null | undefined,
+  activity: AgentActivity | undefined,
+  startupPending: boolean,
+): boolean {
+  return !!agent
+    && HOOK_READY_AGENTS.has(agent)
+    && startupPending
+    && activity === "starting";
+}
+
 export function isAgentActivityBusy(activity?: AgentActivity): boolean {
   return activity === "starting" || activity === "running";
 }

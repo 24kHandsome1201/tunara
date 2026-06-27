@@ -7,6 +7,7 @@ import {
   isSessionBusy,
   parseAgentLifecycleOsc,
   sessionDisplayRunState,
+  shouldUseStartupQuietReadyFallback,
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
 import { scanTerminalInputBuffer } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
 import {
@@ -871,6 +872,17 @@ test("agent ready distinguishes startup idle from completed turns for sidebar st
   assert.equal(repeatedIdleDone.completedAt, 30);
   assert.equal(repeatedIdleDone.unread, false);
   assert.equal(sessionDisplayRunState(repeatedIdleDone), "done");
+});
+
+test("quiet ready fallback is startup-only and never completes an active agent turn", () => {
+  assert.equal(shouldUseStartupQuietReadyFallback("CC", "starting", true), true);
+  assert.equal(shouldUseStartupQuietReadyFallback("DR", "starting", true), true);
+
+  assert.equal(shouldUseStartupQuietReadyFallback("CC", "running", true), false);
+  assert.equal(shouldUseStartupQuietReadyFallback("CC", "running", false), false);
+  assert.equal(shouldUseStartupQuietReadyFallback("CC", "idle", true), false);
+  assert.equal(shouldUseStartupQuietReadyFallback("CX", "starting", true), false);
+  assert.equal(shouldUseStartupQuietReadyFallback(null, "starting", true), false);
 });
 
 test("lifecycle events for another session are ignored", () => {

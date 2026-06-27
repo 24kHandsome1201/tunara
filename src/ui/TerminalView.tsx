@@ -29,7 +29,7 @@ import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
-import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
+import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
 import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
@@ -177,7 +177,7 @@ function TerminalViewImpl({
       let osc133Active = false;
       let promptEndRow = -1;
       let lastExitCode = 0;
-      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      let startupReadyTimer: ReturnType<typeof setTimeout> | null = null;
       const getCurrentSession = () =>
         useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
       const handleCwdChange = (cwd: string) => {
@@ -205,21 +205,19 @@ function TerminalViewImpl({
         hasAgent = false;
         currentAgentCode = null;
         agentStartupPending = false;
-        if (idleTimer) {
-          clearTimeout(idleTimer);
-          idleTimer = null;
+        if (startupReadyTimer) {
+          clearTimeout(startupReadyTimer);
+          startupReadyTimer = null;
         }
         codexStateTracker.reset();
       };
-      const scheduleQuietAgentReady = (delay = 3000) => {
-        if (idleTimer) clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => {
-          idleTimer = null;
+      const scheduleStartupQuietReady = (delay = 3000) => {
+        if (startupReadyTimer) clearTimeout(startupReadyTimer);
+        startupReadyTimer = setTimeout(() => {
+          startupReadyTimer = null;
           const s = getCurrentSession();
-          if (!s?.agent || s.agentActivity === "idle") return;
-          if (currentAgentCode && HOOK_READY_AGENTS.has(currentAgentCode)) {
-            agentStartupPending = false;
-          }
+          if (!shouldUseStartupQuietReadyFallback(currentAgentCode, s?.agentActivity, agentStartupPending)) return;
+          agentStartupPending = false;
           useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
         }, delay);
       };
@@ -230,9 +228,9 @@ function TerminalViewImpl({
         agentStartupPending = sess?.agent === agent
           ? sess.agentActivity === "starting"
           : HOOK_READY_AGENTS.has(agent);
-        if (idleTimer) {
-          clearTimeout(idleTimer);
-          idleTimer = null;
+        if (startupReadyTimer) {
+          clearTimeout(startupReadyTimer);
+          startupReadyTimer = null;
         }
         if (sess?.agent !== agent) {
           useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent, command);
@@ -273,6 +271,8 @@ function TerminalViewImpl({
           if (sess?.agent && (!hasAgent || currentAgentCode !== sess.agent)) {
             hasAgent = true;
             currentAgentCode = sess.agent;
+            agentStartupPending = sess.agentActivity === "starting";
+          } else if (sess?.agent && currentAgentCode === sess.agent && HOOK_READY_AGENTS.has(sess.agent)) {
             agentStartupPending = sess.agentActivity === "starting";
           } else if (!sess?.agent && hasAgent) {
             clearAgentTracking();
@@ -377,11 +377,8 @@ function TerminalViewImpl({
               return;
             }
             const sess = getCurrentSession();
-            if (agentStartupPending && sess?.agentActivity === "idle") {
-              useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
-            }
-            if (agentStartupPending || sess?.agentActivity === "running") {
-              scheduleQuietAgentReady();
+            if (shouldUseStartupQuietReadyFallback(currentAgentCode, sess?.agentActivity, agentStartupPending)) {
+              scheduleStartupQuietReady();
             }
           }
         },
@@ -453,9 +450,9 @@ function TerminalViewImpl({
           const trimmed = cleanTerminalText(submitted).trim();
           if (!trimmed) return;
           agentStartupPending = false;
-          if (idleTimer) {
-            clearTimeout(idleTimer);
-            idleTimer = null;
+          if (startupReadyTimer) {
+            clearTimeout(startupReadyTimer);
+            startupReadyTimer = null;
           }
           const sess = getCurrentSession();
           if (sess?.agent && sess.agentActivity !== "running") {
@@ -483,9 +480,9 @@ function TerminalViewImpl({
         isDisposed: () => disposed,
       }));
       cleanups.push(() => {
-        if (idleTimer) {
-          clearTimeout(idleTimer);
-          idleTimer = null;
+        if (startupReadyTimer) {
+          clearTimeout(startupReadyTimer);
+          startupReadyTimer = null;
         }
         codexStateTracker.dispose();
       });
