@@ -191,5 +191,28 @@
   "explorer.dir_empty": "目录为空",
 
   "inspector.tab.files": "文件",
-  "inspector.remote_hint": "连接远程会话后可浏览文件…"
+  "inspector.remote_hint": "连接远程会话后可浏览文件…",
+
+  "common.more_actions": "更多操作",
+
+  "block.status.running": "运行",
+  "block.current_output": "当前输出",
+  "block.filter.placeholder": "筛选块输出…",
+  "block.filter.regex": "正则表达式",
+  "block.filter.case_sensitive": "区分大小写",
+  "block.filter.invert": "反选匹配",
+  "block.filter.context_lines": "上下文行",
+  "block.filter.copy_result": "复制筛选结果",
+  "block.filter.close": "关闭 Esc",
+  "block.filter.output_badge": "块输出",
+  "block.filter.regex_error": "正则错误",
+  "block.filter.regex_invalid": "正则表达式无效",
+  "block.filter.no_match": "没有匹配行",
+  "block.filter.clipped": "仅显示前 {{count}} 行",
+
+  "split.close": "关闭分栏",
+  "split.horizontal_with_shortcut": "左右分栏 ⌘D",
+  "split.horizontal": "左右分栏",
+  "split.vertical_with_shortcut": "上下分栏 ⌘⇧D",
+  "split.vertical": "上下分栏"
 }

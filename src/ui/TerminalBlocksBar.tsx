@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 import { buildBlockContextMenuItems } from "@/modules/terminal/lib/terminal-blocks-menu";
+import { useT } from "@/modules/i18n";
 import { ContextMenu } from "./ContextMenu";
 
 function ExitCodeBadge({ code, completed }: { code: number | undefined; completed: boolean }) {
+  const t = useT();
   if (!completed) {
     return (
       <span style={{
@@ -21,7 +23,7 @@ function ExitCodeBadge({ code, completed }: { code: number | undefined; complete
         gap: 4,
       }}>
         <span style={{ width: 4, height: 4, borderRadius: "50%", background: "currentColor", animation: "pulseDot 1.5s var(--ease-in-out) infinite" }} />
-        运行
+        {t("block.status.running")}
       </span>
     );
   }
@@ -59,6 +61,7 @@ interface TerminalBlocksBarProps {
 }
 
 export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCopyCommand, onCopyCommandAndOutput, onCopyOutput, onFilterBlock, onToggle, onReveal }: TerminalBlocksBarProps) {
+  const t = useT();
   const [contextMenu, setContextMenu] = useState<{
     block: TerminalCommandBlock;
     completed: boolean;
@@ -118,7 +121,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
             flexShrink: 0,
             lineHeight: "16px",
           }}>
-            当前输出
+            {t("block.current_output")}
           </span>
           <ExitCodeBadge code={stickyBlock.exitCode} completed={!!stickyBlock.completedAt} />
           <button
@@ -144,8 +147,8 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
           <button
             type="button"
             className="cmd-chip-more"
-            title="更多操作"
-            aria-label="更多操作"
+            title={t("common.more_actions")}
+            aria-label={t("common.more_actions")}
             onClick={(e) => {
               e.stopPropagation();
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -226,8 +229,8 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
             <button
               type="button"
               className="cmd-chip-more"
-              title="更多操作"
-              aria-label="更多操作"
+              title={t("common.more_actions")}
+              aria-label={t("common.more_actions")}
               onClick={(e) => {
                 e.stopPropagation();
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();

@@ -191,5 +191,28 @@
   "explorer.dir_empty": "Directory is empty",
 
   "inspector.tab.files": "Files",
-  "inspector.remote_hint": "Browse files after connecting the remote session…"
+  "inspector.remote_hint": "Browse files after connecting the remote session…",
+
+  "common.more_actions": "More actions",
+
+  "block.status.running": "Running",
+  "block.current_output": "Current output",
+  "block.filter.placeholder": "Filter block output…",
+  "block.filter.regex": "Regular expression",
+  "block.filter.case_sensitive": "Case sensitive",
+  "block.filter.invert": "Invert match",
+  "block.filter.context_lines": "Context lines",
+  "block.filter.copy_result": "Copy filtered result",
+  "block.filter.close": "Close Esc",
+  "block.filter.output_badge": "Block output",
+  "block.filter.regex_error": "Regex error",
+  "block.filter.regex_invalid": "Invalid regular expression",
+  "block.filter.no_match": "No matching lines",
+  "block.filter.clipped": "Showing first {{count}} lines only",
+
+  "split.close": "Close split",
+  "split.horizontal_with_shortcut": "Split left/right ⌘D",
+  "split.horizontal": "Split left/right",
+  "split.vertical_with_shortcut": "Split top/bottom ⌘⇧D",
+  "split.vertical": "Split top/bottom"
 }

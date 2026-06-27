@@ -185,14 +185,14 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
   parts.push(dirLabel);
   let totalAdded = 0;
   let totalRemoved = 0;
-  if (s.changes?.files.length) {
+  if (s.changes?.files?.length) {
     for (const file of s.changes.files) {
       totalAdded += file.added;
       totalRemoved += file.removed;
     }
   }
 
-  if (s.changes?.files.length) {
+  if (s.changes?.files?.length) {
     const diffParts: string[] = [];
     if (totalAdded > 0) diffParts.push(`+${totalAdded}`);
     if (totalRemoved > 0) diffParts.push(`-${totalRemoved}`);

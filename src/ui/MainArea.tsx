@@ -6,6 +6,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
+import { useT } from "@/modules/i18n";
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -85,6 +86,7 @@ function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) 
 }
 
 export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
+  const t = useT();
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const nonce = useSessionsStore((s) => s.gitNonce[active?.id ?? ""] ?? 0);
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
@@ -253,8 +255,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 if (paneAId) useSessionsStore.getState().setActive(paneAId);
                 ui.closeSplit();
               }}
-              title="关闭分栏"
-              aria-label="关闭分栏"
+              title={t("split.close")}
+              aria-label={t("split.close")}
               style={{
                 width: 24,
                 height: 22,
@@ -274,8 +276,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             <>
               <button
                 onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
-                title="左右分栏 ⌘D"
-                aria-label="左右分栏"
+                title={t("split.horizontal_with_shortcut")}
+                aria-label={t("split.horizontal")}
                 style={{
                   width: 24,
                   height: 22,
@@ -293,8 +295,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               </button>
               <button
                 onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
-                title="上下分栏 ⌘⇧D"
-                aria-label="上下分栏"
+                title={t("split.vertical_with_shortcut")}
+                aria-label={t("split.vertical")}
                 style={{
                   width: 24,
                   height: 22,

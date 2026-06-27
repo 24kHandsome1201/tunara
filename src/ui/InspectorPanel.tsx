@@ -23,11 +23,11 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
         cursor: "pointer",
         fontSize: "var(--fs-secondary)",
         fontWeight: active ? 600 : 400,
-        color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
+        color: active ? "var(--c-text-primary)" : "var(--c-text-4)",
         transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
         boxShadow: active ? "var(--shadow-card)" : "none",
       }}
-      className={active ? undefined : "hover-text-3"}
+      className={active ? "inspector-tab" : "inspector-tab hover-text-3"}
     >
       {children}
     </button>

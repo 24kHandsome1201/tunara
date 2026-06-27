@@ -384,7 +384,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && completedTurn && session?.agent) {
-      const fileCount = session.changes?.files.length ?? 0;
+      const fileCount = session.changes?.files?.length ?? 0;
       const name = AGENT_NAMES[session.agent] ?? session.agent;
       useUIStore.getState().addToast({
         sessionId: id,
@@ -410,7 +410,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && session?.agent) {
-      const fileCount = session.changes?.files.length ?? 0;
+      const fileCount = session.changes?.files?.length ?? 0;
       const name = AGENT_NAMES[session.agent] ?? session.agent;
       useUIStore.getState().addToast({
         sessionId: id,

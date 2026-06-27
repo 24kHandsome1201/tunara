@@ -4,6 +4,7 @@ import {
   formatTerminalBlockFilterText,
 } from "@/modules/terminal/lib/terminal-block-filter";
 import { CloseIcon, SearchIcon } from "./shared";
+import { useT } from "@/modules/i18n";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 
 const ICON_BUTTON_STYLE = {
@@ -71,6 +72,7 @@ export function TerminalBlockFilterPanel({
   output: string;
   onClose: () => void;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [regex, setRegex] = useState(false);
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -97,7 +99,7 @@ export function TerminalBlockFilterPanel({
   const visibleLines = query.trim() ? result.lines.slice(0, FILTER_RENDER_LIMIT) : result.lines.slice(-120);
   const clipped = query.trim() && result.lines.length > visibleLines.length;
   const status = result.invalidRegex
-    ? "正则错误"
+    ? t("block.filter.regex_error")
     : query.trim()
       ? `${result.selectedCount}/${result.totalLines}`
       : `${result.totalLines}`;
@@ -135,7 +137,7 @@ export function TerminalBlockFilterPanel({
               requestClose();
             }
           }}
-          placeholder="筛选块输出…"
+          placeholder={t("block.filter.placeholder")}
           style={{
             minWidth: 120,
             flex: 1,
@@ -147,15 +149,15 @@ export function TerminalBlockFilterPanel({
             fontFamily: "var(--font-ui)",
           }}
         />
-        <ToggleButton active={regex} label=".*" title="正则表达式" onClick={() => setRegex((value) => !value)} />
-        <ToggleButton active={caseSensitive} label="Aa" title="区分大小写" onClick={() => setCaseSensitive((value) => !value)} />
-        <ToggleButton active={invert} label="≠" title="反选匹配" onClick={() => setInvert((value) => !value)} />
+        <ToggleButton active={regex} label=".*" title={t("block.filter.regex")} onClick={() => setRegex((value) => !value)} />
+        <ToggleButton active={caseSensitive} label="Aa" title={t("block.filter.case_sensitive")} onClick={() => setCaseSensitive((value) => !value)} />
+        <ToggleButton active={invert} label="≠" title={t("block.filter.invert")} onClick={() => setInvert((value) => !value)} />
         <input
           value={contextLines}
           type="number"
           min={0}
           max={10}
-          title="上下文行"
+          title={t("block.filter.context_lines")}
           onChange={(event) => setContextLines(Number(event.target.value))}
           style={{
             width: 42,
@@ -180,18 +182,18 @@ export function TerminalBlockFilterPanel({
               setTimeout(() => setCopied(false), 1200);
             }).catch(() => {});
           }}
-          title="复制筛选结果"
+          title={t("block.filter.copy_result")}
           className="hover-bg"
           style={{ ...ICON_BUTTON_STYLE, color: copied ? "var(--c-success)" : "var(--c-text-5)" }}
         >
           {copied ? "✓" : copyIcon()}
         </button>
-        <button onClick={requestClose} title="关闭 Esc" aria-label="关闭" className="hover-bg" style={ICON_BUTTON_STYLE}>
+        <button onClick={requestClose} title={t("block.filter.close")} aria-label={t("common.close")} className="hover-bg" style={ICON_BUTTON_STYLE}>
           <CloseIcon size={12} strokeWidth={2.2} />
         </button>
       </div>
       <div style={{ padding: "7px 10px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-accent)", background: "var(--c-accent-bg-light)", borderRadius: 3, padding: "1px 5px", fontWeight: 700 }}>块输出</span>
+        <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-accent)", background: "var(--c-accent-bg-light)", borderRadius: 3, padding: "1px 5px", fontWeight: 700 }}>{t("block.filter.output_badge")}</span>
         <span title={block.command} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
           {block.command}
         </span>
@@ -199,7 +201,7 @@ export function TerminalBlockFilterPanel({
       <div style={{ overflow: "auto", minHeight: 0, padding: "6px 0", background: "var(--c-bg-1)" }}>
         {visibleLines.length === 0 ? (
           <div style={{ padding: "26px 12px", textAlign: "center", color: result.invalidRegex ? "var(--c-error)" : "var(--c-text-5)", fontSize: "var(--fs-secondary)" }}>
-            {result.invalidRegex ? "正则表达式无效" : "没有匹配行"}
+            {result.invalidRegex ? t("block.filter.regex_invalid") : t("block.filter.no_match")}
           </div>
         ) : (
           <>
@@ -224,7 +226,7 @@ export function TerminalBlockFilterPanel({
             ))}
             {clipped && (
               <div style={{ padding: "6px 10px 2px 72px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)" }}>
-                仅显示前 {FILTER_RENDER_LIMIT} 行
+                {t("block.filter.clipped", { count: FILTER_RENDER_LIMIT })}
               </div>
             )}
           </>

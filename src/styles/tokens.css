@@ -301,6 +301,11 @@
 .cmd-chip-more:hover { color: var(--c-text-2); }
 .tab-btn { transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 
+/* Inspector pill tabs: match the titlebar tab press feedback (transform already
+   declared inline). Inactive tabs also get a quiet hover surface. */
+.inspector-tab:active { transform: scale(var(--scale-press)); transition-duration: 60ms; }
+.inspector-tab.hover-text-3:hover { background: var(--c-bg-hover) !important; }
+
 .split-handle:hover .split-handle-line { background: var(--c-accent) !important; }
 .split-handle-h:hover .split-handle-line { width: 3px !important; }
 .split-handle-v:hover .split-handle-line { height: 3px !important; }

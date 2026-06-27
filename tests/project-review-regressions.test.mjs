@@ -599,9 +599,11 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(main, /inset 2px 0 0 var\(--c-accent\)/);
   assert.doesNotMatch(main, /outline: .*var\(--c-accent\)/);
   assert.match(main, /function SplitIcon/);
-  assert.match(main, /title="左右分栏 ⌘D"/);
-  assert.match(main, /title="上下分栏 ⌘⇧D"/);
-  assert.match(main, /aria-label="左右分栏"/);
+  // Split-control labels are localized via i18n (no hardcoded Chinese in the component).
+  assert.match(main, /title=\{t\("split\.horizontal_with_shortcut"\)\}/);
+  assert.match(main, /title=\{t\("split\.vertical_with_shortcut"\)\}/);
+  assert.match(main, /aria-label=\{t\("split\.horizontal"\)\}/);
+  assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
   // Idle→fade delay (was 1500ms transition; now 1200ms delay before sliding out via keyframe)
   assert.match(status, /setFading\(true\), 1200\)/);
   // Exit animation now uses a keyframe ('statusBarSlideOut') driven by onAnimationEnd instead of an opacity/transform transition
@@ -861,11 +863,13 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocksBar, /const openContextMenu = \([\s\S]*setContextMenu/);
   assert.match(terminalBlocksBar, /onContextMenu=\{\(e\) => \{[\s\S]*openContextMenu\(stickyBlock/);
   assert.match(terminalBlocksBar, /openContextMenu\(block, completed, collapsed/);
-  assert.match(terminalBlocksBar, /当前输出/);
+  // Block status / current-output labels are localized via i18n (no hardcoded Chinese).
+  assert.match(terminalBlocksBar, /t\("block\.current_output"\)/);
   assert.match(terminalBlocksBar, /stickyBlock/);
   assert.match(terminalBlocksBar, /const visibleBlocks = blocks\.slice\(-5\)\.reverse\(\)/);
   assert.match(terminalBlocksBar, /completed=\{completed\}/);
-  assert.match(terminalBlocksBar, /运行/);
+  assert.match(terminalBlocksBar, /t\("block\.status\.running"\)/);
+  assert.doesNotMatch(terminalBlocksBar, /当前输出|更多操作/);
   assert.doesNotMatch(terminalBlocksBar, /code === 0 \|\| code === undefined/);
   assert.match(terminalBufferRead, /export function extractCommandFromBuffer/);
   assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
