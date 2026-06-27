@@ -207,11 +207,37 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(explorer, /fsSearch\(baseDir, q, 80, includeHidden\)/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
-  assert.match(explorer, /placeholder="搜索当前项目"/);
+  assert.match(explorer, /placeholder=\{isRemote \? t\("explorer\.search_remote_unavailable"\) : t\("explorer\.search_placeholder"\)\}/);
+  assert.match(explorer, /disabled=\{isRemote\}/);
+  assert.match(explorer, /items: isRemote[\s\S]*?id: "dir:copy-path"/);
+  assert.match(explorer, /items: isRemote[\s\S]*?id: "file:copy-path"/);
+  const zhDictForExplorer = read("src/modules/i18n/locales/zh-CN.json");
+  assert.match(zhDictForExplorer, /"explorer\.search_placeholder": "搜索当前项目"/);
+  assert.match(zhDictForExplorer, /"explorer\.search_remote_unavailable": "远程搜索暂未支持"/);
   assert.match(search, /#\[serde\(rename_all = "camelCase"\)\]/);
   assert.match(search, /include_hidden: Option<bool>/);
   assert.match(search, /\.hidden\(!include_hidden\)/);
   assert.match(tree, /include_hidden: Option<bool>/);
+});
+
+test("pure SSH host mapping avoids importing the Tauri IPC bridge", () => {
+  const bridge = read("src/modules/ssh/hosts-bridge.ts");
+  const model = read("src/modules/ssh/hosts-model.ts");
+  const sshLogicTest = read("tests/ssh-logic.test.mjs");
+
+  assert.match(bridge, /from "\.\/hosts-model\.ts"/);
+  assert.doesNotMatch(model, /@tauri-apps\/api/);
+  assert.match(sshLogicTest, /from "\.\.\/src\/modules\/ssh\/hosts-model\.ts"/);
+});
+
+test("pure UI helpers avoid importing the React-bound i18n entry", () => {
+  const types = read("src/ui/types.ts");
+  const i18nCore = read("src/modules/i18n/core.ts");
+  const i18nIndex = read("src/modules/i18n/index.ts");
+
+  assert.match(types, /from "\.\.\/modules\/i18n\/core\.ts"/);
+  assert.doesNotMatch(i18nCore, /from "react"/);
+  assert.match(i18nIndex, /from "\.\/core\.ts"/);
 });
 
 test("git sidebar state is single-sourced and distinguishes non-repo directories", () => {
@@ -222,11 +248,14 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
 
   assert.match(types, /export type GitState = "unknown" \| "repo" \| "notGit";/);
   assert.match(types, /gitState\?: GitState;/);
+  assert.match(main, /activeIsRemote/);
   assert.match(main, /gitState: "repo"/);
   assert.match(main, /gitState: "notGit"/);
   assert.match(lifecycle, /gitState: "unknown"/);
   assert.match(diff, /session\.changes\?\.files \?\? \[\]/);
   assert.match(diff, /session\.gitState === "notGit"/);
+  assert.match(diff, /diffGenerationRef/);
+  assert.match(diff, /repoPathRef\.current === requestedRepoPath/);
   assert.match(diff, /useSessionsStore\.getState\(\)\.refreshGit\(session\.id\)/);
   assert.doesNotMatch(diff, /\bgitStatus\b/);
 });
@@ -289,6 +318,8 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /panelVisible: snapshot\.ui\.panelVisible/);
   assert.match(init, /const agentResume: WorkspaceSnapshotV1\["agentResume"\] = \{\}/);
   assert.match(init, /if \(s\.agentResume\) agentResume\[s\.id\] = s\.agentResume/);
+  assert.match(init, /if \(s\.remote\) p\.remote = s\.remote/);
+  assert.match(init, /gitWatchDirsForSessions\(sessions\)/);
   assert.match(init, /agentResume,/);
   assert.match(init, /recentDirs: st\.recentDirs/);
   assert.match(init, /recentCommands: st\.recentCommands/);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { diffWatchedDirs } from "../src/app/lib/sync-watches.ts";
+import { diffWatchedDirs, gitWatchDirsForSessions } from "../src/app/lib/sync-watches.ts";
 
 test("diffWatchedDirs returns an empty plan when prev and desired match", () => {
   const prev = new Set(["/a", "/b"]);
@@ -44,4 +44,24 @@ test("diffWatchedDirs leaves the prev set untouched so the caller controls when 
   const prev = new Set(["/a"]);
   diffWatchedDirs(prev, ["/b"]);
   assert.deepEqual([...prev], ["/a"]);
+});
+
+test("gitWatchDirsForSessions normalizes local dirs and ignores SSH pseudo dirs", () => {
+  const dirs = gitWatchDirsForSessions([
+    { dir: "/repo/" },
+    { dir: "user@example.com", remote: { host: "example.com" } },
+    { dir: "/other//" },
+    { dir: "" },
+  ]);
+  assert.deepEqual(dirs, ["/repo", "/other"]);
+});
+
+test("gitWatchDirsForSessions keeps duplicate local dirs for diffWatchedDirs to dedupe", () => {
+  const dirs = gitWatchDirsForSessions([
+    { dir: "/repo" },
+    { dir: "/repo/" },
+  ]);
+  const { toAcquire, next } = diffWatchedDirs(new Set(), dirs);
+  assert.deepEqual(toAcquire, ["/repo"]);
+  assert.equal(next.size, 1);
 });

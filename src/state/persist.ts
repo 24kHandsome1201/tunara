@@ -113,6 +113,10 @@ function fromPersistedSession(p: PersistedSession): Session {
   };
 }
 
+function localSessionDirs(sessions: readonly PersistedSession[]): string[] {
+  return sessions.flatMap((s) => (s.remote ? [] : [s.dir]));
+}
+
 async function loadSessionStore(): Promise<SessionStore> {
   const store = await load(STORE_FILE, { defaults: {} });
   if ((await store.length()) > 0) return store;
@@ -173,7 +177,7 @@ export async function saveSessions(
       ui: snapshot?.ui ?? DEFAULT_UI_LAYOUT_V2,
       terminals: snapshot?.terminals ?? {},
       agentResume: snapshot?.agentResume ?? {},
-      recentDirs: snapshot?.recentDirs ?? sanitizeRecentDirs(persisted.map((s) => s.dir)),
+      recentDirs: snapshot?.recentDirs ?? sanitizeRecentDirs(localSessionDirs(persisted)),
       recentCommands: snapshot?.recentCommands ?? [],
       commandUsage: snapshot?.commandUsage ?? {},
       workflows: snapshot?.workflows ?? [],
@@ -361,7 +365,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
   const recentDirs = sanitizeRecentDirs(
     obj.recentDirs,
   );
-  const fallbackRecentDirs = sanitizeRecentDirs(sessions.map((s) => s.dir));
+  const fallbackRecentDirs = sanitizeRecentDirs(localSessionDirs(sessions));
   const recentCommands = sanitizeRecentCommands(obj.recentCommands);
   const commandUsage = sanitizeCommandUsage(obj.commandUsage);
   const workflows = sanitizeWorkflows(obj.workflows);

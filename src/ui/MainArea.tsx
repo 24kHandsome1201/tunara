@@ -88,6 +88,7 @@ function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) 
 export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const t = useT();
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
+  const activeIsRemote = Boolean(active?.remote);
   const nonce = useSessionsStore((s) => s.gitNonce[active?.id ?? ""] ?? 0);
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
   const [remote, setRemote] = useState<RemoteState | null>(null);
@@ -101,7 +102,10 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const paneBSession = split.paneB ? sessions.find((s) => s.id === split.paneB) : null;
 
   useEffect(() => {
-    if (!active?.dir) return;
+    if (!active?.dir || activeIsRemote) {
+      setRemote(null);
+      return;
+    }
     let cancelled = false;
     setRemote(null);
     gitAheadBehind(active.dir)
@@ -127,7 +131,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         }
       });
     return () => { cancelled = true; };
-  }, [active?.dir, active?.id, nonce]);
+  }, [active?.dir, active?.id, activeIsRemote, nonce]);
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;

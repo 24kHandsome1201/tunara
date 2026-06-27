@@ -3,7 +3,7 @@ import test from "node:test";
 
 // SSH client logic that can be exercised without a real SSH server:
 //   - failure-reason classification (pure substring bucketing)
-//   - host profile snake_case ↔ camelCase boundary (hosts-bridge)
+//   - host profile snake_case ↔ camelCase boundary (hosts-model)
 //   - one-shot in-memory credentials (pending-credentials): consumed once,
 //     never persisted, security-critical
 //
@@ -16,7 +16,7 @@ import {
   toProfile,
   toRaw,
   makeHostId,
-} from "../src/modules/ssh/hosts-bridge.ts";
+} from "../src/modules/ssh/hosts-model.ts";
 import {
   stashSshCredentials,
   takeSshCredentials,
@@ -51,7 +51,7 @@ test("classifySshFailure is case-insensitive", () => {
   assert.equal(classifySshFailure("TIMED OUT"), "connect");
 });
 
-// ── hosts-bridge: case boundary ──────────────────────────────────────────
+// ── hosts-model: case boundary ───────────────────────────────────────────
 
 test("toProfile converts snake_case identity_file to camelCase identityFile", () => {
   const profile = toProfile({

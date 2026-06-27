@@ -1,6 +1,6 @@
 // Tunara UI 共用类型定义
 import { AGENT_NAMES } from "../modules/agent/registry.ts";
-import { t } from "../modules/i18n/index.ts";
+import { t } from "../modules/i18n/core.ts";
 export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */

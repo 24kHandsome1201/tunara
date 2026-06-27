@@ -9,8 +9,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
-import { normalizeRepoPath } from "@/modules/git/lib/path-normalize";
-import { diffWatchedDirs } from "./lib/sync-watches";
+import { diffWatchedDirs, gitWatchDirsForSessions } from "./lib/sync-watches";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
@@ -32,6 +31,7 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
         updatedAt: s.updatedAt,
       };
       if (s.customTitle) p.customTitle = s.customTitle;
+      if (s.remote) p.remote = s.remote;
       return p;
     }),
     ui: {
@@ -198,14 +198,9 @@ export function useInit() {
     const syncGitWatches = (sessions: readonly Session[]) => {
       const { toAcquire, toRelease, next } = diffWatchedDirs(
         watchedDirs,
-        // Normalize here (single entry point) so the refcount Set dedupe, the
-        // watch refcount keys, and the git-changed callback's sameRepoPath all
-        // compare the same canonical form — otherwise `/repo` and `/repo/` are
-        // treated as two repos (two backend watchers) on one side but one on
-        // the other.
-        sessions
-          .map((s) => s.dir && normalizeRepoPath(s.dir))
-          .filter((d): d is string => Boolean(d)),
+        // Keep the watch list local-only. Remote sessions use pseudo dirs like
+        // user@host, which cannot be watched by the local Git watcher.
+        gitWatchDirsForSessions(sessions),
       );
       for (const dir of toAcquire) acquireGitWatch(dir);
       for (const dir of toRelease) releaseGitWatch(dir);

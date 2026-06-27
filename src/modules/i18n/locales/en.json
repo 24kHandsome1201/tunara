@@ -185,6 +185,8 @@
   "explorer.loading": "Loading",
   "explorer.searching": "Searching",
   "explorer.search_failed": "Search failed",
+  "explorer.search_placeholder": "Search current project",
+  "explorer.search_remote_unavailable": "Remote search is not available yet",
   "explorer.no_match": "No matching files",
   "explorer.results": "Results",
   "explorer.read_dir_failed": "Cannot read directory",

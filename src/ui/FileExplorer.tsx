@@ -324,8 +324,9 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索当前项目"
-            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0 }}
+            disabled={isRemote}
+            placeholder={isRemote ? t("explorer.search_remote_unavailable") : t("explorer.search_placeholder")}
+            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0, cursor: isRemote ? "not-allowed" : "text", opacity: isRemote ? 0.65 : 1 }}
           />
           {searchQuery && (
             <button
@@ -400,11 +401,15 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                   e.preventDefault();
                   setContextMenu({
                     position: { x: e.clientX, y: e.clientY },
-                    items: [
-                      { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
-                      { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                      { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
-                    ],
+                    items: isRemote
+                      ? [
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                        ]
+                      : [
+                          { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
+                          { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                        ],
                   });
                 }}
                 className="hover-bg"
@@ -432,10 +437,14 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                       e.preventDefault();
                       setContextMenu({
                         position: { x: e.clientX, y: e.clientY },
-                        items: [
-                          { id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                          { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
-                        ],
+                        items: isRemote
+                          ? [
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                            ]
+                          : [
+                              { id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                            ],
                       });
                     }}
                     className="hover-bg"

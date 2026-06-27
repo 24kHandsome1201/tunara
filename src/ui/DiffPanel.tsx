@@ -238,6 +238,11 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const isComposingRef = useRef(false);
+  const diffGenerationRef = useRef(0);
+  const repoPathRef = useRef(repoPath);
+  const sessionIdRef = useRef(session.id);
+  repoPathRef.current = repoPath;
+  sessionIdRef.current = session.id;
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -259,6 +264,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
 
   useEffect(() => {
     let cancelled = false;
+    diffGenerationRef.current += 1;
     setExpandedFile(null);
     setDiffs({});
     setRemote(null);
@@ -305,9 +311,18 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     setExpandedFile(path);
     setSearchQuery("");
     if (!diffs[path]) {
+      const generation = diffGenerationRef.current;
+      const requestedRepoPath = repoPath;
+      const requestedSessionId = session.id;
       try {
-        const d = await gitDiff(repoPath, path);
-        setDiffs((prev) => ({ ...prev, [path]: d }));
+        const d = await gitDiff(requestedRepoPath, path);
+        if (
+          diffGenerationRef.current === generation &&
+          repoPathRef.current === requestedRepoPath &&
+          sessionIdRef.current === requestedSessionId
+        ) {
+          setDiffs((prev) => ({ ...prev, [path]: d }));
+        }
       } catch {
         // diff load failed silently
       }

@@ -88,7 +88,7 @@ import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-p
 import { matchesKeybinding, parseKeybinding } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand, resolveTerminalBlockRows } from "../src/modules/terminal/lib/terminal-blocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
-import { setLanguage } from "../src/modules/i18n/index.ts";
+import { setLanguage } from "../src/modules/i18n/core.ts";
 
 // Agent title suffixes go through i18n; pin the locale so assertions are
 // deterministic regardless of the host's navigator.language.
