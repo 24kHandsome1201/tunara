@@ -199,6 +199,7 @@ src-tauri/src/          # Rust 后端
 | P2 Command Palette | done | ⌘K、模糊匹配、权重排序 |
 | P3 Agent 状态条 | done | 浮条 + 改动计数 |
 | Session Recovery | done (1.2) | xterm buffer 快照 + 滚动恢复 |
+| SSH Client | done (1.7) | russh 长连接、SFTP 浏览 + 下载、主机 profile、可选远程 shell 集成 |
 
 详见 [CHANGELOG](CHANGELOG.md)。
 
@@ -211,7 +212,6 @@ src-tauri/src/          # Rust 后端
 - Agent stdout 结构化解析、Agent 改动时间线
 - DiffPanel 里的 stage、commit、push 等写操作
 - 插件系统、自研渲染、递归 tile 分栏
-- SSH / 远程会话管理
 - 遥测、analytics、任何回传数据
 
 判断标准很简单：让终端继续是终端，而不是变成下一个 IDE 或下一个 agent 控制台。

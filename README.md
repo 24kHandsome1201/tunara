@@ -199,6 +199,7 @@ src-tauri/src/          # Rust backend
 | P2 Command Palette | done | ⌘K, fuzzy match, weighted ranking |
 | P3 Agent status bar | done | Floating bar + change counts |
 | Session Recovery | done (1.2) | xterm buffer snapshot + scrollback restore |
+| SSH Client | done (1.7) | russh long-lived conn, SFTP browse + download, host profiles, opt-in remote shell integration |
 
 See [CHANGELOG](CHANGELOG.md).
 
@@ -211,7 +212,6 @@ What we will not build matters as much as what we will. These are off the roadma
 - Structured parsing of agent stdout, agent change timeline
 - Stage / commit / push or any write operations in the DiffPanel
 - Plugin system, custom renderer, recursive tile splits
-- SSH / remote session management
 - Telemetry, analytics, any kind of phone-home
 
 The test is simple: keep the terminal a terminal, not the next IDE or the next agent console.
