@@ -2,6 +2,10 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Known security advisories
+
+- **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
+
 ## [1.7.0] - 2026-06-26
 
 ### Added
