@@ -35,12 +35,13 @@ export function agentReadyUpdate(
   now = Date.now(),
 ): SessionLifecycleUpdate | null {
   if (!session?.agent) return null;
+  const completedTurn = session.agentActivity === "running";
   return {
     patch: {
       agentActivity: "idle",
       runState: "idle",
-      completedAt: now,
-      ...(!isActive ? { unread: true } : {}),
+      ...(completedTurn ? { completedAt: now } : {}),
+      ...(completedTurn && !isActive ? { unread: true } : {}),
     },
     refreshGit: true,
   };
@@ -151,9 +152,13 @@ export function shellTitleUpdate(
   session: Session | undefined,
   title: string,
 ): SessionLifecycleUpdate | null {
+  // Agent sessions are allowed to set a shellTitle now: agents like Claude Code
+  // emit a live OSC title describing the current task, which deriveTitle prefers
+  // over the static agent name. We still drop titles that are merely the agent's
+  // own name/command (isAgentShellTitle) or look like a shell prompt — those
+  // carry no information beyond the icon/name we already show.
   if (
-    session?.agent
-    || session?.suppressShellTitle
+    session?.suppressShellTitle
     || isAgentShellTitle(title)
     || isPromptLikeShellTitle(title)
   ) {

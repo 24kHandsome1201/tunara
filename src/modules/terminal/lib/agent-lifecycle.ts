@@ -56,7 +56,8 @@ export function isSessionBusy(session: Session): boolean {
 
 export function sessionDisplayRunState(session: Session): RunState {
   if (!session.agent) return session.runState;
-  return isAgentActivityBusy(session.agentActivity) ? "running" : "idle";
+  if (isAgentActivityBusy(session.agentActivity)) return "running";
+  return session.completedAt ? "done" : "idle";
 }
 
 export type AgentScreenState = "ready" | "busy" | null;

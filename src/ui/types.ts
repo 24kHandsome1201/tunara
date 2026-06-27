@@ -136,21 +136,30 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
     ? s.lastCommand
     : undefined;
 
-  if (s.customTitle) {
-    primary = s.customTitle;
-  } else if (s.agent) {
-    primary = AGENT_NAMES[s.agent] ?? s.agent;
-  } else if (lastCommand) {
-    primary = truncate(lastCommand, 60);
-    isCommand = true;
-  } else if (
-    s.shellTitle
+  const agentName = s.agent ? (AGENT_NAMES[s.agent] ?? s.agent) : undefined;
+  // A shellTitle is "meaningful" only if it adds information beyond what the
+  // agent name / dir already convey. shellTitleUpdate already dropped the
+  // agent's own-name and prompt-like titles, so here we just guard against the
+  // title collapsing to the dir or the agent name itself.
+  const hasMeaningfulShellTitle =
+    !!s.shellTitle
     && !s.suppressShellTitle
     && !isPromptLikeShellTitle(s.shellTitle)
     && s.shellTitle !== s.dir
     && s.shellTitle !== shortDir(s.dir)
-  ) {
-    primary = s.shellTitle;
+    && s.shellTitle !== agentName;
+
+  if (s.customTitle) {
+    primary = s.customTitle;
+  } else if (s.agent) {
+    // Prefer the agent's live task title (e.g. Claude Code's current activity);
+    // fall back to the agent name when no meaningful title has been emitted.
+    primary = hasMeaningfulShellTitle ? s.shellTitle! : agentName!;
+  } else if (lastCommand) {
+    primary = truncate(lastCommand, 60);
+    isCommand = true;
+  } else if (hasMeaningfulShellTitle) {
+    primary = s.shellTitle!;
   } else {
     primary = s.title && !isPromptLikeShellTitle(s.title) ? s.title : "终端";
   }

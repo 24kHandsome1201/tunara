@@ -6,6 +6,7 @@ import {
   detectCodexScreenState,
   isSessionBusy,
   parseAgentLifecycleOsc,
+  sessionDisplayRunState,
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
 import { scanTerminalInputBuffer } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
 import {
@@ -64,6 +65,7 @@ import {
   agentReadyUpdate,
   commandDetectedUpdate,
   cwdChangedUpdate,
+  shellTitleUpdate,
   terminalProgressUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 import {
@@ -781,6 +783,84 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(isSessionBusy(h.session), false);
   assert.equal(h.session.lastExitCode, 0);
   assert.equal(h.gitRefreshes, 2);
+});
+
+test("agent session shows its live OSC title and falls back to the agent name", () => {
+  const h = createHarness();
+
+  // Agent detected → no title yet → shows the agent name.
+  assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
+  assert.equal(h.session.agent, "CC");
+  assert.equal(deriveTitle(h.session).primary, "Claude Code");
+
+  // Agent emits a real task title via OSC — now accepted for agent sessions.
+  const meaningful = shellTitleUpdate(h.session, "Refactoring the sidebar");
+  assert.ok(meaningful, "agent sessions must now accept a meaningful shellTitle");
+  assert.equal(h.apply(meaningful), true);
+  assert.equal(h.session.shellTitle, "Refactoring the sidebar");
+  assert.equal(deriveTitle(h.session).primary, "Refactoring the sidebar");
+
+  // A title that is merely the agent's own name is still dropped (no info gain).
+  assert.equal(shellTitleUpdate(h.session, "Claude Code"), null);
+
+  // On exit the agent name and live title are both cleared back to the default.
+  assert.equal(h.applyAgentOsc("tunara-agent;exit;s-1;CC;0", 40), true);
+  assert.equal(h.session.agent, undefined);
+  assert.equal(deriveTitle(h.session).primary, "终端");
+});
+
+test("agent ready distinguishes startup idle from completed turns for sidebar state", () => {
+  const startup = makeSession({
+    agent: "CC",
+    agentActivity: "starting",
+    completedAt: undefined,
+  });
+  const startupUpdate = agentReadyUpdate(startup, true, 10);
+  const startupReady = { ...startup, ...startupUpdate.patch };
+
+  assert.equal(startupReady.completedAt, undefined);
+  assert.equal(startupReady.unread, undefined);
+  assert.equal(sessionDisplayRunState(startupReady), "idle");
+
+  const backgroundStartupUpdate = agentReadyUpdate(startup, false, 15);
+  const backgroundStartupReady = { ...startup, ...backgroundStartupUpdate.patch };
+
+  assert.equal(backgroundStartupReady.completedAt, undefined);
+  assert.equal(backgroundStartupReady.unread, undefined);
+  assert.equal(sessionDisplayRunState(backgroundStartupReady), "idle");
+
+  const running = makeSession({
+    agent: "CC",
+    agentActivity: "running",
+    completedAt: undefined,
+  });
+  const activeUpdate = agentReadyUpdate(running, true, 20);
+  const activeDone = { ...running, ...activeUpdate.patch };
+
+  assert.equal(activeDone.completedAt, 20);
+  assert.equal(activeDone.unread, undefined);
+  assert.equal(sessionDisplayRunState(activeDone), "done");
+  assert.equal(isSessionBusy(activeDone), false);
+
+  const backgroundUpdate = agentReadyUpdate(running, false, 30);
+  const backgroundDone = { ...running, ...backgroundUpdate.patch };
+
+  assert.equal(backgroundDone.completedAt, 30);
+  assert.equal(backgroundDone.unread, true);
+  assert.equal(sessionDisplayRunState(backgroundDone), "done");
+
+  const repeatedIdle = makeSession({
+    agent: "CC",
+    agentActivity: "idle",
+    completedAt: 30,
+    unread: false,
+  });
+  const repeatedIdleUpdate = agentReadyUpdate(repeatedIdle, false, 40);
+  const repeatedIdleDone = { ...repeatedIdle, ...repeatedIdleUpdate.patch };
+
+  assert.equal(repeatedIdleDone.completedAt, 30);
+  assert.equal(repeatedIdleDone.unread, false);
+  assert.equal(sessionDisplayRunState(repeatedIdleDone), "done");
 });
 
 test("lifecycle events for another session are ignored", () => {

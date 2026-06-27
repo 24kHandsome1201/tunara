@@ -378,10 +378,22 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleAgentReady: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     const isActive = get().activeSessionId === id;
+    const completedTurn = session?.agentActivity === "running";
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
+    if (!isActive && completedTurn && session?.agent) {
+      const fileCount = session.changes?.files.length ?? 0;
+      const name = AGENT_NAMES[session.agent] ?? session.agent;
+      useUIStore.getState().addToast({
+        sessionId: id,
+        title: name,
+        subtitle: fileCount > 0 ? `已完成 · 编辑 ${fileCount} 文件` : "已完成",
+        variant: "success",
+        agentCode: session.agent,
+      });
+    }
   },
 
   handleAgentBusy: (id) => {
