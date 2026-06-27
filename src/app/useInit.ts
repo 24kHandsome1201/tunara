@@ -4,7 +4,7 @@ import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
 import { useWorkflowsStore } from "@/state/workflows";
-import { getAllTerminalSnapshots, restoreTerminalSnapshots } from "@/modules/terminal/lib/terminal-snapshot";
+import { consumeTerminalSnapshotDirty, getAllTerminalSnapshots, restoreTerminalSnapshots } from "@/modules/terminal/lib/terminal-snapshot";
 import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
@@ -242,7 +242,13 @@ export function useInit() {
       }
     });
 
-    const timer = setInterval(persistNow, 30_000);
+    // Backstop flush for terminal scrollback, which lives in the snapshot Map
+    // rather than a store, so the scheduleSave subscriptions above never see it.
+    // Gate on the snapshot dirty flag so an idle or hidden app with no new
+    // output performs no redundant serialize + IPC + disk write every 30s.
+    const timer = setInterval(() => {
+      if (consumeTerminalSnapshotDirty()) persistNow();
+    }, 30_000);
     return () => {
       unsubSessions();
       unsubUI();
