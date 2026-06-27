@@ -37,6 +37,11 @@ export function useTerminalWebgl(
   active: boolean,
   webglRef: RefObject<TerminalWebglRenderer | null>,
   sessionId: string,
+  // Flips true once the (async-created) terminal is assigned to termRef. The
+  // other deps are stable refs, so without this the effect would bail on a null
+  // term at first mount and never re-run — leaving a new session on the slow
+  // DOM renderer until a tab switch. Used only to re-trigger; value unread.
+  termReady: boolean,
 ) {
   useEffect(() => {
     const term = termRef.current;
@@ -69,7 +74,7 @@ export function useTerminalWebgl(
     } catch {
       webglRef.current = null;
     }
-  }, [active, sessionId, termRef, webglRef]);
+  }, [active, sessionId, termRef, webglRef, termReady]);
 
   // Release on unmount. Inactive terminals keep their context for fast
   // tab-switching; LRU eviction handles the cap.

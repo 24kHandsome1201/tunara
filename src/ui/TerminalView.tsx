@@ -86,7 +86,7 @@ function TerminalViewImpl({
   useTerminalRuntimeSync({
     active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
-  useTerminalWebgl(termRef, active, webglRef, sessionId);
+  useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady);
   // Sole delivery path for pendingInput (init effect must NOT also schedule it).
   useEffect(() => {
     const pty = ptyRef.current;

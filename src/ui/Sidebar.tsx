@@ -74,6 +74,8 @@ export function Sidebar({
     !!collapsedDirs[dir] && !q ? [] : groupSessions.map((s) => s.id)
   );
   const tabbableSessionId = visibleSessionIds.includes(activeSessionId) ? activeSessionId : visibleSessionIds[0] ?? null;
+  const visibleSessionIdsRef = useRef(visibleSessionIds); // read by handleSessionKeyDown (keeps its deps stable for memo)
+  visibleSessionIdsRef.current = visibleSessionIds;
 
   const focusSessionCard = useCallback((sessionId: string) => {
     requestAnimationFrame(() => {
@@ -86,22 +88,23 @@ export function Sidebar({
   }, []);
 
   const handleSessionKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>, sessionId: string) => {
-    const currentIndex = visibleSessionIds.indexOf(sessionId);
+    const ids = visibleSessionIdsRef.current;
+    const currentIndex = ids.indexOf(sessionId);
     if (currentIndex === -1) return;
 
     let nextIndex = currentIndex;
-    if (e.key === "ArrowDown") nextIndex = Math.min(currentIndex + 1, visibleSessionIds.length - 1);
+    if (e.key === "ArrowDown") nextIndex = Math.min(currentIndex + 1, ids.length - 1);
     else if (e.key === "ArrowUp") nextIndex = Math.max(currentIndex - 1, 0);
     else if (e.key === "Home") nextIndex = 0;
-    else if (e.key === "End") nextIndex = visibleSessionIds.length - 1;
+    else if (e.key === "End") nextIndex = ids.length - 1;
     else return;
 
-    const nextId = visibleSessionIds[nextIndex];
+    const nextId = ids[nextIndex];
     if (!nextId) return;
     e.preventDefault();
     onSelectSession(nextId);
     focusSessionCard(nextId);
-  }, [focusSessionCard, onSelectSession, visibleSessionIds]);
+  }, [focusSessionCard, onSelectSession]);
 
   const handleSelect = useCallback((id: string) => {
     if (!dragStarted.current) onSelectSession(id);

@@ -81,7 +81,9 @@ pub fn git_watch(
     let app_handle = app.clone();
     let emit_path = repo_path.clone();
     let cache_app = app.clone();
-    let cache_path = repo_path.clone();
+    // Normalize identically to git_status's cache key so invalidation always
+    // hits the entry it stored (guards against an un-normalized repo_path).
+    let cache_path = super::status_cache_key(&repo_path);
 
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),

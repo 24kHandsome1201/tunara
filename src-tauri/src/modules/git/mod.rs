@@ -27,8 +27,19 @@ use crate::modules::util::expand_tilde;
 // ── git_status ──────────────────────────────────────────────────────────
 
 /// Safety-net TTL for the git_status cache. The file watcher invalidates
-/// proactively, so this only guards against missed watcher events.
-const STATUS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+/// proactively, so this is only a backstop for missed/dropped watcher events.
+/// Kept short so any invalidation miss self-heals quickly (the old code had no
+/// cache and was always fresh; this trades a tiny staleness window for skipping
+/// redundant diffs on rapid same-repo session switches).
+const STATUS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Normalize a repo path for use as the status-cache key. Must stay byte-for-byte
+/// identical to the frontend `normalizeRepoPath` (src/modules/git/lib/path-normalize.ts)
+/// AND to the key the watcher invalidates under, or proactive invalidation silently
+/// misses (e.g. a dir spelled with a trailing slash would never be invalidated).
+pub(crate) fn status_cache_key(repo_path: &str) -> String {
+    repo_path.trim_end_matches('/').to_string()
+}
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -60,11 +71,17 @@ pub fn git_status(
     repo_path: String,
     cache_state: State<'_, GitWatcherState>,
 ) -> Result<StatusResult, String> {
+    // Normalize so the cache key matches the key the watcher invalidates under
+    // (which comes from the frontend's normalizeRepoPath). Without this, a dir
+    // passed here with a trailing slash would cache under a key the watcher
+    // never removes → stale status until the TTL expires.
+    let cache_key = status_cache_key(&repo_path);
+
     // Check cache: serves rapid session switches in the same repo without
     // re-running two full git diffs. Invalidated by the file watcher.
     {
         if let Ok(cache) = cache_state.status_cache.lock() {
-            if let Some(entry) = cache.get(&repo_path) {
+            if let Some(entry) = cache.get(&cache_key) {
                 if entry.expiry > std::time::Instant::now() {
                     return Ok(entry.status.clone());
                 }
@@ -114,7 +131,7 @@ pub fn git_status(
     // Store in cache for rapid session switches in the same repo.
     if let Ok(mut cache) = cache_state.status_cache.lock() {
         cache.insert(
-            repo_path,
+            cache_key,
             watcher::CachedStatus {
                 status: result.clone(),
                 expiry: std::time::Instant::now() + STATUS_CACHE_TTL,
