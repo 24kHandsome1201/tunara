@@ -107,6 +107,7 @@ pub fn pty_open(
 ) -> Result<u32, String> {
     if let Some(logical_id) = logical_session_id.as_deref() {
         state.remove_logical(logical_id);
+        wrapper::cleanup_hooks_settings(logical_id, hooks_state.agent_config_dir());
     }
 
     let sock = hooks_state.sock_path();

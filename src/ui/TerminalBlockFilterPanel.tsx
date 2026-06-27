@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   filterTerminalBlockOutput,
   formatTerminalBlockFilterText,
@@ -80,12 +80,22 @@ export function TerminalBlockFilterPanel({
   const [contextLines, setContextLines] = useState(0);
   const [copied, setCopied] = useState(false);
   const [closing, setClosing] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const requestClose = () => {
-    if (closing) return;
+    if (closing || closeTimerRef.current) return;
     setClosing(true);
     // 与 sheetOut keyframe 时长保持一致（--duration-fast = 120ms）
-    setTimeout(onClose, 120);
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      onClose();
+    }, 120);
   };
 
   const result = useMemo(() => filterTerminalBlockOutput(output, {
@@ -179,7 +189,11 @@ export function TerminalBlockFilterPanel({
             const text = query.trim() ? formatTerminalBlockFilterText(result) : output;
             await navigator.clipboard.writeText(text).then(() => {
               setCopied(true);
-              setTimeout(() => setCopied(false), 1200);
+              if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+              copiedTimerRef.current = setTimeout(() => {
+                copiedTimerRef.current = null;
+                setCopied(false);
+              }, 1200);
             }).catch(() => {});
           }}
           title={t("block.filter.copy_result")}

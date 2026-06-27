@@ -18,7 +18,7 @@ pub use watcher::GitWatcherState;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use git2::{Delta, DiffOptions, Repository};
+use git2::{Delta, Diff, DiffOptions, Repository, Tree};
 use serde::Serialize;
 use tauri::State;
 
@@ -38,7 +38,12 @@ const STATUS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(2);
 /// AND to the key the watcher invalidates under, or proactive invalidation silently
 /// misses (e.g. a dir spelled with a trailing slash would never be invalidated).
 pub(crate) fn status_cache_key(repo_path: &str) -> String {
-    repo_path.trim_end_matches('/').to_string()
+    let without_trailing_slashes = repo_path.trim_end_matches('/');
+    if without_trailing_slashes.is_empty() && repo_path.starts_with('/') {
+        "/".to_string()
+    } else {
+        without_trailing_slashes.to_string()
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -233,17 +238,68 @@ pub enum FileDiff {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiffScope {
+    Combined,
+    Staged,
+    Unstaged,
+    Untracked,
+}
+
+impl DiffScope {
+    fn from_stage(stage: Option<&str>) -> Self {
+        match stage {
+            Some("staged") => Self::Staged,
+            Some("unstaged") => Self::Unstaged,
+            Some("untracked") => Self::Untracked,
+            _ => Self::Combined,
+        }
+    }
+}
+
 #[tauri::command]
-pub fn git_diff(repo_path: String, file: String) -> Result<FileDiff, String> {
+pub fn git_diff(
+    repo_path: String,
+    file: String,
+    stage: Option<String>,
+) -> Result<FileDiff, String> {
     let repo_path = expand_tilde(&repo_path);
     let repo = Repository::discover(&repo_path).map_err(|e| e.to_string())?;
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    let mut opts = DiffOptions::new();
-    opts.include_untracked(true).pathspec(&file);
-    let diff = repo
-        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
-        .map_err(|e| e.to_string())?;
+    let diff = scoped_file_diff(
+        &repo,
+        head_tree.as_ref(),
+        &file,
+        DiffScope::from_stage(stage.as_deref()),
+    )?;
 
+    file_diff_from_git_diff(diff, file)
+}
+
+fn scoped_file_diff<'repo>(
+    repo: &'repo Repository,
+    head_tree: Option<&Tree<'repo>>,
+    file: &str,
+    scope: DiffScope,
+) -> Result<Diff<'repo>, String> {
+    let mut opts = DiffOptions::new();
+    opts.pathspec(file);
+    match scope {
+        DiffScope::Staged => repo.diff_tree_to_index(head_tree, None, Some(&mut opts)),
+        DiffScope::Unstaged => repo.diff_index_to_workdir(None, Some(&mut opts)),
+        DiffScope::Untracked => {
+            opts.include_untracked(true).recurse_untracked_dirs(true);
+            repo.diff_index_to_workdir(None, Some(&mut opts))
+        }
+        DiffScope::Combined => {
+            opts.include_untracked(true).recurse_untracked_dirs(true);
+            repo.diff_tree_to_workdir_with_index(head_tree, Some(&mut opts))
+        }
+    }
+    .map_err(|e| e.to_string())
+}
+
+fn file_diff_from_git_diff(diff: Diff<'_>, file: String) -> Result<FileDiff, String> {
     // 先看 delta：二进制 / 纯 metadata 直接短路
     if let Some(delta) = diff.deltas().next() {
         if delta.flags().is_binary() {
@@ -396,7 +452,57 @@ fn delta_mark(delta: &git2::DiffDelta) -> char {
 
 #[cfg(test)]
 mod tests {
-    use super::status_cache_key;
+    use super::{git_diff, status_cache_key, DiffScope, FileDiff};
+    use git2::{Repository, Signature};
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestRepoDir {
+        path: PathBuf,
+    }
+
+    impl TestRepoDir {
+        fn new() -> Self {
+            let suffix = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "tunara-git-test-{}-{}",
+                std::process::id(),
+                suffix
+            ));
+            std::fs::create_dir_all(&path).expect("create test repo dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestRepoDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn commit_file(repo: &Repository, repo_dir: &Path, relative_path: &str, contents: &str) {
+        std::fs::write(repo_dir.join(relative_path), contents).expect("write test file");
+        let mut index = repo.index().expect("open repo index");
+        index
+            .add_path(Path::new(relative_path))
+            .expect("add test file");
+        index.write().expect("write repo index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let sig = Signature::now("Tunara Test", "test@example.com").expect("signature");
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .expect("commit test file");
+    }
+
+    fn text_patch(diff: FileDiff) -> String {
+        match diff {
+            FileDiff::Text { patch, .. } => patch,
+            other => panic!("expected text diff, got {other:?}"),
+        }
+    }
 
     #[test]
     fn status_cache_key_strips_trailing_slashes() {
@@ -405,13 +511,56 @@ mod tests {
         assert_eq!(status_cache_key("/a/b"), "/a/b");
         assert_eq!(status_cache_key("/a/b/"), "/a/b");
         assert_eq!(status_cache_key("/a/b///"), "/a/b");
+        assert_eq!(status_cache_key("/"), "/");
+        assert_eq!(status_cache_key("////"), "/");
     }
 
     #[test]
     fn status_cache_key_leaves_non_trailing_slashes_intact() {
         assert_eq!(status_cache_key("/a/b/c"), "/a/b/c");
         assert_eq!(status_cache_key(""), "");
-        // Root: every char is a trailing slash, so it collapses to empty.
-        assert_eq!(status_cache_key("/"), "");
+        assert_eq!(status_cache_key("/a/b "), "/a/b ");
+    }
+
+    #[test]
+    fn diff_scope_tracks_frontend_file_stage() {
+        assert_eq!(DiffScope::from_stage(Some("staged")), DiffScope::Staged);
+        assert_eq!(DiffScope::from_stage(Some("unstaged")), DiffScope::Unstaged);
+        assert_eq!(
+            DiffScope::from_stage(Some("untracked")),
+            DiffScope::Untracked
+        );
+        assert_eq!(DiffScope::from_stage(None), DiffScope::Combined);
+        assert_eq!(DiffScope::from_stage(Some("unknown")), DiffScope::Combined);
+    }
+
+    #[test]
+    fn git_diff_keeps_staged_and_unstaged_scopes_separate() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).expect("init repo");
+        commit_file(&repo, &dir.path, "file.txt", "base\n");
+
+        std::fs::write(dir.path.join("file.txt"), "staged\n").expect("write staged file");
+        let mut index = repo.index().expect("open repo index");
+        index
+            .add_path(Path::new("file.txt"))
+            .expect("stage test file");
+        index.write().expect("write staged index");
+        std::fs::write(dir.path.join("file.txt"), "unstaged\n").expect("write unstaged file");
+
+        let repo_path = dir.path.to_string_lossy().into_owned();
+        let staged = text_patch(
+            git_diff(repo_path.clone(), "file.txt".into(), Some("staged".into()))
+                .expect("staged diff"),
+        );
+        let unstaged = text_patch(
+            git_diff(repo_path, "file.txt".into(), Some("unstaged".into())).expect("unstaged diff"),
+        );
+
+        assert!(staged.contains("+staged"));
+        assert!(!staged.contains("+unstaged"));
+        assert!(unstaged.contains("-staged"));
+        assert!(unstaged.contains("+unstaged"));
+        assert!(!unstaged.contains("-base"));
     }
 }

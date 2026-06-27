@@ -7,6 +7,7 @@ import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
 import { useT } from "@/modules/i18n";
+import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -102,16 +103,24 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const paneBSession = split.paneB ? sessions.find((s) => s.id === split.paneB) : null;
 
   useEffect(() => {
-    if (!active?.dir || activeIsRemote) {
+    const repoPath = activeIsRemote ? null : normalizeLocalRepoPath(active?.dir);
+    if (!repoPath) {
       setRemote(null);
+      if (active) {
+        useSessionsStore.getState().updateSession(active.id, {
+          branch: "",
+          gitState: "notGit",
+          changes: undefined,
+        });
+      }
       return;
     }
     let cancelled = false;
     setRemote(null);
-    gitAheadBehind(active.dir)
+    gitAheadBehind(repoPath)
       .then((r) => !cancelled && setRemote(r))
       .catch(() => !cancelled && setRemote(null));
-    gitStatus(active.dir)
+    gitStatus(repoPath)
       .then((status) => {
         if (cancelled) return;
         useSessionsStore.getState().updateSession(active.id, {

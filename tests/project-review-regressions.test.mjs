@@ -124,6 +124,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(keybindings, /const modPressed = hasPlatformModKey\(e, isMac\)/);
   assert.match(ui, /loadTunaraConfig/);
   assert.match(ui, /saveTunaraConfig\(settingsToRawConfig/);
+  assert.match(ui, /\.then\(\(\) => useUIStore\.setState\(\{ configError: null \}\)\)/);
   assert.match(ui, /fontLigatures: false/);
   assert.match(ui, /font_ligatures: s\.fontLigatures/);
   assert.match(ui, /terminalClipboardWrite: false/);
@@ -242,10 +243,13 @@ test("pure UI helpers avoid importing the React-bound i18n entry", () => {
 
 test("git sidebar state is single-sourced and distinguishes non-repo directories", () => {
   const types = read("src/ui/types.ts");
+  const bridge = read("src/modules/git/git-bridge.ts");
   const main = read("src/ui/MainArea.tsx");
   const diff = read("src/ui/DiffPanel.tsx");
   const lifecycle = read("src/modules/terminal/lib/session-lifecycle.ts");
+  const localTerminalCwd = read("src/modules/session/local-terminal-cwd.ts");
 
+  assert.match(bridge, /gitDiff\(repoPath: string, file: string, stage: FileChange\["stage"\]\)/);
   assert.match(types, /export type GitState = "unknown" \| "repo" \| "notGit";/);
   assert.match(types, /gitState\?: GitState;/);
   assert.match(main, /activeIsRemote/);
@@ -254,10 +258,14 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.match(lifecycle, /gitState: "unknown"/);
   assert.match(diff, /session\.changes\?\.files \?\? \[\]/);
   assert.match(diff, /session\.gitState === "notGit"/);
+  assert.match(diff, /function fileRowKey\(file: Pick<FileChange, "stage" \| "path">\)/);
+  assert.match(diff, /expandedFileKey/);
+  assert.match(diff, /gitDiff\(requestedRepoPath, file\.path, file\.stage\)/);
   assert.match(diff, /diffGenerationRef/);
   assert.match(diff, /repoPathRef\.current === requestedRepoPath/);
   assert.match(diff, /useSessionsStore\.getState\(\)\.refreshGit\(session\.id\)/);
   assert.doesNotMatch(diff, /\bgitStatus\b/);
+  assert.doesNotMatch(localTerminalCwd, /@\/ui\/types|ui\/types/);
 });
 
 test("session persistence is debounced and still flushed on close", () => {
@@ -299,7 +307,12 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
   assert.match(keys, /const \{ paneA, paneB \} = ui\.split/);
   assert.match(keys, /st\.setActive\(st\.activeSessionId === paneB \? paneA : paneB\)/);
-  assert.match(main, /setRemote\(null\);[\s\S]*gitAheadBehind\(active\.dir\)/);
+  assert.match(main, /const repoPath = activeIsRemote \? null : normalizeLocalRepoPath\(active\?\.dir\);/);
+  assert.match(main, /if \(!repoPath\) \{[\s\S]*?setRemote\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
+  assert.match(main, /gitAheadBehind\(repoPath\)/);
+  assert.match(main, /gitStatus\(repoPath\)/);
+  assert.doesNotMatch(main, /gitAheadBehind\(active\.dir\)/);
+  assert.doesNotMatch(main, /gitStatus\(active\.dir\)/);
   assert.match(settings, /maxWidth: "calc\(100vw - 32px\)"/);
 });
 
@@ -448,7 +461,8 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminal, /lineCwdTracker\.record\(cwd, term\.registerMarker\(0\)\)/);
   assert.match(terminalFileLinks, /term\.registerLinkProvider/);
   assert.match(terminalFileLinks, /options\.getCwd\(bufferLineNumber\)/);
-  assert.match(terminalLineCwd, /last\?\.cwd === normalized/);
+  assert.match(terminalLineCwd, /if \(!cwd\.trim\(\)\)/);
+  assert.match(terminalLineCwd, /last\?\.cwd === cwd/);
   assert.match(terminalFileLinks, /openInEditor\(options\.getEditor\(\), path, match\.line, match\.column\)/);
   assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
@@ -514,6 +528,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   const sessionCard = read("src/ui/SessionCard.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarMenu = read("src/ui/sidebar-session-menu.ts");
+  const sidebarDirMenu = read("src/ui/sidebar-dir-group-menu.ts");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const resolver = read("src-tauri/src/modules/resolver/mod.rs");
   const toast = read("src/ui/Toast.tsx");
@@ -558,7 +573,9 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(sidebarMenu, /label: t\("sidebar\.session\.rename"\), icon: "rename"/);
   assert.match(sidebarMenu, /label: t\("sidebar\.session\.close"\), icon: "close"/);
-  assert.match(sidebar, /label: t\("sidebar\.dir\.close_all"\), icon: "close"/);
+  assert.match(sidebarDirMenu, /dirGroupHasLocalFilesystem/);
+  assert.match(sidebarDirMenu, /canUseSessionDirForLocalTerminal/);
+  assert.match(sidebarDirMenu, /label: t\("sidebar\.dir\.close_all"\), icon: "close"/);
   assert.match(zhDict, /"sidebar\.session\.rename": "重命名"/);
   assert.match(zhDict, /"sidebar\.session\.close": "关闭会话"/);
   assert.match(zhDict, /"sidebar\.dir\.close_all": "关闭全部会话"/);

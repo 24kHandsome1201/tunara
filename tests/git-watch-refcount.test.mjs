@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createWatchRefCount } from "../src/modules/git/lib/watch-refcount.ts";
-import { normalizeRepoPath, sameRepoPath } from "../src/modules/git/lib/path-normalize.ts";
+import {
+  normalizeLocalRepoPath,
+  normalizeRepoPath,
+  sameRepoPath,
+} from "../src/modules/git/lib/path-normalize.ts";
 
 function makeSpyHandlers() {
   const acquires = [];
@@ -87,11 +91,14 @@ test("normalizeRepoPath strips any number of trailing slashes", () => {
   assert.equal(normalizeRepoPath("/repo"), "/repo");
   assert.equal(normalizeRepoPath("/repo/"), "/repo");
   assert.equal(normalizeRepoPath("/repo////"), "/repo");
+  assert.equal(normalizeRepoPath("/"), "/");
+  assert.equal(normalizeRepoPath("////"), "/");
 });
 
 test("normalizeRepoPath preserves internal slashes", () => {
   assert.equal(normalizeRepoPath("/a/b/c"), "/a/b/c");
   assert.equal(normalizeRepoPath("/a//b//c"), "/a//b//c");
+  assert.equal(normalizeRepoPath("/a/b "), "/a/b ");
 });
 
 test("sameRepoPath treats paths that differ only by trailing slashes as equal", () => {
@@ -102,4 +109,16 @@ test("sameRepoPath treats paths that differ only by trailing slashes as equal", 
 test("sameRepoPath returns false for genuinely different paths even if a prefix matches", () => {
   assert.equal(sameRepoPath("/repo", "/repo2"), false);
   assert.equal(sameRepoPath("/repo/sub", "/repo"), false);
+});
+
+test("normalizeLocalRepoPath accepts local repo paths without accepting the home placeholder", () => {
+  assert.equal(normalizeLocalRepoPath("/repo/"), "/repo");
+  assert.equal(normalizeLocalRepoPath("/"), "/");
+  assert.equal(normalizeLocalRepoPath("~/repo/"), "~/repo");
+  assert.equal(normalizeLocalRepoPath("~"), null);
+  assert.equal(normalizeLocalRepoPath("~other/repo"), null);
+  assert.equal(normalizeLocalRepoPath("relative/repo"), null);
+  assert.equal(normalizeLocalRepoPath("user@example.com"), null);
+  assert.equal(normalizeLocalRepoPath(""), null);
+  assert.equal(normalizeLocalRepoPath(undefined), null);
 });

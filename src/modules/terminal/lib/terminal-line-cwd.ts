@@ -18,23 +18,22 @@ export function createTerminalLineCwdTracker() {
 
   return {
     record(cwd: string, marker: TerminalLineCwdMarker) {
-      const normalized = cwd.trim();
-      if (!normalized) {
+      if (!cwd.trim()) {
         marker.dispose();
         return;
       }
       pruneDisposed();
       const last = marks[marks.length - 1];
-      if (last?.cwd === normalized) {
+      if (last?.cwd === cwd) {
         marker.dispose();
         return;
       }
       if (last?.marker.line === marker.line) {
         last.marker.dispose();
-        marks[marks.length - 1] = { cwd: normalized, marker };
+        marks[marks.length - 1] = { cwd, marker };
         return;
       }
-      marks.push({ cwd: normalized, marker });
+      marks.push({ cwd, marker });
     },
 
     getCwdForLine(bufferLineNumber: number, fallback?: string) {

@@ -17,6 +17,7 @@ import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
 import { pushRecentCommand } from "./recent-commands";
 import { sanitizeSessionNote } from "@/modules/session/session-notes";
+import { localTerminalCwdFromSession } from "@/modules/session/local-terminal-cwd";
 
 interface SessionsState {
   sessions: Session[];
@@ -528,7 +529,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   newTerminal: () => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    get().addSession(createSession(active?.dir ?? "~", { title: "终端" }));
+    get().addSession(createSession(localTerminalCwdFromSession(active), { title: "终端" }));
   },
 
   newTerminalInDir: (dir) => {
@@ -537,7 +538,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   newTerminalWithInput: (input, dir) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    get().addSession(createSession(dir ?? active?.dir ?? "~", {
+    get().addSession(createSession(dir ?? localTerminalCwdFromSession(active), {
       title: "终端",
       pendingInput: input,
       pendingInputSubmit: false,
@@ -546,7 +547,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   splitWithNewSession: (direction) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    const newSess = createSession(active?.dir ?? "~", { title: "终端" });
+    const newSess = createSession(localTerminalCwdFromSession(active), { title: "终端" });
     if (!active) {
       get().addSession(newSess);
       return;

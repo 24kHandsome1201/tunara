@@ -70,6 +70,7 @@ test("agent hook runtime files avoid predictable shared tmp paths", () => {
   const hooks = read("src-tauri/src/modules/agent/hooks.rs");
   const wrapper = read("src-tauri/src/modules/agent/wrapper.rs");
   const pty = read("src-tauri/src/modules/pty/mod.rs");
+  const ssh = read("src-tauri/src/modules/ssh/mod.rs");
 
   assert.match(hooks, /fn hooks_runtime_dir\(\) -> Result<PathBuf, String>/);
   assert.match(hooks, /XDG_RUNTIME_DIR/);
@@ -88,6 +89,9 @@ test("agent hook runtime files avoid predictable shared tmp paths", () => {
 
   assert.match(pty, /hooks_state: tauri::State<HookListenerState>[\s\S]*id: u32/);
   assert.match(pty, /wrapper::cleanup_hooks_settings\(lid, hooks_state\.agent_config_dir\(\)\)/);
+  assert.match(pty, /state\.remove_logical\(logical_id\);[\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
+  assert.match(ssh, /hooks_state: tauri::State<'_, HookListenerState>/);
+  assert.match(ssh, /state\.remove_logical\(logical_id\);[\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
 });
 
 test("agent lifecycle policy preserves line structure for Codex", () => {

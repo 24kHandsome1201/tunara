@@ -36,8 +36,8 @@ export function gitStatus(repoPath: string): Promise<StatusResult> {
   return invoke<StatusResult>("git_status", { repoPath });
 }
 
-export function gitDiff(repoPath: string, file: string): Promise<FileDiff> {
-  return invoke<FileDiff>("git_diff", { repoPath, file });
+export function gitDiff(repoPath: string, file: string, stage: FileChange["stage"]): Promise<FileDiff> {
+  return invoke<FileDiff>("git_diff", { repoPath, file, stage });
 }
 
 export function gitAheadBehind(repoPath: string): Promise<RemoteState> {

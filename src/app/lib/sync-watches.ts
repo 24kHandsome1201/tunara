@@ -1,4 +1,4 @@
-import { normalizeRepoPath } from "../../modules/git/lib/path-normalize.ts";
+import { normalizeLocalRepoPath } from "../../modules/git/lib/path-normalize.ts";
 
 export interface SyncWatchesResult {
   toAcquire: string[];
@@ -15,7 +15,7 @@ export function gitWatchDirsForSessions(sessions: Iterable<GitWatchSessionLike>)
   const dirs: string[] = [];
   for (const session of sessions) {
     if (session.remote || !session.dir) continue;
-    const dir = normalizeRepoPath(session.dir);
+    const dir = normalizeLocalRepoPath(session.dir);
     if (dir) dirs.push(dir);
   }
   return dirs;

@@ -3,6 +3,7 @@ import { formatSize, type Session } from "./types";
 import {
   gitDiff,
   gitAheadBehind,
+  type FileChange,
   type FileDiff,
   type RemoteState,
 } from "@/modules/git/git-bridge";
@@ -10,6 +11,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
 import { useT, t as staticT } from "@/modules/i18n";
+import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
 
@@ -222,19 +224,24 @@ function remoteLabel(remote: RemoteState | null): string {
   }
 }
 
+function fileRowKey(file: Pick<FileChange, "stage" | "path">): string {
+  return `${file.stage}:${file.path}`;
+}
+
 export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const t = useT();
-  const repoPath = session.dir;
+  const repoPath = normalizeLocalRepoPath(session.dir);
+  const displayPath = session.dir;
   const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
 
   const files = session.changes?.files ?? [];
   const branch = session.branch || "";
   const summary = session.changes?.summary ?? "";
-  const notGit = session.gitState === "notGit";
+  const notGit = session.gitState === "notGit" || !repoPath;
   const loading = session.gitState !== "repo" && session.gitState !== "notGit" && !session.changes;
 
   const [remote, setRemote] = useState<RemoteState | null>(null);
-  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [expandedFileKey, setExpandedFileKey] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const isComposingRef = useRef(false);
@@ -265,10 +272,10 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   useEffect(() => {
     let cancelled = false;
     diffGenerationRef.current += 1;
-    setExpandedFile(null);
+    setExpandedFileKey(null);
     setDiffs({});
     setRemote(null);
-    if (notGit) return () => { cancelled = true; };
+    if (notGit || !repoPath) return () => { cancelled = true; };
     gitAheadBehind(repoPath)
       .then((r) => !cancelled && setRemote(r))
       .catch(() => !cancelled && setRemote(null));
@@ -278,10 +285,10 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   }, [repoPath, session.id, nonce, notGit]);
 
   useEffect(() => {
-    if (expandedFile && !files.some((f) => f.path === expandedFile)) {
-      setExpandedFile(null);
+    if (expandedFileKey && !files.some((f) => fileRowKey(f) === expandedFileKey)) {
+      setExpandedFileKey(null);
     }
-  }, [files, expandedFile]);
+  }, [files, expandedFileKey]);
 
   async function copyHunk(text: string) {
     try {
@@ -302,26 +309,28 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     }
   }
 
-  async function toggleFile(path: string) {
-    if (expandedFile === path) {
-      setExpandedFile(null);
+  async function toggleFile(file: FileChange) {
+    const key = fileRowKey(file);
+    if (expandedFileKey === key) {
+      setExpandedFileKey(null);
       setSearchQuery("");
       return;
     }
-    setExpandedFile(path);
+    setExpandedFileKey(key);
     setSearchQuery("");
-    if (!diffs[path]) {
+    if (!diffs[key]) {
       const generation = diffGenerationRef.current;
       const requestedRepoPath = repoPath;
       const requestedSessionId = session.id;
+      if (!requestedRepoPath) return;
       try {
-        const d = await gitDiff(requestedRepoPath, path);
+        const d = await gitDiff(requestedRepoPath, file.path, file.stage);
         if (
           diffGenerationRef.current === generation &&
           repoPathRef.current === requestedRepoPath &&
           sessionIdRef.current === requestedSessionId
         ) {
-          setDiffs((prev) => ({ ...prev, [path]: d }));
+          setDiffs((prev) => ({ ...prev, [key]: d }));
         }
       } catch {
         // diff load failed silently
@@ -337,14 +346,15 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const untrackedFiles = files.filter((f) => f.stage === "untracked");
 
   function renderFileRow(file: typeof files[number]) {
-    const isExpanded = expandedFile === file.path;
+    const key = fileRowKey(file);
+    const isExpanded = expandedFileKey === key;
     return (
-      <div key={file.path} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
+      <div key={key} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
         <div
           role="button"
           tabIndex={0}
-          onClick={() => toggleFile(file.path)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFile(file.path); } }}
+          onClick={() => toggleFile(file)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFile(file); } }}
           className="hover-bg"
           style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
         >
@@ -352,44 +362,46 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
             {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
           </span>
-          <span
-            role="button"
-            tabIndex={0}
-            className="diff-file-open hover-bg"
-            title={t("diff.open_in_editor")}
-            onClick={(e) => {
-              e.stopPropagation();
-              const editor = useUIStore.getState().externalEditor;
-              openInEditor(editor, `${repoPath}/${file.path}`).catch(() => {
-                useUIStore.getState().addToast({
-                  sessionId: session.id,
-                  title: t("diff.toast.editor_not_found"),
-                  subtitle: editor,
-                  variant: "error",
+          {repoPath && (
+            <span
+              role="button"
+              tabIndex={0}
+              className="diff-file-open hover-bg"
+              title={t("diff.open_in_editor")}
+              onClick={(e) => {
+                e.stopPropagation();
+                const editor = useUIStore.getState().externalEditor;
+                openInEditor(editor, `${repoPath}/${file.path}`).catch(() => {
+                  useUIStore.getState().addToast({
+                    sessionId: session.id,
+                    title: t("diff.toast.editor_not_found"),
+                    subtitle: editor,
+                    variant: "error",
+                  });
                 });
-              });
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.click();
-            }}
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: 4,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              color: "var(--c-text-5)",
-              flexShrink: 0,
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-          </span>
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.click();
+              }}
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 4,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "var(--c-text-5)",
+                flexShrink: 0,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </span>
+          )}
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
             +{file.added} −{file.removed}
           </span>
@@ -397,7 +409,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         </div>
         {isExpanded && (
           <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-            {diffs[file.path]?.kind === "text" && (
+            {diffs[key]?.kind === "text" && (
               <div style={{ padding: "4px 8px 2px", borderBottom: "1px solid var(--c-border-3)" }}>
                 <input
                   type="text"
@@ -430,7 +442,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                 />
               </div>
             )}
-            <MiniDiff diff={diffs[file.path]} searchQuery={searchQuery} onCopyHunk={copyHunk} />
+            <MiniDiff diff={diffs[key]} searchQuery={searchQuery} onCopyHunk={copyHunk} />
           </div>
         )}
       </div>
@@ -505,7 +517,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         {loading ? (
           <PanelLoadingState label="git status" />
         ) : notGit ? (
-          <PanelEmptyState label={t("diff.empty.not_git")} sublabel={repoPath} />
+          <PanelEmptyState label={t("diff.empty.not_git")} sublabel={displayPath} />
         ) : !hasChanges ? (
           <PanelEmptyState icon={checkIcon} label={t("diff.empty.clean")} />
         ) : (

@@ -426,6 +426,11 @@ test("command palette surfaces recently used terminal directories without duplic
     { dir: "/Users/me/api", label: "api" },
   ]);
   assert.deepEqual(sanitizeRecentDirs(["", "/tmp/a", "/tmp/a", 42, "/tmp/b"]), ["/tmp/a", "/tmp/b"]);
+  assert.deepEqual(pushRecentDir([], "/tmp/project "), ["/tmp/project "]);
+  assert.deepEqual(collectRecentTerminalDirs(["/tmp/project "], undefined), [
+    { dir: "/tmp/project ", label: "project " },
+  ]);
+  assert.deepEqual(sanitizeRecentDirs(["   ", "/tmp/project "]), ["/tmp/project "]);
 });
 
 test("command palette recent commands are deduped and prepared for safe prefill", () => {
@@ -498,6 +503,7 @@ test("terminal file links recognize local file positions without treating URLs a
   assert.equal(findTerminalFileLinkMatches("see https://example.com/path:12").length, 0);
   assert.equal(findTerminalFileLinkMatches("panic at main.rs:7.")[0].text, "main.rs:7");
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo"), "/Users/me/repo/src/main.rs");
+  assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo "), "/Users/me/repo /src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("../lib.rs", "/Users/me/repo"), "/Users/me/lib.rs");
   assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
 });
@@ -515,10 +521,12 @@ test("terminal file links resolve relative paths from the cwd active for that li
   tracker.record("/Users/me/repo-a", marker(0));
   tracker.record("/Users/me/repo-a", duplicateMarker);
   tracker.record("/Users/me/repo-b", marker(8));
+  tracker.record("/Users/me/repo-c ", marker(16));
 
   assert.equal(duplicateMarker.isDisposed, true);
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(4)), "/Users/me/repo-a/src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(12)), "/Users/me/repo-b/src/main.rs");
+  assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(20)), "/Users/me/repo-c /src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", tracker.getCwdForLine(1, "/fallback")), "/Users/me/repo-a/src/main.rs");
 
   tracker.dispose();

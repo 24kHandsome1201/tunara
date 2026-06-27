@@ -16,8 +16,8 @@ export function collectRecentTerminalDirs(
   const seen = new Set<string>();
   return recentDirs
     .flatMap((value) => {
-      const dir = value.trim();
-      if (!dir || dir === activeDir || seen.has(dir)) return [];
+      const dir = value;
+      if (!dir.trim() || dir === activeDir || seen.has(dir)) return [];
       seen.add(dir);
       return [{ dir, label: formatRecentDirLabel(dir) }];
     })

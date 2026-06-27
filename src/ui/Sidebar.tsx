@@ -6,8 +6,8 @@ import { CloseIcon } from "./shared";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { openInEditor } from "@/modules/editor/open";
 import { buildSessionMenuItems } from "./sidebar-session-menu";
+import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-dir-group-menu";
 import { formatShortcut } from "./formatShortcut";
 import { useT } from "@/modules/i18n";
 
@@ -317,6 +317,7 @@ export function Sidebar({
 
         {groupEntries.map(([dir, groupSessions]) => {
           const collapsed = !!collapsedDirs[dir] && !q;
+          const hasLocalFilesystem = dirGroupHasLocalFilesystem(groupSessions);
           return (
           <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
             <DirGroupHeader
@@ -324,20 +325,14 @@ export function Sidebar({
               count={groupSessions.length}
               collapsed={collapsed}
               onToggleCollapse={() => toggleDirCollapsed(dir)}
-              onNewTerminal={() => useSessionsStore.getState().newTerminalInDir(dir)}
+              onNewTerminal={hasLocalFilesystem ? () => useSessionsStore.getState().newTerminalInDir(dir) : undefined}
               onCloseAll={() => useSessionsStore.getState().closeSessionsInDir(dir)}
               confirmClose={!!dirCloseConfirmations[dir]}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({
                   position: { x: e.clientX, y: e.clientY },
-                  items: [
-                    { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
-                    { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
-                    { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
-                    null,
-                    { id: "dir:close-all", label: t("sidebar.dir.close_all"), icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
-                  ],
+                  items: buildDirGroupMenuItems({ dir, groupSessions, t, externalEditor }),
                 });
               }}
             />

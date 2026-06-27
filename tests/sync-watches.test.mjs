@@ -56,6 +56,17 @@ test("gitWatchDirsForSessions normalizes local dirs and ignores SSH pseudo dirs"
   assert.deepEqual(dirs, ["/repo", "/other"]);
 });
 
+test("gitWatchDirsForSessions skips placeholder and relative cwd values", () => {
+  const dirs = gitWatchDirsForSessions([
+    { dir: "~" },
+    { dir: "~/real/repo/" },
+    { dir: "relative/repo" },
+    { dir: "user@example.com" },
+    { dir: "/real/repo/" },
+  ]);
+  assert.deepEqual(dirs, ["~/real/repo", "/real/repo"]);
+});
+
 test("gitWatchDirsForSessions keeps duplicate local dirs for diffWatchedDirs to dedupe", () => {
   const dirs = gitWatchDirsForSessions([
     { dir: "/repo" },

@@ -35,7 +35,7 @@ export function findTerminalFileLinkMatches(text: string): TerminalFileLinkMatch
 
 export function resolveTerminalFileLinkPath(rawPath: string, cwd: string | undefined): string {
   if (rawPath.startsWith("/") || rawPath.startsWith("~")) return rawPath;
-  const base = cwd?.trim() || "~";
+  const base = cwd && cwd.trim() ? cwd : "~";
   return normalizePosixPath(`${base.replace(/\/+$/, "")}/${rawPath}`);
 }
 

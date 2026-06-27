@@ -34,6 +34,7 @@ pub mod sftp;
 use auth::AuthOptions;
 use connection::{ConnectParams, HostKeyPolicy, SshSession};
 
+use crate::modules::agent::{hooks::HookListenerState, wrapper};
 use crate::modules::pty::{PtyEvent, PtyState, Session};
 use tauri::ipc::Channel;
 
@@ -46,6 +47,7 @@ use tauri::ipc::Channel;
 #[tauri::command]
 pub async fn ssh_open(
     state: tauri::State<'_, PtyState>,
+    hooks_state: tauri::State<'_, HookListenerState>,
     logical_session_id: Option<String>,
     host: String,
     port: Option<u16>,
@@ -62,6 +64,7 @@ pub async fn ssh_open(
     // Replace any prior session bound to the same logical id (reopen path).
     if let Some(logical_id) = logical_session_id.as_deref() {
         state.remove_logical(logical_id);
+        wrapper::cleanup_hooks_settings(logical_id, hooks_state.agent_config_dir());
     }
 
     let params = ConnectParams {

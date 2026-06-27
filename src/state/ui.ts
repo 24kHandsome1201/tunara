@@ -398,7 +398,9 @@ useUIStore.subscribe(
     if (!state.configLoaded || configHydrating) return;
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
+      persistTimer = null;
       saveTunaraConfig(settingsToRawConfig(useUIStore.getState()))
+        .then(() => useUIStore.setState({ configError: null }))
         .catch((e) => useUIStore.setState({ configError: e instanceof Error ? e.message : String(e) }));
     }, 300);
   },
