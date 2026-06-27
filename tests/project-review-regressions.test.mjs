@@ -701,7 +701,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
   assert.match(terminal, /import \{ TerminalViewChrome \} from "\.\/TerminalViewChrome"/);
-  assert.match(terminal, /import \{ emitTerminalNotification, requestInformationalAttention \} from "\.\/terminal-attention"/);
+  assert.match(terminal, /import \{ createInputQueueFullWarner, emitTerminalNotification, requestInformationalAttention, safeDispose \} from "\.\/terminal-attention"/);
   assert.match(terminal, /registerTerminalClipboardHandler\(term/);
   assert.match(terminal, /registerTerminalDeviceAttributesHandler\(term/);
   assert.match(terminal, /terminalClipboardWrite/);

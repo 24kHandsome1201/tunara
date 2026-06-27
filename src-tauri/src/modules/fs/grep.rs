@@ -6,13 +6,14 @@ use grep_regex::RegexMatcherBuilder;
 use grep_searcher::sinks::UTF8;
 use grep_searcher::{BinaryDetection, SearcherBuilder};
 use ignore::WalkBuilder;
+use parking_lot::Mutex;
 use serde::Serialize;
 
 const FILE_SIZE_CAP: u64 = 5 * 1024 * 1024;
 const DEFAULT_MAX_RESULTS: usize = 200;
 const HARD_MAX_RESULTS: usize = 2000;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct GrepHit {
     pub path: String,
     pub rel: String,
@@ -77,7 +78,7 @@ pub fn fs_grep(
         .follow_links(false)
         .build();
 
-    let hits: Arc<std::sync::Mutex<Vec<GrepHit>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let hits: Arc<Mutex<Vec<GrepHit>>> = Arc::new(Mutex::new(Vec::new()));
     let scanned = Arc::new(AtomicUsize::new(0));
     let truncated = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
@@ -120,7 +121,7 @@ pub fn fs_grep(
             path,
             UTF8(|line_num, text| {
                 let line_text = text.trim_end_matches('\n').to_string();
-                let mut guard = hits_ref.lock().unwrap();
+                let mut guard = hits_ref.lock();
                 if guard.len() >= cap {
                     truncated_ref.store(true, Ordering::Relaxed);
                     return Ok(false);
@@ -136,9 +137,14 @@ pub fn fs_grep(
         );
     }
 
-    let final_hits = Arc::try_unwrap(hits)
-        .map(|m| m.into_inner().unwrap())
-        .unwrap_or_default();
+    // `Arc::try_unwrap` succeeds only if no other Arcs remain; the per-file
+    // clones go out of scope at the end of each loop iteration, but to be
+    // robust against a still-live clone we fall back to a lock + clone rather
+    // than dropping the results on the floor.
+    let final_hits = match Arc::try_unwrap(hits) {
+        Ok(m) => m.into_inner(),
+        Err(arc) => arc.lock().iter().cloned().collect(),
+    };
 
     Ok(GrepResponse {
         hits: final_hits,

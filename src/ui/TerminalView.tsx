@@ -41,7 +41,7 @@ import { useTerminalBlocks } from "./useTerminalBlocks";
 import { useTerminalQuickSelect } from "./useTerminalQuickSelect";
 import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl";
 import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
-import { emitTerminalNotification, requestInformationalAttention } from "./terminal-attention";
+import { createInputQueueFullWarner, emitTerminalNotification, requestInformationalAttention, safeDispose } from "./terminal-attention";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -422,10 +422,9 @@ function TerminalViewImpl({
       // Expose the live PTY id on the session so the remote file panel can
       // locate the backend SSH connection for SFTP commands.
       useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
+      const onWriteError = createInputQueueFullWarner(term);
       const writePty = (data: string) => {
-        pty.write(data).catch(() => {
-          /* PTY may already be closed by the time xterm flushes input. */
-        });
+        pty.write(data).catch(onWriteError);
       };
       const resizePty = (cols: number, rows: number) => {
         pty.resize(cols, rows).catch(() => {
@@ -495,14 +494,16 @@ function TerminalViewImpl({
     })();
     return () => {
       disposed = true;
-      cleanups.forEach((fn) => fn());
+      // Run every cleanup even if one throws — a failing disposable must not
+      // leak the rest (term.dispose / pty.close would be skipped otherwise).
+      for (const fn of cleanups) safeDispose("step", fn);
       if (ptyRef.current) {
         ptyRef.current.close().catch(() => {});
         ptyRef.current = null;
       }
-      webglRef.current?.dispose();
+      safeDispose("webgl", () => webglRef.current?.dispose());
       webglRef.current = null;
-      termRef.current?.dispose();
+      safeDispose("term", () => termRef.current?.dispose());
       termRef.current = null;
     };
     // The PTY cwd is tracked through OSC 7 after spawn. Re-running this effect
