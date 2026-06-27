@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
-import zhCN from "./locales/zh-CN.json";
-import en from "./locales/en.json";
+import zhCN from "./locales/zh-CN.json" with { type: "json" };
+import en from "./locales/en.json" with { type: "json" };
 
 export type Language = "system" | "zh-CN" | "en";
 

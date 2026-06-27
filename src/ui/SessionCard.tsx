@@ -3,6 +3,7 @@ import { type Session, type RunState, type TerminalProgress, deriveTitle } from 
 import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
+import { useT } from "@/modules/i18n";
 import { CloseIcon } from "./shared";
 
 function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
@@ -256,6 +257,10 @@ interface SessionCardProps {
 }
 
 function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
+  // Subscribe to the language store: deriveTitle localizes the agent activity
+  // suffix (· 运行中 / · Working), and this card is memoized — without this
+  // subscription a static language switch would not re-render it.
+  useT();
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);

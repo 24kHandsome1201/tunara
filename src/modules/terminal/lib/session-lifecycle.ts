@@ -152,13 +152,13 @@ export function shellTitleUpdate(
   session: Session | undefined,
   title: string,
 ): SessionLifecycleUpdate | null {
-  // Agent sessions are allowed to set a shellTitle now: agents like Claude Code
-  // emit a live OSC title describing the current task, which deriveTitle prefers
-  // over the static agent name. We still drop titles that are merely the agent's
-  // own name/command (isAgentShellTitle) or look like a shell prompt — those
-  // carry no information beyond the icon/name we already show.
+  // Agent sessions do not get a shellTitle: agents like Claude Code only emit an
+  // OSC title equal to their own name ("✳ Claude Code"), which carries no
+  // information beyond the icon/name we already show. The live "what is it
+  // doing" signal comes from agentActivity instead (see deriveTitle).
   if (
-    session?.suppressShellTitle
+    session?.agent
+    || session?.suppressShellTitle
     || isAgentShellTitle(title)
     || isPromptLikeShellTitle(title)
   ) {

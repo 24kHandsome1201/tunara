@@ -104,6 +104,12 @@
   "sidebar.session.open_in_editor": "在编辑器中打开",
   "sidebar.session.copy_dir": "复制目录路径",
   "sidebar.session.close": "关闭会话",
+  "sidebar.agent.activity.running": "运行中",
+  "sidebar.agent.activity.starting": "加载中",
+  "agent.status.resumable": "可恢复",
+  "agent.status.done": "已完成",
+  "agent.status.resume": "恢复",
+  "agent.status.file_count": "{{count}} 文件",
 
   "palette.placeholder": "输入命令或搜索…",
   "palette.empty": "无匹配结果",

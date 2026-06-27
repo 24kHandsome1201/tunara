@@ -138,9 +138,11 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(types, /suppressShellTitle\?: boolean;/);
   assert.match(types, /export function isPromptLikeShellTitle\(title: string\): boolean/);
   assert.match(types, /const lastCommand = s\.lastCommand && !isPromptLikeShellTitle\(s\.lastCommand\)/);
-  assert.match(types, /const agentName = s\.agent \? \(AGENT_NAMES\[s\.agent\] \?\? s\.agent\) : undefined;/);
-  assert.match(types, /const hasMeaningfulShellTitle =[\s\S]*&& !s\.suppressShellTitle[\s\S]*&& !isPromptLikeShellTitle\(s\.shellTitle\)[\s\S]*&& s\.shellTitle !== agentName;/);
-  assert.match(types, /primary = hasMeaningfulShellTitle \? s\.shellTitle! : agentName!;/);
+  // Agent sessions show "name · activity"; the bare name when idle. Activity is
+  // derived from agentActivity (Claude Code's OSC title is just its own name).
+  assert.match(types, /export function agentActivityLabel\(activity\?: AgentActivity\): string \| undefined/);
+  assert.match(types, /const hasMeaningfulShellTitle =[\s\S]*&& !s\.suppressShellTitle[\s\S]*&& !isPromptLikeShellTitle\(s\.shellTitle\)[\s\S]*&& s\.shellTitle !== shortDir\(s\.dir\);/);
+  assert.match(types, /const status = agentActivityLabel\(s\.agentActivity\);[\s\S]*primary = status \? `\$\{name\} · \$\{status\}` : name;/);
   assert.match(types, /primary = s\.title && !isPromptLikeShellTitle\(s\.title\) \? s\.title : "终端";/);
   assert.match(source, /agentActivity: opts\?\.agent \? initialAgentActivity\(opts\.agent\) : undefined,/);
   assert.match(source, /agentDetectedUpdate\(session, agent\)/);
@@ -162,8 +164,8 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(lifecycle, /export function commandDetectedUpdate\([\s\S]*?session\?\.agent \|\| isPromptLikeShellTitle\(command\)[\s\S]*?suppressShellTitle: false,/);
   assert.match(lifecycle, /export function commandFinishedUpdate\([\s\S]*?if \(session\.agent \|\| !session\.lastCommand\)[\s\S]*?runState: exitCode === 0 \? "done" : "failed",/);
   assert.match(lifecycle, /export function cwdChangedUpdate\([\s\S]*?if \(!session \|\| session\.dir === cwd\) return null;[\s\S]*?dir: cwd,[\s\S]*?branch: "",[\s\S]*?changes: undefined,[\s\S]*?refreshGit: true,/);
-  assert.match(lifecycle, /Agent sessions are allowed to set a shellTitle now/);
-  assert.match(lifecycle, /export function shellTitleUpdate\([\s\S]*?session\?\.suppressShellTitle[\s\S]*?isAgentShellTitle\(title\)[\s\S]*?isPromptLikeShellTitle\(title\)/);
+  assert.match(lifecycle, /Agent sessions do not get a shellTitle/);
+  assert.match(lifecycle, /export function shellTitleUpdate\([\s\S]*?session\?\.agent[\s\S]*?session\?\.suppressShellTitle[\s\S]*?isAgentShellTitle\(title\)[\s\S]*?isPromptLikeShellTitle\(title\)/);
   assert.match(source, /if \(session && isSessionBusy\(session\)\) \{/);
   assert.doesNotMatch(source, /handleAgentTurnDone/);
   assert.doesNotMatch(source, /handleAgentResumed/);

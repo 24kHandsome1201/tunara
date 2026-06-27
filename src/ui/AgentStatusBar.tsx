@@ -4,12 +4,14 @@ import { AgentBadge } from "./agents";
 import { isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { buildAgentResumeCommand } from "@/modules/terminal/lib/agent-resume";
 import { useSessionsStore } from "@/state/sessions";
+import { useT } from "@/modules/i18n";
 
 interface AgentStatusBarProps {
   session: Session;
 }
 
 export function AgentStatusBar({ session }: AgentStatusBarProps) {
+  const t = useT();
   const [visible, setVisible] = useState(false);
   const [fading, setFading] = useState(false);
   const [lastAgent, setLastAgent] = useState(session.agent);
@@ -52,7 +54,11 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
     });
   };
 
-  const statusLabel = resumeCommand && !session.agent ? "可恢复" : isBusy ? (isStarting ? "加载中" : "运行中") : "已完成";
+  const statusLabel = resumeCommand && !session.agent
+    ? t("agent.status.resumable")
+    : isBusy
+      ? (isStarting ? t("sidebar.agent.activity.starting") : t("sidebar.agent.activity.running"))
+      : t("agent.status.done");
   const statusColor = resumeCommand && !session.agent
     ? "var(--c-warning)"
     : isBusy
@@ -138,7 +144,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
-          恢复
+          {t("agent.status.resume")}
         </button>
       )}
       {fileCount > 0 && (
@@ -154,7 +160,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
           lineHeight: "16px",
           flexShrink: 0,
         }}>
-          {fileCount} 文件
+          {t("agent.status.file_count", { count: fileCount })}
         </span>
       )}
     </div>

@@ -104,6 +104,12 @@
   "sidebar.session.open_in_editor": "Open in editor",
   "sidebar.session.copy_dir": "Copy directory path",
   "sidebar.session.close": "Close session",
+  "sidebar.agent.activity.running": "Working",
+  "sidebar.agent.activity.starting": "Starting",
+  "agent.status.resumable": "Resumable",
+  "agent.status.done": "Done",
+  "agent.status.resume": "Resume",
+  "agent.status.file_count": "{{count}} files",
 
   "palette.placeholder": "Type a command or search…",
   "palette.empty": "No results",

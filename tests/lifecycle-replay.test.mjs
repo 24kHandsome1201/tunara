@@ -86,6 +86,11 @@ import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-p
 import { matchesKeybinding, parseKeybinding } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand, resolveTerminalBlockRows } from "../src/modules/terminal/lib/terminal-blocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
+import { setLanguage } from "../src/modules/i18n/index.ts";
+
+// Agent title suffixes go through i18n; pin the locale so assertions are
+// deterministic regardless of the host's navigator.language.
+setLanguage("zh-CN");
 
 function makeSession(overrides = {}) {
   return {
@@ -763,7 +768,7 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
   assert.equal(h.session.agent, "CC");
   assert.equal(h.session.agentActivity, "starting");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code");
+  assert.equal(deriveTitle(h.session).primary, "Claude Code · 加载中");
   assert.equal(isSessionBusy(h.session), true);
 
   assert.equal(h.applyAgentOsc("tunara-agent;idle;s-1;CC;", 20), true);
@@ -785,25 +790,30 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(h.gitRefreshes, 2);
 });
 
-test("agent session shows its live OSC title and falls back to the agent name", () => {
+test("agent session title appends live activity and falls back to the bare name", () => {
   const h = createHarness();
 
-  // Agent detected → no title yet → shows the agent name.
+  // Agent detected → "starting" → name + 加载中.
   assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
   assert.equal(h.session.agent, "CC");
+  assert.equal(h.session.agentActivity, "starting");
+  assert.equal(deriveTitle(h.session).primary, "Claude Code · 加载中");
+
+  // Working → "running" → name + 运行中.
+  assert.equal(h.apply(agentBusyUpdate(h.session, 20)), true);
+  assert.equal(h.session.agentActivity, "running");
+  assert.equal(deriveTitle(h.session).primary, "Claude Code · 运行中");
+
+  // Idle (waiting for input) → no suffix, just the agent name.
+  assert.equal(h.applyAgentOsc("tunara-agent;idle;s-1;CC;", 30), true);
+  assert.equal(h.session.agentActivity, "idle");
   assert.equal(deriveTitle(h.session).primary, "Claude Code");
 
-  // Agent emits a real task title via OSC — now accepted for agent sessions.
-  const meaningful = shellTitleUpdate(h.session, "Refactoring the sidebar");
-  assert.ok(meaningful, "agent sessions must now accept a meaningful shellTitle");
-  assert.equal(h.apply(meaningful), true);
-  assert.equal(h.session.shellTitle, "Refactoring the sidebar");
-  assert.equal(deriveTitle(h.session).primary, "Refactoring the sidebar");
+  // Agent sessions never adopt an OSC shellTitle — those are just the agent name.
+  assert.equal(shellTitleUpdate(h.session, "✳ Claude Code"), null);
+  assert.equal(shellTitleUpdate(h.session, "anything else"), null);
 
-  // A title that is merely the agent's own name is still dropped (no info gain).
-  assert.equal(shellTitleUpdate(h.session, "Claude Code"), null);
-
-  // On exit the agent name and live title are both cleared back to the default.
+  // On exit the title drops back to the default.
   assert.equal(h.applyAgentOsc("tunara-agent;exit;s-1;CC;0", 40), true);
   assert.equal(h.session.agent, undefined);
   assert.equal(deriveTitle(h.session).primary, "终端");
