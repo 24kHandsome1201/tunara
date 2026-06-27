@@ -207,6 +207,8 @@
   "split.vertical_with_shortcut": "上下分栏 ⌘⇧D",
   "split.vertical": "上下分栏",
   "common.copy": "复制",
+  "term.copy": "复制",
+  "term.paste": "粘贴",
   "inspector.tab.notes": "笔记",
   "inspector.tab.overview": "概览",
   "notes.clear": "清空",

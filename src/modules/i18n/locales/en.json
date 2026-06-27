@@ -207,6 +207,8 @@
   "split.vertical_with_shortcut": "Split top/bottom ⌘⇧D",
   "split.vertical": "Split top/bottom",
   "common.copy": "Copy",
+  "term.copy": "Copy",
+  "term.paste": "Paste",
   "inspector.tab.notes": "Notes",
   "inspector.tab.overview": "Overview",
   "notes.clear": "Clear",
