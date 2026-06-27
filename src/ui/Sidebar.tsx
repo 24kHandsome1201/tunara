@@ -103,6 +103,23 @@ export function Sidebar({
     focusSessionCard(nextId);
   }, [focusSessionCard, onSelectSession, visibleSessionIds]);
 
+  const handleSelect = useCallback((id: string) => {
+    if (!dragStarted.current) onSelectSession(id);
+  }, [onSelectSession]);
+
+  const handleClose = useCallback((id: string) => { onCloseSession?.(id); }, [onCloseSession]);
+  const handleRename = useCallback((id: string, name: string) => { useSessionsStore.getState().renameSession(id, name); }, []);
+  const handleContextMenu = useCallback((e: React.MouseEvent, session: Session) => {
+    e.preventDefault();
+    setContextMenu({ position: { x: e.clientX, y: e.clientY }, items: [
+      { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
+      { id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, session.dir).catch(() => {}); } },
+      { id: "session:copy-dir", label: t("sidebar.session.copy_dir"), icon: "copy", action: () => { navigator.clipboard.writeText(session.dir).catch(() => {}); } },
+      null,
+      { id: "session:close", label: t("sidebar.session.close"), icon: "close", danger: true, action: () => { onCloseSession?.(session.id); } },
+    ] });
+  }, [t, externalEditor, onCloseSession]);
+
   const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
     dragStartY.current = e.clientY;
     dragStarted.current = false;
@@ -349,23 +366,11 @@ export function Sidebar({
                         active={s.id === activeSessionId}
                         confirmClose={!!closeConfirmations[s.id]}
                         tabIndex={s.id === tabbableSessionId ? 0 : -1}
-                        onClick={() => { if (!dragStarted.current) onSelectSession(s.id); }}
-                        onKeyDown={(e) => handleSessionKeyDown(e, s.id)}
-                        onClose={onCloseSession ? () => onCloseSession(s.id) : undefined}
-                        onRename={(name) => useSessionsStore.getState().renameSession(s.id, name)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setContextMenu({
-                            position: { x: e.clientX, y: e.clientY },
-                            items: [
-                              { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(s.id); } },
-                              { id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, s.dir).catch(() => {}); } },
-                              { id: "session:copy-dir", label: t("sidebar.session.copy_dir"), icon: "copy", action: () => { navigator.clipboard.writeText(s.dir).catch(() => {}); } },
-                              null,
-                              { id: "session:close", label: t("sidebar.session.close"), icon: "close", danger: true, action: () => { onCloseSession?.(s.id); } },
-                            ],
-                          });
-                        }}
+                        onSelect={handleSelect}
+                        onKeyDown={handleSessionKeyDown}
+                        onClose={handleClose}
+                        onRename={handleRename}
+                        onContextMenu={handleContextMenu}
                       />
                     </div>
                   </div>

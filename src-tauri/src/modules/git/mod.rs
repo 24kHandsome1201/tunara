@@ -20,10 +20,15 @@ use std::collections::HashMap;
 
 use git2::{Delta, DiffOptions, Repository};
 use serde::Serialize;
+use tauri::State;
 
 use crate::modules::util::expand_tilde;
 
 // ── git_status ──────────────────────────────────────────────────────────
+
+/// Safety-net TTL for the git_status cache. The file watcher invalidates
+/// proactively, so this only guards against missed watcher events.
+const STATUS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -51,9 +56,24 @@ struct FileChangeAccumulator {
 }
 
 #[tauri::command]
-pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
-    let repo_path = expand_tilde(&repo_path);
-    let repo = Repository::discover(&repo_path).map_err(|e| e.to_string())?;
+pub fn git_status(
+    repo_path: String,
+    cache_state: State<'_, GitWatcherState>,
+) -> Result<StatusResult, String> {
+    // Check cache: serves rapid session switches in the same repo without
+    // re-running two full git diffs. Invalidated by the file watcher.
+    {
+        if let Ok(cache) = cache_state.status_cache.lock() {
+            if let Some(entry) = cache.get(&repo_path) {
+                if entry.expiry > std::time::Instant::now() {
+                    return Ok(entry.status.clone());
+                }
+            }
+        }
+    }
+
+    let repo_path_expanded = expand_tilde(&repo_path);
+    let repo = Repository::discover(&repo_path_expanded).map_err(|e| e.to_string())?;
     let branch = repo
         .head()
         .ok()
@@ -85,11 +105,24 @@ pub fn git_status(repo_path: String) -> Result<StatusResult, String> {
         .iter()
         .fold((0, 0), |(a, r), f| (a + f.added, r + f.removed));
     let summary = format!("{} 文件 · +{} −{}", files.len(), ta, tr);
-    Ok(StatusResult {
+    let result = StatusResult {
         branch,
         files,
         summary,
-    })
+    };
+
+    // Store in cache for rapid session switches in the same repo.
+    if let Ok(mut cache) = cache_state.status_cache.lock() {
+        cache.insert(
+            repo_path,
+            watcher::CachedStatus {
+                status: result.clone(),
+                expiry: std::time::Instant::now() + STATUS_CACHE_TTL,
+            },
+        );
+    }
+
+    Ok(result)
 }
 
 /// 从 diff 收集 FileChange，`is_staged_diff` 区分是 staged (HEAD→index) 还是

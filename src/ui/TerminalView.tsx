@@ -27,7 +27,6 @@ import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/termina
 import { registerTerminalDeviceAttributesHandler } from "@/modules/terminal/lib/terminal-device-attributes";
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification";
-import { createTerminalWebglRenderer } from "@/modules/terminal/lib/terminal-webgl";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS } from "@/modules/terminal/lib/agent-lifecycle";
@@ -87,7 +86,7 @@ function TerminalViewImpl({
   useTerminalRuntimeSync({
     active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
-  useTerminalWebgl(termRef, active, webglRef);
+  useTerminalWebgl(termRef, active, webglRef, sessionId);
   // Sole delivery path for pendingInput (init effect must NOT also schedule it).
   useEffect(() => {
     const pty = ptyRef.current;
@@ -131,7 +130,7 @@ function TerminalViewImpl({
       cleanups.push(registerTerminalDeviceAttributesHandler(term, {
         isOsc52ClipboardWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
       }));
-      if (activeRef.current) webglRef.current = createTerminalWebglRenderer(term);
+      // WebGL renderer is managed by useTerminalWebgl (LRU context pool).
       // Inline images (SIXEL + iTerm IIP), loaded after WebGL so it adopts the
       // active renderer. Opt-out via Settings; takes effect on the next terminal.
       if (useUIStore.getState().terminalInlineImages) {
@@ -503,6 +502,7 @@ function TerminalViewImpl({
       }
       safeDispose("webgl", () => webglRef.current?.dispose());
       webglRef.current = null;
+      // Note: useTerminalWebgl's own cleanup also removes from the LRU pool.
       safeDispose("term", () => termRef.current?.dispose());
       termRef.current = null;
     };

@@ -248,14 +248,14 @@ interface SessionCardProps {
   active: boolean;
   confirmClose?: boolean;
   tabIndex?: number;
-  onClick: () => void;
-  onClose?: () => void;
-  onRename?: (name: string) => void;
-  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
-  onContextMenu?: (e: React.MouseEvent) => void;
+  onSelect: (id: string) => void;
+  onClose?: (id: string) => void;
+  onRename?: (id: string, name: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>, id: string) => void;
+  onContextMenu?: (e: React.MouseEvent, session: Session) => void;
 }
 
-function SessionCardImpl({ session, active, confirmClose, tabIndex, onClick, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
+function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
@@ -285,13 +285,13 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onClick, onC
   const commitRename = useCallback(() => {
     const trimmed = editValue.trim();
     if (trimmed && trimmed !== primary) {
-      onRename?.(trimmed);
+      onRename?.(session.id, trimmed);
     } else if (!trimmed) {
-      onRename?.("");
+      onRename?.(session.id, "");
     }
     setEditing(false);
     useSessionsStore.getState().stopRenaming();
-  }, [editValue, primary, onRename]);
+  }, [editValue, primary, onRename, session.id]);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -300,7 +300,27 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onClick, onC
   const handleClose = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (!onClose) return;
-    onClose();
+    onClose(session.id);
+  };
+
+  const handleClick = () => onSelect(session.id);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelect(session.id);
+      return;
+    }
+    if ((e.key === "Delete" || e.key === "Backspace") && onClose) {
+      e.preventDefault();
+      onClose(session.id);
+      return;
+    }
+    onKeyDown?.(e, session.id);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    onContextMenu?.(e, session);
   };
 
   return (
@@ -309,23 +329,11 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onClick, onC
       tabIndex={tabIndex ?? 0}
       aria-current={active ? "page" : undefined}
       data-session-card-id={session.id}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-          return;
-        }
-        if ((e.key === "Delete" || e.key === "Backspace") && onClose) {
-          e.preventDefault();
-          onClose();
-          return;
-        }
-        onKeyDown?.(e);
-      }}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      onContextMenu={onContextMenu}
+      onContextMenu={handleContextMenu}
       className="session-card"
       style={{
         position: "relative",
@@ -502,12 +510,7 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onClick, onC
   );
 }
 
-// Memoized so an unrelated session's update doesn't re-render every card. A
-// card only re-renders when its own data props (session/active/confirmClose/
-// tabIndex) change. NOTE: the callback props from Sidebar are currently inline
-// arrows (new identity each render), so until those are stabilized this memo
-// won't skip renders in practice — it makes the component memo-ready and is
-// zero-risk. We deliberately do NOT add a custom comparator that ignores the
-// callbacks: those closures capture live values (externalEditor, t) and
-// skipping renders on their change could surface stale context-menu actions.
+// Memoized: callbacks are generic (take sessionId), so their identity is
+// stable across Sidebar re-renders. A card only re-renders when its own
+// data props (session/active/confirmClose/tabIndex) actually change.
 export const SessionCard = memo(SessionCardImpl);

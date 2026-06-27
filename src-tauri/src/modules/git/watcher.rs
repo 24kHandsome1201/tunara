@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
@@ -25,9 +25,18 @@ struct WatcherEntry {
     _debouncer: DebouncerHandle,
 }
 
+/// Cached git_status result keyed by the original repo_path string.
+/// Invalidated by the file watcher and a safety-net TTL.
+pub struct CachedStatus {
+    pub status: super::StatusResult,
+    pub expiry: Instant,
+}
+
 #[derive(Default)]
 pub struct GitWatcherState {
     inner: Mutex<HashMap<PathBuf, WatcherEntry>>,
+    /// git_status cache: repo_path string -> (result, expiry).
+    pub status_cache: Mutex<HashMap<String, CachedStatus>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -71,6 +80,8 @@ pub fn git_watch(
 
     let app_handle = app.clone();
     let emit_path = repo_path.clone();
+    let cache_app = app.clone();
+    let cache_path = repo_path.clone();
 
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),
@@ -81,6 +92,13 @@ pub fn git_watch(
             };
             if events.iter().all(|e| is_noisy_path(&e.path)) {
                 return;
+            }
+            // Invalidate the git_status cache for this repo so the next
+            // git_status call does a fresh diff instead of returning stale data.
+            if let Some(state) = cache_app.try_state::<GitWatcherState>() {
+                if let Ok(mut cache) = state.status_cache.lock() {
+                    cache.remove(&cache_path);
+                }
             }
             let _ = app_handle.emit(
                 "git-changed",
