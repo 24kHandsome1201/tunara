@@ -149,3 +149,51 @@ pub fn shutdown_all(app: &AppHandle) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_noisy_path;
+    use std::path::Path;
+
+    #[test]
+    fn is_noisy_path_flags_git_internal_and_build_dirs() {
+        // High-churn paths that must NOT trigger a git-status refresh.
+        let noisy = [
+            "/repo/.git/objects/ab/cdef",
+            "/repo/.git/lfs/objects/00",
+            "/repo/.git/index.lock",
+            "/repo/.git/HEAD.lock",
+            "/repo/node_modules/pkg/index.js",
+            "/repo/target/debug/build",
+            "/repo/dist/bundle.js",
+            "/repo/.DS_Store",
+            "/repo/sub/.DS_Store",
+        ];
+        for p in noisy {
+            assert!(is_noisy_path(Path::new(p)), "{p} should be noisy");
+        }
+    }
+
+    #[test]
+    fn is_noisy_path_allows_real_source_changes() {
+        // Real edits that SHOULD trigger a refresh.
+        let clean = [
+            "/repo/src/main.rs",
+            "/repo/README.md",
+            "/repo/.gitignore",
+            "/repo/.github/workflows/ci.yml",
+            "/repo/lib/dist-helper.rs", // contains "dist" but not "/dist/"
+            "/repo/my-node_modules-notes.md",
+        ];
+        for p in clean {
+            assert!(!is_noisy_path(Path::new(p)), "{p} should be clean");
+        }
+    }
+
+    #[test]
+    fn is_noisy_path_lock_match_is_anchored_to_the_git_dir() {
+        // index.lock anywhere else (not under .git) is a normal file.
+        assert!(!is_noisy_path(Path::new("/repo/src/index.lock")));
+        assert!(is_noisy_path(Path::new("/repo/.git/index.lock")));
+    }
+}

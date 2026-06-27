@@ -280,3 +280,65 @@ where
 
     Ok(ManagedProcessHandle { join })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CancelToken, CommandSpec, TimeoutPolicy};
+    use std::time::Duration;
+
+    #[test]
+    fn command_spec_builder_accumulates_fields() {
+        let spec = CommandSpec::new("git")
+            .args(["status", "--porcelain"])
+            .cwd("/repo")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("LANG", "C");
+        assert_eq!(spec.program, "git");
+        assert_eq!(
+            spec.args,
+            vec!["status".to_string(), "--porcelain".to_string()]
+        );
+        assert_eq!(spec.cwd.as_deref(), Some("/repo"));
+        assert_eq!(
+            spec.envs,
+            vec![
+                ("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()),
+                ("LANG".to_string(), "C".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn command_spec_defaults_are_empty() {
+        let spec = CommandSpec::new("ls");
+        assert_eq!(spec.program, "ls");
+        assert!(spec.args.is_empty());
+        assert!(spec.cwd.is_none());
+        assert!(spec.envs.is_empty());
+    }
+
+    #[test]
+    fn cancel_token_starts_uncancelled_and_flips_after_cancel() {
+        let token = CancelToken::new();
+        assert!(!token.is_cancelled());
+        token.cancel();
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn timeout_policy_agent_default_sets_wall_clock_and_idle() {
+        let policy = TimeoutPolicy::agent_default(CancelToken::new());
+        assert_eq!(policy.wall_clock, Some(Duration::from_secs(600)));
+        assert_eq!(policy.idle, Some(Duration::from_secs(120)));
+    }
+
+    #[tokio::test]
+    async fn cancel_token_cancelled_future_resolves_after_cancel() {
+        let mut token = CancelToken::new();
+        let signal = token.clone();
+        signal.cancel();
+        // Already cancelled: the future must resolve immediately.
+        token.cancelled().await;
+        assert!(token.is_cancelled());
+    }
+}

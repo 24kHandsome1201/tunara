@@ -1,3 +1,23 @@
+//! SSH client: a russh-backed remote shell that lives inside [`PtyState`].
+//!
+//! [`ssh_open`] connects + authenticates (async, on the Tokio runtime), then
+//! inserts a `Session::Ssh` into [`crate::modules::pty::PtyState`] under a fresh
+//! id — so the local `pty_write` / `pty_resize` / `pty_close` commands drive a
+//! remote session transparently, output bridged through the same `PtyEvent`
+//! channel. Submodules:
+//! - [`auth`]: key/passphrase/password/agent auth options.
+//! - [`connection`]: the live `SshSession` (one russh `Handle`), host-key policy.
+//! - [`known_hosts`]: TOFU verification against `~/.ssh/known_hosts` (hashed
+//!   entries detected, not silently trusted).
+//! - [`hosts`]: saved host profiles in `tunara/hosts.toml` — host/port/user and
+//!   an identity-file PATH only, never passwords or passphrases.
+//! - [`sftp`]: read-only remote browse + home-confined download.
+//!
+//! An unverifiable host key parks `ssh_open` and emits `PtyEvent::HostKeyPrompt`;
+//! the user's answer arrives via [`ssh_host_key_decision`]. Commands:
+//! [`ssh_open`], [`ssh_host_key_decision`], `ssh_hosts_load`/`save`/`remove`,
+//! `ssh_fs_read_dir`/`read_file`/`download`/`home`.
+//
 // SSH client module (§ssh-client).
 //
 // Phase 1: connect + authenticate + interactive remote shell, bridged to

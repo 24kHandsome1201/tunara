@@ -242,3 +242,31 @@ pub fn fs_glob(
 
     Ok(GlobResponse { hits, truncated })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::build_globset;
+
+    #[test]
+    fn build_globset_returns_none_for_empty_patterns() {
+        let set = build_globset(&[]).expect("empty is ok");
+        assert!(set.is_none());
+    }
+
+    #[test]
+    fn build_globset_matches_paths_against_valid_globs() {
+        let set = build_globset(&["*.rs".to_string(), "src/**/*.ts".to_string()])
+            .expect("valid globs")
+            .expect("some globset");
+        assert!(set.is_match("main.rs"));
+        assert!(set.is_match("src/app/index.ts"));
+        assert!(!set.is_match("README.md"));
+        assert!(!set.is_match("index.ts")); // not under src/
+    }
+
+    #[test]
+    fn build_globset_reports_an_error_for_an_invalid_glob() {
+        let err = build_globset(&["[unterminated".to_string()]).unwrap_err();
+        assert!(err.starts_with("bad glob"), "unexpected error: {err}");
+    }
+}

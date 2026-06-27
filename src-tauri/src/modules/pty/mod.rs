@@ -1,3 +1,20 @@
+//! Terminal session backend: the PTY/SSH multiplexer the frontend drives.
+//!
+//! [`PtyState`] holds every live session: a `HashMap<u32, Arc<Session>>` keyed
+//! by physical id, a `logical_id -> physical_id` map for the reopen/replace
+//! path, and a monotonic `next_id` (starts at 1; ids are never reused). The
+//! [`Session`] enum (`Local` portable-pty | `Ssh` russh) lets `pty_write` /
+//! `pty_resize` / `pty_close` dispatch on the variant, so the SSH path
+//! (`ssh_open` inserting a `Session::Ssh`) reuses the same commands.
+//!
+//! Output flows to xterm.js as [`PtyEvent`] over a Tauri `Channel`: a reader
+//! thread fills a pending buffer, a flusher thread base64-encodes and sends it
+//! every 16 ms, and a waiter thread emits `Exit` last. Backpressure caps the
+//! buffer at 1 MiB (`MAX_PENDING`); on overflow the backlog is dropped with a
+//! terminal-reset notice. Local sessions inject shell integration via
+//! [`shell_init`] (OSC 7/133 markers, agent-hook socket env).
+//!
+//! Commands: [`pty_open`], [`pty_write`], [`pty_resize`], [`pty_close`].
 mod session;
 mod shell_init;
 

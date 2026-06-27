@@ -45,3 +45,55 @@ impl From<ProcessError> for String {
         e.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ProcessError;
+
+    #[test]
+    fn display_maps_each_variant_to_its_ui_string() {
+        assert_eq!(
+            ProcessError::Spawn("no PATH".into()).to_string(),
+            "无法启动子进程：no PATH"
+        );
+        assert_eq!(ProcessError::Timeout.to_string(), "子进程超时，已终止");
+        assert_eq!(ProcessError::Cancelled.to_string(), "已取消");
+        assert_eq!(
+            ProcessError::Io("disk full".into()).to_string(),
+            "IO 错误：disk full"
+        );
+    }
+
+    #[test]
+    fn nonzero_exit_echoes_stderr_when_present() {
+        let e = ProcessError::NonZeroExit {
+            code: Some(1),
+            stderr: "fatal: not a git repo".into(),
+        };
+        assert_eq!(e.to_string(), "fatal: not a git repo");
+    }
+
+    #[test]
+    fn nonzero_exit_reports_exit_code_when_stderr_is_empty() {
+        let e = ProcessError::NonZeroExit {
+            code: Some(127),
+            stderr: String::new(),
+        };
+        assert_eq!(e.to_string(), "子进程退出码 127");
+    }
+
+    #[test]
+    fn nonzero_exit_reports_signal_when_code_is_none_and_no_stderr() {
+        let e = ProcessError::NonZeroExit {
+            code: None,
+            stderr: String::new(),
+        };
+        assert_eq!(e.to_string(), "子进程退出码 signal");
+    }
+
+    #[test]
+    fn from_process_error_for_string_uses_display() {
+        let s: String = ProcessError::Cancelled.into();
+        assert_eq!(s, "已取消");
+    }
+}
