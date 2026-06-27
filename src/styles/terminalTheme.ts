@@ -96,6 +96,75 @@ export const ROSE_PINE_DAWN_THEME = {
   brightBlue: "#56949f", brightMagenta: "#907aa9", brightCyan: "#d7827e", brightWhite: "#575279",
 };
 
+/**
+ * 外壳染色（shell tinting）：当用户选了非 default 终端预设时，UI 外壳
+ * （侧栏 / 面板 / 标题栏 / 命令面板）的中性背景 / 边框 / 文字层级也跟随该
+ * 预设的官方调色板，做到整窗视觉统一。仅染中性外壳色，不染语义色
+ * （agent 徽章 / diff 红绿 / success-error）与强调色——后两者与预设正交叠加。
+ * 详见 docs/THEME_SHELL_TINTING.md。
+ */
+export const SHELL_TINTS: Record<string, Record<string, string>> = {
+  catppuccin: {
+    "--c-bg-white": "#11111b", "--c-bg-1": "#1e1e2e", "--c-bg-2": "#181825",
+    "--c-bg-3": "#313244", "--c-bg-hover": "#45475a",
+    "--c-border-1": "#313244", "--c-border-2": "#45475a", "--c-border-3": "#28283a",
+    "--c-text-primary": "#cdd6f4", "--c-text-2": "#bac2de", "--c-text-3": "#a6adc8",
+    "--c-text-4": "#9399b2", "--c-text-5": "#7f849c", "--c-text-6": "#6c7086", "--c-text-7": "#585b70",
+    "--c-bg-white-glass": "rgba(17,17,27,0.78)", "--c-bg-1-glass": "rgba(30,30,46,0.72)",
+    "--c-bg-2-glass": "rgba(24,24,37,0.65)", "--c-bg-glass-fallback": "#181825",
+  },
+  "tokyo-night": {
+    "--c-bg-white": "#16161e", "--c-bg-1": "#1a1b26", "--c-bg-2": "#1f2335",
+    "--c-bg-3": "#292e42", "--c-bg-hover": "#343a52",
+    "--c-border-1": "#292e42", "--c-border-2": "#3b4261", "--c-border-3": "#222230",
+    "--c-text-primary": "#c0caf5", "--c-text-2": "#a9b1d6", "--c-text-3": "#9aa5ce",
+    "--c-text-4": "#828bb8", "--c-text-5": "#6c7394", "--c-text-6": "#565f89", "--c-text-7": "#414868",
+    "--c-bg-white-glass": "rgba(22,22,30,0.78)", "--c-bg-1-glass": "rgba(26,27,38,0.72)",
+    "--c-bg-2-glass": "rgba(31,35,53,0.65)", "--c-bg-glass-fallback": "#1f2335",
+  },
+  "one-dark": {
+    "--c-bg-white": "#21252b", "--c-bg-1": "#282c34", "--c-bg-2": "#2c313a",
+    "--c-bg-3": "#3b4048", "--c-bg-hover": "#3e4451",
+    "--c-border-1": "#3b4048", "--c-border-2": "#4b5263", "--c-border-3": "#31363f",
+    "--c-text-primary": "#abb2bf", "--c-text-2": "#9da5b4", "--c-text-3": "#828997",
+    "--c-text-4": "#6f7787", "--c-text-5": "#5c6370", "--c-text-6": "#4f5666", "--c-text-7": "#3f4451",
+    "--c-bg-white-glass": "rgba(33,37,43,0.78)", "--c-bg-1-glass": "rgba(40,44,52,0.72)",
+    "--c-bg-2-glass": "rgba(44,49,58,0.65)", "--c-bg-glass-fallback": "#2c313a",
+  },
+  solarized: {
+    "--c-bg-white": "#002129", "--c-bg-1": "#002b36", "--c-bg-2": "#073642",
+    "--c-bg-3": "#0a4250", "--c-bg-hover": "#0e4a59",
+    "--c-border-1": "#073642", "--c-border-2": "#0d4d5c", "--c-border-3": "#05303b",
+    "--c-text-primary": "#93a1a1", "--c-text-2": "#839496", "--c-text-3": "#768d8d",
+    "--c-text-4": "#6a8080", "--c-text-5": "#586e75", "--c-text-6": "#4a5e64", "--c-text-7": "#3b4d52",
+    "--c-bg-white-glass": "rgba(0,33,41,0.78)", "--c-bg-1-glass": "rgba(0,43,54,0.72)",
+    "--c-bg-2-glass": "rgba(7,54,66,0.65)", "--c-bg-glass-fallback": "#073642",
+  },
+  "github-light": {
+    "--c-bg-white": "#ffffff", "--c-bg-1": "#ffffff", "--c-bg-2": "#f6f8fa",
+    "--c-bg-3": "#eaeef2", "--c-bg-hover": "#eef1f4",
+    "--c-border-1": "#d0d7de", "--c-border-2": "#afb8c1", "--c-border-3": "#e4e8ec",
+    "--c-text-primary": "#1f2328", "--c-text-2": "#24292f", "--c-text-3": "#57606a",
+    "--c-text-4": "#6e7781", "--c-text-5": "#838c95", "--c-text-6": "#a0a8b0", "--c-text-7": "#bcc4cc",
+    "--c-bg-white-glass": "rgba(255,255,255,0.78)", "--c-bg-1-glass": "rgba(255,255,255,0.72)",
+    "--c-bg-2-glass": "rgba(246,248,250,0.65)", "--c-bg-glass-fallback": "#f6f8fa",
+  },
+  "rose-pine-dawn": {
+    "--c-bg-white": "#fffaf3", "--c-bg-1": "#faf4ed", "--c-bg-2": "#fffaf3",
+    "--c-bg-3": "#f2e9e1", "--c-bg-hover": "#f4ede8",
+    "--c-border-1": "#f2e9e1", "--c-border-2": "#dfdad9", "--c-border-3": "#f4ede8",
+    "--c-text-primary": "#575279", "--c-text-2": "#6e6a86", "--c-text-3": "#797593",
+    "--c-text-4": "#8c899f", "--c-text-5": "#9893a5", "--c-text-6": "#b5afb8", "--c-text-7": "#cecacd",
+    "--c-bg-white-glass": "rgba(255,250,243,0.78)", "--c-bg-1-glass": "rgba(250,244,237,0.72)",
+    "--c-bg-2-glass": "rgba(255,250,243,0.65)", "--c-bg-glass-fallback": "#fffaf3",
+  },
+};
+
+/** 所有被外壳染色覆写的变量名并集；切回 default 时逐一 removeProperty 让其回落 tokens.css。 */
+export const SHELL_TINT_KEYS: readonly string[] = Object.freeze(
+  Array.from(new Set(Object.values(SHELL_TINTS).flatMap((t) => Object.keys(t)))),
+);
+
 const NAMED_DARK_THEMES: Record<string, typeof DARK_THEME> = {
   catppuccin: CATPPUCCIN_THEME,
   "tokyo-night": TOKYO_NIGHT_THEME,
