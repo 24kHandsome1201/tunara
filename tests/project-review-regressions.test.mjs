@@ -237,8 +237,21 @@ test("session persistence is debounced and still flushed on close", () => {
   assert.match(init, /const scheduleSave = \(\) => \{/);
   assert.match(init, /setTimeout\(\(\) => \{[\s\S]*?persistNow\(\);[\s\S]*?\}, 500\)/);
   assert.match(init, /scheduleSave\(\);/);
-  assert.match(init, /const timer = setInterval\(persistNow, 30_000\);/);
+  // 30s backstop flush is gated on the terminal-snapshot dirty flag, so an idle
+  // or hidden app with no new output performs no redundant serialize + disk write.
+  assert.match(init, /setInterval\(\(\) => \{[\s\S]*?if \(consumeTerminalSnapshotDirty\(\)\) persistNow\(\);[\s\S]*?\}, 30_000\)/);
   assert.match(init, /onCloseRequested\(async \(event\) => \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveWorkspaceSnapshot[\s\S]*?await win\.hide\(\)/);
+});
+
+test("terminal snapshot writes flip a dirty flag the persist backstop consumes", () => {
+  const snap = read("src/modules/terminal/lib/terminal-snapshot.ts");
+  // The dirty flag is the contract that lets the 30s backstop skip redundant
+  // writes: output (update) and session removal must set it; restore (loading
+  // from disk) must NOT, since that data was just persisted.
+  assert.match(snap, /export function consumeTerminalSnapshotDirty\(\): boolean \{/);
+  assert.match(snap, /export function updateTerminalSnapshot\([\s\S]*?dirty = true;/);
+  assert.match(snap, /if \(snapshots\.delete\(sessionId\)\) dirty = true;/);
+  assert.doesNotMatch(snap, /restoreTerminalSnapshots[\s\S]*?dirty = true/);
 });
 
 test("responsive shells close cleanly and avoid stale remote git badges", () => {

@@ -5,6 +5,22 @@ const MAX_SNAPSHOTS = 8;
 
 const snapshots = new Map<string, PersistedTerminalSnapshot>();
 
+// Terminal scrollback lives in this Map, not in any zustand store, so the
+// workspace persist subscriptions can't observe it. The 30s backstop flush in
+// useInit is the only thing that captures fresh output on an otherwise-idle
+// app — but firing it unconditionally re-serializes + IPC + disk-writes the
+// whole snapshot every 30s forever, even hidden and unchanged. This flag lets
+// the backstop skip that write when no terminal output (or session removal)
+// has landed since it last ran.
+let dirty = false;
+
+/** Returns whether terminal snapshots changed since the last call, then resets. */
+export function consumeTerminalSnapshotDirty(): boolean {
+  const wasDirty = dirty;
+  dirty = false;
+  return wasDirty;
+}
+
 function trimSnapshot(snapshot: PersistedTerminalSnapshot): PersistedTerminalSnapshot {
   if (snapshot.serialized.length <= MAX_SERIALIZED_SIZE) return snapshot;
   return {
@@ -16,6 +32,7 @@ function trimSnapshot(snapshot: PersistedTerminalSnapshot): PersistedTerminalSna
 
 export function updateTerminalSnapshot(sessionId: string, snapshot: PersistedTerminalSnapshot): void {
   snapshots.set(sessionId, trimSnapshot(snapshot));
+  dirty = true;
 
   if (snapshots.size > MAX_SNAPSHOTS) {
     let oldestId: string | null = null;
@@ -40,7 +57,7 @@ export function getAllTerminalSnapshots(): Record<string, PersistedTerminalSnaps
 }
 
 export function removeTerminalSnapshot(sessionId: string): void {
-  snapshots.delete(sessionId);
+  if (snapshots.delete(sessionId)) dirty = true;
 }
 
 export function restoreTerminalSnapshots(stored: Record<string, PersistedTerminalSnapshot>): void {
