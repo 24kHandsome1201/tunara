@@ -133,6 +133,13 @@ pnpm typecheck        # type-check
 pnpm test             # all tests (Node + Rust)
 ```
 
+Deeper developer docs live under [`docs/`](docs/):
+
+- [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: every Tauri command, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and the managed state objects.
+- [Testing](docs/TESTING.md) — the `.mjs`-imports-`.ts` pure-logic convention, the source-assertion style, the Node + Cargo split, and how to add a test.
+- [Agent detection](docs/AGENT_DETECTION.md) — how agent detection & lifecycle work, plus a step-by-step checklist for adding a new agent.
+- [State & persistence](docs/STATE_AND_PERSISTENCE.md) — the Zustand dual store, the persisted workspace snapshot, and the contributor gotchas around restore-on-restart.
+
 ## Keybindings
 
 | Action | macOS | Windows / Linux |

@@ -27,6 +27,8 @@ pnpm test                                        # 全部测试
 pnpm tauri build
 ```
 
+新增逻辑请同时补测试。测试如何组织、哪些代码可测、以及怎么加，见 [docs/TESTING.md](docs/TESTING.md)。
+
 ## 分支
 
 从 `main` 创建分支，使用以下前缀（kebab-case）：
@@ -50,7 +52,7 @@ pnpm tauri build
 - **Bug 修复**：随时欢迎
 - **新功能**：非小改动请先开 Issue
 - **文档 / typo / 小 UX 修复**：直接提 PR
-- **新 Agent 识别**：参考 `src/modules/agent/registry-data.json` 和 `src/modules/agent/registry.ts`
+- **新 Agent 识别**：参考 [docs/AGENT_DETECTION.md](docs/AGENT_DETECTION.md) 的"新增 agent 清单"（含 `registry-data.json`、`registry.ts`、`AgentCode`、badge/icon、preflight 等各处改动）
 - **终端配色方案**：参考 `src/styles/terminalTheme.ts`
 
 ## 不接受的贡献
@@ -87,6 +89,8 @@ chore(deps): bump xterm to 6.x
 一个 PR 一个逻辑变更。UI 变更请附截图/GIF。
 
 ## 项目结构
+
+前后端如何通过 IPC 协作（命令面、事件通道、被托管的 state、启动顺序），见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ```
 src/                    # React 前端

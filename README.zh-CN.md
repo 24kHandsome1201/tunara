@@ -133,6 +133,13 @@ pnpm typecheck        # 类型检查
 pnpm test             # 全部测试（Node + Rust）
 ```
 
+更深入的开发者文档在 [`docs/`](docs/)：
+
+- [架构 Architecture](docs/ARCHITECTURE.md) —— 前后端 IPC 全貌：所有 Tauri 命令、三种传输（`invoke` / `Channel<PtyEvent>` / `git-changed` 与 `agent-hook` 事件）、以及被托管的 state 对象。
+- [测试 Testing](docs/TESTING.md) —— `.mjs` 直接 import `.ts` 的纯逻辑约定、源码断言风格、Node + Cargo 分工，以及如何加测试。
+- [Agent 识别](docs/AGENT_DETECTION.md) —— agent 识别与生命周期原理，以及新增一个 agent 的分步清单。
+- [状态与持久化 State & persistence](docs/STATE_AND_PERSISTENCE.md) —— Zustand 双 store、持久化的 workspace 快照，以及恢复重启相关的注意点。
+
 ## 快捷键
 
 | 操作 | macOS | Windows / Linux |

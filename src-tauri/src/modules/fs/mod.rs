@@ -1,3 +1,16 @@
+//! Local filesystem reads for the file explorer, preview, and search.
+//!
+//! Read-only by design — no write/edit commands (Tunara has no built-in
+//! editor). Submodules group the surface by concern:
+//! - [`tree`]: directory listing — `fs_read_dir`, `list_subdirs`.
+//! - [`file`]: single-file reads — `fs_read_file` (text/binary/too-large,
+//!   capped preview), `fs_stat`.
+//! - [`search`]: filename search — `fs_search`.
+//! - [`grep`]: content search and globbing — `fs_grep`, `fs_glob`.
+//!
+//! [`expand_tilde`] resolves a leading `~` against `$HOME` for path inputs.
+//! All commands are synchronous `#[tauri::command]` functions; the remote
+//! counterparts live in [`crate::modules::ssh::sftp`] with matching shapes.
 pub mod file;
 pub mod grep;
 pub mod search;
