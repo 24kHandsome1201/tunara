@@ -16,6 +16,7 @@ import {
 import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
 import { pushRecentCommand } from "./recent-commands";
+import { sanitizeSessionNote } from "@/modules/session/session-notes";
 
 interface SessionsState {
   sessions: Session[];
@@ -40,6 +41,8 @@ interface SessionsState {
   clearDirCloseConfirmation: (dir: string) => void;
   recordRecentDir: (dir: string) => void;
   recordRecentCommand: (command: string) => void;
+  togglePinnedSession: (id: string) => void;
+  setSessionNote: (id: string, note: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
   handleAgentReady: (id: string) => void;
@@ -296,6 +299,23 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   recordRecentCommand: (command) =>
     set((state) => ({ recentCommands: pushRecentCommand(state.recentCommands, command) })),
+
+  togglePinnedSession: (id) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, pinned: !s.pinned, updatedAt: Date.now() } : s,
+      ),
+    })),
+
+  setSessionNote: (id, note) => {
+    const cleanNote = sanitizeSessionNote(note);
+    set((state) => ({
+      sessions: state.sessions.map((s) => {
+        if (s.id !== id || (s.note ?? "") === cleanNote) return s;
+        return { ...s, note: cleanNote || undefined, updatedAt: Date.now() };
+      }),
+    }));
+  },
 
   closeSessions: (ids) => {
     const uniqueIds = new Set(ids);

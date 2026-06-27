@@ -4,6 +4,7 @@ import type { Workflow } from "@/modules/workflows/template";
 import { sanitizeWorkflows } from "./workflows";
 import { sanitizeRecentDirs } from "./recent-dirs";
 import { sanitizeRecentCommands } from "./recent-commands";
+import { sanitizeSessionNote } from "@/modules/session/session-notes";
 
 const STORE_FILE = "tunara-sessions.json";
 const LEGACY_STORE_FILE = "conduit-sessions.json";
@@ -17,7 +18,7 @@ type SessionStore = Awaited<ReturnType<typeof load>>;
 type PersistedSession = Pick<
   Session,
   "id" | "title" | "dir" | "branch" | "updatedAt"
-> & { customTitle?: string; remote?: Session["remote"] };
+> & { customTitle?: string; remote?: Session["remote"]; pinned?: boolean; note?: string };
 
 export type PersistedSessionV2 = PersistedSession;
 
@@ -31,7 +32,7 @@ export interface PersistedUILayoutV2 {
     paneB: string | null;
     ratio: number;
   };
-  inspectorTab: "changes" | "files";
+  inspectorTab: "overview" | "changes" | "files" | "notes";
 }
 
 export interface PersistedTerminalSnapshot {
@@ -83,6 +84,8 @@ function toPersistedSession(s: Session): PersistedSession {
     updatedAt: s.updatedAt,
   };
   if (s.customTitle) p.customTitle = s.customTitle;
+  if (s.pinned) p.pinned = true;
+  if (s.note) p.note = sanitizeSessionNote(s.note);
   // Persist remote connection info (no secrets) so an SSH session can be
   // re-established after restart. The connection itself is re-opened lazily
   // when the terminal mounts.
@@ -103,12 +106,24 @@ function isPersistedSession(value: unknown): value is PersistedSession {
   );
 }
 
+function sanitizePersistedSession(p: PersistedSession): PersistedSession {
+  const note = sanitizeSessionNote(p.note);
+  return {
+    id: p.id,
+    title: p.title.trim() || "终端",
+    dir: p.dir,
+    branch: p.branch,
+    updatedAt: p.updatedAt,
+    ...(p.customTitle ? { customTitle: p.customTitle } : {}),
+    ...(p.remote ? { remote: p.remote } : {}),
+    ...(p.pinned ? { pinned: true } : {}),
+    ...(note ? { note } : {}),
+  };
+}
+
 function fromPersistedSession(p: PersistedSession): Session {
   return {
-    ...p,
-    title: p.title.trim() || "终端",
-    customTitle: p.customTitle || undefined,
-    remote: p.remote,
+    ...sanitizePersistedSession(p),
     runState: "idle",
   };
 }
@@ -198,7 +213,7 @@ export async function loadSessions(): Promise<{
     const persisted = await store.get<unknown>(SESSIONS_KEY);
     const activeId = await store.get<unknown>(ACTIVE_KEY);
     if (!Array.isArray(persisted)) return { sessions: [], activeSessionId: null };
-    const sessions = dedupeById(persisted.filter(isPersistedSession)).map(fromPersistedSession);
+    const sessions = dedupeById(persisted.filter(isPersistedSession).map(sanitizePersistedSession)).map(fromPersistedSession);
     return {
       sessions,
       activeSessionId: typeof activeId === "string" ? activeId : null,
@@ -241,15 +256,15 @@ const DEFAULT_UI_LAYOUT_V2: PersistedUILayoutV2 = {
   panelVisible: true,
   collapsedDirs: {},
   split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
-  inspectorTab: "changes",
+  inspectorTab: "overview",
 };
 
 function isValidSplitMode(v: unknown): v is "single" | "horizontal" | "vertical" {
   return v === "single" || v === "horizontal" || v === "vertical";
 }
 
-function isValidInspectorTab(v: unknown): v is "changes" | "files" {
-  return v === "changes" || v === "files";
+function isValidInspectorTab(v: unknown): v is "overview" | "changes" | "files" | "notes" {
+  return v === "overview" || v === "changes" || v === "files" || v === "notes";
 }
 
 export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
@@ -259,7 +274,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
 
   const sessionsRaw = obj.sessions;
   if (!Array.isArray(sessionsRaw)) return null;
-  const sessions = dedupeById(sessionsRaw.filter(isPersistedSession));
+  const sessions = dedupeById(sessionsRaw.filter(isPersistedSession).map(sanitizePersistedSession));
 
   const sessionIds = new Set(sessions.map((s) => s.id));
 
@@ -297,7 +312,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
       }
     }
 
-    const inspectorTab = isValidInspectorTab(uiRaw.inspectorTab) ? uiRaw.inspectorTab : "changes";
+    const inspectorTab = isValidInspectorTab(uiRaw.inspectorTab) ? uiRaw.inspectorTab : "overview";
 
     ui = { sidebarVisible, panelVisible, collapsedDirs, split, inspectorTab };
   } else {
@@ -419,7 +434,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | nul
     const layoutRaw = await store.get<unknown>(UI_LAYOUT_KEY);
 
     const sessions = Array.isArray(persisted)
-      ? dedupeById(persisted.filter(isPersistedSession))
+      ? dedupeById(persisted.filter(isPersistedSession).map(sanitizePersistedSession))
       : [];
 
     if (sessions.length === 0) return null;
@@ -434,7 +449,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | nul
       panelVisible: layout?.panelVisible ?? true,
       collapsedDirs: {},
       split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
-      inspectorTab: "changes",
+      inspectorTab: "overview",
     };
 
     const migrated: WorkspaceSnapshotV1 = {
@@ -445,7 +460,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | nul
       ui,
       terminals: {},
       agentResume: {},
-      recentDirs: sanitizeRecentDirs(sessions.map((s) => s.dir)),
+      recentDirs: sanitizeRecentDirs(localSessionDirs(sessions)),
       recentCommands: [],
       commandUsage: {},
       workflows: [],

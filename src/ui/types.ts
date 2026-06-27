@@ -50,6 +50,8 @@ export interface Session {
 
   // ── 用户自定义标题（优先级最高） ──
   customTitle?: string;
+  pinned?: boolean;
+  note?: string;
 
   // ── 动态标题源（Warp 风格瀑布推导） ──
   lastCommand?: string;
@@ -106,7 +108,7 @@ export interface ChangedFile {
 }
 
 /** 覆盖层类型 */
-export type OverlayType = null | "settings" | "command-palette" | "ssh";
+export type OverlayType = null | "settings" | "command-palette" | "ssh" | "insights";
 
 /** 主题 */
 export type ThemeType = "light" | "dark" | "system";
@@ -181,6 +183,7 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
 
   const dirLabel = shortDir(s.dir);
   const parts: string[] = [];
+  if (s.pinned) parts.push("★");
   if (s.branch) parts.push(`⎇ ${s.branch}`);
   parts.push(dirLabel);
   let totalAdded = 0;

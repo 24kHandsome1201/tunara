@@ -31,6 +31,8 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
         updatedAt: s.updatedAt,
       };
       if (s.customTitle) p.customTitle = s.customTitle;
+      if (s.pinned) p.pinned = true;
+      if (s.note) p.note = s.note;
       if (s.remote) p.remote = s.remote;
       return p;
     }),
@@ -75,6 +77,8 @@ export function useInit() {
         ...p,
         title: p.title.trim() || "终端",
         customTitle: p.customTitle || undefined,
+        pinned: p.pinned || undefined,
+        note: p.note || undefined,
         agentResume: snapshot.agentResume[p.id],
         runState: "idle" as const,
       }));

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWorkflowsStore } from "@/state/workflows";
 import { extractParams, type Workflow } from "@/modules/workflows/template";
+import { missingStarterWorkflows } from "@/modules/workflows/starters";
 import { useT } from "@/modules/i18n";
 import { CloseIcon } from "../shared";
 
@@ -59,11 +60,35 @@ export function WorkflowsSettings() {
   };
 
   const previewParams = extractParams(template).map((p) => p.key);
+  const starterWorkflows = missingStarterWorkflows(workflows, t);
+
+  const addStarterWorkflows = () => {
+    for (const workflow of starterWorkflows) upsertWorkflow(workflow);
+  };
 
   return (
     <div style={{ marginBottom: 24 }}>
       <div style={SECTION_LABEL}>{t("settings.workflows.title")}</div>
       <div style={SECTION_HINT}>{t("settings.workflows.hint")}</div>
+
+      <div style={{ marginTop: 14, padding: 12, borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-1)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "var(--fs-secondary)", fontWeight: 700, color: "var(--c-text-3)" }}>{t("settings.workflows.starters_title")}</div>
+            <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", marginTop: 3, lineHeight: 1.45 }}>{t("settings.workflows.starters_hint")}</div>
+          </div>
+          <button
+            onClick={addStarterWorkflows}
+            disabled={starterWorkflows.length === 0}
+            className="hover-bg"
+            style={{ padding: "5px 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: starterWorkflows.length === 0 ? "var(--c-text-5)" : "var(--c-text-primary)", fontSize: "var(--fs-secondary)", cursor: starterWorkflows.length === 0 ? "default" : "pointer", flexShrink: 0 }}
+          >
+            {starterWorkflows.length === 0
+              ? t("settings.workflows.starters_all_added")
+              : t("settings.workflows.add_starters", { count: starterWorkflows.length })}
+          </button>
+        </div>
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "14px 0" }}>
         {workflows.length === 0 && (

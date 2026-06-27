@@ -7,9 +7,11 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
+import { buildSessionMenuItems } from "./sidebar-session-menu";
 import { formatShortcut } from "./formatShortcut";
 import { useT } from "@/modules/i18n";
 
+// Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
 interface DragState {
   draggingId: string;
   sourceDir: string;
@@ -59,7 +61,8 @@ export function Sidebar({
             return (
               primary.toLowerCase().includes(q) ||
               subtitle.toLowerCase().includes(q) ||
-              s.dir.toLowerCase().includes(q)
+              s.dir.toLowerCase().includes(q) ||
+              s.note?.toLowerCase().includes(q) === true
             );
           })
         : sessions,
@@ -114,14 +117,11 @@ export function Sidebar({
   const handleRename = useCallback((id: string, name: string) => { useSessionsStore.getState().renameSession(id, name); }, []);
   const handleContextMenu = useCallback((e: React.MouseEvent, session: Session) => {
     e.preventDefault();
-    setContextMenu({ position: { x: e.clientX, y: e.clientY }, items: [
-      { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
-      { id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, session.dir).catch(() => {}); } },
-      { id: "session:copy-dir", label: t("sidebar.session.copy_dir"), icon: "copy", action: () => { navigator.clipboard.writeText(session.dir).catch(() => {}); } },
-      null,
-      { id: "session:close", label: t("sidebar.session.close"), icon: "close", danger: true, action: () => { onCloseSession?.(session.id); } },
-    ] });
-  }, [t, externalEditor, onCloseSession]);
+    setContextMenu({
+      position: { x: e.clientX, y: e.clientY },
+      items: buildSessionMenuItems({ session, t, externalEditor, onSelectSession, onCloseSession }),
+    });
+  }, [t, externalEditor, onCloseSession, onSelectSession]);
 
   const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
     dragStartY.current = e.clientY;

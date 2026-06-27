@@ -165,7 +165,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
   };
 }
 
-export type InspectorTab = "changes" | "files";
+export type InspectorTab = "overview" | "changes" | "files" | "notes";
 
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
 
@@ -279,7 +279,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     trafficLightWidth: 0,
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
-    inspectorTab: "changes" as InspectorTab,
+    inspectorTab: "overview" as InspectorTab,
     toasts: [],
     hostKeyPrompt: null,
     pendingWorkflow: null,

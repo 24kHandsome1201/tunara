@@ -513,6 +513,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   const sessions = read("src/state/sessions.ts");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarMenu = read("src/ui/sidebar-session-menu.ts");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const resolver = read("src-tauri/src/modules/resolver/mod.rs");
   const toast = read("src/ui/Toast.tsx");
@@ -555,8 +556,8 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.doesNotMatch(sidebar, /onClearCloseConfirm/);
   assert.doesNotMatch(sidebar, /clearDirCloseConfirmation/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
-  assert.match(sidebar, /label: t\("sidebar\.session\.rename"\), icon: "rename"/);
-  assert.match(sidebar, /label: t\("sidebar\.session\.close"\), icon: "close"/);
+  assert.match(sidebarMenu, /label: t\("sidebar\.session\.rename"\), icon: "rename"/);
+  assert.match(sidebarMenu, /label: t\("sidebar\.session\.close"\), icon: "close"/);
   assert.match(sidebar, /label: t\("sidebar\.dir\.close_all"\), icon: "close"/);
   assert.match(zhDict, /"sidebar\.session\.rename": "重命名"/);
   assert.match(zhDict, /"sidebar\.session\.close": "关闭会话"/);

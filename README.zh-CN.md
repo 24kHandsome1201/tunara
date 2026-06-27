@@ -66,6 +66,19 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 - 关闭确认：running 状态需要双击，避免误关跑到一半的任务
 - 跨重启恢复会话列表和 UI 布局
 
+### 工作区驾驶舱
+
+Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话、多个 agent、多个项目的人。它帮你看清当前状态，标出重点会话，还能把临时想法直接记在会话里。
+
+- Workspace Radar 汇总会话、AI agent、未读输出、远程连接、Git 改动和可清理的已完成任务
+- Focus Quest 把当前工作区状态变成一个小小的下一步清单
+- 会话概览卡片集中展示 cwd、agent、Git、笔记和常用操作
+- Session Notes 提供自动保存的会话草稿、任务计数和橡皮鸭模板
+- 置顶会话会显示星标，并在命令面板的会话结果里排得更靠前
+- 起步工作流可以一键加入 review、清理和排查类常用命令
+
+后续方向和功能记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。
+
 ### AI Agent 识别
 
 如果你日常用 Claude Code、Codex、Aider 这些命令行 agent，Tunara 会自动认出来并在会话上挂一个品牌角标。不需要配置，启动时 PTY 一旦匹配到 agent 命令就生效。

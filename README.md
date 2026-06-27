@@ -66,6 +66,19 @@ The sidebar is what visually separates Tunara from every other terminal. Session
 - Close-confirm guard: a running session needs a double click — no accidental kills mid-task
 - Restores session list and UI layout across restarts
 
+### Workspace cockpit
+
+Tunara now has a small cockpit layer for people who keep several sessions open all day. It helps you see the state of the workspace, keep important sessions visible, and leave lightweight notes without leaving the terminal.
+
+- Workspace Radar summarizes sessions, AI agents, unread output, remote connections, Git changes, and stale completed work
+- Focus Quest turns the current workspace state into a tiny next-step checklist
+- Session overview cards expose cwd, agent, Git, notes, and quick actions in one place
+- Session Notes add autosaved per-session scratchpads, task counts, and rubber-duck templates
+- Pinned sessions get a star marker and float higher in command-palette session results
+- Starter workflows can add common review and cleanup commands in one click
+
+Future direction and feature notes live in [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ### AI agent detection
 
 If you use CLI agents like Claude Code, Codex, or Aider day to day, Tunara recognizes them and pins a brand badge on the session. No setup — it kicks in the moment the PTY matches a known agent command.

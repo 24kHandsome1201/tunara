@@ -258,9 +258,8 @@ interface SessionCardProps {
 
 function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
   // Subscribe to the language store: deriveTitle localizes the agent activity
-  // suffix (· 运行中 / · Working), and this card is memoized — without this
-  // subscription a static language switch would not re-render it.
-  useT();
+  // suffix (· 运行中 / · Working), and this card is memoized.
+  const t = useT();
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
@@ -400,6 +399,12 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <StatusMark runState={displayRunState} isAgent={!!session.agent} exitCode={session.lastExitCode} />
+            {session.pinned && (
+              <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>★</span>
+            )}
+            {session.note && (
+              <span title={t("sidebar.session.has_note")} aria-label={t("sidebar.session.has_note")} style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>✎</span>
+            )}
             {editing ? (
               <input
                 ref={inputRef}

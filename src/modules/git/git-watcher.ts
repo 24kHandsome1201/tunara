@@ -34,6 +34,7 @@ export async function startGitWatcherListener(): Promise<UnlistenFn> {
     if (!target) return;
     const store = useSessionsStore.getState();
     for (const session of store.sessions) {
+      if (session.remote) continue;
       if (session.dir && sameRepoPath(session.dir, target)) {
         store.refreshGit(session.id);
       }

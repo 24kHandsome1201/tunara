@@ -1,3 +1,4 @@
+import type React from "react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
@@ -51,6 +52,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const uiStore = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
+  const sidebarVisible = useUIStore((s) => s.sidebarVisible);
+  const panelVisible = useUIStore((s) => s.panelVisible);
   const workflows = useWorkflowsStore((s) => s.workflows);
 
   function notifyBatchCloseConfirmation(subtitle: string) {
@@ -69,16 +72,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const cmds: Command[] = [];
     let idx = 0;
 
-    sessions
+    [...sessions]
       .filter((s: Session) => s.id !== activeSessionId)
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
       .forEach((s: Session) => {
         const { primary, subtitle } = deriveTitle(s);
         cmds.push({
           id: `switch-${s.id}`,
           label: primary,
           subtitle,
-          icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
-          section: t("palette.section.session"),
+          icon: s.pinned ? <CmdIcon d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" /> : <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
+          section: s.pinned ? t("palette.section.pinned_sessions") : t("palette.section.session"),
           scopes: ["session"],
           originalIndex: idx++,
           action: () => { setActive(s.id); uiStore.getState().recordCommandUse(`switch-${s.id}`); onClose(); },
@@ -114,74 +118,147 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     });
 
     if (activeSession) {
+      const openInspectorTab = (tab: "overview" | "notes", usageId: string) => {
+        uiStore.getState().recordCommandUse(usageId);
+        uiStore.getState().setPanelVisible(true);
+        uiStore.getState().setInspectorTab(tab);
+        onClose();
+      };
+      const activeIsLocal = !activeSession.remote;
+
+      if (activeIsLocal) {
+        cmds.push({
+          id: "new-terminal-current-dir",
+          label: t("palette.cmd.new_terminal_current_dir"),
+          subtitle: activeSession.dir,
+          icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 5v14M5 12h14" /><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>,
+          section: t("palette.section.action"),
+          scopes: ["action", "terminal"],
+          originalIndex: idx++,
+          action: () => {
+            uiStore.getState().recordCommandUse("new-terminal-current-dir");
+            useSessionsStore.getState().newTerminalInDir(activeSession.dir);
+            onClose();
+          },
+        });
+      }
+
+      for (const entry of collectRecentTerminalDirs(recentDirs, activeSession.dir)) {
+        cmds.push({
+          id: `new-terminal-recent-dir-${entry.dir}`,
+          label: t("palette.cmd.new_terminal_in_dir", { label: entry.label }),
+          subtitle: entry.dir,
+          icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+          section: t("palette.section.recent_dirs"),
+          scopes: ["action", "terminal", "recent"],
+          originalIndex: idx++,
+          action: () => {
+            uiStore.getState().recordCommandUse(`new-terminal-recent-dir-${entry.dir}`);
+            useSessionsStore.getState().newTerminalInDir(entry.dir);
+            onClose();
+          },
+        });
+      }
+
+      if (activeIsLocal) {
+        for (const entry of collectRecentTerminalCommands(recentCommands, activeSession.lastCommand)) {
+          cmds.push({
+            id: `new-terminal-recent-command-${entry.command}`,
+            label: t("palette.cmd.fill_recent_command", { label: entry.label }),
+            subtitle: activeSession.dir,
+            icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
+            section: t("palette.section.recent_commands"),
+            scopes: ["action", "terminal", "recent"],
+            originalIndex: idx++,
+            action: () => {
+              uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`);
+              useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir);
+              onClose();
+            },
+          });
+        }
+      }
+
+      // Saved command-template workflows. Local sessions can run them directly;
+      // remote sessions intentionally skip them so a user@host label never gets
+      // passed to a local shell as a working directory.
+      if (activeIsLocal) {
+        for (const wf of workflows) {
+          cmds.push({
+            id: `workflow-${wf.id}`,
+            label: wf.name,
+            subtitle: wf.description || wf.template,
+            icon: <CmdIcon d="M13 2L3 14h7l-1 8 10-12h-7z" />,
+            section: t("palette.section.workflows"),
+            scopes: ["action", "terminal", "workflow"],
+            originalIndex: idx++,
+            action: () => {
+              uiStore.getState().recordCommandUse(`workflow-${wf.id}`);
+              if (hasParams(wf.template)) {
+                uiStore.getState().setPendingWorkflow({
+                  workflowId: wf.id,
+                  name: wf.name,
+                  template: wf.template,
+                  dir: activeSession.dir,
+                });
+              } else {
+                useSessionsStore.getState().newTerminalWithInput(applyParams(wf.template, {}), activeSession.dir);
+              }
+              onClose();
+            },
+          });
+        }
+      }
+
+      // Remote sessions have no local Git working tree, so don't show the
+      // current-session refresh command as a dead affordance.
+      if (activeIsLocal) {
+        cmds.push({
+          id: "refresh-git-current",
+          label: t("palette.cmd.refresh_git_current"),
+          subtitle: activeSession.dir,
+          icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
+          section: t("palette.section.action"),
+          scopes: ["action"],
+          originalIndex: idx++,
+          action: () => {
+            uiStore.getState().recordCommandUse("refresh-git-current");
+            useSessionsStore.getState().refreshGit(activeSession.id);
+            onClose();
+          },
+        });
+      }
+
       cmds.push({
-        id: "new-terminal-current-dir",
-        label: t("palette.cmd.new_terminal_current_dir"),
-        subtitle: activeSession.dir,
-        icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 5v14M5 12h14" /><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>,
+        id: "open-session-overview",
+        label: t("palette.cmd.open_session_overview"),
+        icon: <CmdIcon d="M4 5h16M4 12h10M4 19h7" />,
         section: t("palette.section.action"),
-        scopes: ["action", "terminal"],
+        scopes: ["action", "app"],
         originalIndex: idx++,
-        action: () => {
-          uiStore.getState().recordCommandUse("new-terminal-current-dir");
-          useSessionsStore.getState().newTerminalInDir(activeSession.dir);
-          onClose();
-        },
+        action: () => openInspectorTab("overview", "open-session-overview"),
       });
 
-      for (const entry of collectRecentTerminalDirs(recentDirs, activeSession.dir)) cmds.push({
-        id: `new-terminal-recent-dir-${entry.dir}`, label: t("palette.cmd.new_terminal_in_dir", { label: entry.label }), subtitle: entry.dir,
-        icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-        section: t("palette.section.recent_dirs"), scopes: ["action", "terminal", "recent"], originalIndex: idx++,
-        action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-dir-${entry.dir}`); useSessionsStore.getState().newTerminalInDir(entry.dir); onClose(); },
-      });
-
-      for (const entry of collectRecentTerminalCommands(recentCommands, activeSession.lastCommand)) cmds.push({
-        id: `new-terminal-recent-command-${entry.command}`, label: t("palette.cmd.fill_recent_command", { label: entry.label }), subtitle: activeSession.dir,
-        icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
-        section: t("palette.section.recent_commands"), scopes: ["action", "terminal", "recent"], originalIndex: idx++,
-        action: () => { uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`); useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir); onClose(); },
-      });
-
-      // Saved command-template workflows. No params → run straight away; with
-      // {{params}} → hand off to the app-level param prompt to fill them in.
-      for (const wf of workflows) cmds.push({
-        id: `workflow-${wf.id}`,
-        label: wf.name,
-        subtitle: wf.description || wf.template,
-        icon: <CmdIcon d="M13 2L3 14h7l-1 8 10-12h-7z" />,
-        section: t("palette.section.workflows"),
-        scopes: ["action", "terminal", "workflow"],
-        originalIndex: idx++,
-        action: () => {
-          uiStore.getState().recordCommandUse(`workflow-${wf.id}`);
-          if (hasParams(wf.template)) {
-            uiStore.getState().setPendingWorkflow({
-              workflowId: wf.id,
-              name: wf.name,
-              template: wf.template,
-              dir: activeSession.dir,
-            });
-          } else {
-            useSessionsStore.getState().newTerminalWithInput(applyParams(wf.template, {}), activeSession.dir);
-          }
-          onClose();
-        },
-      });
-
-      // Remote sessions have no local git working tree — refreshGit no-ops for
-      // them (sessions.ts), so don't show the command as a dead affordance.
-      if (!activeSession.remote) cmds.push({
-        id: "refresh-git-current",
-        label: t("palette.cmd.refresh_git_current"),
-        subtitle: activeSession.dir,
-        icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
+      cmds.push({
+        id: "open-session-notes",
+        label: t("palette.cmd.open_session_notes"),
+        icon: <CmdIcon d="M5 4h10l4 4v12H5zM15 4v5h5M8 13h8M8 17h5" />,
         section: t("palette.section.action"),
-        scopes: ["action"],
+        scopes: ["action", "app"],
+        originalIndex: idx++,
+        action: () => openInspectorTab("notes", "open-session-notes"),
+      });
+
+      cmds.push({
+        id: activeSession.pinned ? "unpin-current-session" : "pin-current-session",
+        label: activeSession.pinned ? t("palette.cmd.unpin_current_session") : t("palette.cmd.pin_current_session"),
+        icon: <CmdIcon d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "session"],
         originalIndex: idx++,
         action: () => {
-          uiStore.getState().recordCommandUse("refresh-git-current");
-          useSessionsStore.getState().refreshGit(activeSession.id);
+          uiStore.getState().recordCommandUse(activeSession.pinned ? "unpin-current-session" : "pin-current-session");
+          useSessionsStore.getState().togglePinnedSession(activeSession.id);
           onClose();
         },
       });
@@ -254,6 +331,40 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     });
 
     cmds.push({
+      id: "workspace-insights",
+      label: t("palette.cmd.workspace_insights"),
+      icon: <CmdIcon d="M12 3a9 9 0 1 0 9 9M12 12l5-5" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        uiStore.getState().recordCommandUse("workspace-insights");
+        uiStore.getState().setOverlay("insights");
+      },
+    });
+
+    cmds.push({
+      id: "toggle-focus-mode",
+      label: sidebarVisible || panelVisible ? t("palette.cmd.enter_focus") : t("palette.cmd.exit_focus"),
+      icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        const ui = uiStore.getState();
+        ui.recordCommandUse("toggle-focus-mode");
+        if (ui.sidebarVisible || ui.panelVisible) {
+          ui.setSidebarVisible(false);
+          ui.setPanelVisible(false);
+        } else {
+          ui.setSidebarVisible(true);
+          ui.setPanelVisible(true);
+        }
+        onClose();
+      },
+    });
+
+    cmds.push({
       id: "split-horizontal",
       label: t("palette.cmd.split_horizontal"),
       shortcut: formatShortcut(keybindings.splitHorizontal),
@@ -306,7 +417,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       action: () => {
         uiStore.getState().recordCommandUse("refresh-all-git");
         const st = useSessionsStore.getState();
-        st.sessions.forEach((s) => st.refreshGit(s.id));
+        st.sessions.forEach((s) => {
+          if (!s.remote) st.refreshGit(s.id);
+        });
         onClose();
       },
     });
@@ -346,7 +459,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, sidebarVisible, panelVisible, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

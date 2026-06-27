@@ -1,6 +1,9 @@
+import type React from "react";
 import { type Session } from "./types";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
+import { SessionOverviewPanel } from "./SessionOverviewPanel";
+import { SessionNotesPanel } from "./SessionNotesPanel";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { CloseIcon } from "./shared";
@@ -38,19 +41,18 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   const t = useT();
   const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
-  // Remote sessions have no local git working tree, so the "changes" tab is
-  // meaningless — force the files tab for them.
   const isRemote = !!session.remote;
-  const tab = isRemote ? "files" : storeTab;
+  const tab = isRemote && storeTab === "changes" ? "files" : storeTab;
 
   return (
     <div style={{ width: "100%", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-      {/* title bar */}
       <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
+        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
         {!isRemote && (
           <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
         )}
         <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
+        <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
 
         <span style={{ flex: 1 }} />
 
@@ -76,8 +78,10 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
         )}
       </div>
 
-      {/* content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div key={`overview-${tab}`} style={{ flex: 1, display: tab === "overview" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "overview" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
+          <SessionOverviewPanel session={session} />
+        </div>
         {!isRemote && (
           <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
             <DiffPanel session={session} embedded />
@@ -91,6 +95,9 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
           ) : (
             <FileExplorer rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
           )}
+        </div>
+        <div key={`notes-${tab}`} style={{ flex: 1, display: tab === "notes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "notes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
+          <SessionNotesPanel session={session} />
         </div>
       </div>
     </div>
