@@ -205,6 +205,8 @@ export interface PendingWorkflow {
   template: string;
   /** Directory to launch the resulting command in. */
   dir: string;
+  /** Branch from the session that launched the workflow, for dynamic vars. */
+  branch?: string;
 }
 
 interface UIState extends AppearanceSettings {
@@ -402,4 +404,3 @@ useUIStore.subscribe(
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
 );
-

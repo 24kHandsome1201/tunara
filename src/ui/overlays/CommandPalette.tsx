@@ -9,7 +9,7 @@ import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-qui
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
 import { useWorkflowsStore } from "@/state/workflows";
-import { applyParams, hasParams } from "@/modules/workflows/template";
+import { hasPromptableParams, resolveTemplate } from "@/modules/workflows/template";
 import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 
@@ -194,15 +194,19 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             originalIndex: idx++,
             action: () => {
               uiStore.getState().recordCommandUse(`workflow-${wf.id}`);
-              if (hasParams(wf.template)) {
+              if (hasPromptableParams(wf.template)) {
                 uiStore.getState().setPendingWorkflow({
                   workflowId: wf.id,
                   name: wf.name,
                   template: wf.template,
                   dir: activeSession.dir,
+                  branch: activeSession.branch,
                 });
               } else {
-                useSessionsStore.getState().newTerminalWithInput(applyParams(wf.template, {}), activeSession.dir);
+                useSessionsStore.getState().newTerminalWithInput(
+                  resolveTemplate(wf.template, {}, { cwd: activeSession.dir, branch: activeSession.branch }),
+                  activeSession.dir,
+                );
               }
               onClose();
             },

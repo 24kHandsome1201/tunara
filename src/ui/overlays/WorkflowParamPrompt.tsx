@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
-import { applyParams, extractParams } from "@/modules/workflows/template";
+import { promptableParams, resolveTemplate, type DynamicContext } from "@/modules/workflows/template";
 import { useFocusTrap } from "./useFocusTrap";
 
 /**
@@ -17,27 +17,43 @@ export function WorkflowParamPrompt() {
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef);
 
-  const params = useMemo(() => (pending ? extractParams(pending.template) : []), [pending]);
+  const params = useMemo(() => (pending ? promptableParams(pending.template) : []), [pending]);
   const [values, setValues] = useState<Record<string, string>>({});
 
-  // Reset field values whenever a new workflow is opened.
+  // One stable uuid per opened workflow, so a {{uuid}} placeholder doesn't churn
+  // on every keystroke in the live preview (and matches what actually runs).
+  const dynamicUuid = useMemo(() => {
+    const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+    return c?.randomUUID ? c.randomUUID() : `id-${Date.now().toString(36)}`;
+  }, [pending]);
+
+  // Reset field values whenever a new workflow is opened, pre-filling any
+  // {{name=default}} defaults so the prompt starts from a sensible state.
   useEffect(() => {
-    setValues({});
     if (pending) {
+      const init: Record<string, string> = {};
+      for (const p of promptableParams(pending.template)) {
+        if (p.default !== undefined) init[p.key] = p.default;
+      }
+      setValues(init);
       // Focus the first field on open.
       requestAnimationFrame(() => dialogRef.current?.querySelector("input")?.focus());
+    } else {
+      setValues({});
     }
   }, [pending]);
 
   if (!pending) return null;
 
+  const ctx: DynamicContext = { cwd: pending.dir, branch: pending.branch ?? "", uuid: () => dynamicUuid };
+
   const run = () => {
-    const command = applyParams(pending.template, values);
+    const command = resolveTemplate(pending.template, values, ctx);
     useSessionsStore.getState().newTerminalWithInput(command, pending.dir);
     setPendingWorkflow(null);
   };
 
-  const preview = applyParams(pending.template, values);
+  const preview = resolveTemplate(pending.template, values, ctx);
 
   const fieldStyle: React.CSSProperties = {
     width: "100%",
@@ -110,6 +126,7 @@ export function WorkflowParamPrompt() {
                 style={fieldStyle}
                 value={values[p.key] ?? ""}
                 onChange={(e) => setValues((v) => ({ ...v, [p.key]: e.target.value }))}
+                placeholder={p.default ?? ""}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoComplete="off"
