@@ -3,6 +3,7 @@ import type { Terminal } from "@xterm/xterm";
 import { matchesKeybinding } from "../modules/config/keybindings.ts";
 import { useUIStore } from "@/state/ui";
 import { hasTrueRecordKey, toggleTrueRecordKey } from "@/state/record-keys";
+import { copyText } from "./lib/clipboard";
 
 import {
   findNavigableCommandBlock,
@@ -14,6 +15,10 @@ import {
   type TerminalCommandBlock,
 } from "@/modules/terminal/lib/terminal-blocks";
 
+// Intentionally uses navigator.platform, NOT the Tauri platform() helper in
+// ./lib/platform: this module is deliberately kept free of the Tauri OS plugin
+// (see commit 7ec8346 and the regression guard in
+// project-review-regressions.test.mjs that forbids that import here).
 function detectMacPlatform(): boolean {
   return typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
 }
@@ -156,23 +161,13 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
   const copyBlockOutput = useCallback(async (id: string): Promise<boolean> => {
     const output = readBlockOutput(id);
     if (output === null || output.length === 0) return false;
-    try {
-      await navigator.clipboard.writeText(output);
-      return true;
-    } catch {
-      return false;
-    }
+    return copyText(output);
   }, [readBlockOutput]);
 
   const copyBlockCommand = useCallback(async (id: string): Promise<boolean> => {
     const block = blocksRef.current.find((item) => item.id === id);
     if (!block?.command) return false;
-    try {
-      await navigator.clipboard.writeText(block.command);
-      return true;
-    } catch {
-      return false;
-    }
+    return copyText(block.command);
   }, []);
 
   const copyBlockCommandAndOutput = useCallback(async (id: string): Promise<boolean> => {
@@ -181,13 +176,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     if (!term || !block?.command) return false;
     const output = readBlockOutputText(term, block);
     if (output === null) return false;
-    const text = formatTerminalBlockCommandAndOutput(block.command, output);
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
+    return copyText(formatTerminalBlockCommandAndOutput(block.command, output));
   }, [termRef]);
 
   const toggleBlock = useCallback((id: string) => {

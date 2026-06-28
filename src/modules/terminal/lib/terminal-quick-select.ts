@@ -122,7 +122,8 @@ export function collectTerminalQuickSelectItems(
     items.push(item);
   };
 
-  for (const lineText of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const lineText = lines[lineIndex];
     const occupiedRanges: TextRange[] = [];
     for (const url of findTerminalUrlMatches(lineText)) {
       occupiedRanges.push(url);
@@ -152,8 +153,12 @@ export function collectTerminalQuickSelectItems(
     }
 
     for (const token of findTerminalQuickSelectTextTokens(lineText, occupiedRanges)) {
+      // Include the line index so the same token (e.g. a git hash) appearing on
+      // several lines stays individually selectable, while true duplicates within
+      // one line still collapse. URLs dedup across lines on purpose; file links
+      // already key on line/column.
       push({
-        id: `text:${token.detail}:${token.text}`,
+        id: `text:${token.detail}:${token.text}:${lineIndex}`,
         kind: "text",
         label: token.text,
         detail: token.detail,

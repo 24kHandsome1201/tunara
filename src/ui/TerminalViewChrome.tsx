@@ -5,6 +5,7 @@ import { TerminalBlockFilterPanel } from "./TerminalBlockFilterPanel";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalBlocksBar } from "./TerminalBlocksBar";
 import { ContextMenu } from "./ContextMenu";
+import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
@@ -57,7 +58,7 @@ export function TerminalViewChrome({
   const copySelection = () => {
     const term = getTerminal();
     const sel = term?.getSelection();
-    if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+    if (sel) void copyText(sel);
   };
 
   const pasteClipboard = async () => {

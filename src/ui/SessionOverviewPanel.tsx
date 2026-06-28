@@ -6,6 +6,7 @@ import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/ag
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
 import { getSessionNoteStats } from "@/modules/session/session-notes";
 import { openInEditor } from "@/modules/editor/open";
+import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 
 interface SessionOverviewPanelProps {
@@ -134,7 +135,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
             ? t("overview.action.notes_with_todos", { done: String(noteStats.doneCount), total: String(noteStats.todoCount) })
             : t("overview.action.open_notes")}
         </ActionButton>
-        <ActionButton onClick={() => navigator.clipboard?.writeText(session.dir).catch(() => {})}>
+        <ActionButton onClick={() => void copyText(session.dir)}>
           {t("overview.action.copy_path")}
         </ActionButton>
         {!isRemote && (

@@ -738,6 +738,13 @@ test("terminal paste protection guards multiline and large pastes", () => {
   assert.equal(analyzeTerminalPaste("x".repeat(TERMINAL_LARGE_PASTE_WARNING_LENGTH))?.large, undefined);
   assert.equal(analyzeTerminalPaste("x".repeat(TERMINAL_LARGE_PASTE_WARNING_LENGTH + 1))?.large, true);
 
+  // A single trailing newline is the submit Enter, not an extra line.
+  assert.equal(analyzeTerminalPaste("echo hi\n")?.lineCount, 1);
+  assert.equal(analyzeTerminalPaste("echo one\necho two\n")?.lineCount, 2);
+  // A blank line in the middle is a real line and still counts.
+  assert.equal(analyzeTerminalPaste("a\n\nb")?.lineCount, 3);
+  assert.equal(analyzeTerminalPaste("echo hi\r\n")?.lineCount, 1);
+
   const warning = analyzeTerminalPaste("echo one\necho two");
   assert.ok(warning);
   assert.match(terminalPasteWarningMessage(warning), /2 行/);
@@ -799,6 +806,20 @@ test("terminal quick select text tokens skip URL and file-link ranges", () => {
     "IP address",
     "Number",
   ]);
+});
+
+test("terminal quick select keeps a repeated token on different lines selectable", () => {
+  // Same git hash on two lines must yield two selectable items (dedup keys on
+  // line index), but a true duplicate on one line still collapses.
+  const items = collectTerminalQuickSelectItems([
+    "abc1234 here",
+    "abc1234 there abc1234",
+  ], "/repo");
+  assert.deepEqual(items.map((item) => [item.kind, item.copyText]), [
+    ["text", "abc1234"],
+    ["text", "abc1234"],
+  ]);
+  assert.notEqual(items[0].id, items[1].id);
 });
 
 test("terminal quick select range scans a bounded scrollback window around the viewport", () => {

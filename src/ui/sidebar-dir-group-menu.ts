@@ -1,4 +1,5 @@
 import { openInEditor } from "@/modules/editor/open";
+import { copyText } from "./lib/clipboard";
 import { canUseSessionDirForLocalTerminal } from "@/modules/session/local-terminal-cwd";
 import { useSessionsStore } from "@/state/sessions";
 import type { ExternalEditor } from "@/state/ui";
@@ -31,7 +32,7 @@ export function buildDirGroupMenuItems({
 
   return [
     ...localDirItems,
-    { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(dir).catch(() => {}); } },
+    { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(dir); } },
     null,
     { id: "dir:close-all", label: t("sidebar.dir.close_all"), icon: "close", danger: true, action: () => useSessionsStore.getState().closeSessionsInDir(dir) },
   ];

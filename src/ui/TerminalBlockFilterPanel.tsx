@@ -4,6 +4,7 @@ import {
   formatTerminalBlockFilterText,
 } from "@/modules/terminal/lib/terminal-block-filter";
 import { CloseIcon, SearchIcon } from "./shared";
+import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 
@@ -187,14 +188,13 @@ export function TerminalBlockFilterPanel({
         <button
           onClick={async () => {
             const text = query.trim() ? formatTerminalBlockFilterText(result) : output;
-            await navigator.clipboard.writeText(text).then(() => {
-              setCopied(true);
-              if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-              copiedTimerRef.current = setTimeout(() => {
-                copiedTimerRef.current = null;
-                setCopied(false);
-              }, 1200);
-            }).catch(() => {});
+            if (!(await copyText(text))) return;
+            setCopied(true);
+            if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+            copiedTimerRef.current = setTimeout(() => {
+              copiedTimerRef.current = null;
+              setCopied(false);
+            }, 1200);
           }}
           title={t("block.filter.copy_result")}
           className="hover-bg"

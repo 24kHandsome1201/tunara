@@ -15,6 +15,7 @@ import { openInEditor } from "@/modules/editor/open";
 import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { copyText } from "./lib/clipboard";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
@@ -341,22 +342,20 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   }, [files, expandedFileKey]);
 
   async function copyHunk(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      useUIStore.getState().addToast({
-        sessionId: session.id,
-        title: t("diff.toast.hunk_copied"),
-        subtitle: t("diff.toast.hunk_copied_lines", { count: text.split("\n").length }),
-        variant: "success",
-      });
-    } catch {
-      useUIStore.getState().addToast({
-        sessionId: session.id,
-        title: t("diff.toast.copy_failed"),
-        subtitle: t("diff.toast.clipboard_unavailable"),
-        variant: "error",
-      });
-    }
+    const ok = await copyText(text);
+    useUIStore.getState().addToast(ok
+      ? {
+          sessionId: session.id,
+          title: t("diff.toast.hunk_copied"),
+          subtitle: t("diff.toast.hunk_copied_lines", { count: text.split("\n").length }),
+          variant: "success",
+        }
+      : {
+          sessionId: session.id,
+          title: t("diff.toast.copy_failed"),
+          subtitle: t("diff.toast.clipboard_unavailable"),
+          variant: "error",
+        });
   }
 
   async function toggleFile(file: FileChange) {

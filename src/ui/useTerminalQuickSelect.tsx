@@ -6,6 +6,7 @@ import { collectTerminalQuickSelectItems, TERMINAL_QUICK_SELECT_EVENT, type Term
 import { terminalQuickSelectRange } from "@/modules/terminal/lib/terminal-quick-select-scope";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
+import { copyText } from "./lib/clipboard";
 import { TerminalQuickSelect } from "./TerminalQuickSelect";
 
 interface TerminalQuickSelectOptions {
@@ -61,12 +62,14 @@ export function useTerminalQuickSelect(
   const closeQuickSelect = useCallback(() => setItems(null), []);
 
   const copyItem = useCallback((item: TerminalQuickSelectItem) => {
-    navigator.clipboard.writeText(item.copyText)
-      .then(() => {
+    void copyText(item.copyText).then((ok) => {
+      if (ok) {
         notify(t("quick_select.copied.title"), item.copyText, "success");
         setItems(null);
-      })
-      .catch(() => notify(t("quick_select.copy_failed.title"), item.label, "error"));
+      } else {
+        notify(t("quick_select.copy_failed.title"), item.label, "error");
+      }
+    });
   }, [notify, t]);
 
   const openItem = useCallback((item: TerminalQuickSelectItem) => {

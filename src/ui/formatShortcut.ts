@@ -1,6 +1,4 @@
-import { platform } from "@tauri-apps/plugin-os";
-
-const IS_MAC = platform() === "macos";
+import { isMac } from "./lib/platform";
 
 const MAC_SYMBOLS: Record<string, string> = {
   mod: "⌘",
@@ -25,11 +23,11 @@ const PC_SYMBOLS: Record<string, string> = {
 export function formatShortcut(def: string): string {
   const parts = def.toLowerCase().split("+");
   const key = parts.pop() ?? "";
-  const symbols = IS_MAC ? MAC_SYMBOLS : PC_SYMBOLS;
-  const sep = IS_MAC ? "" : "+";
+  const symbols = isMac ? MAC_SYMBOLS : PC_SYMBOLS;
+  const sep = isMac ? "" : "+";
 
   const modifiers = parts.map((p) => symbols[p] ?? p).join(sep);
-  const displayKey = IS_MAC ? key.toUpperCase() : key.toUpperCase();
+  const displayKey = key.toUpperCase();
 
   return modifiers ? `${modifiers}${sep}${displayKey}` : displayKey;
 }

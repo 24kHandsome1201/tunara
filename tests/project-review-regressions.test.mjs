@@ -1037,13 +1037,17 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readQuickSelectTerminalLines\(term\), cwd\)/);
   assert.match(terminalQuickSelectHook, /t\("quick_select\.empty\.body"\)/);
   assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
-  assert.match(terminalQuickSelectHook, /navigator\.clipboard\.writeText\(item\.copyText\)/);
+  assert.match(terminalQuickSelectHook, /copyText\(item\.copyText\)/);
   assert.match(terminalQuickSelectHook, /if \(item\.kind === "text"\) \{[\s\S]*copyItem\(item\);[\s\S]*return;/);
   assert.match(terminalQuickSelectHook, /openInEditor\(useUIStore\.getState\(\)\.externalEditor, item\.target, item\.line, item\.column\)/);
   assert.match(terminalQuickSelectOverlay, /export function TerminalQuickSelect/);
   assert.match(terminalQuickSelectOverlay, /item\.kind !== "text"/);
   assert.match(terminalQuickSelectOverlay, /quickSelectHint\(index\)/);
   assert.match(terminalQuickSelectOverlay, /onCopy\(hintedItems\[exact\]\.item\)/);
+  // Arrow keys step within the typed-hint subset and must not reset the prefix.
+  assert.match(terminalQuickSelectOverlay, /function stepSelection\(direction: 1 \| -1\)/);
+  assert.match(terminalQuickSelectOverlay, /hint\.startsWith\(typedHint\)/);
+  assert.doesNotMatch(terminalQuickSelectOverlay, /ArrowDown[\s\S]*setTypedHint\(""\)/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(commandPalette, /id: "quick-select-visible-output"/);
   assert.match(commandPalette, /label: t\("palette\.cmd\.quick_select"\)/);
@@ -1095,7 +1099,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /const copyBlockOutput = useCallback\(async \(id: string\): Promise<boolean> =>/);
   assert.match(terminalBlocks, /const output = readBlockOutput\(id\)/);
   assert.match(terminalBlocks, /if \(output === null \|\| output\.length === 0\) return false/);
-  assert.match(terminalBlocks, /writeText\(output\)/);
+  assert.match(terminalBlocks, /return copyText\(output\)/);
   assert.match(terminalBlocks, /resolveTerminalBlockRows/);
   assert.match(terminalBlocks, /term\.registerMarker/);
   assert.match(terminalBlocks, /block\.endMarker !== block\.startMarker/);
@@ -1105,9 +1109,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /const readBlockOutput = useCallback\(\(id: string\): string \| null =>/);
   assert.match(terminalBlocks, /return readBlockOutputText\(term, block\)/);
   assert.match(terminalBlocks, /formatTerminalBlockCommandAndOutput\(block\.command, output\)/);
-  assert.match(terminalBlocks, /writeText\(block\.command\)/);
-  assert.match(terminalBlocks, /return true/);
-  assert.match(terminalBlocks, /catch \{[\s\S]*return false/);
+  assert.match(terminalBlocks, /return copyText\(block\.command\)/);
   assert.match(terminalBlocks, /term\.onScroll/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigatePrevBlock, isMac\)[\s\S]*navigateBlock\("previous"\)/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigateNextBlock, isMac\)[\s\S]*navigateBlock\("next"\)/);
@@ -1115,7 +1117,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /toggleTrueRecordKey\(current, id\)/);
   assert.doesNotMatch(terminalBlocks, /current\[id\]/);
   assert.doesNotMatch(terminalBlocks, /\.\.\.current, \[id\]: true/);
-  assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
+  // Clipboard writes route through the shared copyText helper, not raw navigator.clipboard.
+  assert.match(terminalBlocks, /import \{ copyText \} from "\.\/lib\/clipboard"/);
+  assert.doesNotMatch(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
   assert.match(terminalBlocksBar, /import \{ ContextMenu \} from "\.\/ContextMenu"/);

@@ -3,9 +3,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 import { KEYBINDING_ACTIONS, hasPlatformModKey, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
-import { platform } from "@tauri-apps/plugin-os";
-
-const isMac = platform() === "macos";
+import { isMac } from "@/ui/lib/platform";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

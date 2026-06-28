@@ -44,6 +44,21 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
     if (restart >= 0) setSelectedIndex(restart);
   }
 
+  // Arrow keys step through the items still matching the typed hint prefix, so
+  // incremental search isn't reset when the user reaches for the arrows. With no
+  // prefix typed, every item matches and this walks the whole list.
+  function stepSelection(direction: 1 | -1) {
+    const matches = hintedItems
+      .map(({ hint }, index) => ({ hint, index }))
+      .filter(({ hint }) => hint.startsWith(typedHint));
+    if (matches.length === 0) return;
+    const current = matches.findIndex(({ index }) => index === selectedIndex);
+    const nextPos = current < 0
+      ? (direction === 1 ? 0 : matches.length - 1)
+      : Math.min(matches.length - 1, Math.max(0, current + direction));
+    setSelectedIndex(matches[nextPos].index);
+  }
+
   return (
     <>
       <div
@@ -67,12 +82,10 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
             onClose();
           } else if (e.key === "ArrowDown") {
             e.preventDefault();
-            setTypedHint("");
-            setSelectedIndex((index) => Math.min(index + 1, items.length - 1));
+            stepSelection(1);
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
-            setTypedHint("");
-            setSelectedIndex((index) => Math.max(index - 1, 0));
+            stepSelection(-1);
           } else if (e.key === "Enter") {
             e.preventDefault();
             const item = hintedItems[selectedIndex]?.item;

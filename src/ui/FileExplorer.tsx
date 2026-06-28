@@ -10,6 +10,7 @@ import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
 import { useT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
+import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 
 // Cap for name search (fs_search / ssh_fs_search). The backend truncates at this
@@ -530,12 +531,12 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     position: { x: e.clientX, y: e.clientY },
                     items: isRemote
                       ? [
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                         ]
                       : [
                           { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
                           { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                         ],
                   });
                 }}
@@ -566,11 +567,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                         position: { x: e.clientX, y: e.clientY },
                         items: isRemote
                           ? [
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                             ]
                           : [
                               { id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { navigator.clipboard.writeText(fullPath).catch(() => {}); } },
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                             ],
                       });
                     }}

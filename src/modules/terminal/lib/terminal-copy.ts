@@ -1,4 +1,5 @@
 import type { Terminal } from "@xterm/xterm";
+import { copyText } from "../../../ui/lib/clipboard.ts";
 
 /**
  * ⌘C copy handler for the terminal.
@@ -22,6 +23,6 @@ export function handleCopyKeyEvent(term: Terminal, e: KeyboardEvent): boolean {
   if (!isCmdC) return true;
   const selection = term.getSelection();
   if (!selection) return true; // no selection → let ⌘C / Ctrl+C fall through to SIGINT
-  navigator.clipboard.writeText(selection).catch(() => {});
+  void copyText(selection);
   return false; // handled → don't let xterm process the key
 }

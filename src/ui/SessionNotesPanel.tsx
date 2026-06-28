@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { getSessionNoteStats, sanitizeSessionNote } from "@/modules/session/session-notes";
+import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 
 interface SessionNotesPanelProps {
@@ -75,7 +76,7 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
           {t("notes.clear")}
         </button>
         <button
-          onClick={() => navigator.clipboard?.writeText(value).catch(() => {})}
+          onClick={() => void copyText(value)}
           className="hover-text-3"
           style={{ border: "none", background: "transparent", color: "var(--c-text-5)", cursor: "pointer", fontSize: "var(--fs-meta)" }}
         >

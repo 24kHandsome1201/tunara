@@ -20,9 +20,12 @@ export function analyzeTerminalPaste(text: string): TerminalPasteWarning | null 
   const multiline = lineBreaks > 0;
   const large = text.length > TERMINAL_LARGE_PASTE_WARNING_LENGTH;
   if (!multiline && !large) return null;
+  // A single trailing newline is the Enter that submits the last line, not an
+  // extra line — don't count it (so "echo hi\n" reports 1 line, not 2).
+  const hasTrailingNewline = /\r\n$|[\r\n]$/.test(text);
   return {
     charCount: text.length,
-    lineCount: lineBreaks + 1,
+    lineCount: hasTrailingNewline ? lineBreaks : lineBreaks + 1,
     large,
     multiline,
   };
@@ -36,6 +39,13 @@ export function terminalPasteWarningMessage(warning: TerminalPasteWarning): stri
   return t("paste.warning.message", { summary });
 }
 
+/**
+ * Returns whether this paste was *intercepted* (a warning was shown), NOT
+ * whether it was pasted. `true` means the caller should preventDefault and stop
+ * the native paste — the actual paste (if confirmed) has already happened via
+ * `paste()`. `false` means the text was safe and the caller should let xterm's
+ * own paste handler run.
+ */
 export function confirmProtectedTerminalPaste(
   text: string,
   confirmPaste: (message: string) => boolean,

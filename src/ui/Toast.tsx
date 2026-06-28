@@ -4,6 +4,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
 import { AgentBadge } from "./agents";
 import { CloseIcon } from "./shared";
+import { copyText } from "./lib/clipboard";
 
 const TOAST_DURATION = 4000;
 const EXIT_DURATION = 250;
@@ -41,7 +42,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 
   const handleCopy = () => {
     const text = toast.subtitle ? `${toast.title}\n${toast.subtitle}` : toast.title;
-    navigator.clipboard.writeText(text).catch(() => {});
+    void copyText(text);
     setCopied(true);
     clearTimeout(copiedTimerRef.current);
     copiedTimerRef.current = setTimeout(() => setCopied(false), 1200);
