@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
+import { fsGrep, fsReadDir, fsSearch, type DirEntry, type GrepResponse, type SearchHit } from "@/modules/fs/fs-bridge";
 import { sshReadDir, sshHome, sshSearch } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
@@ -10,6 +10,7 @@ import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
 import { useT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
+import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 
 interface FileExplorerProps {
   rootDir: string;
@@ -33,6 +34,25 @@ function FileIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+
+function FileNameIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+
+function FileContentIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="10" x2="20" y2="10" />
+      <line x1="4" y1="14" x2="14" y2="14" />
     </svg>
   );
 }
@@ -80,6 +100,9 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const [searchMode, setSearchMode] = useState<"name" | "content">("name");
+  const [grepHits, setGrepHits] = useState<GrepFileGroup[]>([]);
+  const [grepTruncated, setGrepTruncated] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -91,6 +114,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     setNavDir(null);
     setExpandedFile(null);
     setSearchQuery("");
+    setSearchMode("name");
     if (isRemote && remotePtyId !== undefined) {
       let cancelled = false;
       setBaseDir(null);
@@ -146,36 +170,53 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     const q = searchQuery.trim();
     if (!q || baseDir === null) {
       setSearchHits([]);
+      setGrepHits([]);
+      setGrepTruncated(false);
       setSearchLoading(false);
       setSearchError(false);
       return;
     }
 
-    // Remote (SSH) search runs `find` over the exec channel; local search uses
-    // the ignore-based walker. Both return the same SearchHit shape. The remote
+    const mode = searchMode;
+    // Content search (grep) is local-only — there is no ssh_fs_grep yet, so the
+    // mode toggle is disabled for remote sessions and `mode === "content"` here
+    // implies a local session. Name search keeps the existing fs_search (local)
+    // / ssh_fs_search (remote) split with the shared SearchHit shape; the remote
     // bridge caches per (ptyId, root, query) so debounce re-triggering and
     // backspacing don't re-run find every window.
-    const runSearch = isRemote && remotePtyId !== undefined
-      ? sshSearch(remotePtyId, baseDir, q, 80)
-      : fsSearch(baseDir, q, 80, includeHidden);
+    const runSearch: Promise<SearchHit[] | GrepResponse> =
+      mode === "content" && !isRemote
+        ? fsGrep(q, baseDir, { caseInsensitive: false })
+        : isRemote && remotePtyId !== undefined
+          ? sshSearch(remotePtyId, baseDir, q, 80)
+          : fsSearch(baseDir, q, 80, includeHidden);
 
     let cancelled = false;
     setSearchLoading(true);
     setSearchError(false);
     const timer = window.setTimeout(() => {
       runSearch
-        .then((hits) => {
-          if (!cancelled) {
-            setSearchHits(hits);
-            setSearchLoading(false);
+        .then((result) => {
+          if (cancelled) return;
+          if (mode === "content" && !isRemote) {
+            const resp = result as GrepResponse;
+            setGrepHits(groupGrepHitsByFile(resp.hits));
+            setGrepTruncated(resp.truncated);
+            setSearchHits([]);
+          } else {
+            setSearchHits(result as SearchHit[]);
+            setGrepHits([]);
+            setGrepTruncated(false);
           }
+          setSearchLoading(false);
         })
         .catch(() => {
-          if (!cancelled) {
-            setSearchHits([]);
-            setSearchError(true);
-            setSearchLoading(false);
-          }
+          if (cancelled) return;
+          setSearchHits([]);
+          setGrepHits([]);
+          setGrepTruncated(false);
+          setSearchError(true);
+          setSearchLoading(false);
         });
     }, 180);
 
@@ -183,7 +224,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [baseDir, searchQuery, includeHidden, reloadKey, isRemote, remotePtyId]);
+  }, [baseDir, searchQuery, searchMode, includeHidden, reloadKey, isRemote, remotePtyId]);
 
   const canGoUp = currentPath !== "/" && currentPath !== baseDir;
   const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
@@ -326,12 +367,27 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
       <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
         <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
+          <button
+            onClick={() => {
+              if (isRemote) return;
+              setSearchMode((m) => (m === "name" ? "content" : "name"));
+              setSearchQuery("");
+            }}
+            disabled={isRemote}
+            title={isRemote ? t("explorer.search_mode.content_local_only") : searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
+            aria-label={isRemote ? t("explorer.search_mode.content_local_only") : searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
+            aria-pressed={searchMode === "content"}
+            className="hover-bg"
+            style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: searchMode === "content" && !isRemote ? "var(--c-accent-bg-light)" : "transparent", color: searchMode === "content" && !isRemote ? "var(--c-accent)" : "var(--c-text-5)", cursor: isRemote ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: isRemote ? 0.4 : 1 }}
+          >
+            {searchMode === "content" ? <FileContentIcon /> : <FileNameIcon />}
+          </button>
           <SearchIcon />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t("explorer.search_placeholder")}
+            placeholder={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
             style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0 }}
           />
           {searchQuery && (
@@ -350,6 +406,44 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
       <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }} className="no-scrollbar scroll-fade-y">
         {isSearching ? (
+          searchMode === "content" && !isRemote ? (
+            searchLoading ? (
+              <PanelLoadingState label={t("explorer.searching")} />
+            ) : searchError ? (
+              <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
+            ) : grepHits.length === 0 ? (
+              <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
+            ) : (
+              <>
+                <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
+                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{grepHits.length}</span>
+                </div>
+                {grepHits.map((group) => (
+                  <div key={group.path} style={{ marginBottom: 6 }}>
+                    <div style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <FileIcon />
+                      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={group.rel}>{compactRelativePath(group.rel)}</span>
+                      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center", flexShrink: 0 }}>{group.lines.length}</span>
+                    </div>
+                    {group.lines.map((ln) => (
+                      <button
+                        key={ln.line}
+                        onClick={() => openInEditor(externalEditor, group.path, ln.line).catch(() => {})}
+                        title={t("explorer.search_mode.open_at_line", { line: ln.line })}
+                        className="hover-bg"
+                        style={{ width: "100%", padding: "2px 8px 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
+                      >
+                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{ln.line}</span>
+                        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+                {grepTruncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.content_truncated")}</div>}
+              </>
+            )
+          ) : (
           searchLoading ? (
             <PanelLoadingState label={t("explorer.searching")} />
           ) : searchError ? (
@@ -388,6 +482,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                 );
               })}
             </>
+          )
           )
         ) : loading ? (
           <PanelLoadingState label={t("explorer.loading")} />

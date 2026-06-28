@@ -310,18 +310,26 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /export interface SearchHit/);
   assert.match(bridge, /fsReadDir\(path: string, includeHidden = false\)/);
   assert.match(bridge, /fsSearch\([\s\S]*includeHidden = false/);
+  assert.match(bridge, /export interface GrepHit/);
+  assert.match(bridge, /export function fsGrep/);
   assert.match(explorer, /fsSearch\(baseDir, q, 80, includeHidden\)/);
-  // Remote (SSH) search now runs `find` over the exec channel — the search box
-  // is no longer disabled for remote sessions, and the placeholder is unified.
+  assert.match(explorer, /fsGrep\(q, baseDir, \{ caseInsensitive: false \}\)/);
+  assert.match(explorer, /groupGrepHitsByFile\(resp\.hits\)/);
+  // Remote (SSH) name search runs `find` over the exec channel — the search
+  // input stays enabled for remote sessions. Content (grep) search is
+  // local-only, so the mode toggle is disabled for remote and the placeholder
+  // switches by mode.
   assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, 80\)/);
-  assert.match(explorer, /placeholder=\{t\("explorer\.search_placeholder"\)\}/);
-  assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
+  assert.match(explorer, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
+  assert.match(explorer, /setSearchMode\(\(m\) => \(m === "name" \? "content" : "name"\)\)[\s\S]*?disabled=\{isRemote\}/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
   assert.match(explorer, /items: isRemote[\s\S]*?id: "dir:copy-path"/);
   assert.match(explorer, /items: isRemote[\s\S]*?id: "file:copy-path"/);
   const zhDictForExplorer = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(zhDictForExplorer, /"explorer\.search_placeholder": "搜索当前项目"/);
+  assert.match(zhDictForExplorer, /"explorer\.search_placeholder_content": "搜索文件内容"/);
+  assert.match(zhDictForExplorer, /"explorer\.content_no_match": "未找到匹配内容"/);
   assert.match(search, /#\[serde\(rename_all = "camelCase"\)\]/);
   assert.match(search, /include_hidden: Option<bool>/);
   assert.match(search, /\.hidden\(!include_hidden\)/);
