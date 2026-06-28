@@ -335,19 +335,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     });
 
     cmds.push({
-      id: "workspace-insights",
-      label: t("palette.cmd.workspace_insights"),
-      icon: <CmdIcon d="M12 3a9 9 0 1 0 9 9M12 12l5-5" />,
-      section: t("palette.section.action"),
-      scopes: ["action", "app"],
-      originalIndex: idx++,
-      action: () => {
-        uiStore.getState().recordCommandUse("workspace-insights");
-        uiStore.getState().setOverlay("insights");
-      },
-    });
-
-    cmds.push({
       id: "toggle-focus-mode",
       label: sidebarVisible || panelVisible ? t("palette.cmd.enter_focus") : t("palette.cmd.exit_focus"),
       icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,

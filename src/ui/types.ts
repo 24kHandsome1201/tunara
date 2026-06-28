@@ -108,7 +108,7 @@ export interface ChangedFile {
 }
 
 /** 覆盖层类型 */
-export type OverlayType = null | "settings" | "command-palette" | "ssh" | "insights";
+export type OverlayType = null | "settings" | "command-palette" | "ssh";
 
 /** 主题 */
 export type ThemeType = "light" | "dark" | "system";

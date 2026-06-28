@@ -4,7 +4,6 @@ import { MainArea } from "@/ui/MainArea";
 import { InspectorPanel } from "@/ui/InspectorPanel";
 import { Settings } from "@/ui/overlays/Settings";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
-import { WorkspaceInsights } from "@/ui/overlays/WorkspaceInsights";
 import { SshConnect } from "@/ui/overlays/SshConnect";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
@@ -23,7 +22,6 @@ import { useEffect } from "react";
 const closeSessionById = (id: string) => useSessionsStore.getState().closeSession(id);
 const newTerminal = () => useSessionsStore.getState().newTerminal();
 const openSettings = () => useUIStore.getState().setOverlay("settings");
-const openInsights = () => useUIStore.getState().setOverlay("insights");
 
 interface ResizeHandleProps {
   edge: "left" | "right";
@@ -198,7 +196,6 @@ export default function App() {
         onCloseSession={closeSessionById}
         onNewTerminal={newTerminal}
         onOpenSettings={openSettings}
-        onOpenInsights={openInsights}
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
@@ -290,7 +287,6 @@ export default function App() {
       {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
       {overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
-      {overlay === "insights" && <WorkspaceInsights onClose={() => setOverlay(null)} />}
       <HostKeyPromptDialog />
       <WorkflowParamPrompt />
       <ToastContainer />

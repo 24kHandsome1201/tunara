@@ -70,10 +70,8 @@ The sidebar is what visually separates Tunara from every other terminal. Session
 
 Tunara now has a small cockpit layer for people who keep several sessions open all day. It helps you see the state of the workspace, keep important sessions visible, and leave lightweight notes without leaving the terminal.
 
-- Workspace Radar summarizes sessions, AI agents, unread output, remote connections, Git changes, and stale completed work
-- Focus Quest turns the current workspace state into a tiny next-step checklist
 - Session overview cards expose cwd, agent, Git, notes, and quick actions in one place
-- Session Notes add autosaved per-session scratchpads, task counts, and rubber-duck templates
+- Session Notes add autosaved per-session scratchpads with task counts
 - Pinned sessions get a star marker and float higher in command-palette session results
 - Starter workflows can add common review and cleanup commands in one click
 

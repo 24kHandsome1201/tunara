@@ -1,5 +1,3 @@
-export const SESSION_NUDGE_COUNT = 6;
-
 export interface ChangeSummaryInput {
   added?: number;
   removed?: number;
@@ -38,27 +36,8 @@ export function summarizeChangedFiles(files: readonly ChangeSummaryInput[] | und
   return summary;
 }
 
-export function pickSessionNudgeIndex(
-  seed: string,
-  now = Date.now(),
-  count = SESSION_NUDGE_COUNT,
-): number {
-  const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 1;
-  const day = Number.isFinite(now) ? Math.floor(now / 86_400_000) : 0;
-  return stableHash(`${seed}:${day}`) % safeCount;
-}
-
 function safeNonNegativeInt(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.floor(value)
     : 0;
-}
-
-function stableHash(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
 }

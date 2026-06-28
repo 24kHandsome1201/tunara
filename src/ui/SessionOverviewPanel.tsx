@@ -3,7 +3,7 @@ import { AGENT_NAMES, deriveTitle, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
-import { pickSessionNudgeIndex, summarizeChangedFiles } from "@/modules/session/session-insights";
+import { summarizeChangedFiles } from "@/modules/session/session-insights";
 import { getSessionNoteStats } from "@/modules/session/session-notes";
 import { openInEditor } from "@/modules/editor/open";
 import { useT } from "@/modules/i18n";
@@ -11,15 +11,6 @@ import { useT } from "@/modules/i18n";
 interface SessionOverviewPanelProps {
   session: Session;
 }
-
-const NUDGE_KEYS = [
-  "overview.nudge.0",
-  "overview.nudge.1",
-  "overview.nudge.2",
-  "overview.nudge.3",
-  "overview.nudge.4",
-  "overview.nudge.5",
-] as const;
 
 function InfoCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -86,7 +77,6 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
   const { primary, subtitle } = deriveTitle(session);
   const changes = summarizeChangedFiles(session.changes?.files);
   const noteStats = getSessionNoteStats(session.note ?? "");
-  const nudgeIndex = pickSessionNudgeIndex(session.id || session.dir, Date.now(), NUDGE_KEYS.length);
   const isRemote = !!session.remote;
   const agentName = session.agent ? AGENT_NAMES[session.agent] ?? session.agent : t("overview.agent.none");
   const remoteLabel = session.remote
@@ -134,13 +124,6 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
           </code>
         </div>
       )}
-
-      <div style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: 12 }}>
-        <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 6 }}>{t("overview.duck.title")}</div>
-        <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", lineHeight: 1.5 }}>
-          {t(NUDGE_KEYS[nudgeIndex])}
-        </div>
-      </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
         <ActionButton onClick={() => useSessionsStore.getState().togglePinnedSession(session.id)}>

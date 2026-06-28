@@ -27,7 +27,6 @@ interface TitlebarProps {
   onCloseSession: (id: string) => void;
   onNewTerminal: () => void;
   onOpenSettings: () => void;
-  onOpenInsights: () => void;
 }
 
 function PanelLeftIcon({ active }: { active: boolean }) {
@@ -35,20 +34,6 @@ function PanelLeftIcon({ active }: { active: boolean }) {
     <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none">
       <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
       <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill={active ? "var(--c-accent)" : "currentColor"} fillOpacity={active ? 0.3 : 0.1} />
-    </svg>
-  );
-}
-
-function RadarIcon() {
-  return (
-    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 3v3" />
-      <path d="M12 18v3" />
-      <path d="M3 12h3" />
-      <path d="M18 12h3" />
-      <path d="M12 12l5-5" />
-      <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -190,7 +175,6 @@ export function Titlebar({
   onCloseSession,
   onNewTerminal,
   onOpenSettings,
-  onOpenInsights,
 }: TitlebarProps) {
   const t = useT();
   const showTabs = !sidebarVisible;
@@ -378,26 +362,6 @@ export function Titlebar({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
-
-        <button
-          onClick={onOpenInsights}
-          title={t("titlebar.workspace_insights")}
-          aria-label={t("titlebar.workspace_insights")}
-          style={{
-            width: "var(--w-titlebar-control)",
-            height: "var(--h-titlebar-control)",
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          className="hover-bg"
-        >
-          <RadarIcon />
-        </button>
 
         <button
           onClick={onOpenSettings}

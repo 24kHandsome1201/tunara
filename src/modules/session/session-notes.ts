@@ -18,14 +18,6 @@ export function sanitizeSessionNote(value: unknown, maxLength = SESSION_NOTE_MAX
   return normalized.length > limit ? normalized.slice(0, limit) : normalized;
 }
 
-export function appendSessionNoteBlock(note: string, block: string): string {
-  const base = sanitizeSessionNote(note).replace(/[\t ]+$/gm, "").replace(/\s+$/u, "");
-  const cleanBlock = sanitizeSessionNote(block).trim();
-  if (!cleanBlock) return base;
-  const separator = base ? "\n\n" : "";
-  return sanitizeSessionNote(`${base}${separator}${cleanBlock}\n`);
-}
-
 export function getSessionNoteStats(note: string): SessionNoteStats {
   const clean = sanitizeSessionNote(note);
   const trimmed = clean.trim();
