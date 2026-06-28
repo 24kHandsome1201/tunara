@@ -23,6 +23,12 @@ interface ResolvedCommand {
   source: ResolveSource;
 }
 
+interface Preflight {
+  installed: boolean;
+  loggedIn: boolean;
+  hint: string | null;
+}
+
 type SettingsTab = "appearance" | "workflows" | "cli";
 
 const TABS: SettingsTab[] = ["appearance", "workflows", "cli"];
@@ -108,7 +114,7 @@ const TOGGLE_KNOB: React.CSSProperties = {
   transition: "transform var(--duration-normal) var(--ease-out-back)",
 };
 
-const CLI_LIST = AGENT_REGISTRY.map(({ code, name }) => ({ code, name }));
+const CLI_LIST = AGENT_REGISTRY.map(({ code, name, cliBin }) => ({ code, name, cliBin }));
 
 const SOURCE_LABEL_KEYS: Record<ResolveSource, string> = {
   userOverride: "settings.cli.source.user_override",
@@ -165,6 +171,22 @@ export function Settings({ onClose }: SettingsProps) {
   useEffect(() => { setFontDraft(fontFamily); }, [fontFamily]);
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
   const [cliError, setCliError] = useState(false);
+  const [preflights, setPreflights] = useState<Record<string, Preflight>>({});
+  const [editingOverride, setEditingOverride] = useState<string | null>(null);
+  const [overrideDraft, setOverrideDraft] = useState("");
+
+  const loadPreflights = useCallback((items: ResolvedCommand[]) => {
+    // Only check login state for CLIs that are actually installed — an auth
+    // probe on a missing binary is pointless and slow. Each call is cached
+    // 30 min backend-side, so refreshing is cheap.
+    const installed = items.filter((cli) => !!cli.path);
+    setPreflights({});
+    installed.forEach((cli) => {
+      invoke<Preflight>("agent_preflight", { agent: cli.name })
+        .then((pf) => setPreflights((prev) => ({ ...prev, [cli.name]: pf })))
+        .catch(() => {});
+    });
+  }, []);
 
   const loadCliStatus = useCallback(() => {
     setResolvedClis(null);
@@ -173,15 +195,31 @@ export function Settings({ onClose }: SettingsProps) {
       .then((items) => {
         setResolvedClis(items);
         setCliError(false);
+        loadPreflights(items);
       })
       .catch(() => {
         setResolvedClis([]);
         setCliError(true);
       });
-  }, []);
+  }, [loadPreflights]);
 
   useEffect(() => {
     loadCliStatus();
+  }, [loadCliStatus]);
+
+  const applyOverride = useCallback((code: string, cliBin: string, path: string) => {
+    const trimmed = path.trim();
+    setEditingOverride(null);
+    if (!trimmed) return;
+    // The resolver keys overrides by cli_bin (resolve_all_bins resolves cli_bin
+    // then relabels name=code), so the override must be stored under cliBin, not
+    // the agent code, or it would never take effect. Then invalidate the
+    // preflight cache for this agent and re-resolve so the new path + login
+    // state show immediately.
+    invoke("set_bin_override", { name: cliBin, path: trimmed })
+      .then(() => invoke("agent_preflight_invalidate", { agent: code }).catch(() => {}))
+      .then(() => loadCliStatus())
+      .catch(() => {});
   }, [loadCliStatus]);
 
   const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
@@ -511,22 +549,71 @@ export function Settings({ onClose }: SettingsProps) {
               )}
               {resolvedClis !== null && (
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  {CLI_LIST.map(({ code, name }) => {
+                  {CLI_LIST.map(({ code, name, cliBin }) => {
                     const cli = resolvedByCode.get(code);
                     const installed = !!cli?.path;
                     const source = cli?.source ?? "notFound";
+                    const pf = preflights[code];
+                    const isEditing = editingOverride === code;
                     return (
-                      <div key={code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
-                        <AgentBadge agent={code} size={28} disabled={!installed} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</div>
-                          <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-                            {installed ? cli?.path : t("settings.cli.not_on_path")}
+                      <div key={code} style={{ padding: "8px 0", borderBottom: "1px solid var(--c-border-1)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <AgentBadge agent={code} size={28} disabled={!installed} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-2)" }}>{name}</span>
+                              {installed && pf && !pf.loggedIn && (
+                                <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning)", fontWeight: 600, flexShrink: 0 }}>
+                                  {t("settings.cli.not_logged_in")}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+                              {installed ? cli?.path : t("settings.cli.not_on_path")}
+                            </div>
                           </div>
+                          <span style={{ fontSize: "var(--fs-meta)", color: installed ? "var(--c-success)" : "var(--c-text-5)", fontWeight: 600, flexShrink: 0 }}>
+                            {installed ? t(SOURCE_LABEL_KEYS[source]) : t("settings.cli.source.not_found")}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setEditingOverride(isEditing ? null : code);
+                              setOverrideDraft(cli?.path ?? "");
+                            }}
+                            className="hover-bg"
+                            title={t("settings.cli.override")}
+                            aria-label={t("settings.cli.override")}
+                            style={{ width: 24, height: 24, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: isEditing ? "var(--c-accent)" : "var(--c-text-5)" }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                          </button>
                         </div>
-                        <span style={{ fontSize: "var(--fs-meta)", color: installed ? "var(--c-success)" : "var(--c-text-5)", fontWeight: 600, flexShrink: 0 }}>
-                          {installed ? t(SOURCE_LABEL_KEYS[source]) : t("settings.cli.source.not_found")}
-                        </span>
+                        {isEditing && (
+                          <div style={{ display: "flex", gap: 6, marginTop: 8, paddingLeft: 38 }}>
+                            <input
+                              value={overrideDraft}
+                              onChange={(e) => setOverrideDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); applyOverride(code, cliBin, overrideDraft); }
+                                else if (e.key === "Escape") { e.preventDefault(); setEditingOverride(null); }
+                              }}
+                              autoFocus
+                              spellCheck={false}
+                              placeholder={t("settings.cli.override_placeholder")}
+                              style={{ flex: 1, minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)", outline: "none" }}
+                            />
+                            <button
+                              onClick={() => applyOverride(code, cliBin, overrideDraft)}
+                              className="hover-bg"
+                              style={{ padding: "0 12px", height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-accent-border)", background: "var(--c-accent-bg-light)", color: "var(--c-accent)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                            >
+                              {t("settings.cli.override_save")}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

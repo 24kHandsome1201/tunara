@@ -25,6 +25,8 @@ export const KEYBINDING_ACTIONS = [
   "selectTab7",
   "selectTab8",
   "selectLastTab",
+  "cycleNextSession",
+  "cyclePrevSession",
   "navigatePrevBlock",
   "navigateNextBlock",
 ] as const;
@@ -59,6 +61,8 @@ export const DEFAULT_KEYBINDINGS: Readonly<KeybindingConfig> = {
   selectTab7: "Mod+7",
   selectTab8: "Mod+8",
   selectLastTab: "Mod+9",
+  cycleNextSession: "Mod+Tab",
+  cyclePrevSession: "Mod+Shift+Tab",
   navigatePrevBlock: "Mod+Shift+ArrowUp",
   navigateNextBlock: "Mod+Shift+ArrowDown",
 };
@@ -90,6 +94,8 @@ export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
   selectTab7: "select_tab_7",
   selectTab8: "select_tab_8",
   selectLastTab: "select_last_tab",
+  cycleNextSession: "cycle_next_session",
+  cyclePrevSession: "cycle_prev_session",
   navigatePrevBlock: "navigate_prev_block",
   navigateNextBlock: "navigate_next_block",
 };

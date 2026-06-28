@@ -76,6 +76,12 @@ export function useKeybindings() {
         case "selectLastTab":
           if (st.sessions.length > 0) st.setActive(st.sessions[st.sessions.length - 1].id);
           break;
+        case "cycleNextSession":
+          st.cycleSession("next");
+          break;
+        case "cyclePrevSession":
+          st.cycleSession("prev");
+          break;
         default: {
           const tabMatch = action.match(/^selectTab([1-8])$/);
           if (!tabMatch) break;

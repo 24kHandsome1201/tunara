@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useUIStore, type Toast } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
+import { useT } from "@/modules/i18n";
 import { AgentBadge } from "./agents";
 import { CloseIcon } from "./shared";
 
@@ -8,10 +9,13 @@ const TOAST_DURATION = 4000;
 const EXIT_DURATION = 250;
 
 function ToastItem({ toast }: { toast: Toast }) {
+  const t = useT();
   const removeToast = useUIStore((s) => s.removeToast);
   const setActive = useSessionsStore((s) => s.setActive);
   const [exiting, setExiting] = useState<boolean>(false);
   const [paused, setPaused] = useState<boolean>(false);
+  const [copied, setCopied] = useState<boolean>(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const remainRef = useRef(TOAST_DURATION);
@@ -31,8 +35,17 @@ function ToastItem({ toast }: { toast: Toast }) {
     return () => {
       clearTimeout(timerRef.current);
       clearTimeout(exitTimerRef.current);
+      clearTimeout(copiedTimerRef.current);
     };
   }, []);
+
+  const handleCopy = () => {
+    const text = toast.subtitle ? `${toast.title}\n${toast.subtitle}` : toast.title;
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 1200);
+  };
 
   const handleMouseEnter = () => {
     setPaused(true);
@@ -117,6 +130,39 @@ function ToastItem({ toast }: { toast: Toast }) {
           {toast.subtitle}
         </div>
       </div>
+
+      {toast.variant === "error" && (
+        <button
+          onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+          title={t(copied ? "toast.copied" : "toast.copy_error")}
+          aria-label={t(copied ? "toast.copied" : "toast.copy_error")}
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 4,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            color: copied ? "var(--c-success)" : "var(--c-text-5)",
+          }}
+          className="hover-bg"
+        >
+          {copied ? (
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : (
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          )}
+        </button>
+      )}
 
       <button
         onClick={(e) => { e.stopPropagation(); dismiss(); }}

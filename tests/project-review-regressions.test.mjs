@@ -312,16 +312,17 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /fsSearch\([\s\S]*includeHidden = false/);
   assert.match(bridge, /export interface GrepHit/);
   assert.match(bridge, /export function fsGrep/);
-  assert.match(explorer, /fsSearch\(baseDir, q, 80, includeHidden\)/);
+  assert.match(explorer, /fsSearch\(baseDir, q, NAME_SEARCH_LIMIT, includeHidden\)/);
+  assert.match(explorer, /const NAME_SEARCH_LIMIT = 80/);
   assert.match(explorer, /fsGrep\(q, baseDir, \{ caseInsensitive: false \}\)/);
   assert.match(explorer, /groupGrepHitsByFile\(resp\.hits\)/);
   // Remote (SSH) name search runs `find` over the exec channel — the search
   // input stays enabled for remote sessions. Content (grep) search is
   // local-only, so the mode toggle is disabled for remote and the placeholder
   // switches by mode.
-  assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, 80\)/);
+  assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT\)/);
   assert.match(explorer, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
-  assert.match(explorer, /setSearchMode\(\(m\) => \(m === "name" \? "content" : "name"\)\)[\s\S]*?disabled=\{isRemote\}/);
+  assert.match(explorer, /const next = m === "name" \? "content" : "name"[\s\S]*?disabled=\{isRemote\}/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
   assert.match(explorer, /items: isRemote[\s\S]*?id: "dir:copy-path"/);
@@ -487,7 +488,11 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(source, /ensureSessionVisibleInSplit\(s\.id\)/);
   assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
-  assert.match(source, /getNumberRecordValue\(state\.gitNonce, id\) \+ 1/);
+  // refreshGit coalesces per-session nonce bumps into one store write via
+  // bumpGitNonce → flushGitNonceBumps; the increment itself is unchanged.
+  assert.match(source, /gitNonce\[id\] = getNumberRecordValue\(gitNonce, id\) \+ 1/);
+  assert.match(source, /function bumpGitNonce\(id: string,/);
+  assert.match(source, /queueMicrotask\(\(\) => flushGitNonceBumps\(set\)\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, s\.id\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.dirCloseConfirmations, dir\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, id\)/);

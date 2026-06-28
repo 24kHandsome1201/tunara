@@ -34,10 +34,13 @@ interface SessionsState {
   dirCloseConfirmations: Record<string, number>;
   recentDirs: string[];
   recentCommands: string[];
+  // Session ids in most-recently-active-first order, used by Mod+Tab cycling.
+  recentSessionIds: string[];
 
   addSession: (s: Session) => void;
   removeSession: (id: string) => void;
   setActive: (id: string) => void;
+  cycleSession: (direction: "next" | "prev") => void;
   markRead: (id: string) => void;
   updateSession: (id: string, patch: Partial<Session>) => void;
   refreshGit: (id: string) => void;
@@ -81,6 +84,31 @@ const dirCloseConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>
 const GIT_REFRESH_THROTTLE_MS = 1500;
 const lastGitRefreshAt = new Map<string, number>();
 const pendingGitRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// When several sessions' throttle windows expire in the same tick, coalesce
+// their nonce bumps into one `set()` instead of one per session, so a burst of
+// concurrent refreshes triggers a single store update + render pass. Per-session
+// timing is unchanged — only the store writes are batched.
+const queuedGitNonceBumps = new Set<string>();
+let gitNonceFlushScheduled = false;
+
+function flushGitNonceBumps(set: (fn: (state: SessionsState) => Partial<SessionsState>) => void) {
+  gitNonceFlushScheduled = false;
+  if (queuedGitNonceBumps.size === 0) return;
+  const ids = [...queuedGitNonceBumps];
+  queuedGitNonceBumps.clear();
+  set((state) => {
+    const gitNonce = { ...state.gitNonce };
+    for (const id of ids) gitNonce[id] = getNumberRecordValue(gitNonce, id) + 1;
+    return { gitNonce };
+  });
+}
+
+function bumpGitNonce(id: string, set: (fn: (state: SessionsState) => Partial<SessionsState>) => void) {
+  queuedGitNonceBumps.add(id);
+  if (gitNonceFlushScheduled) return;
+  gitNonceFlushScheduled = true;
+  queueMicrotask(() => flushGitNonceBumps(set));
+}
 
 export function makeSessionId(): string {
   return `s-${Date.now()}-${nextId++}`;
@@ -210,6 +238,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   dirCloseConfirmations: {},
   recentDirs: [],
   recentCommands: [],
+  recentSessionIds: [],
 
   addSession: (s) => {
     set((state) => ({
@@ -245,6 +274,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         closeConfirmations,
         launchedSessionIds: nextLaunchedSessionIds,
         gitNonce,
+        recentSessionIds: state.recentSessionIds.filter((sid) => sid !== id),
       };
     });
   },
@@ -257,12 +287,32 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       return {
         activeSessionId: id,
         launchedSessionIds: { ...state.launchedSessionIds, [id]: true },
+        recentSessionIds: [id, ...state.recentSessionIds.filter((sid) => sid !== id)],
         sessions: state.sessions.map((s) =>
           s.id === id && s.unread ? { ...s, unread: false } : s,
         ),
       };
     });
     if (accepted) ensureSessionVisibleInSplit(id);
+  },
+
+  // Cycle to the next/prev session by most-recent-active order (Mod+Tab). "next"
+  // walks toward older sessions; "prev" walks back toward the most recent. Falls
+  // back to session list order for any sessions never activated this run.
+  cycleSession: (direction) => {
+    const state = get();
+    if (state.sessions.length < 2) return;
+    const seen = new Set(state.recentSessionIds);
+    const order = [
+      ...state.recentSessionIds.filter((id) => state.sessions.some((s) => s.id === id)),
+      ...state.sessions.filter((s) => !seen.has(s.id)).map((s) => s.id),
+    ];
+    if (order.length < 2) return;
+    const current = state.activeSessionId ?? order[0];
+    const idx = order.indexOf(current);
+    const step = direction === "next" ? 1 : -1;
+    const nextIdx = (idx + step + order.length) % order.length;
+    get().setActive(order[nextIdx]);
   },
 
   refreshGit: (id) => {
@@ -279,18 +329,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         clearTimeout(pending);
         pendingGitRefreshTimers.delete(id);
       }
-      set((state) => ({
-        gitNonce: { ...state.gitNonce, [id]: getNumberRecordValue(state.gitNonce, id) + 1 },
-      }));
+      bumpGitNonce(id, set);
       return;
     }
     if (pendingGitRefreshTimers.has(id)) return;
     const timer = setTimeout(() => {
       pendingGitRefreshTimers.delete(id);
       lastGitRefreshAt.set(id, Date.now());
-      set((state) => ({
-        gitNonce: { ...state.gitNonce, [id]: getNumberRecordValue(state.gitNonce, id) + 1 },
-      }));
+      bumpGitNonce(id, set);
     }, GIT_REFRESH_THROTTLE_MS - elapsed);
     pendingGitRefreshTimers.set(id, timer);
   },

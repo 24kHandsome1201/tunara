@@ -12,6 +12,15 @@ import { useT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 
+// Cap for name search (fs_search / ssh_fs_search). The backend truncates at this
+// count without a flag, so hitting it exactly is treated as "more results exist".
+const NAME_SEARCH_LIMIT = 80;
+
+// Remember the chosen search mode for this run so it survives directory/session
+// switches. The query itself is intentionally not remembered — it is scoped to a
+// specific repo and clearing it when the root changes avoids stale lookups.
+let lastFileSearchMode: "name" | "content" = "name";
+
 interface FileExplorerProps {
   rootDir: string;
   /**
@@ -100,7 +109,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
-  const [searchMode, setSearchMode] = useState<"name" | "content">("name");
+  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [searchMode, setSearchMode] = useState<"name" | "content">(isRemote ? "name" : lastFileSearchMode);
   const [grepHits, setGrepHits] = useState<GrepFileGroup[]>([]);
   const [grepTruncated, setGrepTruncated] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -114,7 +124,9 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     setNavDir(null);
     setExpandedFile(null);
     setSearchQuery("");
-    setSearchMode("name");
+    // Content search is local-only; force name mode for remote, otherwise keep
+    // the user's remembered mode preference across the root change.
+    setSearchMode(isRemote ? "name" : lastFileSearchMode);
     if (isRemote && remotePtyId !== undefined) {
       let cancelled = false;
       setBaseDir(null);
@@ -172,29 +184,32 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       setSearchHits([]);
       setGrepHits([]);
       setGrepTruncated(false);
+      setSearchTruncated(false);
       setSearchLoading(false);
       setSearchError(false);
       return;
     }
 
     const mode = searchMode;
-    // Content search (grep) is local-only — there is no ssh_fs_grep yet, so the
-    // mode toggle is disabled for remote sessions and `mode === "content"` here
-    // implies a local session. Name search keeps the existing fs_search (local)
-    // / ssh_fs_search (remote) split with the shared SearchHit shape; the remote
-    // bridge caches per (ptyId, root, query) so debounce re-triggering and
-    // backspacing don't re-run find every window.
-    const runSearch: Promise<SearchHit[] | GrepResponse> =
-      mode === "content" && !isRemote
-        ? fsGrep(q, baseDir, { caseInsensitive: false })
-        : isRemote && remotePtyId !== undefined
-          ? sshSearch(remotePtyId, baseDir, q, 80)
-          : fsSearch(baseDir, q, 80, includeHidden);
-
     let cancelled = false;
     setSearchLoading(true);
     setSearchError(false);
+    // Fire the request inside the debounce timer, not before it: building the
+    // promise eagerly would start the find/grep on every keystroke and only
+    // debounce the setState. `cancelled` discards any in-flight response when a
+    // newer query supersedes this effect, so stale results never overwrite the
+    // latest. Content search (grep) is local-only — there is no ssh_fs_grep yet,
+    // so the mode toggle is disabled for remote sessions and `mode === "content"`
+    // here implies a local session. Name search keeps the fs_search (local) /
+    // ssh_fs_search (remote) split with the shared SearchHit shape; the remote
+    // bridge caches per (ptyId, root, query) so backspacing doesn't re-run find.
     const timer = window.setTimeout(() => {
+      const runSearch: Promise<SearchHit[] | GrepResponse> =
+        mode === "content" && !isRemote
+          ? fsGrep(q, baseDir, { caseInsensitive: false })
+          : isRemote && remotePtyId !== undefined
+            ? sshSearch(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT)
+            : fsSearch(baseDir, q, NAME_SEARCH_LIMIT, includeHidden);
       runSearch
         .then((result) => {
           if (cancelled) return;
@@ -203,8 +218,13 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             setGrepHits(groupGrepHitsByFile(resp.hits));
             setGrepTruncated(resp.truncated);
             setSearchHits([]);
+            setSearchTruncated(false);
           } else {
-            setSearchHits(result as SearchHit[]);
+            const hits = result as SearchHit[];
+            setSearchHits(hits);
+            // fs_search/ssh_fs_search cap results at NAME_SEARCH_LIMIT without a
+            // truncated flag, so infer truncation from hitting the cap exactly.
+            setSearchTruncated(hits.length >= NAME_SEARCH_LIMIT);
             setGrepHits([]);
             setGrepTruncated(false);
           }
@@ -215,6 +235,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           setSearchHits([]);
           setGrepHits([]);
           setGrepTruncated(false);
+          setSearchTruncated(false);
           setSearchError(true);
           setSearchLoading(false);
         });
@@ -370,7 +391,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           <button
             onClick={() => {
               if (isRemote) return;
-              setSearchMode((m) => (m === "name" ? "content" : "name"));
+              setSearchMode((m) => {
+                const next = m === "name" ? "content" : "name";
+                lastFileSearchMode = next;
+                return next;
+              });
               setSearchQuery("");
             }}
             disabled={isRemote}
@@ -481,6 +506,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                   </div>
                 );
               })}
+              {searchTruncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.results_truncated")}</div>}
             </>
           )
           )

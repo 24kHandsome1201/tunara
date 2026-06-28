@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatSize, type Session } from "./types";
 import {
   gitDiff,
@@ -102,6 +102,15 @@ function MiniDiff({
     });
   };
 
+  // Parse + filter once per (patch, query) instead of on every render/scroll.
+  // Hooks must run before the early returns, so guard on the text-diff shape —
+  // a non-text diff yields empty rows and falls through to its own return below.
+  const patch = diff && diff.kind === "text" ? diff.patch : "";
+  const allRows = useMemo(() => buildMiniDiffRows(patch), [patch]);
+  const hunkTexts = useMemo(() => collectHunkTexts(allRows), [allRows]);
+  const q = searchQuery.trim();
+  const rows = useMemo(() => filterRowsByQuery(allRows, q), [allRows, q]);
+
   if (!diff) {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.loading")}</div>;
   }
@@ -114,10 +123,6 @@ function MiniDiff({
   if (diff.kind === "metadataOnly") {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.metadata_only", { change: diff.change })}</div>;
   }
-  const allRows = buildMiniDiffRows(diff.patch);
-  const q = searchQuery.trim();
-  const rows = filterRowsByQuery(allRows, q);
-  const hunkTexts = collectHunkTexts(allRows);
   const noMatch = rows.length === 0;
 
   // Virtual scroll: only render rows inside the viewport (+ buffer). The total
