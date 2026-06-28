@@ -6,6 +6,25 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
+## [1.8.0] - 2026-06-28
+
+汇总 1.7.1 以来的全部变更。
+
+### 新功能
+- 全局唤起快捷键：在任意应用里按 ⌘⇧T 唤起或隐藏 Tunara 主窗口，可在设置里改键，留空即关闭，冲突时弹提示。
+- SSH config 导入：从 `~/.ssh/config` 把静态 Host 块导入成已保存的主机 profile，跳过通配和 Match 块，重复导入不会产生重复项。
+- 远程 Git review：SSH 会话也能看 changes 面板了，通过一次性 exec channel 读远程仓库状态和 diff，不占用交互 shell，远程没有 git 时降级为「非仓库」。
+- 远程文件搜索：SSH 会话的文件面板支持按文件名搜索远程目录。
+- 文件内容搜索：本地文件面板新增按内容搜索（grep），结果按文件分组，文件名/内容两种模式可切换。
+
+### 修复与优化
+- 大 diff 虚拟滚动：只渲染可见行加缓冲，超大 diff 不再卡顿，且没有引入新依赖（为守住 30 MB 安装包没用 react-window）。
+- 加固会话快照持久化：notes、置顶、折叠的 diff 分区、命令用量、SSH 远程描述符、终端快照、工作流、当前会话 id 都走纯净 restore 边界做净化，脏数据丢弃而非恢复。
+- 减少无谓落盘：30 秒终端快照只在 scrollback 真正变化时才写。
+- 修复会话关闭后残留的孤儿终端快照，并在界面里一致地反映终端进程退出状态。
+- 收紧本地 diff 与 SSH 主机解析：非法 record key、错误端口、过时运行时字段一律丢弃。
+- 修复 legacy macOS 发布通道在 CI 里的包校验脚本权限。
+
 ## [1.7.2] - 2026-06-28
 
 ### Fixed
