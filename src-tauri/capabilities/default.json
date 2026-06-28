@@ -1,12 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window — least-privilege: only the core surfaces the frontend actually uses (events for listen(), and the specific window operations), no core:default catch-all.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default",
+    "core:event:default",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
     "core:window:allow-hide",
@@ -14,6 +14,9 @@
     "core:window:allow-request-user-attention",
     "core:window:allow-set-badge-count",
     "core:window:allow-toggle-maximize",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-is-fullscreen",
     "opener:default",
     "log:default",
     "os:default",

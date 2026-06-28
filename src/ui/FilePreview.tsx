@@ -197,20 +197,22 @@ function MarkdownBlock({ block }: { block: Block }) {
       );
     case "quote":
       return <div style={{ borderLeft: "2px solid var(--c-border-2)", paddingLeft: 8, color: "var(--c-text-5)", margin: "4px 0", fontSize: "var(--fs-meta)", lineHeight: 1.6 }}><InlineText text={block.text} /></div>;
-    case "ul":
+    case "ul": {
       const ulKeys = new UniqueKeyBuilder();
       return (
         <ul style={{ paddingLeft: 16, margin: "4px 0", listStyle: "disc" }}>
           {block.items.map((item) => <li key={ulKeys.make(`ul:${compactKeyText(item)}`)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
         </ul>
       );
-    case "ol":
+    }
+    case "ol": {
       const olKeys = new UniqueKeyBuilder();
       return (
         <ol style={{ paddingLeft: 16, margin: "4px 0" }}>
           {block.items.map((item) => <li key={olKeys.make(`ol:${compactKeyText(item)}`)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
         </ol>
       );
+    }
     case "hr":
       return <div style={{ borderTop: "1px solid var(--c-border-2)", margin: "8px 0" }} />;
   }

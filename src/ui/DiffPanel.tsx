@@ -316,8 +316,8 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         ) {
           setDiffs((prev) => ({ ...prev, [key]: d }));
         }
-      } catch {
-        // diff load failed silently
+      } catch (e) {
+        console.error("[DiffPanel] git_diff load failed", { repoPath: requestedRepoPath, file: file.path, error: e });
       }
     }
   }

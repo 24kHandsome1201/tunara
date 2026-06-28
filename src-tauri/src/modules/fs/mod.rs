@@ -18,24 +18,11 @@ pub mod tree;
 
 use std::path::PathBuf;
 
+/// Expand a leading `~` against `$HOME`. Delegates to [`util::expand_tilde_path`]
+/// so the tilde-expansion logic has a single source of truth shared with the
+/// SSH path (which uses `dirs::home_dir()` instead of `$HOME`).
 pub fn expand_tilde(path: &str) -> PathBuf {
-    // Only `~` and `~/...` expand; `~user` and any non-leading `~` pass through.
-    // Slicing `&path[2..]` (the previous approach) panics when byte index 2 lands
-    // inside a multi-byte UTF-8 char (e.g. `~é`) — and with `panic = "abort"` in
-    // release that takes the whole app down — and silently drops a char for the
-    // slash-less `~x` form. `strip_prefix` always splits on a char boundary, so
-    // it is both panic-safe and correct. Mirrors `util::expand_tilde` /
-    // `ssh::auth::expand_tilde`, which already use this shape.
-    if path == "~" {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home);
-        }
-    } else if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(rest);
-        }
-    }
-    PathBuf::from(path)
+    crate::modules::util::expand_tilde_path(path)
 }
 
 #[cfg(test)]

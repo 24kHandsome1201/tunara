@@ -56,6 +56,9 @@ jobs:
       - name: Typecheck frontend
         run: pnpm typecheck
 
+      - name: Lint frontend
+        run: pnpm lint
+
       - name: Build frontend
         run: pnpm build
 
@@ -65,8 +68,15 @@ jobs:
       - name: Run Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
-      - name: Run test suite
-        run: pnpm test
+      # Frontend and Rust tests run as independent steps so a frontend failure
+      # does not skip the Rust suite (pnpm test chains them with &&, which
+      # masks Rust regressions when Node tests fail first).
+      - name: Run frontend tests
+        run: pnpm test:node
+
+      - name: Run Rust tests
+        if: always()
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       # Verify the Tauri binary actually links on macOS — the dev/release CI
       # flows have skipped this in the past, so vibrancy, macos-private-api,

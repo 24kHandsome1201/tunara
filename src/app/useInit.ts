@@ -163,7 +163,8 @@ export function useInit() {
         };
         unlistens.push(win.onResized(check));
       }
-    } catch {
+    } catch (e) {
+      console.warn("[useInit] platform/window probe failed, assuming macOS traffic lights", e);
       useUIStore.getState().setTrafficLightWidth(96);
     }
 
@@ -257,7 +258,7 @@ export function useInit() {
       clearInterval(timer);
       window.removeEventListener("focus", onWindowFocus);
       for (const dir of watchedDirs) releaseGitWatch(dir);
-      unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {}));
+      unlistens.forEach((p) => p.then((fn) => fn()).catch((e) => console.warn("[useInit] cleanup listener failed", e)));
     };
   }, [addSession]);
 }

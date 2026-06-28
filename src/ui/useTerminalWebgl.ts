@@ -26,7 +26,7 @@ function evictIfNeeded() {
     if (!evictId) break;
     const entry = contextMap.get(evictId);
     if (entry) {
-      try { entry.addon.dispose(); } catch { /* already disposed */ }
+      try { entry.addon.dispose(); } catch (e) { console.debug("[useTerminalWebgl] dispose on LRU eviction failed", e); }
       contextMap.delete(evictId);
     }
   }
@@ -71,7 +71,8 @@ export function useTerminalWebgl(
       contextMap.set(sessionId, { addon: webgl, term });
       touchLRU(sessionId);
       evictIfNeeded();
-    } catch {
+    } catch (e) {
+      console.debug("[useTerminalWebgl] WebGL addon init failed, falling back to DOM renderer", e);
       webglRef.current = null;
     }
   }, [active, sessionId, termRef, webglRef, termReady]);
@@ -82,7 +83,7 @@ export function useTerminalWebgl(
     return () => {
       const entry = contextMap.get(sessionId);
       if (entry) {
-        try { entry.addon.dispose(); } catch { /* already disposed */ }
+        try { entry.addon.dispose(); } catch (e) { console.debug("[useTerminalWebgl] dispose on unmount failed", e); }
         contextMap.delete(sessionId);
         const idx = lruOrder.indexOf(sessionId);
         if (idx >= 0) lruOrder.splice(idx, 1);

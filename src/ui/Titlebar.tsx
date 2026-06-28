@@ -9,8 +9,9 @@ import { useT } from "@/modules/i18n";
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type DragStyle = React.CSSProperties & { WebkitAppRegion?: string; [key: string]: any };
+// WebKit's `-webkit-app-region` CSS property is not in the standard
+// React.CSSProperties type. Model just the one vendor extension we use.
+type DragStyle = React.CSSProperties & { WebkitAppRegion?: string };
 
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
 const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1;

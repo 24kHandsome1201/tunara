@@ -145,7 +145,7 @@ function TerminalViewImpl({
           if (url.protocol === "http:" || url.protocol === "https:") {
             openUrl(uri);
           }
-        } catch { /* malformed URL, ignore */ }
+        } catch (e) { console.debug("[TerminalView] malformed URL in web link, ignoring", uri, e); }
       }));
       const lineCwdTracker = createTerminalLineCwdTracker();
       const initialCwd = dir === "~" ? undefined : dir;

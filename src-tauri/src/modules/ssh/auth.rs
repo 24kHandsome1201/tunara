@@ -9,7 +9,6 @@
 // We try `connect_env` first, and surface a clear "agent unreachable" so the
 // caller can fall back to key/password instead of hanging.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use russh::client::{AuthResult, Handle};
@@ -135,24 +134,17 @@ async fn try_key_file(
 // Expand a leading `~` against the user's home. Uses `dirs::home_dir()` (not
 // $HOME) so it works under macOS GUI launch where $HOME may be unset — the same
 // resolution known_hosts and host profiles use, keeping all SSH paths
-// consistent. The local-fs `util::expand_tilde` deliberately differs (it's
-// env-HOME based for the terminal cwd path); we don't reuse it here.
+// consistent. Delegates the core expansion to `util::expand_tilde_with` so the
+// tilde-parsing logic has a single source of truth; only the home source
+// differs from the local-fs `util::expand_tilde` (which is `$HOME`-based).
 fn expand_tilde(path: &str) -> std::path::PathBuf {
-    if path == "~" {
-        if let Some(home) = dirs::home_dir() {
-            return home;
-        }
-    } else if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
-    }
-    Path::new(path).to_path_buf()
+    crate::modules::util::expand_tilde_with(path, dirs::home_dir().as_deref())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn expand_tilde_handles_bare_and_prefixed() {

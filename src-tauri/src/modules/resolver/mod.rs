@@ -145,9 +145,37 @@ impl ResolverState {
 }
 
 /// 从 login shell 解析 PATH（`$SHELL -ilc 'echo $PATH'`）。失败返回空。
+///
+/// `$SHELL` 是用户环境变量,本地应用理论上可信,但作为防御纵深,我们只接受
+/// 绝对路径且位于可信 bin 目录内的 shell——避免 `$SHELL` 被设为恶意可执行
+/// 路径时通过本函数执行任意代码。
 fn detect_login_shell_path() -> Vec<PathBuf> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let output = std::process::Command::new(&shell)
+    if !is_trusted_shell_path(&shell) {
+        log::warn!("ignoring untrusted $SHELL={shell:?}, falling back to /bin/zsh");
+        return detect_shell_path("/bin/zsh");
+    }
+    detect_shell_path(&shell)
+}
+
+/// 仅接受绝对路径、且位于系统或 Homebrew bin 目录内的 shell。这些目录
+/// 通常只有管理员/Homebrew 可写,是 login shell 的合理来源。
+fn is_trusted_shell_path(path: &str) -> bool {
+    let Ok(canon) = std::fs::canonicalize(path) else {
+        // 路径不存在时,只放行纯文件名(交给 PATH 查找)而非任意路径。
+        return !path.contains('/') && !path.is_empty();
+    };
+    const TRUSTED_DIRS: &[&str] = &["/bin", "/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"];
+    for dir in TRUSTED_DIRS {
+        if canon.starts_with(std::path::Path::new(dir)) {
+            return true;
+        }
+    }
+    false
+}
+
+fn detect_shell_path(shell: &str) -> Vec<PathBuf> {
+    let output = std::process::Command::new(shell)
         .args(["-ilc", "echo $PATH"])
         .output();
     match output {
