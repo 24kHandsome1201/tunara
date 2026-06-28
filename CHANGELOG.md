@@ -6,6 +6,11 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
+## [1.7.2] - 2026-06-28
+
+### Fixed
+- Fixed the legacy macOS release verification script permissions so the `-legacy` DMG lane can run its bundle gate in GitHub Actions.
+
 ## [1.7.1] - 2026-06-28
 
 ### Fixed
