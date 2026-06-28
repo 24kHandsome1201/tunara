@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { toProfile, toRaw, type RawHostProfile, type SshHostProfile } from "./hosts-model.ts";
+import { toProfile, toRaw, toImportResult, type RawHostProfile, type RawSshImportResult, type SshHostProfile, type SshImportResult } from "./hosts-model.ts";
 
-export { makeHostId, normalizeSshPort, parseSshPort, toProfile, toRaw, type RawHostProfile, type SshHostProfile } from "./hosts-model.ts";
+export { makeHostId, normalizeSshPort, parseSshPort, toProfile, toRaw, toImportResult, filterNewHostsById, type RawHostProfile, type RawSshImportResult, type SshHostProfile, type SshImportResult } from "./hosts-model.ts";
 
 export async function loadHosts(): Promise<SshHostProfile[]> {
   const raw = await invoke<RawHostProfile[]>("ssh_hosts_load");
@@ -16,4 +16,9 @@ export async function saveHost(profile: SshHostProfile): Promise<SshHostProfile[
 export async function removeHost(id: string): Promise<SshHostProfile[]> {
   const raw = await invoke<RawHostProfile[]>("ssh_hosts_remove", { id });
   return raw.map(toProfile);
+}
+
+export async function importSshConfig(): Promise<SshImportResult> {
+  const raw = await invoke<RawSshImportResult>("ssh_hosts_import_config");
+  return toImportResult(raw);
 }

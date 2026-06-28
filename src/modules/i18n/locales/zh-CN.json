@@ -179,7 +179,6 @@
   "explorer.searching": "搜索中",
   "explorer.search_failed": "搜索失败",
   "explorer.search_placeholder": "搜索当前项目",
-  "explorer.search_remote_unavailable": "远程搜索暂未支持",
   "explorer.no_match": "没有找到匹配文件",
   "explorer.results": "结果",
   "explorer.read_dir_failed": "无法读取目录",
@@ -316,5 +315,13 @@
   "paste.warning.lines": "{{count}} 行",
   "paste.warning.chars": "{{count}} 个字符",
   "paste.warning.summary_default": "这段",
-  "paste.warning.message": "即将粘贴 {{summary}} 文本。多行或大量粘贴可能会立即执行命令或让终端短时间无响应。继续粘贴？"
+  "paste.warning.message": "即将粘贴 {{summary}} 文本。多行或大量粘贴可能会立即执行命令或让终端短时间无响应。继续粘贴？",
+  "settings.global_shortcut.title": "全局召唤热键",
+  "settings.global_shortcut.hint": "从任意应用召唤本窗口。留空则禁用。",
+  "settings.global_shortcut.placeholder": "例如 CmdOrCtrl+Shift+T",
+  "settings.global_shortcut.conflict": "热键已被其他应用占用或格式无效",
+  "ssh.import.button": "从 ~/.ssh/config 导入",
+  "ssh.import.result": "SSH 配置已导入",
+  "ssh.import.result_detail": "新增 {{added}} 个，跳过 {{skipped}} 个",
+  "ssh.import.failed": "导入失败"
 }

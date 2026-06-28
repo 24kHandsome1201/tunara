@@ -18,6 +18,7 @@ export interface RawAppearanceConfig {
   terminal_clipboard_write: boolean;
   terminal_inline_images: boolean;
   language: string;
+  global_shortcut: string;
 }
 
 export interface RawTunaraConfig {

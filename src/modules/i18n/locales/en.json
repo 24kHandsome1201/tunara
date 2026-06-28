@@ -179,7 +179,6 @@
   "explorer.searching": "Searching",
   "explorer.search_failed": "Search failed",
   "explorer.search_placeholder": "Search current project",
-  "explorer.search_remote_unavailable": "Remote search is not available yet",
   "explorer.no_match": "No matching files",
   "explorer.results": "Results",
   "explorer.read_dir_failed": "Cannot read directory",
@@ -316,5 +315,13 @@
   "paste.warning.lines": "{{count}} lines",
   "paste.warning.chars": "{{count}} characters",
   "paste.warning.summary_default": "this",
-  "paste.warning.message": "About to paste {{summary}} text. Multi-line or large pastes may execute commands immediately or make the terminal briefly unresponsive. Continue?"
+  "paste.warning.message": "About to paste {{summary}} text. Multi-line or large pastes may execute commands immediately or make the terminal briefly unresponsive. Continue?",
+  "settings.global_shortcut.title": "Global summon shortcut",
+  "settings.global_shortcut.hint": "Toggle this window from any app. Leave empty to disable.",
+  "settings.global_shortcut.placeholder": "e.g. CmdOrCtrl+Shift+T",
+  "settings.global_shortcut.conflict": "Shortcut is taken by another app or invalid",
+  "ssh.import.button": "Import from ~/.ssh/config",
+  "ssh.import.result": "SSH config imported",
+  "ssh.import.result_detail": "{{added}} added, {{skipped}} skipped",
+  "ssh.import.failed": "Import failed"
 }

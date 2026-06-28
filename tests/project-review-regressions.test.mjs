@@ -311,15 +311,17 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /fsReadDir\(path: string, includeHidden = false\)/);
   assert.match(bridge, /fsSearch\([\s\S]*includeHidden = false/);
   assert.match(explorer, /fsSearch\(baseDir, q, 80, includeHidden\)/);
+  // Remote (SSH) search now runs `find` over the exec channel — the search box
+  // is no longer disabled for remote sessions, and the placeholder is unified.
+  assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, 80\)/);
+  assert.match(explorer, /placeholder=\{t\("explorer\.search_placeholder"\)\}/);
+  assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
-  assert.match(explorer, /placeholder=\{isRemote \? t\("explorer\.search_remote_unavailable"\) : t\("explorer\.search_placeholder"\)\}/);
-  assert.match(explorer, /disabled=\{isRemote\}/);
   assert.match(explorer, /items: isRemote[\s\S]*?id: "dir:copy-path"/);
   assert.match(explorer, /items: isRemote[\s\S]*?id: "file:copy-path"/);
   const zhDictForExplorer = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(zhDictForExplorer, /"explorer\.search_placeholder": "搜索当前项目"/);
-  assert.match(zhDictForExplorer, /"explorer\.search_remote_unavailable": "远程搜索暂未支持"/);
   assert.match(search, /#\[serde\(rename_all = "camelCase"\)\]/);
   assert.match(search, /include_hidden: Option<bool>/);
   assert.match(search, /\.hidden\(!include_hidden\)/);
@@ -455,10 +457,14 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
   assert.match(keys, /const \{ paneA, paneB \} = ui\.split/);
   assert.match(keys, /st\.setActive\(st\.activeSessionId === paneB \? paneA : paneB\)/);
-  assert.match(main, /const repoPath = activeIsRemote \? null : normalizeLocalRepoPath\(active\?\.dir\);/);
+  assert.match(main, /const repoPath = normalizeLocalRepoPath\(active\?\.dir\);/);
   assert.match(main, /if \(!repoPath\) \{[\s\S]*?setRemote\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
   assert.match(main, /gitAheadBehind\(repoPath\)/);
   assert.match(main, /gitStatus\(repoPath\)/);
+  // Remote (SSH) sessions route through the exec-channel git path, not the
+  // local git2 path — guard that the remote branch exists and the local calls
+  // never receive a raw dir.
+  assert.match(main, /sshGitStatus\(ptyId\)/);
   assert.doesNotMatch(main, /gitAheadBehind\(active\.dir\)/);
   assert.doesNotMatch(main, /gitStatus\(active\.dir\)/);
   assert.match(settings, /maxWidth: "calc\(100vw - 32px\)"/);

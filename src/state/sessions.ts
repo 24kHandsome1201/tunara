@@ -266,9 +266,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   refreshGit: (id) => {
-    // Remote (SSH) sessions have no local working tree — git2 would fail on
-    // the "user@host" pseudo-path. Skip the refresh entirely.
-    if (get().sessions.find((s) => s.id === id)?.remote) return;
+    // Both local and remote sessions refresh via the nonce bump. For remote
+    // (SSH) sessions, MainArea's effect routes the nonce change to
+    // ssh_git_status over the exec channel instead of the local git2 path.
     const now = Date.now();
     const last = lastGitRefreshAt.get(id) ?? 0;
     const elapsed = now - last;

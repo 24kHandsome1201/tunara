@@ -51,3 +51,16 @@ export function gitWatch(repoPath: string): Promise<void> {
 export function gitUnwatch(repoPath: string): Promise<void> {
   return invoke<void>("git_unwatch", { repoPath });
 }
+
+// ── Remote git (over an SSH exec channel) ─────────────────────────────────
+// Mirror the local git_status/git_diff contract so DiffPanel can render a
+// remote repo without caring about the transport. `sessionId` is the
+// SshSession's pty id (the same u32 PtyState id the terminal uses).
+
+export function sshGitStatus(sessionId: number): Promise<StatusResult> {
+  return invoke<StatusResult>("ssh_git_status", { sessionId });
+}
+
+export function sshGitDiff(sessionId: number, file: string, stage: FileChange["stage"]): Promise<FileDiff> {
+  return invoke<FileDiff>("ssh_git_diff", { sessionId, file, stage });
+}

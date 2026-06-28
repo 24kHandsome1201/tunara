@@ -10,6 +10,8 @@ import {
   makeHostId,
   normalizeSshPort,
   parseSshPort,
+  importSshConfig,
+  filterNewHostsById,
   type SshHostProfile,
 } from "@/modules/ssh/hosts-bridge";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
@@ -39,6 +41,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [saveProfile, setSaveProfile] = useState(false);
   const [injectIntegration, setInjectIntegration] = useState(false);
   const [hosts, setHosts] = useState<SshHostProfile[]>([]);
+  const [importing, setImporting] = useState(false);
 
   useFocusTrap(containerRef);
 
@@ -65,6 +68,39 @@ export function SshConnect({ onClose }: SshConnectProps) {
     removeHost(id)
       .then(setHosts)
       .catch(() => {});
+  };
+
+  // Import static `Host` blocks from ~/.ssh/config. Existing profiles (matched
+  // by the stable ssh-config-<alias> id) are NOT overwritten so a user's manual
+  // identity_file edits survive re-import; only new aliases are appended.
+  const onImportConfig = async () => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      const { imported, skipped } = await importSshConfig();
+      const fresh = filterNewHostsById(hosts, imported);
+      let latest = hosts;
+      for (const p of fresh) {
+        latest = await saveHost(p);
+      }
+      setHosts(latest);
+      const added = fresh.length;
+      useUIStore.getState().addToast({
+        sessionId: "",
+        title: t("ssh.import.result"),
+        subtitle: t("ssh.import.result_detail", { added, skipped }),
+        variant: "success",
+      });
+    } catch {
+      useUIStore.getState().addToast({
+        sessionId: "",
+        title: t("ssh.import.failed"),
+        subtitle: "",
+        variant: "error",
+      });
+    } finally {
+      setImporting(false);
+    }
   };
 
   const portText = port.trim();
@@ -203,6 +239,28 @@ export function SshConnect({ onClose }: SshConnectProps) {
         </div>
 
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+          <button
+            onClick={onImportConfig}
+            disabled={importing}
+            className="hover-bg"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              padding: "7px 10px",
+              borderRadius: "var(--r-btn)",
+              border: "1px solid var(--c-border-2)",
+              background: "var(--c-bg-white)",
+              color: "var(--c-text-2)",
+              fontSize: "var(--fs-secondary)",
+              fontWeight: 500,
+              cursor: importing ? "default" : "pointer",
+              opacity: importing ? 0.6 : 1,
+            }}
+          >
+            {t("ssh.import.button")}
+          </button>
           {hosts.length > 0 && (
             <div>
               <label style={labelStyle}>{t("ssh.saved")}</label>

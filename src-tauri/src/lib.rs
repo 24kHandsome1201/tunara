@@ -18,6 +18,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_os::init())
         .plugin(
@@ -87,11 +88,17 @@ pub fn run() {
             modules::ssh::hosts::ssh_hosts_load,
             modules::ssh::hosts::ssh_hosts_save,
             modules::ssh::hosts::ssh_hosts_remove,
+            modules::ssh::hosts::ssh_hosts_import_config,
             // §ssh-client Phase 3 SFTP 远程文件(只读浏览 + 下载)
             modules::ssh::sftp::ssh_fs_read_dir,
             modules::ssh::sftp::ssh_fs_read_file,
             modules::ssh::sftp::ssh_fs_download,
             modules::ssh::sftp::ssh_fs_home,
+            // Remote git status/diff over the SSH exec channel (review rail for
+            // SSH sessions — complements the read-only local git2 path).
+            modules::ssh::remote_git::ssh_git_status,
+            modules::ssh::remote_git::ssh_git_diff,
+            modules::ssh::remote_git::ssh_fs_search,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

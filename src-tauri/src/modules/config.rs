@@ -35,6 +35,7 @@ pub struct AppearanceConfig {
     pub terminal_clipboard_write: bool,
     pub terminal_inline_images: bool,
     pub language: String,
+    pub global_shortcut: String,
 }
 
 impl Default for AppearanceConfig {
@@ -57,6 +58,7 @@ impl Default for AppearanceConfig {
             terminal_clipboard_write: false,
             terminal_inline_images: true,
             language: "system".into(),
+            global_shortcut: "CmdOrCtrl+Shift+T".into(),
         }
     }
 }
@@ -164,7 +166,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 17] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 18] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -189,6 +191,7 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 1
             value(config.terminal_inline_images),
         ),
         ("language", value(config.language.clone())),
+        ("global_shortcut", value(config.global_shortcut.clone())),
     ]
 }
 

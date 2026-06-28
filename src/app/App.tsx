@@ -14,6 +14,7 @@ import { useInit } from "./useInit";
 import { useTheme } from "./useTheme";
 import { useKeybindings } from "./useKeybindings";
 import { useDockBadge } from "./useDockBadge";
+import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useEffect } from "react";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
@@ -153,6 +154,7 @@ export default function App() {
   useTheme();
   useKeybindings();
   useDockBadge();
+  useGlobalShortcut();
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);

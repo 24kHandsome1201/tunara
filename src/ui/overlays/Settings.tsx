@@ -121,6 +121,10 @@ export function Settings({ onClose }: SettingsProps) {
   const t = useT();
   const language = useUIStore((s) => s.language);
   const setLanguage = useUIStore((s) => s.setLanguage);
+  const globalShortcut = useUIStore((s) => s.globalShortcut);
+  const setGlobalShortcut = useUIStore((s) => s.setGlobalShortcut);
+  const [shortcutDraft, setShortcutDraft] = useState(globalShortcut);
+  useEffect(() => setShortcutDraft(globalShortcut), [globalShortcut]);
   const theme = useUIStore((s) => s.theme);
   const accent = useUIStore((s) => s.accent);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
@@ -436,6 +440,25 @@ export function Settings({ onClose }: SettingsProps) {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div style={{ marginTop: 24 }}>
+                <div style={SECTION_LABEL}>{t("settings.global_shortcut.title")}</div>
+                <div style={SECTION_HINT}>{t("settings.global_shortcut.hint")}</div>
+                <input
+                  type="text"
+                  value={shortcutDraft}
+                  placeholder={t("settings.global_shortcut.placeholder")}
+                  onChange={(e) => setShortcutDraft(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = shortcutDraft.trim();
+                    if (trimmed !== globalShortcut) setGlobalShortcut(trimmed);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                  spellCheck={false}
+                  style={{ width: "100%", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", padding: "6px 10px", background: "var(--c-bg-1)", color: "var(--c-text-2)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", outline: "none" }}
+                />
               </div>
             </div>
           )}

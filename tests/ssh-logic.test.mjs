@@ -18,6 +18,7 @@ import {
   makeHostId,
   normalizeSshPort,
   parseSshPort,
+  filterNewHostsById,
 } from "../src/modules/ssh/hosts-model.ts";
 import {
   stashSshCredentials,
@@ -190,4 +191,28 @@ test("credentials for different sessions are independent", () => {
   // Consuming one does not affect the other's second read (both are one-shot).
   assert.equal(takeSshCredentials("a"), undefined);
   assert.equal(takeSshCredentials("b"), undefined);
+});
+
+// ── ~/.ssh/config import dedup ───────────────────────────────────────────
+// The backend assigns imported profiles a stable `ssh-config-<alias>` id, so
+// re-importing the same config must be idempotent: the second pass returns no
+// new profiles, preserving any manual identity_file edits the user made.
+
+test("filterNewHostsById returns only profiles not already present", () => {
+  const existing = [{ id: "ssh-config-prod", label: "prod", host: "p.example.com", port: 22, user: "deploy", identityFile: "~/.ssh/custom" }];
+  const incoming = [
+    { id: "ssh-config-prod", label: "prod", host: "p.example.com", port: 22, user: "deploy", identityFile: "~/.ssh/id_prod" },
+    { id: "ssh-config-dev", label: "dev", host: "10.0.0.5", port: 22, user: "root", identityFile: "" },
+  ];
+  const fresh = filterNewHostsById(existing, incoming);
+  assert.equal(fresh.length, 1);
+  assert.equal(fresh[0].id, "ssh-config-dev");
+});
+
+test("filterNewHostsById returns all when nothing exists", () => {
+  const incoming = [
+    { id: "ssh-config-a", label: "a", host: "a", port: 22, user: "u", identityFile: "" },
+    { id: "ssh-config-b", label: "b", host: "b", port: 22, user: "u", identityFile: "" },
+  ];
+  assert.equal(filterNewHostsById([], incoming).length, 2);
 });

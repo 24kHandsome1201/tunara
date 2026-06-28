@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirEntry, ReadResult } from "@/modules/fs/fs-bridge";
+import type { DirEntry, ReadResult, SearchHit } from "@/modules/fs/fs-bridge";
 
 /**
  * 远程 SFTP 文件操作。返回类型与本地 fs-bridge 完全一致，
@@ -24,4 +24,56 @@ export function sshHome(id: number): Promise<string> {
 /** 下载远程文件到本地路径，返回写入字节数。 */
 export function sshDownload(id: number, remotePath: string, localPath: string): Promise<number> {
   return invoke<number>("ssh_fs_download", { id, remotePath, localPath });
+}
+
+// ── Remote file search (over the SSH exec channel) ────────────────────────
+// Mirrors the local fs_search contract so FileExplorer's search box works the
+// same way for SSH sessions. A module-level cache absorbs repeated keystrokes
+// for the same (session, root, query) triple so backspacing doesn't re-run
+// `find` on the remote every debounce window.
+
+/** Module-level result cache keyed by `${ptyId}|${root}|${query}`. Entries are
+ *  small (≤80 hits) and evicted only by LRU cap — a remote search is the
+ *  expensive kind (round-trips over SSH), so caching is high-value. */
+const searchCache = new Map<string, SearchHit[]>();
+const SEARCH_CACHE_MAX = 32;
+
+function cacheKey(ptyId: number, root: string, query: string): string {
+  return `${ptyId}|${root}|${query}`;
+}
+
+function evictIfNeeded(): void {
+  if (searchCache.size <= SEARCH_CACHE_MAX) return;
+  // Map preserves insertion order; drop the oldest entry.
+  const oldest = searchCache.keys().next().value;
+  if (oldest !== undefined) searchCache.delete(oldest);
+}
+
+export function sshSearch(
+  ptyId: number,
+  root: string,
+  query: string,
+  limit = 80,
+): Promise<SearchHit[]> {
+  const key = cacheKey(ptyId, root, query);
+  const cached = searchCache.get(key);
+  if (cached) {
+    // Refresh LRU position by re-inserting at the end.
+    searchCache.delete(key);
+    searchCache.set(key, cached);
+    return Promise.resolve(cached);
+  }
+  return invoke<SearchHit[]>("ssh_fs_search", { sessionId: ptyId, root, query, limit }).then((hits) => {
+    evictIfNeeded();
+    searchCache.set(key, hits);
+    return hits;
+  });
+}
+
+/** Invalidate the cache for one session (e.g. after a directory reload). */
+export function invalidateRemoteSearchCache(ptyId: number): void {
+  const prefix = `${ptyId}|`;
+  for (const k of searchCache.keys()) {
+    if (k.startsWith(prefix)) searchCache.delete(k);
+  }
 }

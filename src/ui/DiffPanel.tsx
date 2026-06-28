@@ -3,6 +3,7 @@ import { formatSize, type Session } from "./types";
 import {
   gitDiff,
   gitAheadBehind,
+  sshGitDiff,
   type FileChange,
   type FileDiff,
   type RemoteState,
@@ -15,6 +16,7 @@ import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
+import { computeVirtualSlice } from "./lib/diff-virtual";
 
 interface DiffPanelProps {
   session: Session;
@@ -62,6 +64,44 @@ function MiniDiff({
   onCopyHunk: (hunkText: string) => void;
 }) {
   const t = useT();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewport, setViewport] = useState(0);
+  const [rowHeight, setRowHeight] = useState(16);
+  const rafRef = useRef(0);
+
+  // Measure the actual row height once after mount so a future CSS token change
+  // doesn't silently desync the virtual slice. Falls back to 16px if the probe
+  // isn't laid out yet (e.g. display:none parent).
+  useEffect(() => {
+    if (measureRef.current) {
+      const h = measureRef.current.offsetHeight;
+      if (h > 0) setRowHeight(h);
+    }
+  }, [diff]);
+
+  // Track the scroll container's viewport so the slice math knows how many rows
+  // fit. ResizeObserver catches panel width changes that affect height.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const sync = () => setViewport(el.clientHeight);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [diff]);
+
+  const onScroll = () => {
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      const el = scrollRef.current;
+      if (el) setScrollTop(el.scrollTop);
+    });
+  };
+
   if (!diff) {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.loading")}</div>;
   }
@@ -80,12 +120,28 @@ function MiniDiff({
   const hunkTexts = collectHunkTexts(allRows);
   const noMatch = rows.length === 0;
 
+  // Virtual scroll: only render rows inside the viewport (+ buffer). The total
+  // height is maintained by top/bottom spacers so the scrollbar stays accurate.
+  const slice = computeVirtualSlice(rows.length, scrollTop, viewport, rowHeight);
+  const visibleRows = rows.slice(slice.first, slice.last);
+
   return (
-    <div style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }} className="no-scrollbar scroll-fade-y">
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }}
+      className="no-scrollbar scroll-fade-y"
+    >
+      {/* Hidden probe row to measure the real rendered row height once. It's
+          absolutely positioned + invisible so it participates in layout (and
+          thus reports offsetHeight = font + padding + line-box) without
+          shifting the scroll viewport. */}
+      <div ref={measureRef} aria-hidden style={{ position: "absolute", visibility: "hidden", left: 0, top: 0, padding: "1px 8px", whiteSpace: "pre", fontSize: "var(--fs-meta)" }}>M</div>
       {noMatch && (
         <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.no_match", { query: q })}</div>
       )}
-      {rows.map((row) => {
+      <div style={{ height: slice.topPad }} />
+      {visibleRows.map((row) => {
         const { key, line, isAdd, isDel, isHunk, hunkIndex } = row;
         if (isHunk) {
           return (
@@ -145,6 +201,7 @@ function MiniDiff({
           </div>
         );
       })}
+      <div style={{ height: slice.bottomPad }} />
       {diff.truncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)" }}>{t("diff.mini.truncated")}</div>}
     </div>
   );
@@ -231,7 +288,8 @@ function fileRowKey(file: Pick<FileChange, "stage" | "path">): string {
 
 export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const t = useT();
-  const repoPath = normalizeLocalRepoPath(session.dir);
+  const isRemote = !!session.remote;
+  const repoPath = isRemote ? null : normalizeLocalRepoPath(session.dir);
   const displayPath = session.dir;
   const nonce = useSessionsStore((s) => getNumberRecordValue(s.gitNonce, session.id));
   const collapsedSections = useUIStore((s) => s.collapsedDiffSections);
@@ -240,7 +298,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const files = session.changes?.files ?? [];
   const branch = session.branch || "";
   const summary = session.changes?.summary ?? "";
-  const notGit = session.gitState === "notGit" || !repoPath;
+  const notGit = session.gitState === "notGit" || (!isRemote && !repoPath);
   const loading = session.gitState !== "repo" && session.gitState !== "notGit" && !session.changes;
 
   const [remote, setRemote] = useState<RemoteState | null>(null);
@@ -259,14 +317,17 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     setExpandedFileKey(null);
     setDiffs({});
     setRemote(null);
-    if (notGit || !repoPath) return () => { cancelled = true; };
-    gitAheadBehind(repoPath)
+    if (notGit || (!isRemote && !repoPath)) return () => { cancelled = true; };
+    // Remote (SSH) sessions have no local upstream state to query; skip the
+    // ahead/behind indicator and rely on the status command's branch line.
+    if (isRemote) return () => { cancelled = true; };
+    gitAheadBehind(repoPath!)
       .then((r) => !cancelled && setRemote(r))
       .catch(() => !cancelled && setRemote(null));
     return () => {
       cancelled = true;
     };
-  }, [repoPath, session.id, nonce, notGit]);
+  }, [repoPath, session.id, nonce, notGit, isRemote]);
 
   useEffect(() => {
     if (expandedFileKey && !files.some((f) => fileRowKey(f) === expandedFileKey)) {
@@ -306,9 +367,13 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       const generation = diffGenerationRef.current;
       const requestedRepoPath = repoPath;
       const requestedSessionId = session.id;
-      if (!requestedRepoPath) return;
+      // Remote sessions fetch the diff over the SSH exec channel; local ones
+      // over the git2 read path. Both return the same FileDiff shape.
+      const diffPromise = isRemote
+        ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, file.path, file.stage) : Promise.reject(new Error("no ptyId")))
+        : (requestedRepoPath ? gitDiff(requestedRepoPath, file.path, file.stage) : Promise.reject(new Error("no repoPath")));
       try {
-        const d = await gitDiff(requestedRepoPath, file.path, file.stage);
+        const d = await diffPromise;
         if (
           diffGenerationRef.current === generation &&
           repoPathRef.current === requestedRepoPath &&
@@ -346,7 +411,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
             {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
           </span>
-          {repoPath && (
+          {repoPath && !isRemote && (
             <span
               role="button"
               tabIndex={0}

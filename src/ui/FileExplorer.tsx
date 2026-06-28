@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fsReadDir, fsSearch, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
-import { sshReadDir, sshHome } from "@/modules/ssh/remote-fs-bridge";
+import { sshReadDir, sshHome, sshSearch } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -144,19 +144,26 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
   useEffect(() => {
     const q = searchQuery.trim();
-    // Remote search has no SFTP backend — search is local-only.
-    if (!q || isRemote || baseDir === null) {
+    if (!q || baseDir === null) {
       setSearchHits([]);
       setSearchLoading(false);
       setSearchError(false);
       return;
     }
 
+    // Remote (SSH) search runs `find` over the exec channel; local search uses
+    // the ignore-based walker. Both return the same SearchHit shape. The remote
+    // bridge caches per (ptyId, root, query) so debounce re-triggering and
+    // backspacing don't re-run find every window.
+    const runSearch = isRemote && remotePtyId !== undefined
+      ? sshSearch(remotePtyId, baseDir, q, 80)
+      : fsSearch(baseDir, q, 80, includeHidden);
+
     let cancelled = false;
     setSearchLoading(true);
     setSearchError(false);
     const timer = window.setTimeout(() => {
-      fsSearch(baseDir, q, 80, includeHidden)
+      runSearch
         .then((hits) => {
           if (!cancelled) {
             setSearchHits(hits);
@@ -176,7 +183,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [baseDir, searchQuery, includeHidden, reloadKey, isRemote]);
+  }, [baseDir, searchQuery, includeHidden, reloadKey, isRemote, remotePtyId]);
 
   const canGoUp = currentPath !== "/" && currentPath !== baseDir;
   const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
@@ -324,9 +331,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            disabled={isRemote}
-            placeholder={isRemote ? t("explorer.search_remote_unavailable") : t("explorer.search_placeholder")}
-            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0, cursor: isRemote ? "not-allowed" : "text", opacity: isRemote ? 0.65 : 1 }}
+            placeholder={t("explorer.search_placeholder")}
+            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0 }}
           />
           {searchQuery && (
             <button

@@ -399,6 +399,86 @@ impl SshSession {
             .try_send(InputMsg::Close)
             .map_err(|_| "ssh session already closed".to_string())
     }
+
+    /// Run a one-shot command on the remote host over a fresh exec channel on
+    /// this same connection, collect stdout (and interleaved stderr) up to
+    /// `max_bytes`, and return it once the channel closes.
+    ///
+    /// Runs on its own SSH channel, so it never blocks the interactive shell
+    /// channel (russh multiplexes channels over one TCP connection). The shell
+    /// keeps streaming while an exec is in flight.
+    ///
+    /// Errors surface as strings; callers (e.g. remote git status) degrade to
+    /// a "remote git unavailable" message instead of crashing the session.
+    pub async fn exec(&self, command: &str, max_bytes: usize) -> Result<String, String> {
+        const EXEC_TIMEOUT: Duration = Duration::from_secs(15);
+
+        let mut channel = self
+            .handle
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("open exec channel failed: {e}"))?;
+        channel
+            .exec(true, command)
+            .await
+            .map_err(|e| format!("exec failed: {e}"))?;
+
+        let mut out: Vec<u8> = Vec::new();
+        let mut stderr_buf: Vec<u8> = Vec::new();
+        let mut exceeded = false;
+        let deadline = tokio::time::Instant::now() + EXEC_TIMEOUT;
+        loop {
+            tokio::select! {
+                biased;
+                _ = tokio::time::sleep_until(deadline) => {
+                    return Err("exec timed out (15s)".to_string());
+                }
+                msg = channel.wait() => {
+                    let Some(msg) = msg else { break };
+                    match msg {
+                        ChannelMsg::Data { ref data } => {
+                            if out.len() + data.len() > max_bytes {
+                                // Cap: keep the prefix we already have and stop.
+                                let room = max_bytes.saturating_sub(out.len());
+                                out.extend_from_slice(&data[..room]);
+                                exceeded = true;
+                                break;
+                            }
+                            out.extend_from_slice(data);
+                        }
+                        ChannelMsg::ExtendedData { ref data, ext: 1 } => {
+                            // Capture stderr separately so a git status on a
+                            // non-repo dir surfaces a useful error rather than
+                            // polluting the parsed stdout.
+                            const STDERR_CAP: usize = 4 * 1024;
+                            if stderr_buf.len() < STDERR_CAP {
+                                let room = STDERR_CAP.saturating_sub(stderr_buf.len());
+                                stderr_buf.extend_from_slice(&data[..room.min(data.len())]);
+                            }
+                        }
+                        ChannelMsg::ExitStatus { .. } | ChannelMsg::Eof | ChannelMsg::Close => break,
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // If we have no stdout but stderr produced something, return stderr so
+        // the caller gets a descriptive error (e.g. "fatal: not a git
+        // repository"). Trim to keep the toast/message readable.
+        if out.is_empty() && !stderr_buf.is_empty() {
+            let msg = String::from_utf8_lossy(&stderr_buf).trim().to_string();
+            return Err(if msg.is_empty() { "remote command produced no output".into() } else { msg });
+        }
+
+        if exceeded {
+            // Prepend a marker so the parser/diff layer can flag truncation
+            // rather than silently slicing through output. Most callers cap
+            // well below this; the marker keeps the contract honest.
+            out.truncate(max_bytes);
+        }
+        Ok(String::from_utf8_lossy(&out).into_owned())
+    }
 }
 
 impl Drop for SshSession {

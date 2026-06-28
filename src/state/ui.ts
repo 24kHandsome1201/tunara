@@ -36,6 +36,7 @@ export interface AppearanceSettings {
   terminalInlineImages: boolean;
   keybindings: KeybindingConfig;
   language: Language;
+  globalShortcut: string;
 }
 
 const MIN_FONT_SIZE = 10;
@@ -66,6 +67,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   terminalInlineImages: true,
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
+  globalShortcut: "CmdOrCtrl+Shift+T",
 };
 
 function isExternalEditor(v: unknown): v is ExternalEditor {
@@ -130,6 +132,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     terminalInlineImages: typeof raw?.terminal_inline_images === "boolean" ? raw.terminal_inline_images : DEFAULT_SETTINGS.terminalInlineImages,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
+    globalShortcut: typeof raw?.global_shortcut === "string" ? raw.global_shortcut : DEFAULT_SETTINGS.globalShortcut,
   };
 }
 
@@ -161,6 +164,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       terminal_clipboard_write: s.terminalClipboardWrite,
       terminal_inline_images: s.terminalInlineImages,
       language: s.language,
+      global_shortcut: s.globalShortcut,
     },
     keybindings: keybindingsToConfigKeys(s.keybindings),
   };
@@ -266,6 +270,7 @@ interface UIState extends AppearanceSettings {
   setBellNotification: (b: boolean) => void;
   setTerminalClipboardWrite: (enabled: boolean) => void;
   setTerminalInlineImages: (enabled: boolean) => void;
+  setGlobalShortcut: (shortcut: string) => void;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
   resetAppearance: () => void;
@@ -351,6 +356,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalInlineImages: (terminalInlineImages) => set({ terminalInlineImages: typeof terminalInlineImages === "boolean" ? terminalInlineImages : DEFAULT_SETTINGS.terminalInlineImages }),
+    setGlobalShortcut: (globalShortcut) => set({ globalShortcut: typeof globalShortcut === "string" ? globalShortcut : DEFAULT_SETTINGS.globalShortcut }),
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
     resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
@@ -388,7 +394,7 @@ export async function loadUserConfig(): Promise<void> {
   }
 }
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "keybindings", "language"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 useUIStore.subscribe(

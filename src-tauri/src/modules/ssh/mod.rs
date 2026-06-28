@@ -29,6 +29,7 @@ pub mod auth;
 pub mod connection;
 pub mod hosts;
 pub mod known_hosts;
+pub mod remote_git;
 pub mod sftp;
 
 use auth::AuthOptions;

@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { TerminalView } from "./TerminalView";
 import type { Session } from "./types";
-import { gitAheadBehind, gitStatus, type RemoteState } from "@/modules/git/git-bridge";
+import { gitAheadBehind, gitStatus, sshGitStatus, type RemoteState } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
@@ -104,7 +104,50 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const paneBSession = split.paneB ? sessions.find((s) => s.id === split.paneB) : null;
 
   useEffect(() => {
-    const repoPath = activeIsRemote ? null : normalizeLocalRepoPath(active?.dir);
+    // Remote (SSH) sessions fetch git status over the SSH exec channel — no
+    // local repo path exists. The ptyId is the SshSession id the backend
+    // resolves in ssh_git_status. Missing ptyId means the session hasn't
+    // opened yet; fall through to the notGit branch until it does.
+    if (activeIsRemote) {
+      const ptyId = active?.ptyId;
+      if (ptyId === undefined) {
+        setRemote(null);
+        if (active) {
+          useSessionsStore.getState().updateSession(active.id, {
+            branch: "",
+            gitState: "notGit",
+            changes: undefined,
+          });
+        }
+        return;
+      }
+      let cancelled = false;
+      setRemote(null);
+      sshGitStatus(ptyId)
+        .then((status) => {
+          if (cancelled) return;
+          useSessionsStore.getState().updateSession(active.id, {
+            branch: status.branch,
+            gitState: "repo",
+            changes: { files: status.files, summary: status.summary },
+          });
+        })
+        .catch(() => {
+          if (!cancelled) {
+            // Remote git unavailable (no git on the host, or not a repo). Surface
+            // as notGit so the changes tab shows the empty/not-a-repo state
+            // instead of an infinite spinner.
+            useSessionsStore.getState().updateSession(active.id, {
+              branch: "",
+              gitState: "notGit",
+              changes: undefined,
+            });
+          }
+        });
+      return () => { cancelled = true; };
+    }
+
+    const repoPath = normalizeLocalRepoPath(active?.dir);
     if (!repoPath) {
       setRemote(null);
       if (active) {
@@ -141,7 +184,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         }
       });
     return () => { cancelled = true; };
-  }, [active?.dir, active?.id, activeIsRemote, nonce]);
+  }, [active?.dir, active?.id, active?.ptyId, activeIsRemote, nonce]);
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;

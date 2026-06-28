@@ -42,15 +42,13 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
   const isRemote = !!session.remote;
-  const tab = isRemote && storeTab === "changes" ? "files" : storeTab;
+  const tab = storeTab;
 
   return (
     <div style={{ width: "100%", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
       <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
-        {!isRemote && (
-          <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
-        )}
+        <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
         <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
         <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
 
@@ -82,11 +80,9 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
         <div key={`overview-${tab}`} style={{ flex: 1, display: tab === "overview" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "overview" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           <SessionOverviewPanel session={session} />
         </div>
-        {!isRemote && (
-          <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-            <DiffPanel session={session} embedded />
-          </div>
-        )}
+        <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
+          <DiffPanel session={session} embedded />
+        </div>
         <div key={`files-${tab}`} style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "files" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           {isRemote && session.ptyId === undefined ? (
             <div style={{ padding: 16, fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>
