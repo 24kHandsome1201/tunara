@@ -6,6 +6,11 @@ pub struct AgentHookEvent {
     pub session: String,
     pub agent: Option<String>,
     pub code: Option<i32>,
+    /// The agent's own session id (e.g. Claude Code's UUID), captured from the
+    /// hook payload's stdin. Used to resume the exact prior conversation instead
+    /// of scraping the typed command. Absent for events not carrying one.
+    #[serde(rename = "agentSessionId", skip_serializing_if = "Option::is_none")]
+    pub agent_session_id: Option<String>,
 }
 
 #[cfg(unix)]
@@ -22,12 +27,36 @@ mod platform {
     use std::thread;
     use tauri::{AppHandle, Emitter};
 
+    /// Lifecycle hook helper script, written into the private runtime dir at
+    /// startup. Agents reference it from their injected --settings file; it reads
+    /// the hook payload on stdin, extracts the agent's real session_id, and
+    /// relays it to the host socket as `agent_session_id`.
+    const AGENT_HOOK_SH: &str = include_str!("scripts/agent-hook.sh");
+
+    pub(super) const AGENT_HOOK_HELPER_NAME: &str = "agent-hook.sh";
+
     #[derive(Debug, Deserialize)]
     struct HookPayload {
         event: String,
         session: String,
         agent: Option<String>,
         code: Option<i32>,
+        #[serde(default)]
+        agent_session_id: Option<String>,
+    }
+
+    /// Writes (or refreshes) the stable hook helper into the private runtime dir.
+    /// Best-effort: a failure only means resume falls back to command scraping.
+    fn write_agent_hook_helper(dir: &Path) {
+        let path = dir.join(AGENT_HOOK_HELPER_NAME);
+        if let Err(e) = fs::write(&path, AGENT_HOOK_SH) {
+            log::warn!("agent hook helper write {} failed: {e}", path.display());
+            return;
+        }
+        // Read+exec for the owner only; the dir is already 0700.
+        if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o500)) {
+            log::warn!("agent hook helper chmod {} failed: {e}", path.display());
+        }
     }
 
     pub struct HookListenerState {
@@ -74,6 +103,7 @@ mod platform {
             return HookListenerState::disabled();
         }
         prune_stale_hook_sockets(&sock_dir);
+        write_agent_hook_helper(&sock_dir);
         let sock_path = sock_dir.join(format!("hooks-{}.sock", std::process::id()));
 
         let _ = fs::remove_file(&sock_path);
@@ -126,6 +156,9 @@ mod platform {
                                                 session: payload.session,
                                                 agent: payload.agent,
                                                 code: payload.code,
+                                                agent_session_id: payload
+                                                    .agent_session_id
+                                                    .filter(|s| !s.is_empty()),
                                             },
                                         );
                                     }

@@ -22,10 +22,18 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     assert.match(script, /if \[\[? -n "\$sock"/);
     assert.match(script, /TUNARA_AGENT_CONFIG_DIR/);
     assert.match(script, /mktemp "\$config_dir\/tunara-agent-\$\{sid\}\.XXXXXX\.json"/);
-    assert.match(script, /chmod 600 "\$f"/);
-    assert.match(script, /nc -U \\"\\\$TUNARA_HOOKS_SOCK\\"/);
+    assert.match(script, /chmod 600 "\$sf"/);
+    // The lifecycle hooks reference the host-written helper; the stdin parsing
+    // and socket relay live in agent-hook.sh, not inline in the shell wrapper.
+    assert.match(script, /helper="\$config_dir\/agent-hook\.sh"/);
+    assert.match(script, /sh \$\{helper\} idle \$\{agent\} \$\{sid\}/);
+    assert.match(script, /sh \$\{helper\} stop \$\{agent\} \$\{sid\}/);
+    // The injected settings JSON must not inline a printf|nc hook command — the
+    // stdin parsing + socket relay live in agent-hook.sh now. (The start/exit
+    // lifecycle emit still uses nc directly, so we only forbid the inline hook.)
+    assert.doesNotMatch(script, /"command":"printf/);
     assert.doesNotMatch(script, /\/tmp\/tunara-agent/);
-    assert.match(script, /command "\$real_bin" --settings "\$f" "\$@"/);
+    assert.match(script, /command "\$real_bin" --settings "\$sf" "\$@"/);
     assert.match(script, /else[\s\S]*command "\$real_bin" "\$@"/);
     assert.match(script, /claude\(\) \{ _tunara_agent_run claude CC/);
     assert.match(script, /droid\(\) \{ _tunara_agent_run droid DR/);
@@ -33,9 +41,27 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     assert.doesNotMatch(script, /\bcodex\(\) \{ _tunara_agent_run codex/);
     assert.doesNotMatch(script, /\bdevin\(\) \{ _tunara_agent_run devin/);
     assert.match(script, /"SessionStart":\[\{"matcher":"startup\|resume"/);
-    assert.match(script, /\\"event\\":\\"idle\\",\\"session\\":\\"\$\{sid\}\\",\\"agent\\":\\"\$\{agent\}\\"/);
-    assert.match(script, /\\"event\\":\\"stop\\",\\"session\\":\\"\$\{sid\}\\",\\"agent\\":\\"\$\{agent\}\\"/);
   }
+});
+
+test("agent-hook helper extracts the real session_id and relays it as agent_session_id", () => {
+  const helper = read("src-tauri/src/modules/agent/scripts/agent-hook.sh");
+  // jq-free, field-name-anchored extraction so look-alike keys are not matched.
+  assert.match(helper, /grep '"session_id"'/);
+  assert.match(helper, /cut -d'"' -f4/);
+  assert.match(helper, /"agent_session_id":"%s"/);
+  assert.match(helper, /nc -U "\$TUNARA_HOOKS_SOCK"/);
+  // Bails out silently when the host socket is not present.
+  assert.match(helper, /\[ -n "\$TUNARA_HOOKS_SOCK" \] \|\| exit 0/);
+
+  // The host ships and locks down the helper at startup.
+  const hooks = read("src-tauri/src/modules/agent/hooks.rs");
+  assert.match(hooks, /const AGENT_HOOK_SH: &str = include_str!\("scripts\/agent-hook\.sh"\)/);
+  assert.match(hooks, /write_agent_hook_helper\(&sock_dir\)/);
+  assert.match(hooks, /from_mode\(0o500\)/);
+  // The id rides through the payload and the emitted event.
+  assert.match(hooks, /agent_session_id: Option<String>/);
+  assert.match(hooks, /rename = "agentSessionId"/);
 });
 
 test("fish shell integration emits cwd, command, and agent lifecycle events", () => {
@@ -52,8 +78,10 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(fish, /function codex[\s\S]*_tunara_agent_plain_run codex CX/);
   assert.match(fish, /TUNARA_AGENT_CONFIG_DIR/);
   assert.match(fish, /mktemp "\$config_dir\/tunara-agent-\$sid\.XXXXXX\.json"/);
-  assert.match(fish, /chmod 600 "\$f"/);
-  assert.match(fish, /nc -U \\\\"\$TUNARA_HOOKS_SOCK\\\\"/);
+  assert.match(fish, /chmod 600 "\$sf"/);
+  assert.match(fish, /set -l helper "\$config_dir\/agent-hook\.sh"/);
+  assert.match(fish, /sh \$helper idle \$agent \$sid/);
+  assert.doesNotMatch(fish, /"command":"printf/);
   assert.doesNotMatch(fish, /\/tmp\/tunara-agent/);
 
   assert.match(rust, /const FISH_CONFIG: &str = include_str!\("scripts\/config\.fish"\);/);

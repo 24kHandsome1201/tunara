@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Session, AgentCode, AgentResumeIntent, RemoteInfo } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
+import { hasContinueFlag, parseResumeId } from "@/modules/terminal/lib/agent-resume";
 import {
   agentBusyUpdate,
   agentDetectedUpdate,
@@ -49,6 +50,7 @@ interface SessionsState {
   setSessionNote: (id: string, note: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
+  recordAgentSessionId: (id: string, agent: AgentCode, agentSessionId: string) => void;
   handleAgentReady: (id: string) => void;
   handleAgentBusy: (id: string) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
@@ -174,18 +176,26 @@ function buildAgentResumeIntent(
   command?: string,
 ): AgentResumeIntent | undefined {
   if (!session) return undefined;
-  const normalized = command?.trim() || session.agentResume?.command || session.lastCommand?.trim() || "";
+
+  // A real agent session id captured from the hook (confidence "exact") is
+  // authoritative — never downgrade it by re-scraping the command line.
+  const existing = session.agentResume;
+  if (existing?.agent === agent && existing.confidence === "exact" && existing.resumeId) {
+    return undefined;
+  }
+
+  const normalized = command?.trim() || existing?.command || session.lastCommand?.trim() || "";
   if (!normalized) return undefined;
 
-  const resumeMatch = normalized.match(/(?:^|\s)(?:--resume|resume)\s+([^\s]+)/);
-  const continueMatch = /(?:^|\s)(?:--continue|continue)(?:\s|$)/.test(normalized);
+  const resumeId = parseResumeId(normalized);
+  const continueMatch = hasContinueFlag(normalized);
   return {
     agent,
     command: normalized,
     cwd: session.dir,
-    ...(resumeMatch ? { resumeId: resumeMatch[1] } : {}),
+    ...(resumeId ? { resumeId } : {}),
     lastSeenAt: Date.now(),
-    confidence: resumeMatch ? "exact" : continueMatch ? "continue" : "unknown",
+    confidence: resumeId ? "exact" : continueMatch ? "continue" : "unknown",
   };
 }
 
@@ -399,6 +409,33 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         ...(agentResume ? { agentResume } : {}),
       });
     }
+  },
+
+  recordAgentSessionId: (id, agent, agentSessionId) => {
+    const trimmed = agentSessionId.trim();
+    if (!trimmed) return;
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session) return;
+    const existing = session.agentResume;
+    // The real id from the agent's hook is authoritative — it overrides any
+    // resumeId previously scraped from the typed command line.
+    if (
+      existing?.agent === agent &&
+      existing.resumeId === trimmed &&
+      existing.confidence === "exact"
+    ) {
+      return;
+    }
+    get().updateSession(id, {
+      agentResume: {
+        agent,
+        command: existing?.command ?? session.lastCommand?.trim() ?? AGENT_NAMES[agent] ?? agent,
+        cwd: session.dir,
+        resumeId: trimmed,
+        lastSeenAt: Date.now(),
+        confidence: "exact",
+      },
+    });
   },
 
   handleAgentReady: (id) => {

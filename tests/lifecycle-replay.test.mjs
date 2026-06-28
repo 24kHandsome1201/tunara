@@ -83,7 +83,11 @@ import {
   buildPrimaryDeviceAttributesResponse,
   handlePrimaryDeviceAttributesQuery,
 } from "../src/modules/terminal/lib/terminal-device-attributes.ts";
-import { buildAgentResumeCommand } from "../src/modules/terminal/lib/agent-resume.ts";
+import {
+  buildAgentResumeCommand,
+  hasContinueFlag,
+  parseResumeId,
+} from "../src/modules/terminal/lib/agent-resume.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { DEFAULT_KEYBINDINGS, matchesKeybinding, parseKeybinding, sanitizeKeybindings } from "../src/modules/config/keybindings.ts";
@@ -253,6 +257,29 @@ test("agent resume command never falls back to the bare startup command", () => 
     }),
     "codex exec resume 019eef70-c6e4-7430-845c-26b1b68ecac5",
   );
+});
+
+test("parseResumeId extracts explicit ids but never flags", () => {
+  // Real ids — the token after resume/--resume is a session id.
+  assert.equal(parseResumeId("claude --resume abc-123"), "abc-123");
+  assert.equal(parseResumeId("codex resume abc-123"), "abc-123");
+  assert.equal(parseResumeId("codex exec resume 019eef70-c6e4-7430"), "019eef70-c6e4-7430");
+  // Flags after resume are NOT ids — mistaking `--last` for a session id would
+  // produce a broken `resume --last` resume command.
+  assert.equal(parseResumeId("codex resume --last"), null);
+  assert.equal(parseResumeId("codex resume --all"), null);
+  assert.equal(parseResumeId("claude --resume --last"), null);
+  // Bare launches and continue have no id.
+  assert.equal(parseResumeId("claude"), null);
+  assert.equal(parseResumeId("claude --continue"), null);
+  assert.equal(parseResumeId("claude -r"), null);
+});
+
+test("hasContinueFlag detects continue invocations", () => {
+  assert.equal(hasContinueFlag("claude --continue"), true);
+  assert.equal(hasContinueFlag("codex resume continue"), true);
+  assert.equal(hasContinueFlag("claude --resume abc"), false);
+  assert.equal(hasContinueFlag("claude"), false);
 });
 
 test("keybinding parser accepts plus as a literal key", () => {

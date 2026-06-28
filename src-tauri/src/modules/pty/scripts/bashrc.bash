@@ -87,29 +87,49 @@ if [ -n "$TUNARA_SESSION_ID" ]; then
     fi
   }
 
+  # Writes a Claude-Code --settings file pointing each lifecycle hook at the
+  # host-provided agent-hook.sh helper. That helper reads the hook's stdin JSON,
+  # extracts the agent's real session_id, and relays it as agent_session_id — so
+  # resume uses the agent's own id instead of scraping the typed command line.
+  # The hook command is just `sh <helper> <event> <agent> <sid>`, so no quoting
+  # has to survive the nested settings JSON. Echoes the settings path, or
+  # nothing if the helper or config dir is unavailable.
+  _tunara_agent_write_hooks() {
+    local sid="$1" agent="$2" config_dir="$3"
+    [ -n "$config_dir" ] && [ -d "$config_dir" ] || return 1
+    local helper="$config_dir/agent-hook.sh"
+    [ -f "$helper" ] || return 1
+    local sf
+    sf="$(mktemp "$config_dir/tunara-agent-${sid}.XXXXXX.json" 2>/dev/null)" || return 1
+    chmod 600 "$sf" 2>/dev/null || true
+    local idle="sh ${helper} idle ${agent} ${sid}"
+    local stop="sh ${helper} stop ${agent} ${sid}"
+    cat > "$sf" <<TUNARA_EOF
+{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
+TUNARA_EOF
+    printf '%s' "$sf"
+    return 0
+  }
+
   _tunara_agent_run() {
     local real_bin="$1"; shift
     local agent="$1"; shift
     local sid="$TUNARA_SESSION_ID"
     local sock="$TUNARA_HOOKS_SOCK"
     local config_dir="${TUNARA_AGENT_CONFIG_DIR:-}"
-    local f=""
+    local sf=""
     _tunara_agent_emit start "$agent"
-    if [ -n "$sock" ] && [ -n "$config_dir" ] && [ -d "$config_dir" ]; then
-      f="$(mktemp "$config_dir/tunara-agent-${sid}.XXXXXX.json" 2>/dev/null)" || f=""
+    if [ -n "$sock" ]; then
+      sf="$(_tunara_agent_write_hooks "$sid" "$agent" "$config_dir")" || sf=""
     fi
-    if [ -n "$f" ]; then
-      chmod 600 "$f" 2>/dev/null || true
-      cat > "$f" <<TUNARA_EOF
-{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U \"\$TUNARA_HOOKS_SOCK\""}]}],"Stop":[{"hooks":[{"type":"command","command":"printf '{\"event\":\"stop\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U \"\$TUNARA_HOOKS_SOCK\""}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"printf '{\"event\":\"idle\",\"session\":\"${sid}\",\"agent\":\"${agent}\"}' | nc -U \"\$TUNARA_HOOKS_SOCK\""}]}]}}
-TUNARA_EOF
-      command "$real_bin" --settings "$f" "$@"
+    if [ -n "$sf" ]; then
+      command "$real_bin" --settings "$sf" "$@"
     else
       command "$real_bin" "$@"
     fi
     local ret=$?
     _tunara_agent_emit exit "$agent" "$ret"
-    rm -f "$f" 2>/dev/null
+    rm -f "$sf" 2>/dev/null
     return $ret
   }
 

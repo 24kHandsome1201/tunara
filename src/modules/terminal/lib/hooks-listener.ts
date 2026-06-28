@@ -7,11 +7,14 @@ interface AgentHookEvent {
   session: string;
   agent?: AgentCode | null;
   code?: number | null;
+  /** The agent's own session id (e.g. Claude Code's UUID), captured from the
+   * hook payload. Lets resume target the exact prior conversation. */
+  agentSessionId?: string | null;
 }
 
 export async function startHooksListener(): Promise<UnlistenFn> {
   return listen<AgentHookEvent>("agent-hook", (e) => {
-    const { event, session, agent, code } = e.payload;
+    const { event, session, agent, code, agentSessionId } = e.payload;
     const store = useSessionsStore.getState();
 
     if (event === "start" && agent) {
@@ -28,6 +31,10 @@ export async function startHooksListener(): Promise<UnlistenFn> {
     if ((event === "stop" || event === "idle") && agent) {
       const current = useSessionsStore.getState().sessions.find((s) => s.id === session);
       if (current?.agent === agent) {
+        // The real agent session id rides in on the SessionStart/Stop/idle hook
+        // payload — record it so resume targets the exact conversation instead of
+        // scraping the typed command.
+        if (agentSessionId) store.recordAgentSessionId(session, agent, agentSessionId);
         store.handleAgentReady(session);
       }
     }
