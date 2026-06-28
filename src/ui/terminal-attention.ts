@@ -2,6 +2,7 @@ import { getCurrentWindow, UserAttentionType } from "@tauri-apps/api/window";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalNotification } from "@/modules/terminal/lib/terminal-notification";
 import { useUIStore } from "@/state/ui";
+import { t } from "@/modules/i18n";
 
 export function requestInformationalAttention() {
   if (document.hasFocus() || !useUIStore.getState().bellNotification) return;
@@ -15,7 +16,7 @@ export function emitTerminalNotification(sessionId: string, notification: Termin
   useUIStore.getState().addToast({
     sessionId,
     title: notification.title,
-    subtitle: notification.body ?? "终端通知",
+    subtitle: notification.body ?? t("terminal.notification.default"),
     variant: "success",
   });
   requestInformationalAttention();

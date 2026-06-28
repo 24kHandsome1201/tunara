@@ -37,6 +37,13 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/tunara/);
 });
 
+test("dev app uses a separate macOS identity from release", () => {
+  const devTauri = JSON.parse(read("src-tauri/tauri.conf.dev.json"));
+
+  assert.equal(devTauri.identifier, "dev.tunara.app.dev");
+  assert.equal(devTauri.productName, "Tuna");
+});
+
 test("mac window chrome aligns controls and hides main window on close while cleaning up on exit", () => {
   const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
   const lib = read("src-tauri/src/lib.rs");
@@ -180,7 +187,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(persist, /async function loadSessionStore\(\): Promise<SessionStore>/);
   assert.match(persist, /legacyStore\.entries<unknown>\(\)/);
   assert.match(persistSnapshot, /function isPersistedSession\(value: unknown\): value is PersistedSession/);
-  assert.match(persistSnapshot, /title: p\.title\.trim\(\) \|\| "终端"/);
+  assert.match(persistSnapshot, /title: p\.title\.trim\(\) \|\| t\("session\.default_title"\)/);
   assert.match(persistSnapshot, /const customTitle = typeof s\.customTitle === "string" \? s\.customTitle\.trim\(\) : ""/);
   assert.match(persistSnapshot, /if \(s\.pinned === true\) p\.pinned = true/);
   assert.match(persistSnapshot, /const customTitle = typeof p\.customTitle === "string" \? p\.customTitle\.trim\(\) : ""/);
@@ -518,7 +525,7 @@ test("file previews and markdown rendering stay bounded", () => {
   assert.match(rust, /bytes\.truncate\(MAX_TEXT_PREVIEW_BYTES as usize\)/);
   assert.match(bridge, /truncated\?: boolean/);
   assert.match(preview, /useMemo/);
-  assert.match(preview, /result\.truncated \? "\\n… 已截断" : ""/);
+  assert.match(preview, /result\.truncated \? `\\n\$\{t\("preview\.truncated"\)\}` : ""/);
   assert.match(git, /out\.len\(\) \+ content\.len\(\) \+ prefix_len > DIFF_MAX_BYTES/);
   assert.match(git, /commit` 模块只在 `cfg\(test\)` 下保留旧写路径的 pathspec 回归 fixture/);
   assert.match(gitBridge, /git\/mod\.rs 的只读 IPC 契约/);
@@ -790,10 +797,11 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   ].join("\n");
 
   assert.match(titlebar, /width: 16, height: 16/);
-  assert.match(titlebar, /const MAC_TITLEBAR_CONTROL_Y_OFFSET = -7/);
+  assert.match(titlebar, /const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1/);
   assert.match(titlebar, /const titlebarControlTransform = _isMac \? `translateY\(\$\{MAC_TITLEBAR_CONTROL_Y_OFFSET\}px\)` : undefined/);
   assert.equal(titlebar.match(/transform: titlebarControlTransform/g)?.length, 3);
   assert.match(titlebar, /paddingLeft: 8/);
+  assert.match(tokens, /--h-titlebar: 36px/);
   assert.match(sidebar, /padding: "8px 12px 6px"/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);
   assert.match(sidebar, /const visibleSessionIds = groupEntries\.flatMap/);
@@ -1008,7 +1016,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectHook, /readQuickSelectTerminalLines/);
   assert.match(terminalQuickSelectHook, /terminalQuickSelectRange\(buffer\.length, buffer\.viewportY, term\.rows\)/);
   assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readQuickSelectTerminalLines\(term\), cwd\)/);
-  assert.match(terminalQuickSelectHook, /URL、文件位置或可复制标识/);
+  assert.match(terminalQuickSelectHook, /t\("quick_select\.empty\.body"\)/);
   assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelectHook, /navigator\.clipboard\.writeText\(item\.copyText\)/);
   assert.match(terminalQuickSelectHook, /if \(item\.kind === "text"\) \{[\s\S]*copyItem\(item\);[\s\S]*return;/);

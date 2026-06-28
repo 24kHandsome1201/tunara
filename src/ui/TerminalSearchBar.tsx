@@ -1,5 +1,6 @@
 import type { CSSProperties, RefObject } from "react";
 import { CloseIcon, SearchIcon } from "./shared";
+import { useT } from "@/modules/i18n";
 
 interface TerminalSearchBarProps {
   inputRef: RefObject<HTMLInputElement | null>;
@@ -49,6 +50,7 @@ export function TerminalSearchBar({
   onToggleRegex,
   onToggleCaseSensitive,
 }: TerminalSearchBarProps) {
+  const t = useT();
   const hasResults = count && count.total > 0;
   const noMatch = count && count.total === 0 && query.length > 0;
 
@@ -87,7 +89,7 @@ export function TerminalSearchBar({
           }
         }}
         autoFocus
-        placeholder="搜索…"
+        placeholder={t("term.search.placeholder")}
         style={{
           border: "none",
           background: "transparent",
@@ -104,7 +106,7 @@ export function TerminalSearchBar({
 
       <button
         onClick={onToggleRegex}
-        title="正则表达式"
+        title={t("term.search.regex")}
         className="hover-bg"
         style={{
           ...TOGGLE_STYLE,
@@ -118,7 +120,7 @@ export function TerminalSearchBar({
       </button>
       <button
         onClick={onToggleCaseSensitive}
-        title="区分大小写"
+        title={t("term.search.case_sensitive")}
         className="hover-bg"
         style={{
           ...TOGGLE_STYLE,
@@ -151,17 +153,17 @@ export function TerminalSearchBar({
 
       <div style={{ width: 1, height: 16, background: "var(--c-border-2)", flexShrink: 0, margin: "0 2px" }} />
 
-      <button onClick={onPrev} title="上一个 ⇧Enter" className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button onClick={onPrev} title={t("term.search.prev")} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="18 15 12 9 6 15" />
         </svg>
       </button>
-      <button onClick={onNext} title="下一个 Enter" className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button onClick={onNext} title={t("term.search.next")} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      <button onClick={onClose} title="关闭 Esc" className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button onClick={onClose} title={t("term.search.close")} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <CloseIcon size={12} strokeWidth={2.2} />
       </button>
     </div>

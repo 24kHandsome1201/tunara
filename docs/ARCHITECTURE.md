@@ -40,6 +40,29 @@ viewport breakpoints (720px for the sidebar, 900px for the panel). Overlays
 `useUIStore`. State lives in Zustand stores under [`src/state/`](../src/state/)
 (`sessions`, `ui`, `workflows`, `persist`).
 
+### macOS titlebar contract
+
+The macOS window is a Tauri overlay titlebar, not a fully borderless custom
+window. Native traffic lights come from [`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json):
+`titleBarStyle: "Overlay"`, `hiddenTitle: true`, and
+`trafficLightPosition: { "x": 18, "y": 18 }`.
+
+The React titlebar height comes from [`src/styles/tokens.css`](../src/styles/tokens.css)
+(`--h-titlebar: 36px`). Raising this token adds visible blank space below the
+traffic lights. Tunara's custom titlebar controls are optically aligned in
+[`src/ui/Titlebar.tsx`](../src/ui/Titlebar.tsx) with
+`MAC_TITLEBAR_CONTROL_Y_OFFSET = -1`. If the icons align with the traffic lights
+but the bottom of the titlebar still has excess whitespace, fix the structural
+height token first instead of repeatedly tuning the offset.
+
+Dev and release can diverge here: `pnpm tauri dev` reads the current frontend
+through the dev server, while `/Applications/Tunara.app` and built `.app`
+bundles run their embedded static frontend. Visual chrome changes should be
+verified against the real bundle from `./node_modules/.bin/tauri build --bundles app`.
+The dev app uses [`src-tauri/tauri.conf.dev.json`](../src-tauri/tauri.conf.dev.json)
+with `productName: "Tuna"` and `identifier: "dev.tunara.app.dev"` so it can run
+alongside the installed release app without macOS app-identity collisions.
+
 The Rust side is a single library crate, [`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs),
 that wires up plugins, registers the IPC handlers, manages shared state, and runs
 the event loop. Backend logic is split into modules under

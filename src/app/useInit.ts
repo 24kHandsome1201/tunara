@@ -4,6 +4,7 @@ import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
 import { useWorkflowsStore } from "@/state/workflows";
+import { t } from "@/modules/i18n/core.ts";
 import {
   consumeTerminalSnapshotDirty,
   getAllTerminalSnapshots,
@@ -61,7 +62,7 @@ export function useInit() {
 
       if (!snapshot) {
         if (current.sessions.length === 0) {
-          addSession(createSession("~", { title: "终端" }));
+          addSession(createSession("~", { title: t("session.default_title") }));
         }
         useUIStore.setState({ ready: true });
         return;
@@ -69,7 +70,7 @@ export function useInit() {
 
       const restored = snapshot.sessions.map((p) => ({
         ...p,
-        title: p.title.trim() || "终端",
+        title: p.title.trim() || t("session.default_title"),
         customTitle: p.customTitle || undefined,
         pinned: p.pinned || undefined,
         note: p.note || undefined,
@@ -85,7 +86,7 @@ export function useInit() {
           ];
 
       if (merged.length === 0) {
-        addSession(createSession("~", { title: "终端" }));
+        addSession(createSession("~", { title: t("session.default_title") }));
         useUIStore.setState({ ready: true });
         return;
       }

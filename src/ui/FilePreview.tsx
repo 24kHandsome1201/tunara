@@ -3,6 +3,7 @@ import { fsReadFile, type ReadResult } from "@/modules/fs/fs-bridge";
 import { sshReadFile } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { CloseIcon } from "./shared";
+import { useT } from "@/modules/i18n";
 
 interface FilePreviewProps {
   filePath: string;
@@ -235,6 +236,7 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
 }
 
 export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePreviewProps) {
+  const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
   const [error, setError] = useState(false);
 
@@ -252,7 +254,7 @@ export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePr
 
   const isMarkdown = /\.md$/i.test(fileName);
   const textContent = result?.kind === "text"
-    ? result.content + (result.truncated ? "\n… 已截断" : "")
+    ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
     : "";
 
   return (
@@ -269,16 +271,16 @@ export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePr
       </div>
 
       {error ? (
-        <PreviewMessage icon="⊘" text="读取失败" />
+        <PreviewMessage icon="⊘" text={t("preview.read_failed")} />
       ) : !result ? (
         <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite", flexShrink: 0 }} />
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>读取中…</span>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("preview.reading")}</span>
         </div>
       ) : result.kind === "binary" ? (
-        <PreviewMessage icon="⊘" text={`二进制文件（${formatSize(result.size)}）`} />
+        <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
       ) : result.kind === "toolarge" ? (
-        <PreviewMessage icon="⊘" text={`文件过大（${formatSize(result.size)}）`} />
+        <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
       ) : isMarkdown ? (
         <MarkdownPreview content={textContent} />
       ) : (

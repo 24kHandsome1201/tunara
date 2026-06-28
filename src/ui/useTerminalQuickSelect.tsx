@@ -5,6 +5,7 @@ import { openInEditor } from "@/modules/editor/open";
 import { collectTerminalQuickSelectItems, TERMINAL_QUICK_SELECT_EVENT, type TerminalQuickSelectItem } from "@/modules/terminal/lib/terminal-quick-select";
 import { terminalQuickSelectRange } from "@/modules/terminal/lib/terminal-quick-select-scope";
 import { useUIStore } from "@/state/ui";
+import { useT } from "@/modules/i18n";
 import { TerminalQuickSelect } from "./TerminalQuickSelect";
 
 interface TerminalQuickSelectOptions {
@@ -29,6 +30,7 @@ export function useTerminalQuickSelect(
   { active, cwd, sessionId }: TerminalQuickSelectOptions,
 ) {
   const [items, setItems] = useState<TerminalQuickSelectItem[] | null>(null);
+  const t = useT();
 
   const notify = useCallback((title: string, subtitle: string, variant: "success" | "error") => {
     useUIStore.getState().addToast({ sessionId, title, subtitle, variant });
@@ -40,11 +42,11 @@ export function useTerminalQuickSelect(
     if (!term) return;
     const next = collectTerminalQuickSelectItems(readQuickSelectTerminalLines(term), cwd);
     if (next.length === 0) {
-      notify("没有可快速选择的内容", "附近输出里没有 URL、文件位置或可复制标识", "error");
+      notify(t("quick_select.empty.title"), t("quick_select.empty.body"), "error");
       return;
     }
     setItems(next);
-  }, [active, cwd, notify, termRef]);
+  }, [active, cwd, notify, t, termRef]);
 
   useEffect(() => {
     const onQuickSelect = () => openQuickSelect();
@@ -61,11 +63,11 @@ export function useTerminalQuickSelect(
   const copyItem = useCallback((item: TerminalQuickSelectItem) => {
     navigator.clipboard.writeText(item.copyText)
       .then(() => {
-        notify("已复制", item.copyText, "success");
+        notify(t("quick_select.copied.title"), item.copyText, "success");
         setItems(null);
       })
-      .catch(() => notify("复制失败", item.label, "error"));
-  }, [notify]);
+      .catch(() => notify(t("quick_select.copy_failed.title"), item.label, "error"));
+  }, [notify, t]);
 
   const openItem = useCallback((item: TerminalQuickSelectItem) => {
     if (item.kind === "text") {
@@ -77,8 +79,8 @@ export function useTerminalQuickSelect(
       : openInEditor(useUIStore.getState().externalEditor, item.target, item.line, item.column);
     run
       .then(() => setItems(null))
-      .catch(() => notify("打开失败", item.label, "error"));
-  }, [copyItem, notify]);
+      .catch(() => notify(t("quick_select.open_failed.title"), item.label, "error"));
+  }, [copyItem, notify, t]);
 
   return {
     openQuickSelect,

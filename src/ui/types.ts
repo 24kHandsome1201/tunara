@@ -178,7 +178,7 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
   } else if (hasMeaningfulShellTitle) {
     primary = s.shellTitle!;
   } else {
-    primary = s.title && !isPromptLikeShellTitle(s.title) ? s.title : "终端";
+    primary = s.title && !isPromptLikeShellTitle(s.title) ? s.title : t("session.default_title");
   }
 
   const dirLabel = shortDir(s.dir);

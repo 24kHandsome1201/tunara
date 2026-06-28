@@ -184,7 +184,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(types, /export function agentActivityLabel\(activity\?: AgentActivity\): string \| undefined/);
   assert.match(types, /const hasMeaningfulShellTitle =[\s\S]*&& !s\.suppressShellTitle[\s\S]*&& !isPromptLikeShellTitle\(s\.shellTitle\)[\s\S]*&& s\.shellTitle !== shortDir\(s\.dir\);/);
   assert.match(types, /const status = agentActivityLabel\(s\.agentActivity\);[\s\S]*primary = status \? `\$\{name\} · \$\{status\}` : name;/);
-  assert.match(types, /primary = s\.title && !isPromptLikeShellTitle\(s\.title\) \? s\.title : "终端";/);
+  assert.match(types, /primary = s\.title && !isPromptLikeShellTitle\(s\.title\) \? s\.title : t\("session\.default_title"\);/);
   assert.match(source, /agentActivity: opts\?\.agent \? initialAgentActivity\(opts\.agent\) : undefined,/);
   assert.match(source, /agentDetectedUpdate\(session, agent\)/);
   assert.match(source, /function buildAgentResumeIntent/);
@@ -202,7 +202,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(lifecycle, /export function agentDetectedUpdate\([\s\S]*?if \(!session \|\| session\.agent === agent\) return null;[\s\S]*?agentActivity: initialAgentActivity\(agent\),[\s\S]*?runState: "idle",/);
   assert.match(lifecycle, /export function agentReadyUpdate\([\s\S]*?agentActivity: "idle",[\s\S]*?runState: "idle",[\s\S]*?refreshGit: true,/);
   assert.match(lifecycle, /export function agentBusyUpdate\([\s\S]*?agentActivity: "running",[\s\S]*?runState: "idle",/);
-  assert.match(lifecycle, /export function agentExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?title: "终端",[\s\S]*?suppressShellTitle: true,[\s\S]*?refreshGit: true,/);
+  assert.match(lifecycle, /export function agentExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?title: t\("session\.default_title"\),[\s\S]*?suppressShellTitle: true,[\s\S]*?refreshGit: true,/);
   assert.match(lifecycle, /export function commandDetectedUpdate\([\s\S]*?session\?\.agent \|\| isPromptLikeShellTitle\(command\)[\s\S]*?suppressShellTitle: false,/);
   assert.match(lifecycle, /export function commandFinishedUpdate\([\s\S]*?if \(session\.agent \|\| !session\.lastCommand\)[\s\S]*?runState: exitCode === 0 \? "done" : "failed",/);
   assert.match(lifecycle, /export function terminalExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?runState: exitCode === 0 \? "done" : "failed",[\s\S]*?refreshGit: true,/);

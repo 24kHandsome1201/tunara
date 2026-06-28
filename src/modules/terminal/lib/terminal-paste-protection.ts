@@ -1,3 +1,5 @@
+import { t } from "../../i18n/core.ts";
+
 export const TERMINAL_LARGE_PASTE_WARNING_LENGTH = 5 * 1024;
 
 export interface TerminalPasteWarning {
@@ -28,10 +30,10 @@ export function analyzeTerminalPaste(text: string): TerminalPasteWarning | null 
 
 export function terminalPasteWarningMessage(warning: TerminalPasteWarning): string {
   const parts = [];
-  if (warning.multiline) parts.push(`${warning.lineCount} 行`);
-  if (warning.large) parts.push(`${warning.charCount} 个字符`);
-  const summary = parts.join("、") || "这段";
-  return `即将粘贴 ${summary} 文本。多行或大量粘贴可能会立即执行命令或让终端短时间无响应。继续粘贴？`;
+  if (warning.multiline) parts.push(t("paste.warning.lines", { count: warning.lineCount }));
+  if (warning.large) parts.push(t("paste.warning.chars", { count: warning.charCount }));
+  const summary = parts.join(", ") || t("paste.warning.summary_default");
+  return t("paste.warning.message", { summary });
 }
 
 export function confirmProtectedTerminalPaste(

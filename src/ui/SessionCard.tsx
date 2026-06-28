@@ -159,6 +159,7 @@ function BusyProgress() {
 }
 
 function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
+  const t = useT();
   const color = progress.state === "error"
     ? "var(--c-error)"
     : progress.state === "warning"
@@ -168,11 +169,11 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
   const hasValue = progress.value !== undefined;
   const width = indeterminate ? "38%" : hasValue ? `${progress.value}%` : "100%";
   const statusLabel = progress.state === "error"
-    ? "终端任务错误"
+    ? t("session.progress.error")
     : progress.state === "warning"
-      ? "终端任务警告"
-      : "终端任务进行中";
-  const progressLabel = hasValue ? `终端任务进度 ${progress.value}%` : statusLabel;
+      ? t("session.progress.warning")
+      : t("session.progress.running");
+  const progressLabel = hasValue ? t("session.progress.value", { value: progress.value! }) : statusLabel;
   return (
     <div
       aria-label={progressLabel}
@@ -370,7 +371,7 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
       {onClose && (
         <span
           aria-hidden="true"
-          title={confirmClose ? "再次点击确认关闭" : "关闭（Delete）"}
+          title={confirmClose ? t("session.close.confirm_again") : t("session.close.title")}
           onClick={handleClose}
           className="session-card-close hover-close"
           style={{
@@ -510,7 +511,7 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
             lineHeight: 1.3,
           }}
         >
-          进程运行中，再次点击关闭
+          {t("session.close.running_hint")}
         </div>
       )}
 

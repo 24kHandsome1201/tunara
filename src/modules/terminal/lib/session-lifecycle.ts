@@ -1,6 +1,7 @@
 import type { AgentCode, Session, TerminalProgress } from "../../../ui/types.ts";
 import { AGENT_NAMES, isPromptLikeShellTitle } from "../../../ui/types.ts";
 import { initialAgentActivity, isAgentShellTitle } from "./agent-lifecycle.ts";
+import { t } from "../../i18n/core.ts";
 
 export interface SessionLifecycleUpdate {
   patch: Partial<Session>;
@@ -74,7 +75,7 @@ export function agentExitedUpdate(
     patch: {
       agent: undefined,
       agentActivity: undefined,
-      title: "终端",
+      title: t("session.default_title"),
       lastCommand: undefined,
       lastExitCode: exitCode,
       shellTitle: undefined,
@@ -138,7 +139,7 @@ export function terminalExitedUpdate(
     patch: {
       agent: undefined,
       agentActivity: undefined,
-      ...(wasAgent ? { title: "终端", lastCommand: undefined } : {}),
+      ...(wasAgent ? { title: t("session.default_title"), lastCommand: undefined } : {}),
       lastExitCode: exitCode,
       terminalProgress: undefined,
       runState: exitCode === 0 ? "done" : "failed",

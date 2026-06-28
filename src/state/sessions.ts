@@ -3,6 +3,7 @@ import type { Session, AgentCode, AgentResumeIntent, RemoteInfo } from "@/ui/typ
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { hasContinueFlag, parseResumeId } from "@/modules/terminal/lib/agent-resume";
+import { t } from "@/modules/i18n/core.ts";
 import {
   agentBusyUpdate,
   agentDetectedUpdate,
@@ -101,7 +102,7 @@ export function createSession(
     id,
     agent: opts?.agent,
     agentActivity: opts?.agent ? initialAgentActivity(opts.agent) : undefined,
-    title: opts?.title ?? "终端",
+    title: opts?.title ?? t("session.default_title"),
     dir,
     branch: opts?.branch ?? "",
     gitState: "unknown",
@@ -452,7 +453,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       useUIStore.getState().addToast({
         sessionId: id,
         title: name,
-        subtitle: fileCount > 0 ? `已完成 · 编辑 ${fileCount} 文件` : "已完成",
+        subtitle: fileCount > 0 ? t("agent.toast.done_files", { count: fileCount }) : t("agent.toast.done"),
         variant: "success",
         agentCode: session.agent,
       });
@@ -479,8 +480,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         sessionId: id,
         title: name,
         subtitle: exitCode === 0
-          ? (fileCount > 0 ? `已完成 · 编辑 ${fileCount} 文件` : "已完成")
-          : `已退出 (exit ${exitCode})`,
+          ? (fileCount > 0 ? t("agent.toast.done_files", { count: fileCount }) : t("agent.toast.done"))
+          : t("agent.toast.exited", { code: exitCode }),
         variant: exitCode === 0 ? "success" : "error",
         agentCode: session.agent,
       });
@@ -510,7 +511,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       useUIStore.getState().addToast({
         sessionId: id,
         title: cmd,
-        subtitle: exitCode === 0 ? "完成" : `失败 (exit ${exitCode})`,
+        subtitle: exitCode === 0 ? t("command.toast.done") : t("command.toast.failed", { code: exitCode }),
         variant: exitCode === 0 ? "success" : "error",
       });
     }
@@ -579,17 +580,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   newTerminal: () => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    get().addSession(createSession(localTerminalCwdFromSession(active), { title: "终端" }));
+    get().addSession(createSession(localTerminalCwdFromSession(active), { title: t("session.default_title") }));
   },
 
   newTerminalInDir: (dir) => {
-    get().addSession(createSession(dir, { title: "终端" }));
+    get().addSession(createSession(dir, { title: t("session.default_title") }));
   },
 
   newTerminalWithInput: (input, dir) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
     get().addSession(createSession(dir ?? localTerminalCwdFromSession(active), {
-      title: "终端",
+      title: t("session.default_title"),
       pendingInput: input,
       pendingInputSubmit: false,
     }));
@@ -597,7 +598,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   splitWithNewSession: (direction) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    const newSess = createSession(localTerminalCwdFromSession(active), { title: "终端" });
+    const newSess = createSession(localTerminalCwdFromSession(active), { title: t("session.default_title") });
     if (!active) {
       get().addSession(newSess);
       return;
@@ -637,6 +638,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (survivor && get().sessions.some((s) => s.id === survivor)) {
       set({ activeSessionId: survivor });
     }
-    if (get().sessions.length === 0) get().addSession(createSession("~", { title: "终端" }));
+    if (get().sessions.length === 0) get().addSession(createSession("~", { title: t("session.default_title") }));
   },
 }));

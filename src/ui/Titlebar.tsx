@@ -13,7 +13,7 @@ try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toL
 type DragStyle = React.CSSProperties & { WebkitAppRegion?: string; [key: string]: any };
 
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
-const MAC_TITLEBAR_CONTROL_Y_OFFSET = -7;
+const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1;
 
 interface TitlebarProps {
   sessions: Session[];

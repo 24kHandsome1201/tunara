@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import { CloseIcon, SearchIcon } from "./shared";
+import { useT } from "@/modules/i18n";
 
 function FolderIcon() {
   return (
@@ -32,6 +33,7 @@ export function DirGroupHeader({
   confirmClose?: boolean;
   onContextMenu?: (e: MouseEvent) => void;
 }) {
+  const t = useT();
   return (
     <div
       className="dir-group-header"
@@ -44,7 +46,7 @@ export function DirGroupHeader({
           onToggleCollapse();
         }
       }}
-      title={onToggleCollapse ? (collapsed ? "展开" : "折叠") : undefined}
+      title={onToggleCollapse ? (collapsed ? t("dir_group.expand") : t("dir_group.collapse")) : undefined}
       onContextMenu={onContextMenu}
       style={{
         display: "flex",
@@ -105,7 +107,7 @@ export function DirGroupHeader({
           className="dir-group-add hover-bg"
           onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onNewTerminal(); } }}
-          title="在此目录新建终端"
+          title={t("dir_group.new_terminal")}
           style={{
             width: 18,
             height: 18,
@@ -130,7 +132,7 @@ export function DirGroupHeader({
           className="dir-group-close hover-close"
           onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onCloseAll(); } }}
-          title={confirmClose ? "进程运行中，再次点击关闭全部" : "关闭此目录全部会话"}
+          title={confirmClose ? t("session.close.all_running_hint") : t("session.close.all_title")}
           style={{
             width: 18,
             height: 18,

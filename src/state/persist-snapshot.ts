@@ -8,6 +8,7 @@ import {
 } from "../modules/terminal/lib/terminal-snapshot-limits.ts";
 import { parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
+import { t } from "../modules/i18n/core.ts";
 import { sanitizeRecentCommands } from "./recent-commands.ts";
 
 export type PersistedSession = Pick<
@@ -102,7 +103,7 @@ export function toPersistedSession(s: Session): PersistedSession {
   const note = sanitizeSessionNote(s.note);
   const p: PersistedSession = {
     id: s.id,
-    title: s.title.trim() || "终端",
+    title: s.title.trim() || t("session.default_title"),
     dir: s.dir,
     branch: s.branch,
     updatedAt: s.updatedAt,
@@ -140,7 +141,7 @@ export function sanitizePersistedSession(p: PersistedSession): PersistedSession 
   const remote = sanitizeRemoteInfo(p.remote);
   return {
     id: p.id,
-    title: p.title.trim() || "终端",
+    title: p.title.trim() || t("session.default_title"),
     dir: p.dir,
     branch: p.branch,
     updatedAt: p.updatedAt,

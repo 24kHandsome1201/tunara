@@ -1,5 +1,6 @@
 import type { MenuEntry } from "../../../ui/ContextMenu";
 import type { TerminalCommandBlock } from "./terminal-blocks";
+import { t } from "../../i18n/core.ts";
 
 export interface BlockContextMenuHandlers {
   onCopyCommand: (id: string) => unknown;
@@ -17,12 +18,12 @@ export function buildBlockContextMenuItems(
   handlers: BlockContextMenuHandlers,
 ): MenuEntry[] {
   return [
-    { id: "block:copy-command", label: "复制命令", icon: "copy", action: () => { handlers.onCopyCommand(block.id); } },
-    { id: "block:copy-output", label: "复制输出", icon: "copy", disabled: !completed, action: () => { handlers.onCopyOutput(block.id); } },
-    { id: "block:copy-both", label: "复制命令和输出", icon: "copy", disabled: !completed, action: () => { handlers.onCopyCommandAndOutput(block.id); } },
-    { id: "block:filter-output", label: "筛选输出", icon: "search", disabled: !completed, action: () => { handlers.onFilterBlock(block); } },
+    { id: "block:copy-command", label: t("block.menu.copy_command"), icon: "copy", action: () => { handlers.onCopyCommand(block.id); } },
+    { id: "block:copy-output", label: t("block.menu.copy_output"), icon: "copy", disabled: !completed, action: () => { handlers.onCopyOutput(block.id); } },
+    { id: "block:copy-both", label: t("block.menu.copy_both"), icon: "copy", disabled: !completed, action: () => { handlers.onCopyCommandAndOutput(block.id); } },
+    { id: "block:filter-output", label: t("block.menu.filter_output"), icon: "search", disabled: !completed, action: () => { handlers.onFilterBlock(block); } },
     null,
-    { id: "block:reveal", label: "滚动到命令", icon: "terminal", action: () => { handlers.onReveal(block.id); } },
-    { id: "block:toggle", label: collapsed ? "展开输出" : "折叠输出", icon: "terminal", action: () => { handlers.onToggle(block.id); } },
+    { id: "block:reveal", label: t("block.menu.reveal"), icon: "terminal", action: () => { handlers.onReveal(block.id); } },
+    { id: "block:toggle", label: collapsed ? t("block.menu.expand") : t("block.menu.collapse"), icon: "terminal", action: () => { handlers.onToggle(block.id); } },
   ];
 }

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useUIStore, type SplitMode } from "@/state/ui";
+import { useT } from "@/modules/i18n";
 
 interface SplitHandleProps {
   mode: Exclude<SplitMode, "single">;
@@ -11,6 +12,7 @@ const KEY_STEP = 0.02;
 const KEY_STEP_LARGE = 0.1;
 
 export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
+  const t = useT();
   const setSplitRatio = useUIStore((s) => s.setSplitRatio);
   const ratio = useUIStore((s) => s.split.ratio);
   const dragging = useRef(false);
@@ -92,7 +94,7 @@ export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
       aria-valuenow={Math.round(ratio * 100)}
       aria-valuemin={20}
       aria-valuemax={80}
-      aria-label={isHorizontal ? "拖动调整左右分栏比例（方向键、Shift+方向键大幅、Home/End 极值、Enter 居中）" : "拖动调整上下分栏比例（方向键、Shift+方向键大幅、Home/End 极值、Enter 居中）"}
+      aria-label={isHorizontal ? t("split.handle.horizontal") : t("split.handle.vertical")}
       className={`split-handle ${isHorizontal ? "split-handle-h" : "split-handle-v"}`}
       style={{
         position: "relative",

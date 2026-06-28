@@ -1,3 +1,5 @@
+import { t } from "../../i18n/core.ts";
+
 export interface TerminalNotification {
   title: string;
   body?: string;
@@ -21,7 +23,7 @@ export function parseTerminalNotificationOsc777(data: string): TerminalNotificat
   if (!title && !body) return null;
 
   return {
-    title: title || "终端通知",
+    title: title || t("terminal.notification.default"),
     ...(body ? { body } : {}),
   };
 }

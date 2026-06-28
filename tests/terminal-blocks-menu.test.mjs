@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBlockContextMenuItems } from "../src/modules/terminal/lib/terminal-blocks-menu.ts";
+import { setLanguage } from "../src/modules/i18n/core.ts";
+
+setLanguage("zh-CN");
 
 function makeBlock(overrides = {}) {
   return {
