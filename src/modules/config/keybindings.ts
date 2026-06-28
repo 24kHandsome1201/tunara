@@ -98,6 +98,15 @@ const CONFIG_KEY_TO_ACTION = Object.fromEntries(
   KEYBINDING_ACTIONS.map((action) => [KEYBINDING_CONFIG_KEYS[action], action]),
 ) as Record<string, KeybindingAction>;
 
+function configActionForKey(key: string): KeybindingAction | undefined {
+  if (Object.prototype.hasOwnProperty.call(CONFIG_KEY_TO_ACTION, key)) {
+    return CONFIG_KEY_TO_ACTION[key];
+  }
+  return (KEYBINDING_ACTIONS as readonly string[]).includes(key)
+    ? key as KeybindingAction
+    : undefined;
+}
+
 type ParsedKeybinding = {
   key: string;
   mod: boolean;
@@ -148,9 +157,7 @@ export function sanitizeKeybindings(raw: unknown): KeybindingConfig {
   const next: KeybindingConfig = { ...DEFAULT_KEYBINDINGS };
   if (!raw || typeof raw !== "object") return next;
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    const action = CONFIG_KEY_TO_ACTION[key] ?? (
-      (KEYBINDING_ACTIONS as readonly string[]).includes(key) ? key as KeybindingAction : undefined
-    );
+    const action = configActionForKey(key);
     if (action && isValidKeybinding(value)) next[action] = value;
   }
   return next;

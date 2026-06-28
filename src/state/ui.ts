@@ -4,6 +4,7 @@ import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalTh
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
+import { toggleTrueRecordKey } from "@/state/record-keys";
 
 export type CursorStyle = "bar" | "block" | "underline";
 
@@ -225,6 +226,7 @@ interface UIState extends AppearanceSettings {
   hostKeyPrompt: HostKeyPrompt | null;
   pendingWorkflow: PendingWorkflow | null;
   collapsedDirs: Record<string, true>;
+  collapsedDiffSections: Record<string, true>;
   commandUsage: Record<string, number>;
 
   setSidebarVisible: (visible: boolean) => void;
@@ -258,6 +260,7 @@ interface UIState extends AppearanceSettings {
   setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
   setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
   toggleDirCollapsed: (dir: string) => void;
+  toggleDiffSectionCollapsed: (section: string) => void;
   recordCommandUse: (id: string) => void;
   setExternalEditor: (e: ExternalEditor) => void;
   setBellNotification: (b: boolean) => void;
@@ -286,6 +289,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     hostKeyPrompt: null,
     pendingWorkflow: null,
     collapsedDirs: {},
+    collapsedDiffSections: {},
     // Hydrated from the workspace snapshot in useInit; starts empty.
     commandUsage: {},
     ...DEFAULT_SETTINGS,
@@ -334,13 +338,9 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setHostKeyPrompt: (hostKeyPrompt) => set({ hostKeyPrompt }),
     setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
     toggleDirCollapsed: (dir) =>
-      set((s) => {
-        if (s.collapsedDirs[dir]) {
-          const { [dir]: _, ...rest } = s.collapsedDirs;
-          return { collapsedDirs: rest };
-        }
-        return { collapsedDirs: { ...s.collapsedDirs, [dir]: true } };
-      }),
+      set((s) => ({ collapsedDirs: toggleTrueRecordKey(s.collapsedDirs, dir) })),
+    toggleDiffSectionCollapsed: (section) =>
+      set((s) => ({ collapsedDiffSections: toggleTrueRecordKey(s.collapsedDiffSections, section) })),
     recordCommandUse: (id) =>
       set((s) => {
         const next = { ...s.commandUsage, [id]: Date.now() };

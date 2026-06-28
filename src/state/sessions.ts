@@ -11,6 +11,7 @@ import {
   commandFinishedUpdate,
   cwdChangedUpdate,
   shellTitleUpdate,
+  terminalExitedUpdate,
   terminalProgressUpdate,
 } from "@/modules/terminal/lib/session-lifecycle";
 import { useUIStore } from "./ui";
@@ -18,6 +19,8 @@ import { pushRecentDir } from "./recent-dirs";
 import { pushRecentCommand } from "./recent-commands";
 import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession } from "@/modules/session/local-terminal-cwd";
+import { removeTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
+import { getNumberRecordValue } from "@/state/record-keys";
 
 interface SessionsState {
   sessions: Session[];
@@ -51,6 +54,7 @@ interface SessionsState {
   handleAgentExited: (id: string, exitCode: number) => void;
   handleCommandDetected: (id: string, command: string) => void;
   handleCommandFinished: (id: string, exitCode: number) => void;
+  handleTerminalExited: (id: string, exitCode: number) => void;
   handleCwdChange: (id: string, cwd: string) => void;
   handleShellTitle: (id: string, title: string) => void;
   handleTerminalProgress: (id: string, progress: Session["terminalProgress"] | undefined) => void;
@@ -211,6 +215,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   removeSession: (id) => {
     cancelCloseConfirmationTimer(id);
     cancelPendingGitRefresh(id);
+    removeTerminalSnapshot(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
@@ -264,7 +269,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         pendingGitRefreshTimers.delete(id);
       }
       set((state) => ({
-        gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
+        gitNonce: { ...state.gitNonce, [id]: getNumberRecordValue(state.gitNonce, id) + 1 },
       }));
       return;
     }
@@ -273,7 +278,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       pendingGitRefreshTimers.delete(id);
       lastGitRefreshAt.set(id, Date.now());
       set((state) => ({
-        gitNonce: { ...state.gitNonce, [id]: (state.gitNonce[id] ?? 0) + 1 },
+        gitNonce: { ...state.gitNonce, [id]: getNumberRecordValue(state.gitNonce, id) + 1 },
       }));
     }, GIT_REFRESH_THROTTLE_MS - elapsed);
     pendingGitRefreshTimers.set(id, timer);
@@ -325,7 +330,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
     const now = Date.now();
     const unconfirmedBusy = orderedTargets.filter((s) =>
-      isSessionBusy(s) && now - (get().closeConfirmations[s.id] ?? 0) > CLOSE_CONFIRM_WINDOW_MS,
+      isSessionBusy(s) && now - getNumberRecordValue(get().closeConfirmations, s.id) > CLOSE_CONFIRM_WINDOW_MS,
     );
     if (unconfirmedBusy.length > 0) {
       set((state) => {
@@ -352,7 +357,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (sessionIds.length === 0) return;
     const closed = get().closeSessions(sessionIds);
     if (!closed) {
-      const lastConfirm = get().dirCloseConfirmations[dir] ?? 0;
+      const lastConfirm = getNumberRecordValue(get().dirCloseConfirmations, dir);
       if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
         set((state) => ({
           dirCloseConfirmations: { ...state.dirCloseConfirmations, [dir]: Date.now() },
@@ -379,7 +384,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       ),
     }));
     const session = get().sessions.find((s) => s.id === id);
-    if (session && !isSessionBusy(session) && get().closeConfirmations[id]) {
+    if (session && !isSessionBusy(session) && getNumberRecordValue(get().closeConfirmations, id) > 0) {
       get().clearCloseConfirmation(id);
     }
   },
@@ -474,6 +479,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
   },
 
+  handleTerminalExited: (id, exitCode) => {
+    const session = get().sessions.find((s) => s.id === id);
+    const update = terminalExitedUpdate(session, exitCode, get().activeSessionId === id);
+    if (!update) return;
+    get().updateSession(id, update.patch);
+    if (update.refreshGit) get().refreshGit(id);
+  },
+
   handleCwdChange: (id, cwd) => {
     const session = get().sessions.find((s) => s.id === id);
     const agentResume = session?.agentResume;
@@ -564,7 +577,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   closeSession: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     if (session && isSessionBusy(session)) {
-      const lastConfirm = get().closeConfirmations[id] ?? 0;
+      const lastConfirm = getNumberRecordValue(get().closeConfirmations, id);
       if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
         set((state) => ({
           closeConfirmations: { ...state.closeConfirmations, [id]: Date.now() },

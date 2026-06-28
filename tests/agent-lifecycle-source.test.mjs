@@ -80,6 +80,13 @@ test("agent hook runtime files avoid predictable shared tmp paths", () => {
   assert.match(hooks, /fs::symlink_metadata\(path\)/);
   assert.match(hooks, /file_type\(\)\.is_symlink\(\)/);
   assert.match(hooks, /pub fn agent_config_dir\(&self\) -> Option<&Path>/);
+  assert.match(hooks, /use std::os::unix::fs::\{FileTypeExt, PermissionsExt\}/);
+  assert.match(hooks, /prune_stale_hook_sockets\(&sock_dir\)/);
+  assert.match(hooks, /pub\(super\) fn prune_stale_hook_sockets\(sock_dir: &Path\)/);
+  assert.match(hooks, /name\.starts_with\("hooks-"\) \|\| !name\.ends_with\("\.sock"\)/);
+  assert.match(hooks, /if !file_type\.is_socket\(\)/);
+  assert.match(hooks, /if UnixStream::connect\(&path\)\.is_err\(\)/);
+  assert.match(hooks, /let _ = fs::remove_file\(&sock_path_t\)/);
   assert.doesNotMatch(hooks, /std::env::temp_dir\(\)\.join\("tunara-sockets"\)/);
 
   assert.match(wrapper, /pub fn cleanup_hooks_settings\(session_id: &str, config_dir: Option<&Path>\)/);
@@ -160,6 +167,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(source, /agentExitedUpdate\(session, exitCode, isActive\)/);
   assert.match(source, /commandDetectedUpdate\(session, command\)/);
   assert.match(source, /commandFinishedUpdate\(session, exitCode, isActive\)/);
+  assert.match(source, /terminalExitedUpdate\(session, exitCode, get\(\)\.activeSessionId === id\)/);
   assert.match(source, /cwdChangedUpdate\(session, cwd\)/);
   assert.match(source, /shellTitleUpdate\(session, title\)/);
   assert.match(source, /if \(update\.refreshGit\) get\(\)\.refreshGit\(id\);/);
@@ -169,6 +177,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(lifecycle, /export function agentExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?title: "终端",[\s\S]*?suppressShellTitle: true,[\s\S]*?refreshGit: true,/);
   assert.match(lifecycle, /export function commandDetectedUpdate\([\s\S]*?session\?\.agent \|\| isPromptLikeShellTitle\(command\)[\s\S]*?suppressShellTitle: false,/);
   assert.match(lifecycle, /export function commandFinishedUpdate\([\s\S]*?if \(session\.agent \|\| !session\.lastCommand\)[\s\S]*?runState: exitCode === 0 \? "done" : "failed",/);
+  assert.match(lifecycle, /export function terminalExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?runState: exitCode === 0 \? "done" : "failed",[\s\S]*?refreshGit: true,/);
   assert.match(lifecycle, /export function cwdChangedUpdate\([\s\S]*?if \(!session \|\| session\.dir === cwd\) return null;[\s\S]*?dir: cwd,[\s\S]*?branch: "",[\s\S]*?changes: undefined,[\s\S]*?refreshGit: true,/);
   assert.match(lifecycle, /Agent sessions do not get a shellTitle/);
   assert.match(lifecycle, /export function shellTitleUpdate\([\s\S]*?session\?\.agent[\s\S]*?session\?\.suppressShellTitle[\s\S]*?isAgentShellTitle\(title\)[\s\S]*?isPromptLikeShellTitle\(title\)/);
@@ -179,6 +188,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
 
 test("runtime event consumers call semantic lifecycle transitions", () => {
   const terminal = read("src/ui/TerminalView.tsx");
+  const terminalExit = read("src/ui/terminal-exit.ts");
   const listener = read("src/modules/terminal/lib/hooks-listener.ts");
   const zshrc = read("src-tauri/src/modules/pty/scripts/zshrc.zsh");
 
@@ -212,6 +222,10 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /handleAgentBusy\(sessionIdRef\.current\)/);
   assert.match(terminal, /handleAgentReady\(sessionIdRef\.current\)/);
   assert.match(terminal, /handleAgentExited\(sessionIdRef\.current, exitCode\)/);
+  assert.match(terminal, /onExit: \(code: number\) => \{[\s\S]*?if \(disposed\) return;[\s\S]*?handleTerminalProcessExit\(term, sessionIdRef\.current, code\);[\s\S]*?\}/);
+  assert.match(terminalExit, /term\.write\(`\\r\\n\\x1b\[2m\[process exited: \$\{code\}\]\\x1b\[0m\\r\\n`\);/);
+  assert.match(terminalExit, /term\.options\.disableStdin = true;/);
+  assert.match(terminalExit, /handleTerminalExited\(sessionId, code\);/);
 });
 
 test("UI renders sidebar progress only when an agent is busy", () => {

@@ -84,6 +84,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const terminalLigatureSync = read("src/modules/terminal/lib/terminal-ligature-sync.ts");
   const terminalFont = read("src/modules/terminal/lib/terminal-font.ts");
   const settings = read("src/ui/overlays/Settings.tsx");
+  const agentBadge = read("src/ui/agents/badge.tsx");
+  const sessionCard = read("src/ui/SessionCard.tsx");
 
   assert.match(cargo, /^toml = "0\.8"$/m);
   assert.match(cargo, /^toml_edit = "0\.20"$/m);
@@ -119,6 +121,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(keybindings, /export const DEFAULT_KEYBINDINGS/);
   assert.match(keybindings, /newTerminalAlt: "Mod\+N"/);
   assert.match(keybindings, /quickSelect: "Mod\+Shift\+Space"/);
+  assert.match(keybindings, /function configActionForKey\(key: string\): KeybindingAction \| undefined/);
+  assert.match(keybindings, /hasOwnProperty\.call\(CONFIG_KEY_TO_ACTION, key\)/);
   assert.match(keybindings, /export function hasPlatformModKey/);
   assert.match(keybindings, /export function matchesKeybinding/);
   assert.match(keybindings, /const modPressed = hasPlatformModKey\(e, isMac\)/);
@@ -151,20 +155,114 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(settings, /t\("settings\.appearance\.ligatures"\)/);
   assert.match(zhDictForLigatures, /"settings\.appearance\.ligatures": "连字"/);
   assert.match(settings, /configPath/);
+  assert.match(agentBadge, /function ownRecordValue<T>\(record: Record<string, T>, key: string\): T \| undefined/);
+  assert.match(agentBadge, /hasOwnProperty\.call\(record, key\)/);
+  assert.match(agentBadge, /export function getAgentCircleStyle\(agent\?: string\)/);
+  assert.match(agentBadge, /export function getAgentIcon\(agent\?: string\)/);
+  assert.match(sessionCard, /getAgentCircleStyle\(session\.agent\)/);
+  assert.match(sessionCard, /getAgentIcon\(session\.agent\)/);
+  assert.doesNotMatch(sessionCard, /AGENT_CIRCLE_STYLES\[session\.agent\]/);
+  assert.doesNotMatch(sessionCard, /AGENT_ICONS\[session\.agent\]/);
 });
 
 test("session persistence keeps custom titles and rejects invalid stored payloads", () => {
   const persist = read("src/state/persist.ts");
+  const persistSnapshot = read("src/state/persist-snapshot.ts");
+  const persistenceDoc = read("docs/STATE_AND_PERSISTENCE.md");
+  const terminalSnapshotLimits = read("src/modules/terminal/lib/terminal-snapshot-limits.ts");
+  const init = read("src/app/useInit.ts");
+  const ui = read("src/state/ui.ts");
+  const diffPanel = read("src/ui/DiffPanel.tsx");
+  const sidebar = read("src/ui/Sidebar.tsx");
+  const recordKeys = read("src/state/record-keys.ts");
   assert.match(persist, /const STORE_FILE = "tunara-sessions\.json";/);
   assert.match(persist, /const LEGACY_STORE_FILE = "conduit-sessions\.json";/);
   assert.match(persist, /async function loadSessionStore\(\): Promise<SessionStore>/);
   assert.match(persist, /legacyStore\.entries<unknown>\(\)/);
-  assert.match(persist, /function isPersistedSession\(value: unknown\): value is PersistedSession/);
-  assert.match(persist, /title: p\.title\.trim\(\) \|\| "终端"/);
+  assert.match(persistSnapshot, /function isPersistedSession\(value: unknown\): value is PersistedSession/);
+  assert.match(persistSnapshot, /title: p\.title\.trim\(\) \|\| "终端"/);
+  assert.match(persistSnapshot, /const customTitle = typeof s\.customTitle === "string" \? s\.customTitle\.trim\(\) : ""/);
+  assert.match(persistSnapshot, /if \(s\.pinned === true\) p\.pinned = true/);
+  assert.match(persistSnapshot, /const customTitle = typeof p\.customTitle === "string" \? p\.customTitle\.trim\(\) : ""/);
+  assert.match(persistSnapshot, /customTitle \? \{ customTitle \} : \{\}/);
+  assert.match(persistSnapshot, /p\.pinned === true \? \{ pinned: true \} : \{\}/);
+  assert.doesNotMatch(persistSnapshot, /if \(s\.customTitle\) p\.customTitle = s\.customTitle/);
+  assert.doesNotMatch(persistSnapshot, /if \(s\.pinned\) p\.pinned = true/);
+  assert.doesNotMatch(persistSnapshot, /p\.customTitle \? \{ customTitle: p\.customTitle \}/);
+  assert.doesNotMatch(persistSnapshot, /p\.pinned \? \{ pinned: true \}/);
   assert.match(persist, /store\.get<unknown>\(SESSIONS_KEY\)/);
   assert.match(persist, /persisted\.filter\(isPersistedSession\)/);
-  assert.match(persist, /typeof activeId === "string" \? activeId : null/);
+  assert.match(persist, /typeof activeId === "string" && sessions\.some\(\(s\) => s\.id === activeId\)/);
   assert.match(persist, /function isPersistedUILayout\(value: unknown\): value is PersistedUILayout/);
+  assert.match(persist, /const rawSnapshot: WorkspaceSnapshotV1 = \{/);
+  assert.match(persist, /const updated = sanitizeSnapshot\(rawSnapshot\)/);
+  assert.match(persist, /if \(!updated\) return/);
+  assert.match(persist, /await store\.set\(SESSIONS_KEY, updated\.sessions\)/);
+  assert.match(persist, /await store\.set\(ACTIVE_KEY, updated\.activeSessionId\)/);
+  assert.doesNotMatch(persist, /await store\.set\(ACTIVE_KEY, activeSessionId\)/);
+  assert.doesNotMatch(persist, /sanitizeSnapshot\(rawSnapshot\) \?\? rawSnapshot/);
+  assert.match(persist, /saveWorkspaceSnapshot\(snapshot: WorkspaceSnapshotV1\): Promise<boolean>/);
+  assert.match(persist, /const sanitized = sanitizeSnapshot\(snapshot\)/);
+  assert.match(persist, /if \(!sanitized\) return false/);
+  assert.match(persist, /store\.set\(WORKSPACE_SNAPSHOT_KEY, sanitized\)/);
+  assert.doesNotMatch(persist, /sanitizeSnapshot\(snapshot\) \?\? snapshot/);
+  assert.match(persist, /return true;[\s\S]*?catch \{[\s\S]*?return false;/);
+  assert.match(persist, /from "\.\/persist-snapshot\.ts"/);
+  assert.match(persist, /export \{ sanitizeSnapshot \} from "\.\/persist-snapshot\.ts"/);
+  assert.match(persistSnapshot, /export interface WorkspaceSnapshotV1/);
+  assert.match(persistSnapshot, /function sanitizeRemoteInfo\(remote: unknown\): Session\["remote"\] \| undefined/);
+  assert.match(persistSnapshot, /function isSafeRecordKey\(key: string\): boolean/);
+  assert.match(persistSnapshot, /key !== "__proto__" && key !== "prototype" && key !== "constructor"/);
+  assert.match(persistenceDoc, /rejects unsafe record keys such as `__proto__` \/ `prototype` \/ `constructor`/);
+  assert.match(persistenceDoc, /normal `useInit` runtime save path[\s\S]*writes the workspace snapshot directly/);
+  assert.doesNotMatch(persistenceDoc, /legacy `sessions`[\s\S]*keys and keep them in sync with the snapshot/);
+  assert.match(persistSnapshot, /from "\.\.\/modules\/ssh\/hosts-model\.ts"/);
+  assert.match(persistSnapshot, /const port = parseSshPort\(r\.port\)/);
+  assert.match(persistSnapshot, /remote === undefined \|\| Boolean\(sanitizeRemoteInfo\(remote\)\)/);
+  assert.match(persistSnapshot, /isSafeRecordKey\(s\.id\)/);
+  assert.doesNotMatch(persistSnapshot, /remote === null/);
+  assert.doesNotMatch(persistSnapshot, /p\.remote = s\.remote/);
+  assert.match(persistSnapshot, /function sanitizeTerminalSnapshot\(raw: unknown\): PersistedTerminalSnapshot \| null/);
+  assert.match(terminalSnapshotLimits, /MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE = 256 \* 1024/);
+  assert.match(terminalSnapshotLimits, /MAX_TERMINAL_SNAPSHOTS = 8/);
+  assert.match(persistSnapshot, /from "\.\.\/modules\/terminal\/lib\/terminal-snapshot-limits\.ts"/);
+  assert.match(persistSnapshot, /Number\.isFinite\(raw\)/);
+  assert.match(persistSnapshot, /serialized\.slice\(-MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE\)/);
+  assert.match(persistSnapshot, /sort\(\(a, b\) => b\[1\]\.capturedAt - a\[1\]\.capturedAt\)/);
+  assert.match(persistSnapshot, /isSafeRecordKey\(k\) && typeof v === "number" && Number\.isFinite\(v\)/);
+  assert.match(persistSnapshot, /if \(!isSafeRecordKey\(k\) \|\| !sessionIds\.has\(k\)\)/);
+  assert.match(persistSnapshot, /if \(!isSafeRecordKey\(k\) \|\| !sessionIds\.has\(k\)\) continue/);
+  assert.match(persistSnapshot, /export function sanitizeSnapshot/);
+  assert.match(persistSnapshot, /collapsedDiffSections: Record<string, true>/);
+  assert.match(persistSnapshot, /v === true && isSafeRecordKey\(k\)/);
+  assert.match(persistSnapshot, /const collapsedDiffSections = sanitizeTrueRecord\(uiRaw\.collapsedDiffSections\)/);
+  assert.match(init, /import \{ toPersistedSession \} from "@\/state\/persist-snapshot"/);
+  assert.match(init, /sessions: st\.sessions\.map\(toPersistedSession\)/);
+  assert.match(init, /collapsedDiffSections: ui\.collapsedDiffSections/);
+  assert.match(init, /collapsedDiffSections: snapshot\.ui\.collapsedDiffSections/);
+  assert.match(init, /s\.collapsedDiffSections/);
+  assert.match(ui, /collapsedDiffSections: Record<string, true>/);
+  assert.match(ui, /toggleDiffSectionCollapsed: \(section: string\) => void/);
+  assert.match(recordKeys, /hasOwnProperty\.call\(record, key\)/);
+  assert.match(recordKeys, /hasTrueRecordKey\(record, key\)/);
+  assert.match(recordKeys, /getNumberRecordValue\(record: Record<string, number>, key: string, fallback = 0\)/);
+  assert.match(recordKeys, /toggleTrueRecordKey\(record: Record<string, true>, key: string\)/);
+  assert.match(ui, /toggleTrueRecordKey\(s\.collapsedDirs, dir\)/);
+  assert.match(ui, /toggleTrueRecordKey\(s\.collapsedDiffSections, section\)/);
+  assert.match(sidebar, /hasTrueRecordKey\(collapsedDirs, dir\)/);
+  assert.match(sidebar, /getNumberRecordValue\(dirCloseConfirmations, dir\) > 0/);
+  assert.match(sidebar, /getNumberRecordValue\(closeConfirmations, s\.id\) > 0/);
+  assert.doesNotMatch(sidebar, /!!collapsedDirs\[dir\]/);
+  assert.doesNotMatch(sidebar, /!!dirCloseConfirmations\[dir\]/);
+  assert.doesNotMatch(sidebar, /!!closeConfirmations\[s\.id\]/);
+  assert.match(diffPanel, /useUIStore\(\(s\) => s\.collapsedDiffSections\)/);
+  assert.match(diffPanel, /getNumberRecordValue\(s\.gitNonce, session\.id\)/);
+  assert.match(diffPanel, /hasTrueRecordKey\(collapsedSections, section\.key\)/);
+  assert.match(diffPanel, /toggleDiffSectionCollapsed\(section\.key\)/);
+  assert.doesNotMatch(diffPanel, /!!collapsedSections\[section\.key\]/);
+  assert.doesNotMatch(diffPanel, /s\.gitNonce\[session\.id\]/);
+  assert.doesNotMatch(diffPanel, /localStorage/);
+  assert.doesNotMatch(diffPanel, /sessionStorage/);
 });
 
 test("drag and resize handlers release pointer capture from the original handle", () => {
@@ -224,11 +322,23 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
 test("pure SSH host mapping avoids importing the Tauri IPC bridge", () => {
   const bridge = read("src/modules/ssh/hosts-bridge.ts");
   const model = read("src/modules/ssh/hosts-model.ts");
+  const sshConnect = read("src/ui/overlays/SshConnect.tsx");
   const sshLogicTest = read("tests/ssh-logic.test.mjs");
 
   assert.match(bridge, /from "\.\/hosts-model\.ts"/);
+  assert.match(bridge, /normalizeSshPort/);
+  assert.match(bridge, /parseSshPort/);
   assert.doesNotMatch(model, /@tauri-apps\/api/);
+  assert.match(model, /export function parseSshPort/);
+  assert.match(model, /Number\.isInteger\(value\)/);
+  assert.doesNotMatch(model, /Math\.trunc\(value\)/);
+  assert.match(model, /export function normalizeSshPort/);
+  assert.match(sshConnect, /import \{[\s\S]*normalizeSshPort[\s\S]*parseSshPort[\s\S]*\} from "@\/modules\/ssh\/hosts-bridge"/);
+  assert.match(sshConnect, /parseSshPort\(portText\) !== null/);
+  assert.match(sshConnect, /normalizeSshPort\(port\)/);
   assert.match(sshLogicTest, /from "\.\.\/src\/modules\/ssh\/hosts-model\.ts"/);
+  assert.match(sshLogicTest, /normalizeSshPort/);
+  assert.match(sshLogicTest, /parseSshPort/);
 });
 
 test("pure UI helpers avoid importing the React-bound i18n entry", () => {
@@ -246,6 +356,7 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   const bridge = read("src/modules/git/git-bridge.ts");
   const main = read("src/ui/MainArea.tsx");
   const diff = read("src/ui/DiffPanel.tsx");
+  const watcher = read("src/modules/git/git-watcher.ts");
   const lifecycle = read("src/modules/terminal/lib/session-lifecycle.ts");
   const localTerminalCwd = read("src/modules/session/local-terminal-cwd.ts");
 
@@ -253,6 +364,7 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.match(types, /export type GitState = "unknown" \| "repo" \| "notGit";/);
   assert.match(types, /gitState\?: GitState;/);
   assert.match(main, /activeIsRemote/);
+  assert.match(main, /getNumberRecordValue\(s\.gitNonce, active\.id\)/);
   assert.match(main, /gitState: "repo"/);
   assert.match(main, /gitState: "notGit"/);
   assert.match(lifecycle, /gitState: "unknown"/);
@@ -265,30 +377,59 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.match(diff, /repoPathRef\.current === requestedRepoPath/);
   assert.match(diff, /useSessionsStore\.getState\(\)\.refreshGit\(session\.id\)/);
   assert.doesNotMatch(diff, /\bgitStatus\b/);
+  assert.match(watcher, /const WATCH_FALLBACK_POLL_MS = 5_000/);
+  assert.match(watcher, /function refreshSessionsForRepo\(repoPath: string\): void/);
+  assert.match(watcher, /function releaseBackendWatch\(repoPath: string\): void/);
+  assert.match(watcher, /gitWatch\(repoPath\)[\s\S]*?if \(activeRepos\.has\(repoPath\)\) \{[\s\S]*?stopFallbackPoller\(repoPath\);[\s\S]*?\} else \{[\s\S]*?releaseBackendWatch\(repoPath\);/);
+  assert.match(watcher, /\.catch\(\(\) => \{[\s\S]*?startFallbackPoller\(repoPath\)/);
+  assert.match(watcher, /activeRepos\.delete\(repoPath\);[\s\S]*?stopFallbackPoller\(repoPath\);[\s\S]*?releaseBackendWatch\(repoPath\)/);
   assert.doesNotMatch(localTerminalCwd, /@\/ui\/types|ui\/types/);
 });
 
 test("session persistence is debounced and still flushed on close", () => {
   const init = read("src/app/useInit.ts");
+  const persistenceDoc = read("docs/STATE_AND_PERSISTENCE.md");
   assert.match(init, /let saveTimer: ReturnType<typeof setTimeout> \| null = null/);
   assert.match(init, /const scheduleSave = \(\) => \{/);
   assert.match(init, /setTimeout\(\(\) => \{[\s\S]*?persistNow\(\);[\s\S]*?\}, 500\)/);
   assert.match(init, /scheduleSave\(\);/);
   // 30s backstop flush is gated on the terminal-snapshot dirty flag, so an idle
   // or hidden app with no new output performs no redundant serialize + disk write.
-  assert.match(init, /setInterval\(\(\) => \{[\s\S]*?if \(consumeTerminalSnapshotDirty\(\)\) persistNow\(\);[\s\S]*?\}, 30_000\)/);
+  assert.match(init, /setInterval\(\(\) => \{[\s\S]*?if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(saved\) => \{[\s\S]*?if \(!saved\) markTerminalSnapshotDirty\(\);[\s\S]*?\}, 30_000\)/);
+  assert.match(persistenceDoc, /consumeTerminalSnapshotDirty\(\)[\s\S]*?only flushes when terminal scrollback has[\s\S]*?changed since the last save/);
+  assert.doesNotMatch(persistenceDoc, /setInterval\(persistNow, 30_000\) saves every 30 s/);
   assert.match(init, /onCloseRequested\(async \(event\) => \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveWorkspaceSnapshot[\s\S]*?await win\.hide\(\)/);
 });
 
 test("terminal snapshot writes flip a dirty flag the persist backstop consumes", () => {
+  const init = read("src/app/useInit.ts");
   const snap = read("src/modules/terminal/lib/terminal-snapshot.ts");
+  const terminalSnapshotLimits = read("src/modules/terminal/lib/terminal-snapshot-limits.ts");
+  const scheduler = read("src/modules/terminal/lib/terminal-snapshot-scheduler.ts");
+  const terminalView = read("src/ui/TerminalView.tsx");
+  const sessions = read("src/state/sessions.ts");
   // The dirty flag is the contract that lets the 30s backstop skip redundant
   // writes: output (update) and session removal must set it; restore (loading
   // from disk) must NOT, since that data was just persisted.
+  assert.match(terminalSnapshotLimits, /MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE = 256 \* 1024/);
+  assert.match(terminalSnapshotLimits, /MAX_TERMINAL_SNAPSHOTS = 8/);
+  assert.match(snap, /from "\.\/terminal-snapshot-limits\.ts"/);
+  assert.match(scheduler, /from "\.\/terminal-snapshot\.ts"/);
   assert.match(snap, /export function consumeTerminalSnapshotDirty\(\): boolean \{/);
+  assert.match(snap, /export function markTerminalSnapshotDirty\(\): void \{/);
   assert.match(snap, /export function updateTerminalSnapshot\([\s\S]*?dirty = true;/);
   assert.match(snap, /if \(snapshots\.delete\(sessionId\)\) dirty = true;/);
   assert.doesNotMatch(snap, /restoreTerminalSnapshots[\s\S]*?dirty = true/);
+  assert.match(init, /import \{[\s\S]*markTerminalSnapshotDirty[\s\S]*\} from "@\/modules\/terminal\/lib\/terminal-snapshot"/);
+  assert.match(init, /if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(saved\) => \{[\s\S]*?if \(!saved\) markTerminalSnapshotDirty\(\);/);
+  assert.match(sessions, /removeTerminalSnapshot\(id\)/);
+  assert.match(scheduler, /shouldCapture = \(\) => true/);
+  assert.match(scheduler, /if \(!shouldCapture\(\)\) return;/);
+  assert.match(scheduler, /const flush = \(\) => \{[\s\S]*?clearTimeout\(snapshotTimer\);[\s\S]*?capture\(\);[\s\S]*?\};/);
+  assert.match(scheduler, /return \{[\s\S]*?schedule,[\s\S]*?flush,[\s\S]*?dispose\(\)/);
+  assert.doesNotMatch(scheduler, /if \(shouldCapture\(\)\) capture\(\);/);
+  assert.match(terminalView, /shouldCapture: \(\) =>[\s\S]*sessions\.some\(\(s\) => s\.id === sessionIdRef\.current\)/);
+  assert.match(terminalView, /handleTerminalProcessExit\(term, sessionIdRef\.current, code\);[\s\S]*?snapshotScheduler\.flush\(\);/);
 });
 
 test("responsive shells close cleanly and avoid stale remote git badges", () => {
@@ -325,13 +466,17 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(source, /ensureSessionVisibleInSplit\(s\.id\)/);
   assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
+  assert.match(source, /getNumberRecordValue\(state\.gitNonce, id\) \+ 1/);
+  assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, s\.id\)/);
+  assert.match(source, /getNumberRecordValue\(get\(\)\.dirCloseConfirmations, dir\)/);
+  assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, id\)/);
   assert.match(source, /sessions\[Math\.min\(Math\.max\(removedIndex, 0\), sessions\.length - 1\)\]/);
   assert.match(init, /const merged = current\.sessions\.length === 0/);
   assert.match(init, /sidebarVisible: snapshot\.ui\.sidebarVisible/);
   assert.match(init, /panelVisible: snapshot\.ui\.panelVisible/);
   assert.match(init, /const agentResume: WorkspaceSnapshotV1\["agentResume"\] = \{\}/);
   assert.match(init, /if \(s\.agentResume\) agentResume\[s\.id\] = s\.agentResume/);
-  assert.match(init, /if \(s\.remote\) p\.remote = s\.remote/);
+  assert.match(init, /sessions: st\.sessions\.map\(toPersistedSession\)/);
   assert.match(init, /gitWatchDirsForSessions\(sessions\)/);
   assert.match(init, /agentResume,/);
   assert.match(init, /recentDirs: st\.recentDirs/);
@@ -388,6 +533,8 @@ test("appearance settings are sanitized and command palette exposes useful actio
   const toast = read("src/ui/Toast.tsx");
   const css = read("src/styles/globals.css");
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
+  const terminalTheme = read("src/styles/terminalTheme.ts");
+  const useTheme = read("src/app/useTheme.ts");
 
   assert.match(ui, /function clampNumber\(value: unknown/);
   assert.match(ui, /function sanitizeAccent\(value: unknown\)/);
@@ -406,7 +553,21 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(paletteFilter, /actions: "action"/);
   assert.match(paletteFilter, /sessions: "session"/);
   assert.match(paletteFilter, /terminal: "terminal"/);
+  assert.match(paletteFilter, /function scopeForAlias\(alias: string\): CommandPaletteScope \| undefined/);
+  assert.match(paletteFilter, /hasOwnProperty\.call\(SCOPE_ALIASES, alias\)/);
+  assert.doesNotMatch(paletteFilter, /const scope = SCOPE_ALIASES\[prefixMatch\[1\]\.toLowerCase\(\)\]/);
   assert.match(paletteFilter, /labelMatchIndex/);
+  assert.match(paletteFilter, /getNumberRecordValue\(usage, a\.id\)/);
+  assert.match(terminalTheme, /function getOwnTheme<T>\(themes: Record<string, T>, name: string\): T \| undefined/);
+  assert.match(terminalTheme, /hasOwnProperty\.call\(themes, name\)/);
+  assert.match(terminalTheme, /export function getShellTint\(terminalTheme: string\): Record<string, string> \| undefined/);
+  assert.match(terminalTheme, /return getOwnTheme\(SHELL_TINTS, terminalTheme\)/);
+  assert.match(terminalTheme, /getOwnTheme\(NAMED_DARK_THEMES, terminalTheme\) !== undefined/);
+  assert.match(terminalTheme, /const darkTheme = terminalTheme !== "default" \? getOwnTheme\(NAMED_DARK_THEMES, terminalTheme\) : undefined/);
+  assert.doesNotMatch(terminalTheme, /!!NAMED_DARK_THEMES\[terminalTheme\]/);
+  assert.match(useTheme, /import \{ SHELL_TINT_KEYS, getShellTint, isTerminalThemeDark \}/);
+  assert.match(useTheme, /const tint = terminalTheme !== "default" \? getShellTint\(terminalTheme\) : undefined/);
+  assert.doesNotMatch(useTheme, /SHELL_TINTS\[terminalTheme\]/);
   assert.match(palette, /ranked\.length === 0 \? 0 : Math\.min\(index, ranked\.length - 1\)/);
   assert.match(palette, /for \(const \[globalIdx, cmd\] of ranked\.entries\(\)\)/);
   assert.doesNotMatch(palette, /ranked\.indexOf/);
@@ -537,6 +698,12 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(registry, /export const AGENT_REGISTRY/);
   assert.match(registry, /export const AGENT_COMMANDS/);
   assert.match(registry, /export const AGENT_NAMES/);
+  assert.match(registry, /function makeRecord<T>\(entries: Iterable<readonly \[string, T\]>\): Record<string, T>/);
+  assert.match(registry, /Object\.create\(null\)/);
+  assert.match(registry, /function getOwnRecordValue<T>\(record: Record<string, T>, key: string\): T \| undefined/);
+  assert.match(registry, /export function agentCodeForCommand\(command: string\): AgentCode \| null/);
+  assert.match(lifecycle, /agentCodeForCommand/);
+  assert.doesNotMatch(lifecycle, /return AGENT_COMMANDS\[cmd\] \?\? null/);
   assert.match(registry, /cliBin: string/);
   const registryData = read("src/modules/agent/registry-data.json");
   assert.match(registryData, /"cliBin": "gh"/);
@@ -890,6 +1057,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocksPure, /export function formatTerminalBlockCommandAndOutput/);
   assert.match(terminalBlocks, /import \{ matchesKeybinding \} from "\.\.\/modules\/config\/keybindings\.ts"/);
   assert.match(terminalBlocks, /import \{ useUIStore \} from "@\/state\/ui"/);
+  assert.match(terminalBlocks, /import \{ hasTrueRecordKey, toggleTrueRecordKey \} from "@\/state\/record-keys"/);
   assert.match(terminalBlocks, /function detectMacPlatform\(\): boolean/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigatePrevBlock, isMac\)/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigateNextBlock, isMac\)/);
@@ -916,11 +1084,16 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /term\.onScroll/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigatePrevBlock, isMac\)[\s\S]*navigateBlock\("previous"\)/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigateNextBlock, isMac\)[\s\S]*navigateBlock\("next"\)/);
+  assert.match(terminalBlocks, /hasTrueRecordKey\(current, id\)/);
+  assert.match(terminalBlocks, /toggleTrueRecordKey\(current, id\)/);
+  assert.doesNotMatch(terminalBlocks, /current\[id\]/);
+  assert.doesNotMatch(terminalBlocks, /\.\.\.current, \[id\]: true/);
   assert.match(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
   assert.match(terminalBlocksBar, /import \{ ContextMenu \} from "\.\/ContextMenu"/);
   assert.match(terminalBlocksBar, /import \{ buildBlockContextMenuItems \} from "@\/modules\/terminal\/lib\/terminal-blocks-menu"/);
+  assert.match(terminalBlocksBar, /import \{ hasTrueRecordKey \} from "@\/state\/record-keys"/);
   assert.match(terminalBlocksBar, /className="cmd-chip"/);
   assert.match(terminalBlocksBar, /className="cmd-chip-more"/);
   assert.match(terminalBlocksBar, /buildBlockContextMenuItems\(contextMenu\.block, contextMenu\.completed, contextMenu\.collapsed/);
@@ -928,6 +1101,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocksBar, /const openContextMenu = \([\s\S]*setContextMenu/);
   assert.match(terminalBlocksBar, /onContextMenu=\{\(e\) => \{[\s\S]*openContextMenu\(stickyBlock/);
   assert.match(terminalBlocksBar, /openContextMenu\(block, completed, collapsed/);
+  assert.match(terminalBlocksBar, /hasTrueRecordKey\(collapsedBlockIds, stickyBlock\.id\)/);
+  assert.match(terminalBlocksBar, /hasTrueRecordKey\(collapsedBlockIds, block\.id\)/);
+  assert.doesNotMatch(terminalBlocksBar, /!!collapsedBlockIds\[/);
   // Block status / current-output labels are localized via i18n (no hardcoded Chinese).
   assert.match(terminalBlocksBar, /t\("block\.current_output"\)/);
   assert.match(terminalBlocksBar, /stickyBlock/);

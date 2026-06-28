@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useUIStore } from "@/state/ui";
-import { SHELL_TINTS, SHELL_TINT_KEYS, isTerminalThemeDark } from "@/styles/terminalTheme";
+import { SHELL_TINT_KEYS, getShellTint, isTerminalThemeDark } from "@/styles/terminalTheme";
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -37,7 +37,7 @@ export function useTheme() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const tint = terminalTheme !== "default" ? SHELL_TINTS[terminalTheme] : undefined;
+    const tint = terminalTheme !== "default" ? getShellTint(terminalTheme) : undefined;
 
     // 顺序：清旧壳 → 定明暗 → 染壳 → 盖强调（强调始终最后，与外壳正交叠加）。
     const apply = (systemDark: boolean) => {

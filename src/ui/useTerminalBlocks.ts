@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { matchesKeybinding } from "../modules/config/keybindings.ts";
 import { useUIStore } from "@/state/ui";
+import { hasTrueRecordKey, toggleTrueRecordKey } from "@/state/record-keys";
 
 import {
   findNavigableCommandBlock,
@@ -194,13 +195,12 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     const block = blocksRef.current.find((item) => item.id === id);
     if (!term || !block) return;
     setCollapsedBlockIds((current) => {
-      if (current[id]) {
-        const { [id]: _, ...rest } = current;
+      if (hasTrueRecordKey(current, id)) {
         term.scrollToLine(block.startRow);
-        return rest;
+        return toggleTrueRecordKey(current, id);
       }
       term.scrollToLine(block.endRow);
-      return { ...current, [id]: true };
+      return toggleTrueRecordKey(current, id);
     });
   }, [termRef]);
 

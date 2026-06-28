@@ -22,12 +22,27 @@ export interface RawHostProfile {
   identity_file: string;
 }
 
+export function parseSshPort(raw: unknown): number | null {
+  const value = typeof raw === "number"
+    ? raw
+    : typeof raw === "string" && /^\d+$/.test(raw.trim())
+    ? Number(raw.trim())
+    : Number.NaN;
+  return Number.isInteger(value) && value >= 1 && value <= 65_535
+    ? value
+    : null;
+}
+
+export function normalizeSshPort(raw: unknown, fallback = 22): number {
+  return parseSshPort(raw) ?? parseSshPort(fallback) ?? 22;
+}
+
 export function toProfile(r: RawHostProfile): SshHostProfile {
   return {
     id: r.id,
     label: r.label,
     host: r.host,
-    port: r.port,
+    port: normalizeSshPort(r.port),
     user: r.user,
     identityFile: r.identity_file,
   };
@@ -38,7 +53,7 @@ export function toRaw(p: SshHostProfile): RawHostProfile {
     id: p.id,
     label: p.label,
     host: p.host,
-    port: p.port,
+    port: normalizeSshPort(p.port),
     user: p.user,
     identity_file: p.identityFile,
   };

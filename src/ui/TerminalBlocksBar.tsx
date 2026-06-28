@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 import { buildBlockContextMenuItems } from "@/modules/terminal/lib/terminal-blocks-menu";
 import { useT } from "@/modules/i18n";
+import { hasTrueRecordKey } from "@/state/record-keys";
 import { ContextMenu } from "./ContextMenu";
 
 function ExitCodeBadge({ code, completed }: { code: number | undefined; completed: boolean }) {
@@ -98,7 +99,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
           className="cmd-chip"
           onContextMenu={(e) => {
             e.preventDefault();
-            openContextMenu(stickyBlock, !!stickyBlock.completedAt, !!collapsedBlockIds[stickyBlock.id], { x: e.clientX, y: e.clientY });
+            openContextMenu(stickyBlock, !!stickyBlock.completedAt, hasTrueRecordKey(collapsedBlockIds, stickyBlock.id), { x: e.clientX, y: e.clientY });
           }}
           style={{
             display: "inline-flex",
@@ -152,7 +153,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
             onClick={(e) => {
               e.stopPropagation();
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              openContextMenu(stickyBlock, !!stickyBlock.completedAt, !!collapsedBlockIds[stickyBlock.id], { x: rect.left, y: rect.bottom + 4 });
+              openContextMenu(stickyBlock, !!stickyBlock.completedAt, hasTrueRecordKey(collapsedBlockIds, stickyBlock.id), { x: rect.left, y: rect.bottom + 4 });
             }}
             style={{
               width: 18,
@@ -179,7 +180,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
         </div>
       )}
       {visibleBlocks.map((block) => {
-        const collapsed = !!collapsedBlockIds[block.id];
+        const collapsed = hasTrueRecordKey(collapsedBlockIds, block.id);
         const completed = !!block.completedAt;
         const ok = completed && block.exitCode === 0;
         return (

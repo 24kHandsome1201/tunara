@@ -10,8 +10,9 @@ restore path against corrupt or outdated data.
 | --- | --- |
 | `src/state/sessions.ts` | Central store: session list, active session, agent-hook + lifecycle handlers, git refresh nonce |
 | `src/state/ui.ts` | Layout / appearance prefs / toasts / SSH host-key prompt; loads & writes the user config |
-| `src/state/persist.ts` | Plugin-store persistence: `WorkspaceSnapshotV1` shape, sanitizers, legacy migration |
-| `src/state/workflows.ts` | Command-template workflows store + `sanitizeWorkflows` |
+| `src/state/persist.ts` | Plugin-store I/O, legacy migration, and save/load entry points |
+| `src/state/persist-snapshot.ts` | `WorkspaceSnapshotV1` shape, durable-session helpers, and pure snapshot sanitizers |
+| `src/state/workflows.ts` | Command-template workflows store |
 | `src/state/recent-commands.ts` | `pushRecentCommand` / `sanitizeRecentCommands` (pure helpers) |
 | `src/state/recent-dirs.ts` | `pushRecentDir` / `sanitizeRecentDirs` (pure helpers) |
 | `src/app/useInit.ts` | Wires it all together: restore on mount, debounced + interval + on-close save |
@@ -88,6 +89,7 @@ toasts: Toast[]                      // capped, last 3
 hostKeyPrompt: HostKeyPrompt | null  // pending SSH TOFU confirmation
 pendingWorkflow: PendingWorkflow | null
 collapsedDirs: Record<string, true>
+collapsedDiffSections: Record<string, true>
 commandUsage: Record<string, number> // command-palette recency, capped at 50
 trafficLightWidth / viewportWidth    // runtime layout, not persisted
 ```
@@ -108,7 +110,8 @@ resolves it.
    300 ms and is suppressed during hydration (the `configHydrating` flag) and
    until `configLoaded` is true.
 2. **Workspace snapshot** (see §2): layout fields — `sidebarVisible`,
-   `panelVisible`, `collapsedDirs`, `split`, `inspectorTab`, `commandUsage` —
+   `panelVisible`, `collapsedDirs`, `collapsedDiffSections`, `split`,
+   `inspectorTab`, `commandUsage` —
    are persisted into the snapshot file, *not* the config file. `useInit`
    subscribes to those keys and triggers a snapshot save.
 
@@ -124,7 +127,7 @@ interface WorkspaceSnapshotV1 {
   savedAt: number;
   activeSessionId: string | null;
   sessions: PersistedSessionV2[];
-  ui: PersistedUILayoutV2;                          // sidebar/panel/collapsedDirs/split/inspectorTab
+  ui: PersistedUILayoutV2;                          // sidebar/panel/collapsedDirs/collapsedDiffSections/split/inspectorTab
   terminals: Record<string, PersistedTerminalSnapshot>;  // serialized xterm buffers, keyed by session id
   agentResume: Record<string, PersistedAgentResumeIntent>;
   recentDirs: string[];
@@ -140,11 +143,12 @@ Only a narrow slice of `Session` is written. `PersistedSession` is a `Pick`:
 
 ```ts
 type PersistedSession = Pick<Session, "id" | "title" | "dir" | "branch" | "updatedAt">
-  & { customTitle?: string; remote?: Session["remote"] };
+  & { customTitle?: string; remote?: Session["remote"]; pinned?: boolean; note?: string };
 ```
 
 So the persisted fields are: **`id`, `title`, `dir`, `branch`, `updatedAt`,
-`customTitle` (only if set), `remote` (only if set)**.
+`customTitle` (only if set), `remote` (only if set), `pinned` (only when true),
+and sanitized `note` (only if non-empty)**.
 
 Everything else on `Session` is **ephemeral** and recomputed live after
 restart, including `runState` (forced back to `"idle"` on restore via
@@ -156,8 +160,11 @@ snapshot's top-level `agentResume` map (keyed by session id) and re-attached to
 the session on restore.
 
 `remote` carries only the SSH connection descriptor (host/port/user/identity
-path) — **no secrets**; the connection is re-opened lazily when the terminal
-mounts.
+path) — **no secrets**. `persist-snapshot.ts` sanitizes it by white-listing
+those fields only; one-shot passwords, key passphrases, and host-key decisions
+stay out of the snapshot. The connection is re-opened lazily when the terminal
+mounts. A stored session with a malformed `remote` descriptor is dropped during
+restore instead of being converted into a misleading local session.
 
 ### When it saves
 
@@ -165,12 +172,14 @@ Saving is orchestrated in `src/app/useInit.ts` against
 `saveWorkspaceSnapshot(buildSnapshot())`:
 
 - **Debounced (500 ms)** — `scheduleSave()` fires on any change to the sessions
-  list, to the watched UI-store keys (`collapsedDirs`, `split`, `inspectorTab`,
-  `sidebarVisible`, `panelVisible`, `commandUsage`), or to the workflows list.
+  list, to the watched UI-store keys (`collapsedDirs`, `collapsedDiffSections`,
+  `split`, `inspectorTab`, `sidebarVisible`, `panelVisible`, `commandUsage`), or
+  to the workflows list.
 - **On window close** — `win.onCloseRequested` preempts the close, flushes any
   pending debounce, awaits a synchronous final save, then hides the window.
-- **On an interval** — `setInterval(persistNow, 30_000)` saves every 30 s as a
-  safety net.
+- **On an interval** — the 30 s backstop checks
+  `consumeTerminalSnapshotDirty()` and only flushes when terminal scrollback has
+  changed since the last save.
 - **On unmount** — the effect cleanup flushes a pending save if one is queued.
 
 (Note: the appearance half of the UI store is saved on its own 300 ms debounce
@@ -187,9 +196,11 @@ restores terminal buffers via `restoreTerminalSnapshots`. When no snapshot
 exists it seeds a single `~` terminal. `ready` is flipped to `true` at the end.
 
 There are also standalone `loadSessions` / `saveSessions` / `loadUILayout` /
-`saveUILayout` helpers that read/write the legacy `sessions` / `activeSessionId`
-/ `uiLayout` keys and keep them in sync with the snapshot; the snapshot is the
-primary path used by `useInit`.
+`saveUILayout` helpers for the legacy `sessions` / `activeSessionId` /
+`uiLayout` keys. `saveSessions` and `saveUILayout` update the workspace snapshot
+when those helper paths are used, but the normal `useInit` runtime save path
+writes the workspace snapshot directly; it does not continuously mirror the
+legacy keys. The snapshot is the primary path used by `useInit`.
 
 ## 3. Store file naming & the conduit → tunara migration
 
@@ -217,30 +228,29 @@ returns a known-good shape (or drops the item) rather than trusting it.
 
 | Sanitizer | Location | What it guards |
 | --- | --- | --- |
-| `sanitizeSnapshot(raw)` | `persist.ts` | The whole `WorkspaceSnapshotV1`: rejects non-`version: 1`, filters sessions through `isPersistedSession` + `dedupeById`, validates/clamps `split` (mode + both panes must exist), prunes orphan `terminals`/`agentResume` whose session id is gone, repoints a dangling `activeSessionId` |
-| `sanitizeCommandUsage(raw)` | `persist.ts` | Drops non-finite values, keeps the 50 most-recent (mirrors the UI store's `recordCommandUse` cap) |
+| `sanitizeSnapshot(raw)` | `persist-snapshot.ts` | The whole `WorkspaceSnapshotV1`: rejects non-`version: 1`, filters sessions through `isPersistedSession` + `dedupeById`, rejects unsafe record keys such as `__proto__` / `prototype` / `constructor`, validates/clamps `split` (mode + both panes must exist), sanitizes collapsed sidebar/diff records, validates and bounds terminal snapshots (finite numeric fields, latest 8 entries, 256 KiB serialized text per entry), prunes orphan `terminals`/`agentResume` whose session id is gone, repoints a dangling `activeSessionId` |
+| `sanitizeCommandUsage(raw)` | `persist-snapshot.ts` | Drops non-finite values, keeps the 50 most-recent (mirrors the UI store's `recordCommandUse` cap) |
 | `sanitizeRecentDirs(raw)` | `recent-dirs.ts` | Strings only, trimmed, de-duped, capped at `RECENT_DIR_LIMIT` (20) |
 | `sanitizeRecentCommands(raw)` | `recent-commands.ts` | Strings only, trimmed, no newlines, de-duped, capped at `RECENT_COMMAND_LIMIT` (30) |
-| `sanitizeWorkflows(raw)` | `workflows.ts` | Array of `Workflow`, each run through `sanitizeWorkflow` (from `src/modules/workflows/template.ts`); invalid entries dropped |
+| Remote session sanitization | `persist-snapshot.ts` | White-lists host/port/user/identity path/shell-integration flag; drops any credential-like runtime fields before save or restore |
+| Workflow sanitization | `persist-snapshot.ts` | Array of `Workflow`, each run through `sanitizeWorkflow` (from `src/modules/workflows/template.ts`); invalid entries dropped |
 
-`sanitizeSnapshot` is the linchpin: `loadWorkspaceSnapshot`, `saveSessions`, and
-`saveUILayout` all route the stored blob through it before use, so a malformed
-file degrades gracefully (e.g. a split pointing at a deleted session falls back
-to single-pane) instead of crashing restore.
+`sanitizeSnapshot` is the linchpin: `loadWorkspaceSnapshot`, `saveWorkspaceSnapshot`,
+`saveSessions`, and `saveUILayout` all route the stored blob through it, so a
+malformed file degrades gracefully (e.g. a split pointing at a deleted session
+falls back to single-pane) instead of crashing restore, and any orphan runtime
+state is pruned before it is written back. It lives in `persist-snapshot.ts` so
+Node tests can exercise the restore boundary without loading the Tauri Store
+plugin.
 
-### Testability caveat
+### Testability boundary
 
-`sanitizeRecentDirs` and `sanitizeRecentCommands` live in alias-free modules and
-are exercised directly by the node test runner (e.g. `tests/lifecycle-replay.test.mjs`).
-But `sanitizeSnapshot` (in `persist.ts`) and `sanitizeWorkflows` (in
-`workflows.ts`) **cannot be imported and executed** by
-`node --experimental-strip-types --test`: their import chains pull in `@/…`
-path-alias imports (`@/ui/types`, `@/modules/workflows/template`), and the
-strip-types runner does not resolve the `@/*` alias configured in
-`tsconfig.json`. As a result `tests/project-review-regressions.test.mjs` asserts
-on `persist.ts` by reading it as **source text** (`readFileSync` + `assert.match`
-regexes over the file) rather than calling the function. See
-[docs/TESTING.md](./TESTING.md) for the test runner and this alias limitation.
+`sanitizeSnapshot`, `sanitizeRecentDirs`, and `sanitizeRecentCommands` live in
+alias-free modules and are exercised directly by the Node test runner (for
+example `tests/persist-snapshot.test.mjs` and `tests/lifecycle-replay.test.mjs`).
+Keep durable restore decisions in those pure modules. `persist.ts` is allowed to
+load `@tauri-apps/plugin-store`; the sanitizer layer should remain importable
+with `node --experimental-strip-types --test`.
 
 ## 5. Gotchas for contributors
 
@@ -262,10 +272,15 @@ regexes over the file) rather than calling the function. See
 - **Don't persist live state.** Runtime fields (`runState`, `ptyId`, git
   `changes`, `terminalProgress`, …) are intentionally excluded; re-deriving them
   is cheaper and safer than persisting stale values.
+- **Terminal snapshots must follow session lifetime.** Closing a session removes
+  its in-memory terminal snapshot, and queued snapshot captures must skip writes
+  once the session no longer exists. Otherwise a closed terminal can be written
+  back as orphan scrollback before the next sanitizer pass.
 - **The two save paths are separate.** Appearance/keybindings go to the config
   file on a 300 ms debounce; layout + sessions go to the snapshot. Adding a new
   layout pref means wiring both the UI-store subscriber selector in
   `useInit.ts` and the `sanitizeSnapshot` reader.
-- **`sanitizeSnapshot` is not directly unit-tested** (see §4) — when you change
-  it, add/adjust the source-text regex assertions in
-  `tests/project-review-regressions.test.mjs`, and verify behavior end-to-end.
+- **`sanitizeSnapshot` has direct unit coverage** (see
+  `tests/persist-snapshot.test.mjs`) — when you change persisted shape, update
+  that behavioral test plus the source-text assertions that prove `useInit.ts`
+  wires the field into the stores.

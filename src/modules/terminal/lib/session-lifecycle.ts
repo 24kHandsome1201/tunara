@@ -126,6 +126,30 @@ export function commandFinishedUpdate(
   };
 }
 
+export function terminalExitedUpdate(
+  session: Session | undefined,
+  exitCode: number,
+  isActive: boolean,
+  now = Date.now(),
+): SessionLifecycleUpdate | null {
+  if (!session) return null;
+  const wasAgent = Boolean(session.agent);
+  return {
+    patch: {
+      agent: undefined,
+      agentActivity: undefined,
+      ...(wasAgent ? { title: "终端", lastCommand: undefined } : {}),
+      lastExitCode: exitCode,
+      terminalProgress: undefined,
+      runState: exitCode === 0 ? "done" : "failed",
+      completedAt: now,
+      suppressShellTitle: true,
+      ...(!isActive ? { unread: true } : {}),
+    },
+    refreshGit: true,
+  };
+}
+
 export function cwdChangedUpdate(
   session: Session | undefined,
   cwd: string,

@@ -1,7 +1,5 @@
 import type { PersistedTerminalSnapshot } from "@/state/persist";
-
-const MAX_SERIALIZED_SIZE = 256 * 1024;
-const MAX_SNAPSHOTS = 8;
+import { MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE, MAX_TERMINAL_SNAPSHOTS } from "./terminal-snapshot-limits.ts";
 
 const snapshots = new Map<string, PersistedTerminalSnapshot>();
 
@@ -21,11 +19,15 @@ export function consumeTerminalSnapshotDirty(): boolean {
   return wasDirty;
 }
 
+export function markTerminalSnapshotDirty(): void {
+  dirty = true;
+}
+
 function trimSnapshot(snapshot: PersistedTerminalSnapshot): PersistedTerminalSnapshot {
-  if (snapshot.serialized.length <= MAX_SERIALIZED_SIZE) return snapshot;
+  if (snapshot.serialized.length <= MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE) return snapshot;
   return {
     ...snapshot,
-    serialized: snapshot.serialized.slice(-MAX_SERIALIZED_SIZE),
+    serialized: snapshot.serialized.slice(-MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE),
     truncated: true,
   };
 }
@@ -34,7 +36,7 @@ export function updateTerminalSnapshot(sessionId: string, snapshot: PersistedTer
   snapshots.set(sessionId, trimSnapshot(snapshot));
   dirty = true;
 
-  if (snapshots.size > MAX_SNAPSHOTS) {
+  if (snapshots.size > MAX_TERMINAL_SNAPSHOTS) {
     let oldestId: string | null = null;
     let oldestTime = Infinity;
     for (const [id, snap] of snapshots) {
@@ -64,6 +66,6 @@ export function restoreTerminalSnapshots(stored: Record<string, PersistedTermina
   snapshots.clear();
   for (const [id, snap] of Object.entries(stored)) {
     snapshots.set(id, trimSnapshot(snap));
-    if (snapshots.size >= MAX_SNAPSHOTS) break;
+    if (snapshots.size >= MAX_TERMINAL_SNAPSHOTS) break;
   }
 }

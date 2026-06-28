@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { toProfile, toRaw, type RawHostProfile, type SshHostProfile } from "./hosts-model.ts";
 
-export { makeHostId, toProfile, toRaw, type RawHostProfile, type SshHostProfile } from "./hosts-model.ts";
+export { makeHostId, normalizeSshPort, parseSshPort, toProfile, toRaw, type RawHostProfile, type SshHostProfile } from "./hosts-model.ts";
 
 export async function loadHosts(): Promise<SshHostProfile[]> {
   const raw = await invoke<RawHostProfile[]>("ssh_hosts_load");

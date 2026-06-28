@@ -1,17 +1,19 @@
 import type { Terminal } from "@xterm/xterm";
 import type { SerializeAddon } from "@xterm/addon-serialize";
-import { updateTerminalSnapshot } from "./terminal-snapshot";
+import { updateTerminalSnapshot } from "./terminal-snapshot.ts";
 
 export function createTerminalSnapshotScheduler({
   term,
   serializeAddon,
   sessionId,
   isActive,
+  shouldCapture = () => true,
 }: {
   term: Terminal;
   serializeAddon: SerializeAddon;
   sessionId: () => string;
   isActive: () => boolean;
+  shouldCapture?: () => boolean;
 }) {
   // Minimum gap between serializations. Active terminals also get a floor so a
   // chatty agent (frequent small bursts with >1s pauses) can't trigger a full
@@ -26,6 +28,7 @@ export function createTerminalSnapshotScheduler({
 
   const capture = () => {
     snapshotTimer = null;
+    if (!shouldCapture()) return;
     lastSnapshotAt = Date.now();
     updateTerminalSnapshot(sessionId(), {
       serialized: serializeAddon.serialize(),
@@ -53,17 +56,22 @@ export function createTerminalSnapshotScheduler({
     snapshotTimer = setTimeout(capture, delay);
   };
 
+  const flush = () => {
+    if (snapshotTimer) {
+      clearTimeout(snapshotTimer);
+      snapshotTimer = null;
+    }
+    capture();
+  };
+
   return {
     schedule,
+    flush,
     dispose() {
       // If output was pending capture when this terminal is torn down (pane
       // close / app quit), flush it synchronously so the very last batch makes
       // it into the restore snapshot instead of being dropped with the timer.
-      if (snapshotTimer) {
-        clearTimeout(snapshotTimer);
-        snapshotTimer = null;
-        capture();
-      }
+      if (snapshotTimer) flush();
     },
   };
 }

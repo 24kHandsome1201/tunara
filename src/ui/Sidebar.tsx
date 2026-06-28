@@ -6,6 +6,7 @@ import { CloseIcon } from "./shared";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
 import { buildSessionMenuItems } from "./sidebar-session-menu";
 import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-dir-group-menu";
 import { formatShortcut } from "./formatShortcut";
@@ -74,7 +75,7 @@ export function Sidebar({
   // locks this exact line shape; the heavy work (filter/group) is already
   // memoized above.
   const visibleSessionIds = groupEntries.flatMap(([dir, groupSessions]) =>
-    !!collapsedDirs[dir] && !q ? [] : groupSessions.map((s) => s.id)
+    hasTrueRecordKey(collapsedDirs, dir) && !q ? [] : groupSessions.map((s) => s.id)
   );
   const tabbableSessionId = visibleSessionIds.includes(activeSessionId) ? activeSessionId : visibleSessionIds[0] ?? null;
   const visibleSessionIdsRef = useRef(visibleSessionIds); // read by handleSessionKeyDown (keeps its deps stable for memo)
@@ -316,7 +317,7 @@ export function Sidebar({
         )}
 
         {groupEntries.map(([dir, groupSessions]) => {
-          const collapsed = !!collapsedDirs[dir] && !q;
+          const collapsed = hasTrueRecordKey(collapsedDirs, dir) && !q;
           const hasLocalFilesystem = dirGroupHasLocalFilesystem(groupSessions);
           return (
           <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
@@ -327,7 +328,7 @@ export function Sidebar({
               onToggleCollapse={() => toggleDirCollapsed(dir)}
               onNewTerminal={hasLocalFilesystem ? () => useSessionsStore.getState().newTerminalInDir(dir) : undefined}
               onCloseAll={() => useSessionsStore.getState().closeSessionsInDir(dir)}
-              confirmClose={!!dirCloseConfirmations[dir]}
+              confirmClose={getNumberRecordValue(dirCloseConfirmations, dir) > 0}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({
@@ -362,7 +363,7 @@ export function Sidebar({
                       <SessionCard
                         session={s}
                         active={s.id === activeSessionId}
-                        confirmClose={!!closeConfirmations[s.id]}
+                        confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
                         tabIndex={s.id === tabbableSessionId ? 0 : -1}
                         onSelect={handleSelect}
                         onKeyDown={handleSessionKeyDown}

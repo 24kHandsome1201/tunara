@@ -8,15 +8,58 @@ interface GitChangedPayload {
   repoPath: string;
 }
 
+const WATCH_FALLBACK_POLL_MS = 5_000;
+const activeRepos = new Set<string>();
+const fallbackPollers = new Map<string, ReturnType<typeof setInterval>>();
+
+function refreshSessionsForRepo(repoPath: string): void {
+  if (!repoPath) return;
+  const store = useSessionsStore.getState();
+  for (const session of store.sessions) {
+    if (session.remote) continue;
+    if (session.dir && sameRepoPath(session.dir, repoPath)) {
+      store.refreshGit(session.id);
+    }
+  }
+}
+
+function startFallbackPoller(repoPath: string): void {
+  if (!activeRepos.has(repoPath) || fallbackPollers.has(repoPath)) return;
+  fallbackPollers.set(repoPath, setInterval(() => refreshSessionsForRepo(repoPath), WATCH_FALLBACK_POLL_MS));
+}
+
+function stopFallbackPoller(repoPath: string): void {
+  const timer = fallbackPollers.get(repoPath);
+  if (!timer) return;
+  clearInterval(timer);
+  fallbackPollers.delete(repoPath);
+}
+
+function releaseBackendWatch(repoPath: string): void {
+  gitUnwatch(repoPath).catch(() => {});
+}
+
 const refCount = createWatchRefCount({
   onFirstAcquire: (repoPath) => {
-    gitWatch(repoPath).catch(() => {
-      // Watcher startup failed (e.g. permission, path missing). Fall back silently;
-      // the throttled refreshGit polling already covers correctness.
-    });
+    activeRepos.add(repoPath);
+    gitWatch(repoPath)
+      .then(() => {
+        if (activeRepos.has(repoPath)) {
+          stopFallbackPoller(repoPath);
+        } else {
+          releaseBackendWatch(repoPath);
+        }
+      })
+      .catch(() => {
+        // Watcher startup can fail on permission or platform limits. Keep the
+        // review rail eventually fresh without turning the healthy path into polling.
+        startFallbackPoller(repoPath);
+      });
   },
   onLastRelease: (repoPath) => {
-    gitUnwatch(repoPath).catch(() => {});
+    activeRepos.delete(repoPath);
+    stopFallbackPoller(repoPath);
+    releaseBackendWatch(repoPath);
   },
 });
 
@@ -30,14 +73,6 @@ export function releaseGitWatch(repoPath: string): void {
 
 export async function startGitWatcherListener(): Promise<UnlistenFn> {
   return listen<GitChangedPayload>("git-changed", (e) => {
-    const target = e.payload.repoPath;
-    if (!target) return;
-    const store = useSessionsStore.getState();
-    for (const session of store.sessions) {
-      if (session.remote) continue;
-      if (session.dir && sameRepoPath(session.dir, target)) {
-        store.refreshGit(session.id);
-      }
-    }
+    refreshSessionsForRepo(e.payload.repoPath);
   });
 }

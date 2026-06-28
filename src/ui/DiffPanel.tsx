@@ -9,6 +9,7 @@ import {
 } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
 import { openInEditor } from "@/modules/editor/open";
 import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
@@ -232,7 +233,9 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const t = useT();
   const repoPath = normalizeLocalRepoPath(session.dir);
   const displayPath = session.dir;
-  const nonce = useSessionsStore((s) => s.gitNonce[session.id] ?? 0);
+  const nonce = useSessionsStore((s) => getNumberRecordValue(s.gitNonce, session.id));
+  const collapsedSections = useUIStore((s) => s.collapsedDiffSections);
+  const toggleDiffSectionCollapsed = useUIStore((s) => s.toggleDiffSectionCollapsed);
 
   const files = session.changes?.files ?? [];
   const branch = session.branch || "";
@@ -250,25 +253,6 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const sessionIdRef = useRef(session.id);
   repoPathRef.current = repoPath;
   sessionIdRef.current = session.id;
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = window.localStorage.getItem("tunara.diff.collapsedSections");
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem("tunara.diff.collapsedSections", JSON.stringify(collapsedSections));
-    } catch {
-      // 配额满 / 隐私模式 — 忽略即可
-    }
-  }, [collapsedSections]);
-
   useEffect(() => {
     let cancelled = false;
     diffGenerationRef.current += 1;
@@ -529,14 +513,14 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                 { key: "untracked", title: t("diff.section.untracked"), files: untrackedFiles, titleColor: "var(--c-text-5)", accentBorder: false },
               ].filter((s) => s.files.length > 0);
               return sections.map((section) => {
-                const collapsed = !!collapsedSections[section.key];
+                const collapsed = hasTrueRecordKey(collapsedSections, section.key);
                 return (
                   <div key={section.key} style={{ marginBottom: 6 }}>
                     <SectionHeader
                       title={section.title}
                       count={section.files.length}
                       expanded={!collapsed}
-                      onToggle={() => setCollapsedSections((prev) => ({ ...prev, [section.key]: !prev[section.key] }))}
+                      onToggle={() => toggleDiffSectionCollapsed(section.key)}
                       titleColor={section.titleColor}
                       accentBorder={section.accentBorder}
                     />

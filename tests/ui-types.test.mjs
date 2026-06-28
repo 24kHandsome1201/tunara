@@ -45,3 +45,14 @@ test("groupByDir keeps a single-session directory as a one-element array", () =>
   assert.deepEqual(Object.keys(grouped), ["/only"]);
   assert.equal(grouped["/only"].length, 1);
 });
+
+test("groupByDir treats prototype-like directory names as plain keys", () => {
+  const grouped = groupByDir([
+    session("proto", "__proto__"),
+    session("constructor", "constructor"),
+  ]);
+
+  assert.deepEqual(Object.keys(grouped), ["__proto__", "constructor"]);
+  assert.deepEqual(grouped["__proto__"].map((s) => s.id), ["proto"]);
+  assert.deepEqual(grouped.constructor.map((s) => s.id), ["constructor"]);
+});

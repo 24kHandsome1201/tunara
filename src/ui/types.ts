@@ -213,8 +213,11 @@ export function formatSize(bytes: number): string {
 
 /** 按 dir 归组（设计稿侧栏分段） */
 export function groupByDir(sessions: Session[]): Record<string, Session[]> {
-  return sessions.reduce<Record<string, Session[]>>((acc, s) => {
-    (acc[s.dir] ??= []).push(s);
-    return acc;
-  }, {});
+  const groups = new Map<string, Session[]>();
+  for (const session of sessions) {
+    const group = groups.get(session.dir) ?? [];
+    group.push(session);
+    groups.set(session.dir, group);
+  }
+  return Object.fromEntries(groups);
 }

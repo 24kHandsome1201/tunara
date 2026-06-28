@@ -6,6 +6,14 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
+## [1.7.1] - 2026-06-28
+
+### Fixed
+- Hardened workspace snapshot persistence: session notes, pinned state, collapsed diff sections, command usage, SSH remote descriptors, terminal snapshots, workflows, and active session ids are now sanitized through a pure restore boundary with direct Node coverage.
+- Reduced unnecessary periodic snapshot writes by only flushing the 30 s terminal snapshot backstop when terminal scrollback changed.
+- Prevented orphan terminal snapshots from being captured after a session closes, and surfaced terminal process exit state consistently in the UI.
+- Tightened local diff and SSH host parsing paths so unsafe record keys, malformed ports, and stale runtime fields are dropped instead of restored.
+
 ## [1.7.0] - 2026-06-26
 
 ### Added

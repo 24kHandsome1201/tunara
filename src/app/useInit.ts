@@ -4,11 +4,17 @@ import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
 import { useWorkflowsStore } from "@/state/workflows";
-import { consumeTerminalSnapshotDirty, getAllTerminalSnapshots, restoreTerminalSnapshots } from "@/modules/terminal/lib/terminal-snapshot";
+import {
+  consumeTerminalSnapshotDirty,
+  getAllTerminalSnapshots,
+  markTerminalSnapshotDirty,
+  restoreTerminalSnapshots,
+} from "@/modules/terminal/lib/terminal-snapshot";
 import { platform } from "@tauri-apps/plugin-os";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
+import { toPersistedSession } from "@/state/persist-snapshot";
 import { diffWatchedDirs, gitWatchDirsForSessions } from "./lib/sync-watches";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
@@ -22,24 +28,12 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
     version: 1,
     savedAt: Date.now(),
     activeSessionId: st.activeSessionId,
-    sessions: st.sessions.map((s) => {
-      const p: WorkspaceSnapshotV1["sessions"][number] = {
-        id: s.id,
-        title: s.title,
-        dir: s.dir,
-        branch: s.branch,
-        updatedAt: s.updatedAt,
-      };
-      if (s.customTitle) p.customTitle = s.customTitle;
-      if (s.pinned) p.pinned = true;
-      if (s.note) p.note = s.note;
-      if (s.remote) p.remote = s.remote;
-      return p;
-    }),
+    sessions: st.sessions.map(toPersistedSession),
     ui: {
       sidebarVisible: ui.sidebarVisible,
       panelVisible: ui.panelVisible,
       collapsedDirs: ui.collapsedDirs,
+      collapsedDiffSections: ui.collapsedDiffSections,
       split: ui.split,
       inspectorTab: ui.inspectorTab,
     },
@@ -128,6 +122,7 @@ export function useInit() {
         sidebarVisible: snapshot.ui.sidebarVisible,
         panelVisible: snapshot.ui.panelVisible,
         collapsedDirs: snapshot.ui.collapsedDirs,
+        collapsedDiffSections: snapshot.ui.collapsedDiffSections,
         split: snapshot.ui.split,
         inspectorTab: snapshot.ui.inspectorTab,
         commandUsage: snapshot.commandUsage ?? {},
@@ -172,14 +167,12 @@ export function useInit() {
     }
 
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
-    const persistNow = () => {
-      void saveWorkspaceSnapshot(buildSnapshot());
-    };
+    const persistNow = () => saveWorkspaceSnapshot(buildSnapshot());
     const scheduleSave = () => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
         saveTimer = null;
-        persistNow();
+        void persistNow();
       }, 500);
     };
 
@@ -228,7 +221,7 @@ export function useInit() {
     });
 
     const unsubUI = useUIStore.subscribe(
-      (s) => [s.collapsedDirs, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage] as const,
+      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage] as const,
       () => scheduleSave(),
       { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
     );
@@ -246,7 +239,10 @@ export function useInit() {
     // Gate on the snapshot dirty flag so an idle or hidden app with no new
     // output performs no redundant serialize + IPC + disk write every 30s.
     const timer = setInterval(() => {
-      if (consumeTerminalSnapshotDirty()) persistNow();
+      if (!consumeTerminalSnapshotDirty()) return;
+      void persistNow().then((saved) => {
+        if (!saved) markTerminalSnapshotDirty();
+      });
     }, 30_000);
     return () => {
       unsubSessions();
@@ -255,7 +251,7 @@ export function useInit() {
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;
-        persistNow();
+        void persistNow();
       }
       clearInterval(timer);
       window.removeEventListener("focus", onWindowFocus);

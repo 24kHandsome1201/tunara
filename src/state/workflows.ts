@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { type Workflow, makeWorkflowId, sanitizeWorkflow } from "@/modules/workflows/template";
+import { type Workflow, makeWorkflowId } from "@/modules/workflows/template";
 
 // Local, named command templates surfaced in the command palette. Persisted via
 // the workspace snapshot (see persist.ts / useInit), same as recentCommands —
@@ -33,14 +33,3 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
   removeWorkflow: (id) =>
     set((state) => ({ workflows: state.workflows.filter((w) => w.id !== id) })),
 }));
-
-/** Sanitize a raw persisted array (from the workspace snapshot). */
-export function sanitizeWorkflows(raw: unknown): Workflow[] {
-  if (!Array.isArray(raw)) return [];
-  const out: Workflow[] = [];
-  for (const item of raw) {
-    const w = sanitizeWorkflow(item);
-    if (w) out.push(w);
-  }
-  return out;
-}

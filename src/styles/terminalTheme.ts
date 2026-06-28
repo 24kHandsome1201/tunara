@@ -165,6 +165,14 @@ export const SHELL_TINT_KEYS: readonly string[] = Object.freeze(
   Array.from(new Set(Object.values(SHELL_TINTS).flatMap((t) => Object.keys(t)))),
 );
 
+function getOwnTheme<T>(themes: Record<string, T>, name: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(themes, name) ? themes[name] : undefined;
+}
+
+export function getShellTint(terminalTheme: string): Record<string, string> | undefined {
+  return getOwnTheme(SHELL_TINTS, terminalTheme);
+}
+
 const NAMED_DARK_THEMES: Record<string, typeof DARK_THEME> = {
   catppuccin: CATPPUCCIN_THEME,
   "tokyo-night": TOKYO_NIGHT_THEME,
@@ -185,15 +193,17 @@ export function isDarkTheme(theme: ThemeType): boolean {
 
 export function isTerminalThemeDark(terminalTheme: TerminalThemeName, appTheme: ThemeType): boolean {
   if (terminalTheme === "default") return isDarkTheme(appTheme);
-  return !!NAMED_DARK_THEMES[terminalTheme];
+  return getOwnTheme(NAMED_DARK_THEMES, terminalTheme) !== undefined;
 }
 
 export function getTerminalTheme(appTheme: ThemeType, terminalTheme: TerminalThemeName, accent?: string) {
   let base;
-  if (terminalTheme !== "default" && NAMED_DARK_THEMES[terminalTheme]) {
-    base = NAMED_DARK_THEMES[terminalTheme];
-  } else if (terminalTheme !== "default" && NAMED_LIGHT_THEMES[terminalTheme]) {
-    base = NAMED_LIGHT_THEMES[terminalTheme];
+  const darkTheme = terminalTheme !== "default" ? getOwnTheme(NAMED_DARK_THEMES, terminalTheme) : undefined;
+  const lightTheme = terminalTheme !== "default" ? getOwnTheme(NAMED_LIGHT_THEMES, terminalTheme) : undefined;
+  if (darkTheme) {
+    base = darkTheme;
+  } else if (lightTheme) {
+    base = lightTheme;
   } else {
     base = isDarkTheme(appTheme) ? DARK_THEME : LIGHT_THEME;
   }

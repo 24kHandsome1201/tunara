@@ -6,6 +6,7 @@ import {
   LIGHT_THEME,
   CATPPUCCIN_THEME,
   GITHUB_LIGHT_THEME,
+  getShellTint,
   isTerminalThemeDark,
   getTerminalTheme,
 } from "../src/styles/terminalTheme.ts";
@@ -34,6 +35,13 @@ test("getTerminalTheme returns the matching base palette for explicit app themes
 test("getTerminalTheme returns the named palette ignoring the app theme", () => {
   assert.deepEqual(getTerminalTheme("light", "catppuccin"), CATPPUCCIN_THEME);
   assert.deepEqual(getTerminalTheme("dark", "github-light"), GITHUB_LIGHT_THEME);
+});
+
+test("terminal theme lookup ignores inherited object properties", () => {
+  assert.equal(isTerminalThemeDark("constructor", "light"), false);
+  assert.deepEqual(getTerminalTheme("light", "constructor"), LIGHT_THEME);
+  assert.equal(getShellTint("constructor"), undefined);
+  assert.ok(getShellTint("catppuccin"));
 });
 
 test("getTerminalTheme blends accent into selectionBackground with 66 alpha on dark themes", () => {

@@ -8,6 +8,7 @@ import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
 import { useT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
+import { getNumberRecordValue } from "@/state/record-keys";
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -90,7 +91,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const t = useT();
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const activeIsRemote = Boolean(active?.remote);
-  const nonce = useSessionsStore((s) => s.gitNonce[active?.id ?? ""] ?? 0);
+  const nonce = useSessionsStore((s) => active ? getNumberRecordValue(s.gitNonce, active.id) : 0);
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
   const [remote, setRemote] = useState<RemoteState | null>(null);
   const split = useUIStore((s) => s.split);

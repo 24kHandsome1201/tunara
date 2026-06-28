@@ -14,7 +14,7 @@ mod platform {
     use serde::Deserialize;
     use std::fs;
     use std::io::Read;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -73,6 +73,7 @@ mod platform {
             log::error!("hooks listener disabled, insecure runtime dir: {e}");
             return HookListenerState::disabled();
         }
+        prune_stale_hook_sockets(&sock_dir);
         let sock_path = sock_dir.join(format!("hooks-{}.sock", std::process::id()));
 
         let _ = fs::remove_file(&sock_path);
@@ -143,6 +144,7 @@ mod platform {
                         }
                     }
                 }
+                let _ = fs::remove_file(&sock_path_t);
                 log::info!("hooks listener stopped");
             })
         {
@@ -192,6 +194,34 @@ mod platform {
         }
         Ok(())
     }
+
+    pub(super) fn prune_stale_hook_sockets(sock_dir: &Path) {
+        let entries = match fs::read_dir(sock_dir) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            if !name.starts_with("hooks-") || !name.ends_with(".sock") {
+                continue;
+            }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_socket() {
+                continue;
+            }
+
+            let path = entry.path();
+            if UnixStream::connect(&path).is_err() {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
 }
 
 #[cfg(not(unix))]
@@ -229,6 +259,47 @@ mod tests {
         assert_eq!(state.sock_path(), "");
         assert!(state.agent_config_dir().is_none());
         state.shutdown();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_runtime_prunes_only_stale_tunara_sockets() {
+        use std::fs;
+        use std::os::unix::net::UnixListener;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::path::PathBuf::from(format!(
+            "/tmp/tunara-hook-prune-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        let stale_path = dir.join("hooks-stale.sock");
+        let stale_listener = UnixListener::bind(&stale_path).unwrap();
+        drop(stale_listener);
+
+        let active_path = dir.join("hooks-active.sock");
+        let _active_listener = UnixListener::bind(&active_path).unwrap();
+
+        let other_socket_path = dir.join("other.sock");
+        let other_listener = UnixListener::bind(&other_socket_path).unwrap();
+        drop(other_listener);
+
+        let regular_path = dir.join("hooks-regular.sock");
+        fs::write(&regular_path, b"not a socket").unwrap();
+
+        super::platform::prune_stale_hook_sockets(&dir);
+
+        assert!(!stale_path.exists());
+        assert!(active_path.exists());
+        assert!(other_socket_path.exists());
+        assert!(regular_path.exists());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

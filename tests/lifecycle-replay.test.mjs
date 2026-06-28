@@ -67,6 +67,7 @@ import {
   commandDetectedUpdate,
   cwdChangedUpdate,
   shellTitleUpdate,
+  terminalExitedUpdate,
   terminalProgressUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 import {
@@ -85,7 +86,7 @@ import {
 import { buildAgentResumeCommand } from "../src/modules/terminal/lib/agent-resume.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
-import { matchesKeybinding, parseKeybinding } from "../src/modules/config/keybindings.ts";
+import { DEFAULT_KEYBINDINGS, matchesKeybinding, parseKeybinding, sanitizeKeybindings } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand, resolveTerminalBlockRows } from "../src/modules/terminal/lib/terminal-blocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 import { setLanguage } from "../src/modules/i18n/core.ts";
@@ -214,6 +215,7 @@ test("agent command detection maps first shell command token only", () => {
   assert.equal(detectAgentCommand("ampcode"), "AM");
   assert.equal(detectAgentCommand("cursor-agent run task"), "CR");
   assert.equal(detectAgentCommand("agent run task"), null);
+  assert.equal(detectAgentCommand("constructor"), null);
   assert.equal(detectAgentCommand("copilot suggest"), "CP");
   assert.equal(detectAgentCommand("ls claude"), null);
   assert.equal(detectAgentCommand(""), null);
@@ -278,6 +280,16 @@ test("keybinding matcher handles shifted bracket characters", () => {
 
   assert.equal(matchesKeybinding(leftBraceEvent, "Mod+Shift+[", true), true);
   assert.equal(matchesKeybinding(rightBraceEvent, "Mod+Shift+]", true), true);
+});
+
+test("keybinding sanitizer ignores inherited object property names from user config", () => {
+  const sanitized = sanitizeKeybindings({ constructor: "Mod+Q", new_terminal: "Mod+N" });
+  assert.equal(sanitized.newTerminal, "Mod+N");
+  assert.equal(sanitized.closeSession, DEFAULT_KEYBINDINGS.closeSession);
+  assert.deepEqual(
+    Object.keys(sanitized).filter((key) => !(key in DEFAULT_KEYBINDINGS)),
+    [],
+  );
 });
 
 test("sticky command block appears only after scrolling into hidden block output", () => {
@@ -474,6 +486,9 @@ test("command palette typed filters narrow results by scope before text matching
     filterCommandPaletteItems(items, parseCommandPaletteQuery("unknown: api")).map((item) => item.id),
     [],
   );
+  const inheritedPrefix = parseCommandPaletteQuery("constructor: api");
+  assert.equal(inheritedPrefix.scope, undefined);
+  assert.equal(inheritedPrefix.normalizedText, "constructor: api");
 });
 
 test("command palette ranking prefers label matches before subtitle-only matches", () => {
@@ -489,6 +504,8 @@ test("command palette ranking prefers label matches before subtitle-only matches
   assert.deepEqual(rankCommandPaletteItems(filtered, parsed, {}).map((item) => item.id), ["label-hit", "subtitle-hit"]);
   const actions = filterCommandPaletteItems(items, parseCommandPaletteQuery("actions:"));
   assert.deepEqual(rankCommandPaletteItems(actions, parseCommandPaletteQuery("actions:"), { "used-action": 4 }).map((item) => item.id), ["used-action", "subtitle-hit"]);
+  const inheritedUsage = Object.create({ "used-action": 9 });
+  assert.deepEqual(rankCommandPaletteItems(actions, parseCommandPaletteQuery("actions:"), inheritedUsage).map((item) => item.id), ["subtitle-hit", "used-action"]);
 });
 
 test("terminal file links recognize local file positions without treating URLs as files", () => {
@@ -832,6 +849,42 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(isSessionBusy(h.session), false);
   assert.equal(h.session.lastExitCode, 0);
   assert.equal(h.gitRefreshes, 2);
+});
+
+test("terminal process exit updates session lifecycle even without OSC command end", () => {
+  const h = createHarness(makeSession({
+    lastCommand: "exit",
+    runState: "running",
+  }));
+
+  assert.equal(h.apply(terminalExitedUpdate(h.session, 0, true, 50)), true);
+  assert.equal(h.session.runState, "done");
+  assert.equal(h.session.lastExitCode, 0);
+  assert.equal(h.session.completedAt, 50);
+  assert.equal(h.session.suppressShellTitle, true);
+  assert.equal(h.session.lastCommand, "exit");
+  assert.equal(h.gitRefreshes, 1);
+});
+
+test("terminal process exit clears stale agent state and marks background unread", () => {
+  const h = createHarness(makeSession({
+    agent: "CC",
+    agentActivity: "running",
+    title: "Claude Code",
+    runState: "idle",
+    lastCommand: "claude",
+  }));
+
+  assert.equal(h.apply(terminalExitedUpdate(h.session, 9, false, 60)), true);
+  assert.equal(h.session.agent, undefined);
+  assert.equal(h.session.agentActivity, undefined);
+  assert.equal(h.session.title, "终端");
+  assert.equal(h.session.lastCommand, undefined);
+  assert.equal(h.session.lastExitCode, 9);
+  assert.equal(h.session.runState, "failed");
+  assert.equal(h.session.unread, true);
+  assert.equal(deriveTitle(h.session).primary, "终端");
+  assert.equal(h.gitRefreshes, 1);
 });
 
 test("agent session title appends live activity and falls back to the bare name", () => {

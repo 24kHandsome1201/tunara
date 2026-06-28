@@ -42,6 +42,7 @@ import { useTerminalQuickSelect } from "./useTerminalQuickSelect";
 import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl";
 import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, requestInformationalAttention, safeDispose } from "./terminal-attention";
+import { handleTerminalProcessExit } from "./terminal-exit";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -88,7 +89,6 @@ function TerminalViewImpl({
     active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
   useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady);
-  // Sole delivery path for pendingInput (init effect must NOT also schedule it).
   useEffect(() => {
     const pty = ptyRef.current;
     if (!pendingInput || !pty) return;
@@ -363,8 +363,8 @@ function TerminalViewImpl({
         serializeAddon,
         sessionId: () => sessionIdRef.current,
         isActive: () => activeRef.current,
+        shouldCapture: () => useSessionsStore.getState().sessions.some((s) => s.id === sessionIdRef.current),
       });
-      const scheduleSnapshot = snapshotScheduler.schedule;
       cleanups.push(snapshotScheduler.dispose);
       const cwd = dir === "~" ? undefined : dir;
       const outputBuffer = createTerminalOutputBuffer(term);
@@ -373,7 +373,7 @@ function TerminalViewImpl({
         onData: (bytes: Uint8Array) => {
           outputBuffer.push(bytes);
           blocks.updateActiveBlockEnd(currentBufferRow());
-          scheduleSnapshot();
+          snapshotScheduler.schedule();
           if (hasAgent && currentAgentCode) {
             if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
               codexStateTracker.schedule();
@@ -386,8 +386,9 @@ function TerminalViewImpl({
           }
         },
         onExit: (code: number) => {
-          term.write(`\r\n\x1b[2m[process exited: ${code}]\x1b[0m\r\n`);
-          term.options.disableStdin = true;
+          if (disposed) return;
+          handleTerminalProcessExit(term, sessionIdRef.current, code);
+          snapshotScheduler.flush();
         },
       };
       let pty;
@@ -430,7 +431,6 @@ function TerminalViewImpl({
           /* Resize can race with process exit or pane teardown. */
         });
       };
-      // pendingInput is delivered solely by the top-level effect (keyed on ptyReady).
       let inputBuffer = "";
       // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = (submitted: string) => {

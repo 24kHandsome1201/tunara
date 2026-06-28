@@ -1,5 +1,5 @@
 import type { AgentActivity, AgentCode, RunState, Session } from "../../../ui/types.ts";
-import { AGENT_CODES, AGENT_COMMANDS, AGENT_NAMES, AGENT_SHELL_TITLE_FRAGMENTS } from "../../agent/registry.ts";
+import { AGENT_CODES, AGENT_COMMANDS, AGENT_NAMES, AGENT_SHELL_TITLE_FRAGMENTS, agentCodeForCommand } from "../../agent/registry.ts";
 import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
@@ -29,7 +29,7 @@ export function isAgentCode(value: string): value is AgentCode {
 
 export function detectAgentCommand(commandLine: string): AgentCode | null {
   const cmd = cleanTerminalText(commandLine).trim().split(/\s+/)[0]?.toLowerCase() ?? "";
-  return AGENT_COMMANDS[cmd] ?? null;
+  return agentCodeForCommand(cmd);
 }
 
 export function isAgentShellTitle(title: string): boolean {

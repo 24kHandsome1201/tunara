@@ -15,12 +15,25 @@ export const AGENT_CIRCLE_STYLES: Record<string, { bg: string; border: string; c
   AD: { bg: "var(--c-agent-ad-bg)", border: "var(--c-agent-ad-border)", color: "var(--c-agent-ad-text)" },
 };
 
+function ownRecordValue<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
+
+export function getAgentCircleStyle(agent?: string) {
+  if (!agent) return AGENT_CIRCLE_STYLES.CC;
+  return ownRecordValue(AGENT_CIRCLE_STYLES, agent) ?? AGENT_CIRCLE_STYLES.CC;
+}
+
+export function getAgentIcon(agent?: string) {
+  return agent ? ownRecordValue(AGENT_ICONS, agent) : undefined;
+}
+
 export function AgentBadge({ agent, size = 22, disabled }: { agent?: string; size?: number; disabled?: boolean }) {
   if (!agent) return null;
   const palette = disabled
     ? { bg: "var(--c-bg-3)", border: "var(--c-border-2)", color: "var(--c-text-5)" }
-    : (AGENT_CIRCLE_STYLES[agent] ?? AGENT_CIRCLE_STYLES.CC);
-  const Icon = AGENT_ICONS[agent];
+    : getAgentCircleStyle(agent);
+  const Icon = getAgentIcon(agent);
 
   return (
     <div

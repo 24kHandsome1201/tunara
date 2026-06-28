@@ -8,6 +8,8 @@ import {
   saveHost,
   removeHost,
   makeHostId,
+  normalizeSshPort,
+  parseSshPort,
   type SshHostProfile,
 } from "@/modules/ssh/hosts-bridge";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
@@ -65,12 +67,15 @@ export function SshConnect({ onClose }: SshConnectProps) {
       .catch(() => {});
   };
 
-  const canConnect = host.trim().length > 0 && user.trim().length > 0;
+  const portText = port.trim();
+  const canConnect =
+    host.trim().length > 0 &&
+    user.trim().length > 0 &&
+    (portText.length === 0 || parseSshPort(portText) !== null);
 
   const connect = () => {
     if (!canConnect) return;
-    const parsedPort = Number.parseInt(port, 10);
-    const safePort = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 22;
+    const safePort = normalizeSshPort(port);
     const trimmedHost = host.trim();
     const trimmedUser = user.trim();
     const trimmedId = identityFile.trim();

@@ -1,3 +1,5 @@
+import { getNumberRecordValue } from "../../state/record-keys.ts";
+
 export type CommandPaletteScope = "action" | "app" | "batch" | "recent" | "session" | "terminal" | "workflow";
 
 export interface CommandPaletteFilterItem {
@@ -39,12 +41,18 @@ const SCOPE_ALIASES: Record<string, CommandPaletteScope> = {
   workflows: "workflow",
 };
 
+function scopeForAlias(alias: string): CommandPaletteScope | undefined {
+  return Object.prototype.hasOwnProperty.call(SCOPE_ALIASES, alias)
+    ? SCOPE_ALIASES[alias]
+    : undefined;
+}
+
 export function parseCommandPaletteQuery(rawQuery: string): CommandPaletteParsedQuery {
   const trimmed = rawQuery.trim();
   const prefixMatch = /^([a-z_]+):\s*(.*)$/i.exec(trimmed);
   if (!prefixMatch) return normalizeQueryText(trimmed);
 
-  const scope = SCOPE_ALIASES[prefixMatch[1].toLowerCase()];
+  const scope = scopeForAlias(prefixMatch[1].toLowerCase());
   if (!scope) return normalizeQueryText(trimmed);
 
   return {
@@ -76,8 +84,8 @@ export function rankCommandPaletteItems<T extends CommandPaletteRankItem>(
       if (ia !== ib) return ia - ib;
     }
 
-    const ua = usage[a.id] ?? 0;
-    const ub = usage[b.id] ?? 0;
+    const ua = getNumberRecordValue(usage, a.id);
+    const ub = getNumberRecordValue(usage, b.id);
     if (ua !== ub) return ub - ua;
     return a.originalIndex - b.originalIndex;
   });

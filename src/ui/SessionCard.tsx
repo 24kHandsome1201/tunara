@@ -1,6 +1,6 @@
 import { memo, useEffect, useState, useRef, useCallback } from "react";
 import { type Session, type RunState, type TerminalProgress, deriveTitle } from "./types";
-import { AGENT_ICONS, AGENT_CIRCLE_STYLES } from "./agents";
+import { getAgentCircleStyle, getAgentIcon } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
@@ -37,8 +37,8 @@ function SessionIcon({ session }: { session: Session }) {
   const displayRunState = sessionDisplayRunState(session);
 
   if (session.agent) {
-    const style = AGENT_CIRCLE_STYLES[session.agent] ?? AGENT_CIRCLE_STYLES.CC;
-    const Icon = AGENT_ICONS[session.agent];
+    const style = getAgentCircleStyle(session.agent);
+    const Icon = getAgentIcon(session.agent);
     return (
       <div style={{ position: "relative", flexShrink: 0 }}>
         <div

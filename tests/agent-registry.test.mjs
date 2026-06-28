@@ -7,6 +7,8 @@ import {
   AGENT_COMMANDS,
   AGENT_CODES,
   AGENT_SHELL_TITLE_FRAGMENTS,
+  agentCodeForCommand,
+  agentNameForCode,
 } from "../src/modules/agent/registry.ts";
 
 // The registry is the single source of truth for agent detection. The Rust
@@ -41,6 +43,13 @@ test("AGENT_COMMANDS flat-maps every command to a known code", () => {
   for (const code of Object.values(AGENT_COMMANDS)) {
     assert.ok(AGENT_CODES.has(code), `${code} must be a known agent code`);
   }
+});
+
+test("agent lookup tables ignore inherited object property names", () => {
+  assert.equal(Object.getPrototypeOf(AGENT_COMMANDS), null);
+  assert.equal(Object.getPrototypeOf(AGENT_NAMES), null);
+  assert.equal(agentCodeForCommand("constructor"), null);
+  assert.equal(agentNameForCode("constructor"), undefined);
 });
 
 test("AGENT_COMMANDS has no duplicate command across agents", () => {

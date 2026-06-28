@@ -16,6 +16,8 @@ import {
   toProfile,
   toRaw,
   makeHostId,
+  normalizeSshPort,
+  parseSshPort,
 } from "../src/modules/ssh/hosts-model.ts";
 import {
   stashSshCredentials,
@@ -65,6 +67,45 @@ test("toProfile converts snake_case identity_file to camelCase identityFile", ()
   assert.equal(profile.identityFile, "~/.ssh/id_ed25519");
   assert.equal(profile.host, "example.com");
   assert.equal(profile.port, 2222);
+});
+
+test("normalizeSshPort accepts only integer TCP port numbers", () => {
+  assert.equal(normalizeSshPort("2222"), 2222);
+  assert.equal(normalizeSshPort(" 2200 "), 2200);
+  assert.equal(normalizeSshPort(2222.9), 22);
+  assert.equal(normalizeSshPort("0"), 22);
+  assert.equal(normalizeSshPort("65536"), 22);
+  assert.equal(normalizeSshPort("22oops"), 22);
+  assert.equal(normalizeSshPort("22.5"), 22);
+  assert.equal(normalizeSshPort("not-a-port"), 22);
+  assert.equal(normalizeSshPort(undefined, 2200), 2200);
+  assert.equal(normalizeSshPort(undefined, 70_000), 22);
+});
+
+test("parseSshPort validates raw values without applying a fallback", () => {
+  assert.equal(parseSshPort("2222"), 2222);
+  assert.equal(parseSshPort(" 2200 "), 2200);
+  assert.equal(parseSshPort(2222.9), null);
+  assert.equal(parseSshPort("0"), null);
+  assert.equal(parseSshPort("65536"), null);
+  assert.equal(parseSshPort("22oops"), null);
+  assert.equal(parseSshPort("22.5"), null);
+  assert.equal(parseSshPort(undefined), null);
+});
+
+test("host profile conversion normalizes invalid persisted ports", () => {
+  const profile = toProfile({
+    id: "h-invalid",
+    label: "bad",
+    host: "example.com",
+    port: 70000,
+    user: "deploy",
+    identity_file: "",
+  });
+  assert.equal(profile.port, 22);
+
+  const raw = toRaw({ ...profile, port: Number.POSITIVE_INFINITY });
+  assert.equal(raw.port, 22);
 });
 
 test("toRaw converts camelCase identityFile back to snake_case identity_file", () => {
