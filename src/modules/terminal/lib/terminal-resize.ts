@@ -7,6 +7,11 @@ interface ObserveTerminalResizeOptions {
   fit: FitAddon;
   resizePty: (cols: number, rows: number) => void;
   isDisposed: () => boolean;
+  // Rebuild the WebGL texture atlas after fitting. A resize already forces a
+  // full redraw, so this only makes the previously implicit atlas rebuild
+  // explicit; it is what made "resize fixes the garbled text" work. No-op
+  // under the DOM renderer.
+  rebuildAtlas?: () => void;
 }
 
 export function observeTerminalResize({
@@ -15,6 +20,7 @@ export function observeTerminalResize({
   fit,
   resizePty,
   isDisposed,
+  rebuildAtlas,
 }: ObserveTerminalResizeOptions): () => void {
   let lastW = element.clientWidth;
   let lastH = element.clientHeight;
@@ -33,6 +39,7 @@ export function observeTerminalResize({
       lastW = w;
       lastH = h;
       fit.fit();
+      rebuildAtlas?.();
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         resizeTimer = null;

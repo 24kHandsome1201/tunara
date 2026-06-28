@@ -1161,7 +1161,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
 
   // Keep these hotspots focused (they were split out of a monolith). Bumped
   // from 500→520 for TerminalView when it gained React.memo + the ptyReady gate
-  // that fixed the double-submit bug; still a guard against re-monolithizing.
-  assert.ok(terminal.split("\n").length < 520);
+  // that fixed the double-submit bug; 520→526 for the WebGL atlas-rebuild
+  // wiring that fixed idle-garble (the heavy logic lives in
+  // terminal-atlas-refresh.ts, only the wiring is here). Still a guard against
+  // re-monolithizing.
+  assert.ok(terminal.split("\n").length < 526);
   assert.ok(sidebar.split("\n").length < 400);
 });

@@ -4,6 +4,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
 import type { CursorStyle } from "@/state/ui";
 import type { TerminalThemeName, ThemeType } from "./types";
+import type { TerminalWebglRenderer } from "./useTerminalWebgl";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 
@@ -14,6 +15,7 @@ interface TerminalRuntimeSyncOptions {
   termRef: RefObject<Terminal | null>;
   fitRef: RefObject<FitAddon | null>;
   ptyRef: RefObject<PtySession | null>;
+  webglRef: RefObject<TerminalWebglRenderer | null>;
   fontSize: number;
   fontFamily: string;
   nerdFontFallback: boolean;
@@ -30,6 +32,7 @@ export function useTerminalRuntimeSync({
   termRef,
   fitRef,
   ptyRef,
+  webglRef,
   fontSize,
   fontFamily,
   nerdFontFallback,
@@ -72,8 +75,13 @@ export function useTerminalRuntimeSync({
     try {
       fit?.fit();
       if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows).catch(() => {});
+      // Font, colour, and cursor changes invalidate every glyph baked into the
+      // WebGL texture atlas. fit() only rebuilds the atlas when the cell grid
+      // actually changes size, so a same-size font/theme swap leaves stale
+      // glyphs until the next resize. Force a rebuild here. No-op under DOM.
+      webglRef.current?.clearTextureAtlas();
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, scrollback, termRef, terminalTheme, theme]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, scrollback, termRef, terminalTheme, theme, webglRef]);
 }

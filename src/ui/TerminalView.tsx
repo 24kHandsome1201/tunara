@@ -29,6 +29,7 @@ import { registerTerminalDeviceAttributesHandler } from "@/modules/terminal/lib/
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification";
 import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
+import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
 import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
@@ -86,7 +87,7 @@ function TerminalViewImpl({
   const terminalTheme = useUIStore((s) => s.terminalTheme);
   const accent = useUIStore((s) => s.accent);
   useTerminalRuntimeSync({
-    active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
+    active, termRef, fitRef, ptyRef, webglRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
   });
   useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady);
   useEffect(() => {
@@ -156,7 +157,8 @@ function TerminalViewImpl({
         getEditor: () => useUIStore.getState().externalEditor,
       });
       cleanups.push(() => fileLinkDisposable.dispose());
-      cleanups.push(registerTerminalLigatureSync(term));
+      const rebuildWebglAtlas = createWebglAtlasRebuilder(webglRef);
+      cleanups.push(registerTerminalLigatureSync(term, rebuildWebglAtlas));
       // Fit after WebGL addon loads — the addon replaces the renderer and
       // changes cell metrics; fitting before it loads would measure stale
       // dimensions, causing a cols/rows mismatch with the PTY that shows
@@ -481,7 +483,11 @@ function TerminalViewImpl({
         fit,
         resizePty,
         isDisposed: () => disposed,
+        rebuildAtlas: rebuildWebglAtlas,
       }));
+      // Self-heal the idle-garble case: rebuild the WebGL atlas on focus /
+      // visibility regain (see terminal-atlas-refresh for the root cause).
+      cleanups.push(registerTerminalAtlasRefresh(rebuildWebglAtlas));
       cleanups.push(() => {
         if (startupReadyTimer) {
           clearTimeout(startupReadyTimer);
