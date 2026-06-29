@@ -63,6 +63,7 @@ interface SessionsState {
   handleTerminalExited: (id: string, exitCode: number) => void;
   handleCwdChange: (id: string, cwd: string) => void;
   suggestSshConnect: (id: string, target: SshConnectSuggestion) => void;
+  clearSshSuggestion: (id: string) => void;
   dismissSshSuggestion: (id: string) => void;
   handleShellTitle: (id: string, title: string) => void;
   handleTerminalProgress: (id: string, progress: Session["terminalProgress"] | undefined) => void;
@@ -601,7 +602,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().updateSession(id, { sshSuggestion: target });
   },
 
-  // 用户关闭建议:清空当前建议,并把该 host 记入本会话忽略集,避免再次弹出。
+  // 用户采纳了建议(点「打开」):只清掉当前建议条,不拉黑 host——
+  // 否则用户在 SSH 对话框里取消后,再敲同一命令就再也得不到提示。
+  clearSshSuggestion: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session?.sshSuggestion) return;
+    get().updateSession(id, { sshSuggestion: null });
+  },
+
+  // 用户关闭建议(点「×」):清空当前建议,并把该 host 记入本会话忽略集,避免再次弹出。
   dismissSshSuggestion: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     if (!session?.sshSuggestion) return;

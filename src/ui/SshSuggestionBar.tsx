@@ -22,8 +22,9 @@ export function SshSuggestionBar({ session }: SshSuggestionBarProps) {
 
   const open = () => {
     useUIStore.getState().openSshConnect(suggestion);
-    // 打开对话框后清掉建议条——意图已被采纳。
-    useSessionsStore.getState().dismissSshSuggestion(session.id);
+    // 只清掉当前建议条,不拉黑 host:用户若在 SSH 对话框里取消,
+    // 再敲同一命令仍应得到提示。拉黑只发生在用户点「×」忽略时。
+    useSessionsStore.getState().clearSshSuggestion(session.id);
   };
   const dismiss = () => {
     useSessionsStore.getState().dismissSshSuggestion(session.id);
