@@ -31,10 +31,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const addSession = useSessionsStore((s) => s.addSession);
   const setOverlay = useUIStore((s) => s.setOverlay);
+  // 手敲 ssh 检测带来的预填值（仅 host/user/port，绝不含凭证）。读一次即可，
+  // 对话框生命周期内不变；关闭对话框时 setOverlay(null) 会清掉 sshPrefill。
+  const prefill = useUIStore.getState().sshPrefill;
 
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState("22");
-  const [user, setUser] = useState("");
+  const [host, setHost] = useState(prefill?.host ?? "");
+  const [port, setPort] = useState(prefill?.port ? String(prefill.port) : "22");
+  const [user, setUser] = useState(prefill?.user ?? "");
   const [identityFile, setIdentityFile] = useState("");
   const [keyPassphrase, setKeyPassphrase] = useState("");
   const [password, setPassword] = useState("");

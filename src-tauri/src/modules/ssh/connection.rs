@@ -468,7 +468,11 @@ impl SshSession {
         // repository"). Trim to keep the toast/message readable.
         if out.is_empty() && !stderr_buf.is_empty() {
             let msg = String::from_utf8_lossy(&stderr_buf).trim().to_string();
-            return Err(if msg.is_empty() { "remote command produced no output".into() } else { msg });
+            return Err(if msg.is_empty() {
+                "remote command produced no output".into()
+            } else {
+                msg
+            });
         }
 
         if exceeded {

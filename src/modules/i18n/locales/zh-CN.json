@@ -337,5 +337,8 @@
   "ssh.import.button": "从 ~/.ssh/config 导入",
   "ssh.import.result": "SSH 配置已导入",
   "ssh.import.result_detail": "新增 {{added}} 个，跳过 {{skipped}} 个",
-  "ssh.import.failed": "导入失败"
+  "ssh.import.failed": "导入失败",
+  "ssh.suggest.title": "用内置 SSH 打开 {{target}} 的远程文件？",
+  "ssh.suggest.open": "打开",
+  "ssh.suggest.dismiss": "忽略"
 }

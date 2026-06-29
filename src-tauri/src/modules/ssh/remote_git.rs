@@ -18,10 +18,7 @@ use crate::modules::pty::{PtyState, Session};
 /// Resolve the SSH session behind a session id as a cloned `Arc<Session>` so
 /// the caller can hold it across `.await` points without borrowing the
 /// `PtyState`. Returns an error for local sessions or missing ids.
-fn ssh_session(
-    state: &State<'_, PtyState>,
-    id: u32,
-) -> Result<std::sync::Arc<Session>, String> {
+fn ssh_session(state: &State<'_, PtyState>, id: u32) -> Result<std::sync::Arc<Session>, String> {
     let session = state.get(id).ok_or_else(|| "no session".to_string())?;
     match session.as_ref() {
         Session::Ssh(_) => Ok(session),
@@ -208,9 +205,7 @@ pub(crate) fn parse_find_output(raw: &str, root: &str) -> Vec<SearchHit> {
         let rel = path
             .strip_prefix(root_trimmed)
             .map(|s| s.trim_start_matches('/'))
-            .unwrap_or_else(|| {
-                path.rsplit('/').next().unwrap_or(path)
-            })
+            .unwrap_or_else(|| path.rsplit('/').next().unwrap_or(path))
             .to_string();
         let name = path.rsplit('/').next().unwrap_or(path).to_string();
         // `find` without `-type` lists files and dirs; we can't tell which
@@ -254,9 +249,7 @@ pub async fn ssh_fs_search(
     // `-not -path '*/.*'` skips hidden dirs/files (matches local ignore walk).
     // `2>/dev/null` suppresses permission-denied noise. `head` caps result count
     // so a massive tree doesn't stream forever.
-    let cmd = format!(
-        "find {root_q} -name {query_q} -not -path '*/.*' 2>/dev/null | head -{cap}"
-    );
+    let cmd = format!("find {root_q} -name {query_q} -not -path '*/.*' 2>/dev/null | head -{cap}");
     let out = ssh.exec(&cmd, MAX_SEARCH_BYTES).await?;
     Ok(parse_find_output(&out, &root))
 }
@@ -277,7 +270,11 @@ A  new.txt
         assert_eq!(result.branch, "main");
         assert_eq!(result.files.len(), 3);
 
-        let modified = result.files.iter().find(|f| f.path == "src/mod.rs").unwrap();
+        let modified = result
+            .files
+            .iter()
+            .find(|f| f.path == "src/mod.rs")
+            .unwrap();
         assert_eq!(modified.status, "M");
         assert_eq!(modified.stage, "unstaged");
 
@@ -285,7 +282,11 @@ A  new.txt
         assert_eq!(added.status, "A");
         assert_eq!(added.stage, "staged");
 
-        let untracked = result.files.iter().find(|f| f.path == "untracked.log").unwrap();
+        let untracked = result
+            .files
+            .iter()
+            .find(|f| f.path == "untracked.log")
+            .unwrap();
         assert_eq!(untracked.status, "?");
         assert_eq!(untracked.stage, "untracked");
     }

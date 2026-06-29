@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName } from "@/ui/types";
+import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectSuggestion } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
@@ -222,6 +222,8 @@ interface UIState extends AppearanceSettings {
   sidebarVisible: boolean;
   panelVisible: boolean;
   overlay: OverlayType;
+  // 打开 SSH 对话框时的预填值（来自手敲 ssh 检测）。仅瞬态，关闭即清。
+  sshPrefill: SshConnectSuggestion | null;
   trafficLightWidth: number;
   viewportWidth: number;
   split: SplitState;
@@ -238,6 +240,7 @@ interface UIState extends AppearanceSettings {
   toggleSidebar: () => void;
   togglePanel: () => void;
   setOverlay: (o: OverlayType) => void;
+  openSshConnect: (prefill?: SshConnectSuggestion | null) => void;
   setInspectorTab: (t: InspectorTab) => void;
   setTheme: (t: ThemeType) => void;
   setAccent: (c: string) => void;
@@ -286,6 +289,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     sidebarVisible: true,
     panelVisible: true,
     overlay: null,
+    sshPrefill: null,
     trafficLightWidth: 0,
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
@@ -303,7 +307,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setPanelVisible: (panelVisible) => set({ panelVisible }),
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
     togglePanel: () => set((s) => ({ panelVisible: !s.panelVisible })),
-    setOverlay: (overlay) => set({ overlay }),
+    setOverlay: (overlay) => set(overlay === "ssh" ? { overlay } : { overlay, sshPrefill: null }),
+    openSshConnect: (prefill) => set({ overlay: "ssh", sshPrefill: prefill ?? null }),
     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
     setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
     setAccent: (accent) => set({ accent: sanitizeAccent(accent) }),

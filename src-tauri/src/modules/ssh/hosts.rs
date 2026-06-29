@@ -275,8 +275,7 @@ pub fn ssh_hosts_import_config() -> Result<SshImportResult, String> {
             skipped: 0,
         });
     }
-    let raw = fs::read_to_string(&path)
-        .map_err(|e| format!("read ssh config failed: {e}"))?;
+    let raw = fs::read_to_string(&path).map_err(|e| format!("read ssh config failed: {e}"))?;
     Ok(parse_ssh_config(&raw))
 }
 
@@ -338,14 +337,22 @@ Host dev
         assert_eq!(result.imported.len(), 2);
         assert_eq!(result.skipped, 0);
 
-        let prod = result.imported.iter().find(|p| p.id == "ssh-config-prod").unwrap();
+        let prod = result
+            .imported
+            .iter()
+            .find(|p| p.id == "ssh-config-prod")
+            .unwrap();
         assert_eq!(prod.host, "prod.example.com");
         assert_eq!(prod.user, "deploy");
         assert_eq!(prod.port, 2222);
         assert_eq!(prod.identity_file, "~/.ssh/id_prod");
         assert_eq!(prod.label, "prod");
 
-        let dev = result.imported.iter().find(|p| p.id == "ssh-config-dev").unwrap();
+        let dev = result
+            .imported
+            .iter()
+            .find(|p| p.id == "ssh-config-dev")
+            .unwrap();
         assert_eq!(dev.host, "10.0.0.5");
         assert_eq!(dev.user, "root");
         assert_eq!(dev.port, 22); // absent → default
