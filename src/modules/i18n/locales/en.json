@@ -337,5 +337,8 @@
   "ssh.import.button": "Import from ~/.ssh/config",
   "ssh.import.result": "SSH config imported",
   "ssh.import.result_detail": "{{added}} added, {{skipped}} skipped",
-  "ssh.import.failed": "Import failed"
+  "ssh.import.failed": "Import failed",
+  "ssh.suggest.title": "Open {{target}}'s remote files with built-in SSH?",
+  "ssh.suggest.open": "Open",
+  "ssh.suggest.dismiss": "Dismiss"
 }

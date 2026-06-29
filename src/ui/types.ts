@@ -68,6 +68,11 @@ export interface Session {
   // 活动 PTY 的物理 id（运行时字段，不持久化）。远程会话的 SFTP 文件操作
   // 需要它来定位后端的 SSH 连接。
   ptyId?: number;
+  // 用户在本地会话里手敲 ssh 时弹出的「改用内置 SSH 打开远程文件」建议
+  // （运行时字段，不持久化）。null/缺省表示当前无建议。
+  sshSuggestion?: SshConnectSuggestion | null;
+  // 本会话内被用户忽略过的 ssh 目标，避免重复打扰（运行时字段，不持久化）。
+  dismissedSshHosts?: string[];
 
   // ── git 改动 ──
   gitState?: GitState;
@@ -95,6 +100,16 @@ export interface RemoteInfo {
    * agent 检测。默认关闭——失败时静默降级。
    */
   injectShellIntegration?: boolean;
+}
+
+/**
+ * 检测到用户手敲 ssh 后给出的连接建议。只含命令行能读到的字段，
+ * 用于预填新建 SSH 会话对话框——密码/口令绝不来自这里。
+ */
+export interface SshConnectSuggestion {
+  host: string;
+  user?: string;
+  port?: number;
 }
 
 /** 改动文件（与后端 git FileChange 对齐） */

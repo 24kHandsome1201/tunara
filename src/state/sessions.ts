@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Session, AgentCode, AgentResumeIntent, RemoteInfo } from "@/ui/types";
+import type { Session, AgentCode, AgentResumeIntent, RemoteInfo, SshConnectSuggestion } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { hasContinueFlag, parseResumeId } from "@/modules/terminal/lib/agent-resume";
@@ -62,6 +62,8 @@ interface SessionsState {
   handleCommandFinished: (id: string, exitCode: number) => void;
   handleTerminalExited: (id: string, exitCode: number) => void;
   handleCwdChange: (id: string, cwd: string) => void;
+  suggestSshConnect: (id: string, target: SshConnectSuggestion) => void;
+  dismissSshSuggestion: (id: string) => void;
   handleShellTitle: (id: string, title: string) => void;
   handleTerminalProgress: (id: string, progress: Session["terminalProgress"] | undefined) => void;
 
@@ -586,6 +588,29 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     // keep it out of the local recent-dirs affordance, matching addSession.
     if (!session?.remote) get().recordRecentDir(cwd);
     if (update.refreshGit) get().refreshGit(id);
+  },
+
+  // 用户在【本地】会话里手敲了一条可识别的 ssh 命令 → 给出「改用内置 SSH」建议。
+  // 远程会话(已 remote)、已忽略过该 host、或已有相同建议时不打扰。
+  suggestSshConnect: (id, target) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session || session.remote) return;
+    if (session.dismissedSshHosts?.includes(target.host)) return;
+    const cur = session.sshSuggestion;
+    if (cur && cur.host === target.host && cur.user === target.user && cur.port === target.port) return;
+    get().updateSession(id, { sshSuggestion: target });
+  },
+
+  // 用户关闭建议:清空当前建议,并把该 host 记入本会话忽略集,避免再次弹出。
+  dismissSshSuggestion: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session?.sshSuggestion) return;
+    const host = session.sshSuggestion.host;
+    const dismissed = session.dismissedSshHosts ?? [];
+    get().updateSession(id, {
+      sshSuggestion: null,
+      dismissedSshHosts: dismissed.includes(host) ? dismissed : [...dismissed, host],
+    });
   },
 
   handleShellTitle: (id, title) => {

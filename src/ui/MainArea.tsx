@@ -6,6 +6,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
+import { SshSuggestionBar } from "./SshSuggestionBar";
 import { useT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { getNumberRecordValue } from "@/state/record-keys";
@@ -30,6 +31,7 @@ const TerminalPane = memo(function TerminalPane({
   return (
     <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <AgentStatusBar session={session} />
+      <SshSuggestionBar session={session} />
       <TerminalView
         sessionId={session.id}
         dir={session.dir}

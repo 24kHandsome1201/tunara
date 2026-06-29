@@ -1171,9 +1171,12 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // Keep these hotspots focused (they were split out of a monolith). Bumped
   // from 500→520 for TerminalView when it gained React.memo + the ptyReady gate
   // that fixed the double-submit bug; 520→526 for the WebGL atlas-rebuild
-  // wiring that fixed idle-garble (the heavy logic lives in
-  // terminal-atlas-refresh.ts, only the wiring is here). Still a guard against
+  // wiring that fixed idle-garble; 526→540 for the manual-ssh detection wiring
+  // (the parsing lives in ssh-command-detect.ts; the detect+suggest call is
+  // wired on BOTH command-detection paths — the OSC 133 path that local
+  // sessions use by default, and the keystroke fallback). The heavy logic
+  // always stays in its own module — this remains a guard against
   // re-monolithizing.
-  assert.ok(terminal.split("\n").length < 526);
+  assert.ok(terminal.split("\n").length < 540);
   assert.ok(sidebar.split("\n").length < 400);
 });

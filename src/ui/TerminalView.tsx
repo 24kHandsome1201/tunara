@@ -32,6 +32,7 @@ import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
+import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect";
 import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
@@ -338,6 +339,12 @@ function TerminalViewImpl({
               if (agent) {
                 markAgentDetected(agent, cmd);
               }
+              // 本地会话默认注入 OSC 133,命令文本走这条路径(非 fallback)——
+              // ssh 检测必须同样挂在这里,否则提示条对绝大多数本地会话永不出现。
+              const sshTarget = detectSshCommand(cmd);
+              if (sshTarget) {
+                useSessionsStore.getState().suggestSshConnect(sessionIdRef.current, sshTarget);
+              }
             }
           }
           osc133Active = false;
@@ -446,6 +453,12 @@ function TerminalViewImpl({
           if (agent) {
             markAgentDetected(agent, submitted);
           }
+        }
+        // 本地会话里手敲 ssh:提示「改用内置 SSH 打开远程文件」。
+        // suggestSshConnect 内部已守卫远程会话/已忽略 host,这里只做检测。
+        const sshTarget = detectSshCommand(submitted);
+        if (sshTarget) {
+          useSessionsStore.getState().suggestSshConnect(sessionIdRef.current, sshTarget);
         }
       };
       const dataDisposable = term.onData((data) => {
