@@ -270,20 +270,21 @@ jobs:
     steps:
       # Tag push 触发的 workflow 默认 checkout 到 detached HEAD（tag ref），
       # 而我们要基于 main 改 cask，所以显式 checkout main。
+      #
+      # token: CASK_PUSH_TOKEN —— 一个 fine-grained PAT（仅本 repo，Contents:write）
+      # 属于仓库 owner，owner 是 "Protect main" ruleset 的 bypass actor，所以用它
+      # 持久化的 git 凭证 push main 不需要 PR / review。这是个人账号仓库的唯一可行
+      # 自动化身份：GitHub 不允许把 github-actions app 加进个人仓库 ruleset 的
+      # bypass_actors（PUT 返回 422 "must be part of the owner organization"）。
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ secrets.CASK_PUSH_TOKEN }}
 
-      # The github-actions app (id 15368) is a bypass actor on the "Protect main"
-      # ruleset, so this job pushes the cask bump straight to main — no PR, no
-      # review. (Earlier we opened a PR to avoid GH013, but those PRs need a human
-      # approval the bot can't give, so they stalled forever and the cask lagged.)
-      # checkout@v7 persists the GITHUB_TOKEN git credential, so the push below
-      # authenticates as the github-actions app without extra config.
       - name: Compute dmg sha256 and push cask update to main
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CASK_PUSH_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME#v}"
