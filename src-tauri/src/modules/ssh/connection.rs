@@ -295,8 +295,14 @@ impl SshSession {
         // "add MAX_PENDING" without first reintroducing a buffer that needs it.
         tauri::async_runtime::spawn(async move {
             let mut exit_code: i32 = 0;
+            // Stop forwarding frontend keystrokes once the remote shell is
+            // exiting — otherwise a passive disconnect races with queued input
+            // and the server may echo a burst of characters before the channel
+            // closes. Output from channel.wait() keeps draining until Eof.
+            let mut accepting_input = true;
             loop {
                 tokio::select! {
+                    biased;
                     msg = channel.wait() => {
                         let Some(msg) = msg else { break };
                         match msg {
@@ -312,19 +318,23 @@ impl SshSession {
                             }
                             ChannelMsg::ExitStatus { exit_status } => {
                                 exit_code = exit_status as i32;
+                                accepting_input = false;
                             }
                             ChannelMsg::ExitSignal { .. } => {
                                 // Killed by a signal rather than a clean exit.
                                 exit_code = -1;
+                                accepting_input = false;
                             }
                             ChannelMsg::Eof | ChannelMsg::Close => break,
                             _ => {}
                         }
                     }
-                    input = input_rx.recv() => {
+                    input = input_rx.recv(), if accepting_input => {
                         match input {
                             Some(InputMsg::Data(bytes)) => {
-                                if channel.data(&bytes[..]).await.is_err() { break; }
+                                if channel.data(&bytes[..]).await.is_err() {
+                                    accepting_input = false;
+                                }
                             }
                             Some(InputMsg::Resize { cols, rows }) => {
                                 let _ = channel.window_change(cols as u32, rows as u32, 0, 0).await;

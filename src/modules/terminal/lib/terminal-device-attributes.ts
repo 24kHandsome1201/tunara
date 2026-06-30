@@ -4,6 +4,9 @@ export type PrimaryDeviceAttributesParams = Array<number | number[]>;
 
 export interface TerminalDeviceAttributesOptions {
   isOsc52ClipboardWriteAllowed: () => boolean;
+  /** Forward DA responses straight to the PTY writer — never through xterm's
+   *  input pipeline, which would re-fire onData and echo garbage after exit. */
+  sendInput: (data: string) => void;
 }
 
 interface PrimaryDeviceAttributesHandlerOptions extends TerminalDeviceAttributesOptions {
@@ -16,7 +19,7 @@ export function registerTerminalDeviceAttributesHandler(
 ): () => void {
   const disposable = term.parser.registerCsiHandler({ final: "c" }, (params) => handlePrimaryDeviceAttributesQuery(params, {
     isOsc52ClipboardWriteAllowed: options.isOsc52ClipboardWriteAllowed,
-    sendInput: (data) => term.input(data, false),
+    sendInput: options.sendInput,
   }));
   return () => disposable.dispose();
 }

@@ -973,6 +973,15 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalDeviceAttributes, /buildPrimaryDeviceAttributesResponse/);
   assert.match(terminalDeviceAttributes, /"1;2;52"/);
   assert.match(terminalDeviceAttributes, /isOsc52ClipboardWriteAllowed/);
+  assert.match(terminalDeviceAttributes, /sendInput: options\.sendInput/);
+  assert.doesNotMatch(terminalDeviceAttributes, /term\.input\(/);
+  assert.match(terminal, /let inputToPtyEnabled = true/);
+  assert.match(terminal, /inputToPtyEnabled = false/);
+  assert.match(terminal, /sendInput: writePty/);
+  const sshConnection = read("src-tauri/src/modules/ssh/connection.rs");
+  assert.match(sshConnection, /let mut accepting_input = true/);
+  assert.match(sshConnection, /accepting_input = false/);
+  assert.match(sshConnection, /input = input_rx\.recv\(\), if accepting_input/);
   assert.match(terminalAttention, /import \{ getCurrentWindow, UserAttentionType \} from "@tauri-apps\/api\/window"/);
   assert.match(terminalAttention, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
@@ -1174,9 +1183,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // wiring that fixed idle-garble; 526→540 for the manual-ssh detection wiring
   // (the parsing lives in ssh-command-detect.ts; the detect+suggest call is
   // wired on BOTH command-detection paths — the OSC 133 path that local
-  // sessions use by default, and the keystroke fallback). The heavy logic
-  // always stays in its own module — this remains a guard against
-  // re-monolithizing.
-  assert.ok(terminal.split("\n").length < 540);
+  // sessions use by default, and the keystroke fallback). 540→550 for the
+  // post-exit inputToPtyEnabled gate + deferred DA handler registration.
+  // The heavy logic always stays in its own module — this remains a guard
+  // against re-monolithizing.
+  assert.ok(terminal.split("\n").length < 550);
   assert.ok(sidebar.split("\n").length < 400);
 });
