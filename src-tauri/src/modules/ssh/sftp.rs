@@ -284,19 +284,77 @@ pub async fn ssh_fs_download(
     Ok(len)
 }
 
-/// Resolve the remote home directory (canonicalize ".") so the panel has a
-/// sensible starting point for a freshly-connected session.
+/// Pick the better of an SFTP-derived path and an `echo $HOME` exec result.
+///
+/// `canonicalize(".")` is the cheap, no-extra-round-trip way to learn the remote
+/// home, and on a normal OpenSSH server the SFTP subsystem starts in the user's
+/// home so it returns e.g. `/home/you`. But some sftp-server implementations
+/// (and chroot setups) start the subsystem at `/`, so `.` canonicalizes to the
+/// filesystem root and the file panel gets stuck showing only root-level files.
+///
+/// When the SFTP answer is unusable (`/`, empty, or the SFTP call failed) we
+/// fall back to the shell's `$HOME`. We only *accept* the exec answer if it is a
+/// non-root absolute path — otherwise (root login whose home really is `/`, or
+/// garbled output) we keep the SFTP answer. Pure so it can be unit-tested
+/// without a live connection.
+fn choose_remote_home(sftp_home: Option<&str>, exec_home: Option<&str>) -> Option<String> {
+    let usable = |p: &str| {
+        let p = p.trim();
+        !p.is_empty() && p != "/" && p.starts_with('/') && !p.contains('\n')
+    };
+    // Prefer a usable SFTP result: it's the canonical, symlink-resolved path.
+    if let Some(s) = sftp_home {
+        if usable(s) {
+            return Some(s.trim().to_string());
+        }
+    }
+    // SFTP was `/`/empty/failed — try the shell's $HOME.
+    if let Some(e) = exec_home {
+        let e = e.trim();
+        if usable(e) {
+            return Some(e.to_string());
+        }
+    }
+    // Neither is a usable non-root path. Fall back to whatever SFTP gave (likely
+    // `/`), which is correct for a root login and still a usable browse root.
+    sftp_home.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Resolve the remote home directory so the panel has a sensible starting point
+/// for a freshly-connected session. Tries SFTP `canonicalize(".")` first and
+/// falls back to the shell's `$HOME` over an exec channel when SFTP lands at the
+/// filesystem root (see `choose_remote_home`).
 #[tauri::command]
 pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<String, String> {
-    let sftp = sftp_for(&state, id).await?;
-    sftp.canonicalize(".")
-        .await
-        .map_err(|e| format!("resolve remote home failed: {e}"))
+    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+    let ssh = match session.as_ref() {
+        Session::Ssh(ssh) => ssh,
+        Session::Local(_) => return Err("not a remote session".to_string()),
+    };
+
+    let sftp = ssh.sftp().await?;
+    let sftp_home = sftp.canonicalize(".").await.ok();
+
+    // Skip the extra exec round-trip when SFTP already gave a usable home.
+    let needs_fallback = sftp_home
+        .as_deref()
+        .map(|h| h.trim().is_empty() || h.trim() == "/")
+        .unwrap_or(true);
+    let exec_home = if needs_fallback {
+        // `printf` avoids the trailing-newline-plus-quirks of some shells' echo;
+        // a small cap is plenty for a path. Failures collapse to None.
+        ssh.exec("printf '%s' \"$HOME\"", 4096).await.ok()
+    } else {
+        None
+    };
+
+    choose_remote_home(sftp_home.as_deref(), exec_home.as_deref())
+        .ok_or_else(|| "resolve remote home failed".to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::validate_download_target;
+    use super::{choose_remote_home, validate_download_target};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -379,5 +437,63 @@ mod tests {
         }
         let err = validate_download_target(target.to_str().unwrap()).unwrap_err();
         assert!(err.contains(".ssh"), "got: {err}");
+    }
+
+    // ── choose_remote_home: SFTP-vs-$HOME home resolution ──────────────────
+    // Regression for "SSH file panel only shows root-level files": when the
+    // SFTP subsystem starts at `/`, fall back to the shell's $HOME.
+
+    #[test]
+    fn prefers_usable_sftp_home_without_exec() {
+        // Normal server: SFTP already gives the real home, exec not even run.
+        let got = choose_remote_home(Some("/home/alice"), None);
+        assert_eq!(got.as_deref(), Some("/home/alice"));
+    }
+
+    #[test]
+    fn falls_back_to_exec_home_when_sftp_is_root() {
+        // The bug case: SFTP canonicalizes "." to "/", $HOME has the real path.
+        let got = choose_remote_home(Some("/"), Some("/home/bob"));
+        assert_eq!(got.as_deref(), Some("/home/bob"));
+    }
+
+    #[test]
+    fn falls_back_to_exec_home_when_sftp_failed() {
+        let got = choose_remote_home(None, Some("/home/carol"));
+        assert_eq!(got.as_deref(), Some("/home/carol"));
+    }
+
+    #[test]
+    fn trims_trailing_whitespace_from_exec_home() {
+        // `printf '%s'` shouldn't add one, but a shell profile might echo extra.
+        let got = choose_remote_home(Some("/"), Some("/home/dave\n"));
+        assert_eq!(got.as_deref(), Some("/home/dave"));
+    }
+
+    #[test]
+    fn keeps_root_for_root_login_when_exec_also_root() {
+        // root's $HOME is sometimes literally "/": don't loop, just accept root.
+        let got = choose_remote_home(Some("/"), Some("/"));
+        assert_eq!(got.as_deref(), Some("/"));
+    }
+
+    #[test]
+    fn keeps_sftp_root_when_exec_home_is_garbage() {
+        // Relative / empty / multiline exec output is rejected; SFTP `/` stands.
+        assert_eq!(choose_remote_home(Some("/"), Some("")).as_deref(), Some("/"));
+        assert_eq!(
+            choose_remote_home(Some("/"), Some("not-a-path")).as_deref(),
+            Some("/")
+        );
+        assert_eq!(
+            choose_remote_home(Some("/"), Some("/a\n/b")).as_deref(),
+            Some("/")
+        );
+    }
+
+    #[test]
+    fn returns_none_when_nothing_usable() {
+        assert_eq!(choose_remote_home(None, None), None);
+        assert_eq!(choose_remote_home(Some(""), None), None);
     }
 }

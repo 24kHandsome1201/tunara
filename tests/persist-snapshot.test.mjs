@@ -86,6 +86,38 @@ test("persisted session helpers keep only durable fields and restore idle runtim
   });
 });
 
+// Regression: shell-integration injection is default-ON in the backend, so a
+// user opting OUT (injectShellIntegration:false) must survive a persist/reopen
+// round-trip. An earlier version only persisted `=== true`, which silently
+// dropped `false` and re-enabled injection on reopen. See ssh_open's
+// unwrap_or(true) — a missing value defaults to inject, so `false` is load-bearing.
+test("persisted remote keeps an explicit injectShellIntegration:false (opt-out survives reopen)", () => {
+  const optOut = toPersistedSession({
+    id: "s-2",
+    title: "Terminal",
+    dir: "/repo",
+    branch: "main",
+    updatedAt: 10,
+    remote: { host: "box", port: 22, user: "me", injectShellIntegration: false },
+  });
+  assert.equal(optOut.remote.injectShellIntegration, false, "opt-out must persist as false, not be dropped");
+
+  // And an undefined value (legacy snapshot) is omitted so it falls through to
+  // the backend default rather than persisting a spurious boolean.
+  const legacy = toPersistedSession({
+    id: "s-3",
+    title: "Terminal",
+    dir: "/repo",
+    branch: "main",
+    updatedAt: 10,
+    remote: { host: "box", port: 22, user: "me" },
+  });
+  assert.ok(
+    !("injectShellIntegration" in legacy.remote),
+    "an unset value must not be persisted, so it defaults at reopen",
+  );
+});
+
 test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitizes recents", () => {
   const originalWarn = console.warn;
   const warnings = [];

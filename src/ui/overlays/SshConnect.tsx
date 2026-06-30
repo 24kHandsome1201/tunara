@@ -42,7 +42,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [keyPassphrase, setKeyPassphrase] = useState("");
   const [password, setPassword] = useState("");
   const [saveProfile, setSaveProfile] = useState(false);
-  const [injectIntegration, setInjectIntegration] = useState(false);
+  // Default-on: integration powers remote cwd + agent status (the OSC 777
+  // wrappers that clear the "running" badge when a remote agent exits).
+  const [injectIntegration, setInjectIntegration] = useState(true);
   const [hosts, setHosts] = useState<SshHostProfile[]>([]);
   const [importing, setImporting] = useState(false);
 
@@ -137,7 +139,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
       port: safePort,
       user: trimmedUser,
       identityFile: trimmedId || undefined,
-      injectShellIntegration: injectIntegration || undefined,
+      // Explicit boolean (not `|| undefined`): the backend now defaults missing
+      // to true, so an opt-OUT must travel as `false` and persist as `false`.
+      injectShellIntegration: injectIntegration,
     });
     // Password / passphrase live OUTSIDE the Session object (which is persisted)
     // so credentials are never written to disk — consumed once when the PTY opens.

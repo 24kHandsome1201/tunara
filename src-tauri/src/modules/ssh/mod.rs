@@ -88,7 +88,15 @@ pub async fn ssh_open(
         },
         cols,
         rows,
-        inject_shell_integration: inject_shell_integration.unwrap_or(false),
+        // Default-on: remote shell integration gives cwd + command/agent
+        // detection (incl. the OSC 777 agent wrappers that clear the "running"
+        // badge when a remote agent exits). The UI sends an explicit `false`
+        // to opt a session out; only a never-set value falls through to true.
+        inject_shell_integration: inject_shell_integration.unwrap_or(true),
+        // Substituted into the integration script so its OSC 777 agent events
+        // carry a session field the frontend accepts. Empty disables the agent
+        // wrappers but keeps OSC 7 / 133.
+        session_id: logical_session_id.clone().unwrap_or_default(),
     };
 
     let ssh = SshSession::open(params, on_event).await.map_err(|e| {

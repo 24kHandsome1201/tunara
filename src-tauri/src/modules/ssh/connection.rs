@@ -187,10 +187,16 @@ pub struct ConnectParams {
     pub policy: HostKeyPolicy,
     pub cols: u16,
     pub rows: u16,
-    /// Opt-in (Phase 4): inject remote shell integration so the remote shell
-    /// emits OSC 7 / OSC 133, giving the host remote cwd + command/agent
-    /// detection. Off by default — degrades silently on unsupported shells.
+    /// Inject remote shell integration so the remote shell emits OSC 7 / OSC
+    /// 133 (cwd + command boundaries) and wraps agents to emit OSC 777
+    /// lifecycle events. Default-on (see ssh_open) — degrades silently on
+    /// unsupported shells.
     pub inject_shell_integration: bool,
+    /// Logical session id, substituted into the remote integration script so
+    /// the OSC 777 agent events it emits carry a `session` field the frontend
+    /// will accept (parseAgentLifecycleOsc drops mismatched sessions). Empty
+    /// when unknown (reopen-less path); the agent wrappers then self-disable.
+    pub session_id: String,
 }
 
 /// A connected, authenticated SSH session with a live shell channel.
@@ -263,12 +269,25 @@ impl SshSession {
             .await
             .map_err(|e| format!("request shell failed: {e}"))?;
 
-        // Phase 4 (opt-in): install remote shell integration. We base64 the
-        // bootstrap and `eval` it in one leading-space line (leading space
-        // keeps it out of the remote shell's history). Output is suppressed so
-        // the only visible trace is the (echoed) command line itself.
+        // Install remote shell integration. We base64 the bootstrap and `eval`
+        // it in one leading-space line (leading space keeps it out of the
+        // remote shell's history). Output is suppressed so the only visible
+        // trace is the (echoed) command line itself. The script's
+        // `__TUNARA_SESSION_ID__` placeholder is replaced with the logical
+        // session id so the OSC 777 agent events it emits match the frontend's
+        // session (an empty id disables the agent wrappers via the script's
+        // own `[ -n ... ]` guard, leaving OSC 7 / 133 intact).
         if params.inject_shell_integration {
-            let encoded = B64.encode(REMOTE_INTEGRATION.as_bytes());
+            // Only safe ASCII session ids reach here (logical ids are uuids),
+            // but defend against a stray quote breaking the eval by stripping
+            // anything outside the id charset before substitution.
+            let safe_sid: String = params
+                .session_id
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                .collect();
+            let script = REMOTE_INTEGRATION.replace("__TUNARA_SESSION_ID__", &safe_sid);
+            let encoded = B64.encode(script.as_bytes());
             // Try GNU then BSD base64 flag; redirect stderr so failures are quiet.
             let line = format!(
                 " eval \"$(printf %s {encoded} | base64 --decode 2>/dev/null || printf %s {encoded} | base64 -D 2>/dev/null)\"\n"

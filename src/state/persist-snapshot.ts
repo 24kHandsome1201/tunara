@@ -32,7 +32,13 @@ function sanitizeRemoteInfo(remote: unknown): Session["remote"] | undefined {
     port,
     user,
     ...(identityFile ? { identityFile } : {}),
-    ...(r.injectShellIntegration === true ? { injectShellIntegration: true } : {}),
+    // Persist the explicit boolean both ways: the backend now defaults a
+    // missing value to `true`, so an opt-OUT (`false`) must survive a reopen —
+    // dropping it would silently re-enable injection. Only an undefined value
+    // (legacy snapshot) is omitted and falls through to the default.
+    ...(typeof r.injectShellIntegration === "boolean"
+      ? { injectShellIntegration: r.injectShellIntegration }
+      : {}),
   };
 }
 
