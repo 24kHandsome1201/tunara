@@ -130,9 +130,6 @@ function TerminalViewImpl({
       cleanups.push(registerTerminalClipboardHandler(term, {
         isWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
       }));
-      cleanups.push(registerTerminalDeviceAttributesHandler(term, {
-        isOsc52ClipboardWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
-      }));
       // WebGL renderer is managed by useTerminalWebgl (LRU context pool).
       // Inline images (SIXEL + iTerm IIP), loaded after WebGL so it adopts the
       // active renderer. Opt-out via Settings; takes effect on the next terminal.
@@ -378,6 +375,9 @@ function TerminalViewImpl({
       const cwd = dir === "~" ? undefined : dir;
       const outputBuffer = createTerminalOutputBuffer(term);
       cleanups.push(() => outputBuffer.dispose());
+      // Declared before ptyHandlers so onExit can flip it even if exit races the
+      // await openSessionPty() return.
+      let inputToPtyEnabled = true;
       const ptyHandlers = {
         onData: (bytes: Uint8Array) => {
           outputBuffer.push(bytes);
@@ -396,6 +396,7 @@ function TerminalViewImpl({
         },
         onExit: (code: number) => {
           if (disposed) return;
+          inputToPtyEnabled = false;
           handleTerminalProcessExit(term, sessionIdRef.current, code);
           snapshotScheduler.flush();
         },
@@ -433,8 +434,13 @@ function TerminalViewImpl({
       useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
       const onWriteError = createInputQueueFullWarner(term);
       const writePty = (data: string) => {
+        if (!inputToPtyEnabled) return;
         pty.write(data).catch(onWriteError);
       };
+      cleanups.push(registerTerminalDeviceAttributesHandler(term, {
+        isOsc52ClipboardWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
+        sendInput: writePty,
+      }));
       const resizePty = (cols: number, rows: number) => {
         pty.resize(cols, rows).catch(() => {
           /* Resize can race with process exit or pane teardown. */
@@ -462,6 +468,7 @@ function TerminalViewImpl({
         }
       };
       const dataDisposable = term.onData((data) => {
+        if (!inputToPtyEnabled) return;
         writePty(data);
         const submitAgentInput = (submitted: string) => {
           if (!hasAgent) return;
