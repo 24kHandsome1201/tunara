@@ -325,6 +325,23 @@
 .session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
 .session-card-close:active { transform: scale(0.85); }
 
+/* Global agent bar (GlobalAgentBar.tsx) */
+.gbar-head { transition: background var(--duration-fast) var(--ease-smooth); }
+.gbar-head:hover { background: var(--c-bg-hover); }
+.gbar-row {
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-out-expo);
+}
+.gbar-row:hover { background: var(--c-bg-hover); }
+.gbar-row:active { transform: scale(0.985); transition-duration: 60ms; }
+.gbar-row-wait { background: var(--c-accent-bg-soft); }
+.gbar-row-wait:hover { background: var(--c-accent-bg-light); }
+.gbar-row-wait::before {
+  content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 2px; border-radius: 2px; background: var(--c-accent);
+}
+
 /* Context menu items */
 .ctx-item {
   background: transparent; color: var(--c-text-2);
