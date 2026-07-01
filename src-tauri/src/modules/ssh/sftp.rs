@@ -138,15 +138,26 @@ pub async fn ssh_fs_read_file(
         });
     }
 
-    // Whole-file read is fine within the 10 MiB cap.
-    let bytes = sftp
-        .read(&path)
+    // Stream into a BOUNDED buffer rather than `sftp.read()` (which buffers the
+    // whole file before any cap applies). The stat size above is server-
+    // controlled and may under-report (special/growing files) or be a lie, so a
+    // compromised peer could otherwise OOM us by streaming gigabytes. `take`
+    // caps in-memory bytes at MAX_READ_BYTES + 1 regardless of what stat said;
+    // reading exactly one byte past the cap lets us still report TooLarge.
+    use tokio::io::AsyncReadExt;
+    let mut file = sftp
+        .open(&path)
+        .await
+        .map_err(|e| format!("open remote file failed: {e}"))?;
+    let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_READ_BYTES + 1) as usize);
+    (&mut file)
+        .take(MAX_READ_BYTES + 1)
+        .read_to_end(&mut bytes)
         .await
         .map_err(|e| format!("read remote file failed: {e}"))?;
 
-    // Re-check against the actual byte count: stat (which follows symlinks and
-    // can report a stale/zero size for special or growing files) may have
-    // under-reported. Don't hand back a multi-MiB preview we meant to cap.
+    // If we hit the +1 byte, the real file is larger than the cap (stat
+    // under-reported or lied). Don't hand back a preview we meant to refuse.
     let real_size = bytes.len() as u64;
     if real_size > MAX_READ_BYTES {
         return Ok(RemoteReadResult::TooLarge {
@@ -220,8 +231,14 @@ fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, Stri
         return Err("download path must be under the home directory".into());
     }
     // Reject sensitive locations even within home (compared post-resolution).
+    // Canonicalize the needle too: `real_parent` is symlink-resolved, so a
+    // symlinked ~/.config -> ~/.dotfiles/config would otherwise slip past a
+    // raw `real_home.join(".config")` prefix test and let remote-controlled
+    // bytes land in the real config/ssh/gnupg dir (blocklist fail-open).
     for sensitive in [".ssh", ".config", ".gnupg"] {
-        if real_parent.starts_with(real_home.join(sensitive)) {
+        let needle = real_home.join(sensitive);
+        let real_needle = std::fs::canonicalize(&needle).unwrap_or(needle);
+        if real_parent.starts_with(&real_needle) {
             return Err(format!("refusing to write into ~/{sensitive}"));
         }
     }
@@ -238,7 +255,8 @@ fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, Stri
 
 /// Download a remote file to a local path. The destination is validated to a
 /// safe location (see `validate_download_target`) because the bytes are
-/// remote-controlled. Whole-file buffered, capped at MAX_DOWNLOAD_BYTES.
+/// remote-controlled. Streamed chunk-by-chunk (O(chunk) memory) and aborted
+/// once a byte counter exceeds MAX_DOWNLOAD_BYTES.
 #[tauri::command]
 pub async fn ssh_fs_download(
     state: tauri::State<'_, PtyState>,
@@ -249,27 +267,14 @@ pub async fn ssh_fs_download(
     let target = validate_download_target(&local_path)?;
     let sftp = sftp_for(&state, id).await?;
 
-    // Reject oversized files before buffering them into memory.
-    if let Ok(meta) = sftp.metadata(&remote_path).await {
-        if meta.size.unwrap_or(0) > MAX_DOWNLOAD_BYTES {
-            return Err(format!(
-                "remote file exceeds download limit ({} MiB)",
-                MAX_DOWNLOAD_BYTES / (1024 * 1024)
-            ));
-        }
-    }
-
-    let bytes = sftp
-        .read(&remote_path)
+    // Open both ends first. create_new makes the no-overwrite guarantee atomic,
+    // closing the gap between validate_download_target's exists() check and this
+    // write.
+    let mut remote = sftp
+        .open(&remote_path)
         .await
-        .map_err(|e| format!("download read failed: {e}"))?;
-    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
-        return Err("remote file exceeds download limit".into());
-    }
-    let len = bytes.len() as u64;
-    // create_new makes the no-overwrite guarantee atomic, closing the gap
-    // between validate_download_target's exists() check and this write.
-    let mut file = tokio::fs::OpenOptions::new()
+        .map_err(|e| format!("download open failed: {e}"))?;
+    let mut local = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&target)
@@ -278,10 +283,47 @@ pub async fn ssh_fs_download(
             std::io::ErrorKind::AlreadyExists => "destination already exists".to_string(),
             _ => format!("write local file failed: {e}"),
         })?;
-    tokio::io::AsyncWriteExt::write_all(&mut file, &bytes)
+
+    // Stream chunk-by-chunk so memory stays O(chunk), and enforce the cap with
+    // an authoritative byte COUNTER rather than the server-controlled stat size.
+    // The previous code gated on `metadata().size`, which a compromised server
+    // can under-report (or which is simply skipped when metadata() errors), and
+    // only checked the real length after the whole file was already resident —
+    // a remote-driven memory-exhaustion hole. The counter below is the only
+    // thing the size limit trusts.
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut written: u64 = 0;
+    loop {
+        let n = remote
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("download read failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        written += n as u64;
+        if written > MAX_DOWNLOAD_BYTES {
+            // Abort and remove the partial file so a refused download leaves no
+            // truncated artifact behind.
+            drop(local);
+            let _ = tokio::fs::remove_file(&target).await;
+            return Err(format!(
+                "remote file exceeds download limit ({} MiB)",
+                MAX_DOWNLOAD_BYTES / (1024 * 1024)
+            ));
+        }
+        if let Err(e) = local.write_all(&buf[..n]).await {
+            drop(local);
+            let _ = tokio::fs::remove_file(&target).await;
+            return Err(format!("write local file failed: {e}"));
+        }
+    }
+    local
+        .flush()
         .await
         .map_err(|e| format!("write local file failed: {e}"))?;
-    Ok(len)
+    Ok(written)
 }
 
 /// Pick the better of an SFTP-derived path and an `echo $HOME` exec result.
@@ -437,6 +479,40 @@ mod tests {
         }
         let err = validate_download_target(target.to_str().unwrap()).unwrap_err();
         assert!(err.contains(".ssh"), "got: {err}");
+    }
+
+    // Regression: the sensitive-dir blocklist must survive a SYMLINKED config
+    // dir. `real_parent` is symlink-resolved, so the blocklist needle must be
+    // too — otherwise `~/.config -> ~/.dotfiles/config` writes past the guard.
+    #[test]
+    fn refuses_symlinked_sensitive_dir() {
+        use std::os::unix::fs::symlink;
+        let home = dirs::home_dir().unwrap();
+        // A fake "sensitive" name we control, symlinked to a real target dir, so
+        // the test never touches the user's real ~/.ssh/.config/.gnupg.
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let real_target = home.join(format!(".tunara-symlink-real-{unique}"));
+        let link = home.join(".config"); // a real blocklist entry
+        // Only run when ~/.config does NOT already exist as a real dir, so we
+        // never clobber the user's config. Skip otherwise.
+        if link.exists() {
+            return;
+        }
+        fs::create_dir_all(&real_target).expect("create real target");
+        if symlink(&real_target, &link).is_err() {
+            let _ = fs::remove_dir_all(&real_target);
+            return; // symlink not permitted in this env; skip
+        }
+        let dest = link.join("evil.bin");
+        let result = validate_download_target(dest.to_str().unwrap());
+        // Clean up the symlink and real dir before asserting.
+        let _ = fs::remove_file(&link);
+        let _ = fs::remove_dir_all(&real_target);
+        let err = result.expect_err("symlinked .config must still be refused");
+        assert!(err.contains(".config"), "got: {err}");
     }
 
     // ── choose_remote_home: SFTP-vs-$HOME home resolution ──────────────────

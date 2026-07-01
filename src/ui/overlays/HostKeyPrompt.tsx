@@ -31,6 +31,14 @@ export function HostKeyPromptDialog() {
   if (!prompt) return null;
 
   const hostLabel = prompt.port === 22 ? prompt.host : `${prompt.host}:${prompt.port}`;
+  // "unverifiable" = host already in known_hosts but its key couldn't be
+  // matched against the stored (hashed/wildcard) entry — a possible key
+  // rotation or MITM, and this path deliberately does NOT persist the key. The
+  // copy must say so rather than reuse the first-use "we'll save it" wording.
+  const unverifiable = prompt.reason === "unverifiable";
+  const titleKey = unverifiable ? "ssh.hostKey.unverifiable.title" : "ssh.hostKey.title";
+  const bodyKey = unverifiable ? "ssh.hostKey.unverifiable.body" : "ssh.hostKey.body";
+  const hintKey = unverifiable ? "ssh.hostKey.unverifiable.hint" : "ssh.hostKey.hint";
 
   return (
     <>
@@ -73,13 +81,13 @@ export function HostKeyPromptDialog() {
       >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
           <span style={{ fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
-            {t("ssh.hostKey.title")}
+            {t(titleKey)}
           </span>
         </div>
 
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
           <p style={{ margin: 0, fontSize: "var(--fs-body)", color: "var(--c-text-primary)", lineHeight: 1.5 }}>
-            {t("ssh.hostKey.body", { host: hostLabel })}
+            {t(bodyKey, { host: hostLabel })}
           </p>
           <div
             style={{
@@ -99,7 +107,7 @@ export function HostKeyPromptDialog() {
             {prompt.fingerprint}
           </div>
           <p style={{ margin: 0, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.5 }}>
-            {t("ssh.hostKey.hint")}
+            {t(hintKey)}
           </p>
         </div>
 

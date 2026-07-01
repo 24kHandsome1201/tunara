@@ -45,6 +45,13 @@ pub enum PtyEvent {
         port: u16,
         fingerprint: String,
         key_type: String,
+        /// Why we're prompting, so the dialog can tell the user the truth:
+        /// `"unknown"` = genuine first contact (accepting persists to
+        /// known_hosts); `"unverifiable"` = host is already in known_hosts but
+        /// its key couldn't be confirmed against the stored (hashed/wildcard)
+        /// entry — a possible key rotation or MITM, and accepting does NOT
+        /// persist. Conflating these two trains reflexive trust.
+        reason: String,
     },
 }
 

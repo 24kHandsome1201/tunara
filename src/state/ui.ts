@@ -200,6 +200,10 @@ export interface HostKeyPrompt {
   port: number;
   fingerprint: string;
   keyType: string;
+  /** "unknown" = first contact (accepting persists to known_hosts);
+   *  "unverifiable" = key couldn't be confirmed against a hashed/wildcard
+   *  entry — possible rotation/MITM, and accepting does NOT persist. */
+  reason: string;
 }
 
 /** A workflow chosen from the palette whose template has {{params}} still to

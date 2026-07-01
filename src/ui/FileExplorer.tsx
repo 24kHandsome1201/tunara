@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fsGrep, fsReadDir, fsSearch, type DirEntry, type GrepResponse, type SearchHit } from "@/modules/fs/fs-bridge";
-import { sshReadDir, sshHome, sshSearch } from "@/modules/ssh/remote-fs-bridge";
+import { sshReadDir, sshHome, sshSearch, invalidateRemoteSearchCache } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -254,6 +254,12 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const isSearching = searchQuery.trim().length > 0;
 
   function refresh() {
+    // Drop the remote search cache so Refresh actually re-runs ssh_fs_search
+    // instead of returning the cached (now-stale) hits while the directory
+    // listing reloads — otherwise Refresh is a no-op for remote search.
+    if (isRemote && remotePtyId !== undefined) {
+      invalidateRemoteSearchCache(remotePtyId);
+    }
     setReloadKey((n) => n + 1);
   }
 

@@ -75,8 +75,11 @@ pub struct ClientHandler {
 
 impl ClientHandler {
     /// Ask the frontend to confirm a fingerprint, blocking until it replies (or
-    /// the channel/dialog goes away, treated as "reject").
-    async fn prompt_user(&self, key: &PublicKey) -> bool {
+    /// the channel/dialog goes away, treated as "reject"). `reason` tells the
+    /// dialog whether this is genuine first-use (`"unknown"`) or a host already
+    /// in known_hosts whose key we couldn't confirm (`"unverifiable"`), so the
+    /// copy can differ and never falsely claim the key will be saved.
+    async fn prompt_user(&self, key: &PublicKey, reason: &str) -> bool {
         let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
         let key_type = key.algorithm().to_string();
         let prompt_id = next_prompt_id(&self.host, self.port);
@@ -104,6 +107,7 @@ impl ClientHandler {
             port: self.port,
             fingerprint,
             key_type,
+            reason: reason.to_string(),
         });
         if sent.is_err() {
             return false; // frontend channel gone; guard cleans up
@@ -135,7 +139,7 @@ impl client::Handler for ClientHandler {
                     Ok(true)
                 }
                 HostKeyPolicy::Prompt => {
-                    if self.prompt_user(key).await {
+                    if self.prompt_user(key, "unknown").await {
                         // User confirmed first-use → trust and persist.
                         if let Err(e) = known_hosts::remember(&self.host, self.port, key) {
                             log::warn!("ssh: failed to persist new host key: {e}");
@@ -162,8 +166,10 @@ impl client::Handler for ClientHandler {
                         Ok(true)
                     }
                     HostKeyPolicy::Prompt => {
-                        // Prompt, but never persist on Unverifiable.
-                        Ok(self.prompt_user(key).await)
+                        // Prompt, but never persist on Unverifiable. The
+                        // "unverifiable" reason makes the dialog say so instead
+                        // of falsely promising to save the key.
+                        Ok(self.prompt_user(key, "unverifiable").await)
                     }
                 }
             }
@@ -455,12 +461,18 @@ impl SshSession {
         let mut out: Vec<u8> = Vec::new();
         let mut stderr_buf: Vec<u8> = Vec::new();
         let mut exceeded = false;
+        let mut timed_out = false;
         let deadline = tokio::time::Instant::now() + EXEC_TIMEOUT;
         loop {
             tokio::select! {
                 biased;
                 _ = tokio::time::sleep_until(deadline) => {
-                    return Err("exec timed out (15s)".to_string());
+                    // Break (don't early-return) so we still close the channel
+                    // below — russh Channel has no Drop-side CLOSE, so dropping
+                    // it would leave the remote process (e.g. a slow `find /`)
+                    // running and leak the local channel slot.
+                    timed_out = true;
+                    break;
                 }
                 msg = channel.wait() => {
                     let Some(msg) = msg else { break };
@@ -492,6 +504,18 @@ impl SshSession {
             }
         }
 
+        // Always close the channel before returning. On the timeout and
+        // cap-exceeded paths the remote process is still running; close() sends
+        // CHANNEL_CLOSE so the remote terminates and the local channel slot is
+        // released (russh does not do this on drop). On the clean Eof/Close
+        // path it's a harmless no-op. Errors here are non-fatal — the command
+        // already produced (or failed to produce) its output.
+        let _ = channel.close().await;
+
+        if timed_out {
+            return Err("exec timed out (15s)".to_string());
+        }
+
         // If we have no stdout but stderr produced something, return stderr so
         // the caller gets a descriptive error (e.g. "fatal: not a git
         // repository"). Trim to keep the toast/message readable.
@@ -505,9 +529,10 @@ impl SshSession {
         }
 
         if exceeded {
-            // Prepend a marker so the parser/diff layer can flag truncation
-            // rather than silently slicing through output. Most callers cap
-            // well below this; the marker keeps the contract honest.
+            // Hard-cap the output. NOTE: callers can't currently tell truncation
+            // from a complete result — `out` carries no marker. Callers that
+            // care (remote search) cap well below max_bytes; a marker/flag is a
+            // separate contract change, not done here.
             out.truncate(max_bytes);
         }
         Ok(String::from_utf8_lossy(&out).into_owned())

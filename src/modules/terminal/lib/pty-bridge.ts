@@ -15,6 +15,9 @@ export type PtyEvent =
       port: number;
       fingerprint: string;
       keyType: string;
+      /** "unknown" = first contact (accepting persists); "unverifiable" = key
+       *  couldn't be confirmed against a hashed/wildcard entry (not persisted). */
+      reason: string;
     };
 
 /** Reply to a pending SSH host-key prompt (backend ssh_open is parked on it). */
@@ -191,6 +194,7 @@ export async function openSshPty(
           port: event.port,
           fingerprint: event.fingerprint,
           keyType: event.keyType,
+          reason: event.reason,
         });
         break;
     }
