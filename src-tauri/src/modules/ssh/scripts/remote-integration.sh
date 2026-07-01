@@ -12,8 +12,14 @@
 # logical session id before injection, so the OSC 777 `session` field matches
 # the frontend's sessionId (parseAgentLifecycleOsc drops events whose session
 # doesn't match). Self-guards against double-install and degrades silently on
-# unsupported shells. Kept on ONE logical line per shell so it can be sent as a
-# single command without a heredoc.
+# unsupported shells.
+#
+# Transport: connection.rs stages this file into a private remote mktemp file
+# over a NON-tty exec channel, and the interactive shell is sent only a short
+# ` . file; rm -f file` line. Never send this script inline as shell input —
+# a line longer than the pty's canonical buffer (4096 Linux / 1024 BSD) gets
+# truncated by the line discipline when it lands before the shell enters raw
+# mode: the eval never runs and the junk is echoed at the first prompt.
 #
 # This runs INSIDE the user's already-started remote shell, so it must not
 # disturb their environment beyond adding precmd/preexec hooks and the agent

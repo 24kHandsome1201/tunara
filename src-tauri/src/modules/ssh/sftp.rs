@@ -359,7 +359,9 @@ fn choose_remote_home(sftp_home: Option<&str>, exec_home: Option<&str>) -> Optio
     }
     // Neither is a usable non-root path. Fall back to whatever SFTP gave (likely
     // `/`), which is correct for a root login and still a usable browse root.
-    sftp_home.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    sftp_home
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Resolve the remote home directory so the panel has a sensible starting point
@@ -495,9 +497,9 @@ mod tests {
             .unwrap()
             .as_nanos();
         let real_target = home.join(format!(".tunara-symlink-real-{unique}"));
-        let link = home.join(".config"); // a real blocklist entry
-        // Only run when ~/.config does NOT already exist as a real dir, so we
-        // never clobber the user's config. Skip otherwise.
+        // `.config` is a real blocklist entry. Only run when it does NOT
+        // already exist as a real dir, so we never clobber the user's config.
+        let link = home.join(".config");
         if link.exists() {
             return;
         }
@@ -556,7 +558,10 @@ mod tests {
     #[test]
     fn keeps_sftp_root_when_exec_home_is_garbage() {
         // Relative / empty / multiline exec output is rejected; SFTP `/` stands.
-        assert_eq!(choose_remote_home(Some("/"), Some("")).as_deref(), Some("/"));
+        assert_eq!(
+            choose_remote_home(Some("/"), Some("")).as_deref(),
+            Some("/")
+        );
         assert_eq!(
             choose_remote_home(Some("/"), Some("not-a-path")).as_deref(),
             Some("/")

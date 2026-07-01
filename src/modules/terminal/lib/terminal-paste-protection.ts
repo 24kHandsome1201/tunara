@@ -40,26 +40,40 @@ export function terminalPasteWarningMessage(warning: TerminalPasteWarning): stri
 }
 
 /**
- * Returns whether this paste was *intercepted* (a warning was shown), NOT
+ * Async-capable so the confirmation can come from the Tauri dialog plugin.
+ * NEVER use `window.confirm` here: wry's WKWebView implements no JS-dialog UI
+ * delegate, so it shows nothing and synchronously returns a falsy value — the
+ * old default silently swallowed every multiline/large paste in the app.
+ */
+export type TerminalPasteConfirmer = (message: string) => boolean | Promise<boolean>;
+
+/**
+ * Returns whether this paste was *intercepted* (a warning is being shown), NOT
  * whether it was pasted. `true` means the caller should preventDefault and stop
- * the native paste — the actual paste (if confirmed) has already happened via
- * `paste()`. `false` means the text was safe and the caller should let xterm's
- * own paste handler run.
+ * the native paste — the actual paste happens asynchronously via `paste()` once
+ * the user confirms. `false` means the text was safe and the caller should let
+ * xterm's own paste handler run.
  */
 export function confirmProtectedTerminalPaste(
   text: string,
-  confirmPaste: (message: string) => boolean,
+  confirmPaste: TerminalPasteConfirmer,
   paste: (text: string) => void,
 ): boolean {
   const warning = analyzeTerminalPaste(text);
   if (!warning) return false;
-  if (confirmPaste(terminalPasteWarningMessage(warning))) paste(text);
+  void Promise.resolve(confirmPaste(terminalPasteWarningMessage(warning)))
+    .then((confirmed) => {
+      if (confirmed) paste(text);
+    })
+    .catch(() => {
+      /* dialog dismissed/unavailable → treat as cancel */
+    });
   return true;
 }
 
 export function registerTerminalPasteProtection(
   term: PasteTarget,
-  confirmPaste: (message: string) => boolean = (message) => window.confirm(message),
+  confirmPaste: TerminalPasteConfirmer,
 ) {
   const element = term.element;
   if (!element) return { dispose() {} };

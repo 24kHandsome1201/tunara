@@ -27,6 +27,9 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        // window.confirm/alert are silent no-ops inside wry's WKWebView (no JS
+        // dialog UI delegate) — native confirms must go through this plugin.
+        .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyState::default())
         .manage(ResolverState::default())
         .manage(modules::git::GitWatcherState::default())
