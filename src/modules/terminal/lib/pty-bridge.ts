@@ -185,10 +185,13 @@ export async function openSshPty(
         handlers.onExit?.(event.code);
         break;
       case "hostKeyPrompt":
-        // Park the confirmation in the UI store; an app-level dialog renders it
-        // and calls answerHostKeyPrompt with the user's decision. The backend
-        // ssh_open call is blocked inside check_server_key until then.
-        useUIStore.getState().setHostKeyPrompt({
+        // Queue the confirmation in the UI store; an app-level dialog renders
+        // the head and calls answerHostKeyPrompt with the user's decision. The
+        // backend ssh_open call is blocked inside check_server_key until then.
+        // Enqueue (not overwrite) so a second concurrent connection's prompt
+        // doesn't evict an unanswered first one — each parked ssh_open needs its
+        // own answer or it stays blocked until the session is closed.
+        useUIStore.getState().enqueueHostKeyPrompt({
           promptId: event.promptId,
           host: event.host,
           port: event.port,

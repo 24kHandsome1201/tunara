@@ -11,15 +11,17 @@ import { useFocusTrap } from "./useFocusTrap";
  */
 export function HostKeyPromptDialog() {
   const t = useT();
-  const prompt = useUIStore((s) => s.hostKeyPrompt);
-  const setHostKeyPrompt = useUIStore((s) => s.setHostKeyPrompt);
+  // Render the head of the queue; answering it advances to the next pending
+  // prompt (if two hosts prompted before the first was answered).
+  const prompt = useUIStore((s) => s.hostKeyPrompts[0] ?? null);
+  const dismissHostKeyPrompt = useUIStore((s) => s.dismissHostKeyPrompt);
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef);
 
   const decide = (accept: boolean) => {
     if (!prompt) return;
     void answerHostKeyPrompt(prompt.promptId, accept);
-    setHostKeyPrompt(null);
+    dismissHostKeyPrompt(prompt.promptId);
   };
 
   // Focus the safe (reject) action by default so an accidental Enter doesn't trust.

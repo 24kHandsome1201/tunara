@@ -222,8 +222,10 @@ pub fn spawn(
 
     let on_event_exit = on_event;
     let pending_e = pending;
-    let done_e = done;
-    thread::Builder::new()
+    // Clone (not move) so a strong ref to `done` survives outside the waiter
+    // closure for the spawn-failure cleanup path below.
+    let done_e = done.clone();
+    let waiter_spawn = thread::Builder::new()
         .name("tunara-pty-waiter".into())
         .spawn(move || {
             let code = match child.wait() {
@@ -262,8 +264,18 @@ pub fn spawn(
             if let Err(e) = on_event_exit.send(PtyEvent::Exit { code }) {
                 log::debug!("pty exit send failed (channel closed): {e}");
             }
-        })
-        .map_err(|e| format!("spawn pty waiter thread: {e}"))?;
+        });
+    if let Err(e) = waiter_spawn {
+        // The reader + flusher threads are already running. Returning Err drops
+        // `session`, whose Drop kills the child, so the reader hits EOF and
+        // exits. But the flusher only breaks when it sees `pending` empty AND
+        // `done` set, and `done` is otherwise set solely inside the waiter
+        // closure that never spawned — so without this the flusher would spin
+        // every FLUSH_INTERVAL forever, one leaked thread per failed spawn. Set
+        // it here so the flusher observes `done` and exits cleanly.
+        done.store(true, Ordering::Release);
+        return Err(format!("spawn pty waiter thread: {e}"));
+    }
 
     Ok((session, size))
 }

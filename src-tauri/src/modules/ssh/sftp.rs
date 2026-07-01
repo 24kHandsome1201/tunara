@@ -191,7 +191,8 @@ const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
 /// the downloaded bytes, so an unvetted `local_path` would let a compromised
 /// SSH server write attacker content to e.g. ~/.zshrc or ~/.ssh/authorized_keys
 /// (local code execution / persistence). We require: an absolute path inside
-/// the user's home, not under sensitive dotfile dirs, and no overwrite.
+/// the user's home, not under sensitive dotfile dirs, not a home-root shell/login
+/// rc file (`~/.zshrc` etc.), and no overwrite.
 ///
 /// The confinement is enforced on the *canonicalized* parent directory, not on
 /// the literal string. `Path::starts_with` is a component-wise prefix test, so
@@ -240,6 +241,46 @@ fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, Stri
         let real_needle = std::fs::canonicalize(&needle).unwrap_or(needle);
         if real_parent.starts_with(&real_needle) {
             return Err(format!("refusing to write into ~/{sensitive}"));
+        }
+    }
+    // The directory blocklist above is scoped to subdirs, so it does NOT cover a
+    // shell/login rc file written directly to the home ROOT (`~/.zshrc`,
+    // `~/.zshenv`, `~/.bashrc`, `~/.profile`, …) — whose parent IS home and thus
+    // passes every check above. Those files are auto-sourced on the next
+    // interactive/login shell, so a remote-controlled write to one is code
+    // execution / persistence — the exact `~/.zshrc` threat this function's
+    // docstring names. create_new only blocks OVERWRITE; rc files that don't yet
+    // exist (commonly `~/.zshenv`/`~/.zprofile` on a default macOS account) would
+    // otherwise be created fresh. Reject them when the parent is the home root.
+    if real_parent == real_home {
+        // Auto-sourced shell/login startup files across sh/bash/zsh/csh/ksh +
+        // readline. Match case-insensitively so `.ZSHRC` can't slip past on a
+        // case-insensitive filesystem (the default on macOS).
+        const RC_FILES: [&str; 17] = [
+            ".zshrc",
+            ".zshenv",
+            ".zprofile",
+            ".zlogin",
+            ".zlogout",
+            ".bashrc",
+            ".bash_profile",
+            ".bash_login",
+            ".bash_logout",
+            ".profile",
+            ".kshrc",
+            ".cshrc",
+            ".tcshrc",
+            ".login",
+            ".logout",
+            ".inputrc",
+            ".bash_aliases",
+        ];
+        let name = file_name.to_string_lossy().to_ascii_lowercase();
+        if RC_FILES.contains(&name.as_str()) {
+            return Err(format!(
+                "refusing to write shell startup file ~/{}",
+                file_name.to_string_lossy()
+            ));
         }
     }
 
@@ -294,35 +335,45 @@ pub async fn ssh_fs_download(
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut buf = vec![0u8; 64 * 1024];
     let mut written: u64 = 0;
+    // Any early exit from here on must delete the partial file: the local file
+    // was already created with create_new, so a mid-stream failure (remote read
+    // error, cap exceeded, local write, or final flush) would otherwise leave a
+    // truncated artifact — breaking the "a refused/aborted download leaves no
+    // truncated artifact behind" invariant and blocking a same-path retry with
+    // "destination already exists". `cleanup_partial` drops the handle and
+    // removes the file so every failure arm shares one honest exit.
+    async fn cleanup_partial(local: tokio::fs::File, target: &std::path::Path) {
+        drop(local);
+        let _ = tokio::fs::remove_file(target).await;
+    }
     loop {
-        let n = remote
-            .read(&mut buf)
-            .await
-            .map_err(|e| format!("download read failed: {e}"))?;
+        let n = match remote.read(&mut buf).await {
+            Ok(n) => n,
+            Err(e) => {
+                cleanup_partial(local, &target).await;
+                return Err(format!("download read failed: {e}"));
+            }
+        };
         if n == 0 {
             break;
         }
         written += n as u64;
         if written > MAX_DOWNLOAD_BYTES {
-            // Abort and remove the partial file so a refused download leaves no
-            // truncated artifact behind.
-            drop(local);
-            let _ = tokio::fs::remove_file(&target).await;
+            cleanup_partial(local, &target).await;
             return Err(format!(
                 "remote file exceeds download limit ({} MiB)",
                 MAX_DOWNLOAD_BYTES / (1024 * 1024)
             ));
         }
         if let Err(e) = local.write_all(&buf[..n]).await {
-            drop(local);
-            let _ = tokio::fs::remove_file(&target).await;
+            cleanup_partial(local, &target).await;
             return Err(format!("write local file failed: {e}"));
         }
     }
-    local
-        .flush()
-        .await
-        .map_err(|e| format!("write local file failed: {e}"))?;
+    if let Err(e) = local.flush().await {
+        cleanup_partial(local, &target).await;
+        return Err(format!("write local file failed: {e}"));
+    }
     Ok(written)
 }
 
@@ -479,6 +530,48 @@ mod tests {
         }
         let err = validate_download_target(target.to_str().unwrap()).unwrap_err();
         assert!(err.contains(".ssh"), "got: {err}");
+    }
+
+    // Regression: a home-ROOT shell/login rc file (parent == home, so it clears
+    // the directory blocklist) must still be refused — a remote-controlled write
+    // to ~/.zshrc/.zshenv/.profile is code execution on the next shell. Uses a
+    // name that (almost certainly) does not yet exist so the rejection proves the
+    // rc-file guard fired, not the pre-existing exists()/create_new overwrite
+    // guard. This test FAILS on the old directory-only blocklist.
+    #[test]
+    fn refuses_home_root_shell_rc_files() {
+        let home = dirs::home_dir().unwrap();
+        for rc in [".zshenv", ".zprofile", ".bash_login", ".zlogin"] {
+            let target = home.join(rc);
+            // Skip a name that happens to exist so we never risk clobbering a
+            // real dotfile and never let the exists() guard mask the rc guard.
+            if target.exists() {
+                continue;
+            }
+            let err = validate_download_target(target.to_str().unwrap())
+                .expect_err("home-root shell rc file must be refused");
+            assert!(
+                err.contains("shell startup") || err.contains(rc),
+                "rc={rc} got: {err}"
+            );
+        }
+    }
+
+    // A non-rc regular file at the home root is still allowed (the rc guard must
+    // not over-reach and block ordinary downloads to home).
+    #[test]
+    fn allows_ordinary_home_root_file() {
+        let home = dirs::home_dir().unwrap();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let target = home.join(format!(".tunara-ordinary-{unique}.bin"));
+        // A dotfile that is NOT a shell rc file must pass (dot-prefix alone is
+        // not the disqualifier — only the known startup-file names are).
+        let resolved =
+            validate_download_target(target.to_str().unwrap()).expect("ordinary home file ok");
+        assert!(resolved.ends_with(format!(".tunara-ordinary-{unique}.bin").as_str()));
     }
 
     // Regression: the sensitive-dir blocklist must survive a SYMLINKED config

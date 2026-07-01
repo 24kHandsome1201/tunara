@@ -233,7 +233,12 @@ interface UIState extends AppearanceSettings {
   split: SplitState;
   inspectorTab: InspectorTab;
   toasts: Toast[];
-  hostKeyPrompt: HostKeyPrompt | null;
+  /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
+   *  so two SSH connections that both hit an unknown/unverifiable host key
+   *  before the first is answered don't clobber each other — each parked
+   *  ssh_open needs its own prompt answered or it stays blocked. The dialog
+   *  renders the head; answering it shifts to the next. */
+  hostKeyPrompts: HostKeyPrompt[];
   pendingWorkflow: PendingWorkflow | null;
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
@@ -268,7 +273,11 @@ interface UIState extends AppearanceSettings {
   setSplitPaneA: (sessionId: string | null) => void;
   addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
-  setHostKeyPrompt: (prompt: HostKeyPrompt | null) => void;
+  /** Append a host-key prompt to the queue (no-op if its promptId is already
+   *  queued, so a duplicate backend event can't double-enqueue). */
+  enqueueHostKeyPrompt: (prompt: HostKeyPrompt) => void;
+  /** Remove a resolved host-key prompt by promptId, advancing the queue head. */
+  dismissHostKeyPrompt: (promptId: string) => void;
   setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
   toggleDirCollapsed: (dir: string) => void;
   toggleDiffSectionCollapsed: (section: string) => void;
@@ -299,7 +308,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
     inspectorTab: "overview" as InspectorTab,
     toasts: [],
-    hostKeyPrompt: null,
+    hostKeyPrompts: [],
     pendingWorkflow: null,
     collapsedDirs: {},
     collapsedDiffSections: {},
@@ -349,7 +358,14 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((s) => ({ toasts: [...s.toasts.slice(-2), { ...toast, id }] }));
     },
     removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-    setHostKeyPrompt: (hostKeyPrompt) => set({ hostKeyPrompt }),
+    enqueueHostKeyPrompt: (prompt) =>
+      set((s) =>
+        s.hostKeyPrompts.some((p) => p.promptId === prompt.promptId)
+          ? {}
+          : { hostKeyPrompts: [...s.hostKeyPrompts, prompt] },
+      ),
+    dismissHostKeyPrompt: (promptId) =>
+      set((s) => ({ hostKeyPrompts: s.hostKeyPrompts.filter((p) => p.promptId !== promptId) })),
     setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
     toggleDirCollapsed: (dir) =>
       set((s) => ({ collapsedDirs: toggleTrueRecordKey(s.collapsedDirs, dir) })),

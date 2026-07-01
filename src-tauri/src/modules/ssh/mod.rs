@@ -104,7 +104,10 @@ pub async fn ssh_open(
         e
     })?;
 
-    let id = state.insert(Session::Ssh(ssh), logical_session_id.as_deref());
+    let id = state.insert(
+        std::sync::Arc::new(Session::Ssh(ssh)),
+        logical_session_id.as_deref(),
+    );
     match logical_session_id {
         Some(lid) => log::info!("ssh opened id={id} host={host} logical_session_id={lid}"),
         None => log::info!("ssh opened id={id} host={host}"),
