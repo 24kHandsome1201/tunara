@@ -83,14 +83,37 @@ impl PtyState {
         self.sessions.read().get(&id).cloned()
     }
 
-    /// Register an already-built session under a fresh id, optionally bound to
-    /// a logical id. Returns the physical id. Used by ssh_open.
-    pub fn insert(&self, session: Session, logical_id: Option<&str>) -> u32 {
+    /// Register an already-built session under a fresh id, optionally bound to a
+    /// logical id, replacing (and killing) any session already bound to that
+    /// logical id. Returns the physical id. Used by both pty_open and ssh_open.
+    ///
+    /// Both maps are locked together for the whole replace so it is atomic with
+    /// respect to a concurrent open of the SAME logical id. Tauri dispatches
+    /// sync commands on a worker pool, so two `pty_open`s carrying one logical
+    /// id can run on different threads; doing the id bump and the two map
+    /// inserts as separate lock acquisitions let them interleave so both insert
+    /// distinct physical ids and the loser's session is orphaned — reachable by
+    /// neither the logical id nor (from the backend) its physical id — and leaks
+    /// alive until close_all. Evicting the prior binding inside one critical
+    /// section turns that orphan into a clean kill+remove.
+    ///
+    /// Lock order is sessions-then-logical, matching close_all; no other method
+    /// holds both simultaneously, so this cannot deadlock.
+    pub fn insert(&self, session: Arc<Session>, logical_id: Option<&str>) -> u32 {
+        let mut sessions = self.sessions.write();
+        let mut logical = self.logical_sessions.write();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.sessions.write().insert(id, Arc::new(session));
         if let Some(lid) = logical_id {
-            self.logical_sessions.write().insert(lid.to_string(), id);
+            if let Some(old_id) = logical.insert(lid.to_string(), id) {
+                if let Some(old) = sessions.remove(&old_id) {
+                    if let Err(e) = old.kill() {
+                        log::debug!("insert: kill replaced id={old_id} returned {e}");
+                    }
+                    log::info!("session replaced id={old_id} logical_session_id={lid}");
+                }
+            }
         }
+        sessions.insert(id, session);
         id
     }
 }
@@ -123,13 +146,11 @@ pub fn pty_open(
         log::error!("pty_open failed: {e}");
         e
     })?;
-    let id = state.next_id.fetch_add(1, Ordering::Relaxed);
-    state.sessions.write().insert(id, session);
+    // Atomic replace: same critical section binds the id and evicts any prior
+    // session for this logical id, so two racing same-logical-id opens can't
+    // orphan a session (see PtyState::insert).
+    let id = state.insert(session, logical_session_id.as_deref());
     if let Some(logical_id) = logical_session_id {
-        state
-            .logical_sessions
-            .write()
-            .insert(logical_id.clone(), id);
         log::info!("pty opened id={id} logical_session_id={logical_id} cols={cols} rows={rows}");
     } else {
         log::info!("pty opened id={id} cols={cols} rows={rows}");

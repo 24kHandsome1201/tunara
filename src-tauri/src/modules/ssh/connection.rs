@@ -384,10 +384,17 @@ impl SshSession {
             .channel_open_session()
             .await
             .map_err(|e| format!("open sftp channel failed: {e}"))?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| format!("request sftp subsystem failed: {e}"))?;
+        // If the subsystem request fails (server has no sftp-server / Subsystem
+        // sftp disabled), `channel` is still a plain russh Channel — which has
+        // NO Drop-side CLOSE (see the exec() cleanup contract below), so simply
+        // returning here would leak the just-opened channel slot on the live
+        // connection. Close it explicitly first, mirroring exec(). On success
+        // the channel is consumed by into_stream() (whose ChannelStream self-
+        // closes on drop), so only the request-failure path needs this.
+        if let Err(e) = channel.request_subsystem(true, "sftp").await {
+            let _ = channel.close().await;
+            return Err(format!("request sftp subsystem failed: {e}"));
+        }
         let session = russh_sftp::client::SftpSession::new(channel.into_stream())
             .await
             .map_err(|e| format!("sftp init failed: {e}"))?;

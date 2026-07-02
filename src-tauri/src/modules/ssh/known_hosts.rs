@@ -137,14 +137,42 @@ fn key_line(key: &PublicKey) -> Option<String> {
     Some(format!("{kind} {blob}"))
 }
 
+/// Classify a `known_hosts` read failure. Only a genuinely-absent file is
+/// legitimate first use (TOFU `Unknown`, which the caller may auto-trust +
+/// persist). Any OTHER error means the file is present but we couldn't read it
+/// this time (EACCES on a hardened `~/.ssh`, the path being a directory, a
+/// transient FS/IO error, or an active attacker making it unreadable): it may
+/// hold this host's real key or a mismatch we must honor, so we fail closed as
+/// `Unverifiable` — never the auto-trusting `Unknown`. Pure, so this
+/// security-relevant branch is unit-testable without touching the real store.
+fn verdict_for_read_error(kind: std::io::ErrorKind) -> Verdict {
+    if kind == std::io::ErrorKind::NotFound {
+        Verdict::Unknown
+    } else {
+        Verdict::Unverifiable
+    }
+}
+
 /// Check the presented key against `~/.ssh/known_hosts`.
 pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
     let Some(path) = known_hosts_path() else {
         return Verdict::Unknown;
     };
-    let Ok(contents) = fs::read_to_string(&path) else {
-        // No known_hosts file yet — treat as first use.
-        return Verdict::Unknown;
+    let contents = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            let verdict = verdict_for_read_error(e.kind());
+            // Only the present-but-unreadable case is noteworthy; a genuinely
+            // absent file is the normal first-use path and stays quiet.
+            if !matches!(verdict, Verdict::Unknown) {
+                log::warn!(
+                    "ssh: known_hosts at {} unreadable ({e}) — treating host as \
+                     unverifiable rather than first-use",
+                    path.display()
+                );
+            }
+            return verdict;
+        }
     };
     let Some(presented) = key_line(key) else {
         return Verdict::Unknown;
@@ -261,6 +289,32 @@ mod tests {
         assert!(!auto_trusts(&Verdict::Mismatch));
         assert!(!auto_trusts(&Verdict::Match));
         assert!(auto_trusts(&Verdict::Unknown));
+    }
+
+    // Regression: a present-but-unreadable known_hosts must NOT degrade to the
+    // auto-trusting Unknown verdict. Only a truly-absent file is first-use;
+    // EACCES / is-a-directory / transient IO must fail closed as Unverifiable,
+    // so an AcceptUnknown policy can't silently trust+persist an unvetted key
+    // while the store is unreadable. This FAILS on the old code that mapped
+    // every read error to Unknown.
+    #[test]
+    fn unreadable_store_fails_closed_not_first_use() {
+        use std::io::ErrorKind;
+        // Absent file → legitimate first use.
+        assert!(matches!(
+            verdict_for_read_error(ErrorKind::NotFound),
+            Verdict::Unknown
+        ));
+        // Present-but-unreadable variants → fail closed, never auto-trust.
+        for kind in [
+            ErrorKind::PermissionDenied,
+            ErrorKind::Other, // e.g. EISDIR (path is a directory) / transient IO
+        ] {
+            assert!(
+                matches!(verdict_for_read_error(kind), Verdict::Unverifiable),
+                "read error {kind:?} must fail closed as Unverifiable"
+            );
+        }
     }
 
     #[test]
