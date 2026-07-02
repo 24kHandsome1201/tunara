@@ -6,6 +6,24 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
+## [1.9.0] - 2026-07-02
+
+### 新功能
+- 侧栏全局 Agent 活动条：聚合展示所有会话里 agent 的运行状态，一眼看到谁在忙。
+- Agent 启动预检与 CLI 覆盖：启动 agent 前检查可执行环境，支持自定义 CLI 命令；新增 Mod+Tab 在最近会话间循环切换。
+- 手动输入 `ssh …` 命令时，提示可改用内置 SSH 会话（含主机管理与文件面板）。
+
+### 修复与优化
+- 终端闲置、切换字体或主题后文字花屏：WebGL 字形纹理图集在窗口 focus/visibility 恢复及字体、主题、连字变更时显式重建，不再依赖手动调整窗口大小自愈。
+- SSH 粘贴静默丢字：shell 集成改经一次性 exec channel 暂存注入，绕开 pty 规范模式的行缓冲上限；粘贴保护确认框改用原生对话框（WebView 内 `window.confirm` 是静默 no-op）。
+- SSH 子系统安全加固：SFTP 传输内存上限（防 stat 谎报导致的内存耗尽）、host-key 提示文案与真实校验行为一致、下载路径 symlink 双侧校验、exec channel 全路径显式关闭。
+- SSH 会话被动断开后停止向已关闭通道写入输入。
+- 远端 home 目录改经 `$HOME` 解析，文件面板支持非 root 登录；agent 退出时清除侧栏运行徽标。
+- 复制操作统一走共享剪贴板 helper，修正粘贴与快速选择的若干小问题。
+- 搜索高亮配色跟随明暗主题；远程会话空态样式统一；字号收敛到 design token。
+- 会话关闭时清理排队中的 git 状态刷新，不再遗留孤儿状态键。
+- 发版后 Homebrew cask 版本与 sha256 由 CI 自动更新并直推 main，不再依赖人工合并。
+
 ## [1.8.0] - 2026-06-28
 
 汇总 1.7.1 以来的全部变更。

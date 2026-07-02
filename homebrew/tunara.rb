@@ -1,5 +1,5 @@
 cask "tunara" do
-  version "1.8.0"
+  version "1.9.0"
   sha256 "c3daf5741c1d152c344d54fc14fa2a334b0350f2830b5999e2112c71b378a3c4"
 
   url "https://github.com/24kHandsome1201/tunara/releases/download/v#{version}/Tunara_#{version}_aarch64.dmg"

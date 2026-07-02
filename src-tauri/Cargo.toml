@@ -1,6 +1,6 @@
 [package]
 name = "tunara"
-version = "1.8.0"
+version = "1.9.0"
 description = "Tunara — 带智能侧栏的真实终端（基于 Tauri + xterm.js）"
 authors = ["Tunara contributors"]
 license = "Apache-2.0"
