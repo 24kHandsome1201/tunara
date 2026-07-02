@@ -32,7 +32,7 @@ base64 = "0.22"
 log = "0.4"
 parking_lot = "0.12"
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
-which = "6"
+which = "8"
 git2 = { version = "0.19", features = ["vendored-openssl"] } # keep macOS release bundles independent of Homebrew OpenSSL dylibs
 ignore = "0.4"
 grep-regex = "0.1"
