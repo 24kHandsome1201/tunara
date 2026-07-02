@@ -4,6 +4,7 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 
 ## Known security advisories
 
+- **RUSTSEC-2026-0194 / RUSTSEC-2026-0195** (`quick-xml` 读取器解析恶意 XML 时命名空间/属性无界分配导致内存耗尽 DoS) — 仅经 `tauri` → `plist` 传入，用于解析本地可信的 macOS 属性列表，非网络或攻击者可控输入。修复版 quick-xml ≥ 0.41.0，但最新 `plist` 1.9.0（已升级锁定）仍固定在 0.39.x。已在 `src-tauri/.cargo/audit.toml` 中 ignore。**等 `plist` 接入 quick-xml ≥ 0.41 后升级并移除 ignore。**
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
 ## [1.9.0] - 2026-07-02
