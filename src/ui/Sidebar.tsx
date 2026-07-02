@@ -1,4 +1,5 @@
 import { SessionCard } from "./SessionCard";
+import { GlobalAgentBar } from "./GlobalAgentBar";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { groupByDir, deriveTitle, type Session } from "./types";
 import { DirGroupHeader, SidebarSearchIcon } from "./SidebarDirGroupHeader";
@@ -299,6 +300,8 @@ export function Sidebar({
           )}
         </div>
       </div>
+
+      <GlobalAgentBar sessions={sessions} onSelectSession={onSelectSession} />
 
       <div
         style={{

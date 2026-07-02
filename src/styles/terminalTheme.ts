@@ -196,6 +196,27 @@ export function isTerminalThemeDark(terminalTheme: TerminalThemeName, appTheme: 
   return getOwnTheme(NAMED_DARK_THEMES, terminalTheme) !== undefined;
 }
 
+// 终端搜索高亮。xterm 的 decoration 色值走 canvas/WebGL，不吃 CSS 变量，
+// 只能在这里按解析后的终端主题明暗二选一。暗底沿用原 #e8a960；亮底同色系
+// 加深，否则 44 透明度的浅橙在白底上几乎不可见。
+const SEARCH_DECORATIONS_DARK = {
+  matchBackground: "#e8a96044",
+  matchOverviewRuler: "#e8a960",
+  activeMatchBackground: "#e8a960aa",
+  activeMatchColorOverviewRuler: "#e8a960",
+};
+
+const SEARCH_DECORATIONS_LIGHT = {
+  matchBackground: "#d9822b3a",
+  matchOverviewRuler: "#d9822b",
+  activeMatchBackground: "#d9822b90",
+  activeMatchColorOverviewRuler: "#d9822b",
+};
+
+export function getSearchDecorations(appTheme: ThemeType, terminalTheme: TerminalThemeName) {
+  return isTerminalThemeDark(terminalTheme, appTheme) ? SEARCH_DECORATIONS_DARK : SEARCH_DECORATIONS_LIGHT;
+}
+
 export function getTerminalTheme(appTheme: ThemeType, terminalTheme: TerminalThemeName, accent?: string) {
   let base;
   const darkTheme = terminalTheme !== "default" ? getOwnTheme(NAMED_DARK_THEMES, terminalTheme) : undefined;

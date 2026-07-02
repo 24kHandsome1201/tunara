@@ -1,13 +1,8 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { SearchAddon } from "@xterm/addon-search";
-
-const SEARCH_DECORATIONS = {
-  matchBackground: "#e8a96044",
-  matchOverviewRuler: "#e8a960",
-  activeMatchBackground: "#e8a960aa",
-  activeMatchColorOverviewRuler: "#e8a960",
-};
+import { getSearchDecorations } from "@/styles/terminalTheme";
+import { useUIStore } from "@/state/ui";
 
 // Remember the last terminal search query + options for this run so reopening
 // the search bar (in any terminal) restores the previous lookup instead of an
@@ -28,12 +23,17 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
   const optionsRef = useRef({ useRegex: lastTerminalSearch.useRegex, caseSensitive: lastTerminalSearch.caseSensitive });
   optionsRef.current = { useRegex, caseSensitive };
 
-  const getSearchOptions = useCallback(() => ({
-    regex: optionsRef.current.useRegex,
-    caseSensitive: optionsRef.current.caseSensitive,
-    wholeWord: false,
-    decorations: SEARCH_DECORATIONS,
-  }), []);
+  // Decorations resolve lazily per lookup so the highlight palette follows the
+  // live terminal theme (light vs dark) without re-wiring the addon on switch.
+  const getSearchOptions = useCallback(() => {
+    const { theme, terminalTheme } = useUIStore.getState();
+    return {
+      regex: optionsRef.current.useRegex,
+      caseSensitive: optionsRef.current.caseSensitive,
+      wholeWord: false,
+      decorations: getSearchDecorations(theme, terminalTheme),
+    };
+  }, []);
 
   const registerSearchAddon = useCallback((searchAddon: SearchAddon) => {
     searchAddonRef.current = searchAddon;

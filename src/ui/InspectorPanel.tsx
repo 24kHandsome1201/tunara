@@ -6,7 +6,7 @@ import { SessionOverviewPanel } from "./SessionOverviewPanel";
 import { SessionNotesPanel } from "./SessionNotesPanel";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
-import { CloseIcon } from "./shared";
+import { CloseIcon, PanelEmptyState } from "./shared";
 
 interface InspectorPanelProps {
   session: Session;
@@ -85,9 +85,17 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
         </div>
         <div key={`files-${tab}`} style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "files" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           {isRemote && session.ptyId === undefined ? (
-            <div style={{ padding: 16, fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>
-              {t("inspector.remote_hint")}
-            </div>
+            <PanelEmptyState
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+              }
+              label={t("inspector.remote_hint")}
+              sublabel={session.dir}
+            />
           ) : (
             <FileExplorer rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
           )}
