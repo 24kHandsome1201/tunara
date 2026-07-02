@@ -6881,7 +6881,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "tokio",
- "toml 0.8.2",
+ "toml 1.1.2+spec-1.1.0",
  "toml_edit 0.20.2",
  "which",
  "window-vibrancy 0.5.3",
