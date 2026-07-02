@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openSessionPty, reportSshOpenFailure, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
@@ -126,7 +127,10 @@ function TerminalViewImpl({
       fitRef.current = fit;
       term.loadAddon(fit);
       term.open(containerRef.current);
-      cleanups.push(registerTerminalPasteProtection(term).dispose);
+      // Confirmer must be the Tauri dialog: window.confirm never renders in
+      // wry's WKWebView and would silently drop every multiline/large paste.
+      cleanups.push(registerTerminalPasteProtection(term, (message) =>
+        tauriConfirmDialog(message, { kind: "warning" })).dispose);
       cleanups.push(registerTerminalClipboardHandler(term, {
         isWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
       }));

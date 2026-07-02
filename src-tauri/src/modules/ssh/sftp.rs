@@ -590,7 +590,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let real_target = home.join(format!(".tunara-symlink-real-{unique}"));
-        // `.config` is a real blocklist entry. Only run when ~/.config does NOT
+        // `.config` is a real blocklist entry. Only run when it does NOT
         // already exist as a real dir, so we never clobber the user's config.
         let link = home.join(".config");
         if link.exists() {

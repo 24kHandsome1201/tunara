@@ -727,7 +727,7 @@ test("primary device attributes advertise OSC 52 only when clipboard writes are 
   assert.equal(handlePrimaryDeviceAttributesQuery([0, 1], options), false);
 });
 
-test("terminal paste protection guards multiline and large pastes", () => {
+test("terminal paste protection guards multiline and large pastes", async () => {
   assert.equal(analyzeTerminalPaste("echo ok"), null);
   assert.deepEqual(analyzeTerminalPaste("echo one\necho two"), {
     charCount: 17,
@@ -749,6 +749,9 @@ test("terminal paste protection guards multiline and large pastes", () => {
   assert.ok(warning);
   assert.match(terminalPasteWarningMessage(warning), /2 行/);
 
+  // The confirmed paste is asynchronous (the confirmer may be the Tauri
+  // dialog plugin); interception itself stays synchronous.
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
   const pasted = [];
   const prompts = [];
   assert.equal(confirmProtectedTerminalPaste("echo ok", () => true, (text) => pasted.push(text)), false);
@@ -756,10 +759,13 @@ test("terminal paste protection guards multiline and large pastes", () => {
     prompts.push(message);
     return false;
   }, (text) => pasted.push(text)), true);
+  await flush();
   assert.deepEqual(pasted, []);
   assert.equal(prompts.length, 1);
 
   assert.equal(confirmProtectedTerminalPaste("echo one\necho two", () => true, (text) => pasted.push(text)), true);
+  assert.deepEqual(pasted, [], "paste must not happen before the confirmation resolves");
+  await flush();
   assert.deepEqual(pasted, ["echo one\necho two"]);
 });
 

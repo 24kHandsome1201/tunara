@@ -18,6 +18,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-is-fullscreen",
     "opener:default",
+    "dialog:allow-confirm",
     "log:default",
     "os:default",
     "store:default",

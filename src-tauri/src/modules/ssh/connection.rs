@@ -178,7 +178,9 @@ impl client::Handler for ClientHandler {
 }
 
 /// Remote shell-integration bootstrap (OSC 7 + OSC 133 hooks for bash/zsh).
-/// Sent base64-decoded via `eval` so it installs cleanly in one short line.
+/// Staged into a private remote temp file over an exec channel, then sourced
+/// by one SHORT line typed into the interactive shell (see
+/// `stage_remote_integration` for why it must never be sent inline).
 const REMOTE_INTEGRATION: &str = include_str!("scripts/remote-integration.sh");
 
 /// Bound on queued input messages (keystrokes/resizes) waiting for the pump.
@@ -275,31 +277,19 @@ impl SshSession {
             .await
             .map_err(|e| format!("request shell failed: {e}"))?;
 
-        // Install remote shell integration. We base64 the bootstrap and `eval`
-        // it in one leading-space line (leading space keeps it out of the
-        // remote shell's history). Output is suppressed so the only visible
-        // trace is the (echoed) command line itself. The script's
-        // `__TUNARA_SESSION_ID__` placeholder is replaced with the logical
-        // session id so the OSC 777 agent events it emits match the frontend's
-        // session (an empty id disables the agent wrappers via the script's
-        // own `[ -n ... ]` guard, leaving OSC 7 / 133 intact).
+        // Install remote shell integration: stage the bootstrap into a private
+        // remote temp file over a separate exec channel, then type only a
+        // SHORT ` . file; rm -f file` line into the shell. Both steps degrade
+        // silently (same posture as unsupported shells).
         if params.inject_shell_integration {
-            // Only safe ASCII session ids reach here (logical ids are uuids),
-            // but defend against a stray quote breaking the eval by stripping
-            // anything outside the id charset before substitution.
-            let safe_sid: String = params
-                .session_id
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-                .collect();
-            let script = REMOTE_INTEGRATION.replace("__TUNARA_SESSION_ID__", &safe_sid);
-            let encoded = B64.encode(script.as_bytes());
-            // Try GNU then BSD base64 flag; redirect stderr so failures are quiet.
-            let line = format!(
-                " eval \"$(printf %s {encoded} | base64 --decode 2>/dev/null || printf %s {encoded} | base64 -D 2>/dev/null)\"\n"
-            );
-            if let Err(e) = channel.data(line.as_bytes()).await {
-                log::debug!("ssh shell-integration inject failed: {e}");
+            match stage_remote_integration(&handle, &params.session_id).await {
+                Ok(path) => {
+                    let line = integration_source_line(&path);
+                    if let Err(e) = channel.data(line.as_bytes()).await {
+                        log::debug!("ssh shell-integration inject failed: {e}");
+                    }
+                }
+                Err(e) => log::debug!("ssh shell-integration staging failed: {e}"),
             }
         }
 
@@ -453,97 +443,184 @@ impl SshSession {
     /// Errors surface as strings; callers (e.g. remote git status) degrade to
     /// a "remote git unavailable" message instead of crashing the session.
     pub async fn exec(&self, command: &str, max_bytes: usize) -> Result<String, String> {
-        const EXEC_TIMEOUT: Duration = Duration::from_secs(15);
+        exec_on(&self.handle, command, max_bytes, Duration::from_secs(15)).await
+    }
+}
 
-        let mut channel = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|e| format!("open exec channel failed: {e}"))?;
-        channel
-            .exec(true, command)
-            .await
-            .map_err(|e| format!("exec failed: {e}"))?;
+/// `SshSession::exec`, as a free function so it can also run during
+/// `SshSession::open` (integration staging) before the session is constructed.
+async fn exec_on(
+    handle: &Handle<ClientHandler>,
+    command: &str,
+    max_bytes: usize,
+    timeout: Duration,
+) -> Result<String, String> {
+    let mut channel = handle
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("open exec channel failed: {e}"))?;
+    channel
+        .exec(true, command)
+        .await
+        .map_err(|e| format!("exec failed: {e}"))?;
 
-        let mut out: Vec<u8> = Vec::new();
-        let mut stderr_buf: Vec<u8> = Vec::new();
-        let mut exceeded = false;
-        let mut timed_out = false;
-        let deadline = tokio::time::Instant::now() + EXEC_TIMEOUT;
-        loop {
-            tokio::select! {
-                biased;
-                _ = tokio::time::sleep_until(deadline) => {
-                    // Break (don't early-return) so we still close the channel
-                    // below — russh Channel has no Drop-side CLOSE, so dropping
-                    // it would leave the remote process (e.g. a slow `find /`)
-                    // running and leak the local channel slot.
-                    timed_out = true;
-                    break;
-                }
-                msg = channel.wait() => {
-                    let Some(msg) = msg else { break };
-                    match msg {
-                        ChannelMsg::Data { ref data } => {
-                            if out.len() + data.len() > max_bytes {
-                                // Cap: keep the prefix we already have and stop.
-                                let room = max_bytes.saturating_sub(out.len());
-                                out.extend_from_slice(&data[..room]);
-                                exceeded = true;
-                                break;
-                            }
-                            out.extend_from_slice(data);
+    let mut out: Vec<u8> = Vec::new();
+    let mut stderr_buf: Vec<u8> = Vec::new();
+    let mut exceeded = false;
+    let mut timed_out = false;
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        tokio::select! {
+            biased;
+            _ = tokio::time::sleep_until(deadline) => {
+                // Break (don't early-return) so we still close the channel
+                // below — russh Channel has no Drop-side CLOSE, so dropping
+                // it would leave the remote process (e.g. a slow `find /`)
+                // running and leak the local channel slot.
+                timed_out = true;
+                break;
+            }
+            msg = channel.wait() => {
+                let Some(msg) = msg else { break };
+                match msg {
+                    ChannelMsg::Data { ref data } => {
+                        if out.len() + data.len() > max_bytes {
+                            // Cap: keep the prefix we already have and stop.
+                            let room = max_bytes.saturating_sub(out.len());
+                            out.extend_from_slice(&data[..room]);
+                            exceeded = true;
+                            break;
                         }
-                        ChannelMsg::ExtendedData { ref data, ext: 1 } => {
-                            // Capture stderr separately so a git status on a
-                            // non-repo dir surfaces a useful error rather than
-                            // polluting the parsed stdout.
-                            const STDERR_CAP: usize = 4 * 1024;
-                            if stderr_buf.len() < STDERR_CAP {
-                                let room = STDERR_CAP.saturating_sub(stderr_buf.len());
-                                stderr_buf.extend_from_slice(&data[..room.min(data.len())]);
-                            }
-                        }
-                        ChannelMsg::ExitStatus { .. } | ChannelMsg::Eof | ChannelMsg::Close => break,
-                        _ => {}
+                        out.extend_from_slice(data);
                     }
+                    ChannelMsg::ExtendedData { ref data, ext: 1 } => {
+                        // Capture stderr separately so a git status on a
+                        // non-repo dir surfaces a useful error rather than
+                        // polluting the parsed stdout.
+                        const STDERR_CAP: usize = 4 * 1024;
+                        if stderr_buf.len() < STDERR_CAP {
+                            let room = STDERR_CAP.saturating_sub(stderr_buf.len());
+                            stderr_buf.extend_from_slice(&data[..room.min(data.len())]);
+                        }
+                    }
+                    ChannelMsg::ExitStatus { .. } | ChannelMsg::Eof | ChannelMsg::Close => break,
+                    _ => {}
                 }
             }
         }
-
-        // Always close the channel before returning. On the timeout and
-        // cap-exceeded paths the remote process is still running; close() sends
-        // CHANNEL_CLOSE so the remote terminates and the local channel slot is
-        // released (russh does not do this on drop). On the clean Eof/Close
-        // path it's a harmless no-op. Errors here are non-fatal — the command
-        // already produced (or failed to produce) its output.
-        let _ = channel.close().await;
-
-        if timed_out {
-            return Err("exec timed out (15s)".to_string());
-        }
-
-        // If we have no stdout but stderr produced something, return stderr so
-        // the caller gets a descriptive error (e.g. "fatal: not a git
-        // repository"). Trim to keep the toast/message readable.
-        if out.is_empty() && !stderr_buf.is_empty() {
-            let msg = String::from_utf8_lossy(&stderr_buf).trim().to_string();
-            return Err(if msg.is_empty() {
-                "remote command produced no output".into()
-            } else {
-                msg
-            });
-        }
-
-        if exceeded {
-            // Hard-cap the output. NOTE: callers can't currently tell truncation
-            // from a complete result — `out` carries no marker. Callers that
-            // care (remote search) cap well below max_bytes; a marker/flag is a
-            // separate contract change, not done here.
-            out.truncate(max_bytes);
-        }
-        Ok(String::from_utf8_lossy(&out).into_owned())
     }
+
+    // Always close the channel before returning. On the timeout and
+    // cap-exceeded paths the remote process is still running; close() sends
+    // CHANNEL_CLOSE so the remote terminates and the local channel slot is
+    // released (russh does not do this on drop). On the clean Eof/Close
+    // path it's a harmless no-op. Errors here are non-fatal — the command
+    // already produced (or failed to produce) its output.
+    let _ = channel.close().await;
+
+    if timed_out {
+        return Err(format!("exec timed out ({}s)", timeout.as_secs()));
+    }
+
+    // If we have no stdout but stderr produced something, return stderr so
+    // the caller gets a descriptive error (e.g. "fatal: not a git
+    // repository"). Trim to keep the toast/message readable.
+    if out.is_empty() && !stderr_buf.is_empty() {
+        let msg = String::from_utf8_lossy(&stderr_buf).trim().to_string();
+        return Err(if msg.is_empty() {
+            "remote command produced no output".into()
+        } else {
+            msg
+        });
+    }
+
+    if exceeded {
+        // Hard-cap the output. NOTE: callers can't currently tell truncation
+        // from a complete result — `out` carries no marker. Callers that
+        // care (remote search) cap well below max_bytes; a marker/flag is a
+        // separate contract change, not done here.
+        out.truncate(max_bytes);
+    }
+    Ok(String::from_utf8_lossy(&out).into_owned())
+}
+
+/// Stage the shell-integration bootstrap into a private remote temp file via a
+/// one-shot exec channel, returning the remote path to source.
+///
+/// The script must NEVER be typed into the interactive shell inline: input
+/// that arrives before the shell's line editor switches the pty to raw mode
+/// sits in the tty's canonical line buffer, which caps a single line at 4096
+/// bytes on Linux (1024 on BSD/macOS). The previous one-line
+/// `eval "$(printf %s <base64> | base64 -d ...)"` injection was ~11 KB, so the
+/// line discipline discarded its tail INCLUDING the terminating newline — the
+/// eval never ran, integration was silently lost, and up to 4 KB of base64 was
+/// echoed and left pending on the first prompt (junk the user had to Ctrl+C
+/// away). The exec channel has no tty, so it carries the payload without any
+/// length limit or echo; the shell only ever sees the short source line built
+/// by `integration_source_line` (guarded well under the 1024-byte floor).
+///
+/// `mktemp` creates the file 0600 with O_EXCL under a random name, so a
+/// co-tenant on the remote host can neither pre-plant a symlink nor read the
+/// staged script. The `sh -c` wrapper keeps the command portable when the
+/// login shell is fish/csh. Degrades with Err (caller skips injection) on
+/// servers without mktemp/base64 or with exec disabled.
+async fn stage_remote_integration(
+    handle: &Handle<ClientHandler>,
+    session_id: &str,
+) -> Result<String, String> {
+    // Only safe ASCII session ids reach here (logical ids are uuids), but
+    // defend against a stray quote breaking the shell by stripping anything
+    // outside the id charset before substitution. An empty id disables the
+    // agent wrappers via the script's own `[ -n ... ]` guard, leaving
+    // OSC 7 / 133 intact.
+    let safe_sid: String = session_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        .collect();
+    let script = REMOTE_INTEGRATION.replace("__TUNARA_SESSION_ID__", &safe_sid);
+    let encoded = B64.encode(script.as_bytes());
+    let command = integration_stage_command(&encoded);
+    let out = exec_on(handle, &command, 4096, Duration::from_secs(5)).await?;
+    // Some servers print a banner/MOTD even on exec channels; take the last
+    // line that looks like our mktemp path instead of requiring clean output.
+    let path = out
+        .lines()
+        .map(str::trim)
+        .rfind(|line| is_safe_remote_path(line));
+    match path {
+        Some(path) => Ok(path.to_string()),
+        None => Err(format!("unexpected staging output: {:?}", out.trim())),
+    }
+}
+
+/// One-shot exec command that writes the base64 payload to a fresh `mktemp`
+/// file and prints the path (and nothing else) on success. Tries the GNU then
+/// BSD base64 decode flag; stderr is discarded so failures stay quiet.
+fn integration_stage_command(encoded: &str) -> String {
+    format!(
+        "sh -c 'f=$(mktemp /tmp/.tunara-si-XXXXXXXXXX) && {{ printf %s {encoded} | base64 --decode 2>/dev/null || printf %s {encoded} | base64 -D 2>/dev/null; }} > \"$f\" && printf %s \"$f\"'"
+    )
+}
+
+/// The ONLY line typed into the interactive shell: source the staged file,
+/// then remove it. Leading space keeps it out of ignorespace-style history;
+/// `2>/dev/null` silences non-POSIX shells (fish sources it and hits the
+/// bash/zsh guards; csh errors once — same posture as the old inline eval).
+/// Must stay far below 1024 bytes, the smallest (BSD) canonical-mode tty line
+/// buffer — see `stage_remote_integration` and the regression test below.
+fn integration_source_line(path: &str) -> String {
+    format!(" . \"{path}\" 2>/dev/null; rm -f \"{path}\"\n")
+}
+
+/// Accept only the path shape our own stage command can produce — an absolute
+/// `/tmp/.tunara-si-*` path in a conservative charset. Anything else (error
+/// text, MOTD noise, a hostile multi-line blob) must not reach the shell line.
+fn is_safe_remote_path(path: &str) -> bool {
+    path.starts_with("/tmp/.tunara-si-")
+        && path.len() < 200
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '_' | '-'))
 }
 
 impl Drop for SshSession {
@@ -554,5 +631,61 @@ impl Drop for SshSession {
         // Drop — channel EOF + handle drop is sufficient for cleanup. Ignore
         // the result: if the pump is already gone there's nothing to signal.
         let _ = self.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: the line typed into the interactive shell must stay far
+    /// below the smallest canonical-mode tty line buffer (1024 on BSD/macOS,
+    /// 4096 on Linux). The original inline-eval injection was ~11 KB; the
+    /// line discipline dropped its tail (newline included), so the eval never
+    /// ran and kilobytes of base64 were echoed and left pending at the first
+    /// prompt. Payload bytes may only travel over the exec channel.
+    #[test]
+    fn source_line_fits_every_canonical_tty_buffer() {
+        let line = integration_source_line("/tmp/.tunara-si-AbCd012345");
+        assert!(
+            line.len() < 256,
+            "shell line too long: {} bytes",
+            line.len()
+        );
+        assert!(line.ends_with('\n'));
+        assert_eq!(line.matches('\n').count(), 1, "must be a single line");
+        assert!(
+            line.starts_with(' '),
+            "leading space keeps it out of history"
+        );
+    }
+
+    /// The full bootstrap payload (script + base64 expansion) must never leak
+    /// into the shell line — only into the exec-channel stage command.
+    #[test]
+    fn payload_travels_on_the_exec_channel_only() {
+        let encoded = B64.encode(REMOTE_INTEGRATION.as_bytes());
+        assert!(
+            encoded.len() > 4096,
+            "payload no longer exceeds the canonical limit; if this shrank on \
+             purpose the staging design still stands, update this bound"
+        );
+        let stage = integration_stage_command(&encoded);
+        assert!(stage.contains(&encoded));
+        let line = integration_source_line("/tmp/.tunara-si-AbCd012345");
+        assert!(!line.contains(&encoded[..32]));
+    }
+
+    #[test]
+    fn stage_output_path_is_validated() {
+        assert!(is_safe_remote_path("/tmp/.tunara-si-aB3xY9_qWe"));
+        // Error text, prompts, or anything shell-active must be rejected.
+        assert!(!is_safe_remote_path(""));
+        assert!(!is_safe_remote_path("mktemp: not found"));
+        assert!(!is_safe_remote_path("/tmp/.tunara-si-x; rm -rf ~"));
+        assert!(!is_safe_remote_path("/tmp/.tunara-si-x\n/etc/passwd"));
+        assert!(!is_safe_remote_path("/tmp/evil-si-abc"));
+        assert!(!is_safe_remote_path("/tmp/.tunara-si-x y"));
+        assert!(!is_safe_remote_path("/tmp/.tunara-si-x\"$(id)\""));
     }
 }
