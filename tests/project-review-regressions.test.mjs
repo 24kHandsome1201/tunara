@@ -94,8 +94,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const agentBadge = read("src/ui/agents/badge.tsx");
   const sessionCard = read("src/ui/SessionCard.tsx");
 
-  assert.match(cargo, /^toml = "0\.8"$/m);
-  assert.match(cargo, /^toml_edit = "0\.20"$/m);
+  assert.match(cargo, /^toml = "1"$/m);
+  assert.match(cargo, /^toml_edit = "0\.25"$/m);
   assert.match(modules, /pub mod config;/);
   assert.match(lib, /modules::config::load_config/);
   assert.match(lib, /modules::config::save_config/);
@@ -104,7 +104,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /migrate_legacy_config_if_needed/);
   assert.match(configRs, /fs::copy\(legacy_path, path\)/);
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
-  assert.match(configRs, /use toml_edit::\{value, Document, Item, Table\}/);
+  assert.match(configRs, /use toml_edit::\{value, DocumentMut, Item, Table\}/);
   assert.match(configRs, /merge_known_config/);
   assert.match(configRs, /MAX_SCROLLBACK: u32 = 20_000/);
   assert.doesNotMatch(configRs, /MAX_PANEL_WIDTH/);

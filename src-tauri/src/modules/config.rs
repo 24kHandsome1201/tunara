@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use toml_edit::{value, Document, Item, Table};
+use toml_edit::{value, DocumentMut, Item, Table};
 
 const MIN_FONT_SIZE: u16 = 10;
 const MAX_FONT_SIZE: u16 = 22;
@@ -195,7 +195,7 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 1
     ]
 }
 
-fn ensure_document_table<'a>(doc: &'a mut Document, key: &str) -> Result<&'a mut Table, String> {
+fn ensure_document_table<'a>(doc: &'a mut DocumentMut, key: &str) -> Result<&'a mut Table, String> {
     let item = doc
         .as_table_mut()
         .entry(key)
@@ -217,7 +217,7 @@ fn set_table_item(table: &mut Table, key: &str, item: Item) {
 
 fn merge_known_config(raw: &str, config: &TunaraConfig) -> Result<String, String> {
     let mut doc = raw
-        .parse::<Document>()
+        .parse::<DocumentMut>()
         .map_err(|e| format!("parse existing config failed: {e}"))?;
 
     {
