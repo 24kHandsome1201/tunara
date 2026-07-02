@@ -258,6 +258,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   removeSession: (id) => {
     cancelCloseConfirmationTimer(id);
     cancelPendingGitRefresh(id);
+    // A bump queued in this same tick would otherwise re-create the session's
+    // gitNonce key after the store entry below is deleted.
+    queuedGitNonceBumps.delete(id);
     removeTerminalSnapshot(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
