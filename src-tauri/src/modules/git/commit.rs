@@ -6,7 +6,7 @@
 
 fn git_add_args(files: &[String]) -> Result<Vec<String>, String> {
     if files.is_empty() {
-        return Err("没有选择要提交的文件".into());
+        return Err("no files selected to commit".into());
     }
     let mut args = Vec::with_capacity(files.len() + 2);
     args.push("add".into());
@@ -14,7 +14,7 @@ fn git_add_args(files: &[String]) -> Result<Vec<String>, String> {
     for file in files {
         let trimmed = file.trim();
         if trimmed.is_empty() {
-            return Err("提交文件路径不能为空".into());
+            return Err("commit file path must not be empty".into());
         }
         args.push(trimmed.to_string());
     }

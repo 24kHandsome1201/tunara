@@ -39,8 +39,9 @@ export function fsSearch(
 // ── Content search (fs_grep) ───────────────────────────────────────────────
 // Wraps the registered `fs_grep` command (src-tauri/src/modules/fs/grep.rs).
 // Returns per-line matches across files under `root`, respecting .gitignore
-// and hidden-file rules on the backend. Read-only. Remote sessions have no
-// ssh_fs_grep yet — keep this local-only.
+// and hidden-file rules on the backend. Read-only. The remote counterpart is
+// sshGrep (ssh_fs_grep) in @/modules/ssh/remote-fs-bridge, sharing this
+// GrepResponse shape.
 
 export interface GrepHit {
   path: string;

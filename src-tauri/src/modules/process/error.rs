@@ -16,23 +16,28 @@ pub enum ProcessError {
     Io(String),
 }
 
+// Display strings are English on purpose: they cross the IPC boundary as raw
+// error strings (e.g. agent preflight failures shown in the Settings CLI tab),
+// and every other backend error string is English. UI-language messages belong
+// in the frontend i18n layer; baking Chinese here produced mixed-language
+// errors for English users.
 impl fmt::Display for ProcessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProcessError::Spawn(m) => write!(f, "无法启动子进程：{m}"),
-            ProcessError::Timeout => write!(f, "子进程超时，已终止"),
-            ProcessError::Cancelled => write!(f, "已取消"),
+            ProcessError::Spawn(m) => write!(f, "failed to start subprocess: {m}"),
+            ProcessError::Timeout => write!(f, "subprocess timed out and was terminated"),
+            ProcessError::Cancelled => write!(f, "cancelled"),
             ProcessError::NonZeroExit { code, stderr } => {
                 let c = code
                     .map(|c| c.to_string())
                     .unwrap_or_else(|| "signal".into());
                 if stderr.is_empty() {
-                    write!(f, "子进程退出码 {c}")
+                    write!(f, "subprocess exited with code {c}")
                 } else {
                     write!(f, "{stderr}")
                 }
             }
-            ProcessError::Io(m) => write!(f, "IO 错误：{m}"),
+            ProcessError::Io(m) => write!(f, "IO error: {m}"),
         }
     }
 }
@@ -54,13 +59,16 @@ mod tests {
     fn display_maps_each_variant_to_its_ui_string() {
         assert_eq!(
             ProcessError::Spawn("no PATH".into()).to_string(),
-            "无法启动子进程：no PATH"
+            "failed to start subprocess: no PATH"
         );
-        assert_eq!(ProcessError::Timeout.to_string(), "子进程超时，已终止");
-        assert_eq!(ProcessError::Cancelled.to_string(), "已取消");
+        assert_eq!(
+            ProcessError::Timeout.to_string(),
+            "subprocess timed out and was terminated"
+        );
+        assert_eq!(ProcessError::Cancelled.to_string(), "cancelled");
         assert_eq!(
             ProcessError::Io("disk full".into()).to_string(),
-            "IO 错误：disk full"
+            "IO error: disk full"
         );
     }
 
@@ -79,7 +87,7 @@ mod tests {
             code: Some(127),
             stderr: String::new(),
         };
-        assert_eq!(e.to_string(), "子进程退出码 127");
+        assert_eq!(e.to_string(), "subprocess exited with code 127");
     }
 
     #[test]
@@ -88,12 +96,12 @@ mod tests {
             code: None,
             stderr: String::new(),
         };
-        assert_eq!(e.to_string(), "子进程退出码 signal");
+        assert_eq!(e.to_string(), "subprocess exited with code signal");
     }
 
     #[test]
     fn from_process_error_for_string_uses_display() {
         let s: String = ProcessError::Cancelled.into();
-        assert_eq!(s, "已取消");
+        assert_eq!(s, "cancelled");
     }
 }

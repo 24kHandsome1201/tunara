@@ -1133,7 +1133,6 @@ test("OSC 7 cwd replay updates sidebar directory and clears stale git context", 
   const h = createHarness(makeSession({
     branch: "main",
     changes: {
-      summary: "1 file changed",
       files: [{ path: "old.ts", status: "modified", added: 1, removed: 0 }],
     },
     lastCommand: "cd /tmp/project a",

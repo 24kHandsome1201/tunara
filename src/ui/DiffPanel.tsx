@@ -14,6 +14,7 @@ import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
 import { openInEditor } from "@/modules/editor/open";
 import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
+import { summarizeChangedFiles } from "@/modules/session/session-insights";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { copyText } from "./lib/clipboard";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
@@ -292,6 +293,34 @@ function fileRowKey(file: Pick<FileChange, "stage" | "path">): string {
   return `${file.stage}:${file.path}`;
 }
 
+// Stable identity for the no-changes case. Minting a fresh empty array on
+// each render (the old nullish-coalescing-to-a-literal) made the
+// expanded-file-pruning effect below re-run on every render whenever there
+// were no changes.
+const EMPTY_FILES: readonly FileChange[] = Object.freeze([]);
+
+/**
+ * Localized summary line ("N files · +A −R"), composed on the frontend from
+ * the file list. The backend used to bake this string into StatusResult —
+ * hardcoded Chinese on the local path and English on the remote path, so
+ * every user saw a mixed-language rail in one direction or the other. Line
+ * counts are omitted when no file carries any (remote porcelain v1 has no
+ * per-file numbers), instead of rendering a noisy "+0 −0". Totals come from
+ * the shared, node-tested summarizeChangedFiles helper.
+ */
+function composeChangesSummary(
+  files: readonly FileChange[],
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  const { fileCount, added, removed } = summarizeChangedFiles(files);
+  if (fileCount === 0) return "";
+  const filesLabel = fileCount === 1
+    ? t("diff.summary.files_one")
+    : t("diff.summary.files_other", { count: fileCount });
+  if (added === 0 && removed === 0) return filesLabel;
+  return `${filesLabel} · ${t("diff.summary.lines", { added, removed })}`;
+}
+
 export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const t = useT();
   const isRemote = !!session.remote;
@@ -301,9 +330,9 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const collapsedSections = useUIStore((s) => s.collapsedDiffSections);
   const toggleDiffSectionCollapsed = useUIStore((s) => s.toggleDiffSectionCollapsed);
 
-  const files = session.changes?.files ?? [];
+  const files = session.changes?.files ?? EMPTY_FILES;
   const branch = session.branch || "";
-  const summary = session.changes?.summary ?? "";
+  const summary = useMemo(() => composeChangesSummary(files, t), [files, t]);
   const notGit = session.gitState === "notGit" || (!isRemote && !repoPath);
   const loading = session.gitState !== "repo" && session.gitState !== "notGit" && !session.changes;
 

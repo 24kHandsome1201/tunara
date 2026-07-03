@@ -138,6 +138,16 @@ mod platform {
                     }
                     match stream {
                         Ok(conn) => {
+                            // The accept loop is single-threaded and
+                            // read_to_string blocks until the peer closes its
+                            // write side. A client that connects and then hangs
+                            // (a stuck hook script, a stray `nc`) would stall
+                            // ALL hook processing forever. Payloads are tiny
+                            // one-shot writes, so a short deadline is generous;
+                            // a slow/hung writer is dropped and the loop moves
+                            // on to the next connection.
+                            let _ = conn
+                                .set_read_timeout(Some(std::time::Duration::from_secs(2)));
                             let mut raw = String::new();
                             match conn.take(65536).read_to_string(&mut raw) {
                                 Ok(n) if n > 0 => match serde_json::from_str::<HookPayload>(&raw) {

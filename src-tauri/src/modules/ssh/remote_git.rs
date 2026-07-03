@@ -11,6 +11,7 @@
 
 use tauri::State;
 
+use crate::modules::fs::grep::{GrepHit, GrepResponse};
 use crate::modules::fs::search::SearchHit;
 use crate::modules::git::{FileChange, FileDiff, StatusResult};
 use crate::modules::pty::{PtyState, Session};
@@ -99,12 +100,7 @@ pub(crate) fn parse_porcelain_v1(raw: &str) -> StatusResult {
     }
 
     files.sort_by(|a, b| a.path.cmp(&b.path).then(a.stage.cmp(&b.stage)));
-    let summary = format!("{} files", files.len());
-    StatusResult {
-        branch,
-        files,
-        summary,
-    }
+    StatusResult { branch, files }
 }
 
 /// Run `git status --porcelain=v1 --branch` in the remote session's cwd and
@@ -254,6 +250,153 @@ pub async fn ssh_fs_search(
     Ok(parse_find_output(&out, &root))
 }
 
+// ── Remote content search (grep over the exec channel) ─────────────────────
+
+/// Byte cap on remote grep stdout, matching the remote status budget. The line
+/// cap below is the primary limiter; this bounds pathological single lines.
+const MAX_GREP_BYTES: usize = 256 * 1024;
+/// Response cap defaults/limits, mirroring the local `fs_grep` contract.
+const REMOTE_GREP_DEFAULT_RESULTS: usize = 200;
+const REMOTE_GREP_HARD_MAX_RESULTS: usize = 1000;
+
+/// Parse `grep -rn` output (`./rel/path:LINE:text` per line, produced by
+/// grepping `.` after `cd`-ing into `root`) into `GrepHit`s plus a truncation
+/// flag. Pure function so it can be unit-tested without a live SSH exec.
+///
+/// Defensive parsing rules:
+/// - a line must split as `path:number:text`; anything else (banner noise,
+///   a path whose name itself contains `:` before the line number) is skipped
+///   rather than guessed at;
+/// - hidden paths (any `.`-prefixed component) are filtered here instead of
+///   with fragile `--exclude-dir='.*'` globs, whose treatment of the `.` start
+///   directory differs between GNU and BSD grep;
+/// - if the raw output was byte-capped mid-line (no trailing newline), the
+///   final partial hit is dropped and the result is marked truncated.
+pub(crate) fn parse_grep_output(raw: &str, root: &str, max_results: usize) -> (Vec<GrepHit>, bool) {
+    let root_trimmed = root.trim_end_matches('/');
+    let mut hits: Vec<GrepHit> = Vec::new();
+    let mut truncated = false;
+
+    for line in raw.lines() {
+        if hits.len() > max_results {
+            // The command asks head for max_results + 1 lines precisely so an
+            // extra parsed hit here proves more matches exist.
+            truncated = true;
+            break;
+        }
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(3, ':');
+        let (Some(path_part), Some(line_part), Some(text)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let Ok(line_no) = line_part.parse::<u64>() else {
+            continue;
+        };
+        let rel = path_part
+            .strip_prefix("./")
+            .unwrap_or(path_part)
+            .trim_start_matches('/');
+        if rel.is_empty() {
+            continue;
+        }
+        // Hidden filter: matches the local walker's hidden(true) behavior.
+        if rel
+            .split('/')
+            .any(|component| component.starts_with('.'))
+        {
+            continue;
+        }
+        hits.push(GrepHit {
+            path: format!("{root_trimmed}/{rel}"),
+            rel: rel.to_string(),
+            line: line_no,
+            text: text.trim_end_matches('\r').to_string(),
+        });
+    }
+
+    // Byte-cap cut mid-line: the last "hit" may be a sliced fragment.
+    if !raw.is_empty() && !raw.ends_with('\n') && !hits.is_empty() {
+        hits.pop();
+        truncated = true;
+    }
+    if hits.len() > max_results {
+        hits.truncate(max_results);
+        truncated = true;
+    }
+    (hits, truncated)
+}
+
+/// Run a content search (`grep -rEIn`) in `root` over the SSH exec channel and
+/// return it in the exact shape of the local `fs_grep`, so FileExplorer's
+/// content-search mode works for SSH sessions too.
+///
+/// Requires a POSIX-ish remote shell and a grep supporting `-r -E -I -n` and
+/// `--exclude-dir` (GNU and BSD both qualify). grep's stderr is suppressed so
+/// permission noise can't fail a valid search, which means a minimal busybox
+/// grep degrades to an empty result — the same silent posture the remote
+/// shell-integration takes on unsupported hosts. The `--exclude-dir` list
+/// mirrors the local watcher's noisy-path set; hidden paths are filtered in
+/// the parser (see `parse_grep_output`).
+///
+/// `files_scanned` cannot be known remotely; it reports the number of distinct
+/// files among the hits instead (the UI only renders hits + truncated).
+#[tauri::command]
+pub async fn ssh_fs_grep(
+    state: State<'_, PtyState>,
+    session_id: u32,
+    root: String,
+    pattern: String,
+    case_insensitive: Option<bool>,
+    max_results: Option<usize>,
+) -> Result<GrepResponse, String> {
+    if pattern.is_empty() {
+        return Err("empty pattern".into());
+    }
+    let session = ssh_session(&state, session_id)?;
+    let ssh = match session.as_ref() {
+        Session::Ssh(s) => s,
+        Session::Local(_) => return Err("not a remote session".to_string()),
+    };
+    let cap = max_results
+        .unwrap_or(REMOTE_GREP_DEFAULT_RESULTS)
+        .clamp(1, REMOTE_GREP_HARD_MAX_RESULTS);
+
+    // Shell-quote root and pattern (same single-quote escape the diff path
+    // uses); `-e` keeps a leading `-` in the pattern from becoming a flag.
+    let root_q = format!("'{}'", root.replace('\'', "'\\''"));
+    let pattern_q = format!("'{}'", pattern.replace('\'', "'\\''"));
+    let case_flag = if case_insensitive == Some(true) { "-i " } else { "" };
+    // head asks for cap + 1 lines so the parser can distinguish "exactly cap
+    // matches" from "more matches exist". grep's stderr is discarded so
+    // permission-denied noise on a single unreadable subdir can't turn a valid
+    // zero-match search into an error; cd's stderr is NOT discarded, so a
+    // missing/denied root still surfaces as a visible failure via exec's
+    // empty-stdout-with-stderr path.
+    let head_cap = cap + 1;
+    let cmd = format!(
+        "cd {root_q} && grep -rEIn {case_flag}--exclude-dir=.git --exclude-dir=node_modules \
+         --exclude-dir=target --exclude-dir=dist -e {pattern_q} . 2>/dev/null | head -n {head_cap}"
+    );
+    let out = ssh.exec(&cmd, MAX_GREP_BYTES).await?;
+    let (hits, truncated) = parse_grep_output(&out, &root, cap);
+    let files_scanned = {
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for hit in &hits {
+            seen.insert(hit.rel.as_str());
+        }
+        seen.len()
+    };
+    Ok(GrepResponse {
+        hits,
+        truncated,
+        files_scanned,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,5 +511,71 @@ A  new.txt
         let raw = "/other/place.txt\n";
         let hits = parse_find_output(raw, "/srv/app");
         assert_eq!(hits[0].name, "place.txt");
+    }
+
+    // ── grep output parsing (remote content search) ────────────────────────
+
+    #[test]
+    fn parse_grep_output_builds_hits_relative_to_root() {
+        let raw = "./src/main.rs:12:fn main() {\n./README.md:3:usage: tunara\n";
+        let (hits, truncated) = parse_grep_output(raw, "/home/alice/project", 200);
+        assert!(!truncated);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].path, "/home/alice/project/src/main.rs");
+        assert_eq!(hits[0].rel, "src/main.rs");
+        assert_eq!(hits[0].line, 12);
+        assert_eq!(hits[0].text, "fn main() {");
+    }
+
+    #[test]
+    fn parse_grep_output_keeps_colons_inside_the_matched_text() {
+        // Only the first two `:` separate path and line; the rest is text.
+        let raw = "./a.ts:5:const url = \"http://x:8080\";\n";
+        let (hits, _) = parse_grep_output(raw, "/r", 200);
+        assert_eq!(hits[0].text, "const url = \"http://x:8080\";");
+    }
+
+    #[test]
+    fn parse_grep_output_skips_malformed_and_hidden_lines() {
+        let raw = "\
+banner noise without separators
+./.hidden/secret.txt:1:match in hidden dir
+./src/ok.rs:notanumber:bad line field
+./src/ok.rs:7:real match
+";
+        let (hits, truncated) = parse_grep_output(raw, "/r", 200);
+        assert!(!truncated);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].rel, "src/ok.rs");
+        assert_eq!(hits[0].line, 7);
+    }
+
+    #[test]
+    fn parse_grep_output_truncates_at_max_results() {
+        // head hands back cap + 1 lines; the extra line proves more exist.
+        let raw = "./a:1:x\n./b:2:y\n./c:3:z\n";
+        let (hits, truncated) = parse_grep_output(raw, "/r", 2);
+        assert!(truncated);
+        assert_eq!(hits.len(), 2);
+    }
+
+    #[test]
+    fn parse_grep_output_drops_a_byte_capped_partial_final_line() {
+        // Output cut mid-line by the exec byte cap must not surface a sliced
+        // fragment as a hit.
+        let raw = "./a.txt:1:whole line\n./b.txt:2:slice";
+        let (hits, truncated) = parse_grep_output(raw, "/r", 200);
+        assert!(truncated);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].rel, "a.txt");
+    }
+
+    #[test]
+    fn parse_grep_output_handles_root_with_trailing_slash_and_bare_root() {
+        let raw = "./x.txt:1:hit\n";
+        let (hits, _) = parse_grep_output(raw, "/srv/app/", 200);
+        assert_eq!(hits[0].path, "/srv/app/x.txt");
+        let (hits, _) = parse_grep_output(raw, "/", 200);
+        assert_eq!(hits[0].path, "/x.txt");
     }
 }

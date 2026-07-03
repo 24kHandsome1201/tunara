@@ -27,15 +27,19 @@ export function createTerminalOutputBuffer(term: Terminal) {
     pendingBytes = 0;
   };
 
-  const replacePendingWithOverflowNotice = () => {
-    pendingData = [OVERFLOW_NOTICE];
-    pendingBytes = OVERFLOW_NOTICE.byteLength;
-  };
-
   return {
     push(data: Uint8Array) {
       if (pendingBytes + data.byteLength > MAX_PENDING_BYTES) {
-        replacePendingWithOverflowNotice();
+        // Drop the BACKLOG, keep the chunk that arrived — mirroring the
+        // backend reader (session.rs), which clears its pending buffer and
+        // then appends the new read. Dropping the incoming chunk too would
+        // discard fresh bytes for no reason and let the next kept chunk start
+        // mid-escape-sequence relative to it; the notice's ESC c reset plus
+        // the preserved chunk keep the stream consistent. A single chunk can
+        // never exceed the cap by itself: the backend flushes at most
+        // ~1 MiB + one read per Data event, half this budget.
+        pendingData = [OVERFLOW_NOTICE, data];
+        pendingBytes = OVERFLOW_NOTICE.byteLength + data.byteLength;
       } else {
         pendingData.push(data);
         pendingBytes += data.byteLength;

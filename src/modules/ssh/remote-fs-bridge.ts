@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirEntry, ReadResult, SearchHit } from "@/modules/fs/fs-bridge";
+import type { DirEntry, GrepResponse, ReadResult, SearchHit } from "@/modules/fs/fs-bridge";
 
 /**
  * 远程 SFTP 文件操作。返回类型与本地 fs-bridge 完全一致，
@@ -70,10 +70,50 @@ export function sshSearch(
   });
 }
 
-/** Invalidate the cache for one session (e.g. after a directory reload). */
+// ── Remote content search (over the SSH exec channel) ─────────────────────
+// Mirrors the local fs_grep contract (same GrepResponse shape) so
+// FileExplorer's content-search mode works for SSH sessions. Cached like the
+// name search: grep is the most expensive remote round-trip we make from the
+// panel, and backspacing through a query must not re-run it every debounce.
+
+const grepCache = new Map<string, GrepResponse>();
+const GREP_CACHE_MAX = 16;
+
+export function sshGrep(
+  ptyId: number,
+  root: string,
+  pattern: string,
+  maxResults = 200,
+): Promise<GrepResponse> {
+  const key = cacheKey(ptyId, root, pattern);
+  const cached = grepCache.get(key);
+  if (cached) {
+    grepCache.delete(key);
+    grepCache.set(key, cached);
+    return Promise.resolve(cached);
+  }
+  return invoke<GrepResponse>("ssh_fs_grep", {
+    sessionId: ptyId,
+    root,
+    pattern,
+    maxResults,
+  }).then((resp) => {
+    if (grepCache.size >= GREP_CACHE_MAX) {
+      const oldest = grepCache.keys().next().value;
+      if (oldest !== undefined) grepCache.delete(oldest);
+    }
+    grepCache.set(key, resp);
+    return resp;
+  });
+}
+
+/** Invalidate the caches for one session (e.g. after a directory reload). */
 export function invalidateRemoteSearchCache(ptyId: number): void {
   const prefix = `${ptyId}|`;
   for (const k of searchCache.keys()) {
     if (k.startsWith(prefix)) searchCache.delete(k);
+  }
+  for (const k of grepCache.keys()) {
+    if (k.startsWith(prefix)) grepCache.delete(k);
   }
 }

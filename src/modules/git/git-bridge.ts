@@ -16,7 +16,6 @@ export interface FileChange {
 export interface StatusResult {
   branch: string;
   files: FileChange[];
-  summary: string;
 }
 
 export type FileDiff =

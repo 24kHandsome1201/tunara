@@ -14,6 +14,7 @@ const DEFAULT_MAX_RESULTS: usize = 200;
 const HARD_MAX_RESULTS: usize = 2000;
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GrepHit {
     pub path: String,
     pub rel: String,
@@ -21,7 +22,11 @@ pub struct GrepHit {
     pub text: String,
 }
 
+// camelCase matters here: the frontend GrepResponse type reads `filesScanned`,
+// and without the rename this struct serialized `files_scanned`, so the field
+// silently arrived as undefined on the TS side.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GrepResponse {
     pub hits: Vec<GrepHit>,
     pub truncated: bool,

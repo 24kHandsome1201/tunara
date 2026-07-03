@@ -56,12 +56,14 @@ pub struct FileChange {
     pub removed: usize,
 }
 
+/// Status payload for the review rail. Deliberately carries no display string:
+/// the localized summary line is composed on the frontend from `files` (see
+/// DiffPanel), so the backend never bakes a UI language into IPC data.
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusResult {
     pub branch: String,
     pub files: Vec<FileChange>,
-    pub summary: String,
 }
 
 struct FileChangeAccumulator {
@@ -123,15 +125,7 @@ pub fn git_status(
 
     files.sort_by(|a, b| a.path.cmp(&b.path).then(a.stage.cmp(&b.stage)));
 
-    let (ta, tr): (usize, usize) = files
-        .iter()
-        .fold((0, 0), |(a, r), f| (a + f.added, r + f.removed));
-    let summary = format!("{} 文件 · +{} −{}", files.len(), ta, tr);
-    let result = StatusResult {
-        branch,
-        files,
-        summary,
-    };
+    let result = StatusResult { branch, files };
 
     // Store in cache for rapid session switches in the same repo.
     if let Ok(mut cache) = cache_state.status_cache.lock() {

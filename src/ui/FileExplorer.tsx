@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fsGrep, fsReadDir, fsSearch, type DirEntry, type GrepResponse, type SearchHit } from "@/modules/fs/fs-bridge";
-import { sshReadDir, sshHome, sshSearch, invalidateRemoteSearchCache } from "@/modules/ssh/remote-fs-bridge";
+import { sshReadDir, sshHome, sshSearch, sshGrep, invalidateRemoteSearchCache } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -111,7 +111,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [searchTruncated, setSearchTruncated] = useState(false);
-  const [searchMode, setSearchMode] = useState<"name" | "content">(isRemote ? "name" : lastFileSearchMode);
+  const [searchMode, setSearchMode] = useState<"name" | "content">(lastFileSearchMode);
   const [grepHits, setGrepHits] = useState<GrepFileGroup[]>([]);
   const [grepTruncated, setGrepTruncated] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -125,9 +125,9 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     setNavDir(null);
     setExpandedFile(null);
     setSearchQuery("");
-    // Content search is local-only; force name mode for remote, otherwise keep
-    // the user's remembered mode preference across the root change.
-    setSearchMode(isRemote ? "name" : lastFileSearchMode);
+    // Keep the user's remembered mode preference across the root change.
+    // Content search works for remote sessions too (ssh_fs_grep).
+    setSearchMode(lastFileSearchMode);
     if (isRemote && remotePtyId !== undefined) {
       let cancelled = false;
       setBaseDir(null);
@@ -199,22 +199,24 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     // promise eagerly would start the find/grep on every keystroke and only
     // debounce the setState. `cancelled` discards any in-flight response when a
     // newer query supersedes this effect, so stale results never overwrite the
-    // latest. Content search (grep) is local-only — there is no ssh_fs_grep yet,
-    // so the mode toggle is disabled for remote sessions and `mode === "content"`
-    // here implies a local session. Name search keeps the fs_search (local) /
-    // ssh_fs_search (remote) split with the shared SearchHit shape; the remote
-    // bridge caches per (ptyId, root, query) so backspacing doesn't re-run find.
+    // latest. Both modes split local/remote: content search runs fs_grep
+    // locally and ssh_fs_grep over the exec channel remotely (shared
+    // GrepResponse shape); name search keeps the fs_search / ssh_fs_search
+    // split with the shared SearchHit shape. The remote bridge caches per
+    // (ptyId, root, query) so backspacing doesn't re-run find/grep.
     const timer = window.setTimeout(() => {
       const runSearch: Promise<SearchHit[] | GrepResponse> =
-        mode === "content" && !isRemote
-          ? fsGrep(q, baseDir, { caseInsensitive: false })
+        mode === "content"
+          ? isRemote && remotePtyId !== undefined
+            ? sshGrep(remotePtyId, baseDir, q)
+            : fsGrep(q, baseDir, { caseInsensitive: false })
           : isRemote && remotePtyId !== undefined
             ? sshSearch(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT)
             : fsSearch(baseDir, q, NAME_SEARCH_LIMIT, includeHidden);
       runSearch
         .then((result) => {
           if (cancelled) return;
-          if (mode === "content" && !isRemote) {
+          if (mode === "content") {
             const resp = result as GrepResponse;
             setGrepHits(groupGrepHitsByFile(resp.hits));
             setGrepTruncated(resp.truncated);
@@ -397,7 +399,6 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
           <button
             onClick={() => {
-              if (isRemote) return;
               setSearchMode((m) => {
                 const next = m === "name" ? "content" : "name";
                 lastFileSearchMode = next;
@@ -405,12 +406,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
               });
               setSearchQuery("");
             }}
-            disabled={isRemote}
-            title={isRemote ? t("explorer.search_mode.content_local_only") : searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
-            aria-label={isRemote ? t("explorer.search_mode.content_local_only") : searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
+            title={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
+            aria-label={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
             aria-pressed={searchMode === "content"}
             className="hover-bg"
-            style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: searchMode === "content" && !isRemote ? "var(--c-accent-bg-light)" : "transparent", color: searchMode === "content" && !isRemote ? "var(--c-accent)" : "var(--c-text-5)", cursor: isRemote ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: isRemote ? 0.4 : 1 }}
+            style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: searchMode === "content" ? "var(--c-accent-bg-light)" : "transparent", color: searchMode === "content" ? "var(--c-accent)" : "var(--c-text-5)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
           >
             {searchMode === "content" ? <FileContentIcon /> : <FileNameIcon />}
           </button>
@@ -438,7 +438,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
       <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }} className="no-scrollbar scroll-fade-y">
         {isSearching ? (
-          searchMode === "content" && !isRemote ? (
+          searchMode === "content" ? (
             searchLoading ? (
               <PanelLoadingState label={t("explorer.searching")} />
             ) : searchError ? (
@@ -461,8 +461,14 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     {group.lines.map((ln) => (
                       <button
                         key={ln.line}
-                        onClick={() => openInEditor(externalEditor, group.path, ln.line).catch(() => {})}
-                        title={t("explorer.search_mode.open_at_line", { line: ln.line })}
+                        // Local hits jump to the matched line in the external
+                        // editor; remote paths mean nothing to a local editor,
+                        // so they toggle the inline remote FilePreview instead
+                        // (same affordance as remote name-search hits).
+                        onClick={() => isRemote
+                          ? toggleSearchFile(group.path)
+                          : openInEditor(externalEditor, group.path, ln.line).catch(() => {})}
+                        title={isRemote ? group.rel : t("explorer.search_mode.open_at_line", { line: ln.line })}
                         className="hover-bg"
                         style={{ width: "100%", padding: "2px 8px 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
                       >
@@ -470,6 +476,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
                       </button>
                     ))}
+                    {isRemote && expandedFile === group.path && (
+                      <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
+                        <FilePreview filePath={group.path} fileName={group.rel.split("/").pop() ?? group.rel} remotePtyId={remotePtyId} onClose={() => setExpandedFile(null)} />
+                      </div>
+                    )}
                   </div>
                 ))}
                 {grepTruncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.content_truncated")}</div>}

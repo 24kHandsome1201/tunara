@@ -29,10 +29,15 @@ function ToastItem({ toast }: { toast: Toast }) {
     setExiting(true);
     exitTimerRef.current = setTimeout(() => removeToast(toast.id), EXIT_DURATION);
   };
+  // The mount effect below runs once by design; holding dismiss in a ref keeps
+  // its dependency list honestly empty while the timer still calls the latest
+  // closure (same pattern as sessionIdRef in TerminalView).
+  const dismissRef = useRef(dismiss);
+  dismissRef.current = dismiss;
 
   useEffect(() => {
     startRef.current = Date.now();
-    timerRef.current = setTimeout(dismiss, TOAST_DURATION);
+    timerRef.current = setTimeout(() => dismissRef.current(), TOAST_DURATION);
     return () => {
       clearTimeout(timerRef.current);
       clearTimeout(exitTimerRef.current);

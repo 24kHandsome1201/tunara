@@ -102,6 +102,7 @@ pub fn run() {
             modules::ssh::remote_git::ssh_git_status,
             modules::ssh::remote_git::ssh_git_diff,
             modules::ssh::remote_git::ssh_fs_search,
+            modules::ssh::remote_git::ssh_fs_grep,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

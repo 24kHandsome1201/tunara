@@ -105,33 +105,42 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
       : null;
   const paneBSession = split.paneB ? sessions.find((s) => s.id === split.paneB) : null;
 
+  // Captured as primitives so the git effect depends on exactly the fields it
+  // reads. Depending on the whole `active` object would re-run the effect on
+  // every session mutation (updatedAt bumps on each patch) — and since the
+  // effect itself calls updateSession, that would loop.
+  const activeId = active?.id;
+  const activeDir = active?.dir;
+  const activePtyId = active?.ptyId;
+
   useEffect(() => {
+    if (!activeId) {
+      setRemote(null);
+      return;
+    }
     // Remote (SSH) sessions fetch git status over the SSH exec channel — no
     // local repo path exists. The ptyId is the SshSession id the backend
     // resolves in ssh_git_status. Missing ptyId means the session hasn't
     // opened yet; fall through to the notGit branch until it does.
     if (activeIsRemote) {
-      const ptyId = active?.ptyId;
-      if (ptyId === undefined) {
+      if (activePtyId === undefined) {
         setRemote(null);
-        if (active) {
-          useSessionsStore.getState().updateSession(active.id, {
-            branch: "",
-            gitState: "notGit",
-            changes: undefined,
-          });
-        }
+        useSessionsStore.getState().updateSession(activeId, {
+          branch: "",
+          gitState: "notGit",
+          changes: undefined,
+        });
         return;
       }
       let cancelled = false;
       setRemote(null);
-      sshGitStatus(ptyId)
+      sshGitStatus(activePtyId)
         .then((status) => {
           if (cancelled) return;
-          useSessionsStore.getState().updateSession(active.id, {
+          useSessionsStore.getState().updateSession(activeId, {
             branch: status.branch,
             gitState: "repo",
-            changes: { files: status.files, summary: status.summary },
+            changes: { files: status.files },
           });
         })
         .catch(() => {
@@ -139,7 +148,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             // Remote git unavailable (no git on the host, or not a repo). Surface
             // as notGit so the changes tab shows the empty/not-a-repo state
             // instead of an infinite spinner.
-            useSessionsStore.getState().updateSession(active.id, {
+            useSessionsStore.getState().updateSession(activeId, {
               branch: "",
               gitState: "notGit",
               changes: undefined,
@@ -149,16 +158,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
       return () => { cancelled = true; };
     }
 
-    const repoPath = normalizeLocalRepoPath(active?.dir);
+    const repoPath = normalizeLocalRepoPath(activeDir);
     if (!repoPath) {
       setRemote(null);
-      if (active) {
-        useSessionsStore.getState().updateSession(active.id, {
-          branch: "",
-          gitState: "notGit",
-          changes: undefined,
-        });
-      }
+      useSessionsStore.getState().updateSession(activeId, {
+        branch: "",
+        gitState: "notGit",
+        changes: undefined,
+      });
       return;
     }
     let cancelled = false;
@@ -169,16 +176,16 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
     gitStatus(repoPath)
       .then((status) => {
         if (cancelled) return;
-        useSessionsStore.getState().updateSession(active.id, {
+        useSessionsStore.getState().updateSession(activeId, {
           branch: status.branch,
           gitState: "repo",
-          changes: { files: status.files, summary: status.summary },
+          changes: { files: status.files },
         });
       })
       .catch(() => {
         if (!cancelled) {
           setRemote(null);
-          useSessionsStore.getState().updateSession(active.id, {
+          useSessionsStore.getState().updateSession(activeId, {
             branch: "",
             gitState: "notGit",
             changes: undefined,
@@ -186,7 +193,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         }
       });
     return () => { cancelled = true; };
-  }, [active?.dir, active?.id, active?.ptyId, activeIsRemote, nonce]);
+  }, [activeDir, activeId, activePtyId, activeIsRemote, nonce]);
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;

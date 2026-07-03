@@ -29,6 +29,14 @@ pub fn fs_search(
         return Ok(Vec::new());
     }
     let cap = limit.unwrap_or(200).min(1000);
+    // Collect a larger candidate pool than the response cap, then rank and
+    // truncate. Stopping the walk at exactly `cap` hits meant ranking only
+    // ever saw the first N matches in walk order — on a big tree a filename
+    // match deep in the walk lost to path-substring matches that happened to
+    // come first, so "config" surfaced 80 shallow noise paths and never
+    // reached src/config.ts. 5× (bounded) keeps the walk cheap while giving
+    // the filename-first sort real candidates to choose from.
+    let scan_cap = (cap * 5).min(1000);
     let include_hidden = include_hidden.unwrap_or(false);
     let root_path = super::expand_tilde(&root);
     if !root_path.is_dir() {
@@ -48,7 +56,7 @@ pub fn fs_search(
         .build();
 
     for dent in walker.flatten() {
-        if out.len() >= cap {
+        if out.len() >= scan_cap {
             break;
         }
         let path = dent.path();
@@ -75,12 +83,15 @@ pub fn fs_search(
         });
     }
 
-    // Rank: filename matches first, then shorter relative paths.
+    // Rank: filename matches first, then shorter relative paths — then hand
+    // back only the response cap. The frontend infers "more results exist"
+    // from hitting `limit` exactly, so the truncation must land on `cap`.
     out.sort_by(|a, b| {
         let an = a.name.to_lowercase().contains(&q);
         let bn = b.name.to_lowercase().contains(&q);
         bn.cmp(&an).then(a.rel.len().cmp(&b.rel.len()))
     });
+    out.truncate(cap);
 
     Ok(out)
 }

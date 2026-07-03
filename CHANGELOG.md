@@ -7,6 +7,21 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 - **RUSTSEC-2026-0194 / RUSTSEC-2026-0195** (`quick-xml` 读取器解析恶意 XML 时命名空间/属性无界分配导致内存耗尽 DoS) — 仅经 `tauri` → `plist` 传入，用于解析本地可信的 macOS 属性列表，非网络或攻击者可控输入。修复版 quick-xml ≥ 0.41.0，但最新 `plist` 1.9.0（已升级锁定）仍固定在 0.39.x。已在 `src-tauri/.cargo/audit.toml` 中 ignore。**等 `plist` 接入 quick-xml ≥ 0.41 后升级并移除 ignore。**
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
+## [Unreleased]
+
+### 新功能
+- 远程内容搜索：SSH 会话的文件面板现在支持按内容搜索（grep），通过一次性 exec channel 跑 `grep -rEIn`，结果形状与本地 `fs_grep` 完全一致；远端命中点击展开内置远程文件预览（本地命中仍跳外部编辑器到行）。名称/内容两种模式的切换对远程会话全部开放，结果带 LRU 缓存并随 Refresh 一起失效。
+
+### 修复与优化
+- 后端不再向 IPC 固化任何 UI 语言：审查栏的改动统计行（"N 文件 · +A −R"）改由前端按当前语言从 files 现算——此前本地路径写死中文、远程路径写死英文，英文用户看到混排。`git_status` / `ssh_git_status` 的 `StatusResult` 移除 `summary` 字段；preflight 子进程错误串（ProcessError）统一为英文，与其余后端错误一致。
+- 本地文件名搜索排序质量：`fs_search` 改为先收集 5× 候选池（≤1000）再按"文件名命中优先"排序、最后截断——旧实现走到上限即停，大仓库里深层的文件名命中永远排不进前 80。
+- 修复本地 `fs_grep` 响应的 serde 字段命名（`files_scanned` → `filesScanned`），此前该字段在前端始终是 undefined。
+- 终端前端输出背压溢出时保留触发溢出的最新 chunk（与后端 reader 语义一致），只丢弃积压——此前连新数据一起丢；新增 node 行为测试覆盖。
+- 会话笔记：在 350ms 防抖窗口内切换会话不再丢失最后一批输入（切换/卸载时冲刷未保存的编辑）。
+- agent hooks 监听器为已接受的连接加 2s 读超时，挂死的客户端不再能永久阻塞单线程 accept 循环。
+- 移除 persist 层四个从未被引用的死代码导出（saveSessions/loadSessions/saveUILayout/loadUILayout，约 130 行）；旧键仅作为迁移只读输入保留。
+- ESLint 清零：修复全部 6 处 react-hooks/exhaustive-deps 告警（MainArea 的 git effect 改用捕获原语依赖，DiffPanel 空数组稳定化，Toast/命令面板/工作流参数弹窗/会话笔记各自按正确语义收敛依赖）。
+
 ## [1.9.0] - 2026-07-02
 
 ### 新功能

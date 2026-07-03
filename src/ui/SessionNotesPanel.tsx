@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { getSessionNoteStats, sanitizeSessionNote } from "@/modules/session/session-notes";
@@ -14,9 +14,38 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
   const setSessionNote = useSessionsStore((s) => s.setSessionNote);
   const [value, setValue] = useState(session.note ?? "");
   const stats = useMemo(() => getSessionNoteStats(value), [value]);
+  // Last USER edit (not last render): written only by handleEdit, so when the
+  // session switches, this still holds the previous session's unsaved text at
+  // the moment the old effect's cleanup runs — render has already re-executed
+  // with the new session by then, which is why a render-synced ref can't work
+  // here.
+  const lastEditRef = useRef<{ sessionId: string; value: string } | null>(null);
+
+  const handleEdit = (next: string) => {
+    lastEditRef.current = { sessionId: session.id, value: next };
+    setValue(next);
+  };
 
   useEffect(() => {
-    setValue(session.note ?? "");
+    // Read the note from the store (same source as the prop) so this effect
+    // genuinely depends on session.id alone.
+    setValue(useSessionsStore.getState().sessions.find((s) => s.id === session.id)?.note ?? "");
+    // A pending edit for a DIFFERENT session was flushed by the cleanup below;
+    // drop it so it can never be re-applied to this session.
+    if (lastEditRef.current && lastEditRef.current.sessionId !== session.id) {
+      lastEditRef.current = null;
+    }
+    return () => {
+      // Switching sessions (or unmounting) inside the 350 ms save window used
+      // to drop the last keystrokes: the debounce cleanup cleared the timer
+      // and nothing re-flushed for the OLD session. Persist the pending edit
+      // this effect instance owns; setSessionNote no-ops on identical values,
+      // so an already-saved edit costs nothing.
+      const pending = lastEditRef.current;
+      if (pending && pending.sessionId === session.id) {
+        useSessionsStore.getState().setSessionNote(pending.sessionId, pending.value);
+      }
+    };
   }, [session.id]);
 
   useEffect(() => {
@@ -44,7 +73,7 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
 
       <textarea
         value={value}
-        onChange={(e) => setValue(sanitizeSessionNote(e.target.value))}
+        onChange={(e) => handleEdit(sanitizeSessionNote(e.target.value))}
         onBlur={flush}
         placeholder={t("notes.placeholder")}
         spellCheck
@@ -69,7 +98,7 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
         <span>{t("notes.save_hint")}</span>
         <span style={{ flex: 1 }} />
         <button
-          onClick={() => setValue("")}
+          onClick={() => handleEdit("")}
           className="hover-text-3"
           style={{ border: "none", background: "transparent", color: "var(--c-text-5)", cursor: "pointer", fontSize: "var(--fs-meta)" }}
         >

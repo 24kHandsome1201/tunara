@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -56,7 +56,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const panelVisible = useUIStore((s) => s.panelVisible);
   const workflows = useWorkflowsStore((s) => s.workflows);
 
-  function notifyBatchCloseConfirmation(subtitle: string) {
+  // Stable identity so the commands useMemo below can list it as a dependency
+  // without invalidating on every render; it only reads store state at call
+  // time plus the language-scoped `t`.
+  const notifyBatchCloseConfirmation = useCallback((subtitle: string) => {
     const st = useSessionsStore.getState();
     const sessionId = st.activeSessionId ?? st.sessions[0]?.id;
     if (!sessionId) return;
@@ -66,7 +69,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       subtitle,
       variant: "error",
     });
-  }
+  }, [uiStore, t]);
 
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
@@ -450,7 +453,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, sidebarVisible, panelVisible, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, sidebarVisible, panelVisible, t, notifyBatchCloseConfirmation]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

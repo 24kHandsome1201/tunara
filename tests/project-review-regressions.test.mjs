@@ -201,13 +201,21 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(persist, /persisted\.filter\(isPersistedSession\)/);
   assert.match(persist, /typeof activeId === "string" && sessions\.some\(\(s\) => s\.id === activeId\)/);
   assert.match(persist, /function isPersistedUILayout\(value: unknown\): value is PersistedUILayout/);
-  assert.match(persist, /const rawSnapshot: WorkspaceSnapshotV1 = \{/);
-  assert.match(persist, /const updated = sanitizeSnapshot\(rawSnapshot\)/);
-  assert.match(persist, /if \(!updated\) return/);
-  assert.match(persist, /await store\.set\(SESSIONS_KEY, updated\.sessions\)/);
-  assert.match(persist, /await store\.set\(ACTIVE_KEY, updated\.activeSessionId\)/);
-  assert.doesNotMatch(persist, /await store\.set\(ACTIVE_KEY, activeSessionId\)/);
-  assert.doesNotMatch(persist, /sanitizeSnapshot\(rawSnapshot\) \?\? rawSnapshot/);
+  // The legacy per-key save/load helpers (saveSessions/loadSessions/
+  // saveUILayout/loadUILayout) were dead code — nothing outside persist.ts
+  // referenced them — and have been removed. Legacy keys are read-only
+  // migration inputs consumed by loadWorkspaceSnapshot; the ONLY writes are
+  // the sanitized workspace snapshot (steady state) and the one-time migrated
+  // snapshot. A reintroduced legacy-key write would silently fork the source
+  // of truth away from the snapshot.
+  assert.doesNotMatch(persist, /export async function saveSessions/);
+  assert.doesNotMatch(persist, /export async function loadSessions/);
+  assert.doesNotMatch(persist, /export async function saveUILayout/);
+  assert.doesNotMatch(persist, /export async function loadUILayout/);
+  assert.doesNotMatch(persist, /store\.set\(SESSIONS_KEY/);
+  assert.doesNotMatch(persist, /store\.set\(ACTIVE_KEY/);
+  assert.doesNotMatch(persist, /store\.set\(UI_LAYOUT_KEY/);
+  assert.match(persist, /await store\.set\(WORKSPACE_SNAPSHOT_KEY, migrated\)/);
   assert.match(persist, /saveWorkspaceSnapshot\(snapshot: WorkspaceSnapshotV1\): Promise<boolean>/);
   assert.match(persist, /const sanitized = sanitizeSnapshot\(snapshot\)/);
   assert.match(persist, /if \(!sanitized\) return false/);
@@ -316,17 +324,32 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(explorer, /const NAME_SEARCH_LIMIT = 80/);
   assert.match(explorer, /fsGrep\(q, baseDir, \{ caseInsensitive: false \}\)/);
   assert.match(explorer, /groupGrepHitsByFile\(resp\.hits\)/);
-  // Remote (SSH) name search runs `find` over the exec channel — the search
-  // input stays enabled for remote sessions. Content (grep) search is
-  // local-only, so the mode toggle is disabled for remote and the placeholder
-  // switches by mode.
+  // Remote (SSH) name search runs `find` over the exec channel and content
+  // search runs `grep` over it (ssh_fs_grep), so BOTH modes stay enabled for
+  // remote sessions — the old disabled={isRemote} toggle must not come back.
   assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT\)/);
+  assert.match(explorer, /sshGrep\(remotePtyId, baseDir, q\)/);
+  assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
+  // Remote grep hits can't jump to a local editor; they toggle the inline
+  // remote FilePreview instead.
+  assert.match(explorer, /isRemote[\s\S]*?\? toggleSearchFile\(group\.path\)[\s\S]*?: openInEditor\(externalEditor, group\.path, ln\.line\)/);
   assert.match(explorer, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
-  assert.match(explorer, /const next = m === "name" \? "content" : "name"[\s\S]*?disabled=\{isRemote\}/);
+  assert.match(explorer, /const next = m === "name" \? "content" : "name"/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
   assert.match(explorer, /items: isRemote[\s\S]*?id: "dir:copy-path"/);
   assert.match(explorer, /items: isRemote[\s\S]*?id: "file:copy-path"/);
+  const remoteFsBridge = read("src/modules/ssh/remote-fs-bridge.ts");
+  assert.match(remoteFsBridge, /export function sshGrep\(/);
+  assert.match(remoteFsBridge, /invoke<GrepResponse>\("ssh_fs_grep"/);
+  // A directory Refresh must drop BOTH remote caches, or stale grep hits
+  // outlive the reload the same way stale find hits used to.
+  assert.match(remoteFsBridge, /for \(const k of searchCache\.keys\(\)\)[\s\S]*?for \(const k of grepCache\.keys\(\)\)/);
+  const remoteGit = read("src-tauri/src/modules/ssh/remote_git.rs");
+  assert.match(remoteGit, /pub async fn ssh_fs_grep/);
+  assert.match(remoteGit, /fn parse_grep_output\(raw: &str, root: &str, max_results: usize\)/);
+  const tauriLib = read("src-tauri/src/lib.rs");
+  assert.match(tauriLib, /modules::ssh::remote_git::ssh_fs_grep,/);
   const zhDictForExplorer = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(zhDictForExplorer, /"explorer\.search_placeholder": "搜索当前项目"/);
   assert.match(zhDictForExplorer, /"explorer\.search_placeholder_content": "搜索文件内容"/);
@@ -334,6 +357,12 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(search, /#\[serde\(rename_all = "camelCase"\)\]/);
   assert.match(search, /include_hidden: Option<bool>/);
   assert.match(search, /\.hidden\(!include_hidden\)/);
+  // fs_search collects a larger candidate pool, ranks, THEN truncates to the
+  // response cap — walking to exactly `cap` hits starved the filename-first
+  // ranking of candidates on big trees.
+  assert.match(search, /let scan_cap = \(cap \* 5\)\.min\(1000\);/);
+  assert.match(search, /out\.len\(\) >= scan_cap/);
+  assert.match(search, /out\.truncate\(cap\);/);
   assert.match(tree, /include_hidden: Option<bool>/);
 });
 
@@ -386,7 +415,16 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.match(main, /gitState: "repo"/);
   assert.match(main, /gitState: "notGit"/);
   assert.match(lifecycle, /gitState: "unknown"/);
-  assert.match(diff, /session\.changes\?\.files \?\? \[\]/);
+  // Stable empty-array identity + frontend-composed localized summary. The
+  // store/IPC carry no display string anymore (the backend used to bake
+  // hardcoded Chinese locally and English remotely into StatusResult).
+  assert.match(diff, /session\.changes\?\.files \?\? EMPTY_FILES/);
+  assert.match(diff, /const EMPTY_FILES: readonly FileChange\[\] = Object\.freeze\(\[\]\);/);
+  assert.match(diff, /function composeChangesSummary\(/);
+  assert.match(diff, /summarizeChangedFiles\(files\)/);
+  assert.match(diff, /useMemo\(\(\) => composeChangesSummary\(files, t\), \[files, t\]\)/);
+  assert.doesNotMatch(diff, /session\.changes\?\.summary/);
+  assert.doesNotMatch(bridge, /summary: string/);
   assert.match(diff, /session\.gitState === "notGit"/);
   assert.match(diff, /function fileRowKey\(file: Pick<FileChange, "stage" \| "path">\)/);
   assert.match(diff, /expandedFileKey/);
@@ -466,16 +504,24 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
   assert.match(keys, /const \{ paneA, paneB \} = ui\.split/);
   assert.match(keys, /st\.setActive\(st\.activeSessionId === paneB \? paneA : paneB\)/);
-  assert.match(main, /const repoPath = normalizeLocalRepoPath\(active\?\.dir\);/);
+  assert.match(main, /const repoPath = normalizeLocalRepoPath\(activeDir\);/);
   assert.match(main, /if \(!repoPath\) \{[\s\S]*?setRemote\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
   assert.match(main, /gitAheadBehind\(repoPath\)/);
   assert.match(main, /gitStatus\(repoPath\)/);
   // Remote (SSH) sessions route through the exec-channel git path, not the
   // local git2 path — guard that the remote branch exists and the local calls
   // never receive a raw dir.
-  assert.match(main, /sshGitStatus\(ptyId\)/);
+  assert.match(main, /sshGitStatus\(activePtyId\)/);
   assert.doesNotMatch(main, /gitAheadBehind\(active\.dir\)/);
   assert.doesNotMatch(main, /gitStatus\(active\.dir\)/);
+  // The git effect depends on captured primitives, never the whole `active`
+  // object: updateSession bumps updatedAt on every patch, and the effect
+  // itself calls updateSession, so an object dependency would loop.
+  assert.match(main, /\}, \[activeDir, activeId, activePtyId, activeIsRemote, nonce\]\);/);
+  // The localized changes summary is composed in DiffPanel from `files`; the
+  // store no longer carries a pre-baked display string.
+  assert.match(main, /changes: \{ files: status\.files \}/);
+  assert.doesNotMatch(main, /summary: status\.summary/);
   assert.match(settings, /maxWidth: "calc\(100vw - 32px\)"/);
 });
 

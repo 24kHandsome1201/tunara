@@ -1,15 +1,11 @@
 import { load } from "@tauri-apps/plugin-store";
-import type { Session } from "@/ui/types";
 import { sanitizeRecentDirs } from "./recent-dirs";
 import {
-  DEFAULT_UI_LAYOUT_V2,
   dedupeById,
-  fromPersistedSession,
   isPersistedSession,
   localSessionDirs,
   sanitizePersistedSession,
   sanitizeSnapshot,
-  toPersistedSession,
   type PersistedUILayoutV2,
   type WorkspaceSnapshotV1,
 } from "./persist-snapshot.ts";
@@ -25,6 +21,10 @@ export type {
 
 const STORE_FILE = "tunara-sessions.json";
 const LEGACY_STORE_FILE = "conduit-sessions.json";
+// Pre-snapshot store keys. Read-only since the WorkspaceSnapshotV1 migration:
+// loadWorkspaceSnapshot still consumes them to migrate an old store, but
+// nothing writes them anymore (the per-key save/load helpers that did were
+// dead code and have been removed — everything persists through the snapshot).
 const SESSIONS_KEY = "sessions";
 const ACTIVE_KEY = "activeSessionId";
 const UI_LAYOUT_KEY = "uiLayout";
@@ -56,91 +56,6 @@ function isPersistedUILayout(value: unknown): value is PersistedUILayout {
   if (!value || typeof value !== "object") return false;
   const layout = value as Partial<PersistedUILayout>;
   return typeof layout.sidebarVisible === "boolean" && typeof layout.panelVisible === "boolean";
-}
-
-export async function saveSessions(
-  sessions: Session[],
-  activeSessionId?: string | null,
-): Promise<void> {
-  try {
-    const store = await loadSessionStore();
-    const persisted = dedupeById(sessions).map(toPersistedSession);
-    const existing = await store.get<unknown>(WORKSPACE_SNAPSHOT_KEY);
-    const snapshot = sanitizeSnapshot(existing);
-    const rawSnapshot: WorkspaceSnapshotV1 = {
-      version: 1,
-      savedAt: Date.now(),
-      activeSessionId: activeSessionId !== undefined ? activeSessionId : (snapshot?.activeSessionId ?? null),
-      sessions: persisted,
-      ui: snapshot?.ui ?? DEFAULT_UI_LAYOUT_V2,
-      terminals: snapshot?.terminals ?? {},
-      agentResume: snapshot?.agentResume ?? {},
-      recentDirs: snapshot?.recentDirs ?? sanitizeRecentDirs(localSessionDirs(persisted)),
-      recentCommands: snapshot?.recentCommands ?? [],
-      commandUsage: snapshot?.commandUsage ?? {},
-      workflows: snapshot?.workflows ?? [],
-    };
-    const updated = sanitizeSnapshot(rawSnapshot);
-    if (!updated) return;
-    await store.set(SESSIONS_KEY, updated.sessions);
-    if (activeSessionId !== undefined) {
-      await store.set(ACTIVE_KEY, updated.activeSessionId);
-    }
-    await store.set(WORKSPACE_SNAPSHOT_KEY, updated);
-    await store.save();
-  } catch {
-    // store unavailable
-  }
-}
-
-export async function loadSessions(): Promise<{
-  sessions: Session[];
-  activeSessionId: string | null;
-}> {
-  try {
-    const store = await loadSessionStore();
-    const persisted = await store.get<unknown>(SESSIONS_KEY);
-    const activeId = await store.get<unknown>(ACTIVE_KEY);
-    if (!Array.isArray(persisted)) return { sessions: [], activeSessionId: null };
-    const sessions = dedupeById(persisted.filter(isPersistedSession).map(sanitizePersistedSession)).map(fromPersistedSession);
-    const activeSessionId = typeof activeId === "string" && sessions.some((s) => s.id === activeId)
-      ? activeId
-      : sessions[0]?.id ?? null;
-    return {
-      sessions,
-      activeSessionId,
-    };
-  } catch {
-    return { sessions: [], activeSessionId: null };
-  }
-}
-
-export async function saveUILayout(layout: PersistedUILayout): Promise<void> {
-  try {
-    const store = await loadSessionStore();
-    await store.set(UI_LAYOUT_KEY, layout);
-    const existing = await store.get<unknown>(WORKSPACE_SNAPSHOT_KEY);
-    const snapshot = sanitizeSnapshot(existing);
-    if (snapshot) {
-      snapshot.ui.sidebarVisible = layout.sidebarVisible;
-      snapshot.ui.panelVisible = layout.panelVisible;
-      snapshot.savedAt = Date.now();
-      await store.set(WORKSPACE_SNAPSHOT_KEY, snapshot);
-    }
-    await store.save();
-  } catch {
-    // store unavailable
-  }
-}
-
-export async function loadUILayout(): Promise<PersistedUILayout | null> {
-  try {
-    const store = await loadSessionStore();
-    const layout = await store.get<unknown>(UI_LAYOUT_KEY);
-    return isPersistedUILayout(layout) ? layout : null;
-  } catch {
-    return null;
-  }
 }
 
 export async function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1): Promise<boolean> {

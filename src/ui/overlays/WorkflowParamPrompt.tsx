@@ -22,7 +22,10 @@ export function WorkflowParamPrompt() {
 
   // One stable uuid per opened workflow, so a {{uuid}} placeholder doesn't churn
   // on every keystroke in the live preview (and matches what actually runs).
+  // `pending` is the regeneration trigger, referenced via `void` (same pattern
+  // as useT's `void lang`) — a new workflow opening must mint a new uuid.
   const dynamicUuid = useMemo(() => {
+    void pending;
     const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
     return c?.randomUUID ? c.randomUUID() : `id-${Date.now().toString(36)}`;
   }, [pending]);
