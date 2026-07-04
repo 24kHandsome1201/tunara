@@ -9,6 +9,8 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-07-04
+
 ### 新功能
 - 远程内容搜索：SSH 会话的文件面板现在支持按内容搜索（grep），通过一次性 exec channel 跑 `grep -rEIn`，结果形状与本地 `fs_grep` 完全一致；远端命中点击展开内置远程文件预览（本地命中仍跳外部编辑器到行）。名称/内容两种模式的切换对远程会话全部开放，结果带 LRU 缓存并随 Refresh 一起失效。
 
