@@ -146,8 +146,7 @@ mod platform {
                             // one-shot writes, so a short deadline is generous;
                             // a slow/hung writer is dropped and the loop moves
                             // on to the next connection.
-                            let _ = conn
-                                .set_read_timeout(Some(std::time::Duration::from_secs(2)));
+                            let _ = conn.set_read_timeout(Some(std::time::Duration::from_secs(2)));
                             let mut raw = String::new();
                             match conn.take(65536).read_to_string(&mut raw) {
                                 Ok(n) if n > 0 => match serde_json::from_str::<HookPayload>(&raw) {

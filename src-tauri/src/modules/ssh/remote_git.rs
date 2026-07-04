@@ -304,10 +304,7 @@ pub(crate) fn parse_grep_output(raw: &str, root: &str, max_results: usize) -> (V
             continue;
         }
         // Hidden filter: matches the local walker's hidden(true) behavior.
-        if rel
-            .split('/')
-            .any(|component| component.starts_with('.'))
-        {
+        if rel.split('/').any(|component| component.starts_with('.')) {
             continue;
         }
         hits.push(GrepHit {
@@ -369,7 +366,11 @@ pub async fn ssh_fs_grep(
     // uses); `-e` keeps a leading `-` in the pattern from becoming a flag.
     let root_q = format!("'{}'", root.replace('\'', "'\\''"));
     let pattern_q = format!("'{}'", pattern.replace('\'', "'\\''"));
-    let case_flag = if case_insensitive == Some(true) { "-i " } else { "" };
+    let case_flag = if case_insensitive == Some(true) {
+        "-i "
+    } else {
+        ""
+    };
     // head asks for cap + 1 lines so the parser can distinguish "exactly cap
     // matches" from "more matches exist". grep's stderr is discarded so
     // permission-denied noise on a single unreadable subdir can't turn a valid
