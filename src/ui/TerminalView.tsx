@@ -9,7 +9,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { openSessionPty, reportSshOpenFailure, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
-import { useUIStore } from "@/state/ui";
+import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
 import type { AgentCode } from "./types";
 import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
 import { extractCommandFromBuffer, extractCommandFromOsc } from "@/modules/terminal/lib/terminal-buffer-read";
@@ -28,24 +28,15 @@ import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-in
 import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/terminal-clipboard";
 import { registerTerminalDeviceAttributesHandler } from "@/modules/terminal/lib/terminal-device-attributes";
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
-import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification";
-import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
-import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh";
-import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
+import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification"; import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
+import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh"; import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
 import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
-import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect";
-import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
-import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
-import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
-import { useSessionsStore } from "@/state/sessions";
-import { TerminalViewChrome } from "./TerminalViewChrome";
-import { useTerminalSearch } from "./useTerminalSearch";
-import { useTerminalBlocks } from "./useTerminalBlocks";
-import { useTerminalQuickSelect } from "./useTerminalQuickSelect";
-import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl";
-import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
-import { createInputQueueFullWarner, emitTerminalNotification, requestInformationalAttention, safeDispose } from "./terminal-attention";
-import { handleTerminalProcessExit } from "./terminal-exit";
+import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
+import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
+import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
+import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
+import { createInputQueueFullWarner, emitTerminalNotification, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
+import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -74,6 +65,9 @@ function TerminalViewImpl({
   const webglRef = useRef<TerminalWebglRenderer | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const [exitCode, setExitCode] = useState<number | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId));
   const search = useTerminalSearch(termRef);
   const blocks = useTerminalBlocks(termRef);
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
@@ -360,13 +354,9 @@ function TerminalViewImpl({
       cleanups.push(() => promptDisposable.dispose());
       const existingSnapshot = getTerminalSnapshot(sessionIdRef.current);
       if (existingSnapshot) {
-        term.write(existingSnapshot.serialized);
-        term.write("\r\n\x1b[2m[tunara restored snapshot, new shell started below]\x1b[0m\r\n");
-        requestAnimationFrame(() => {
-          if (existingSnapshot.viewportY !== undefined) {
-            term.scrollToLine(existingSnapshot.viewportY);
-          }
-        });
+        const rl = getCurrentSession()?.remote ? t("terminal.restored_remote") : t("terminal.restored_local");
+        term.write(existingSnapshot.serialized + `\r\n\x1b[2m[${rl}]\x1b[0m\r\n`);
+        requestAnimationFrame(() => { if (existingSnapshot.viewportY !== undefined) term.scrollToLine(existingSnapshot.viewportY); });
       }
       const snapshotScheduler = createTerminalSnapshotScheduler({
         term,
@@ -403,6 +393,7 @@ function TerminalViewImpl({
           inputToPtyEnabled = false;
           handleTerminalProcessExit(term, sessionIdRef.current, code);
           snapshotScheduler.flush();
+          setExitCode(code);
         },
       };
       let pty;
@@ -421,9 +412,10 @@ function TerminalViewImpl({
         });
       } catch (e) {
         term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
-        // Surface SSH/connection failures as a Toast + failed state too (a lone
-        // red line is easy to miss / indistinguishable from "still connecting").
-        reportSshOpenFailure(sessionIdRef.current, getCurrentSession()?.remote, String(e));
+        setOpenError(String(e));
+        const cur = getCurrentSession();
+        reportSshOpenFailure(sessionIdRef.current, cur?.remote, String(e));
+        if (!cur?.remote) useUIStore.getState().addToast({ sessionId: sessionIdRef.current, title: t("pty.error.title"), subtitle: t("pty.error.subtitle"), variant: "error" });
         return;
       }
       if (disposed) {
@@ -540,7 +532,14 @@ function TerminalViewImpl({
     // when `dir` changes would close and recreate the terminal on every `cd`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <TerminalViewChrome containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />;
+  return (
+    <>
+      <TerminalViewChrome containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />
+      {!ptyReady && !openError && !exitCode && <ConnectingOverlay />}
+      {exitCode !== null && session && <TerminalExitBanner session={session} exitCode={exitCode} />}
+      {openError !== null && session && <PtyErrorBanner session={session} />}
+    </>
+  );
 }
 
 // Memoized (with stable props from MainArea) so a MainArea re-render on each

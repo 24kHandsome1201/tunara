@@ -63,3 +63,7 @@ export function sshGitStatus(sessionId: number): Promise<StatusResult> {
 export function sshGitDiff(sessionId: number, file: string, stage: FileChange["stage"]): Promise<FileDiff> {
   return invoke<FileDiff>("ssh_git_diff", { sessionId, file, stage });
 }
+
+export function sshGitAheadBehind(sessionId: number): Promise<RemoteState> {
+  return invoke<RemoteState>("ssh_git_ahead_behind", { sessionId });
+}

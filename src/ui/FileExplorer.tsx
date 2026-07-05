@@ -8,7 +8,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openInEditor } from "@/modules/editor/open";
-import { useT } from "@/modules/i18n";
+import { useT, t as staticT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
@@ -120,6 +120,19 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
 
+  // Editor launch failures (editor missing / not on PATH) surface as a toast,
+  // matching DiffPanel's open-in-editor affordance instead of failing silently.
+  const openEditor = (path: string, line?: number) => {
+    openInEditor(externalEditor, path, line).catch(() => {
+      useUIStore.getState().addToast({
+        sessionId: useSessionsStore.getState().activeSessionId ?? "",
+        title: t("diff.toast.editor_not_found"),
+        subtitle: externalEditor,
+        variant: "error",
+      });
+    });
+  };
+
   // Resolve the starting directory. Local: rootDir. Remote: SFTP-resolved home.
   useEffect(() => {
     setNavDir(null);
@@ -144,6 +157,14 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             // Fall back to "/" so the panel is still usable on home-resolve fail.
             setBaseDir("/");
             setCurrentPath("/");
+            // I9: surface the fallback so the user understands why the file
+            // list starts at root instead of their home directory.
+            useUIStore.getState().addToast({
+              sessionId: useSessionsStore.getState().activeSessionId ?? "",
+              title: staticT("explorer.remote_home_failed"),
+              subtitle: "",
+              variant: "warning",
+            });
           }
         });
       return () => { cancelled = true; };
@@ -467,7 +488,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                         // (same affordance as remote name-search hits).
                         onClick={() => isRemote
                           ? toggleSearchFile(group.path)
-                          : openInEditor(externalEditor, group.path, ln.line).catch(() => {})}
+                          : openEditor(group.path, ln.line)}
                         title={isRemote ? group.rel : t("explorer.search_mode.open_at_line", { line: ln.line })}
                         className="hover-bg"
                         style={{ width: "100%", padding: "2px 8px 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
@@ -552,7 +573,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                         ]
                       : [
                           { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
-                          { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                          { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openEditor(fullPath); } },
                           { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                         ],
                   });
@@ -587,7 +608,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                               { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                             ]
                           : [
-                              { id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, fullPath).catch(() => {}); } },
+                              { id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openEditor(fullPath); } },
                               { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                             ],
                       });

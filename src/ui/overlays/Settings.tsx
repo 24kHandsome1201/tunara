@@ -3,6 +3,7 @@ import type { ThemeType, TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
+import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { platform } from "@tauri-apps/plugin-os";
 import { AgentBadge } from "@/ui/agents";
@@ -11,6 +12,7 @@ import { CloseIcon, RefreshIcon } from "../shared";
 import { useT, LANGUAGES, type Language } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 import { WorkflowsSettings } from "./WorkflowsSettings";
+import { useWorkflowsStore } from "@/state/workflows";
 
 interface SettingsProps {
   onClose: () => void;
@@ -164,6 +166,10 @@ export function Settings({ onClose }: SettingsProps) {
 
   const isDark = isDarkTheme(theme);
   const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
+  // Subscribe to the workflow count so the footer "clear all" button's
+  // disabled state stays reactive (getState() in render wouldn't re-render
+  // when workflows change, leaving the button enabled after a clear).
+  const workflowCount = useWorkflowsStore((s) => s.workflows.length);
   const [fontDraft, setFontDraft] = useState(fontFamily);
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => { sheetRef.current?.focus(); }, []);
@@ -340,6 +346,9 @@ export function Settings({ onClose }: SettingsProps) {
                   >
                     {t("settings.appearance.ligatures")}
                   </button>
+                </div>
+                <div style={{ ...SECTION_HINT, marginTop: 6 }}>
+                  {t("settings.appearance.font_family.suggest")}
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
@@ -632,10 +641,40 @@ export function Settings({ onClose }: SettingsProps) {
             >
               {t("common.reset_defaults")}
             </button>
+          ) : activeTab === "workflows" ? (
+            <button
+              onClick={async () => {
+                // wry's WKWebView renders no JS dialog UI, so use the Tauri
+                // dialog plugin (the paste-protection confirmer uses it too).
+                const ok = await tauriConfirmDialog(t("settings.workflows.clear_all.confirm"), { kind: "warning" });
+                if (!ok) return;
+                const workflows = useWorkflowsStore.getState().workflows;
+                for (const w of workflows) useWorkflowsStore.getState().removeWorkflow(w.id);
+              }}
+              disabled={workflowCount === 0}
+              style={{ padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
+              className="hover-bg"
+            >
+              {t("settings.workflows.clear_all")}
+            </button>
+          ) : activeTab === "cli" ? (
+            <button
+              onClick={async () => {
+                const ok = await tauriConfirmDialog(t("settings.cli.reset_overrides.confirm"), { kind: "warning" });
+                if (!ok) return;
+                invoke("clear_bin_overrides")
+                  .then(() => loadCliStatus())
+                  .catch(() => {});
+              }}
+              style={{ padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
+              className="hover-bg"
+            >
+              {t("settings.cli.reset_overrides")}
+            </button>
           ) : <span />}
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             {configError ? (
-              <span title={configError} style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>config error</span>
+              <span title={configError} style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("settings.config_error")}</span>
             ) : configPath ? (
               <span title={configPath} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{configPath}</span>
             ) : null}

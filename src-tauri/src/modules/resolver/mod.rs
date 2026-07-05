@@ -81,6 +81,15 @@ impl ResolverState {
         }
     }
 
+    /// Clear every user-specified path override. Used by the Settings CLI tab
+    /// "reset all custom paths" affordance so a user can bulk-revert to the
+    /// login-shell / system PATH resolution in one click.
+    pub fn clear_overrides(&self) {
+        if let Ok(mut g) = self.inner.write() {
+            g.overrides.clear();
+        }
+    }
+
     /// 解析一个 CLI 名（claude / codex / git）。
     pub fn resolve(&self, name: &str) -> ResolvedCommand {
         let g = match self.inner.read() {
@@ -221,6 +230,12 @@ pub fn resolve_all_bins(state: tauri::State<'_, ResolverState>) -> Vec<ResolvedC
 #[tauri::command]
 pub fn set_bin_override(state: tauri::State<'_, ResolverState>, name: String, path: String) {
     state.set_override(&name, PathBuf::from(path));
+}
+
+/// Clear all user-specified CLI path overrides in one shot (Settings CLI tab).
+#[tauri::command]
+pub fn clear_bin_overrides(state: tauri::State<'_, ResolverState>) {
+    state.clear_overrides();
 }
 
 #[cfg(test)]

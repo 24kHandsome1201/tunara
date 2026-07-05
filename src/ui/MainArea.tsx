@@ -311,6 +311,19 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
         <span style={{ flex: 1 }} />
 
+        {/* I2: a lightweight session counter so the user can see at a glance
+            how many sessions are open (and roughly how busy the workspace is)
+            without scanning the sidebar. Only shown when there's more than one
+            session to avoid noise on a fresh install. */}
+        {sessions.length > 1 && (
+          <span
+            title={t("statusbar.sessions", { count: sessions.length })}
+            style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontWeight: 500, flexShrink: 0 }}
+          >
+            {sessions.length}
+          </span>
+        )}
+
         {/* 分栏控制 */}
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           {isSplit ? (

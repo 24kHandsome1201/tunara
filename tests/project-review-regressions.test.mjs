@@ -332,7 +332,11 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
   // Remote grep hits can't jump to a local editor; they toggle the inline
   // remote FilePreview instead.
-  assert.match(explorer, /isRemote[\s\S]*?\? toggleSearchFile\(group\.path\)[\s\S]*?: openInEditor\(externalEditor, group\.path, ln\.line\)/);
+  assert.match(explorer, /isRemote[\s\S]*?\? toggleSearchFile\(group\.path\)[\s\S]*?: openEditor\(group\.path, ln\.line\)/);
+  // Editor launch failures must surface a toast (shared openEditor helper),
+  // not vanish into an empty catch.
+  assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?diff\.toast\.editor_not_found/);
+  assert.doesNotMatch(explorer, /openInEditor\([^)]*\)\.catch\(\(\) => \{\}\)/);
   assert.match(explorer, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
   assert.match(explorer, /const next = m === "name" \? "content" : "name"/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);

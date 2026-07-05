@@ -188,7 +188,7 @@ export interface Toast {
   sessionId: string;
   title: string;
   subtitle: string;
-  variant: "success" | "error";
+  variant: "success" | "error" | "warning";
   agentCode?: string;
 }
 
@@ -355,7 +355,11 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((s) => sessionId ? { split: { ...s.split, paneA: sessionId } } : { split: { ...s.split, paneA: null } }),
     addToast: (toast) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      set((s) => ({ toasts: [...s.toasts.slice(-2), { ...toast, id }] }));
+      // I8: keep the last 6 toasts (was 3). Batch operations like "close all
+      // sessions" can fan out several notifications; capping at 3 dropped
+      // signal. 6 still fits the bottom-right stack without overflow on a
+      // typical viewport, and the auto-dismiss timer keeps the queue short.
+      set((s) => ({ toasts: [...s.toasts.slice(-5), { ...toast, id }] }));
     },
     removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
     enqueueHostKeyPrompt: (prompt) =>

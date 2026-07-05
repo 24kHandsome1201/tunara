@@ -55,7 +55,7 @@ function SessionIcon({ session }: { session: Session }) {
           }}
         >
           {Icon ? <Icon size={size} /> : (
-            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "var(--font-mono)" }}>
+            <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 700, fontFamily: "var(--font-mono)" }}>
               {session.agent.charAt(0)}
             </span>
           )}

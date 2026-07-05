@@ -4,6 +4,7 @@ import {
   gitDiff,
   gitAheadBehind,
   sshGitDiff,
+  sshGitAheadBehind,
   type FileChange,
   type FileDiff,
   type RemoteState,
@@ -353,16 +354,24 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     setDiffs({});
     setRemote(null);
     if (notGit || (!isRemote && !repoPath)) return () => { cancelled = true; };
-    // Remote (SSH) sessions have no local upstream state to query; skip the
-    // ahead/behind indicator and rely on the status command's branch line.
-    if (isRemote) return () => { cancelled = true; };
+    // I3: remote (SSH) sessions now also resolve ahead/behind over the exec
+    // channel, so the bottom indicator matches the local review rail instead
+    // of always showing a bare "Git" label.
+    if (isRemote) {
+      if (session.ptyId === undefined) return () => { cancelled = true; };
+      const ptyId = session.ptyId;
+      sshGitAheadBehind(ptyId)
+        .then((r) => !cancelled && setRemote(r))
+        .catch(() => !cancelled && setRemote(null));
+      return () => { cancelled = true; };
+    }
     gitAheadBehind(repoPath!)
       .then((r) => !cancelled && setRemote(r))
       .catch(() => !cancelled && setRemote(null));
     return () => {
       cancelled = true;
     };
-  }, [repoPath, session.id, nonce, notGit, isRemote]);
+  }, [repoPath, session.id, session.ptyId, nonce, notGit, isRemote]);
 
   useEffect(() => {
     if (expandedFileKey && !files.some((f) => fileRowKey(f) === expandedFileKey)) {
@@ -463,7 +472,10 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                 });
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.click();
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.currentTarget.click();
+                }
               }}
               style={{
                 width: 18,

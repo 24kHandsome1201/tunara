@@ -69,6 +69,7 @@ pub fn run() {
             modules::resolver::resolve_bin,
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
+            modules::resolver::clear_bin_overrides,
             // Tunara 新增（agent CLI 检测）
             modules::agent::preflight::agent_preflight,
             modules::agent::preflight::agent_preflight_invalidate,
@@ -101,6 +102,7 @@ pub fn run() {
             // SSH sessions — complements the read-only local git2 path).
             modules::ssh::remote_git::ssh_git_status,
             modules::ssh::remote_git::ssh_git_diff,
+            modules::ssh::remote_git::ssh_git_ahead_behind,
             modules::ssh::remote_git::ssh_fs_search,
             modules::ssh::remote_git::ssh_fs_grep,
         ])

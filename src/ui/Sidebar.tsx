@@ -299,6 +299,7 @@ export function Sidebar({
             </button>
           )}
         </div>
+        {q && <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", padding: "2px 12px 0", lineHeight: 1.4 }}>{t("sidebar.search.no_drag")}</div>}
       </div>
 
       <GlobalAgentBar sessions={sessions} onSelectSession={onSelectSession} />

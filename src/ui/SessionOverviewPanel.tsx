@@ -99,7 +99,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       <div style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           {session.pinned && <span style={{ color: "var(--c-accent)", flexShrink: 0 }}>★</span>}
-          <div style={{ fontSize: 16, fontWeight: 750, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={primary}>
+          <div style={{ fontSize: "var(--fs-title)", fontWeight: 750, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={primary}>
             {primary}
           </div>
         </div>

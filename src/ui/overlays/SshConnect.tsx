@@ -192,7 +192,14 @@ export function SshConnect({ onClose }: SshConnectProps) {
         tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === "Escape") onClose();
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) connect();
+          // B3: Enter (plain or with Cmd/Ctrl) submits the form so keyboard
+          // users aren't forced to reach for the mouse. Mirrors HostKeyPrompt
+          // and WorkflowParamPrompt, which both bind Enter to their primary
+          // action.
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (canConnect) connect();
+          }
         }}
         style={{
           position: "fixed",

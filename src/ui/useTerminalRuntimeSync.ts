@@ -6,6 +6,7 @@ import type { CursorStyle } from "@/state/ui";
 import type { TerminalThemeName, ThemeType } from "./types";
 import type { TerminalWebglRenderer } from "./useTerminalWebgl";
 import { getTerminalTheme } from "@/styles/terminalTheme";
+import { createWebglAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
@@ -79,7 +80,9 @@ export function useTerminalRuntimeSync({
       // WebGL texture atlas. fit() only rebuilds the atlas when the cell grid
       // actually changes size, so a same-size font/theme swap leaves stale
       // glyphs until the next resize. Force a rebuild here. No-op under DOM.
-      webglRef.current?.clearTextureAtlas();
+      // Route through the shared rebuilder so this invalidation path carries
+      // the same torn-down-renderer guard as every other one.
+      createWebglAtlasRebuilder(webglRef)();
     } catch {
       /* noop */
     }

@@ -8,6 +8,8 @@ import { SshConnect } from "@/ui/overlays/SshConnect";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { ToastContainer } from "@/ui/Toast";
+import { useT } from "@/modules/i18n";
+import { t as staticT } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useInit } from "./useInit";
@@ -116,6 +118,7 @@ function AppSplash() {
         fontFamily: "var(--font-ui)",
         background: "var(--c-bg-white)",
         animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
+        gap: 10,
       }}
     >
       <span
@@ -130,11 +133,25 @@ function AppSplash() {
       >
         Tunara
       </span>
+      {/* I11: a subtle "restoring" hint so cold-start with many sessions
+          isn't a black box. Pulsing in sync with the wordmark. */}
+      <span
+        style={{
+          fontSize: "var(--fs-meta)",
+          color: "var(--c-text-5)",
+          fontFamily: "var(--font-mono)",
+          opacity: 0.6,
+          animation: "breathe 1.6s ease-in-out infinite",
+        }}
+      >
+        {staticT("app.splash.restoring")}
+      </span>
     </div>
   );
 }
 
 export default function App() {
+  const t = useT();
   const ready = useUIStore((s) => s.ready);
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
@@ -261,6 +278,40 @@ export default function App() {
             sessions={sessions}
             activeSessionId={activeSessionId ?? ""}
           />
+        )}
+
+        {/* B5: when there are no sessions (e.g. snapshot restore failed or the
+            last session was closed before the auto-create kicked in), show a
+            centered empty-state with a clear call to action instead of a blank
+            middle pane. */}
+        {sessions.length === 0 && (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 17 10 11 4 5" />
+                  <line x1="12" y1="19" x2="20" y2="19" />
+                </svg>
+              </div>
+              <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>{t("app.empty.title")}</span>
+              <button
+                onClick={newTerminal}
+                className="hover-primary"
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "var(--r-btn)",
+                  border: "none",
+                  background: "var(--c-btn-primary-bg)",
+                  color: "var(--c-btn-primary-text)",
+                  fontSize: "var(--fs-body)",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                {t("sidebar.new_terminal")}
+              </button>
+            </div>
+          </div>
         )}
 
         {activeSession && (

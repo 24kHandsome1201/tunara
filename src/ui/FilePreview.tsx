@@ -182,9 +182,9 @@ function InlineText({ text }: { text: string }) {
 function MarkdownBlock({ block }: { block: Block }) {
   switch (block.type) {
     case "h1":
-      return <div style={{ fontSize: 13, fontWeight: 700, color: "var(--c-text-primary)", margin: "0 0 6px", paddingBottom: 4, borderBottom: "1px solid var(--c-border-2)" }}><InlineText text={block.text} /></div>;
+      return <div style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--c-text-primary)", margin: "0 0 6px", paddingBottom: 4, borderBottom: "1px solid var(--c-border-2)" }}><InlineText text={block.text} /></div>;
     case "h2":
-      return <div style={{ fontSize: 12, fontWeight: 600, color: "var(--c-text-2)", margin: "6px 0 4px" }}><InlineText text={block.text} /></div>;
+      return <div style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-2)", margin: "6px 0 4px" }}><InlineText text={block.text} /></div>;
     case "h3":
       return <div style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-4)", margin: "4px 0 2px" }}><InlineText text={block.text} /></div>;
     case "p":

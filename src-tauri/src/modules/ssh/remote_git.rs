@@ -13,7 +13,7 @@ use tauri::State;
 
 use crate::modules::fs::grep::{GrepHit, GrepResponse};
 use crate::modules::fs::search::SearchHit;
-use crate::modules::git::{FileChange, FileDiff, StatusResult};
+use crate::modules::git::{FileChange, FileDiff, RemoteState, StatusResult};
 use crate::modules::pty::{PtyState, Session};
 
 /// Resolve the SSH session behind a session id as a cloned `Arc<Session>` so
@@ -32,6 +32,9 @@ fn ssh_session(state: &State<'_, PtyState>, id: u32) -> Result<std::sync::Arc<Se
 /// `tooLarge` beyond that.
 const MAX_STATUS_BYTES: usize = 256 * 1024;
 const MAX_DIFF_BYTES: usize = 256 * 1024;
+/// Line cap mirroring the local path's `DIFF_MAX_LINES` (git/mod.rs), so the
+/// DiffPanel shows the same "truncated" hint for local and remote diffs.
+const MAX_DIFF_LINES: usize = 2000;
 
 /// Parse `git status --porcelain=v1 --branch` output into a `StatusResult`.
 ///
@@ -164,21 +167,116 @@ pub async fn ssh_git_diff(
     // (e.g. "fatal: not a git repository") as Err instead of merging them
     // into the patch text.
     let cmd = format!("git -C . diff {arg} -- {quoted}");
-    let out = ssh.exec(&cmd, MAX_DIFF_BYTES).await?;
-    // If the exec capped out, flag truncation so the UI says "too large"
-    // instead of showing a sliced patch.
-    if out.len() >= MAX_DIFF_BYTES {
+    // Ask exec for one byte over the cap: exec truncates to its limit, so a
+    // result strictly longer than MAX_DIFF_BYTES is the only unambiguous
+    // overflow signal (a diff of exactly the cap is complete, not too large).
+    let out = ssh.exec(&cmd, MAX_DIFF_BYTES + 1).await?;
+    if out.len() > MAX_DIFF_BYTES {
         return Ok(FileDiff::TooLarge {
             path: file,
             bytes: out.len(),
         });
     }
+    // Under the byte cap but over the line cap: cut and flag truncation the
+    // same way the local path does, instead of silently returning a patch the
+    // local DiffPanel would have labelled as truncated.
     let total_lines = out.lines().count();
+    if total_lines > MAX_DIFF_LINES {
+        let patch = out
+            .lines()
+            .take(MAX_DIFF_LINES)
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Ok(FileDiff::Text {
+            path: file,
+            patch,
+            truncated: true,
+            total_lines,
+        });
+    }
     Ok(FileDiff::Text {
         path: file,
         patch: out,
         truncated: false,
         total_lines,
+    })
+}
+
+/// Run `git rev-list --left-right --count @{u}...HEAD` over the SSH exec
+/// channel and parse it into a `RemoteState`, mirroring the local
+/// `git_ahead_behind` IPC contract so DiffPanel can render the ahead/behind
+/// indicator for remote repos.
+///
+/// Uses `@{u}` (upstream shorthand) so the remote shell resolves the tracked
+/// upstream without us guessing its name. Degrades to `NoUpstream` when the
+/// branch has no upstream, `Detached` when HEAD is detached, and `Unknown` for
+/// any other git failure (missing git, not a repo, malformed output).
+#[tauri::command]
+pub async fn ssh_git_ahead_behind(
+    state: State<'_, PtyState>,
+    session_id: u32,
+) -> Result<RemoteState, String> {
+    let session = ssh_session(&state, session_id)?;
+    let ssh = match session.as_ref() {
+        Session::Ssh(s) => s,
+        Session::Local(_) => return Err("not a remote session".to_string()),
+    };
+    // `rev-list --left-right --count @{u}...HEAD` prints "<behind>\t<ahead>"
+    // (one line, tab-separated). `-C .` keeps us in the shell's cwd.
+    let out = ssh
+        .exec("git -C . rev-list --left-right --count @{u}...HEAD 2>/dev/null", 256)
+        .await?;
+    let trimmed = out.trim();
+    // Empty output: no upstream (git exited non-zero, stderr suppressed).
+    if trimmed.is_empty() {
+        // Fall back to reading the branch name so the UI can show it.
+        let branch_out = ssh
+            .exec("git -C . symbolic-ref --short HEAD 2>/dev/null", 128)
+            .await
+            .unwrap_or_default();
+        let branch = branch_out.trim().to_string();
+        if branch.is_empty() {
+            // No HEAD ref at all → detached or unborn. Distinguish via
+            // rev-parse HEAD: success means detached.
+            let head_out = ssh
+                .exec("git -C . rev-parse --short HEAD 2>/dev/null", 128)
+                .await
+                .unwrap_or_default();
+            let oid = head_out.trim().to_string();
+            if oid.is_empty() {
+                return Ok(RemoteState::Unborn);
+            }
+            return Ok(RemoteState::Detached { oid });
+        }
+        return Ok(RemoteState::NoUpstream { branch });
+    }
+    // Parse "<behind>\t<ahead>". Malformed → Unknown.
+    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    if parts.len() != 2 {
+        return Ok(RemoteState::Unknown {
+            message: format!("unexpected rev-list output: {trimmed}"),
+        });
+    }
+    let Ok(behind) = parts[0].parse::<usize>() else {
+        return Ok(RemoteState::Unknown {
+            message: format!("non-numeric behind count: {}", parts[0]),
+        });
+    };
+    let Ok(ahead) = parts[1].parse::<usize>() else {
+        return Ok(RemoteState::Unknown {
+            message: format!("non-numeric ahead count: {}", parts[1]),
+        });
+    };
+    // Resolve the upstream name for the UI label.
+    let up_out = ssh
+        .exec("git -C . rev-parse --abbrev-ref @{u} 2>/dev/null", 128)
+        .await
+        .unwrap_or_default();
+    let upstream = up_out.trim().to_string();
+    Ok(RemoteState::Ok {
+        upstream,
+        ahead,
+        behind,
     })
 }
 
