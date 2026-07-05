@@ -7,6 +7,7 @@ import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
+import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
 
 function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
@@ -250,7 +251,7 @@ function DiffStat({ added, removed }: { added: number; removed: number }) {
 interface SessionCardProps {
   session: Session;
   active: boolean;
-  confirmClose?: boolean;
+  confirmCloseAt?: number;
   tabIndex?: number;
   onSelect: (id: string) => void;
   onClose?: (id: string) => void;
@@ -259,7 +260,8 @@ interface SessionCardProps {
   onContextMenu?: (e: React.MouseEvent, session: Session) => void;
 }
 
-function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
+function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSelect, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
+  const confirmClose = confirmCloseAt > 0;
   // Subscribe to the language store: deriveTitle localizes the agent activity
   // suffix (· 运行中 / · Working), and this card is memoized.
   const t = useT();
@@ -271,6 +273,7 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
   const showTerminalProgress = !!session.terminalProgress;
   const showBusyProgress = !!session.agent && busy && !showTerminalProgress;
   const elapsed = useElapsed(session.startedAt, busy);
+  const closeCountdown = useDestructiveConfirmCountdown(confirmClose ? confirmCloseAt : 0);
   const renamingSessionId = useSessionsStore((s) => s.renamingSessionId);
   const isRenaming = renamingSessionId === session.id;
   const [editing, setEditing] = useState(false);
@@ -315,6 +318,16 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
   const handleClick = () => onSelect(session.id);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!editing && onRename && e.key === "F2") {
+      e.preventDefault();
+      startRename();
+      return;
+    }
+    if (!editing && onRename && active && e.key === "Enter") {
+      e.preventDefault();
+      startRename();
+      return;
+    }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelect(session.id);
@@ -519,15 +532,56 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
       </div>
 
       {confirmClose && (
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: "var(--fs-meta)",
-            color: "var(--c-error)",
-            lineHeight: 1.3,
-          }}
-        >
-          {t("session.close.running_hint")}
+        <div style={{ marginTop: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              fontSize: "var(--fs-meta)",
+              color: "var(--c-error)",
+              lineHeight: 1.3,
+            }}
+          >
+            <span style={{ minWidth: 0 }}>{t("session.close.running_hint")}</span>
+            {closeCountdown && (
+              <span
+                aria-hidden="true"
+                style={{
+                  flexShrink: 0,
+                  fontFamily: "var(--font-mono)",
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {closeCountdown.remainingSeconds}s
+              </span>
+            )}
+          </div>
+          {closeCountdown && (
+            <div
+              aria-hidden="true"
+              style={{
+                marginTop: 4,
+                height: 2,
+                borderRadius: 999,
+                overflow: "hidden",
+                background: "color-mix(in srgb, var(--c-error) 12%, transparent)",
+              }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  width: `${closeCountdown.progress * 100}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: "var(--c-error)",
+                  transition: "width 100ms linear",
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -539,5 +593,5 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
 
 // Memoized: callbacks are generic (take sessionId), so their identity is
 // stable across Sidebar re-renders. A card only re-renders when its own
-// data props (session/active/confirmClose/tabIndex) actually change.
+// data props (session/active/confirmCloseAt/tabIndex) actually change.
 export const SessionCard = memo(SessionCardImpl);

@@ -367,7 +367,7 @@ export function Sidebar({
                       <SessionCard
                         session={s}
                         active={s.id === activeSessionId}
-                        confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
+                        confirmCloseAt={getNumberRecordValue(closeConfirmations, s.id)}
                         tabIndex={s.id === tabbableSessionId ? 0 : -1}
                         onSelect={handleSelect}
                         onKeyDown={handleSessionKeyDown}

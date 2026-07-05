@@ -1,7 +1,41 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 /** Shared window for "click again to confirm" destructive actions. */
 export const DESTRUCTIVE_CONFIRM_WINDOW_MS = 3_000;
+
+export function getDestructiveConfirmRemainingMs(
+  confirmedAt: number,
+  now = Date.now(),
+  windowMs = DESTRUCTIVE_CONFIRM_WINDOW_MS,
+): number {
+  if (confirmedAt <= 0) return 0;
+  return Math.max(0, windowMs - (now - confirmedAt));
+}
+
+export function getDestructiveConfirmRemainingSeconds(confirmedAt: number, now = Date.now()): number {
+  return Math.ceil(getDestructiveConfirmRemainingMs(confirmedAt, now) / 1000);
+}
+
+export function useDestructiveConfirmCountdown(confirmedAt: number) {
+  const [now, setNow] = useState(Date.now);
+  const active = confirmedAt > 0;
+
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(id);
+  }, [active, confirmedAt]);
+
+  if (!active) return null;
+  const remainingMs = getDestructiveConfirmRemainingMs(confirmedAt, now);
+  if (remainingMs <= 0) return null;
+  return {
+    remainingMs,
+    remainingSeconds: Math.ceil(remainingMs / 1000),
+    progress: remainingMs / DESTRUCTIVE_CONFIRM_WINDOW_MS,
+  };
+}
 
 export function isDestructiveConfirmPending(
   store: Map<string, number>,

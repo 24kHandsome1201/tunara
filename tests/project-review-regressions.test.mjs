@@ -291,7 +291,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(ui, /toggleTrueRecordKey\(s\.collapsedDiffSections, section\)/);
   assert.match(sidebar, /hasTrueRecordKey\(collapsedDirs, dir\)/);
   assert.match(sidebar, /getNumberRecordValue\(dirCloseConfirmations, dir\) > 0/);
-  assert.match(sidebar, /getNumberRecordValue\(closeConfirmations, s\.id\) > 0/);
+  assert.match(sidebar, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
   assert.doesNotMatch(sidebar, /!!collapsedDirs\[dir\]/);
   assert.doesNotMatch(sidebar, /!!dirCloseConfirmations\[dir\]/);
   assert.doesNotMatch(sidebar, /!!closeConfirmations\[s\.id\]/);
@@ -860,6 +860,11 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sessions, /const orderedTargets = get\(\)\.sessions\.filter/);
   assert.match(sessions, /unconfirmedBusy\.length > 0/);
   assert.match(sessions, /get\(\)\.closeSessions\(sessionIds, \{ toastSubtitle: t\("session\.close\.all_running_hint"\) \}\)/);
+  assert.match(sessionCard, /e\.key === "F2"/);
+  assert.match(sessionCard, /active && e\.key === "Enter"/);
+  assert.match(sessionCard, /useDestructiveConfirmCountdown/);
+  assert.match(sidebar, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
+  assert.doesNotMatch(sidebar, /confirmClose=\{getNumberRecordValue\(closeConfirmations, s\.id\) > 0\}/);
   assert.doesNotMatch(sessionCard, /onClearCloseConfirm/);
   assert.doesNotMatch(sessionCard, /session\.changes\?\.files\.reduce/);
   assert.doesNotMatch(sidebar, /onClearCloseConfirm/);
