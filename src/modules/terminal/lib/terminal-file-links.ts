@@ -1,5 +1,5 @@
 import type { IBufferLine, IDisposable, ILink, Terminal } from "@xterm/xterm";
-import { openInEditor } from "@/modules/editor/open";
+import { openInEditorWithToast } from "@/ui/lib/open-in-editor";
 import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
 
 interface TerminalFileLinkOptions {
@@ -36,7 +36,7 @@ export function registerTerminalFileLinkProvider(
           event.preventDefault();
           event.stopPropagation();
           const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(bufferLineNumber));
-          openInEditor(options.getEditor(), path, match.line, match.column).catch(() => {});
+          void openInEditorWithToast(options.getEditor(), path, { line: match.line, column: match.column });
         },
       }));
       callback(links);

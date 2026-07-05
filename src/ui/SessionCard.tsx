@@ -3,7 +3,9 @@ import { type Session, type RunState, type TerminalProgress, deriveTitle } from 
 import { getAgentCircleStyle, getAgentIcon } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
+import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 
 function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
@@ -261,6 +263,8 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
   // Subscribe to the language store: deriveTitle localizes the agent activity
   // suffix (· 运行中 / · Working), and this card is memoized.
   const t = useT();
+  const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
+  const closeLabel = `${t("session.close.title")} ${formatShortcut(closeSessionShortcut)}`;
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const busy = isSessionBusy(session);
@@ -372,8 +376,8 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
         <button
           type="button"
           tabIndex={0}
-          aria-label={confirmClose ? t("session.close.confirm_again") : t("session.close.title")}
-          title={confirmClose ? t("session.close.confirm_again") : t("session.close.title")}
+          aria-label={confirmClose ? t("destructive.confirm_again.close") : closeLabel}
+          title={confirmClose ? t("destructive.confirm_again.close") : closeLabel}
           onClick={handleClose}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {

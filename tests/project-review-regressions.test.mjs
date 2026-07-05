@@ -333,9 +333,9 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   // Remote grep hits can't jump to a local editor; they toggle the inline
   // remote FilePreview instead.
   assert.match(explorer, /isRemote[\s\S]*?\? toggleSearchFile\(group\.path\)[\s\S]*?: openEditor\(group\.path, ln\.line\)/);
-  // Editor launch failures must surface a toast (shared openEditor helper),
+  // Editor launch failures must surface a toast (shared openInEditorWithToast helper),
   // not vanish into an empty catch.
-  assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?diff\.toast\.editor_not_found/);
+  assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
   assert.doesNotMatch(explorer, /openInEditor\([^)]*\)\.catch\(\(\) => \{\}\)/);
   assert.match(explorer, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
   assert.match(explorer, /const next = m === "name" \? "content" : "name"/);
@@ -700,7 +700,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalFileLinks, /options\.getCwd\(bufferLineNumber\)/);
   assert.match(terminalLineCwd, /if \(!cwd\.trim\(\)\)/);
   assert.match(terminalLineCwd, /last\?\.cwd === cwd/);
-  assert.match(terminalFileLinks, /openInEditor\(options\.getEditor\(\), path, match\.line, match\.column\)/);
+  assert.match(terminalFileLinks, /openInEditorWithToast\(options\.getEditor\(\), path, \{ line: match\.line, column: match\.column \}\)/);
   assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
   assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
@@ -749,7 +749,8 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /t\("settings\.cli\.not_on_path"\)/);
   assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
   assert.match(settings, /activeTab === "appearance"/);
-  assert.match(settings, /onClick=\{\(\) => useUIStore\.getState\(\)\.resetAppearance\(\)\}/);
+  assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
+  assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
   assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language \}\)\)/);
   assert.doesNotMatch(ui, /resetAppearance: \(\) => set\(\{ \.\.\.DEFAULT_SETTINGS, keybindings: \{ \.\.\.DEFAULT_KEYBINDINGS \} \}\)/);
 });
@@ -802,13 +803,13 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.doesNotMatch(ui, /externalEditor: ExternalEditor;\n\n  setSidebarVisible/);
   assert.match(keys, /setFontSize\(DEFAULT_SETTINGS\.fontSize\)/);
 
-  assert.match(sessions, /closeSessions: \(ids: string\[\]\) => boolean/);
+  assert.match(sessions, /closeSessions: \(ids: string\[\], opts\?: \{ toastSubtitle\?: string \}\) => boolean/);
   assert.match(sessions, /const closeConfirmationTimers = new Map/);
   assert.match(sessions, /function scheduleCloseConfirmationExpiry/);
   assert.match(sessions, /function scheduleDirCloseConfirmationExpiry/);
   assert.match(sessions, /const orderedTargets = get\(\)\.sessions\.filter/);
   assert.match(sessions, /unconfirmedBusy\.length > 0/);
-  assert.match(sessions, /get\(\)\.closeSessions\(sessionIds\)/);
+  assert.match(sessions, /get\(\)\.closeSessions\(sessionIds, \{ toastSubtitle: t\("session\.close\.all_running_hint"\) \}\)/);
   assert.doesNotMatch(sessionCard, /onClearCloseConfirm/);
   assert.doesNotMatch(sessionCard, /session\.changes\?\.files\.reduce/);
   assert.doesNotMatch(sidebar, /onClearCloseConfirm/);
@@ -823,7 +824,8 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(zhDict, /"sidebar\.session\.close": "关闭会话"/);
   assert.match(zhDict, /"sidebar\.dir\.close_all": "关闭全部会话"/);
   assert.match(palette, /st\.closeSessions\(st\.sessions\.map/);
-  assert.match(palette, /notifyBatchCloseConfirmation/);
+  assert.match(palette, /toastSubtitle: t\("palette\.toast\.running_need_confirm"\)/);
+  assert.match(sessions, /destructive\.confirm_again\.close/);
   assert.match(palette, /collectRecentTerminalDirs\(recentDirs, activeSession\.dir\)/);
   assert.match(palette, /newTerminalInDir\(entry\.dir\)/);
   assert.match(palette, /collectRecentTerminalCommands\(recentCommands, activeSession\.lastCommand\)/);

@@ -101,52 +101,56 @@ export function DirGroupHeader({
         {count}
       </span>
       {onNewTerminal && (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           className="dir-group-add hover-bg"
           onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onNewTerminal(); } }}
           title={t("dir_group.new_terminal")}
+          aria-label={t("dir_group.new_terminal")}
           style={{
             width: 18,
             height: 18,
             borderRadius: 4,
+            border: "none",
+            background: "transparent",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
             color: "var(--c-text-5)",
+            padding: 0,
           }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-        </span>
+        </button>
       )}
       {onCloseAll && (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           className="dir-group-close hover-close"
           onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onCloseAll(); } }}
           title={confirmClose ? t("session.close.all_running_hint") : t("session.close.all_title")}
+          aria-label={confirmClose ? t("session.close.all_running_hint") : t("session.close.all_title")}
           style={{
             width: 18,
             height: 18,
             borderRadius: 4,
+            border: "none",
+            background: "transparent",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
             color: confirmClose ? "var(--c-error)" : "var(--c-text-5)",
             opacity: confirmClose ? 1 : undefined,
+            padding: 0,
           }}
         >
           <CloseIcon size={12} strokeWidth={2.5} />
-        </span>
+        </button>
       )}
     </div>
   );

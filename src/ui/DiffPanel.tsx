@@ -12,7 +12,7 @@ import {
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
-import { openInEditor } from "@/modules/editor/open";
+import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
@@ -454,39 +454,29 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
             {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
           </span>
           {repoPath && !isRemote && (
-            <span
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               className="diff-file-open hover-bg"
               title={t("diff.open_in_editor")}
+              aria-label={t("diff.open_in_editor")}
               onClick={(e) => {
                 e.stopPropagation();
                 const editor = useUIStore.getState().externalEditor;
-                openInEditor(editor, `${repoPath}/${file.path}`).catch(() => {
-                  useUIStore.getState().addToast({
-                    sessionId: session.id,
-                    title: t("diff.toast.editor_not_found"),
-                    subtitle: editor,
-                    variant: "error",
-                  });
-                });
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  e.currentTarget.click();
-                }
+                void openInEditorWithToast(editor, `${repoPath}/${file.path}`, { sessionId: session.id });
               }}
               style={{
                 width: 18,
                 height: 18,
                 borderRadius: 4,
+                border: "none",
+                background: "transparent",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: "pointer",
                 color: "var(--c-text-5)",
                 flexShrink: 0,
+                padding: 0,
               }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -494,7 +484,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                 <polyline points="15 3 21 3 21 9" />
                 <line x1="10" y1="14" x2="21" y2="3" />
               </svg>
-            </span>
+            </button>
           )}
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
             +{file.added} −{file.removed}

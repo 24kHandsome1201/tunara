@@ -59,8 +59,16 @@ function GearIcon() {
 
 function TabButton({ isActive, label, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: { isActive: boolean; label: string; closeLabel: string; confirmCloseLabel: string; confirmClose?: boolean; onSelect: () => void; onClose: () => void }) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
       className="tab-btn"
       data-active={isActive ? "true" : "false"}
       style={{
@@ -96,22 +104,24 @@ function TabButton({ isActive, label, closeLabel, confirmCloseLabel, confirmClos
       }}>
         {label}
       </span>
-      <span
-        role="button"
+      <button
+        type="button"
         tabIndex={0}
         title={confirmClose ? confirmCloseLabel : closeLabel}
+        aria-label={confirmClose ? confirmCloseLabel : closeLabel}
         onClick={(e) => { e.stopPropagation(); onClose(); }}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
         className="tab-close hover-close"
         style={{
-          width: 20, height: 20, borderRadius: 5, display: "flex", alignItems: "center",
-          justifyContent: "center", flexShrink: 0,
+          width: 20, height: 20, borderRadius: 5, border: "none", background: "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          cursor: "pointer", padding: 0,
           color: confirmClose ? "var(--c-error)" : undefined,
         }}
       >
         <CloseIcon size={10} strokeWidth={2.2} />
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -186,6 +196,7 @@ export function Titlebar({
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
   const openSettingsShortcut = useUIStore((s) => s.keybindings.openSettings);
+  const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
 
@@ -324,8 +335,8 @@ export function Titlebar({
               <TabButton
                 isActive={s.id === activeSessionId}
                 label={tabLabel(s)}
-                closeLabel={t("titlebar.tab.close")}
-                confirmCloseLabel={t("session.close.confirm_again")}
+                closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
+                confirmCloseLabel={t("destructive.confirm_again.close")}
                 confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
                 onSelect={() => onSelectSession(s.id)}
                 onClose={() => onCloseSession(s.id)}

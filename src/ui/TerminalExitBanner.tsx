@@ -269,7 +269,7 @@ export function ConnectingOverlay({ onCancel }: { onCancel?: () => void }) {
               cursor: "pointer",
             }}
           >
-            {staticT("ssh.connecting.cancel")}
+            {staticT("ssh.connecting.close_session")}
           </button>
         )}
       </div>

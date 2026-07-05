@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -59,18 +59,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   // Stable identity so the commands useMemo below can list it as a dependency
   // without invalidating on every render; it only reads store state at call
   // time plus the language-scoped `t`.
-  const notifyBatchCloseConfirmation = useCallback((subtitle: string) => {
-    const st = useSessionsStore.getState();
-    const sessionId = st.activeSessionId ?? st.sessions[0]?.id;
-    if (!sessionId) return;
-    uiStore.getState().addToast({
-      sessionId,
-      title: t("palette.toast.confirm_again"),
-      subtitle,
-      variant: "error",
-    });
-  }, [uiStore, t]);
-
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
     let idx = 0;
@@ -429,8 +417,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         action: () => {
           uiStore.getState().recordCommandUse("close-all-sessions");
           const st = useSessionsStore.getState();
-          const closed = st.closeSessions(st.sessions.map((s) => s.id));
-          if (!closed) notifyBatchCloseConfirmation(t("palette.toast.running_need_confirm"));
+          st.closeSessions(st.sessions.map((s) => s.id), {
+            toastSubtitle: t("palette.toast.running_need_confirm"),
+          });
           onClose();
         },
       });
@@ -445,15 +434,16 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         action: () => {
           uiStore.getState().recordCommandUse("close-other-sessions");
           const st = useSessionsStore.getState();
-          const closed = st.closeSessions(st.sessions.filter((s) => s.id !== activeSessionId).map((s) => s.id));
-          if (!closed) notifyBatchCloseConfirmation(t("palette.toast.other_running_need_confirm"));
+          st.closeSessions(st.sessions.filter((s) => s.id !== activeSessionId).map((s) => s.id), {
+            toastSubtitle: t("palette.toast.other_running_need_confirm"),
+          });
           onClose();
         },
       });
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, sidebarVisible, panelVisible, t, notifyBatchCloseConfirmation]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, sidebarVisible, panelVisible, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

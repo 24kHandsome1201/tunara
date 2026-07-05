@@ -7,7 +7,7 @@ import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState 
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { openInEditor } from "@/modules/editor/open";
+import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useT, t as staticT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
@@ -120,17 +120,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
 
-  // Editor launch failures (editor missing / not on PATH) surface as a toast,
-  // matching DiffPanel's open-in-editor affordance instead of failing silently.
   const openEditor = (path: string, line?: number) => {
-    openInEditor(externalEditor, path, line).catch(() => {
-      useUIStore.getState().addToast({
-        sessionId: useSessionsStore.getState().activeSessionId ?? "",
-        title: t("diff.toast.editor_not_found"),
-        subtitle: externalEditor,
-        variant: "error",
-      });
-    });
+    void openInEditorWithToast(externalEditor, path, { line });
   };
 
   // Resolve the starting directory. Local: rootDir. Remote: SFTP-resolved home.

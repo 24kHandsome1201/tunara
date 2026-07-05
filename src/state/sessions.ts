@@ -45,7 +45,7 @@ interface SessionsState {
   updateSession: (id: string, patch: Partial<Session>) => void;
   refreshGit: (id: string) => void;
   clearCloseConfirmation: (id: string) => void;
-  closeSessions: (ids: string[]) => boolean;
+  closeSessions: (ids: string[], opts?: { toastSubtitle?: string }) => boolean;
   closeSessionsInDir: (dir: string) => void;
   clearDirCloseConfirmation: (dir: string) => void;
   recordRecentDir: (dir: string) => void;
@@ -386,7 +386,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }));
   },
 
-  closeSessions: (ids) => {
+  closeSessions: (ids, opts) => {
     const uniqueIds = new Set(ids);
     const orderedTargets = get().sessions.filter((s) => uniqueIds.has(s.id));
     if (orderedTargets.length === 0) return true;
@@ -404,6 +404,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       for (const s of unconfirmedBusy) {
         scheduleCloseConfirmationExpiry(s.id, get().clearCloseConfirmation);
       }
+      const toastSessionId = get().activeSessionId ?? get().sessions[0]?.id;
+      if (toastSessionId) {
+        useUIStore.getState().addToast({
+          sessionId: toastSessionId,
+          title: t("destructive.confirm_again.close"),
+          subtitle: opts?.toastSubtitle ?? t("session.close.running_hint"),
+          variant: "error",
+        });
+      }
       return false;
     }
 
@@ -418,7 +427,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   closeSessionsInDir: (dir) => {
     const sessionIds = get().sessions.filter((s) => s.dir === dir).map((s) => s.id);
     if (sessionIds.length === 0) return;
-    const closed = get().closeSessions(sessionIds);
+    const closed = get().closeSessions(sessionIds, { toastSubtitle: t("session.close.all_running_hint") });
     if (!closed) {
       const lastConfirm = getNumberRecordValue(get().dirCloseConfirmations, dir);
       if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
@@ -706,7 +715,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         scheduleCloseConfirmationExpiry(id, get().clearCloseConfirmation);
         useUIStore.getState().addToast({
           sessionId: id,
-          title: t("session.close.confirm_again"),
+          title: t("destructive.confirm_again.close"),
           subtitle: t("session.close.running_hint"),
           variant: "error",
         });

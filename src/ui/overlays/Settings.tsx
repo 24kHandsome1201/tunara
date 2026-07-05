@@ -635,7 +635,11 @@ export function Settings({ onClose }: SettingsProps) {
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           {activeTab === "appearance" ? (
             <button
-              onClick={() => useUIStore.getState().resetAppearance()}
+              onClick={async () => {
+                const ok = await tauriConfirmDialog(t("settings.appearance.reset_confirm"), { kind: "warning" });
+                if (!ok) return;
+                useUIStore.getState().resetAppearance();
+              }}
               style={{ padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
               className="hover-bg"
             >
