@@ -535,7 +535,7 @@ function TerminalViewImpl({
   return (
     <>
       <TerminalViewChrome containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />
-      {!ptyReady && !openError && !exitCode && <ConnectingOverlay />}
+      {!ptyReady && !openError && !exitCode && <ConnectingOverlay onCancel={() => useSessionsStore.getState().closeSession(sessionId)} />}
       {exitCode !== null && session && <TerminalExitBanner session={session} exitCode={exitCode} />}
       {openError !== null && session && <PtyErrorBanner session={session} />}
     </>

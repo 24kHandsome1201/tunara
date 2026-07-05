@@ -333,7 +333,7 @@ export function Settings({ onClose }: SettingsProps) {
                       fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
                     }}
                   >
-                    Nerd Font
+                    {t("settings.appearance.nerd_font")}
                   </button>
                   <button
                     onClick={() => setFontLigatures(!fontLigatures)}

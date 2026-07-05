@@ -157,7 +157,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(settings, /setFontFamily\(fontDraft\)/);
   assert.match(settings, /setFontLigatures\(!fontLigatures\)/);
   assert.match(settings, /setTerminalClipboardWrite\(!terminalClipboardWrite\)/);
-  assert.match(settings, /Nerd Font/);
+  assert.match(settings, /t\("settings\.appearance\.nerd_font"\)/);
   const zhDictForLigatures = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(settings, /t\("settings\.appearance\.ligatures"\)/);
   assert.match(zhDictForLigatures, /"settings\.appearance\.ligatures": "连字"/);
@@ -906,8 +906,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.doesNotMatch(main, /outline: .*var\(--c-accent\)/);
   assert.match(main, /function SplitIcon/);
   // Split-control labels are localized via i18n (no hardcoded Chinese in the component).
-  assert.match(main, /title=\{t\("split\.horizontal_with_shortcut"\)\}/);
-  assert.match(main, /title=\{t\("split\.vertical_with_shortcut"\)\}/);
+  assert.match(main, /title=\{`\$\{t\("split\.horizontal"\)\} \$\{formatShortcut\(splitHorizontalShortcut\)\}`\}/);
+  assert.match(main, /title=\{`\$\{t\("split\.vertical"\)\} \$\{formatShortcut\(splitVerticalShortcut\)\}`\}/);
   assert.match(main, /aria-label=\{t\("split\.horizontal"\)\}/);
   assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
   // Idle→fade delay (was 1500ms transition; now 1200ms delay before sliding out via keyframe)

@@ -1,6 +1,7 @@
 import type { CSSProperties, RefObject } from "react";
 import { CloseIcon, SearchIcon } from "./shared";
 import { useT } from "@/modules/i18n";
+import { formatShortcut } from "./formatShortcut";
 
 interface TerminalSearchBarProps {
   inputRef: RefObject<HTMLInputElement | null>;
@@ -53,6 +54,9 @@ export function TerminalSearchBar({
   const t = useT();
   const hasResults = count && count.total > 0;
   const noMatch = count && count.total === 0 && query.length > 0;
+  const prevShortcut = formatShortcut("Shift+Enter");
+  const nextShortcut = formatShortcut("Enter");
+  const closeShortcut = formatShortcut("Escape");
 
   return (
     <div
@@ -134,6 +138,8 @@ export function TerminalSearchBar({
       </button>
 
       <span
+        aria-live="polite"
+        aria-atomic="true"
         aria-hidden={!count}
         style={{
           fontSize: "var(--fs-meta)",
@@ -153,17 +159,17 @@ export function TerminalSearchBar({
 
       <div style={{ width: 1, height: 16, background: "var(--c-border-2)", flexShrink: 0, margin: "0 2px" }} />
 
-      <button onClick={onPrev} title={t("term.search.prev")} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button onClick={onPrev} title={`${t("term.search.prev")} ${prevShortcut}`} aria-label={`${t("term.search.prev")} ${prevShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="18 15 12 9 6 15" />
         </svg>
       </button>
-      <button onClick={onNext} title={t("term.search.next")} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button onClick={onNext} title={`${t("term.search.next")} ${nextShortcut}`} aria-label={`${t("term.search.next")} ${nextShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      <button onClick={onClose} title={t("term.search.close")} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button onClick={onClose} title={`${t("term.search.close")} ${closeShortcut}`} aria-label={`${t("term.search.close")} ${closeShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <CloseIcon size={12} strokeWidth={2.2} />
       </button>
     </div>

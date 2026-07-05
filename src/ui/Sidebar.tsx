@@ -349,7 +349,7 @@ export function Sidebar({
                 return (
                   <div key={s.id} data-session-id={s.id} role="listitem">
                     {showIndicator && (
-                      <div style={{ height: 2, background: "var(--c-accent)", borderRadius: 1, margin: "0 10px 2px" }} />
+                      <div style={{ height: 3, background: "var(--c-accent)", borderRadius: 2, margin: "2px 8px 4px", boxShadow: "0 0 0 1px color-mix(in srgb, var(--c-accent) 25%, transparent)" }} />
                     )}
                     <div
                       onPointerDown={(e) => {

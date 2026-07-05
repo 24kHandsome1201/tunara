@@ -37,9 +37,7 @@ export function createInputQueueFullWarner(term: Terminal) {
     const now = Date.now();
     if (now - lastWarn <= 2000) return;
     lastWarn = now;
-    term.write(
-      "\r\n\x1b[2m[tunara: remote input queue full, some input dropped — try pasting in smaller chunks]\x1b[0m\r\n",
-    );
+    term.write(`\r\n\x1b[2m${t("terminal.inline.input_queue_full")}\x1b[0m\r\n`);
   };
 }
 

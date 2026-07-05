@@ -1,6 +1,6 @@
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore, type ExternalEditor } from "@/state/ui";
-import { openInEditor } from "@/modules/editor/open";
+import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
 import type { MenuEntry } from "./ContextMenu";
 import type { Session } from "./types";
@@ -32,7 +32,7 @@ export function buildSessionMenuItems({
     { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
   ];
   if (!session.remote) {
-    items.push({ id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, session.dir).catch(() => {}); } });
+    items.push({ id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { void openInEditorWithToast(externalEditor, session.dir, { sessionId: session.id }); } });
   }
   items.push(
     { id: "session:copy-dir", label: session.remote ? t("sidebar.session.copy_remote") : t("sidebar.session.copy_dir"), icon: "copy", action: () => { void copyText(session.dir); } },

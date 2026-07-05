@@ -317,16 +317,17 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <div style={{ height: 36, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 var(--sp-2)", gap: 4, flexShrink: 0 }}>
         <button
-          onClick={goUp}
+          onClick={() => { if (canGoUp) goUp(); }}
           disabled={!canGoUp}
+          aria-disabled={!canGoUp}
           className="hover-bg"
           title={t("explorer.go_up")}
           aria-label={t("explorer.go_up")}
           style={{
             width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none",
-            background: "transparent", cursor: canGoUp ? "pointer" : "default",
+            background: "transparent", cursor: canGoUp ? "pointer" : "not-allowed",
             display: "flex", alignItems: "center", justifyContent: "center",
-            opacity: canGoUp ? 1 : 0.3, flexShrink: 0,
+            opacity: canGoUp ? 1 : 0.3, flexShrink: 0, pointerEvents: canGoUp ? "auto" : "none",
           }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

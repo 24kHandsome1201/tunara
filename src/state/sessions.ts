@@ -704,6 +704,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
           closeConfirmations: { ...state.closeConfirmations, [id]: Date.now() },
         }));
         scheduleCloseConfirmationExpiry(id, get().clearCloseConfirmation);
+        useUIStore.getState().addToast({
+          sessionId: id,
+          title: t("session.close.confirm_again"),
+          subtitle: t("session.close.running_hint"),
+          variant: "error",
+        });
         return;
       }
     }

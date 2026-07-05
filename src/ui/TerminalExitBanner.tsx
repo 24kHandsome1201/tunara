@@ -232,7 +232,7 @@ export function PtyErrorBanner({ session }: PtyErrorBannerProps) {
  * pane is blank with no signal. Lifted out of TerminalView to keep that file
  * under its regression-tested line budget.
  */
-export function ConnectingOverlay() {
+export function ConnectingOverlay({ onCancel }: { onCancel?: () => void }) {
   return (
     <div
       aria-live="polite"
@@ -242,17 +242,36 @@ export function ConnectingOverlay() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        pointerEvents: "none",
+        pointerEvents: onCancel ? "auto" : "none",
         background: "var(--c-bg-white)",
         animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         zIndex: 4,
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.2s var(--ease-in-out) infinite" }} />
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
           {staticT("ssh.connecting")}
         </span>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="hover-bg"
+            style={{
+              marginTop: 4,
+              padding: "4px 12px",
+              borderRadius: "var(--r-btn)",
+              border: "1px solid var(--c-border-2)",
+              background: "var(--c-bg-white)",
+              color: "var(--c-text-3)",
+              fontSize: "var(--fs-secondary)",
+              cursor: "pointer",
+            }}
+          >
+            {staticT("ssh.connecting.cancel")}
+          </button>
+        )}
       </div>
     </div>
   );

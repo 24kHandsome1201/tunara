@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { quickSelectHint, type TerminalQuickSelectItem } from "@/modules/terminal/lib/terminal-quick-select";
+import { useT } from "@/modules/i18n";
 
 interface TerminalQuickSelectProps {
   items: TerminalQuickSelectItem[];
@@ -9,6 +10,7 @@ interface TerminalQuickSelectProps {
 }
 
 export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: TerminalQuickSelectProps) {
+  const t = useT();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [typedHint, setTypedHint] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
@@ -119,7 +121,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
         }}
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 700, color: "var(--c-text-primary)" }}>快速选择</span>
+          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 700, color: "var(--c-text-primary)" }}>{t("quick_select.title")}</span>
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{items.length}</span>
         </div>
         <div ref={listRef} className="no-scrollbar scroll-fade-y" style={{ overflowY: "auto", padding: "6px 0" }}>
@@ -150,8 +152,8 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", marginTop: 1 }}>{item.detail}</div>
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
-                  <button onClick={() => onCopy(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>复制</button>
-                  {item.kind !== "text" && <button onClick={() => onOpen(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>打开</button>}
+                  <button onClick={() => onCopy(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.copy")}</button>
+                  {item.kind !== "text" && <button onClick={() => onOpen(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.open")}</button>}
                 </div>
               </div>
             );

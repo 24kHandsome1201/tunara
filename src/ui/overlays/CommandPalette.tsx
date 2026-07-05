@@ -575,7 +575,30 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           />
         </div>
 
-        <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "6px 0" }} className="no-scrollbar scroll-fade-y">
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label={t("palette.placeholder")}
+          style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}
+          className="no-scrollbar scroll-fade-y"
+        >
+          <span
+            aria-live="polite"
+            aria-atomic="true"
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              padding: 0,
+              margin: -1,
+              overflow: "hidden",
+              clip: "rect(0, 0, 0, 0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+          >
+            {ranked.length === 0 ? t("palette.empty") : t("palette.result_count", { count: ranked.length })}
+          </span>
           {ranked.length === 0 && (
             <div style={{ padding: "20px 16px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
               {t("palette.empty")}
@@ -592,6 +615,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                 return (
                   <div
                     key={cmd.id}
+                    role="option"
+                    aria-selected={isSelected}
                     data-cmd-index={globalIdx}
                     onClick={() => cmd.action()}
                     onMouseEnter={() => setSelectedIndex(globalIdx)}

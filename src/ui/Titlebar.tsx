@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { deriveTitle, type Session } from "./types";
+import { useSessionsStore } from "@/state/sessions";
+import { getNumberRecordValue } from "@/state/record-keys";
 import { useUIStore } from "@/state/ui";
+import { formatShortcut } from "./formatShortcut";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { CloseIcon } from "./shared";
@@ -54,7 +57,7 @@ function GearIcon() {
   );
 }
 
-function TabButton({ isActive, label, closeLabel, onSelect, onClose }: { isActive: boolean; label: string; closeLabel: string; onSelect: () => void; onClose: () => void }) {
+function TabButton({ isActive, label, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: { isActive: boolean; label: string; closeLabel: string; confirmCloseLabel: string; confirmClose?: boolean; onSelect: () => void; onClose: () => void }) {
   return (
     <button
       onClick={onSelect}
@@ -96,13 +99,14 @@ function TabButton({ isActive, label, closeLabel, onSelect, onClose }: { isActiv
       <span
         role="button"
         tabIndex={0}
-        title={closeLabel}
+        title={confirmClose ? confirmCloseLabel : closeLabel}
         onClick={(e) => { e.stopPropagation(); onClose(); }}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
         className="tab-close hover-close"
         style={{
           width: 20, height: 20, borderRadius: 5, display: "flex", alignItems: "center",
           justifyContent: "center", flexShrink: 0,
+          color: confirmClose ? "var(--c-error)" : undefined,
         }}
       >
         <CloseIcon size={10} strokeWidth={2.2} />
@@ -179,6 +183,9 @@ export function Titlebar({
   const t = useT();
   const showTabs = !sidebarVisible;
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
+  const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
+  const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
+  const openSettingsShortcut = useUIStore((s) => s.keybindings.openSettings);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
 
@@ -318,6 +325,8 @@ export function Titlebar({
                 isActive={s.id === activeSessionId}
                 label={tabLabel(s)}
                 closeLabel={t("titlebar.tab.close")}
+                confirmCloseLabel={t("session.close.confirm_again")}
+                confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
                 onSelect={() => onSelectSession(s.id)}
                 onClose={() => onCloseSession(s.id)}
               />
@@ -325,8 +334,8 @@ export function Titlebar({
           ))}
           <button
             onClick={onNewTerminal}
-            title={t("titlebar.new_terminal_with_shortcut")}
-            aria-label={t("titlebar.new_terminal_with_shortcut")}
+            title={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
+            aria-label={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
             style={{
               width: "var(--w-titlebar-control)",
               height: "var(--h-titlebar-control)",
@@ -365,8 +374,8 @@ export function Titlebar({
 
         <button
           onClick={onOpenSettings}
-          title={t("titlebar.settings_with_shortcut")}
-          aria-label={t("titlebar.settings_with_shortcut")}
+          title={`${t("titlebar.settings")} ${formatShortcut(openSettingsShortcut)}`}
+          aria-label={`${t("titlebar.settings")} ${formatShortcut(openSettingsShortcut)}`}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",

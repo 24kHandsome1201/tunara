@@ -16,6 +16,7 @@ import {
 } from "@/modules/ssh/hosts-bridge";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { useFocusTrap } from "./useFocusTrap";
+import { useDestructiveConfirm } from "../lib/destructive-confirm";
 
 interface SshConnectProps {
   onClose: () => void;
@@ -28,6 +29,7 @@ interface SshConnectProps {
  */
 export function SshConnect({ onClose }: SshConnectProps) {
   const t = useT();
+  const { isPending, tryConfirm } = useDestructiveConfirm();
   const containerRef = useRef<HTMLDivElement>(null);
   const addSession = useSessionsStore((s) => s.addSession);
   const setOverlay = useUIStore((s) => s.setOverlay);
@@ -70,9 +72,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
   };
 
   const deleteProfile = (id: string) => {
-    removeHost(id)
-      .then(setHosts)
-      .catch(() => {});
+    tryConfirm(`ssh-profile:${id}`, () => {
+      removeHost(id)
+        .then(setHosts)
+        .catch(() => {});
+    });
   };
 
   // Import static `Host` blocks from ~/.ssh/config. Existing profiles (matched
@@ -319,7 +323,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
                     </button>
                     <button
                       onClick={() => deleteProfile(h.id)}
-                      aria-label={t("common.close")}
+                      title={isPending(`ssh-profile:${h.id}`) ? t("destructive.confirm_again") : t("ssh.profile.delete")}
+                      aria-label={isPending(`ssh-profile:${h.id}`) ? t("destructive.confirm_again") : t("ssh.profile.delete")}
                       className="hover-close"
                       style={{
                         width: 22,
@@ -328,7 +333,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                         border: "none",
                         background: "transparent",
                         cursor: "pointer",
-                        color: "var(--c-text-4)",
+                        color: isPending(`ssh-profile:${h.id}`) ? "var(--c-error)" : "var(--c-text-4)",
                         borderRadius: "var(--r-btn)",
                         display: "flex",
                         alignItems: "center",
@@ -349,7 +354,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               <input
                 style={fieldStyle}
                 value={host}
-                placeholder="example.com"
+                placeholder={t("ssh.host_placeholder")}
                 onChange={(e) => setHost(e.target.value)}
                 spellCheck={false}
                 autoCapitalize="off"
@@ -371,7 +376,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <input
               style={fieldStyle}
               value={user}
-              placeholder="root"
+              placeholder={t("ssh.user_placeholder")}
               onChange={(e) => setUser(e.target.value)}
               spellCheck={false}
               autoCapitalize="off"
@@ -383,7 +388,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <input
               style={fieldStyle}
               value={identityFile}
-              placeholder="~/.ssh/id_ed25519"
+              placeholder={t("ssh.identity_placeholder")}
               onChange={(e) => setIdentityFile(e.target.value)}
               spellCheck={false}
               autoCapitalize="off"

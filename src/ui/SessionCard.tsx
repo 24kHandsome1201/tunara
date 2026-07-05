@@ -369,10 +369,19 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
       />
 
       {onClose && (
-        <span
-          aria-hidden="true"
+        <button
+          type="button"
+          tabIndex={0}
+          aria-label={confirmClose ? t("session.close.confirm_again") : t("session.close.title")}
           title={confirmClose ? t("session.close.confirm_again") : t("session.close.title")}
           onClick={handleClose}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClose(e);
+            }
+          }}
           className="session-card-close hover-close"
           style={{
             position: "absolute",
@@ -381,16 +390,19 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
             width: 18,
             height: 18,
             borderRadius: 4,
+            border: "none",
+            background: "transparent",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             color: confirmClose ? "var(--c-error)" : "var(--c-text-5)",
             cursor: "pointer",
             zIndex: 2,
+            padding: 0,
           }}
         >
           <CloseIcon size={11} strokeWidth={2.5} />
-        </span>
+        </button>
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -477,7 +489,7 @@ function SessionCardImpl({ session, active, confirmClose, tabIndex, onSelect, on
               <span
                 title={`${session.remote.user}@${session.remote.host}${session.remote.port !== 22 ? `:${session.remote.port}` : ""}`}
                 style={{ flexShrink: 0, color: "var(--c-accent)", fontSize: "var(--fs-meta)" }}
-                aria-label="SSH"
+                aria-label={t("sidebar.session.remote")}
               >
                 ⇄
               </span>

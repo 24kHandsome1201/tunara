@@ -4,6 +4,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { getSessionNoteStats, sanitizeSessionNote } from "@/modules/session/session-notes";
 import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
+import { useDestructiveConfirm } from "./lib/destructive-confirm";
 
 interface SessionNotesPanelProps {
   session: Session;
@@ -11,6 +12,7 @@ interface SessionNotesPanelProps {
 
 export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
   const t = useT();
+  const { isPending, tryConfirm } = useDestructiveConfirm();
   const setSessionNote = useSessionsStore((s) => s.setSessionNote);
   const [value, setValue] = useState(session.note ?? "");
   const stats = useMemo(() => getSessionNoteStats(value), [value]);
@@ -98,11 +100,23 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
         <span>{t("notes.save_hint")}</span>
         <span style={{ flex: 1 }} />
         <button
-          onClick={() => handleEdit("")}
+          onClick={() => {
+            if (!value.trim()) {
+              handleEdit("");
+              return;
+            }
+            tryConfirm(`notes-clear:${session.id}`, () => handleEdit(""));
+          }}
           className="hover-text-3"
-          style={{ border: "none", background: "transparent", color: "var(--c-text-5)", cursor: "pointer", fontSize: "var(--fs-meta)" }}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: isPending(`notes-clear:${session.id}`) ? "var(--c-error)" : "var(--c-text-5)",
+            cursor: "pointer",
+            fontSize: "var(--fs-meta)",
+          }}
         >
-          {t("notes.clear")}
+          {isPending(`notes-clear:${session.id}`) ? t("destructive.confirm_again") : t("notes.clear")}
         </button>
         <button
           onClick={() => void copyText(value)}

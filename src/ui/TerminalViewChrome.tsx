@@ -112,7 +112,10 @@ export function TerminalViewChrome({
         <TerminalBlockFilterPanel
           block={blockFilter.block}
           output={blockFilter.output}
-          onClose={() => setBlockFilter(null)}
+          onClose={() => {
+            setBlockFilter(null);
+            getTerminal()?.focus();
+          }}
         />
       )}
       {quickSelectOverlay}

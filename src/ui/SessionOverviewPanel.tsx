@@ -5,7 +5,7 @@ import { useUIStore } from "@/state/ui";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
 import { getSessionNoteStats } from "@/modules/session/session-notes";
-import { openInEditor } from "@/modules/editor/open";
+import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 
@@ -144,7 +144,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
           </ActionButton>
         )}
         {!isRemote && (
-          <ActionButton onClick={() => openInEditor(externalEditor, session.dir).catch(() => {})}>
+          <ActionButton onClick={() => { void openInEditorWithToast(externalEditor, session.dir, { sessionId: session.id }); }}>
             {t("overview.action.open_in_editor")}
           </ActionButton>
         )}

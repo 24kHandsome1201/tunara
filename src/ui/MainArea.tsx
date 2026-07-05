@@ -8,6 +8,7 @@ import { SplitHandle } from "./SplitHandle";
 import { AgentStatusBar } from "./AgentStatusBar";
 import { SshSuggestionBar } from "./SshSuggestionBar";
 import { useT } from "@/modules/i18n";
+import { formatShortcut } from "./formatShortcut";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { getNumberRecordValue } from "@/state/record-keys";
 
@@ -91,6 +92,8 @@ function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) 
 
 export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const t = useT();
+  const splitHorizontalShortcut = useUIStore((s) => s.keybindings.splitHorizontal);
+  const splitVerticalShortcut = useUIStore((s) => s.keybindings.splitVertical);
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const activeIsRemote = Boolean(active?.remote);
   const nonce = useSessionsStore((s) => active ? getNumberRecordValue(s.gitNonce, active.id) : 0);
@@ -355,7 +358,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             <>
               <button
                 onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
-                title={t("split.horizontal_with_shortcut")}
+                title={`${t("split.horizontal")} ${formatShortcut(splitHorizontalShortcut)}`}
                 aria-label={t("split.horizontal")}
                 style={{
                   width: 24,
@@ -374,7 +377,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               </button>
               <button
                 onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
-                title={t("split.vertical_with_shortcut")}
+                title={`${t("split.vertical")} ${formatShortcut(splitVerticalShortcut)}`}
                 aria-label={t("split.vertical")}
                 style={{
                   width: 24,

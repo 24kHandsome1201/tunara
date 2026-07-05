@@ -59,7 +59,10 @@ export function useTerminalQuickSelect(
     if (!active) setItems(null);
   }, [active]);
 
-  const closeQuickSelect = useCallback(() => setItems(null), []);
+  const closeQuickSelect = useCallback(() => {
+    setItems(null);
+    termRef.current?.focus();
+  }, [termRef]);
 
   const copyItem = useCallback((item: TerminalQuickSelectItem) => {
     void copyText(item.copyText).then((ok) => {

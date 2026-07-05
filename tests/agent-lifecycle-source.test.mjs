@@ -251,7 +251,7 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /handleAgentReady\(sessionIdRef\.current\)/);
   assert.match(terminal, /handleAgentExited\(sessionIdRef\.current, exitCode\)/);
   assert.match(terminal, /onExit: \(code: number\) => \{[\s\S]*?if \(disposed\) return;[\s\S]*?handleTerminalProcessExit\(term, sessionIdRef\.current, code\);[\s\S]*?\}/);
-  assert.match(terminalExit, /term\.write\(`\\r\\n\\x1b\[2m\[process exited: \$\{code\}\]\\x1b\[0m\\r\\n`\);/);
+  assert.match(terminalExit, /term\.write\(`\\r\\n\\x1b\[2m\$\{t\("terminal\.inline\.exited", \{ code \}\)\}\\x1b\[0m\\r\\n`\);/);
   assert.match(terminalExit, /term\.options\.disableStdin = true;/);
   assert.match(terminalExit, /handleTerminalExited\(sessionId, code\);/);
 });

@@ -3,6 +3,7 @@ import { useWorkflowsStore } from "@/state/workflows";
 import { extractParams, type Workflow } from "@/modules/workflows/template";
 import { missingStarterWorkflows } from "@/modules/workflows/starters";
 import { useT } from "@/modules/i18n";
+import { useDestructiveConfirm } from "../lib/destructive-confirm";
 import { CloseIcon } from "../shared";
 
 const SECTION_LABEL: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 10 };
@@ -26,6 +27,7 @@ export function WorkflowsSettings() {
   const workflows = useWorkflowsStore((s) => s.workflows);
   const upsertWorkflow = useWorkflowsStore((s) => s.upsertWorkflow);
   const removeWorkflow = useWorkflowsStore((s) => s.removeWorkflow);
+  const { isPending, tryConfirm } = useDestructiveConfirm();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -123,10 +125,16 @@ export function WorkflowsSettings() {
               </div>
             </button>
             <button
-              onClick={() => { if (editingId === w.id) reset(); removeWorkflow(w.id); }}
-              aria-label={t("common.close")}
+              onClick={() => {
+                tryConfirm(`workflow:${w.id}`, () => {
+                  if (editingId === w.id) reset();
+                  removeWorkflow(w.id);
+                });
+              }}
+              title={isPending(`workflow:${w.id}`) ? t("destructive.confirm_again") : t("settings.workflows.delete")}
+              aria-label={isPending(`workflow:${w.id}`) ? t("destructive.confirm_again") : t("settings.workflows.delete")}
               className="hover-close"
-              style={{ width: 24, height: 24, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
+              style={{ width: 24, height: 24, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: isPending(`workflow:${w.id}`) ? "var(--c-error)" : "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
               <CloseIcon />
             </button>

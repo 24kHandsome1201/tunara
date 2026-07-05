@@ -1,4 +1,4 @@
-import { openInEditor } from "@/modules/editor/open";
+import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
 import { canUseSessionDirForLocalTerminal } from "@/modules/session/local-terminal-cwd";
 import { useSessionsStore } from "@/state/sessions";
@@ -26,7 +26,7 @@ export function buildDirGroupMenuItems({
   const localDirItems: MenuEntry[] = dirGroupHasLocalFilesystem(groupSessions)
     ? [
         { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
-        { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openInEditor(externalEditor, dir).catch(() => {}); } },
+        { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { void openInEditorWithToast(externalEditor, dir); } },
       ]
     : [];
 
