@@ -11,6 +11,26 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-07-05
+
+### 修复与优化
+- UI 一致性系统化打磨：抽取 `AccentActionButton` / `RestartIcon` / `ResumeIcon` 共享原语，消除 5+ 处重复的 accent 描边按钮内联样式；`AgentStatusBar` 与 `SshSuggestionBar` 的 30px 内联条容器统一引用 `--h-inline-bar` 令牌。
+- 语义色跨组件统一：agent "running" 统一为 `--c-accent`（品牌色），"waiting for reply" 统一为 `--c-warning`（需注意），"resumable" 统一为 `--c-success`（可恢复）。此前 `GlobalAgentBar` 的 run 标签用蓝色 info、wait 用 accent，与 `AgentStatusBar` 的 running=accent、resumable=warning 不一致。
+- 设计令牌扩展：新增 `--h-inline-bar`、`--h-btn-sm`、`--h-btn-md`、`--r-badge-sm`，收敛散落的 30px/22px/4px 硬编码值。`TerminalBlocksBar`、`SessionCard`、`TerminalSearchBar`、`AgentStatusBar`、`GlobalAgentBar` 中的硬编码 `borderRadius: 3/4/5` 统一引用 `--r-badge-sm`。
+- 焦点环统一：`SessionCard` 的 focus outline 透明度从 75% 对齐到全局 70%；`sidebar-search` / `explorer-search` 的 focus ring 宽度从 3px 对齐到按钮的 4px。
+- 状态栏路径双截断修复：`maxWidth` 从 240px 提升到 320px，减少 `compactPath()` 逻辑截断与 CSS ellipsis 叠加产生双重省略号的情况。
+- `GlobalAgentBar` 去除卡中卡：移除外层白色卡片容器（bg-white + border + shadow-card），改为侧栏内扁平嵌入，减少 272px 侧栏里的三层表面深度。
+- Sidebar 新建终端按钮视觉权重提升：背景从 `--c-accent-bg-soft` 改为 `--c-accent-bg-light`，与空状态主 CTA 的视觉权重差距缩小。
+- 动效令牌化：`Titlebar` tabs 容器的 `tabsIn` 动画从 `ease` 改为 `--ease-out-expo`，与项目其他动效一致；`pulseDot` 周期统一为 1.5s（此前 `SessionCard.StatusMark`、`ConnectingOverlay`、`PanelLoadingState` 用 1.2s）。
+- Titlebar 激活 tab 信号精简：移除激活圆点的 3s `subtlePulse` 无限脉冲，保留 `scaleIn` 入场动画，减少静态阅读时的注意力分散。
+- 启动屏品牌识别度：`AppSplash` 新增 accent 色终端图标标记，不再只有纯文字。
+- 空会话状态视觉重量提升：图标容器从 48px/22px 增大到 64px/28px，颜色从 text-5 提升到 text-4。
+- accent 色预设扩展：Settings 从 5 个增加到 8 个（新增 Teal、Violet、Amber）。
+- `ConnectingOverlay` 取消按钮统一为 accent 描边风格，不再使用孤立的 border-2 + bg-white 样式。
+- `TerminalSearchBar` 浮层位置下移（top: 6 → 38），避免盖住 `TerminalBlocksBar` 的命令 chip。
+- 状态栏分栏按钮命中区域增大（宽度 24 → 28px）。
+- Split pane 圆角从硬编码 6px 改为 `--r-btn` 令牌。
+
 ## [1.10.0] - 2026-07-04
 
 ### 新功能

@@ -3,6 +3,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { CloseIcon } from "./shared";
+import { AccentActionButton } from "./lib/ui-primitives";
 
 interface SshSuggestionBarProps {
   session: Session;
@@ -33,7 +34,7 @@ export function SshSuggestionBar({ session }: SshSuggestionBarProps) {
   return (
     <div
       style={{
-        minHeight: 30,
+        minHeight: "var(--h-inline-bar)",
         margin: "4px 8px 0",
         flexShrink: 0,
         background: "var(--c-bg-1)",
@@ -58,28 +59,14 @@ export function SshSuggestionBar({ session }: SshSuggestionBarProps) {
       >
         {t("ssh.suggest.title", { target })}
       </span>
-      <button
+      <AccentActionButton
         onClick={open}
-        className="hover-accent-bg"
-        style={{
-          marginLeft: "auto",
-          height: 22,
-          flexShrink: 0,
-          borderRadius: "var(--r-btn)",
-          border: "1px solid var(--c-accent-border)",
-          background: "var(--c-accent-bg-soft)",
-          color: "var(--c-accent)",
-          fontSize: "var(--fs-meta)",
-          fontWeight: 600,
-          cursor: "pointer",
-          padding: "0 10px",
-          display: "flex",
-          alignItems: "center",
-          transition: "background var(--duration-fast) var(--ease-smooth)",
-        }}
+        title={t("ssh.suggest.open")}
+        ariaLabel={t("ssh.suggest.open")}
+        style={{ marginLeft: "auto" }}
       >
         {t("ssh.suggest.open")}
-      </button>
+      </AccentActionButton>
       <button
         onClick={dismiss}
         aria-label={t("ssh.suggest.dismiss")}

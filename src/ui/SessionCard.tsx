@@ -103,7 +103,7 @@ function StatusMark({ runState, isAgent, exitCode }: { runState: RunState; isAge
   if (runState === "running") {
     return (
       <span style={{ width: 13, height: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: isAgent ? undefined : "pulseDot 1.2s ease infinite" }} />
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: isAgent ? undefined : "pulseDot 1.5s var(--ease-in-out) infinite" }} />
       </span>
     );
   }
@@ -118,7 +118,7 @@ function StatusMark({ runState, isAgent, exitCode }: { runState: RunState; isAge
         fontWeight: 700,
         color: "var(--c-error)",
         background: "var(--c-error-bg)",
-        borderRadius: 3,
+        borderRadius: "var(--r-badge-sm)",
         padding: "0 3px",
         lineHeight: "14px",
         flexShrink: 0,
@@ -233,12 +233,12 @@ function DiffStat({ added, removed }: { added: number; removed: number }) {
   return (
     <span style={{ display: "inline-flex", gap: 4, flexShrink: 0, marginLeft: "auto", paddingLeft: 6 }}>
       {added > 0 && (
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-add-text)", background: "var(--c-diff-add-bg)", borderRadius: 4, padding: "1px 5px" }}>
+        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-add-text)", background: "var(--c-diff-add-bg)", borderRadius: "var(--r-badge-sm)", padding: "1px 5px" }}>
           +{added}
         </span>
       )}
       {removed > 0 && (
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-del-text)", background: "var(--c-diff-del-bg)", borderRadius: 4, padding: "1px 5px" }}>
+        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-del-text)", background: "var(--c-diff-del-bg)", borderRadius: "var(--r-badge-sm)", padding: "1px 5px" }}>
           -{removed}
         </span>
       )}
@@ -365,7 +365,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         userSelect: "none",
         background: active ? "var(--c-accent-bg-light)" : "transparent",
         border: "none",
-        outline: focused ? "2px solid color-mix(in srgb, var(--c-accent) 75%, transparent)" : "none",
+        outline: focused ? "2px solid color-mix(in srgb, var(--c-accent) 70%, transparent)" : "none",
         outlineOffset: focused ? "-1px" : 0,
         transition: "background var(--duration-fast) ease, outline-color var(--duration-fast) var(--ease-smooth)",
       }}
@@ -406,7 +406,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             right: 6,
             width: 18,
             height: 18,
-            borderRadius: 4,
+            borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",
             display: "flex",

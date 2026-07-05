@@ -232,7 +232,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         minWidth: 0,
         minHeight: 0,
         overflow: "hidden",
-        borderRadius: 6,
+        borderRadius: "var(--r-btn)",
         boxShadow: s.id === activeSessionId ? activeMarker : "none",
         transition: "box-shadow var(--duration-normal) var(--ease-smooth)",
       };
@@ -288,7 +288,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         }}
       >
         {/* 路径区 */}
-        <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
+        <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
           {compactPath(active?.dir ?? "")}
         </span>
 
@@ -340,8 +340,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               title={t("split.close")}
               aria-label={t("split.close")}
               style={{
-                width: 24,
-                height: 22,
+                width: 28,
+                height: "var(--h-btn-sm)",
                 border: "none",
                 background: "transparent",
                 cursor: "pointer",
@@ -361,8 +361,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 title={`${t("split.horizontal")} ${formatShortcut(splitHorizontalShortcut)}`}
                 aria-label={t("split.horizontal")}
                 style={{
-                  width: 24,
-                  height: 22,
+                  width: 28,
+                  height: "var(--h-btn-sm)",
                   border: "none",
                   background: "transparent",
                   cursor: "pointer",
@@ -380,8 +380,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 title={`${t("split.vertical")} ${formatShortcut(splitVerticalShortcut)}`}
                 aria-label={t("split.vertical")}
                 style={{
-                  width: 24,
-                  height: 22,
+                  width: 28,
+                  height: "var(--h-btn-sm)",
                   border: "none",
                   background: "transparent",
                   cursor: "pointer",

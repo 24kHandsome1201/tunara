@@ -4,6 +4,7 @@ import { AgentBadge } from "./agents";
 import { groupAgentActivity } from "@/modules/agent/global-activity";
 import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
+import { AccentActionButton, ResumeIcon } from "./lib/ui-primitives";
 
 // 全局 Agent 活动条（.design/global-agent-bar.html 原型的实现）。
 // 挂在 Sidebar 顶部：折叠时一行汇总计数，展开后按 等你回复/正在跑/可恢复 分组。
@@ -88,7 +89,7 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
   const t = useT();
   const agentCode = session.agent ?? session.agentResume?.agent;
   const fileCount = session.changes?.files.length ?? 0;
-  const tagColor = variant === "run" ? "var(--c-info)" : "var(--c-accent)";
+  const tagColor = variant === "run" ? "var(--c-accent)" : "var(--c-warning)";
   const tagLabel = variant === "wait"
     ? t("gbar.tag.wait")
     : session.agentActivity === "starting"
@@ -150,7 +151,7 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
             fontWeight: 600,
             color: "var(--c-text-4)",
             background: "var(--c-bg-3)",
-            borderRadius: 4,
+            borderRadius: "var(--r-badge-sm)",
             padding: "1px 5px",
             lineHeight: "14px",
             flexShrink: 0,
@@ -160,30 +161,10 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
         </span>
       )}
       {variant === "resumable" ? (
-        <button
-          onClick={fillResume}
-          className="hover-accent-bg"
-          style={{
-            height: 20,
-            borderRadius: "var(--r-btn)",
-            border: "1px solid var(--c-accent-border)",
-            background: "var(--c-accent-bg-soft)",
-            color: "var(--c-accent)",
-            fontSize: "var(--fs-meta)",
-            fontWeight: 600,
-            cursor: "pointer",
-            padding: "0 8px",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            flexShrink: 0,
-          }}
-        >
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
+        <AccentActionButton onClick={fillResume} title={t("agent.status.resume")} ariaLabel={t("agent.status.resume")}>
+          <ResumeIcon size={9} />
           {t("agent.status.resume")}
-        </button>
+        </AccentActionButton>
       ) : (
         <span
           style={{
@@ -233,10 +214,6 @@ export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProp
     <div style={{ padding: "2px 12px 6px", flexShrink: 0 }}>
       <div
         style={{
-          background: "var(--c-bg-white)",
-          border: "1px solid var(--c-border-1)",
-          borderRadius: "var(--r-card)",
-          boxShadow: "var(--shadow-card)",
           overflow: "hidden",
         }}
       >
@@ -273,13 +250,13 @@ export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProp
           <span style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto", minWidth: 0 }}>
             <CountChip
               count={groups.wait.length}
-              color="var(--c-accent)"
+              color="var(--c-warning)"
               pulse
               label={t("gbar.count.wait", { count: groups.wait.length })}
             />
             <CountChip
               count={groups.run.length}
-              color="var(--c-info)"
+              color="var(--c-accent)"
               pulse
               label={t("gbar.count.run", { count: groups.run.length })}
             />

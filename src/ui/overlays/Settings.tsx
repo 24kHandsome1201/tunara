@@ -93,6 +93,9 @@ const ACCENT_COLORS = [
   { color: "#4f6ef0", label: "Indigo" },
   { color: "#e0556b", label: "Rose" },
   { color: "#c4a060", label: "Sand" },
+  { color: "#0f7a6a", label: "Teal" },
+  { color: "#8534F3", label: "Violet" },
+  { color: "#a4660a", label: "Amber" },
 ];
 
 function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: (v: CursorStyle) => void }) {

@@ -202,11 +202,11 @@ export function Sidebar({
             onClick={onNewTerminal}
             style={{
               width: "100%",
-              height: 30,
+              height: "var(--h-btn-md)",
               padding: "0 8px 0 10px",
               border: "none",
               borderRadius: "var(--r-btn)",
-              background: "var(--c-accent-bg-soft)",
+              background: "var(--c-accent-bg-light)",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",

@@ -3,6 +3,7 @@ import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
 import type { Session } from "./types";
+import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 
 interface TerminalExitBannerProps {
   session: Session;
@@ -88,33 +89,10 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
       >
         {label}
       </span>
-      <button
-        onClick={restart}
-        className="hover-accent-bg"
-        title={actionLabel}
-        aria-label={actionLabel}
-        style={{
-          height: 22,
-          flexShrink: 0,
-          borderRadius: "var(--r-btn)",
-          border: "1px solid var(--c-accent-border)",
-          background: "var(--c-accent-bg-soft)",
-          color: "var(--c-accent)",
-          fontSize: "var(--fs-meta)",
-          fontWeight: 600,
-          cursor: "pointer",
-          padding: "0 10px",
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          transition: "background var(--duration-fast) var(--ease-smooth)",
-        }}
-      >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
-        </svg>
+      <AccentActionButton onClick={restart} title={actionLabel} ariaLabel={actionLabel}>
+        <RestartIcon size={10} />
         {actionLabel}
-      </button>
+      </AccentActionButton>
     </div>
   );
 }
@@ -195,33 +173,10 @@ export function PtyErrorBanner({ session }: PtyErrorBannerProps) {
       >
         {t("pty.error.title")} — {t("pty.error.subtitle")}
       </span>
-      <button
-        onClick={retry}
-        className="hover-accent-bg"
-        title={t("pty.error.retry")}
-        aria-label={t("pty.error.retry")}
-        style={{
-          height: 22,
-          flexShrink: 0,
-          borderRadius: "var(--r-btn)",
-          border: "1px solid var(--c-accent-border)",
-          background: "var(--c-accent-bg-soft)",
-          color: "var(--c-accent)",
-          fontSize: "var(--fs-meta)",
-          fontWeight: 600,
-          cursor: "pointer",
-          padding: "0 10px",
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          transition: "background var(--duration-fast) var(--ease-smooth)",
-        }}
-      >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
-        </svg>
+      <AccentActionButton onClick={retry} title={t("pty.error.retry")} ariaLabel={t("pty.error.retry")}>
+        <RestartIcon size={10} />
         {t("pty.error.retry")}
-      </button>
+      </AccentActionButton>
     </div>
   );
 }
@@ -249,7 +204,7 @@ export function ConnectingOverlay({ onCancel }: { onCancel?: () => void }) {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.2s var(--ease-in-out) infinite" }} />
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.5s var(--ease-in-out) infinite" }} />
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
           {staticT("ssh.connecting")}
         </span>
@@ -257,15 +212,16 @@ export function ConnectingOverlay({ onCancel }: { onCancel?: () => void }) {
           <button
             type="button"
             onClick={onCancel}
-            className="hover-bg"
+            className="hover-accent-bg"
             style={{
               marginTop: 4,
               padding: "4px 12px",
               borderRadius: "var(--r-btn)",
-              border: "1px solid var(--c-border-2)",
-              background: "var(--c-bg-white)",
-              color: "var(--c-text-3)",
+              border: "1px solid var(--c-accent-border)",
+              background: "var(--c-accent-bg-soft)",
+              color: "var(--c-accent)",
               fontSize: "var(--fs-secondary)",
+              fontWeight: 600,
               cursor: "pointer",
             }}
           >

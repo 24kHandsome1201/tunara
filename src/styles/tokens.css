@@ -165,6 +165,10 @@
   --w-sidebar: 272px;
   --w-panel: 300px;
   --h-statusbar: 26px;
+  --h-inline-bar: 30px;
+  --h-btn-sm: 22px;
+  --h-btn-md: 30px;
+  --r-badge-sm: 4px;
 
   /* ── 材质回退（Linux WebKitGTK 可能不支持 backdrop-filter）── */
   --c-bg-glass-fallback: var(--c-bg-2);
@@ -339,7 +343,7 @@
 .gbar-row-wait:hover { background: var(--c-accent-bg-light); }
 .gbar-row-wait::before {
   content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
-  width: 2px; border-radius: 2px; background: var(--c-accent);
+  width: 2px; border-radius: 2px; background: var(--c-warning);
 }
 
 /* Context menu items */
@@ -357,8 +361,8 @@
 .ctx-item-disabled { color: var(--c-text-6); pointer-events: none; }
 .ctx-divider { height: 1px; background: var(--c-border-2); margin: var(--sp-1) 0; }
 
-.sidebar-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 16%, transparent); }
-.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 16%, transparent); }
+.sidebar-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 16%, transparent); }
+.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 16%, transparent); }
 
 /* ── Utility classes ── */
 

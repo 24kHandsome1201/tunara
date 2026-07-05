@@ -92,7 +92,7 @@ function TabButton({ isActive, label, closeLabel, confirmCloseLabel, confirmClos
           borderRadius: "50%",
           background: "var(--c-accent)",
           flexShrink: 0,
-          animation: "scaleIn var(--duration-fast) var(--ease-out-back), subtlePulse 3s var(--ease-smooth) 0.5s infinite",
+          animation: "scaleIn var(--duration-fast) var(--ease-out-back)",
         }} />
       )}
       <span style={{
@@ -323,7 +323,7 @@ export function Titlebar({
             flex: 1,
             overflowX: "auto",
             overflowY: "hidden",
-            animation: "tabsIn var(--duration-normal) ease",
+            animation: "tabsIn var(--duration-normal) var(--ease-out-expo)",
             transform: titlebarControlTransform,
             WebkitAppRegion: "no-drag",
             maskImage: tabsMask,

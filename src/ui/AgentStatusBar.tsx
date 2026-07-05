@@ -5,6 +5,7 @@ import { isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { buildAgentResumeCommand } from "@/modules/terminal/lib/agent-resume";
 import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
+import { AccentActionButton, ResumeIcon } from "./lib/ui-primitives";
 
 interface AgentStatusBarProps {
   session: Session;
@@ -60,7 +61,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       ? (isStarting ? t("sidebar.agent.activity.starting") : t("sidebar.agent.activity.running"))
       : t("agent.status.done");
   const statusColor = resumeCommand && !session.agent
-    ? "var(--c-warning)"
+    ? "var(--c-success)"
     : isBusy
       ? "var(--c-accent)"
       : "var(--c-success)";
@@ -74,7 +75,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         }
       }}
       style={{
-        height: 30,
+        height: "var(--h-inline-bar)",
         margin: "4px 8px 0",
         flexShrink: 0,
         background: "var(--c-bg-1)",
@@ -99,7 +100,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         fontWeight: 700,
         color: statusColor,
         background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
-        borderRadius: 4,
+        borderRadius: "var(--r-badge-sm)",
         padding: "1px 6px",
         lineHeight: "16px",
         display: "flex",
@@ -121,31 +122,15 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         {statusLabel}
       </span>
       {resumeCommand && !session.agent && (
-        <button
+        <AccentActionButton
           onClick={fillResumeCommand}
-          className="hover-accent-bg"
-          style={{
-            marginLeft: "auto",
-            height: 22,
-            borderRadius: "var(--r-btn)",
-            border: "1px solid var(--c-accent-border)",
-            background: "var(--c-accent-bg-soft)",
-            color: "var(--c-accent)",
-            fontSize: "var(--fs-meta)",
-            fontWeight: 600,
-            cursor: "pointer",
-            padding: "0 10px",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
-          }}
+          title={t("agent.status.resume")}
+          ariaLabel={t("agent.status.resume")}
+          style={{ marginLeft: "auto" }}
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
+          <ResumeIcon size={10} />
           {t("agent.status.resume")}
-        </button>
+        </AccentActionButton>
       )}
       {fileCount > 0 && (
         <span style={{
@@ -155,7 +140,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
           fontWeight: 600,
           color: "var(--c-text-4)",
           background: "var(--c-bg-3)",
-          borderRadius: 4,
+          borderRadius: "var(--r-badge-sm)",
           padding: "1px 6px",
           lineHeight: "16px",
           flexShrink: 0,

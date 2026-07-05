@@ -62,7 +62,7 @@ export function TerminalSearchBar({
     <div
       style={{
         position: "absolute",
-        top: 6,
+        top: 38,
         right: 12,
         zIndex: 30,
         background: "var(--c-bg-white)",
@@ -117,7 +117,7 @@ export function TerminalSearchBar({
           color: useRegex ? "var(--c-accent)" : "var(--c-text-5)",
           background: useRegex ? "var(--c-accent-bg-light)" : undefined,
           border: useRegex ? "1px solid var(--c-accent-border)" : "1px solid transparent",
-          borderRadius: 5,
+          borderRadius: "var(--r-badge-sm)",
         }}
       >
         .*
@@ -131,7 +131,7 @@ export function TerminalSearchBar({
           color: caseSensitive ? "var(--c-accent)" : "var(--c-text-5)",
           background: caseSensitive ? "var(--c-accent-bg-light)" : undefined,
           border: caseSensitive ? "1px solid var(--c-accent-border)" : "1px solid transparent",
-          borderRadius: 5,
+          borderRadius: "var(--r-badge-sm)",
         }}
       >
         Aa
