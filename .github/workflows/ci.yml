@@ -53,6 +53,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify Tauri npm/cargo version coupling
+        run: bash scripts/check-tauri-version-coupling.sh
+
       - name: Typecheck frontend
         run: pnpm typecheck
 

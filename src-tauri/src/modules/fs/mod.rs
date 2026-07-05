@@ -2,11 +2,11 @@
 //!
 //! Read-only by design — no write/edit commands (Tunara has no built-in
 //! editor). Submodules group the surface by concern:
-//! - [`tree`]: directory listing — `fs_read_dir`, `list_subdirs`.
+//! - [`tree`]: directory listing — `fs_read_dir`.
 //! - [`file`]: single-file reads — `fs_read_file` (text/binary/too-large,
-//!   capped preview), `fs_stat`.
+//!   capped preview).
 //! - [`search`]: filename search — `fs_search`.
-//! - [`grep`]: content search and globbing — `fs_grep`, `fs_glob`.
+//! - [`grep`]: content search — `fs_grep`.
 //!
 //! [`expand_tilde`] resolves a leading `~` against `$HOME` for path inputs.
 //! All commands are synchronous `#[tauri::command]` functions; the remote

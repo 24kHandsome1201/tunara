@@ -23,6 +23,17 @@ import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession } from "@/modules/session/local-terminal-cwd";
 import { removeTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { getNumberRecordValue } from "@/state/record-keys";
+import {
+  appendTimelineEvent,
+  createTimelineEvent,
+  shouldRecordGitChange,
+  type TimelineEvent,
+} from "./timeline";
+import {
+  cancelPendingGitRefresh,
+  clearQueuedGitNonceBump,
+  scheduleGitRefresh,
+} from "./sessions-git";
 
 interface SessionsState {
   sessions: Session[];
@@ -36,6 +47,7 @@ interface SessionsState {
   recentCommands: string[];
   // Session ids in most-recently-active-first order, used by Mod+Tab cycling.
   recentSessionIds: string[];
+  sessionTimelines: Record<string, TimelineEvent[]>;
 
   addSession: (s: Session) => void;
   removeSession: (id: string) => void;
@@ -52,6 +64,7 @@ interface SessionsState {
   recordRecentCommand: (command: string) => void;
   togglePinnedSession: (id: string) => void;
   setSessionNote: (id: string, note: string) => void;
+  appendTimeline: (id: string, type: TimelineEvent["type"], detail?: string) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
   recordAgentSessionId: (id: string, agent: AgentCode, agentSessionId: string) => void;
@@ -84,34 +97,14 @@ const CLOSE_CONFIRM_WINDOW_MS = 3_000;
 const closeConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const dirCloseConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-const GIT_REFRESH_THROTTLE_MS = 1500;
-const lastGitRefreshAt = new Map<string, number>();
-const pendingGitRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
-// When several sessions' throttle windows expire in the same tick, coalesce
-// their nonce bumps into one `set()` instead of one per session, so a burst of
-// concurrent refreshes triggers a single store update + render pass. Per-session
-// timing is unchanged — only the store writes are batched.
-const queuedGitNonceBumps = new Set<string>();
-let gitNonceFlushScheduled = false;
-
-function flushGitNonceBumps(set: (fn: (state: SessionsState) => Partial<SessionsState>) => void) {
-  gitNonceFlushScheduled = false;
-  if (queuedGitNonceBumps.size === 0) return;
-  const ids = [...queuedGitNonceBumps];
-  queuedGitNonceBumps.clear();
-  set((state) => {
-    const gitNonce = { ...state.gitNonce };
-    for (const id of ids) gitNonce[id] = getNumberRecordValue(gitNonce, id) + 1;
-    return { gitNonce };
-  });
-}
-
-function bumpGitNonce(id: string, set: (fn: (state: SessionsState) => Partial<SessionsState>) => void) {
-  queuedGitNonceBumps.add(id);
-  if (gitNonceFlushScheduled) return;
-  gitNonceFlushScheduled = true;
-  queueMicrotask(() => flushGitNonceBumps(set));
-}
+export {
+  bumpGitNonce,
+  cancelPendingGitRefresh,
+  clearQueuedGitNonceBump,
+  flushGitNonceBumps,
+  GIT_REFRESH_THROTTLE_MS,
+  scheduleGitRefresh,
+} from "./sessions-git";
 
 export function makeSessionId(): string {
   return `s-${Date.now()}-${nextId++}`;
@@ -166,15 +159,6 @@ function cancelCloseConfirmationTimer(id: string) {
   if (!timer) return;
   clearTimeout(timer);
   closeConfirmationTimers.delete(id);
-}
-
-function cancelPendingGitRefresh(id: string) {
-  const timer = pendingGitRefreshTimers.get(id);
-  if (timer) {
-    clearTimeout(timer);
-    pendingGitRefreshTimers.delete(id);
-  }
-  lastGitRefreshAt.delete(id);
 }
 
 function cancelDirCloseConfirmationTimer(dir: string) {
@@ -242,6 +226,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   recentDirs: [],
   recentCommands: [],
   recentSessionIds: [],
+  sessionTimelines: {},
 
   addSession: (s) => {
     set((state) => ({
@@ -260,7 +245,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     cancelPendingGitRefresh(id);
     // A bump queued in this same tick would otherwise re-create the session's
     // gitNonce key after the store entry below is deleted.
-    queuedGitNonceBumps.delete(id);
+    clearQueuedGitNonceBump(id);
     removeTerminalSnapshot(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
@@ -272,6 +257,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
       const { [id]: _launched, ...launchedSessionIds } = state.launchedSessionIds;
       const { [id]: _gitNonce, ...gitNonce } = state.gitNonce;
+      const { [id]: _timeline, ...sessionTimelines } = state.sessionTimelines;
       const nextLaunchedSessionIds = { ...launchedSessionIds };
       if (activeSessionId) nextLaunchedSessionIds[activeSessionId] = true;
       return {
@@ -280,6 +266,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         closeConfirmations,
         launchedSessionIds: nextLaunchedSessionIds,
         gitNonce,
+        sessionTimelines,
         recentSessionIds: state.recentSessionIds.filter((sid) => sid !== id),
       };
     });
@@ -325,26 +312,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     // Both local and remote sessions refresh via the nonce bump. For remote
     // (SSH) sessions, MainArea's effect routes the nonce change to
     // ssh_git_status over the exec channel instead of the local git2 path.
-    const now = Date.now();
-    const last = lastGitRefreshAt.get(id) ?? 0;
-    const elapsed = now - last;
-    if (elapsed >= GIT_REFRESH_THROTTLE_MS) {
-      lastGitRefreshAt.set(id, now);
-      const pending = pendingGitRefreshTimers.get(id);
-      if (pending) {
-        clearTimeout(pending);
-        pendingGitRefreshTimers.delete(id);
-      }
-      bumpGitNonce(id, set);
-      return;
-    }
-    if (pendingGitRefreshTimers.has(id)) return;
-    const timer = setTimeout(() => {
-      pendingGitRefreshTimers.delete(id);
-      lastGitRefreshAt.set(id, Date.now());
-      bumpGitNonce(id, set);
-    }, GIT_REFRESH_THROTTLE_MS - elapsed);
-    pendingGitRefreshTimers.set(id, timer);
+    scheduleGitRefresh(id, set);
   },
 
   clearCloseConfirmation: (id) => {
@@ -376,14 +344,30 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       ),
     })),
 
+  appendTimeline: (id, type, detail) => {
+    const event = createTimelineEvent(type, detail);
+    set((state) => {
+      const current = state.sessionTimelines[id] ?? [];
+      return {
+        sessionTimelines: {
+          ...state.sessionTimelines,
+          [id]: appendTimelineEvent(current, event),
+        },
+      };
+    });
+  },
+
   setSessionNote: (id, note) => {
     const cleanNote = sanitizeSessionNote(note);
+    let saved = false;
     set((state) => ({
       sessions: state.sessions.map((s) => {
         if (s.id !== id || (s.note ?? "") === cleanNote) return s;
+        saved = true;
         return { ...s, note: cleanNote || undefined, updatedAt: Date.now() };
       }),
     }));
+    if (saved) get().appendTimeline(id, "note_saved");
   },
 
   closeSessions: (ids, opts) => {
@@ -450,6 +434,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     })),
 
   updateSession: (id, patch) => {
+    const previous = get().sessions.find((s) => s.id === id);
+    if (patch.changes !== undefined && previous && shouldRecordGitChange(previous.changes?.files, patch.changes?.files)) {
+      const fileCount = patch.changes?.files?.length ?? 0;
+      get().appendTimeline(id, "git_change", fileCount > 0 ? `${fileCount} files` : "clean");
+    }
     set((state) => ({
       sessions: state.sessions.map((s) =>
         s.id === id ? { ...s, ...patch, updatedAt: Date.now() } : s,
@@ -466,6 +455,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const update = agentDetectedUpdate(session, agent);
     const agentResume = buildAgentResumeIntent(session, agent, command);
     if (update || agentResume) {
+      get().appendTimeline(id, "agent_start", AGENT_NAMES[agent] ?? agent);
       get().updateSession(id, {
         ...(update?.patch ?? {}),
         ...(agentResume ? { agentResume } : {}),
@@ -506,6 +496,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const completedTurn = session?.agentActivity === "running";
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
+    get().appendTimeline(id, "agent_stop", session?.agent ? (AGENT_NAMES[session.agent] ?? session.agent) : undefined);
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && completedTurn && session?.agent) {
@@ -524,7 +515,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleAgentBusy: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = agentBusyUpdate(session);
-    if (update) get().updateSession(id, update.patch);
+    if (update) {
+      if (session?.agent) get().appendTimeline(id, "agent_start", AGENT_NAMES[session.agent] ?? session.agent);
+      get().updateSession(id, update.patch);
+    }
   },
 
   handleAgentExited: (id, exitCode) => {
@@ -532,6 +526,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = get().activeSessionId === id;
     const update = agentExitedUpdate(session, exitCode, isActive);
     if (!update) return;
+    get().appendTimeline(id, "agent_stop", session?.agent ? (AGENT_NAMES[session.agent] ?? session.agent) : undefined);
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && session?.agent) {
@@ -554,6 +549,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const update = commandDetectedUpdate(session, command);
     if (update) {
       get().recordRecentCommand(command);
+      get().appendTimeline(id, "command_start", command);
       get().updateSession(id, update.patch);
     }
   },
@@ -563,6 +559,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = get().activeSessionId === id;
     const update = commandFinishedUpdate(session, exitCode, isActive);
     if (!update) return;
+    get().appendTimeline(id, "command_end", session?.lastCommand);
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && session?.lastCommand) {

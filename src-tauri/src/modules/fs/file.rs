@@ -1,5 +1,4 @@
 use std::io::Read;
-use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
@@ -23,21 +22,6 @@ pub enum ReadResult {
         size: u64,
         limit: u64,
     },
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum StatKind {
-    File,
-    Dir,
-    Symlink,
-}
-
-#[derive(Serialize)]
-pub struct FileStat {
-    pub size: u64,
-    pub mtime: u64,
-    pub kind: StatKind,
 }
 
 #[tauri::command]
@@ -109,28 +93,4 @@ pub fn fs_read_file(path: String) -> Result<ReadResult, String> {
             }
         }
     }
-}
-
-#[tauri::command]
-pub fn fs_stat(path: String) -> Result<FileStat, String> {
-    let p = super::expand_tilde(&path);
-    let meta = std::fs::symlink_metadata(&p).map_err(|e| e.to_string())?;
-    let kind = if meta.file_type().is_symlink() {
-        StatKind::Symlink
-    } else if meta.is_dir() {
-        StatKind::Dir
-    } else {
-        StatKind::File
-    };
-    let mtime = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    Ok(FileStat {
-        size: meta.len(),
-        mtime,
-        kind,
-    })
 }

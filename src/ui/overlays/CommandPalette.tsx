@@ -12,6 +12,7 @@ import { useWorkflowsStore } from "@/state/workflows";
 import { hasPromptableParams, resolveTemplate } from "@/modules/workflows/template";
 import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
+import { RUNBOOK_BLUEPRINTS, appendRunbookToNote } from "@/modules/runbook/blueprints";
 
 interface Command {
   id: string;
@@ -164,6 +165,48 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             action: () => {
               uiStore.getState().recordCommandUse(`new-terminal-recent-command-${entry.command}`);
               useSessionsStore.getState().newTerminalWithInput(entry.command, activeSession.dir);
+              onClose();
+            },
+          });
+        }
+      }
+
+      if (activeIsLocal) {
+        for (const runbook of RUNBOOK_BLUEPRINTS) {
+          cmds.push({
+            id: `runbook-run-${runbook.id}`,
+            label: t("palette.cmd.run_runbook", { name: t(runbook.nameKey) }),
+            subtitle: t(runbook.descriptionKey),
+            icon: <CmdIcon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />,
+            section: t("palette.section.runbook"),
+            scopes: ["action", "terminal", "runbook"],
+            originalIndex: idx++,
+            action: () => {
+              uiStore.getState().recordCommandUse(`runbook-run-${runbook.id}`);
+              useSessionsStore.getState().updateSession(activeSession.id, {
+                pendingInput: runbook.template,
+                pendingInputSubmit: false,
+              });
+              onClose();
+            },
+          });
+          cmds.push({
+            id: `runbook-note-${runbook.id}`,
+            label: t("palette.cmd.copy_runbook_to_notes", { name: t(runbook.nameKey) }),
+            subtitle: runbook.template,
+            icon: <CmdIcon d="M5 4h10l4 4v12H5zM15 4v5h5M8 13h8M8 17h5" />,
+            section: t("palette.section.runbook"),
+            scopes: ["action", "app", "runbook"],
+            originalIndex: idx++,
+            action: () => {
+              uiStore.getState().recordCommandUse(`runbook-note-${runbook.id}`);
+              const current = activeSession.note ?? "";
+              useSessionsStore.getState().setSessionNote(
+                activeSession.id,
+                appendRunbookToNote(current, runbook.template),
+              );
+              uiStore.getState().setPanelVisible(true);
+              uiStore.getState().setInspectorTab("notes");
               onClose();
             },
           });

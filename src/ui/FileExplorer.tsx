@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fsGrep, fsReadDir, fsSearch, type DirEntry, type GrepResponse, type SearchHit } from "@/modules/fs/fs-bridge";
 import { sshReadDir, sshHome, sshSearch, sshGrep, invalidateRemoteSearchCache } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
@@ -12,6 +12,7 @@ import { useT, t as staticT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
+import { FileSearchGeneration } from "./lib/file-search-session";
 
 // Cap for name search (fs_search / ssh_fs_search). The backend truncates at this
 // count without a flag, so hitting it exactly is treated as "more results exist".
@@ -119,6 +120,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     position: { x: number; y: number };
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
+  const searchGenerationRef = useRef(new FileSearchGeneration());
 
   const openEditor = (path: string, line?: number) => {
     void openInEditorWithToast(externalEditor, path, { line });
@@ -204,18 +206,19 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     }
 
     const mode = searchMode;
-    let cancelled = false;
+    const searchGen = searchGenerationRef.current;
+    const token = searchGen.start();
     setSearchLoading(true);
     setSearchError(false);
     // Fire the request inside the debounce timer, not before it: building the
     // promise eagerly would start the find/grep on every keystroke and only
-    // debounce the setState. `cancelled` discards any in-flight response when a
-    // newer query supersedes this effect, so stale results never overwrite the
-    // latest. Both modes split local/remote: content search runs fs_grep
-    // locally and ssh_fs_grep over the exec channel remotely (shared
-    // GrepResponse shape); name search keeps the fs_search / ssh_fs_search
-    // split with the shared SearchHit shape. The remote bridge caches per
-    // (ptyId, root, query) so backspacing doesn't re-run find/grep.
+    // debounce the setState. The generation token discards any in-flight
+    // response when searchQuery, searchMode, baseDir, or remotePtyId changes
+    // (Tauri invoke has no abort signal). Both modes split local/remote:
+    // content search runs fs_grep locally and ssh_fs_grep over the exec channel
+    // remotely (shared GrepResponse shape); name search keeps the fs_search /
+    // ssh_fs_search split with the shared SearchHit shape. The remote bridge
+    // caches per (ptyId, root, query) so backspacing doesn't re-run find/grep.
     const timer = window.setTimeout(() => {
       const runSearch: Promise<SearchHit[] | GrepResponse> =
         mode === "content"
@@ -227,7 +230,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             : fsSearch(baseDir, q, NAME_SEARCH_LIMIT, includeHidden);
       runSearch
         .then((result) => {
-          if (cancelled) return;
+          if (!searchGen.isCurrent(token)) return;
           if (mode === "content") {
             const resp = result as GrepResponse;
             setGrepHits(groupGrepHitsByFile(resp.hits));
@@ -246,7 +249,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           setSearchLoading(false);
         })
         .catch(() => {
-          if (cancelled) return;
+          if (!searchGen.isCurrent(token)) return;
           setSearchHits([]);
           setGrepHits([]);
           setGrepTruncated(false);
@@ -257,7 +260,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     }, 180);
 
     return () => {
-      cancelled = true;
+      searchGen.invalidate();
       window.clearTimeout(timer);
     };
   }, [baseDir, searchQuery, searchMode, includeHidden, reloadKey, isRemote, remotePtyId]);
@@ -388,7 +391,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           style={{
             height: 26,
             minWidth: 26,
-            padding: "0 8px",
+            padding: "0 var(--sp-2)",
             borderRadius: "var(--r-btn)",
             border: "none",
             background: includeHidden ? "var(--c-accent-bg-light)" : "transparent",
@@ -408,8 +411,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         </button>
       </div>
 
-      <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
-        <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
+      <div style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
+        <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px var(--sp-2)", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
           <button
             onClick={() => {
               setSearchMode((m) => {
@@ -449,7 +452,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         </div>
       </div>
 
-      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px 8px", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }} className="no-scrollbar scroll-fade-y">
+      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }} className="no-scrollbar scroll-fade-y">
         {isSearching ? (
           searchMode === "content" ? (
             searchLoading ? (
@@ -466,7 +469,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                 </div>
                 {grepHits.map((group) => (
                   <div key={group.path} style={{ marginBottom: 6 }}>
-                    <div style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ padding: "3px var(--sp-2)", display: "flex", alignItems: "center", gap: 6 }}>
                       <FileIcon />
                       <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={group.rel}>{compactRelativePath(group.rel)}</span>
                       <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center", flexShrink: 0 }}>{group.lines.length}</span>
@@ -483,7 +486,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                           : openEditor(group.path, ln.line)}
                         title={isRemote ? group.rel : t("explorer.search_mode.open_at_line", { line: ln.line })}
                         className="hover-bg"
-                        style={{ width: "100%", padding: "2px 8px 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
+                        style={{ width: "100%", padding: "2px var(--sp-2) 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
                       >
                         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{ln.line}</span>
                         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
@@ -496,7 +499,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     )}
                   </div>
                 ))}
-                {grepTruncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.content_truncated")}</div>}
+                {grepTruncated && <div style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.content_truncated")}</div>}
               </>
             )
           ) : (
@@ -520,7 +523,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                       onClick={() => hit.isDir ? openSearchDir(hit.path) : toggleSearchFile(hit.path)}
                       className="hover-bg"
                       style={{
-                        width: "100%", height: 30, padding: "0 8px", borderRadius: "var(--r-btn)", border: "none",
+                        width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
                         background: isExpanded ? "var(--c-accent-bg-light)" : "transparent",
                         cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2,
                       }}
@@ -537,7 +540,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                   </div>
                 );
               })}
-              {searchTruncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.results_truncated")}</div>}
+              {searchTruncated && <div style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.results_truncated")}</div>}
             </>
           )
           )
@@ -571,7 +574,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                   });
                 }}
                 className="hover-bg"
-                style={{ width: "100%", height: 30, padding: "0 8px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2 }}
+                style={{ width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2 }}
               >
                 <FolderIcon />
                 <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
@@ -607,7 +610,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     }}
                     className="hover-bg"
                     style={{
-                      width: "100%", height: 30, padding: "0 8px", borderRadius: "var(--r-btn)", border: "none",
+                      width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
                       background: isExpanded ? "var(--c-accent-bg-light)" : "transparent",
                       cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2,
                     }}

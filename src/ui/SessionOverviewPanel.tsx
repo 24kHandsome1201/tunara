@@ -8,6 +8,7 @@ import { getSessionNoteStats } from "@/modules/session/session-notes";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
+import { formatTimelineRelativeTime, type TimelineEvent } from "@/state/timeline";
 
 interface SessionOverviewPanelProps {
   session: Session;
@@ -72,9 +73,15 @@ function statusLabel(session: Session, t: ReturnType<typeof useT>): string {
   return t("overview.status.idle");
 }
 
+function timelineLabel(event: TimelineEvent, t: ReturnType<typeof useT>): string {
+  const base = t(`overview.timeline.${event.type}`);
+  return event.detail ? `${base} · ${event.detail}` : base;
+}
+
 export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
   const t = useT();
   const externalEditor = useUIStore((s) => s.externalEditor);
+  const timeline = useSessionsStore((s) => s.sessionTimelines[session.id] ?? []);
   const { primary, subtitle } = deriveTitle(session);
   const changes = summarizeChangedFiles(session.changes?.files);
   const noteStats = getSessionNoteStats(session.note ?? "");
@@ -123,6 +130,24 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
           <code style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {session.lastCommand}
           </code>
+        </div>
+      )}
+
+      {timeline.length > 0 && (
+        <div style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: 12 }}>
+          <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 8 }}>{t("overview.timeline.title")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {timeline.slice(0, 12).map((event) => (
+              <div key={event.id} style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 28 }}>
+                  {formatTimelineRelativeTime(event.at)}
+                </span>
+                <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={event.detail ?? timelineLabel(event, t)}>
+                  {timelineLabel(event, t)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

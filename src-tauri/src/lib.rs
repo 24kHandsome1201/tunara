@@ -34,7 +34,7 @@ pub fn run() {
         .manage(ResolverState::default())
         .manage(modules::git::GitWatcherState::default())
         .setup(|app| {
-            // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_bin 用（§3.7.2）。
+            // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_all_bins 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
             resolver.init_login_path();
 
@@ -58,15 +58,11 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,
-            fs::tree::list_subdirs,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,
-            fs::file::fs_stat,
             fs::search::fs_search,
             fs::grep::fs_grep,
-            fs::grep::fs_glob,
             // Tunara 新增（§3.7.2 CLI 路径解析）
-            modules::resolver::resolve_bin,
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
             modules::resolver::clear_bin_overrides,

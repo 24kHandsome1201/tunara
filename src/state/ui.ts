@@ -5,6 +5,7 @@ import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawT
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
+import { persistBootAppearance } from "@/styles/shell-tint-boot";
 
 export type CursorStyle = "bar" | "block" | "underline";
 
@@ -412,6 +413,11 @@ export async function loadUserConfig(): Promise<void> {
       configPath: loaded.path,
       configError: loaded.error ?? null,
     });
+    persistBootAppearance({
+      theme: sanitized.theme,
+      terminalTheme: sanitized.terminalTheme,
+      accent: sanitized.accent,
+    });
     configHydrating = false;
   } catch (e) {
     configHydrating = true;
@@ -422,6 +428,16 @@ export async function loadUserConfig(): Promise<void> {
     configHydrating = false;
   }
 }
+
+useUIStore.subscribe(
+  (s) => [s.theme, s.terminalTheme, s.accent] as const,
+  ([theme, terminalTheme, accent]) => {
+    const state = useUIStore.getState();
+    if (!state.configLoaded || configHydrating) return;
+    persistBootAppearance({ theme, terminalTheme, accent });
+  },
+  { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
+);
 
 const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "keybindings", "language", "globalShortcut"];
 

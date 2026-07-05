@@ -209,11 +209,6 @@ fn common_bin_dirs() -> Vec<PathBuf> {
 
 // === Tauri commands ===
 
-#[tauri::command]
-pub fn resolve_bin(state: tauri::State<'_, ResolverState>, name: String) -> ResolvedCommand {
-    state.resolve(&name)
-}
-
 /// 设置页一次性拿所有 agent CLI 的解析结果，name 使用前端 AgentCode。
 #[tauri::command]
 pub fn resolve_all_bins(state: tauri::State<'_, ResolverState>) -> Vec<ResolvedCommand> {

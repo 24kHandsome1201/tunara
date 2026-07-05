@@ -224,7 +224,10 @@ pub async fn ssh_git_ahead_behind(
     // `rev-list --left-right --count @{u}...HEAD` prints "<behind>\t<ahead>"
     // (one line, tab-separated). `-C .` keeps us in the shell's cwd.
     let out = ssh
-        .exec("git -C . rev-list --left-right --count @{u}...HEAD 2>/dev/null", 256)
+        .exec(
+            "git -C . rev-list --left-right --count @{u}...HEAD 2>/dev/null",
+            256,
+        )
         .await?;
     let trimmed = out.trim();
     // Empty output: no upstream (git exited non-zero, stderr suppressed).

@@ -257,12 +257,11 @@ useEffect(() => {
 
 ## 验收清单
 
-- [ ] 选 Catppuccin：侧栏 / 面板 / 标题栏 / 命令面板背景变成 Mocha 深紫蓝，与终端无缝。
-- [ ] 选 GitHub Light：整窗变成 GitHub 的冷白灰，终端和侧栏同源。
-- [ ] 切回 default：外壳干净回落到 light/dark，无 Catppuccin 残留。
-- [ ] Catppuccin + Indigo 强调：外壳走 Catppuccin，聚焦环 / 选区走 Indigo（两者正交叠加）。
-- [ ] agent 徽章、diff 红绿在任何预设下都保持原品牌/语义色，不被染。
-- [ ] 每套预设下 `text-primary` 对 `bg-1` 对比度 ≥ 4.5:1。
-- [ ] 冷启动直接进 Catppuccin 不闪白。
-- [ ] 窄窗折叠态、玻璃材质回退（Linux WebKitGTK）下外壳色正确。
-```
+- [ ] 选 Catppuccin：侧栏 / 面板 / 标题栏 / 命令面板背景变成 Mocha 深紫蓝，与终端无缝。（需人工截图验收）
+- [ ] 选 GitHub Light：整窗变成 GitHub 的冷白灰，终端和侧栏同源。（需人工截图验收）
+- [x] 切回 default：外壳干净回落到 light/dark，无 Catppuccin 残留。（`SHELL_TINT_KEYS` + `useTheme` / boot 清变量）
+- [ ] Catppuccin + Indigo 强调：外壳走 Catppuccin，聚焦环 / 选区走 Indigo（两者正交叠加）。（需人工截图验收）
+- [x] agent 徽章、diff 红绿在任何预设下都保持原品牌/语义色，不被染。（`SHELL_TINTS` 不含语义色槽位）
+- [x] 每套预设下 `text-primary` 对 `bg-1` 对比度 ≥ 4.5:1。（`assertShellTintContrast` + `tests/shell-tint-contrast.test.mjs`）
+- [x] 冷启动直接进 Catppuccin 不闪白。（`tunara.boot.appearance` localStorage + `index.html` 同步 boot 脚本）
+- [ ] 窄窗折叠态、玻璃材质回退（Linux WebKitGTK）下外壳色正确。（需 Linux / 窄窗人工验收）

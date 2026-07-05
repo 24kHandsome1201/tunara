@@ -128,6 +128,43 @@ Both use a `SystemTime::now()` nanosecond suffix so parallel tests never collide
 
 Before opening a PR, run the full gate from [`CONTRIBUTING.md`](../CONTRIBUTING.md): `pnpm typecheck`, `pnpm build`, `cargo fmt --check`, `cargo clippy ... -D warnings`, and `pnpm test`.
 
+## Future: visual smoke
+
+End-to-end browser automation (Playwright or similar) is intentionally **not**
+in scope today — the repo has no DOM harness and the meaningful surface is the
+Tauri webview inside a signed macOS bundle.
+
+Until a lightweight visual runner exists, treat the release bundle as the manual
+smoke gate. See also [`VISUAL_QA.md`](./VISUAL_QA.md).
+
+### macOS bundle verification checklist
+
+Run after UI chrome or shell-tint changes:
+
+```bash
+pnpm build
+pnpm typecheck
+pnpm test:node
+./node_modules/.bin/tauri build --bundles app
+open -na src-tauri/target/release/bundle/macos/Tunara.app
+```
+
+Then confirm:
+
+1. **Titlebar** — traffic lights and custom controls share one row; no extra
+   blank space under the overlay titlebar.
+2. **Shell tint** — sidebar, review panel, and titlebar match the active theme.
+3. **Narrow viewport** — hide the sidebar; inspector tabs and overlays remain
+   usable around 960px width.
+4. **Glass fallback** — with reduced transparency, opaque tokens still read
+   clearly over the terminal.
+5. **Terminal idle** — unfocus the window for a minute, refocus, and confirm
+   glyphs are not stale (WebGL atlas rebuild path).
+
+`pnpm tauri dev` can look correct while `/Applications/Tunara.app` or an older
+release bundle is still wrong, because release apps ship their embedded static
+frontend. Always verify the bundle that will actually be installed.
+
 ## Current test files
 
 ### Frontend (`tests/`)

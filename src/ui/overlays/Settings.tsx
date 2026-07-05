@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThemeType, TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
-import { isDarkTheme } from "@/styles/terminalTheme";
+import { getShellTint, isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -34,6 +34,23 @@ interface Preflight {
 type SettingsTab = "appearance" | "workflows" | "cli";
 
 const TABS: SettingsTab[] = ["appearance", "workflows", "cli"];
+
+function terminalThemePreviewColors(
+  id: TerminalThemeName,
+  appIsDark: boolean,
+): { bg: string; fg: string } {
+  if (id === "default") {
+    return {
+      bg: appIsDark ? "#18181b" : "#ffffff",
+      fg: appIsDark ? "#e4e4e7" : "#27272a",
+    };
+  }
+  const tint = getShellTint(id);
+  return {
+    bg: tint?.["--c-bg-1"] ?? (appIsDark ? "#18181b" : "#ffffff"),
+    fg: tint?.["--c-text-primary"] ?? (appIsDark ? "#e4e4e7" : "#27272a"),
+  };
+}
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -421,20 +438,22 @@ export function Settings({ onClose }: SettingsProps) {
                 <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>{t("settings.appearance.terminal_theme.hint")}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 8 }}>
                   {([
-                    { id: "default" as TerminalThemeName, label: t("settings.appearance.terminal_theme.default"), bg: isDark ? "#18181b" : "#ffffff", fg: isDark ? "#e4e4e7" : "#27272a" },
-                    { id: "github-light" as TerminalThemeName, label: "GitHub", bg: "#ffffff", fg: "#24292f" },
-                    { id: "rose-pine-dawn" as TerminalThemeName, label: "Dawn", bg: "#faf4ed", fg: "#575279" },
-                    { id: "catppuccin" as TerminalThemeName, label: "Catppuccin", bg: "#1e1e2e", fg: "#cdd6f4" },
-                    { id: "tokyo-night" as TerminalThemeName, label: "Tokyo Night", bg: "#1a1b26", fg: "#c0caf5" },
-                    { id: "one-dark" as TerminalThemeName, label: "One Dark", bg: "#282c34", fg: "#abb2bf" },
-                    { id: "solarized" as TerminalThemeName, label: "Solarized", bg: "#002b36", fg: "#839496" },
-                  ]).map((t) => (
+                    { id: "default" as TerminalThemeName, label: t("settings.appearance.terminal_theme.default") },
+                    { id: "github-light" as TerminalThemeName, label: "GitHub" },
+                    { id: "rose-pine-dawn" as TerminalThemeName, label: "Dawn" },
+                    { id: "catppuccin" as TerminalThemeName, label: "Catppuccin" },
+                    { id: "tokyo-night" as TerminalThemeName, label: "Tokyo Night" },
+                    { id: "one-dark" as TerminalThemeName, label: "One Dark" },
+                    { id: "solarized" as TerminalThemeName, label: "Solarized" },
+                  ]).map((entry) => {
+                    const { bg, fg } = terminalThemePreviewColors(entry.id, isDark);
+                    return (
                     <button
-                      key={t.id}
-                      onClick={() => setTerminalTheme(t.id)}
+                      key={entry.id}
+                      onClick={() => setTerminalTheme(entry.id)}
                       style={{
                         width: "100%",
-                        border: terminalTheme === t.id ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)",
+                        border: terminalTheme === entry.id ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)",
                         borderRadius: "var(--r-card)",
                         padding: 0,
                         cursor: "pointer",
@@ -443,17 +462,18 @@ export function Settings({ onClose }: SettingsProps) {
                         textAlign: "left",
                       }}
                     >
-                      <div style={{ height: 40, background: t.bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 2.5 }}>
+                      <div style={{ height: 40, background: bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 2.5 }}>
                         {[{ w: 18, o: 0.35 }, { w: 45, o: 0.6 }, { w: 60, o: 0.45 }, { w: 35, o: 0.5 }, { w: 25, o: 0.3 }].map((line) => (
-                          <div key={`${line.w}-${line.o}`} style={{ height: 2.5, width: `${line.w}%`, borderRadius: 1, background: t.fg, opacity: line.o }} />
+                          <div key={`${line.w}-${line.o}`} style={{ height: 2.5, width: `${line.w}%`, borderRadius: 1, background: fg, opacity: line.o }} />
                         ))}
                       </div>
                       <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-primary)", fontWeight: terminalTheme === t.id ? 600 : 400 }}>{t.label}</span>
-                        {terminalTheme === t.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)" }} />}
+                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-primary)", fontWeight: terminalTheme === entry.id ? 600 : 400 }}>{entry.label}</span>
+                        {terminalTheme === entry.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)" }} />}
                       </div>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <div style={{ marginTop: 24 }}>

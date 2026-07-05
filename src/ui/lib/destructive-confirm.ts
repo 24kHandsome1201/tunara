@@ -45,7 +45,7 @@ export function useDestructiveConfirm() {
 
   const isPending = useCallback((key: string) => {
     return isDestructiveConfirmPending(storeRef.current, key);
-  }, [bump]);
+  }, []);
 
   const tryConfirm = useCallback((key: string, action: () => void): boolean => {
     const confirmed = requestDestructiveConfirm(storeRef.current, key, bump);

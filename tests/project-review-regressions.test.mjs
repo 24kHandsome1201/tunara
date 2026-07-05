@@ -7,10 +7,34 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
+test("dead IPC commands are removed from the Tauri invoke handler", () => {
+  const lib = read("src-tauri/src/lib.rs");
+
+  assert.doesNotMatch(lib, /fs::tree::list_subdirs/);
+  assert.doesNotMatch(lib, /fs::file::fs_stat/);
+  assert.doesNotMatch(lib, /fs::grep::fs_glob/);
+  assert.doesNotMatch(lib, /modules::resolver::resolve_bin/);
+  assert.match(lib, /modules::resolver::resolve_all_bins/);
+  assert.match(lib, /modules::resolver::set_bin_override/);
+});
+
 test("node test script can import TypeScript sources on Node 22", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.match(pkg.scripts["test:node"], /--experimental-strip-types/);
   assert.match(pkg.scripts.test, /pnpm test:node/);
+});
+
+test("CI enforces Tauri npm/cargo major.minor version coupling", () => {
+  const scriptPath = resolve(root, "scripts/check-tauri-version-coupling.sh");
+  const ci = read(".github/workflows/ci.yml");
+  const script = read("scripts/check-tauri-version-coupling.sh");
+
+  assert.ok(existsSync(scriptPath), "scripts/check-tauri-version-coupling.sh must exist");
+  assert.match(ci, /pnpm install --frozen-lockfile/);
+  assert.match(ci, /check-tauri-version-coupling\.sh/);
+  assert.match(script, /@tauri-apps\/api/);
+  assert.match(script, /src-tauri\/Cargo\.lock/);
+  assert.match(script, /major\.minor|NPM_MM|CARGO_MM/);
 });
 
 test("release metadata keeps versions and distribution identifiers aligned", () => {
@@ -140,6 +164,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(ui, /font_ligatures: s\.fontLigatures/);
   assert.match(ui, /terminalClipboardWrite: false/);
   assert.match(ui, /terminal_clipboard_write: s\.terminalClipboardWrite/);
+  assert.match(ui, /persistBootAppearance/);
   assert.doesNotMatch(ui, /localStorage/);
   assert.doesNotMatch(ui, /sessionStorage/);
   assert.match(keys, /hasPlatformModKey\(e, isMac\)/);
@@ -329,6 +354,11 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   // remote sessions — the old disabled={isRemote} toggle must not come back.
   assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT\)/);
   assert.match(explorer, /sshGrep\(remotePtyId, baseDir, q\)/);
+  const fileSearchSession = read("src/ui/lib/file-search-session.ts");
+  assert.match(fileSearchSession, /export class FileSearchGeneration/);
+  assert.match(explorer, /FileSearchGeneration/);
+  assert.match(explorer, /searchGen\.isCurrent\(token\)/);
+  assert.match(explorer, /searchGen\.invalidate\(\)/);
   assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
   // Remote grep hits can't jump to a local editor; they toggle the inline
   // remote FilePreview instead.
@@ -531,6 +561,7 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
 
 test("session store keeps active sessions visible in split mode and cleans per-session metadata", () => {
   const source = read("src/state/sessions.ts");
+  const sessionsGit = read("src/state/sessions-git.ts");
   const init = read("src/app/useInit.ts");
 
   assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string\)/);
@@ -538,11 +569,13 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(source, /ensureSessionVisibleInSplit\(s\.id\)/);
   assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
+  assert.match(source, /scheduleGitRefresh\(id, set\)/);
+  assert.match(source, /from "\.\/sessions-git"/);
   // refreshGit coalesces per-session nonce bumps into one store write via
   // bumpGitNonce → flushGitNonceBumps; the increment itself is unchanged.
-  assert.match(source, /gitNonce\[id\] = getNumberRecordValue\(gitNonce, id\) \+ 1/);
-  assert.match(source, /function bumpGitNonce\(id: string,/);
-  assert.match(source, /queueMicrotask\(\(\) => flushGitNonceBumps\(set\)\)/);
+  assert.match(sessionsGit, /gitNonce\[id\] = getNumberRecordValue\(gitNonce, id\) \+ 1/);
+  assert.match(sessionsGit, /function bumpGitNonce\(id: string,/);
+  assert.match(sessionsGit, /queueMicrotask\(\(\) => flushGitNonceBumps\(set\)\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, s\.id\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.dirCloseConfirmations, dir\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, id\)/);
@@ -601,6 +634,24 @@ test("file previews and markdown rendering stay bounded", () => {
   assert.doesNotMatch(gitBridge, /git\/mod\.rs \+ git\/commit\.rs 的命令契约/);
 });
 
+test("shell tint boot and contrast helpers are wired for cold-start and AA checks", () => {
+  const boot = read("src/styles/shell-tint-boot.ts");
+  const contrast = read("src/styles/shell-tint-contrast.ts");
+  const html = read("index.html");
+  const vite = read("vite.config.ts");
+
+  assert.equal(existsSync(resolve(root, "tests/shell-tint-contrast.test.mjs")), true);
+  assert.match(boot, /export const BOOT_APPEARANCE_STORAGE_KEY = "tunara\.boot\.appearance"/);
+  assert.match(boot, /export function applyBootShellTint/);
+  assert.match(boot, /export function persistBootAppearance/);
+  assert.match(boot, /export function renderBootInlineScript/);
+  assert.match(contrast, /export function contrastRatio/);
+  assert.match(contrast, /export function assertShellTintContrast/);
+  assert.match(html, /\/\*__SHELL_TINT_BOOT__\*\//);
+  assert.match(vite, /shellTintBootPlugin/);
+  assert.match(vite, /renderBootInlineScript/);
+});
+
 test("appearance settings are sanitized and command palette exposes useful actions", () => {
   const ui = read("src/state/ui.ts");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
@@ -641,8 +692,8 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(terminalTheme, /getOwnTheme\(NAMED_DARK_THEMES, terminalTheme\) !== undefined/);
   assert.match(terminalTheme, /const darkTheme = terminalTheme !== "default" \? getOwnTheme\(NAMED_DARK_THEMES, terminalTheme\) : undefined/);
   assert.doesNotMatch(terminalTheme, /!!NAMED_DARK_THEMES\[terminalTheme\]/);
-  assert.match(useTheme, /import \{ SHELL_TINT_KEYS, getShellTint, isTerminalThemeDark \}/);
-  assert.match(useTheme, /const tint = terminalTheme !== "default" \? getShellTint\(terminalTheme\) : undefined/);
+  assert.match(useTheme, /import \{ applyBootShellTint \} from "@\/styles\/shell-tint-boot"/);
+  assert.match(useTheme, /applyBootShellTint\(root, terminalTheme, theme, accent/);
   assert.doesNotMatch(useTheme, /SHELL_TINTS\[terminalTheme\]/);
   assert.match(palette, /ranked\.length === 0 \? 0 : Math\.min\(index, ranked\.length - 1\)/);
   assert.match(palette, /for \(const \[globalIdx, cmd\] of ranked\.entries\(\)\)/);
@@ -680,8 +731,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const contributing = read("CONTRIBUTING.md");
   const shared = read("src/ui/shared.tsx");
 
-  assert.match(html, /var accent = "#c2683c"/);
-  assert.doesNotMatch(html, /localStorage/);
+  assert.match(html, /\/\*__SHELL_TINT_BOOT__\*\//);
   assert.doesNotMatch(html, /#e09070/);
 
   assert.match(sessionCard, /e\.key === "Escape"[\s\S]*stopRenaming\(\)/);
@@ -918,6 +968,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(status, /statusBarSlideOut var\(--duration-fast\)/);
   assert.match(status, /onAnimationEnd=\{/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
+  assert.match(settings, /getShellTint/);
+  assert.match(settings, /terminalThemePreviewColors/);
   assert.match(settings, /const previewBg =/);
   assert.match(settings, /const sidebarBg =/);
   assert.match(settings, /height: 62, background: previewBg/);

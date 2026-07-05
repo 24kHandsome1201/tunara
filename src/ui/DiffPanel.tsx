@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatSize, type Session } from "./types";
 import {
   gitDiff,
@@ -340,6 +340,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [remote, setRemote] = useState<RemoteState | null>(null);
   const [expandedFileKey, setExpandedFileKey] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
+  const [loadingDiffKeys, setLoadingDiffKeys] = useState<Record<string, true>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const isComposingRef = useRef(false);
   const diffGenerationRef = useRef(0);
@@ -352,6 +353,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     diffGenerationRef.current += 1;
     setExpandedFileKey(null);
     setDiffs({});
+    setLoadingDiffKeys({});
     setRemote(null);
     if (notGit || (!isRemote && !repoPath)) return () => { cancelled = true; };
     // I3: remote (SSH) sessions now also resolve ahead/behind over the exec
@@ -396,7 +398,38 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         });
   }
 
-  async function toggleFile(file: FileChange) {
+  const loadFileDiff = useCallback(async (file: FileChange) => {
+    const key = fileRowKey(file);
+    if (diffs[key] || loadingDiffKeys[key]) return;
+    const generation = diffGenerationRef.current;
+    const requestedRepoPath = repoPath;
+    const requestedSessionId = session.id;
+    setLoadingDiffKeys((prev) => ({ ...prev, [key]: true }));
+    const diffPromise = isRemote
+      ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, file.path, file.stage) : Promise.reject(new Error("no ptyId")))
+      : (requestedRepoPath ? gitDiff(requestedRepoPath, file.path, file.stage) : Promise.reject(new Error("no repoPath")));
+    try {
+      const d = await diffPromise;
+      if (
+        diffGenerationRef.current === generation &&
+        repoPathRef.current === requestedRepoPath &&
+        sessionIdRef.current === requestedSessionId
+      ) {
+        setDiffs((prev) => ({ ...prev, [key]: d }));
+      }
+    } catch (e) {
+      console.error("[DiffPanel] git_diff load failed", { repoPath: requestedRepoPath, file: file.path, error: e });
+    } finally {
+      setLoadingDiffKeys((prev) => {
+        if (!prev[key]) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }, [diffs, isRemote, loadingDiffKeys, repoPath, session.id, session.ptyId]);
+
+  function toggleFile(file: FileChange) {
     const key = fileRowKey(file);
     if (expandedFileKey === key) {
       setExpandedFileKey(null);
@@ -405,42 +438,32 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     }
     setExpandedFileKey(key);
     setSearchQuery("");
-    if (!diffs[key]) {
-      const generation = diffGenerationRef.current;
-      const requestedRepoPath = repoPath;
-      const requestedSessionId = session.id;
-      // Remote sessions fetch the diff over the SSH exec channel; local ones
-      // over the git2 read path. Both return the same FileDiff shape.
-      const diffPromise = isRemote
-        ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, file.path, file.stage) : Promise.reject(new Error("no ptyId")))
-        : (requestedRepoPath ? gitDiff(requestedRepoPath, file.path, file.stage) : Promise.reject(new Error("no repoPath")));
-      try {
-        const d = await diffPromise;
-        if (
-          diffGenerationRef.current === generation &&
-          repoPathRef.current === requestedRepoPath &&
-          sessionIdRef.current === requestedSessionId
-        ) {
-          setDiffs((prev) => ({ ...prev, [key]: d }));
-        }
-      } catch (e) {
-        console.error("[DiffPanel] git_diff load failed", { repoPath: requestedRepoPath, file: file.path, error: e });
-      }
-    }
   }
 
-  const hasChanges = files.length > 0;
-  const refresh = () => useSessionsStore.getState().refreshGit(session.id);
-
-  const stagedFiles = files.filter((f) => f.stage === "staged");
-  const unstagedFiles = files.filter((f) => f.stage === "unstaged");
-  const untrackedFiles = files.filter((f) => f.stage === "untracked");
-
-  function renderFileRow(file: typeof files[number]) {
+  function DiffFileRow({ file }: { file: FileChange }) {
     const key = fileRowKey(file);
     const isExpanded = expandedFileKey === key;
+    const rowRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (!isExpanded) return;
+      const node = rowRef.current;
+      if (!node) return;
+      const scrollRoot = node.closest("[data-diff-scroll-root]") as HTMLElement | null;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            void loadFileDiff(file);
+          }
+        },
+        { root: scrollRoot, rootMargin: "120px 0px", threshold: 0 },
+      );
+      observer.observe(node);
+      return () => observer.disconnect();
+    }, [file, isExpanded, key]);
+
     return (
-      <div key={key} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
+      <div ref={rowRef} key={key} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
         <div
           role="button"
           tabIndex={0}
@@ -533,6 +556,13 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     );
   }
 
+  const hasChanges = files.length > 0;
+  const refresh = () => useSessionsStore.getState().refreshGit(session.id);
+
+  const stagedFiles = files.filter((f) => f.stage === "staged");
+  const unstagedFiles = files.filter((f) => f.stage === "unstaged");
+  const untrackedFiles = files.filter((f) => f.stage === "untracked");
+
   const outerStyle = embedded
     ? { display: "flex", flexDirection: "column" as const, flex: 1, overflow: "hidden", minHeight: 0 }
     : { width: "var(--w-panel)", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column" as const, flexShrink: 0, overflow: "hidden" };
@@ -597,7 +627,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar scroll-fade-y">
+      <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar scroll-fade-y">
         {loading ? (
           <PanelLoadingState label="git status" />
         ) : notGit ? (
@@ -624,7 +654,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                       titleColor={section.titleColor}
                       accentBorder={section.accentBorder}
                     />
-                    {!collapsed && section.files.map((file) => renderFileRow(file))}
+                    {!collapsed && section.files.map((file) => <DiffFileRow key={fileRowKey(file)} file={file} />)}
                   </div>
                 );
               });

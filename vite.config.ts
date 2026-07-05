@@ -1,12 +1,24 @@
 import react from "@vitejs/plugin-react";
 import path from "path";
+import type { Plugin } from "vite";
 import { defineConfig } from "vite";
+
+function shellTintBootPlugin(): Plugin {
+  return {
+    name: "shell-tint-boot",
+    async transformIndexHtml(html) {
+      const { renderBootInlineScript } = await import("./src/styles/shell-tint-boot.ts");
+      const snippet = renderBootInlineScript();
+      return html.replace("/*__SHELL_TINT_BOOT__*/", snippet);
+    },
+  };
+}
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => ({
-  plugins: [react()],
+  plugins: [react(), shellTintBootPlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

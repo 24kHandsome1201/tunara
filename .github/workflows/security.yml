@@ -20,12 +20,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript]
+        language: [javascript-typescript, rust]
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.language == 'rust'
+      - uses: swatinem/rust-cache@v2
+        if: matrix.language == 'rust'
+        with:
+          workspaces: ./src-tauri -> target
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+      - uses: github/codeql-action/autobuild@v4
+        if: matrix.language == 'rust'
       - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"

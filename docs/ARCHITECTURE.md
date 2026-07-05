@@ -114,10 +114,7 @@ their own commands.
 | `fs_read_dir` | List a local directory | `fsReadDir`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_read_file` | Read a file (text/binary/too-large classified) | `fsReadFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_search` | Fuzzy filename search under a root | `fsSearch`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
-| `list_subdirs` | List immediate subdirectory names | _registered; no current frontend caller_ |
-| `fs_stat` | `lstat` a path (`FileStat`) | _registered; no current frontend caller_ |
-| `fs_grep` | Content grep under a root | _registered; no current frontend caller_ |
-| `fs_glob` | Glob match under a root | _registered; no current frontend caller_ |
+| `fs_grep` | Content grep under a root | `fsGrep`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) (via [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx)) |
 
 ### `git` — status / diff / watch [`modules/git`](../src-tauri/src/modules/git/mod.rs)
 
@@ -137,15 +134,15 @@ the shell PATH.
 | Command | Does | Frontend caller |
 |---|---|---|
 | `resolve_all_bins` | Resolve every agent CLI in the registry | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
-| `resolve_bin` | Resolve one binary by name | _registered; no current frontend caller_ |
-| `set_bin_override` | Store a user-specified absolute path override | _registered; no current frontend caller_ |
+| `set_bin_override` | Store a user-specified absolute path override | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
+| `clear_bin_overrides` | Clear all user CLI path overrides | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
 
 ### `agent` — agent CLI preflight [`modules/agent`](../src-tauri/src/modules/agent/preflight.rs)
 
 | Command | Does | Frontend caller |
 |---|---|---|
-| `agent_preflight` | Check whether an agent CLI is installed / logged in (cached) | _registered; no current frontend caller_ |
-| `agent_preflight_invalidate` | Drop cached preflight results | _registered; no current frontend caller_ |
+| `agent_preflight` | Check whether an agent CLI is installed / logged in (cached) | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
+| `agent_preflight_invalidate` | Drop cached preflight results | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
 
 ### `editor` — external editor jump [`modules/editor`](../src-tauri/src/modules/editor/mod.rs)
 
@@ -249,7 +246,7 @@ retrieved in commands via `tauri::State<'_, T>`.
 | State | Holds | Lifecycle |
 |---|---|---|
 | [`PtyState`](../src-tauri/src/modules/pty/mod.rs) | All live sessions: `HashMap<u32, Arc<Session>>` (physical id → session), a `logical_id → physical_id` map for reopen/replace, and a monotonic `next_id` (starts at 1, never reused) | `.manage(PtyState::default())`; `close_all()` on `RunEvent::Exit` kills every session |
-| [`ResolverState`](../src-tauri/src/modules/resolver/mod.rs) | User path overrides + the login-shell PATH dirs probed at startup | `.manage(ResolverState::default())`; `init_login_path()` called early in `.setup()` so `resolve_bin` works for GUI launches |
+| [`ResolverState`](../src-tauri/src/modules/resolver/mod.rs) | User path overrides + the login-shell PATH dirs probed at startup | `.manage(ResolverState::default())`; `init_login_path()` called early in `.setup()` so `resolve_all_bins` works for GUI launches |
 | [`GitWatcherState`](../src-tauri/src/modules/git/watcher.rs) | Refcounted per-repo filesystem debouncers + the `git_status` result cache | `.manage(GitWatcherState::default())`; entries created by `git_watch`, removed at refcount 0 by `git_unwatch` |
 | [`HookListenerState`](../src-tauri/src/modules/agent/hooks.rs) | The agent-hook Unix socket path + a shutdown flag for its listener thread | Created by `start_listener(app.handle())` and `app.manage()`d in `.setup()`; `shutdown()` (removes the socket, stops the thread) on `RunEvent::Exit` |
 
