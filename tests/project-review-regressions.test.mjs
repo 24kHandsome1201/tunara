@@ -994,12 +994,18 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   // Truncated hint must render whenever the diff is truncated — including under a no-match search.
   assert.match(diff, /diff\.truncated && <div[^>]*>\{t\("diff\.mini\.truncated"\)\}<\/div>/);
   assert.doesNotMatch(diff, /diff\.truncated && !q/);
-  // Search input is IME-safe: composition events gate setSearchQuery so CJK typing doesn't flicker.
+  // Search input is IME-safe: composition events gate the search query update
+  // so CJK typing doesn't flicker. DiffFileRow now receives a stable
+  // onSearchQueryChange prop instead of calling setSearchQuery directly.
   assert.match(diff, /isComposingRef = useRef\(false\)/);
   assert.match(diff, /onCompositionStart=\{\(\) => \{ isComposingRef\.current = true; \}\}/);
   assert.match(diff, /onCompositionEnd=\{/);
-  assert.match(diff, /if \(isComposingRef\.current\) return;\s*setSearchQuery\(e\.target\.value\)/);
+  assert.match(diff, /if \(isComposingRef\.current\) return;\s*onSearchQueryChange\(e\.target\.value\)/);
   assert.match(diff, /if \(e\.nativeEvent\.isComposing\) return;/);
+  // DiffFileRow is defined outside DiffPanel so React reconciles rows by
+  // identity instead of remounting every row on each state change.
+  assert.match(diff, /function DiffFileRow\(/);
+  assert.match(diff, /loadFileDiffStable/);
   assert.match(diff, /className="no-scrollbar scroll-fade-y"/);
   assert.match(explorer, /function compactRelativePath/);
   assert.match(explorer, /className="no-scrollbar scroll-fade-y"/);

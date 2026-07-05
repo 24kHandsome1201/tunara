@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { SHELL_TINTS } from "../src/styles/terminalTheme.ts";
+import { SHELL_TINTS, isTerminalThemeDark, NAMED_DARK_TERMINAL_THEME_KEYS } from "../src/styles/terminalTheme.ts";
 import {
   assertShellTintContrast,
   contrastRatio,
 } from "../src/styles/shell-tint-contrast.ts";
 import {
   BOOT_APPEARANCE_STORAGE_KEY,
+  NAMED_DARK_TERMINAL_THEMES,
   applyBootShellTint,
   persistBootAppearance,
   readBootAppearance,
@@ -95,4 +96,32 @@ test("applyBootShellTint writes shell tint variables on a stub root", () => {
   assert.equal(props.get("--c-bg-1"), SHELL_TINTS.catppuccin["--c-bg-1"]);
   assert.equal(props.get("--c-text-primary"), SHELL_TINTS.catppuccin["--c-text-primary"]);
   assert.equal(props.get("--c-accent"), "#c2683c");
+});
+
+test("boot dark-theme key list stays in sync with isTerminalThemeDark", () => {
+  // The cold-start boot script and the runtime must agree on which terminal
+  // presets force the .dark class. If they diverge, cold start flashes the
+  // wrong shell color until React hydrates.
+  assert.deepEqual(
+    [...NAMED_DARK_TERMINAL_THEMES].sort(),
+    [...NAMED_DARK_TERMINAL_THEME_KEYS].sort(),
+  );
+
+  for (const key of NAMED_DARK_TERMINAL_THEMES) {
+    assert.equal(
+      isTerminalThemeDark(key, "light"),
+      true,
+      `${key} should be dark regardless of app theme`,
+    );
+  }
+  // Light presets must not appear in the dark list.
+  for (const key of Object.keys(SHELL_TINTS)) {
+    if (!NAMED_DARK_TERMINAL_THEMES.includes(key)) {
+      assert.equal(
+        isTerminalThemeDark(key, "light"),
+        false,
+        `${key} should not be dark under a light app theme`,
+      );
+    }
+  }
 });

@@ -180,6 +180,13 @@ const NAMED_DARK_THEMES: Record<string, typeof DARK_THEME> = {
   solarized: SOLARIZED_THEME,
 };
 
+/** Keys of terminal presets that force the `.dark` class on the shell.
+ *  Shared by the runtime (`isTerminalThemeDark`) and the cold-start boot
+ *  script (`shell-tint-boot.ts`) so the two paths never diverge. */
+export const NAMED_DARK_TERMINAL_THEME_KEYS: readonly string[] = Object.freeze(
+  Object.keys(NAMED_DARK_THEMES),
+);
+
 const NAMED_LIGHT_THEMES: Record<string, typeof LIGHT_THEME> = {
   "github-light": GITHUB_LIGHT_THEME,
   "rose-pine-dawn": ROSE_PINE_DAWN_THEME,

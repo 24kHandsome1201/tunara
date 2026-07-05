@@ -1,5 +1,5 @@
 import type { ThemeType, TerminalThemeName } from "../ui/types.ts";
-import { SHELL_TINTS, SHELL_TINT_KEYS, getShellTint, isTerminalThemeDark } from "./terminalTheme.ts";
+import { SHELL_TINTS, SHELL_TINT_KEYS, getShellTint, isTerminalThemeDark, NAMED_DARK_TERMINAL_THEME_KEYS } from "./terminalTheme.ts";
 
 /** localStorage key read by the synchronous index.html boot script. */
 export const BOOT_APPEARANCE_STORAGE_KEY = "tunara.boot.appearance";
@@ -7,13 +7,10 @@ export const BOOT_APPEARANCE_STORAGE_KEY = "tunara.boot.appearance";
 /** Minimal tint map for boot — same data as `SHELL_TINTS` in terminalTheme.ts. */
 export const SHELL_TINTS_BOOT: Readonly<Record<string, Readonly<Record<string, string>>>> = SHELL_TINTS;
 
-/** Terminal presets that force the `.dark` class when selected. */
-export const NAMED_DARK_TERMINAL_THEMES: readonly TerminalThemeName[] = [
-  "catppuccin",
-  "tokyo-night",
-  "one-dark",
-  "solarized",
-] as const;
+/** Terminal presets that force the `.dark` class when selected.
+ *  Re-exported from terminalTheme.ts so the boot script and runtime share
+ *  one source of truth — adding a dark preset in one place updates both. */
+export const NAMED_DARK_TERMINAL_THEMES: readonly string[] = NAMED_DARK_TERMINAL_THEME_KEYS;
 
 export interface BootAppearance {
   theme: ThemeType;
@@ -152,5 +149,6 @@ export function renderBootInlineScript(): string {
           style.setProperty("--c-accent-bg-light", mix(dark ? 0.18 : 0.12, ar, base));
           style.setProperty("--c-accent-bg-soft", mix(dark ? 0.10 : 0.06, ar, base));
           style.setProperty("--c-accent-border", mix(dark ? 0.30 : 0.22, ar, base));
+          style.setProperty("--c-accent-selection", accent + (dark ? "66" : "44"));
         `.trim();
 }

@@ -27,6 +27,24 @@ interface DiffPanelProps {
   embedded?: boolean;
 }
 
+interface DiffFileRowProps {
+  file: FileChange;
+  expanded: boolean;
+  diffs: Record<string, FileDiff>;
+  searchQuery: string;
+  isRemote: boolean;
+  repoPath: string | null;
+  sessionId: string;
+  // loadFileDiff is held in a ref inside DiffPanel so this stable wrapper
+  // never goes stale without forcing every row to re-mount.
+  loadFileDiff: (file: FileChange) => void;
+  onToggle: (file: FileChange) => void;
+  onSearchQueryChange: (value: string) => void;
+  onCopyHunk: (hunkText: string) => void;
+  isComposingRef: React.MutableRefObject<boolean>;
+  t: ReturnType<typeof useT>;
+}
+
 function renderHighlighted(line: string, query: string): React.ReactNode {
   if (!query) return line || " ";
   const lower = line.toLowerCase();
@@ -294,6 +312,139 @@ function fileRowKey(file: Pick<FileChange, "stage" | "path">): string {
   return `${file.stage}:${file.path}`;
 }
 
+// Defined outside DiffPanel so React can reconcile rows by identity instead of
+// unmounting/remounting every row on each DiffPanel state change. The previous
+// nested definition created a fresh component type per render, which destroyed
+// and recreated every IntersectionObserver on every diffs/loadingDiffKeys bump.
+function DiffFileRow({
+  file,
+  expanded,
+  diffs,
+  searchQuery,
+  isRemote,
+  repoPath,
+  sessionId,
+  loadFileDiff,
+  onToggle,
+  onSearchQueryChange,
+  onCopyHunk,
+  isComposingRef,
+  t,
+}: DiffFileRowProps) {
+  const key = fileRowKey(file);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const node = rowRef.current;
+    if (!node) return;
+    const scrollRoot = node.closest("[data-diff-scroll-root]") as HTMLElement | null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadFileDiff(file);
+        }
+      },
+      { root: scrollRoot, rootMargin: "120px 0px", threshold: 0 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [file, expanded, key, loadFileDiff]);
+
+  return (
+    <div ref={rowRef} key={key} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onToggle(file)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(file); } }}
+        className="hover-bg"
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+      >
+        <FileStatusBadge status={file.status} />
+        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
+          {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
+        </span>
+        {repoPath && !isRemote && (
+          <button
+            type="button"
+            className="diff-file-open hover-bg"
+            title={t("diff.open_in_editor")}
+            aria-label={t("diff.open_in_editor")}
+            onClick={(e) => {
+              e.stopPropagation();
+              const editor = useUIStore.getState().externalEditor;
+              void openInEditorWithToast(editor, `${repoPath}/${file.path}`, { sessionId });
+            }}
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "var(--c-text-5)",
+              flexShrink: 0,
+              padding: 0,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+          </button>
+        )}
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+          +{file.added} −{file.removed}
+        </span>
+        {chevronIcon(expanded)}
+      </div>
+      {expanded && (
+        <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
+          {diffs[key]?.kind === "text" && (
+            <div style={{ padding: "4px 8px 2px", borderBottom: "1px solid var(--c-border-3)" }}>
+              <input
+                type="text"
+                placeholder={t("diff.search.placeholder")}
+                value={searchQuery}
+                onCompositionStart={() => { isComposingRef.current = true; }}
+                onCompositionEnd={(e) => {
+                  isComposingRef.current = false;
+                  onSearchQueryChange((e.target as HTMLInputElement).value);
+                }}
+                onChange={(e) => {
+                  if (isComposingRef.current) return;
+                  onSearchQueryChange(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing) return;
+                  if (e.key === "Escape") onSearchQueryChange("");
+                }}
+                style={{
+                  width: "100%",
+                  fontSize: "var(--fs-meta)",
+                  fontFamily: "var(--font-mono)",
+                  padding: "3px 6px",
+                  background: "var(--c-bg-1)",
+                  color: "var(--c-text-2)",
+                  border: "1px solid var(--c-border-2)",
+                  borderRadius: "var(--r-btn)",
+                  outline: "none",
+                }}
+              />
+            </div>
+          )}
+          <MiniDiff diff={diffs[key]} searchQuery={searchQuery} onCopyHunk={onCopyHunk} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Stable identity for the no-changes case. Minting a fresh empty array on
 // each render (the old nullish-coalescing-to-a-literal) made the
 // expanded-file-pruning effect below re-run on every render whenever there
@@ -381,7 +532,18 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     }
   }, [files, expandedFileKey]);
 
-  async function copyHunk(text: string) {
+  const toggleFile = useCallback((file: FileChange) => {
+    const key = fileRowKey(file);
+    if (expandedFileKey === key) {
+      setExpandedFileKey(null);
+      setSearchQuery("");
+      return;
+    }
+    setExpandedFileKey(key);
+    setSearchQuery("");
+  }, [expandedFileKey]);
+
+  const copyHunk = useCallback(async (text: string) => {
     const ok = await copyText(text);
     useUIStore.getState().addToast(ok
       ? {
@@ -396,7 +558,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           subtitle: t("diff.toast.clipboard_unavailable"),
           variant: "error",
         });
-  }
+  }, [session.id, t]);
 
   const loadFileDiff = useCallback(async (file: FileChange) => {
     const key = fileRowKey(file);
@@ -429,132 +591,16 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     }
   }, [diffs, isRemote, loadingDiffKeys, repoPath, session.id, session.ptyId]);
 
-  function toggleFile(file: FileChange) {
-    const key = fileRowKey(file);
-    if (expandedFileKey === key) {
-      setExpandedFileKey(null);
-      setSearchQuery("");
-      return;
-    }
-    setExpandedFileKey(key);
-    setSearchQuery("");
-  }
-
-  function DiffFileRow({ file }: { file: FileChange }) {
-    const key = fileRowKey(file);
-    const isExpanded = expandedFileKey === key;
-    const rowRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-      if (!isExpanded) return;
-      const node = rowRef.current;
-      if (!node) return;
-      const scrollRoot = node.closest("[data-diff-scroll-root]") as HTMLElement | null;
-      const observer = new IntersectionObserver(
-        (entries) => {
-          if (entries.some((entry) => entry.isIntersecting)) {
-            void loadFileDiff(file);
-          }
-        },
-        { root: scrollRoot, rootMargin: "120px 0px", threshold: 0 },
-      );
-      observer.observe(node);
-      return () => observer.disconnect();
-    }, [file, isExpanded, key]);
-
-    return (
-      <div ref={rowRef} key={key} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => toggleFile(file)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFile(file); } }}
-          className="hover-bg"
-          style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
-        >
-          <FileStatusBadge status={file.status} />
-          <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.path}>
-            {(() => { const parts = file.path.split("/"); return parts.length > 1 ? parts.slice(-2).join("/") : file.path; })()}
-          </span>
-          {repoPath && !isRemote && (
-            <button
-              type="button"
-              className="diff-file-open hover-bg"
-              title={t("diff.open_in_editor")}
-              aria-label={t("diff.open_in_editor")}
-              onClick={(e) => {
-                e.stopPropagation();
-                const editor = useUIStore.getState().externalEditor;
-                void openInEditorWithToast(editor, `${repoPath}/${file.path}`, { sessionId: session.id });
-              }}
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: 4,
-                border: "none",
-                background: "transparent",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                color: "var(--c-text-5)",
-                flexShrink: 0,
-                padding: 0,
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            </button>
-          )}
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-            +{file.added} −{file.removed}
-          </span>
-          {chevronIcon(isExpanded)}
-        </div>
-        {isExpanded && (
-          <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-            {diffs[key]?.kind === "text" && (
-              <div style={{ padding: "4px 8px 2px", borderBottom: "1px solid var(--c-border-3)" }}>
-                <input
-                  type="text"
-                  placeholder={t("diff.search.placeholder")}
-                  value={searchQuery}
-                  onCompositionStart={() => { isComposingRef.current = true; }}
-                  onCompositionEnd={(e) => {
-                    isComposingRef.current = false;
-                    setSearchQuery((e.target as HTMLInputElement).value);
-                  }}
-                  onChange={(e) => {
-                    if (isComposingRef.current) return;
-                    setSearchQuery(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.nativeEvent.isComposing) return;
-                    if (e.key === "Escape") setSearchQuery("");
-                  }}
-                  style={{
-                    width: "100%",
-                    fontSize: "var(--fs-meta)",
-                    fontFamily: "var(--font-mono)",
-                    padding: "3px 6px",
-                    background: "var(--c-bg-1)",
-                    color: "var(--c-text-2)",
-                    border: "1px solid var(--c-border-2)",
-                    borderRadius: "var(--r-btn)",
-                    outline: "none",
-                  }}
-                />
-              </div>
-            )}
-            <MiniDiff diff={diffs[key]} searchQuery={searchQuery} onCopyHunk={copyHunk} />
-          </div>
-        )}
-      </div>
-    );
-  }
+  // Hold the latest loadFileDiff in a ref so DiffFileRow's IntersectionObserver
+  // effect doesn't re-subscribe every time diffs/loadingDiffKeys change. The
+  // callback identity churn is harmless (the guard inside prevents duplicate
+  // loads), but re-subscribing every observer on every load completion is
+  // wasted work.
+  const loadFileDiffRef = useRef(loadFileDiff);
+  loadFileDiffRef.current = loadFileDiff;
+  const loadFileDiffStable = useCallback((file: FileChange) => {
+    loadFileDiffRef.current(file);
+  }, []);
 
   const hasChanges = files.length > 0;
   const refresh = () => useSessionsStore.getState().refreshGit(session.id);
@@ -654,7 +700,24 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                       titleColor={section.titleColor}
                       accentBorder={section.accentBorder}
                     />
-                    {!collapsed && section.files.map((file) => <DiffFileRow key={fileRowKey(file)} file={file} />)}
+                    {!collapsed && section.files.map((file) => (
+                      <DiffFileRow
+                        key={fileRowKey(file)}
+                        file={file}
+                        expanded={expandedFileKey === fileRowKey(file)}
+                        diffs={diffs}
+                        searchQuery={searchQuery}
+                        isRemote={isRemote}
+                        repoPath={repoPath}
+                        sessionId={session.id}
+                        loadFileDiff={loadFileDiffStable}
+                        onToggle={toggleFile}
+                        onSearchQueryChange={setSearchQuery}
+                        onCopyHunk={copyHunk}
+                        isComposingRef={isComposingRef}
+                        t={t}
+                      />
+                    ))}
                   </div>
                 );
               });
