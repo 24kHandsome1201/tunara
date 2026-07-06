@@ -11,6 +11,16 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-07-06
+
+### 修复
+- 修复启动后白屏崩溃:`SessionOverviewPanel` 的 zustand selector 在会话无时间线时每次渲染返回全新 `[]`,zustand 5.0.14 以 `Object.is` 比较快照导致每帧判定"已变更",触发无限渲染循环 → React #185 → 整棵树被卸载 → 空白窗口。改用冻结的稳定 `EMPTY_TIMELINE` 引用。回归自 v1.11.0。
+- 启动健壮性加固:新增 `tryGetCurrentWindow()`,当 Tauri 窗口 IPC 尚不可用时安全返回 `null` 而非抛错;`useInit`、`useGlobalShortcut`、`Titlebar`、`dock-badge`、`terminal-attention` 全部改走该守卫,单个 listener 注册失败不再拖垮初始化。
+- `main.tsx` 改为动态 `import("./app/App")` 并新增 `renderBootError`:启动失败时在窗口内显示错误堆栈,而不是留下空白窗口。
+- `vite.config.ts` 设 `base: "./"`,确保 Tauri 以相对路径加载打包产物。
+- 后端 `show_main_window()`:在 setup / ready / reopen 时强制取消最小化、显示并聚焦主窗口(附诊断日志),修复"窗口已起但不可见"的隐窗症状。
+- agent hook helper 改为原子写(临时文件 + `rename`)并在 chmod 失败时清理临时文件,消除 `agent-hook.sh` 偶发的 `Permission denied` 日志。
+
 ## [1.11.0] - 2026-07-05
 
 ### 修复与优化

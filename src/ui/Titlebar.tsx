@@ -4,10 +4,10 @@ import { useSessionsStore } from "@/state/sessions";
 import { getNumberRecordValue } from "@/state/record-keys";
 import { useUIStore } from "@/state/ui";
 import { formatShortcut } from "./formatShortcut";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { CloseIcon } from "./shared";
 import { useT } from "@/modules/i18n";
+import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -127,7 +127,8 @@ function TabButton({ isActive, label, closeLabel, confirmCloseLabel, confirmClos
 
 function WindowControls() {
   const t = useT();
-  const win = getCurrentWindow();
+  const win = tryGetCurrentWindow();
+  if (!win) return null;
   const btnBase: React.CSSProperties = {
     width: 28,
     height: 28,

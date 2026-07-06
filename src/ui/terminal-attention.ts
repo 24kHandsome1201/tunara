@@ -1,13 +1,14 @@
-import { getCurrentWindow, UserAttentionType } from "@tauri-apps/api/window";
+import { UserAttentionType } from "@tauri-apps/api/window";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalNotification } from "@/modules/terminal/lib/terminal-notification";
 import { useUIStore } from "@/state/ui";
 import { t } from "@/modules/i18n";
+import { tryGetCurrentWindow } from "./lib/current-window";
 
 export function requestInformationalAttention() {
   if (document.hasFocus() || !useUIStore.getState().bellNotification) return;
-  getCurrentWindow()
-    .requestUserAttention(UserAttentionType.Informational)
+  tryGetCurrentWindow()
+    ?.requestUserAttention(UserAttentionType.Informational)
     .catch(() => {});
 }
 

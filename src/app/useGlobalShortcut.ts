@@ -1,15 +1,16 @@
 import { useEffect, useRef } from "react";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useUIStore } from "@/state/ui";
 import { t } from "@/modules/i18n/core.ts";
+import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 
 // Toggle the main window on the global summon hotkey: hide when visible, show
 // + focus when hidden. Acts like a hotkey-window/quake terminal without adding
 // a second window — the existing three-pane shell slides in/out.
 async function toggleMainWindow(): Promise<void> {
-  const win = getCurrentWindow();
   try {
+    const win = tryGetCurrentWindow();
+    if (!win) return;
     const visible = await win.isVisible();
     if (visible) {
       await win.hide();

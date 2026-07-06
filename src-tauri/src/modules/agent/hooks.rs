@@ -47,15 +47,26 @@ mod platform {
 
     /// Writes (or refreshes) the stable hook helper into the private runtime dir.
     /// Best-effort: a failure only means resume falls back to command scraping.
-    fn write_agent_hook_helper(dir: &Path) {
+    pub(super) fn write_agent_hook_helper(dir: &Path) {
         let path = dir.join(AGENT_HOOK_HELPER_NAME);
-        if let Err(e) = fs::write(&path, AGENT_HOOK_SH) {
-            log::warn!("agent hook helper write {} failed: {e}", path.display());
+        let tmp = dir.join(format!(
+            ".{}.{}.tmp",
+            AGENT_HOOK_HELPER_NAME,
+            std::process::id()
+        ));
+        if let Err(e) = fs::write(&tmp, AGENT_HOOK_SH) {
+            log::warn!("agent hook helper write {} failed: {e}", tmp.display());
             return;
         }
         // Read+exec for the owner only; the dir is already 0700.
-        if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o500)) {
-            log::warn!("agent hook helper chmod {} failed: {e}", path.display());
+        if let Err(e) = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o500)) {
+            log::warn!("agent hook helper chmod {} failed: {e}", tmp.display());
+            let _ = fs::remove_file(&tmp);
+            return;
+        }
+        if let Err(e) = fs::rename(&tmp, &path) {
+            log::warn!("agent hook helper replace {} failed: {e}", path.display());
+            let _ = fs::remove_file(&tmp);
         }
     }
 
@@ -301,6 +312,37 @@ mod tests {
         assert_eq!(state.sock_path(), "");
         assert!(state.agent_config_dir().is_none());
         state.shutdown();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_helper_refreshes_existing_owner_executable_file() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::path::PathBuf::from(format!(
+            "/tmp/tunara-hook-helper-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        let helper = dir.join(super::platform::AGENT_HOOK_HELPER_NAME);
+        fs::write(&helper, b"stale").unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o500)).unwrap();
+
+        super::platform::write_agent_hook_helper(&dir);
+
+        let contents = fs::read_to_string(&helper).unwrap();
+        let mode = fs::metadata(&helper).unwrap().permissions().mode() & 0o777;
+        assert!(contents.contains("agent_session_id"));
+        assert_eq!(mode, 0o500);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[cfg(unix)]

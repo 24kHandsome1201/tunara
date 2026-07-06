@@ -12,11 +12,11 @@ import {
   restoreTerminalSnapshots,
 } from "@/modules/terminal/lib/terminal-snapshot";
 import { platform } from "@tauri-apps/plugin-os";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
 import { toPersistedSession } from "@/state/persist-snapshot";
 import { diffWatchedDirs, gitWatchDirsForSessions } from "./lib/sync-watches";
+import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
@@ -141,9 +141,19 @@ export function useInit() {
     });
 
     const unlistens: Array<Promise<() => void>> = [];
-    const win = getCurrentWindow();
+    const registerUnlisten = (label: string, start: () => Promise<() => void>) => {
+      unlistens.push(
+        start().catch((e) => {
+          console.warn(`[useInit] ${label} listener unavailable`, e);
+          return () => {};
+        }),
+      );
+    };
+
+    const win = tryGetCurrentWindow();
 
     try {
+      if (!win) throw new Error("current window unavailable");
       const p = platform();
       const isMac = p === "macos";
       const setTL = (fs: boolean) =>
@@ -178,20 +188,22 @@ export function useInit() {
       }, 500);
     };
 
-    unlistens.push(
-      win.onCloseRequested(async (event) => {
-        event.preventDefault();
-        if (saveTimer) {
-          clearTimeout(saveTimer);
-          saveTimer = null;
-        }
-        await saveWorkspaceSnapshot(buildSnapshot());
-        await win.hide();
-      }),
-    );
+    if (win) {
+      registerUnlisten("window close", () =>
+        win.onCloseRequested(async (event) => {
+          event.preventDefault();
+          if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+          }
+          await saveWorkspaceSnapshot(buildSnapshot());
+          await win.hide();
+        }),
+      );
+    }
 
-    unlistens.push(startHooksListener());
-    unlistens.push(startGitWatcherListener());
+    registerUnlisten("agent hook", startHooksListener);
+    registerUnlisten("git watcher", startGitWatcherListener);
 
     let watchedDirs: ReadonlySet<string> = new Set<string>();
     const syncGitWatches = (sessions: readonly Session[]) => {

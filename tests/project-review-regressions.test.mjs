@@ -76,7 +76,10 @@ test("mac window chrome aligns controls and hides main window on close while cle
   assert.equal(tauri.app.windows[0].titleBarStyle, "Overlay");
   assert.deepEqual(tauri.app.windows[0].trafficLightPosition, { x: 18, y: 18 });
   assert.ok(defaultCapability.permissions.includes("core:window:allow-hide"));
-  assert.match(lib, /tauri::RunEvent::Reopen \{[\s\S]*?has_visible_windows: false,[\s\S]*?window\.show\(\)[\s\S]*?window\.set_focus\(\)/);
+  assert.match(lib, /fn show_main_window\(app: &AppHandle, reason: &str\)/);
+  assert.match(lib, /\.setup\(\|app\| \{[\s\S]*?show_main_window\(app\.handle\(\), "setup"\)/);
+  assert.match(lib, /tauri::RunEvent::Ready => \{[\s\S]*?show_main_window\(app, "ready"\)/);
+  assert.match(lib, /tauri::RunEvent::Reopen \{[\s\S]*?has_visible_windows: false,[\s\S]*?show_main_window\(app, "reopen"\)/);
   assert.match(lib, /tauri::RunEvent::Exit[\s\S]*?app\.state::<pty::PtyState>\(\)\.close_all\(\);[\s\S]*?app\.state::<HookListenerState>\(\)\.shutdown\(\);/);
 });
 
@@ -206,6 +209,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   const ui = read("src/state/ui.ts");
   const diffPanel = read("src/ui/DiffPanel.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const overviewPanel = read("src/ui/SessionOverviewPanel.tsx");
   const recordKeys = read("src/state/record-keys.ts");
   assert.match(persist, /const STORE_FILE = "tunara-sessions\.json";/);
   assert.match(persist, /const LEGACY_STORE_FILE = "conduit-sessions\.json";/);
@@ -299,6 +303,9 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(diffPanel, /getNumberRecordValue\(s\.gitNonce, session\.id\)/);
   assert.match(diffPanel, /hasTrueRecordKey\(collapsedSections, section\.key\)/);
   assert.match(diffPanel, /toggleDiffSectionCollapsed\(section\.key\)/);
+  assert.match(overviewPanel, /const EMPTY_TIMELINE: readonly TimelineEvent\[\] = Object\.freeze\(\[\]\);/);
+  assert.match(overviewPanel, /s\.sessionTimelines\[session\.id\] \?\? EMPTY_TIMELINE/);
+  assert.doesNotMatch(overviewPanel, /s\.sessionTimelines\[session\.id\] \?\? \[\]/);
   assert.doesNotMatch(diffPanel, /!!collapsedSections\[section\.key\]/);
   assert.doesNotMatch(diffPanel, /s\.gitNonce\[session\.id\]/);
   assert.doesNotMatch(diffPanel, /localStorage/);
@@ -328,10 +335,31 @@ test("app shell keeps shared resize and window lifecycle plumbing centralized", 
   assert.doesNotMatch(app, /function PanelResizeHandle\(\)[\s\S]*?document\.addEventListener\("pointermove"/);
   assert.doesNotMatch(app, /function SidebarResizeHandle\(\)[\s\S]*?document\.addEventListener\("pointermove"/);
 
-  assert.match(init, /const win = getCurrentWindow\(\);/);
+  assert.match(init, /const win = tryGetCurrentWindow\(\);/);
   assert.match(init, /win\.isFullscreen\(\)/);
   assert.match(init, /win\.onCloseRequested/);
-  assert.equal((init.match(/getCurrentWindow\(\)/g) ?? []).length, 1);
+  assert.doesNotMatch(init, /getCurrentWindow\(\)/);
+});
+
+test("window API lookups are guarded so metadata failures do not blank the app", () => {
+  const helper = read("src/ui/lib/current-window.ts");
+  const main = read("src/main.tsx");
+  const sources = [
+    read("src/app/useInit.ts"),
+    read("src/app/useGlobalShortcut.ts"),
+    read("src/ui/Titlebar.tsx"),
+    read("src/ui/dock-badge.ts"),
+    read("src/ui/terminal-attention.ts"),
+  ];
+
+  assert.match(helper, /export function tryGetCurrentWindow/);
+  assert.match(helper, /try \{[\s\S]*return getCurrentWindow\(\);[\s\S]*\} catch \(error\) \{/);
+  assert.match(main, /function renderBootError/);
+  assert.match(main, /import\("\.\/app\/App"\)/);
+  for (const source of sources) {
+    assert.match(source, /tryGetCurrentWindow/);
+    assert.doesNotMatch(source, /getCurrentWindow\(\)/);
+  }
 });
 
 test("file explorer exposes fast project search, refresh, and hidden-file controls", () => {
@@ -648,6 +676,7 @@ test("shell tint boot and contrast helpers are wired for cold-start and AA check
   assert.match(contrast, /export function contrastRatio/);
   assert.match(contrast, /export function assertShellTintContrast/);
   assert.match(html, /\/\*__SHELL_TINT_BOOT__\*\//);
+  assert.match(vite, /base:\s*"\.\/"/);
   assert.match(vite, /shellTintBootPlugin/);
   assert.match(vite, /renderBootInlineScript/);
 });
@@ -1097,7 +1126,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(sshConnection, /let mut accepting_input = true/);
   assert.match(sshConnection, /accepting_input = false/);
   assert.match(sshConnection, /input = input_rx\.recv\(\), if accepting_input/);
-  assert.match(terminalAttention, /import \{ getCurrentWindow, UserAttentionType \} from "@tauri-apps\/api\/window"/);
+  assert.match(terminalAttention, /import \{ UserAttentionType \} from "@tauri-apps\/api\/window"/);
+  assert.match(terminalAttention, /tryGetCurrentWindow\(\)[\s\S]*?requestUserAttention\(UserAttentionType\.Informational\)/);
+  assert.doesNotMatch(terminalAttention, /getCurrentWindow\(\)/);
   assert.match(terminalAttention, /requestUserAttention\(UserAttentionType\.Informational\)[\s\S]*\.catch\(\(\) => \{\}\)/);
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
   assert.doesNotMatch(terminalAttention, /requestUserAttention\(2\)/);

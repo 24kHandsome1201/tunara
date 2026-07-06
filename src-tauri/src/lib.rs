@@ -3,7 +3,34 @@ mod modules;
 use modules::agent::hooks::HookListenerState;
 use modules::resolver::ResolverState;
 use modules::{fs, pty};
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
+
+fn show_main_window(app: &AppHandle, reason: &str) {
+    #[cfg(target_os = "macos")]
+    if let Err(e) = app.set_activation_policy(tauri::ActivationPolicy::Regular) {
+        log::warn!("activation policy reset failed during {reason}: {e}");
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let visible_before = window.is_visible().ok();
+        let minimized_before = window.is_minimized().ok();
+        if let Err(e) = window.unminimize() {
+            log::warn!("main window unminimize failed during {reason}: {e}");
+        }
+        if let Err(e) = window.show() {
+            log::warn!("main window show failed during {reason}: {e}");
+        }
+        if let Err(e) = window.set_focus() {
+            log::warn!("main window focus failed during {reason}: {e}");
+        }
+        log::info!(
+            "main window restored during {reason}: visible_before={visible_before:?} minimized_before={minimized_before:?} visible_after={:?} minimized_after={:?}",
+            window.is_visible().ok(),
+            window.is_minimized().ok()
+        );
+    } else {
+        log::warn!("main window unavailable during {reason}");
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -40,6 +67,7 @@ pub fn run() {
 
             let hook_listener = modules::agent::hooks::start_listener(app.handle().clone());
             app.manage(hook_listener);
+            show_main_window(app.handle(), "setup");
 
             // M6：macOS 毛玻璃（§3.6）
             #[cfg(target_os = "macos")]
@@ -105,15 +133,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| match event {
+            tauri::RunEvent::Ready => {
+                show_main_window(app, "ready");
+            }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen {
                 has_visible_windows: false,
                 ..
             } => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                show_main_window(app, "reopen");
             }
             tauri::RunEvent::Exit => {
                 app.state::<pty::PtyState>().close_all();
