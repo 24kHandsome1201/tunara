@@ -14,6 +14,8 @@ interface SessionOverviewPanelProps {
   session: Session;
 }
 
+const EMPTY_TIMELINE: readonly TimelineEvent[] = Object.freeze([]);
+
 function InfoCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div
@@ -81,7 +83,7 @@ function timelineLabel(event: TimelineEvent, t: ReturnType<typeof useT>): string
 export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
   const t = useT();
   const externalEditor = useUIStore((s) => s.externalEditor);
-  const timeline = useSessionsStore((s) => s.sessionTimelines[session.id] ?? []);
+  const timeline = useSessionsStore((s) => s.sessionTimelines[session.id] ?? EMPTY_TIMELINE);
   const { primary, subtitle } = deriveTitle(session);
   const changes = summarizeChangedFiles(session.changes?.files);
   const noteStats = getSessionNoteStats(session.note ?? "");
