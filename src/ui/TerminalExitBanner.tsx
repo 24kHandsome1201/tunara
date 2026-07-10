@@ -2,7 +2,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
-import { sshFailureReason } from "@/modules/terminal/lib/pty-bridge";
+import { SSH_DISCONNECTED_EXIT_CODE, sshFailureReason } from "@/modules/terminal/lib/pty-bridge";
 import type { Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 
@@ -24,15 +24,17 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
   const restart = () => {
     const store = useSessionsStore.getState();
     if (isRemote && session.remote) {
-      // Remote: route the user back to the SSH dialog pre-filled with the host
-      // profile. Credentials were one-shot and never persisted, so we cannot
-      // re-stash them here — the user re-enters them in the dialog.
+      // Keep the dead session and its snapshot until the replacement is
+      // configured. Cancelling the dialog must not destroy notes, split
+      // placement, or scrollback.
       useUIStore.getState().openSshConnect({
         host: session.remote.host,
         user: session.remote.user,
         port: session.remote.port,
+        identityFile: session.remote.identityFile,
+        injectShellIntegration: session.remote.injectShellIntegration,
+        reconnectSessionId: session.id,
       });
-      store.closeSession(session.id);
       return;
     }
     // Local: spawn a fresh terminal in the same cwd, then drop the dead one.
@@ -40,10 +42,13 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
     store.closeSession(session.id);
   };
 
-  const tone = exitCode === 0 ? "var(--c-success)" : "var(--c-error)";
-  const label = exitCode === 0
-    ? t("terminal.exited.ok")
-    : t("terminal.exited.failed", { code: exitCode });
+  const disconnected = isRemote && exitCode === SSH_DISCONNECTED_EXIT_CODE;
+  const tone = disconnected ? "var(--c-warning)" : exitCode === 0 ? "var(--c-success)" : "var(--c-error)";
+  const label = disconnected
+    ? t("terminal.exited.disconnected")
+    : exitCode === 0
+      ? t("terminal.exited.ok")
+      : t("terminal.exited.failed", { code: exitCode });
   const actionLabel = isRemote ? t("terminal.exited.reconnect") : t("terminal.exited.restart");
 
   return (
@@ -124,9 +129,11 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
           host: session.remote.host,
           user: session.remote.user,
           port: session.remote.port,
+          identityFile: session.remote.identityFile,
+          injectShellIntegration: session.remote.injectShellIntegration,
+          reconnectSessionId: session.id,
         });
       }
-      store.closeSession(session.id);
       return;
     }
     store.newTerminalInDir(session.dir);
@@ -208,7 +215,7 @@ export function ConnectingOverlay({ onCancel }: { onCancel?: () => void }) {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "pulseDot 1.5s var(--ease-in-out) infinite" }} />
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "loadPulse 1.5s var(--ease-in-out) infinite" }} />
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
           {staticT("ssh.connecting")}
         </span>

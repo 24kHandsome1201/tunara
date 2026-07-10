@@ -27,23 +27,25 @@ release without identity collisions.
       `tauri.conf.json`).
 - [ ] Window drag region works; control buttons remain clickable.
 
-## Shell tint and glass
+## Shell tint and paper surfaces
 
 - [ ] Sidebar, review panel, and titlebar tints match the active theme preset.
-- [ ] Glass surfaces (`--c-bg-*-glass`) look correct over terminal content.
+- [ ] Sidebar, terminal, and inspector have distinct solid surface levels.
 - [ ] Narrow the window: layout does not clip traffic lights or panel tabs.
 
 ## Narrow viewport
 
+- [ ] Resize the native window to its 640px minimum and verify the sidebar is
+      an overlay rather than consuming the terminal canvas.
 - [ ] Sidebar can hide without leaving a dead resize gutter.
 - [ ] Inspector tabs (Overview / Notes / Diff / Files) stay reachable at ~960px
       width.
 - [ ] Command palette and overlays remain centered and scrollable.
 
-## Glass fallback
+## Solid-surface fallback
 
-- [ ] With reduced transparency (macOS accessibility) or unsupported backdrop,
-      opaque `--c-bg-*` tokens still provide readable contrast.
+- [ ] With reduced transparency (macOS accessibility), all surfaces keep the
+      same readable contrast because the shell does not depend on blur.
 - [ ] Terminal selection, diff highlights, and accent buttons stay legible.
 
 ## Regression guards

@@ -23,7 +23,7 @@ function ExitCodeBadge({ code, completed }: { code: number | undefined; complete
         alignItems: "center",
         gap: 4,
       }}>
-        <span style={{ width: 4, height: 4, borderRadius: "50%", background: "currentColor", animation: "pulseDot 1.5s var(--ease-in-out) infinite" }} />
+        <span style={{ width: 4, height: 4, borderRadius: "50%", background: "currentColor", animation: "loadPulse 1.5s var(--ease-in-out) infinite" }} />
         {t("block.status.running")}
       </span>
     );

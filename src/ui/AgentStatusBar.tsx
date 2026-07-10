@@ -75,15 +75,13 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         }
       }}
       style={{
-        height: "var(--h-inline-bar)",
-        margin: "4px 8px 0",
+        minHeight: "var(--h-inline-bar)",
         flexShrink: 0,
-        background: "var(--c-bg-1)",
-        border: "1px solid var(--c-border-1)",
-        borderRadius: "var(--r-btn)",
+        background: "var(--c-bg-2)",
+        borderBottom: "1px solid var(--c-border-1)",
         display: "flex",
         alignItems: "center",
-        padding: "0 10px",
+        padding: "0 12px",
         gap: 8,
         animation: fading
           ? "statusBarSlideOut var(--duration-fast) var(--ease-smooth) forwards"
@@ -99,9 +97,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         fontFamily: "var(--font-mono)",
         fontWeight: 700,
         color: statusColor,
-        background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
-        borderRadius: "var(--r-badge-sm)",
-        padding: "1px 6px",
+        padding: 0,
         lineHeight: "16px",
         display: "flex",
         alignItems: "center",
@@ -114,8 +110,6 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
             height: 5,
             borderRadius: "50%",
             background: statusColor,
-            animation: "pulseDot 1.5s var(--ease-in-out) infinite",
-            boxShadow: `0 0 6px color-mix(in srgb, ${statusColor} 40%, transparent)`,
             flexShrink: 0,
           }} />
         )}

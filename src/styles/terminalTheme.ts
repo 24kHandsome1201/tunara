@@ -110,8 +110,8 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
     "--c-border-1": "#313244", "--c-border-2": "#45475a", "--c-border-3": "#28283a",
     "--c-text-primary": "#cdd6f4", "--c-text-2": "#bac2de", "--c-text-3": "#a6adc8",
     "--c-text-4": "#9399b2", "--c-text-5": "#7f849c", "--c-text-6": "#6c7086", "--c-text-7": "#585b70",
-    "--c-bg-white-glass": "rgba(17,17,27,0.78)", "--c-bg-1-glass": "rgba(30,30,46,0.72)",
-    "--c-bg-2-glass": "rgba(24,24,37,0.65)", "--c-bg-glass-fallback": "#181825",
+    "--c-bg-white-glass": "#11111b", "--c-bg-1-glass": "#1e1e2e",
+    "--c-bg-2-glass": "#181825", "--c-bg-glass-fallback": "#181825",
   },
   "tokyo-night": {
     "--c-bg-white": "#16161e", "--c-bg-1": "#1a1b26", "--c-bg-2": "#1f2335",
@@ -119,8 +119,8 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
     "--c-border-1": "#292e42", "--c-border-2": "#3b4261", "--c-border-3": "#222230",
     "--c-text-primary": "#c0caf5", "--c-text-2": "#a9b1d6", "--c-text-3": "#9aa5ce",
     "--c-text-4": "#828bb8", "--c-text-5": "#6c7394", "--c-text-6": "#565f89", "--c-text-7": "#414868",
-    "--c-bg-white-glass": "rgba(22,22,30,0.78)", "--c-bg-1-glass": "rgba(26,27,38,0.72)",
-    "--c-bg-2-glass": "rgba(31,35,53,0.65)", "--c-bg-glass-fallback": "#1f2335",
+    "--c-bg-white-glass": "#16161e", "--c-bg-1-glass": "#1a1b26",
+    "--c-bg-2-glass": "#1f2335", "--c-bg-glass-fallback": "#1f2335",
   },
   "one-dark": {
     "--c-bg-white": "#21252b", "--c-bg-1": "#282c34", "--c-bg-2": "#2c313a",
@@ -128,8 +128,8 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
     "--c-border-1": "#3b4048", "--c-border-2": "#4b5263", "--c-border-3": "#31363f",
     "--c-text-primary": "#abb2bf", "--c-text-2": "#9da5b4", "--c-text-3": "#828997",
     "--c-text-4": "#6f7787", "--c-text-5": "#5c6370", "--c-text-6": "#4f5666", "--c-text-7": "#3f4451",
-    "--c-bg-white-glass": "rgba(33,37,43,0.78)", "--c-bg-1-glass": "rgba(40,44,52,0.72)",
-    "--c-bg-2-glass": "rgba(44,49,58,0.65)", "--c-bg-glass-fallback": "#2c313a",
+    "--c-bg-white-glass": "#21252b", "--c-bg-1-glass": "#282c34",
+    "--c-bg-2-glass": "#2c313a", "--c-bg-glass-fallback": "#2c313a",
   },
   solarized: {
     "--c-bg-white": "#002129", "--c-bg-1": "#002b36", "--c-bg-2": "#073642",
@@ -137,8 +137,8 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
     "--c-border-1": "#073642", "--c-border-2": "#0d4d5c", "--c-border-3": "#05303b",
     "--c-text-primary": "#93a1a1", "--c-text-2": "#839496", "--c-text-3": "#768d8d",
     "--c-text-4": "#6a8080", "--c-text-5": "#586e75", "--c-text-6": "#4a5e64", "--c-text-7": "#3b4d52",
-    "--c-bg-white-glass": "rgba(0,33,41,0.78)", "--c-bg-1-glass": "rgba(0,43,54,0.72)",
-    "--c-bg-2-glass": "rgba(7,54,66,0.65)", "--c-bg-glass-fallback": "#073642",
+    "--c-bg-white-glass": "#002129", "--c-bg-1-glass": "#002b36",
+    "--c-bg-2-glass": "#073642", "--c-bg-glass-fallback": "#073642",
   },
   "github-light": {
     "--c-bg-white": "#ffffff", "--c-bg-1": "#ffffff", "--c-bg-2": "#f6f8fa",
@@ -146,8 +146,8 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
     "--c-border-1": "#d0d7de", "--c-border-2": "#afb8c1", "--c-border-3": "#e4e8ec",
     "--c-text-primary": "#1f2328", "--c-text-2": "#24292f", "--c-text-3": "#57606a",
     "--c-text-4": "#6e7781", "--c-text-5": "#838c95", "--c-text-6": "#a0a8b0", "--c-text-7": "#bcc4cc",
-    "--c-bg-white-glass": "rgba(255,255,255,0.78)", "--c-bg-1-glass": "rgba(255,255,255,0.72)",
-    "--c-bg-2-glass": "rgba(246,248,250,0.65)", "--c-bg-glass-fallback": "#f6f8fa",
+    "--c-bg-white-glass": "#ffffff", "--c-bg-1-glass": "#ffffff",
+    "--c-bg-2-glass": "#f6f8fa", "--c-bg-glass-fallback": "#f6f8fa",
   },
   "rose-pine-dawn": {
     "--c-bg-white": "#fffaf3", "--c-bg-1": "#faf4ed", "--c-bg-2": "#fffaf3",
@@ -155,8 +155,8 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
     "--c-border-1": "#f2e9e1", "--c-border-2": "#dfdad9", "--c-border-3": "#f4ede8",
     "--c-text-primary": "#575279", "--c-text-2": "#6e6a86", "--c-text-3": "#797593",
     "--c-text-4": "#8c899f", "--c-text-5": "#9893a5", "--c-text-6": "#b5afb8", "--c-text-7": "#cecacd",
-    "--c-bg-white-glass": "rgba(255,250,243,0.78)", "--c-bg-1-glass": "rgba(250,244,237,0.72)",
-    "--c-bg-2-glass": "rgba(255,250,243,0.65)", "--c-bg-glass-fallback": "#fffaf3",
+    "--c-bg-white-glass": "#fffaf3", "--c-bg-1-glass": "#faf4ed",
+    "--c-bg-2-glass": "#fffaf3", "--c-bg-glass-fallback": "#fffaf3",
   },
 };
 

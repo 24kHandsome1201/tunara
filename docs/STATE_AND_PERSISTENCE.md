@@ -89,7 +89,7 @@ configLoaded / configPath / configError  // user-config load status
 sidebarVisible / panelVisible
 overlay: OverlayType                 // null | "settings" | "command-palette" | "ssh"
 split: SplitState                    // { mode, paneA, paneB, ratio }
-inspectorTab: "changes" | "files"
+inspectorTab: "overview" | "changes" | "files" | "notes"
 toasts: Toast[]                      // capped, last 3
 hostKeyPrompt: HostKeyPrompt | null  // pending SSH TOFU confirmation
 pendingWorkflow: PendingWorkflow | null

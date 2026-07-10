@@ -193,9 +193,9 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
     "--c-border-1": "#313244", "--c-border-2": "#45475a", "--c-border-3": "#28283a",
     "--c-text-primary": "#cdd6f4", "--c-text-2": "#bac2de", "--c-text-3": "#a6adc8",
     "--c-text-4": "#9399b2", "--c-text-5": "#7f849c", "--c-text-6": "#6c7086", "--c-text-7": "#585b70",
-    // 玻璃回退跟随 base
-    "--c-bg-white-glass": "rgba(30,30,46,0.78)", "--c-bg-1-glass": "rgba(30,30,46,0.72)",
-    "--c-bg-2-glass": "rgba(24,24,37,0.65)", "--c-bg-glass-fallback": "#181825",
+    // 兼容别名保持实色，跟随各自的 base surface
+    "--c-bg-white-glass": "#11111b", "--c-bg-1-glass": "#1e1e2e",
+    "--c-bg-2-glass": "#181825", "--c-bg-glass-fallback": "#181825",
   },
   "tokyo-night": { /* …同结构… */ },
   "one-dark":    { /* … */ },

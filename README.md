@@ -62,7 +62,7 @@ The sidebar is what visually separates Tunara from every other terminal. Session
 
 - Directory groups: collapse / expand / batch close
 - Drag to reorder, fuzzy search filter, inline rename
-- Unread indicator + running-state pulse
+- Unread indicator + explicit running-state marker
 - Close-confirm guard: a running session needs a double click — no accidental kills mid-task
 - Restores session list and UI layout across restarts
 
@@ -82,7 +82,7 @@ Future direction and feature notes live in [docs/ROADMAP.md](docs/ROADMAP.md).
 If you use CLI agents like Claude Code, Codex, or Aider day to day, Tunara recognizes them and pins a brand badge on the session. No setup — it kicks in the moment the PTY matches a known agent command.
 
 - Auto-detects 12 agent CLIs: Claude Code, Codex, Amp, Gemini, Copilot, Cursor, Droid, OpenCode, Pi, Auggie, Devin, Aider
-- Top status bar shows agent state: starting / idle / running
+- Compact contextual strip shows agent state: starting / idle / running
 - Agent hooks listen for structured lifecycle events (start, thinking, tool call, done)
 - File-change counts per agent, plus an entry point to preview those changes
 
@@ -102,7 +102,7 @@ The right pane is a read-only git diff for "one more look before commit." Reads 
 
 - ⌘K Command Palette with weighted ranking, covers every action and session switch
 - Light/dark mode + system follow, 5 accent colors
-- macOS vibrancy + custom titlebar
+- Solid paper surfaces + native macOS overlay titlebar
 - Toast notifications: exit animation, hover pause, progress bar
 - Right-click menus on sessions, directory groups, and files
 - Responsive layout: narrow windows auto-collapse sidebar / right rail
@@ -123,7 +123,7 @@ brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
 brew install --cask tunara
 ```
 
-Updates go through the in-app Tauri updater, not `brew upgrade`.
+Use Settings > App to check, install, and restart into a new release. Homebrew users can also update with `brew upgrade --cask tunara`.
 
 ### From source
 
@@ -173,7 +173,7 @@ Deeper developer docs live under [`docs/`](docs/):
 |-------|--------|
 | Frontend | React 19, Zustand 5, xterm.js 6 + WebGL, Vite 7, TypeScript 5.8 |
 | Backend | Tauri 2, Rust, portable-pty, git2, tokio, which |
-| Fonts | Inter Variable (UI), JetBrains Mono (terminal / code) |
+| Fonts | JetBrains Mono (UI / terminal / code), PingFang SC fallback |
 | Build | pnpm 9 |
 
 Final installer is around 30 MB, against Warp's ~150 MB.
@@ -211,11 +211,11 @@ src-tauri/src/          # Rust backend
 | M2 Agent | done | 12 agent CLIs auto-detected |
 | M3 Git Diff | done | git2 + read-only review rail |
 | P0 Split Pane | done | Horizontal / vertical split + draggable divider |
-| P0 Session lifecycle | done | runState state machine + pulse animation |
+| P0 Session lifecycle | done | runState state machine + semantic state markers |
 | P1 Persistence | done | Sessions + UI layout across restarts |
 | P1 Sidebar titles | done | OSC 133 command / agent inference |
 | P2 Command Palette | done | ⌘K, fuzzy match, weighted ranking |
-| P3 Agent status bar | done | Floating bar + change counts |
+| P3 Agent status bar | done | Contextual strip + change counts |
 | Session Recovery | done (1.2) | xterm buffer snapshot + scrollback restore |
 | SSH Client | done (1.7) | russh long-lived conn, SFTP browse + download, host profiles, opt-in remote shell integration |
 

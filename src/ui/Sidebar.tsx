@@ -187,7 +187,7 @@ export function Sidebar({
     <div
       style={{
         width: "100%",
-        background: "var(--c-bg-2-glass)",
+        background: "var(--c-bg-2)",
         borderRight: "1px solid var(--c-border-1)",
         display: "flex",
         flexDirection: "column",
@@ -204,9 +204,9 @@ export function Sidebar({
               width: "100%",
               height: "var(--h-btn-md)",
               padding: "0 8px 0 10px",
-              border: "none",
+              border: "1px solid var(--c-border-2)",
               borderRadius: "var(--r-btn)",
-              background: "var(--c-accent-bg-light)",
+              background: "var(--c-bg-white)",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
@@ -231,7 +231,7 @@ export function Sidebar({
                 fontSize: "var(--fs-meta)",
                 color: "var(--c-text-5)",
                 fontFamily: "var(--font-mono)",
-                background: "color-mix(in srgb, var(--c-accent) 8%, transparent)",
+                background: "var(--c-bg-2)",
                 borderRadius: "var(--r-badge)",
                 padding: "0 6px",
                 flexShrink: 0,
@@ -349,7 +349,7 @@ export function Sidebar({
                 return (
                   <div key={s.id} data-session-id={s.id} role="listitem">
                     {showIndicator && (
-                      <div style={{ height: 3, background: "var(--c-accent)", borderRadius: 2, margin: "2px 8px 4px", boxShadow: "0 0 0 1px color-mix(in srgb, var(--c-accent) 25%, transparent)" }} />
+                      <div style={{ height: 2, background: "var(--c-accent)", borderRadius: 1, margin: "2px 8px 4px" }} />
                     )}
                     <div
                       onPointerDown={(e) => {

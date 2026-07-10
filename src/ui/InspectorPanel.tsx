@@ -17,18 +17,19 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
+      data-active={active ? "true" : "false"}
       style={{
-        height: 26,
-        padding: "0 10px",
-        borderRadius: "var(--r-pill)",
+        height: 36,
+        padding: "0 9px",
+        borderRadius: 0,
         border: "none",
-        background: active ? "var(--c-accent-bg-soft)" : "transparent",
+        borderBottom: active ? "2px solid var(--c-accent)" : "2px solid transparent",
+        background: "transparent",
         cursor: "pointer",
         fontSize: "var(--fs-secondary)",
-        fontWeight: active ? 600 : 400,
-        color: active ? "var(--c-text-primary)" : "var(--c-text-4)",
-        transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
-        boxShadow: active ? "var(--shadow-card)" : "none",
+        fontWeight: active ? 600 : 500,
+        color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
+        transition: "border-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
       }}
       className={active ? "inspector-tab" : "inspector-tab hover-text-3"}
     >
@@ -45,8 +46,8 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   const tab = storeTab;
 
   return (
-    <div style={{ width: "100%", background: "var(--c-bg-2-glass)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-      <div style={{ height: "var(--h-titlebar)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, flexShrink: 0 }}>
+    <div style={{ width: "100%", background: "var(--c-bg-2)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
+      <div style={{ height: "var(--h-titlebar)", background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 8px", gap: 0, flexShrink: 0 }}>
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
         <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
         <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>

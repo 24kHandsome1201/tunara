@@ -70,7 +70,6 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
           inset: 0,
           zIndex: 1100,
           background: "var(--backdrop-color)",
-          backdropFilter: "var(--backdrop-blur)",
           animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}
       />

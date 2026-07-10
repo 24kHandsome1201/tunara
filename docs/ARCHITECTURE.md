@@ -28,10 +28,10 @@ fixed three-pane layout under a custom titlebar:
 - **Center — `MainArea`** ([`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) →
   [`TerminalView`](../src/ui/TerminalView.tsx)): the actual terminals. xterm.js +
   WebGL, one per session, optionally split into two panes.
-- **Right — `InspectorPanel`** ([`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx)):
-  the review rail — git diff ([`DiffPanel`](../src/ui/DiffPanel.tsx)) and a
+- **Right: `InspectorPanel`** ([`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx)):
+  overview, read-only git diff ([`DiffPanel`](../src/ui/DiffPanel.tsx)),
   read-only file tree ([`FileExplorer`](../src/ui/FileExplorer.tsx) /
-  [`FilePreview`](../src/ui/FilePreview.tsx)).
+  [`FilePreview`](../src/ui/FilePreview.tsx)), and session notes.
 
 Both side panes collapse to width `0` and switch to floating overlays below
 viewport breakpoints (720px for the sidebar, 900px for the panel). Overlays

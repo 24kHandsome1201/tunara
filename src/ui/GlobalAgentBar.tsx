@@ -21,7 +21,7 @@ function rowName(session: Session, fallbackAgent?: string): string {
   return session.title;
 }
 
-function CountChip({ count, color, pulse, label }: { count: number; color: string; pulse?: boolean; label: string }) {
+function CountChip({ count, color, label }: { count: number; color: string; label: string }) {
   if (count === 0) return null;
   return (
     <span
@@ -40,18 +40,6 @@ function CountChip({ count, color, pulse, label }: { count: number; color: strin
         flexShrink: 0,
       }}
     >
-      {pulse && (
-        <span
-          style={{
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: color,
-            animation: "pulseDot 1.5s var(--ease-in-out) infinite",
-            flexShrink: 0,
-          }}
-        />
-      )}
       {label}
     </span>
   );
@@ -189,7 +177,6 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
                 height: 5,
                 borderRadius: "50%",
                 background: tagColor,
-                animation: "pulseDot 1.5s var(--ease-in-out) infinite",
                 flexShrink: 0,
               }}
             />
@@ -251,13 +238,11 @@ export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProp
             <CountChip
               count={groups.wait.length}
               color="var(--c-warning)"
-              pulse
               label={t("gbar.count.wait", { count: groups.wait.length })}
             />
             <CountChip
               count={groups.run.length}
               color="var(--c-accent)"
-              pulse
               label={t("gbar.count.run", { count: groups.run.length })}
             />
             {liveCount === 0 && (

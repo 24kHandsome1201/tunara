@@ -9,7 +9,7 @@ import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
 
-function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?: boolean; isAgent: boolean }) {
+function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
   if (runState === "idle" || ((runState === "done" || runState === "failed") && !unread)) return null;
   const color = runState === "running"
@@ -28,8 +28,7 @@ function StatusDot({ runState, unread, isAgent }: { runState: RunState; unread?:
         borderRadius: "50%",
         background: color,
         border: "2px solid var(--c-bg-white)",
-        animation: runState === "running" && !isAgent ? "pulseDot 1.5s var(--ease-in-out) infinite" : "scaleIn var(--duration-fast) var(--ease-out-back)",
-        boxShadow: runState === "running" ? `0 0 6px ${color}` : undefined,
+        animation: "scaleIn var(--duration-fast) var(--ease-out-expo)",
       }}
     />
   );
@@ -48,7 +47,7 @@ function SessionIcon({ session }: { session: Session }) {
           style={{
             width: size,
             height: size,
-            borderRadius: "50%",
+            borderRadius: "var(--r-badge)",
             background: style.bg,
             color: style.color,
             border: `1px solid ${style.border}`,
@@ -63,7 +62,7 @@ function SessionIcon({ session }: { session: Session }) {
             </span>
           )}
         </div>
-        <StatusDot runState={displayRunState} unread={session.unread} isAgent />
+        <StatusDot runState={displayRunState} unread={session.unread} />
       </div>
     );
   }
@@ -74,7 +73,7 @@ function SessionIcon({ session }: { session: Session }) {
         style={{
           width: size,
           height: size,
-          borderRadius: "50%",
+          borderRadius: "var(--r-badge)",
           background: "var(--c-bg-3)",
           color: "var(--c-text-4)",
           display: "flex",
@@ -87,12 +86,12 @@ function SessionIcon({ session }: { session: Session }) {
           <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
       </div>
-      <StatusDot runState={displayRunState} unread={session.unread} isAgent={false} />
+      <StatusDot runState={displayRunState} unread={session.unread} />
     </div>
   );
 }
 
-function StatusMark({ runState, isAgent, exitCode }: { runState: RunState; isAgent: boolean; exitCode?: number }) {
+function StatusMark({ runState, exitCode }: { runState: RunState; exitCode?: number }) {
   if (runState === "done") {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -103,7 +102,7 @@ function StatusMark({ runState, isAgent, exitCode }: { runState: RunState; isAge
   if (runState === "running") {
     return (
       <span style={{ width: 13, height: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)", animation: isAgent ? undefined : "pulseDot 1.5s var(--ease-in-out) infinite" }} />
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)" }} />
       </span>
     );
   }
@@ -142,8 +141,8 @@ function BusyProgress() {
         bottom: 0,
         height: 2,
         overflow: "hidden",
-        borderRadius: 999,
-        background: "color-mix(in srgb, var(--c-accent) 10%, transparent)",
+        borderRadius: 1,
+        background: "color-mix(in srgb, var(--c-accent) 14%, transparent)",
         animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
       }}
     >
@@ -152,8 +151,8 @@ function BusyProgress() {
           display: "block",
           width: "38%",
           height: "100%",
-          borderRadius: 999,
-          background: "linear-gradient(90deg, transparent, var(--c-accent), transparent)",
+          borderRadius: 1,
+          background: "var(--c-accent)",
           animation: "agentBusyProgress 1.6s var(--ease-in-out) infinite",
         }}
       />
@@ -233,12 +232,12 @@ function DiffStat({ added, removed }: { added: number; removed: number }) {
   return (
     <span style={{ display: "inline-flex", gap: 4, flexShrink: 0, marginLeft: "auto", paddingLeft: 6 }}>
       {added > 0 && (
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-add-text)", background: "var(--c-diff-add-bg)", borderRadius: "var(--r-badge-sm)", padding: "1px 5px" }}>
+        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-add-text)" }}>
           +{added}
         </span>
       )}
       {removed > 0 && (
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-del-text)", background: "var(--c-diff-del-bg)", borderRadius: "var(--r-badge-sm)", padding: "1px 5px" }}>
+        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-del-text)" }}>
           -{removed}
         </span>
       )}
@@ -360,14 +359,14 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
       style={{
         position: "relative",
         padding: "6px 10px 6px 12px",
-        borderRadius: "var(--r-btn)",
+        borderRadius: "var(--r-card)",
         // cursor 由外层 wrapper 控制（grab / grabbing / pointer），允许 inherit
         userSelect: "none",
-        background: active ? "var(--c-accent-bg-light)" : "transparent",
-        border: "none",
+        background: active ? "var(--c-bg-white)" : "transparent",
+        border: active ? "1px solid var(--c-border-1)" : "1px solid transparent",
         outline: focused ? "2px solid color-mix(in srgb, var(--c-accent) 70%, transparent)" : "none",
         outlineOffset: focused ? "-1px" : 0,
-        transition: "background var(--duration-fast) ease, outline-color var(--duration-fast) var(--ease-smooth)",
+        transition: "background var(--duration-fast) ease, border-color var(--duration-fast) ease, outline-color var(--duration-fast) var(--ease-smooth)",
       }}
     >
       <div
@@ -376,10 +375,10 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           left: 0,
           top: "50%",
           transform: "translateY(-50%)",
-          width: 2,
-          height: 18,
+          width: 1,
+          height: 24,
           background: "var(--c-accent)",
-          borderRadius: "0 2px 2px 0",
+          borderRadius: "0 1px 1px 0",
           opacity: active ? 1 : 0,
           transition: "opacity var(--duration-fast) ease",
         }}
@@ -428,7 +427,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatusMark runState={displayRunState} isAgent={!!session.agent} exitCode={session.lastExitCode} />
+            <StatusMark runState={displayRunState} exitCode={session.lastExitCode} />
             {session.pinned && (
               <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>★</span>
             )}

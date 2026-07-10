@@ -368,7 +368,7 @@ function TerminalViewImpl({
         onExit: (code: number) => {
           if (disposed) return;
           inputToPtyEnabled = false;
-          handleTerminalProcessExit(term, sessionIdRef.current, code);
+          handleTerminalProcessExit(term, sessionIdRef.current, code, Boolean(getCurrentSession()?.remote));
           snapshotScheduler.flush();
           setExitCode(code);
         },

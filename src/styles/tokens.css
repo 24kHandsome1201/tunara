@@ -1,35 +1,36 @@
-/* Tunara Design Tokens — 来自设计稿 README "Design Tokens" 段 + 实施文档 §4.1 */
+/* Tunara paper-terminal tokens. Components consume this layer through CSS
+   variables; geometry stays in React styles so there is one styling strategy. */
 
 :root {
   /* ── 强调色 Terracotta ── */
-  --c-accent: #c2683c;
-  --c-accent-bg-light: #fbeadf;
-  --c-accent-bg-soft: #fbf6f2;
-  --c-accent-border: #f1d6c6;
+  --c-accent: oklch(58% 0.135 43);
+  --c-accent-bg-light: oklch(93.5% 0.035 49);
+  --c-accent-bg-soft: oklch(97% 0.014 49);
+  --c-accent-border: oklch(86.5% 0.048 47);
 
   /* ── 文字层级 ── */
-  --c-text-primary: #27272a;
-  --c-text-2: #3f3f46;
-  --c-text-3: #52525b;
-  --c-text-4: #71717a;
-  --c-text-5: #8e8e96;
-  --c-text-6: #b4b4bc;
-  --c-text-7: #c4c4cc;
+  --c-text-primary: oklch(24% 0.012 48);
+  --c-text-2: oklch(34% 0.012 48);
+  --c-text-3: oklch(43% 0.011 48);
+  --c-text-4: oklch(48% 0.01 48);
+  --c-text-5: oklch(57% 0.009 48);
+  --c-text-6: oklch(67% 0.008 48);
+  --c-text-7: oklch(75% 0.007 48);
 
   /* ── 面/底 ── */
-  --c-bg-white: #ffffff;
-  --c-bg-white-glass: rgba(255, 255, 255, 0.78);
-  --c-bg-1: #fdfdfe;
-  --c-bg-1-glass: rgba(253, 253, 254, 0.72);
-  --c-bg-2: #f7f7f8;
-  --c-bg-2-glass: rgba(247, 247, 248, 0.65);
-  --c-bg-3: #efeff1;
-  --c-bg-hover: #f4f3f5;
+  --c-bg-white: oklch(99.4% 0.003 55);
+  --c-bg-white-glass: var(--c-bg-white);
+  --c-bg-1: oklch(97.8% 0.005 55);
+  --c-bg-1-glass: var(--c-bg-1);
+  --c-bg-2: oklch(94.8% 0.008 55);
+  --c-bg-2-glass: var(--c-bg-2);
+  --c-bg-3: oklch(91.8% 0.009 55);
+  --c-bg-hover: oklch(92.8% 0.011 55);
 
   /* ── 线/边框 ── */
-  --c-border-1: #ededf0;
-  --c-border-2: #e6e6e9;
-  --c-border-3: #f1f1f3;
+  --c-border-1: oklch(89.8% 0.008 55);
+  --c-border-2: oklch(85.5% 0.009 55);
+  --c-border-3: oklch(93% 0.006 55);
 
   /* ── 语义色 ── */
   --c-success: #2f9e7a;
@@ -92,8 +93,8 @@
   --c-diff-add-text: #1a7a4f;
 
   /* ── 字体族 ── */
-  --font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', 'Noto Sans SC', monospace;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', monospace;
 
   /* ── 字体尺寸 ── */
   --fs-title: 16px;
@@ -131,18 +132,18 @@
 
   /* ── 缓动曲线 ── */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-back: var(--ease-out-expo);
   --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ── 按压缩放（语义二分 + 强烈） ── */
-  --scale-press: 0.94;
-  --scale-press-soft: 0.97;
-  --scale-press-strong: 0.88;
+  --scale-press: 0.96;
+  --scale-press-soft: 0.98;
+  --scale-press-strong: 0.96;
 
   /* ── 遮罩 ── */
-  --backdrop-color: rgba(20, 20, 28, 0.3);
-  --backdrop-blur: blur(4px);
+  --backdrop-color: rgba(31, 25, 21, 0.34);
+  --backdrop-blur: none;
 
   /* ── 按钮 ── */
   --c-btn-primary-bg: #27272a;
@@ -150,9 +151,9 @@
   --c-radio-ring: #d4d4d8;
 
   /* ── 阴影 ── */
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 0 1px rgba(0, 0, 0, 0.06);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.08);
-  --shadow-overlay: 0 24px 64px rgba(20, 20, 30, 0.28), 0 8px 20px rgba(20, 20, 30, 0.12);
+  --shadow-card: 0 1px 3px rgba(60, 42, 31, 0.10), 0 0 0 1px rgba(60, 42, 31, 0.035);
+  --shadow-card-hover: 0 3px 10px rgba(60, 42, 31, 0.12), 0 0 0 1px rgba(60, 42, 31, 0.045);
+  --shadow-overlay: 0 24px 64px rgba(31, 25, 21, 0.28), 0 8px 20px rgba(31, 25, 21, 0.12);
   --shadow-notif: 0 12px 32px rgba(20, 20, 30, 0.16), 0 4px 8px rgba(20, 20, 30, 0.08);
   --shadow-menu: 0 8px 24px rgba(20, 20, 30, 0.12), 0 2px 6px rgba(20, 20, 30, 0.06);
   --shadow-btn-hover: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -164,13 +165,13 @@
   --h-titlebar-tab: 36px;
   --w-sidebar: 272px;
   --w-panel: 300px;
-  --h-statusbar: 26px;
-  --h-inline-bar: 30px;
+  --h-statusbar: 28px;
+  --h-inline-bar: 28px;
   --h-btn-sm: 22px;
   --h-btn-md: 30px;
   --r-badge-sm: 4px;
 
-  /* ── 材质回退（Linux WebKitGTK 可能不支持 backdrop-filter）── */
+  /* Solid surface alias retained for existing shell-tint integrations. */
   --c-bg-glass-fallback: var(--c-bg-2);
 }
 
@@ -178,26 +179,26 @@
 /* --c-accent and derived vars (--c-accent-bg-light, --c-accent-bg-soft, --c-accent-border)
    are set dynamically by useTheme.ts to avoid flash when user picks a non-default accent. */
 .dark {
-  --c-text-primary: #e4e4e7;
-  --c-text-2: #d4d4d8;
-  --c-text-3: #a1a1aa;
-  --c-text-4: #86868f;
-  --c-text-5: #71717a;
-  --c-text-6: #4a4a52;
-  --c-text-7: #313136;
+  --c-text-primary: oklch(91% 0.008 55);
+  --c-text-2: oklch(84% 0.008 55);
+  --c-text-3: oklch(72% 0.008 55);
+  --c-text-4: oklch(62% 0.008 55);
+  --c-text-5: oklch(53% 0.008 55);
+  --c-text-6: oklch(39% 0.008 55);
+  --c-text-7: oklch(29% 0.008 55);
 
-  --c-bg-white: #18181b;
-  --c-bg-white-glass: rgba(24, 24, 27, 0.78);
-  --c-bg-1: #1e1e22;
-  --c-bg-1-glass: rgba(30, 30, 34, 0.72);
-  --c-bg-2: #222226;
-  --c-bg-2-glass: rgba(34, 34, 38, 0.65);
-  --c-bg-3: #2a2a2e;
-  --c-bg-hover: #2e2e34;
+  --c-bg-white: oklch(15.5% 0.008 55);
+  --c-bg-white-glass: var(--c-bg-white);
+  --c-bg-1: oklch(18% 0.009 55);
+  --c-bg-1-glass: var(--c-bg-1);
+  --c-bg-2: oklch(21% 0.009 55);
+  --c-bg-2-glass: var(--c-bg-2);
+  --c-bg-3: oklch(25% 0.009 55);
+  --c-bg-hover: oklch(28% 0.011 55);
 
-  --c-border-1: #2a2a2e;
-  --c-border-2: #333338;
-  --c-border-3: #27272b;
+  --c-border-1: oklch(25% 0.009 55);
+  --c-border-2: oklch(31% 0.01 55);
+  --c-border-3: oklch(22% 0.008 55);
 
   --c-success: #4ade80;
   --c-success-bg: #1a2e22;
@@ -305,10 +306,11 @@
 .cmd-chip-more:hover { color: var(--c-text-2); }
 .tab-btn { transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 
-/* Inspector pill tabs: match the titlebar tab press feedback (transform already
-   declared inline). Inactive tabs also get a quiet hover surface. */
+/* Inspector tabs use a compact underline, with the same press feedback as the
+   titlebar controls. */
 .inspector-tab:active { transform: scale(var(--scale-press)); transition-duration: 60ms; }
 .inspector-tab.hover-text-3:hover { background: var(--c-bg-hover) !important; }
+.inspector-tab[data-active="true"] { background: var(--c-bg-white); }
 
 .split-handle:hover .split-handle-line { background: var(--c-accent) !important; }
 .split-handle-h:hover .split-handle-line { width: 3px !important; }
@@ -323,27 +325,28 @@
 }
 .session-card:hover { background: var(--c-bg-hover); box-shadow: var(--shadow-card); }
 .session-card:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
-.session-card[aria-current="page"] { box-shadow: none; }
-.session-card[aria-current="page"]:hover { box-shadow: 0 1px 4px color-mix(in srgb, var(--c-accent) 10%, transparent); }
+.session-card[aria-current="page"] { border-color: var(--c-border-2) !important; box-shadow: var(--shadow-card); }
+.session-card[aria-current="page"]:hover { box-shadow: var(--shadow-card-hover); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
-.session-card-close:active { transform: scale(0.85); }
+.session-card-close:active { transform: scale(var(--scale-press)); }
 
 /* Global agent bar (GlobalAgentBar.tsx) */
-.gbar-head { transition: background var(--duration-fast) var(--ease-smooth); }
+.gbar-head { transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .gbar-head:hover { background: var(--c-bg-hover); }
+.gbar-head:active { transform: scale(var(--scale-press-soft)); }
 .gbar-row {
   background: transparent;
   transition: background var(--duration-fast) var(--ease-smooth),
               transform var(--duration-fast) var(--ease-out-expo);
 }
 .gbar-row:hover { background: var(--c-bg-hover); }
-.gbar-row:active { transform: scale(0.985); transition-duration: 60ms; }
+.gbar-row:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
 .gbar-row-wait { background: var(--c-accent-bg-soft); }
 .gbar-row-wait:hover { background: var(--c-accent-bg-light); }
 .gbar-row-wait::before {
   content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
-  width: 2px; border-radius: 2px; background: var(--c-warning);
+  width: 1px; border-radius: 1px; background: var(--c-warning);
 }
 
 /* Context menu items */
@@ -352,9 +355,9 @@
   padding: 0 12px 0 10px;
   transition: background var(--duration-fast) var(--ease-smooth),
               color var(--duration-fast) var(--ease-smooth),
-              padding-left var(--duration-fast) var(--ease-out-expo);
+              transform var(--duration-fast) var(--ease-out-expo);
 }
-.ctx-item:hover, .ctx-item[data-active='true'] { background: var(--c-bg-hover); color: var(--c-text-primary); padding-left: 14px; }
+.ctx-item:hover, .ctx-item[data-active='true'] { background: var(--c-bg-hover); color: var(--c-text-primary); transform: translateX(2px); }
 .ctx-item:active { opacity: 0.7; transform: scale(var(--scale-press-soft)); }
 .ctx-item-danger { color: var(--c-error); }
 .ctx-item-danger:hover, .ctx-item-danger[data-active='true'] { background: var(--c-error-bg-light); color: var(--c-error); }
