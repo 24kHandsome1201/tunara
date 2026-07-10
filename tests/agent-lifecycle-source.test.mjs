@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -56,7 +56,7 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
   }
 });
 
-test("remote integration can replace pre-existing aliases in bash and zsh", () => {
+test("remote integration can replace pre-existing aliases in bash", () => {
   const script = resolve(root, "src-tauri/src/modules/ssh/scripts/remote-integration.sh");
   const bashOutput = execFileSync(
     "bash",
@@ -74,7 +74,12 @@ test("remote integration can replace pre-existing aliases in bash and zsh", () =
   );
   assert.match(bashOutput, /WRAPPED claude CC --model opus hello/);
   assert.match(bashOutput, /WRAPPED codex CX --profile work go/);
+});
 
+const hasZsh = spawnSync("zsh", ["--version"], { stdio: "ignore" }).status === 0;
+
+test("remote integration can replace pre-existing aliases in zsh", { skip: !hasZsh }, () => {
+  const script = resolve(root, "src-tauri/src/modules/ssh/scripts/remote-integration.sh");
   const zshOutput = execFileSync(
     "zsh",
     [
