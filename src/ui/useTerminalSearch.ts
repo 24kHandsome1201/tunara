@@ -38,7 +38,7 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
   const registerSearchAddon = useCallback((searchAddon: SearchAddon) => {
     searchAddonRef.current = searchAddon;
     return searchAddon.onDidChangeResults((e) => {
-      if (e.resultCount === 0) setSearchCount(null);
+      if (e.resultCount === 0) setSearchCount({ current: 0, total: 0 });
       else setSearchCount({ current: e.resultIndex + 1, total: e.resultCount });
     });
   }, []);

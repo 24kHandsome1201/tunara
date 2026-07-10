@@ -171,81 +171,83 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         }
       }
 
-      if (activeIsLocal) {
-        for (const runbook of RUNBOOK_BLUEPRINTS) {
-          cmds.push({
-            id: `runbook-run-${runbook.id}`,
-            label: t("palette.cmd.run_runbook", { name: t(runbook.nameKey) }),
-            subtitle: t(runbook.descriptionKey),
-            icon: <CmdIcon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />,
-            section: t("palette.section.runbook"),
-            scopes: ["action", "terminal", "runbook"],
-            originalIndex: idx++,
-            action: () => {
-              uiStore.getState().recordCommandUse(`runbook-run-${runbook.id}`);
-              useSessionsStore.getState().updateSession(activeSession.id, {
-                pendingInput: runbook.template,
-                pendingInputSubmit: false,
-              });
-              onClose();
-            },
-          });
-          cmds.push({
-            id: `runbook-note-${runbook.id}`,
-            label: t("palette.cmd.copy_runbook_to_notes", { name: t(runbook.nameKey) }),
-            subtitle: runbook.template,
-            icon: <CmdIcon d="M5 4h10l4 4v12H5zM15 4v5h5M8 13h8M8 17h5" />,
-            section: t("palette.section.runbook"),
-            scopes: ["action", "app", "runbook"],
-            originalIndex: idx++,
-            action: () => {
-              uiStore.getState().recordCommandUse(`runbook-note-${runbook.id}`);
-              const current = activeSession.note ?? "";
-              useSessionsStore.getState().setSessionNote(
-                activeSession.id,
-                appendRunbookToNote(current, runbook.template),
-              );
-              uiStore.getState().setPanelVisible(true);
-              uiStore.getState().setInspectorTab("notes");
-              onClose();
-            },
-          });
-        }
+      for (const runbook of RUNBOOK_BLUEPRINTS) {
+        cmds.push({
+          id: `runbook-run-${runbook.id}`,
+          label: t("palette.cmd.run_runbook", { name: t(runbook.nameKey) }),
+          subtitle: t(runbook.descriptionKey),
+          icon: <CmdIcon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />,
+          section: t("palette.section.runbook"),
+          scopes: ["action", "terminal", "runbook"],
+          originalIndex: idx++,
+          action: () => {
+            uiStore.getState().recordCommandUse(`runbook-run-${runbook.id}`);
+            useSessionsStore.getState().updateSession(activeSession.id, {
+              pendingInput: runbook.template,
+              pendingInputSubmit: false,
+            });
+            onClose();
+          },
+        });
+        cmds.push({
+          id: `runbook-note-${runbook.id}`,
+          label: t("palette.cmd.copy_runbook_to_notes", { name: t(runbook.nameKey) }),
+          subtitle: runbook.template,
+          icon: <CmdIcon d="M5 4h10l4 4v12H5zM15 4v5h5M8 13h8M8 17h5" />,
+          section: t("palette.section.runbook"),
+          scopes: ["action", "app", "runbook"],
+          originalIndex: idx++,
+          action: () => {
+            uiStore.getState().recordCommandUse(`runbook-note-${runbook.id}`);
+            const current = activeSession.note ?? "";
+            useSessionsStore.getState().setSessionNote(
+              activeSession.id,
+              appendRunbookToNote(current, runbook.template),
+            );
+            uiStore.getState().setPanelVisible(true);
+            uiStore.getState().setInspectorTab("notes");
+            onClose();
+          },
+        });
       }
 
-      // Saved command-template workflows. Local sessions can run them directly;
-      // remote sessions intentionally skip them so a user@host label never gets
-      // passed to a local shell as a working directory.
-      if (activeIsLocal) {
-        for (const wf of workflows) {
-          cmds.push({
-            id: `workflow-${wf.id}`,
-            label: wf.name,
-            subtitle: wf.description || wf.template,
-            icon: <CmdIcon d="M13 2L3 14h7l-1 8 10-12h-7z" />,
-            section: t("palette.section.workflows"),
-            scopes: ["action", "terminal", "workflow"],
-            originalIndex: idx++,
-            action: () => {
-              uiStore.getState().recordCommandUse(`workflow-${wf.id}`);
-              if (hasPromptableParams(wf.template)) {
-                uiStore.getState().setPendingWorkflow({
-                  workflowId: wf.id,
-                  name: wf.name,
-                  template: wf.template,
-                  dir: activeSession.dir,
-                  branch: activeSession.branch,
+      // Local workflows keep opening a fresh terminal. Remote workflows fill
+      // the current SSH PTY without auto-submitting, so a remote cwd is never
+      // misused as a local launch directory.
+      for (const wf of workflows) {
+        cmds.push({
+          id: `workflow-${wf.id}`,
+          label: wf.name,
+          subtitle: wf.description || wf.template,
+          icon: <CmdIcon d="M13 2L3 14h7l-1 8 10-12h-7z" />,
+          section: t("palette.section.workflows"),
+          scopes: ["action", "terminal", "workflow"],
+          originalIndex: idx++,
+          action: () => {
+            uiStore.getState().recordCommandUse(`workflow-${wf.id}`);
+            if (hasPromptableParams(wf.template)) {
+              uiStore.getState().setPendingWorkflow({
+                workflowId: wf.id,
+                name: wf.name,
+                template: wf.template,
+                dir: activeSession.dir,
+                branch: activeSession.branch,
+                targetSessionId: activeSession.remote ? activeSession.id : undefined,
+              });
+            } else {
+              const command = resolveTemplate(wf.template, {}, { cwd: activeSession.dir, branch: activeSession.branch });
+              if (activeSession.remote) {
+                useSessionsStore.getState().updateSession(activeSession.id, {
+                  pendingInput: command,
+                  pendingInputSubmit: false,
                 });
               } else {
-                useSessionsStore.getState().newTerminalWithInput(
-                  resolveTemplate(wf.template, {}, { cwd: activeSession.dir, branch: activeSession.branch }),
-                  activeSession.dir,
-                );
+                useSessionsStore.getState().newTerminalWithInput(command, activeSession.dir);
               }
-              onClose();
-            },
-          });
-        }
+            }
+            onClose();
+          },
+        });
       }
 
       // Remote sessions have no local Git working tree, so don't show the
@@ -551,7 +553,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         style={{
           position: "fixed", inset: 0, zIndex: 999,
           background: "var(--backdrop-color)",
-          backdropFilter: "var(--backdrop-blur)",
           animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}
       />

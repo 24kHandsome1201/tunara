@@ -26,7 +26,6 @@
     "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-autostart": "~2.5.1",

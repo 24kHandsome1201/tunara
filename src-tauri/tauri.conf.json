@@ -16,7 +16,7 @@
         "title": "Tunara",
         "width": 1200,
         "height": 800,
-        "minWidth": 720,
+        "minWidth": 640,
         "minHeight": 480,
         "decorations": true,
         "titleBarStyle": "Overlay",

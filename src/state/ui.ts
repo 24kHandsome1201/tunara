@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectSuggestion } from "@/ui/types";
+import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectPrefill } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
@@ -218,6 +218,9 @@ export interface PendingWorkflow {
   dir: string;
   /** Branch from the session that launched the workflow, for dynamic vars. */
   branch?: string;
+  /** Remote workflows fill the existing SSH terminal instead of spawning a
+   * local terminal with a remote path. */
+  targetSessionId?: string;
 }
 
 interface UIState extends AppearanceSettings {
@@ -229,7 +232,7 @@ interface UIState extends AppearanceSettings {
   panelVisible: boolean;
   overlay: OverlayType;
   // 打开 SSH 对话框时的预填值（来自手敲 ssh 检测）。仅瞬态，关闭即清。
-  sshPrefill: SshConnectSuggestion | null;
+  sshPrefill: SshConnectPrefill | null;
   trafficLightWidth: number;
   viewportWidth: number;
   split: SplitState;
@@ -251,7 +254,7 @@ interface UIState extends AppearanceSettings {
   toggleSidebar: () => void;
   togglePanel: () => void;
   setOverlay: (o: OverlayType) => void;
-  openSshConnect: (prefill?: SshConnectSuggestion | null) => void;
+  openSshConnect: (prefill?: SshConnectPrefill | null) => void;
   setInspectorTab: (t: InspectorTab) => void;
   setTheme: (t: ThemeType) => void;
   setAccent: (c: string) => void;
@@ -443,6 +446,16 @@ useUIStore.subscribe(
 const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let configPersistQueue = Promise.resolve();
+
+function enqueueConfigSave(settings: RawTunaraConfig): Promise<void> {
+  const operation = configPersistQueue.then(() => saveTunaraConfig(settings));
+  // Keep the queue usable after an individual write failure while preserving
+  // invocation order and last-write-wins semantics.
+  configPersistQueue = operation.catch(() => {});
+  return operation;
+}
+
 useUIStore.subscribe(
   (s) => PERSIST_KEYS.map((k) => s[k]),
   () => {
@@ -451,7 +464,7 @@ useUIStore.subscribe(
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       persistTimer = null;
-      saveTunaraConfig(settingsToRawConfig(useUIStore.getState()))
+      enqueueConfigSave(settingsToRawConfig(useUIStore.getState()))
         .then(() => useUIStore.setState({ configError: null }))
         .catch((e) => useUIStore.setState({ configError: e instanceof Error ? e.message : String(e) }));
     }, 300);

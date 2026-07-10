@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 import { KEYBINDING_ACTIONS, hasPlatformModKey, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { isMac } from "@/ui/lib/platform";
+import { splitFocusTarget, type SplitFocusDirection } from "./lib/split-focus";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -50,10 +51,9 @@ export function useKeybindings() {
         case "focusSplitRight":
         case "focusSplitUp":
         case "focusSplitDown": {
-          const { paneA, paneB } = ui.split;
-          if (ui.split.mode !== "single" && paneA && paneB) {
-            st.setActive(st.activeSessionId === paneB ? paneA : paneB);
-          }
+          const direction = action.replace("focusSplit", "").toLowerCase() as SplitFocusDirection;
+          const target = splitFocusTarget(ui.split, st.activeSessionId, direction);
+          if (target) st.setActive(target);
           break;
         }
         case "commandPalette":

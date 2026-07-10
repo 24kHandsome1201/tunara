@@ -1,7 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { fsGrep, fsReadDir, fsSearch, type DirEntry, type GrepResponse, type SearchHit } from "@/modules/fs/fs-bridge";
-import { sshReadDir, sshHome, sshSearch, sshGrep, sshDownload, invalidateRemoteSearchCache } from "@/modules/ssh/remote-fs-bridge";
+import {
+  fsCancelActiveNameSearch,
+  fsCancelGrep,
+  fsGrep,
+  fsReadDir,
+  fsSearch,
+  type DirEntry,
+  type GrepResponse,
+  type SearchHit,
+} from "@/modules/fs/fs-bridge";
+import {
+  cancelRemoteSearch,
+  invalidateRemoteSearchCache,
+  sshDownload,
+  sshGrep,
+  sshHome,
+  sshReadDir,
+  sshSearch,
+} from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -18,6 +35,12 @@ import { FileSearchGeneration } from "./lib/file-search-session";
 // Cap for name search (fs_search / ssh_fs_search). The backend truncates at this
 // count without a flag, so hitting it exactly is treated as "more results exist".
 const NAME_SEARCH_LIMIT = 80;
+let nextLocalGrepRequest = 0;
+
+function createLocalGrepRequestId(): string {
+  nextLocalGrepRequest += 1;
+  return `grep-${Date.now().toString(36)}-${nextLocalGrepRequest.toString(36)}`;
+}
 
 // Remember the chosen search mode for this run so it survives directory/session
 // switches. The query itself is intentionally not remembered — it is scoped to a
@@ -234,28 +257,36 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     const mode = searchMode;
     const searchGen = searchGenerationRef.current;
     const token = searchGen.start();
+    const localGrepRequestId = mode === "content" && !isRemote
+      ? createLocalGrepRequestId()
+      : null;
+    let requestStarted = false;
+    let requestSettled = false;
     setSearchLoading(true);
     setSearchError(false);
     // Fire the request inside the debounce timer, not before it: building the
     // promise eagerly would start the find/grep on every keystroke and only
     // debounce the setState. The generation token discards any in-flight
-    // response when searchQuery, searchMode, baseDir, or remotePtyId changes
-    // (Tauri invoke has no abort signal). Both modes split local/remote:
+    // response when searchQuery, searchMode, baseDir, or remotePtyId changes.
+    // Local content searches also send an explicit cancellation IPC so stale
+    // parallel filesystem walks stop consuming CPU and disk. Both modes split local/remote:
     // content search runs fs_grep locally and ssh_fs_grep over the exec channel
     // remotely (shared GrepResponse shape); name search keeps the fs_search /
     // ssh_fs_search split with the shared SearchHit shape. The remote bridge
     // caches per (ptyId, root, query) so backspacing doesn't re-run find/grep.
     const timer = window.setTimeout(() => {
+      requestStarted = true;
       const runSearch: Promise<SearchHit[] | GrepResponse> =
         mode === "content"
           ? isRemote && remotePtyId !== undefined
             ? sshGrep(remotePtyId, baseDir, q)
-            : fsGrep(q, baseDir, { caseInsensitive: false })
+            : fsGrep(q, baseDir, { requestId: localGrepRequestId!, caseInsensitive: false })
           : isRemote && remotePtyId !== undefined
             ? sshSearch(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT)
             : fsSearch(baseDir, q, NAME_SEARCH_LIMIT, includeHidden);
       runSearch
         .then((result) => {
+          requestSettled = true;
           if (!searchGen.isCurrent(token)) return;
           if (mode === "content") {
             const resp = result as GrepResponse;
@@ -275,6 +306,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           setSearchLoading(false);
         })
         .catch(() => {
+          requestSettled = true;
           if (!searchGen.isCurrent(token)) return;
           setSearchHits([]);
           setGrepHits([]);
@@ -288,8 +320,31 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     return () => {
       searchGen.invalidate();
       window.clearTimeout(timer);
+      if (localGrepRequestId && requestStarted && !requestSettled) {
+        void fsCancelGrep(localGrepRequestId).catch(() => {});
+      }
+      if (mode === "name" && !isRemote && requestStarted && !requestSettled) {
+        fsCancelActiveNameSearch();
+      }
+      if (isRemote && remotePtyId !== undefined && requestStarted && !requestSettled) {
+        cancelRemoteSearch(remotePtyId);
+      }
     };
   }, [baseDir, searchQuery, searchMode, includeHidden, reloadKey, isRemote, remotePtyId]);
+
+  useEffect(() => {
+    if (!expandedFile) return;
+    const closePreview = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // Let the top-most modal own Escape. The preview is background inspector
+      // state and should only close once no dialog is covering it.
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      setExpandedFile(null);
+    };
+    window.addEventListener("keydown", closePreview);
+    return () => window.removeEventListener("keydown", closePreview);
+  }, [expandedFile]);
 
   const canGoUp = currentPath !== "/" && currentPath !== baseDir;
   const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
@@ -332,9 +387,20 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   }
 
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
+  const previewFileName = expandedFile
+    ? expandedFile.split("/").filter(Boolean).pop() ?? expandedFile
+    : "";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && expandedFile) {
+          event.stopPropagation();
+          setExpandedFile(null);
+        }
+      }}
+    >
       <div style={{ height: 36, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 var(--sp-2)", gap: 4, flexShrink: 0 }}>
         <button
           onClick={() => { if (canGoUp) goUp(); }}
@@ -437,7 +503,35 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         </button>
       </div>
 
-      <div style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
+      {expandedFile && (
+        <div
+          key={expandedFile}
+          style={{
+            position: "absolute",
+            top: 36,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 3,
+            background: "var(--c-bg-white)",
+            animation: "slideInRight var(--duration-normal) var(--ease-out-expo)",
+          }}
+        >
+          <FilePreview
+            filePath={expandedFile}
+            fileName={previewFileName}
+            remotePtyId={remotePtyId}
+            onClose={() => setExpandedFile(null)}
+            fill
+          />
+        </div>
+      )}
+
+      <div
+        aria-hidden={expandedFile ? true : undefined}
+        inert={expandedFile ? true : undefined}
+        style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}
+      >
         <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px var(--sp-2)", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
           <button
             onClick={() => {
@@ -478,7 +572,13 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         </div>
       </div>
 
-      <div key={contentKey} style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }} className="no-scrollbar scroll-fade-y">
+      <div
+        key={contentKey}
+        aria-hidden={expandedFile ? true : undefined}
+        inert={expandedFile ? true : undefined}
+        style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }}
+        className="no-scrollbar scroll-fade-y"
+      >
         {isSearching ? (
           searchMode === "content" ? (
             searchLoading ? (
@@ -505,7 +605,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                         key={ln.line}
                         // Local hits jump to the matched line in the external
                         // editor; remote paths mean nothing to a local editor,
-                        // so they toggle the inline remote FilePreview instead
+                        // so they open the same full-height remote preview state
                         // (same affordance as remote name-search hits).
                         onClick={() => isRemote
                           ? toggleSearchFile(group.path)
@@ -518,11 +618,6 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
                       </button>
                     ))}
-                    {isRemote && expandedFile === group.path && (
-                      <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-                        <FilePreview filePath={group.path} fileName={group.rel.split("/").pop() ?? group.rel} remotePtyId={remotePtyId} onClose={() => setExpandedFile(null)} />
-                      </div>
-                    )}
                   </div>
                 ))}
                 {grepTruncated && <div style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.content_truncated")}</div>}
@@ -558,11 +653,6 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                       <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
                       {hit.isDir && <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>}
                     </button>
-                    {isExpanded && !hit.isDir && (
-                      <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-                        <FilePreview filePath={hit.path} fileName={hit.name} remotePtyId={remotePtyId} onClose={() => setExpandedFile(null)} />
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -646,11 +736,6 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{entry.name}</span>
                     <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 48, textAlign: "right" }}>{formatSize(entry.size)}</span>
                   </button>
-                  {isExpanded && (
-                    <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-                      <FilePreview filePath={fullPath} fileName={entry.name} remotePtyId={remotePtyId} onClose={() => setExpandedFile(null)} />
-                    </div>
-                  )}
                 </div>
               );
             })}

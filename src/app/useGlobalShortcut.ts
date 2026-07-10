@@ -29,18 +29,23 @@ export function useGlobalShortcut() {
   // Track the currently-registered accelerator so a config change can
   // unregister the old one before registering the new one.
   const registeredRef = useRef<string | null>(null);
+  const requestRef = useRef(0);
+  const operationQueueRef = useRef(Promise.resolve());
 
   useEffect(() => {
     if (!configLoaded) return;
     const next = globalShortcut.trim();
-    const prev = registeredRef.current;
+    const request = ++requestRef.current;
 
     async function apply() {
+      if (request !== requestRef.current) return;
+      const prev = registeredRef.current;
       // Unregister the previous binding if any.
       if (prev) {
         try { await unregister(prev); } catch { /* already gone */ }
       }
       registeredRef.current = null;
+      if (request !== requestRef.current) return;
 
       // Empty string = disabled.
       if (!next) return;
@@ -49,8 +54,13 @@ export function useGlobalShortcut() {
         await register(next, (event) => {
           if (event.state === "Pressed") void toggleMainWindow();
         });
+        if (request !== requestRef.current) {
+          try { await unregister(next); } catch { /* replaced while registering */ }
+          return;
+        }
         registeredRef.current = next;
       } catch {
+        if (request !== requestRef.current) return;
         // Registration fails when the key is taken by another app or the
         // accelerator string is invalid. Surface it so the user can rebind
         // instead of silently owning a dead hotkey.
@@ -62,14 +72,17 @@ export function useGlobalShortcut() {
       }
     }
 
-    void apply();
-    return () => {
-      // On unmount (app teardown) release the hotkey so it doesn't linger.
-      const held = registeredRef.current;
-      if (held) {
-        try { void unregister(held); } catch { /* ignore */ }
-        registeredRef.current = null;
-      }
-    };
+    const operation = operationQueueRef.current.then(apply);
+    operationQueueRef.current = operation.catch(() => {});
   }, [globalShortcut, configLoaded]);
+
+  useEffect(() => () => {
+    ++requestRef.current;
+    operationQueueRef.current = operationQueueRef.current.then(async () => {
+      const held = registeredRef.current;
+      if (!held) return;
+      try { await unregister(held); } catch { /* ignore teardown failures */ }
+      registeredRef.current = null;
+    });
+  }, []);
 }

@@ -31,6 +31,7 @@ interface DiffFileRowProps {
   file: FileChange;
   expanded: boolean;
   diffs: Record<string, FileDiff>;
+  diffErrors: Record<string, string>;
   searchQuery: string;
   isRemote: boolean;
   repoPath: string | null;
@@ -77,12 +78,16 @@ function renderHighlighted(line: string, query: string): React.ReactNode {
 
 function MiniDiff({
   diff,
+  error,
   searchQuery,
   onCopyHunk,
+  onRetry,
 }: {
   diff?: FileDiff;
+  error?: string;
   searchQuery: string;
   onCopyHunk: (hunkText: string) => void;
+  onRetry: () => void;
 }) {
   const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -132,6 +137,18 @@ function MiniDiff({
   const q = searchQuery.trim();
   const rows = useMemo(() => filterRowsByQuery(allRows, q), [allRows, q]);
 
+  if (error) {
+    return (
+      <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 8, color: "var(--c-error)" }}>
+        <span style={{ minWidth: 0, flex: 1, fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={error}>
+          {t("diff.mini.load_failed")}
+        </span>
+        <button type="button" onClick={onRetry} className="hover-accent-bg" style={{ border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", color: "var(--c-accent)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "2px 7px" }}>
+          {t("diff.mini.retry")}
+        </button>
+      </div>
+    );
+  }
   if (!diff) {
     return <div style={{ padding: "8px 10px", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("diff.mini.loading")}</div>;
   }
@@ -320,6 +337,7 @@ function DiffFileRow({
   file,
   expanded,
   diffs,
+  diffErrors,
   searchQuery,
   isRemote,
   repoPath,
@@ -438,7 +456,13 @@ function DiffFileRow({
               />
             </div>
           )}
-          <MiniDiff diff={diffs[key]} searchQuery={searchQuery} onCopyHunk={onCopyHunk} />
+          <MiniDiff
+            diff={diffs[key]}
+            error={diffErrors[key]}
+            searchQuery={searchQuery}
+            onCopyHunk={onCopyHunk}
+            onRetry={() => loadFileDiff(file)}
+          />
         </div>
       )}
     </div>
@@ -491,6 +515,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [remote, setRemote] = useState<RemoteState | null>(null);
   const [expandedFileKey, setExpandedFileKey] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
+  const [diffErrors, setDiffErrors] = useState<Record<string, string>>({});
   const [loadingDiffKeys, setLoadingDiffKeys] = useState<Record<string, true>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const isComposingRef = useRef(false);
@@ -504,6 +529,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     diffGenerationRef.current += 1;
     setExpandedFileKey(null);
     setDiffs({});
+    setDiffErrors({});
     setLoadingDiffKeys({});
     setRemote(null);
     if (notGit || (!isRemote && !repoPath)) return () => { cancelled = true; };
@@ -566,6 +592,12 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     const generation = diffGenerationRef.current;
     const requestedRepoPath = repoPath;
     const requestedSessionId = session.id;
+    setDiffErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     setLoadingDiffKeys((prev) => ({ ...prev, [key]: true }));
     const diffPromise = isRemote
       ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, session.dir, file.path, file.stage) : Promise.reject(new Error("no ptyId")))
@@ -581,6 +613,13 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       }
     } catch (e) {
       console.error("[DiffPanel] git_diff load failed", { repoPath: requestedRepoPath, file: file.path, error: e });
+      if (
+        diffGenerationRef.current === generation
+        && repoPathRef.current === requestedRepoPath
+        && sessionIdRef.current === requestedSessionId
+      ) {
+        setDiffErrors((prev) => ({ ...prev, [key]: e instanceof Error ? e.message : String(e) }));
+      }
     } finally {
       setLoadingDiffKeys((prev) => {
         if (!prev[key]) return prev;
@@ -706,6 +745,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                         file={file}
                         expanded={expandedFileKey === fileRowKey(file)}
                         diffs={diffs}
+                        diffErrors={diffErrors}
                         searchQuery={searchQuery}
                         isRemote={isRemote}
                         repoPath={repoPath}

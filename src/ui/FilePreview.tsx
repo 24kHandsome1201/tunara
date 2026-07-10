@@ -9,15 +9,20 @@ interface FilePreviewProps {
   filePath: string;
   fileName: string;
   onClose: () => void;
+  /** Fill the inspector content area instead of rendering as an inline card. */
+  fill?: boolean;
   /** 远程 SSH 会话的 PTY id；存在则经 SFTP 读取。 */
   remotePtyId?: number;
 }
 
-function MarkdownPreview({ content }: { content: string }) {
+function MarkdownPreview({ content, fill = false }: { content: string; fill?: boolean }) {
   const blocks = useMemo(() => parseMarkdown(content), [content]);
   const keys = new UniqueKeyBuilder();
   return (
-    <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar scroll-fade-y">
+    <div
+      style={{ padding: "12px 14px 24px", overflow: "auto", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
+      className="no-scrollbar scroll-fade-y"
+    >
       {blocks.map((block) => (
         <MarkdownBlock key={blockKey(block, keys)} block={block} />
       ))}
@@ -196,7 +201,7 @@ function MarkdownBlock({ block }: { block: Block }) {
         </pre>
       );
     case "quote":
-      return <div style={{ borderLeft: "2px solid var(--c-border-2)", paddingLeft: 8, color: "var(--c-text-5)", margin: "4px 0", fontSize: "var(--fs-meta)", lineHeight: 1.6 }}><InlineText text={block.text} /></div>;
+      return <div style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-meta)", lineHeight: 1.65 }}><InlineText text={block.text} /></div>;
     case "ul": {
       const ulKeys = new UniqueKeyBuilder();
       return (
@@ -218,9 +223,12 @@ function MarkdownBlock({ block }: { block: Block }) {
   }
 }
 
-function TextPreview({ content }: { content: string }) {
+function TextPreview({ content, fill = false }: { content: string; fill?: boolean }) {
   return (
-    <div style={{ padding: "10px 12px", overflow: "auto", maxHeight: 240 }} className="no-scrollbar scroll-fade-y">
+    <div
+      style={{ padding: "12px 14px 24px", overflow: "auto", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
+      className="no-scrollbar scroll-fade-y"
+    >
       <pre style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}>
         {content}
       </pre>
@@ -237,7 +245,7 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePreviewProps) {
+export function FilePreview({ filePath, fileName, onClose, fill = false, remotePtyId }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
   const [error, setError] = useState(false);
@@ -260,13 +268,33 @@ export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePr
     : "";
 
   return (
-    <div style={{ background: "var(--c-bg-white)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", marginTop: 2, overflow: "hidden" }}>
-      <div style={{ height: 34, borderBottom: "1px solid var(--c-border-2)", display: "flex", alignItems: "center", padding: "0 10px", flexShrink: 0 }}>
-        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{fileName}</span>
+    <div
+      style={{
+        background: "var(--c-bg-white)",
+        border: fill ? "none" : "1px solid var(--c-border-2)",
+        borderRadius: fill ? 0 : "var(--r-btn)",
+        marginTop: fill ? 0 : 2,
+        overflow: "hidden",
+        height: fill ? "100%" : undefined,
+        minHeight: fill ? 0 : undefined,
+        display: fill ? "flex" : undefined,
+        flexDirection: fill ? "column" : undefined,
+      }}
+    >
+      <div style={{ height: fill ? 40 : 34, borderBottom: "1px solid var(--c-border-1)", background: fill ? "var(--c-bg-1)" : "transparent", display: "flex", alignItems: "center", gap: 8, padding: fill ? "0 12px" : "0 10px", flexShrink: 0 }}>
+        {fill && (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+            <path d="M14 2v6h6" />
+          </svg>
+        )}
+        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{fileName}</span>
         <button
           onClick={(e) => { e.stopPropagation(); onClose(); }}
           className="hover-bg"
-          style={{ width: 22, height: 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          title={t("common.close")}
+          aria-label={t("common.close")}
+          style={{ width: fill ? 26 : 22, height: fill ? 26 : 22, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
         >
           <CloseIcon size={11} strokeWidth={2.5} />
         </button>
@@ -276,7 +304,7 @@ export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePr
         <PreviewMessage icon="⊘" text={t("preview.read_failed")} />
       ) : !result ? (
         <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "pulseDot 1.2s ease infinite", flexShrink: 0 }} />
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "loadPulse 1.2s var(--ease-in-out) infinite", flexShrink: 0 }} />
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("preview.reading")}</span>
         </div>
       ) : result.kind === "binary" ? (
@@ -284,9 +312,9 @@ export function FilePreview({ filePath, fileName, onClose, remotePtyId }: FilePr
       ) : result.kind === "toolarge" ? (
         <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
       ) : isMarkdown ? (
-        <MarkdownPreview content={textContent} />
+        <MarkdownPreview content={textContent} fill={fill} />
       ) : (
-        <TextPreview content={textContent} />
+        <TextPreview content={textContent} fill={fill} />
       )}
     </div>
   );

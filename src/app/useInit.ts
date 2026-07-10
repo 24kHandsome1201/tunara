@@ -55,7 +55,10 @@ export function useInit() {
     if (initRef.current) return;
     initRef.current = true;
 
-    void loadUserConfig();
+    // TerminalView reads several settings only during its first mount. Hold
+    // App.ready until both config and workspace hydration finish so a slow
+    // config read cannot initialize the first PTY with default-only settings.
+    const configReady = loadUserConfig();
 
     const notifiedPersistenceFailures = new Set<"restore" | "save">();
     const notifyPersistenceFailure = (kind: "restore" | "save", detail?: string) => {
@@ -69,7 +72,7 @@ export function useInit() {
       });
     };
 
-    loadWorkspaceSnapshot().then((result) => {
+    void Promise.all([configReady, loadWorkspaceSnapshot()]).then(([, result]) => {
       const current = useSessionsStore.getState();
 
       if (result.status === "error") {

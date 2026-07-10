@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { answerHostKeyPrompt } from "@/modules/terminal/lib/pty-bridge";
@@ -16,12 +16,24 @@ export function HostKeyPromptDialog() {
   const prompt = useUIStore((s) => s.hostKeyPrompts[0] ?? null);
   const dismissHostKeyPrompt = useUIStore((s) => s.dismissHostKeyPrompt);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [submitting, setSubmitting] = useState(false);
   useFocusTrap(dialogRef);
 
-  const decide = (accept: boolean) => {
-    if (!prompt) return;
-    void answerHostKeyPrompt(prompt.promptId, accept);
-    dismissHostKeyPrompt(prompt.promptId);
+  const decide = async (accept: boolean) => {
+    if (!prompt || submitting) return;
+    setSubmitting(true);
+    try {
+      await answerHostKeyPrompt(prompt.promptId, accept);
+      dismissHostKeyPrompt(prompt.promptId);
+    } catch {
+      useUIStore.getState().addToast({
+        title: t("ssh.hostKey.decision_failed"),
+        subtitle: "",
+        variant: "error",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Focus the safe (reject) action by default so an accidental Enter doesn't trust.
@@ -45,12 +57,11 @@ export function HostKeyPromptDialog() {
   return (
     <>
       <div
-        onClick={() => decide(false)}
+        onClick={() => { void decide(false); }}
         style={{
           position: "fixed",
           inset: 0,
           background: "var(--backdrop-color)",
-          backdropFilter: "var(--backdrop-blur)",
           zIndex: 300,
           animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}
@@ -61,7 +72,7 @@ export function HostKeyPromptDialog() {
         aria-modal="true"
         tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => {
-          if (e.key === "Escape") decide(false);
+          if (e.key === "Escape") void decide(false);
         }}
         style={{
           position: "fixed",
@@ -124,7 +135,8 @@ export function HostKeyPromptDialog() {
         >
           <button
             ref={rejectRef}
-            onClick={() => decide(false)}
+            onClick={() => { void decide(false); }}
+            disabled={submitting}
             className="hover-bg"
             style={{
               padding: "6px 16px",
@@ -133,13 +145,15 @@ export function HostKeyPromptDialog() {
               background: "transparent",
               color: "var(--c-text-primary)",
               fontSize: "var(--fs-body)",
-              cursor: "pointer",
+              cursor: submitting ? "wait" : "pointer",
+              opacity: submitting ? 0.6 : 1,
             }}
           >
             {t("ssh.hostKey.reject")}
           </button>
           <button
-            onClick={() => decide(true)}
+            onClick={() => { void decide(true); }}
+            disabled={submitting}
             className="hover-primary"
             style={{
               padding: "6px 18px",
@@ -149,7 +163,8 @@ export function HostKeyPromptDialog() {
               color: "var(--c-btn-primary-text)",
               fontSize: "var(--fs-body)",
               fontWeight: 500,
-              cursor: "pointer",
+              cursor: submitting ? "wait" : "pointer",
+              opacity: submitting ? 0.6 : 1,
             }}
           >
             {t("ssh.hostKey.accept")}

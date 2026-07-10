@@ -52,7 +52,25 @@ export function WorkflowParamPrompt() {
 
   const run = () => {
     const command = resolveTemplate(pending.template, values, ctx);
-    useSessionsStore.getState().newTerminalWithInput(command, pending.dir);
+    const sessions = useSessionsStore.getState();
+    if (pending.targetSessionId) {
+      if (!sessions.sessions.some((session) => session.id === pending.targetSessionId)) {
+        useUIStore.getState().addToast({
+          title: t("workflow.target_missing"),
+          subtitle: "",
+          variant: "error",
+        });
+        setPendingWorkflow(null);
+        return;
+      }
+      sessions.updateSession(pending.targetSessionId, {
+        pendingInput: command,
+        pendingInputSubmit: false,
+      });
+      sessions.setActive(pending.targetSessionId);
+    } else {
+      sessions.newTerminalWithInput(command, pending.dir);
+    }
     setPendingWorkflow(null);
   };
 
@@ -79,7 +97,6 @@ export function WorkflowParamPrompt() {
           position: "fixed",
           inset: 0,
           background: "var(--backdrop-color)",
-          backdropFilter: "var(--backdrop-blur)",
           zIndex: 200,
           animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}

@@ -131,8 +131,7 @@ function AppSplash() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          opacity: 0.85,
-          animation: "breathe 1.6s ease-in-out infinite",
+          opacity: 0.9,
         }}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -146,21 +145,19 @@ function AppSplash() {
           fontWeight: 700,
           color: "var(--c-text-primary)",
           letterSpacing: "-0.012em",
-          opacity: 0.8,
-          animation: "breathe 1.6s ease-in-out infinite",
+          opacity: 0.86,
         }}
       >
         Tunara
       </span>
-      {/* I11: a subtle "restoring" hint so cold-start with many sessions
-          isn't a black box. Pulsing in sync with the wordmark. */}
+      {/* Keep cold-start legible without turning the wordmark into an
+          ambient animation. */}
       <span
         style={{
           fontSize: "var(--fs-meta)",
           color: "var(--c-text-5)",
           fontFamily: "var(--font-mono)",
-          opacity: 0.6,
-          animation: "breathe 1.6s ease-in-out infinite",
+          opacity: 0.66,
         }}
       >
         {staticT("app.splash.restoring")}
@@ -220,7 +217,7 @@ export default function App() {
         height: "100vh",
         overflow: "hidden",
         fontFamily: "var(--font-ui)",
-        background: "var(--c-bg-white-glass)",
+        background: "var(--c-bg-white)",
       }}
     >
       <Titlebar
@@ -245,7 +242,6 @@ export default function App() {
               inset: 0,
               zIndex: 65,
               background: "var(--backdrop-color)",
-              backdropFilter: "var(--backdrop-blur)",
               animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
             }}
           />
@@ -259,7 +255,6 @@ export default function App() {
               inset: 0,
               zIndex: 75,
               background: "var(--backdrop-color)",
-              backdropFilter: "var(--backdrop-blur)",
               animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
             }}
           />
@@ -267,6 +262,8 @@ export default function App() {
 
         <div
           className="tunara-sidebar"
+          aria-hidden={sidebarVisible ? undefined : true}
+          inert={sidebarVisible ? undefined : true}
           style={{
             display: "flex",
             minHeight: 0,
@@ -306,7 +303,7 @@ export default function App() {
         {sessions.length === 0 && (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-4)" }}>
+              <div style={{ width: 64, height: 64, borderRadius: "var(--r-overlay)", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-4)" }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="4 17 10 11 4 5" />
                   <line x1="12" y1="19" x2="20" y2="19" />
@@ -336,6 +333,8 @@ export default function App() {
         {activeSession && (
           <div
             className="tunara-panel"
+            aria-hidden={panelVisible ? undefined : true}
+            inert={panelVisible ? undefined : true}
             style={{
               position: panelOverlay ? "absolute" : "relative",
               top: panelOverlay ? 0 : undefined,

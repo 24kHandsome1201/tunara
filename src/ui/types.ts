@@ -62,6 +62,8 @@ export interface Session {
 
   pendingInput?: string;
   pendingInputSubmit?: boolean;
+  /** Ephemeral generation used to remount a dead terminal in place. */
+  reconnectNonce?: number;
 
   // ── SSH 远程会话（§ssh-client）。存在即为远程会话，否则为本地。 ──
   remote?: RemoteInfo;
@@ -111,6 +113,13 @@ export interface SshConnectSuggestion {
   host: string;
   user?: string;
   port?: number;
+}
+
+/** Transient form state for a new SSH connection or an in-place reconnect. */
+export interface SshConnectPrefill extends SshConnectSuggestion {
+  identityFile?: string;
+  injectShellIntegration?: boolean;
+  reconnectSessionId?: string;
 }
 
 /** 改动文件（与后端 git FileChange 对齐） */

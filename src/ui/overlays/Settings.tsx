@@ -3,9 +3,12 @@ import type { ThemeType, TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { getShellTint, isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { platform } from "@tauri-apps/plugin-os";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { CloseIcon, RefreshIcon } from "../shared";
@@ -31,9 +34,10 @@ interface Preflight {
   hint: string | null;
 }
 
-type SettingsTab = "appearance" | "workflows" | "cli";
+type SettingsTab = "appearance" | "workflows" | "cli" | "app";
+type UpdateStatus = "idle" | "checking" | "current" | "available" | "downloading" | "restarting" | "error";
 
-const TABS: SettingsTab[] = ["appearance", "workflows", "cli"];
+const TABS: SettingsTab[] = ["appearance", "workflows", "cli", "app"];
 
 function terminalThemePreviewColors(
   id: TerminalThemeName,
@@ -200,6 +204,71 @@ export function Settings({ onClose }: SettingsProps) {
   const [preflights, setPreflights] = useState<Record<string, Preflight>>({});
   const [editingOverride, setEditingOverride] = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState("");
+  const cliLoadStartedRef = useRef(false);
+  const [appVersion, setAppVersion] = useState("");
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle");
+  const [updateVersion, setUpdateVersion] = useState("");
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  const updateRef = useRef<Update | null>(null);
+
+  useEffect(() => {
+    void getVersion().then(setAppVersion).catch(() => {});
+    return () => {
+      const update = updateRef.current;
+      updateRef.current = null;
+      if (update) void update.close();
+    };
+  }, []);
+
+  const checkForUpdates = async () => {
+    if (updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting") return;
+    setUpdateStatus("checking");
+    setUpdateProgress(null);
+    const previous = updateRef.current;
+    updateRef.current = null;
+    if (previous) await previous.close().catch(() => {});
+    try {
+      const update = await check({ timeout: 15_000 });
+      updateRef.current = update;
+      if (!update) {
+        setUpdateVersion("");
+        setUpdateStatus("current");
+        return;
+      }
+      setUpdateVersion(update.version);
+      setUpdateStatus("available");
+    } catch (error) {
+      console.warn("[Settings] update check failed", error);
+      setUpdateStatus("error");
+    }
+  };
+
+  const installUpdate = async () => {
+    const update = updateRef.current;
+    if (!update || updateStatus === "downloading" || updateStatus === "restarting") return;
+    setUpdateStatus("downloading");
+    setUpdateProgress(0);
+    let downloaded = 0;
+    let total: number | undefined;
+    try {
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") {
+          total = event.data.contentLength;
+        } else if (event.event === "Progress") {
+          downloaded += event.data.chunkLength;
+          setUpdateProgress(total ? Math.min(99, Math.round((downloaded / total) * 100)) : null);
+        } else {
+          setUpdateProgress(100);
+        }
+      });
+      setUpdateStatus("restarting");
+      await relaunch();
+    } catch (error) {
+      console.warn("[Settings] update installation failed", error);
+      setUpdateStatus("error");
+      setUpdateProgress(null);
+    }
+  };
 
   const loadPreflights = useCallback((items: ResolvedCommand[]) => {
     // Only check login state for CLIs that are actually installed — an auth
@@ -230,8 +299,10 @@ export function Settings({ onClose }: SettingsProps) {
   }, [loadPreflights]);
 
   useEffect(() => {
+    if (activeTab !== "cli" || cliLoadStartedRef.current) return;
+    cliLoadStartedRef.current = true;
     loadCliStatus();
-  }, [loadCliStatus]);
+  }, [activeTab, loadCliStatus]);
 
   const applyOverride = useCallback((code: string, cliBin: string, path: string) => {
     const trimmed = path.trim();
@@ -250,10 +321,12 @@ export function Settings({ onClose }: SettingsProps) {
 
   const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
   const installedCliCount = CLI_LIST.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
+  const updateBusy = updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting";
+  const canInstallUpdate = updateStatus === "available" || (updateStatus === "error" && !!updateRef.current);
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", backdropFilter: "var(--backdrop-blur)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
       <div
         ref={sheetRef} tabIndex={-1}
         role="dialog"
@@ -268,14 +341,14 @@ export function Settings({ onClose }: SettingsProps) {
               <CloseIcon size={13} strokeWidth={2.2} />
             </button>
           </div>
-          <div style={{ display: "inline-flex", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: 3, gap: 2 }}>
+          <div style={{ display: "flex", gap: 18, borderBottom: "1px solid var(--c-border-1)" }}>
             {TABS.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 data-active={activeTab === tab ? "true" : "false"}
                 className="settings-tab-pill"
-                style={{ padding: "4px 12px", borderRadius: "var(--r-pill)", border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
+                style={{ padding: "5px 0 8px", marginBottom: -1, border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "color var(--duration-fast) var(--ease-smooth)" }}
               >
                 {t(`settings.tabs.${tab}`)}
               </button>
@@ -651,6 +724,71 @@ export function Settings({ onClose }: SettingsProps) {
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === "app" && (
+            <div style={{ color: "var(--c-text-3)", fontSize: "var(--fs-body)" }}>
+              <div style={{ paddingBottom: 20, borderBottom: "1px solid var(--c-border-1)" }}>
+                <div style={SECTION_LABEL}>{t("settings.app.version")}</div>
+                <div style={{ fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", fontSize: "var(--fs-title)", fontWeight: 600 }}>
+                  Tunara {appVersion ? `v${appVersion}` : ""}
+                </div>
+              </div>
+              <div style={{ paddingTop: 20 }}>
+                <div style={SECTION_LABEL}>{t("settings.app.updates")}</div>
+                <div style={{ ...SECTION_HINT, marginBottom: 14 }}>{t("settings.app.updates.hint")}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 16,
+                    padding: "12px 0",
+                    borderTop: "1px solid var(--c-border-1)",
+                    borderBottom: "1px solid var(--c-border-1)",
+                    background: updateStatus === "error" ? "var(--c-error-bg)" : "transparent",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: updateStatus === "error" ? "var(--c-error)" : "var(--c-text-primary)", fontWeight: 600, marginBottom: 3 }}>
+                      {updateStatus === "checking" ? t("settings.app.updates.checking")
+                        : updateStatus === "current" ? t("settings.app.updates.current")
+                        : updateStatus === "available" || updateStatus === "downloading" || updateStatus === "restarting" ? t("settings.app.updates.available", { version: updateVersion })
+                        : updateStatus === "error" ? t("settings.app.updates.error")
+                        : t("settings.app.updates.ready")}
+                    </div>
+                    {(updateStatus === "downloading" || updateStatus === "restarting") && (
+                      <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>
+                        {updateStatus === "restarting"
+                          ? t("settings.app.updates.restarting")
+                          : updateProgress === null
+                            ? t("settings.app.updates.downloading")
+                            : t("settings.app.updates.progress", { progress: updateProgress })}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+                    {updateStatus === "error" && (
+                      <button
+                        onClick={() => { void openUrl("https://github.com/24kHandsome1201/tunara/releases/latest"); }}
+                        className="hover-bg"
+                        style={{ padding: "7px 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: "pointer" }}
+                      >
+                        {t("settings.app.updates.open_releases")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { void (canInstallUpdate ? installUpdate() : checkForUpdates()); }}
+                      disabled={updateBusy}
+                      className={canInstallUpdate ? "hover-primary" : "hover-bg"}
+                      style={{ padding: "7px 12px", borderRadius: "var(--r-btn)", border: canInstallUpdate ? "none" : "1px solid var(--c-border-2)", background: canInstallUpdate ? "var(--c-btn-primary-bg)" : "var(--c-bg-white)", color: canInstallUpdate ? "var(--c-btn-primary-text)" : "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: updateBusy ? "wait" : "pointer" }}
+                    >
+                      {canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("settings.app.updates.retry") : t("settings.app.updates.check")}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

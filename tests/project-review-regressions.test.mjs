@@ -186,6 +186,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /migrate_legacy_config_if_needed/);
   assert.match(configRs, /fs::copy\(legacy_path, path\)/);
   assert.match(configRs, /fs::rename\(&tmp, path\)/);
+  assert.match(configRs, /CONFIG_WRITE_SEQUENCE\.fetch_add/);
   assert.match(configRs, /use toml_edit::\{value, DocumentMut, Item, Table\}/);
   assert.match(configRs, /merge_known_config/);
   assert.match(configRs, /MAX_SCROLLBACK: u32 = 20_000/);
@@ -216,7 +217,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(keybindings, /export function matchesKeybinding/);
   assert.match(keybindings, /const modPressed = hasPlatformModKey\(e, isMac\)/);
   assert.match(ui, /loadTunaraConfig/);
-  assert.match(ui, /saveTunaraConfig\(settingsToRawConfig/);
+  assert.match(ui, /enqueueConfigSave\(settingsToRawConfig/);
+  assert.match(ui, /configPersistQueue = operation\.catch\(\(\) => \{\}\)/);
   assert.match(ui, /\.then\(\(\) => useUIStore\.setState\(\{ configError: null \}\)\)/);
   assert.match(ui, /fontLigatures: false/);
   assert.match(ui, /font_ligatures: s\.fontLigatures/);
@@ -253,6 +255,30 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(sessionCard, /getAgentIcon\(session\.agent\)/);
   assert.doesNotMatch(sessionCard, /AGENT_CIRCLE_STYLES\[session\.agent\]/);
   assert.doesNotMatch(sessionCard, /AGENT_ICONS\[session\.agent\]/);
+});
+
+test("settings exposes the signed updater flow and restart permission", () => {
+  const settings = read("src/ui/overlays/Settings.tsx");
+  const lib = read("src-tauri/src/lib.rs");
+  const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
+  const capability = JSON.parse(read("src-tauri/capabilities/desktop.json"));
+
+  assert.match(settings, /check\(\{ timeout: 15_000 \}\)/);
+  assert.match(settings, /update\.downloadAndInstall/);
+  assert.match(settings, /await relaunch\(\)/);
+  assert.match(lib, /tauri_plugin_updater::Builder::new\(\)\.build\(\)/);
+  assert.match(lib, /tauri_plugin_process::init\(\)/);
+  assert.ok(defaultCapability.permissions.includes("core:app:allow-version"));
+  assert.ok(capability.permissions.includes("updater:default"));
+  assert.ok(capability.permissions.includes("process:allow-restart"));
+});
+
+test("settings defers expensive CLI probes until the CLI tab is opened", () => {
+  const settings = read("src/ui/overlays/Settings.tsx");
+
+  assert.match(settings, /const cliLoadStartedRef = useRef\(false\)/);
+  assert.match(settings, /if \(activeTab !== "cli" \|\| cliLoadStartedRef\.current\) return;/);
+  assert.match(settings, /cliLoadStartedRef\.current = true;[\s\S]*?loadCliStatus\(\)/);
 });
 
 test("session persistence keeps custom titles and rejects invalid stored payloads", () => {
@@ -332,7 +358,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(terminalSnapshotLimits, /MAX_TERMINAL_SNAPSHOTS = 8/);
   assert.match(persistSnapshot, /from "\.\.\/modules\/terminal\/lib\/terminal-snapshot-limits\.ts"/);
   assert.match(persistSnapshot, /Number\.isFinite\(raw\)/);
-  assert.match(persistSnapshot, /serialized\.slice\(-MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE\)/);
+  assert.match(persistSnapshot, /trimTerminalSnapshotSerialized\(t\.serialized, MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE\)/);
   assert.match(persistSnapshot, /sort\(\(a, b\) => b\[1\]\.capturedAt - a\[1\]\.capturedAt\)/);
   assert.match(persistSnapshot, /isSafeRecordKey\(k\) && typeof v === "number" && Number\.isFinite\(v\)/);
   assert.match(persistSnapshot, /if \(!isSafeRecordKey\(k\) \|\| !sessionIds\.has\(k\)\)/);
@@ -434,9 +460,11 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /fsSearch\([\s\S]*includeHidden = false/);
   assert.match(bridge, /export interface GrepHit/);
   assert.match(bridge, /export function fsGrep/);
+  assert.match(bridge, /export function fsCancelGrep/);
   assert.match(explorer, /fsSearch\(baseDir, q, NAME_SEARCH_LIMIT, includeHidden\)/);
   assert.match(explorer, /const NAME_SEARCH_LIMIT = 80/);
-  assert.match(explorer, /fsGrep\(q, baseDir, \{ caseInsensitive: false \}\)/);
+  assert.match(explorer, /fsGrep\(q, baseDir, \{ requestId: localGrepRequestId!, caseInsensitive: false \}\)/);
+  assert.match(explorer, /fsCancelGrep\(localGrepRequestId\)/);
   assert.match(explorer, /groupGrepHitsByFile\(resp\.hits\)/);
   // Remote (SSH) name search runs `find` over the exec channel and content
   // search runs `grep` over it (ssh_fs_grep), so BOTH modes stay enabled for
@@ -557,20 +585,28 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.match(diff, /gitDiff\(requestedRepoPath, file\.path, file\.stage\)/);
   assert.match(diff, /diffGenerationRef/);
   assert.match(diff, /repoPathRef\.current === requestedRepoPath/);
+  assert.match(diff, /setDiffErrors\(\(prev\) => \(\{ \.\.\.prev, \[key\]: e instanceof Error \? e\.message : String\(e\) \}\)\)/);
+  assert.match(diff, /t\("diff\.mini\.retry"\)/);
   assert.match(diff, /useSessionsStore\.getState\(\)\.refreshGit\(session\.id\)/);
   assert.doesNotMatch(diff, /\bgitStatus\b/);
   assert.match(watcher, /const WATCH_FALLBACK_POLL_MS = 5_000/);
   assert.match(watcher, /function refreshSessionsForRepo\(repoPath: string\): void/);
-  assert.match(watcher, /function releaseBackendWatch\(repoPath: string\): void/);
-  assert.match(watcher, /gitWatch\(repoPath\)[\s\S]*?if \(activeRepos\.has\(repoPath\)\) \{[\s\S]*?stopFallbackPoller\(repoPath\);[\s\S]*?\} else \{[\s\S]*?releaseBackendWatch\(repoPath\);/);
+  assert.match(watcher, /const backendOperations = createSerializedAsyncQueue\(\)/);
+  assert.match(watcher, /function acquireBackendWatch\(repoPath: string\): Promise<void>/);
+  assert.match(watcher, /function releaseBackendWatch\(repoPath: string\): Promise<void>/);
+  assert.match(watcher, /backendOperations\.enqueue\(repoPath, \(\) => gitWatch\(repoPath\)\)/);
+  assert.match(watcher, /acquireBackendWatch\(repoPath\)[\s\S]*?if \(activeRepos\.has\(repoPath\)\) \{[\s\S]*?stopFallbackPoller\(repoPath\)/);
+  assert.doesNotMatch(watcher, /else \{[\s\S]*?releaseBackendWatch\(repoPath\)/);
+  assert.match(watcher, /function startFallbackPoller\(repoPath: string\): void \{[\s\S]*?if \(!activeRepos\.has\(repoPath\)/);
   assert.match(watcher, /\.catch\(\(\) => \{[\s\S]*?startFallbackPoller\(repoPath\)/);
-  assert.match(watcher, /activeRepos\.delete\(repoPath\);[\s\S]*?stopFallbackPoller\(repoPath\);[\s\S]*?releaseBackendWatch\(repoPath\)/);
+  assert.match(watcher, /activeRepos\.delete\(repoPath\);[\s\S]*?stopFallbackPoller\(repoPath\);[\s\S]*?void releaseBackendWatch\(repoPath\)\.catch/);
   assert.doesNotMatch(localTerminalCwd, /@\/ui\/types|ui\/types/);
 });
 
 test("session persistence is debounced and still flushed on close", () => {
   const init = read("src/app/useInit.ts");
   const persistenceDoc = read("docs/STATE_AND_PERSISTENCE.md");
+  assert.match(init, /Promise\.all\(\[configReady, loadWorkspaceSnapshot\(\)\]\)/);
   assert.match(init, /let saveTimer: ReturnType<typeof setTimeout> \| null = null/);
   assert.match(init, /const scheduleSave = \(\) => \{/);
   assert.match(init, /setTimeout\(\(\) => \{[\s\S]*?persistNow\(\);[\s\S]*?\}, 500\)/);
@@ -611,7 +647,7 @@ test("terminal snapshot writes flip a dirty flag the persist backstop consumes",
   assert.match(scheduler, /return \{[\s\S]*?schedule,[\s\S]*?flush,[\s\S]*?dispose\(\)/);
   assert.doesNotMatch(scheduler, /if \(shouldCapture\(\)\) capture\(\);/);
   assert.match(terminalView, /shouldCapture: \(\) =>[\s\S]*sessions\.some\(\(s\) => s\.id === sessionIdRef\.current\)/);
-  assert.match(terminalView, /handleTerminalProcessExit\(term, sessionIdRef\.current, code\);[\s\S]*?snapshotScheduler\.flush\(\);/);
+  assert.match(terminalView, /handleTerminalProcessExit\(term, sessionIdRef\.current, code, Boolean\(getCurrentSession\(\)\?\.remote\)\);[\s\S]*?snapshotScheduler\.flush\(\);/);
 });
 
 test("responsive shells close cleanly and avoid stale remote git badges", () => {
@@ -628,8 +664,8 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(keys, /ui\.setOverlay\(null\)/);
   assert.match(keys, /ui\.setSidebarVisible\(false\)/);
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
-  assert.match(keys, /const \{ paneA, paneB \} = ui\.split/);
-  assert.match(keys, /st\.setActive\(st\.activeSessionId === paneB \? paneA : paneB\)/);
+  assert.match(keys, /splitFocusTarget\(ui\.split, st\.activeSessionId, direction\)/);
+  assert.match(keys, /if \(target\) st\.setActive\(target\)/);
   assert.match(main, /const repoPath = normalizeLocalRepoPath\(activeDir\);/);
   assert.match(main, /if \(!repoPath\) \{[\s\S]*?setRemote\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
   assert.match(main, /gitAheadBehind\(repoPath\)/);
@@ -873,7 +909,8 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalNotification, /\^\\s\*\\d\+\(\?:;\|\$\)/);
 
   assert.doesNotMatch(status, /position: "absolute"/);
-  assert.match(status, /margin: "4px 8px 0"/);
+  assert.match(status, /minHeight: "var\(--h-inline-bar\)"/);
+  assert.match(status, /borderBottom: "1px solid var\(--c-border-1\)"/);
 
   assert.doesNotMatch(sessions, /launchAllAgents/);
   assert.doesNotMatch(sidebar, /启动所有 Agent/);
@@ -1128,7 +1165,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(explorer, /minWidth: 48, textAlign: "right"/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);
-  assert.match(tokens, /--font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;/);
+  assert.match(tokens, /--font-ui: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', 'Noto Sans SC', monospace;/);
   assert.equal(existsSync(resolve(root, "src/styles/tokens.ts")), false);
   assert.match(globals, /\.scroll-fade-y/);
   assert.match(globals, /background-repeat: no-repeat/);
@@ -1294,6 +1331,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalSearch, /export function TerminalSearchBar/);
   assert.match(terminalSearchHook, /export function useTerminalSearch/);
   assert.match(terminalSearchHook, /registerSearchAddon/);
+  assert.match(terminalSearchHook, /setSearchCount\(\{ current: 0, total: 0 \}\)/);
   assert.match(terminalSearchHook, /handleCustomKeyEvent/);
   assert.match(terminalBlockFilter, /export function filterTerminalBlockOutput/);
   assert.match(terminalBlockFilter, /export function formatTerminalBlockFilterText/);
