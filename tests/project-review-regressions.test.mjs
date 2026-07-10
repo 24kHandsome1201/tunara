@@ -102,6 +102,40 @@ test("SSH reconnect is transactional and host-key prompts fail closed", () => {
   assert.match(auth, /spawn_blocking/);
 });
 
+test("SSH connection state comes from backend phase evidence and remains ephemeral", () => {
+  const session = read("src-tauri/src/modules/pty/session.rs");
+  const connection = read("src-tauri/src/modules/ssh/connection.rs");
+  const bridge = read("src/modules/terminal/lib/pty-bridge.ts");
+  const terminal = read("src/ui/TerminalView.tsx");
+  const persisted = read("src/state/persist-snapshot.ts");
+
+  assert.match(session, /ConnectionStatus \{\s*phase: String/);
+  for (const phase of ["connecting", "handshaking", "authenticating", "openingShell", "ready"]) {
+    assert.match(connection, new RegExp(`send_connection_status\\(&on_event, "${phase}"\\)`));
+  }
+  assert.match(bridge, /onConnectionStatus\?: \(phase: PtyConnectionStatusPhase\)/);
+  assert.match(terminal, /recordPtyConnectionStatus/);
+  assert.match(bridge, /type: "backendPhase"/);
+  assert.match(bridge, /type: "hostKeyPrompt"/);
+  assert.match(persisted, /connection: initialConnectionEvidence\(session\.remote \? "ssh" : "local", "restore"\)/);
+  assert.doesNotMatch(persisted, /Pick<[\s\S]*?"connection"/);
+});
+
+test("remote diff previews cancel superseded SSH exec requests", () => {
+  const diff = read("src/ui/DiffPanel.tsx");
+  const bridge = read("src/modules/git/git-bridge.ts");
+  const remoteGit = read("src-tauri/src/modules/ssh/remote_git.rs");
+
+  assert.match(diff, /activeDiffRequestsRef/);
+  assert.match(diff, /cancelGitDiff\(request\.id\)/);
+  assert.match(diff, /activeDiffRequestsRef\.current\.get\(key\)\?\.id === requestId/);
+  assert.match(bridge, /sshGitDiff\([\s\S]*requestId: string/);
+  assert.match(bridge, /invoke<boolean>\("fs_cancel_search", \{ requestId \}\)/);
+  assert.match(remoteGit, /pub async fn ssh_git_diff\([\s\S]*request_id: String/);
+  assert.match(remoteGit, /exec_cancellable\(&cmd, MAX_DIFF_BYTES \+ 1, cancelled\.clone\(\)\)/);
+  assert.match(remoteGit, /search_state\.finish\(&request_id, &cancelled\)/);
+});
+
 test("desktop runtime rejects a second process before shared state starts", () => {
   const cargo = read("src-tauri/Cargo.toml");
   const lib = read("src-tauri/src/lib.rs");
@@ -461,16 +495,16 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /export interface GrepHit/);
   assert.match(bridge, /export function fsGrep/);
   assert.match(bridge, /export function fsCancelGrep/);
-  assert.match(explorer, /fsSearch\(baseDir, q, NAME_SEARCH_LIMIT, includeHidden\)/);
-  assert.match(explorer, /const NAME_SEARCH_LIMIT = 80/);
-  assert.match(explorer, /fsGrep\(q, baseDir, \{ requestId: localGrepRequestId!, caseInsensitive: false \}\)/);
+  assert.match(explorer, /fsSearch\(baseDir, q, searchLimit, includeHidden\)/);
+  assert.match(explorer, /nextFileSearchLimit/);
+  assert.match(explorer, /fsGrep\(q, baseDir, \{ requestId: localGrepRequestId!, caseInsensitive: false, maxResults: searchLimit \}\)/);
   assert.match(explorer, /fsCancelGrep\(localGrepRequestId\)/);
   assert.match(explorer, /groupGrepHitsByFile\(resp\.hits\)/);
   // Remote (SSH) name search runs `find` over the exec channel and content
   // search runs `grep` over it (ssh_fs_grep), so BOTH modes stay enabled for
   // remote sessions — the old disabled={isRemote} toggle must not come back.
-  assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT\)/);
-  assert.match(explorer, /sshGrep\(remotePtyId, baseDir, q\)/);
+  assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, searchLimit\)/);
+  assert.match(explorer, /sshGrep\(remotePtyId, baseDir, q, searchLimit\)/);
   const fileSearchSession = read("src/ui/lib/file-search-session.ts");
   assert.match(fileSearchSession, /export class FileSearchGeneration/);
   assert.match(explorer, /FileSearchGeneration/);

@@ -60,8 +60,18 @@ export function sshGitStatus(sessionId: number, cwd: string): Promise<StatusResu
   return invoke<StatusResult>("ssh_git_status", { sessionId, cwd });
 }
 
-export function sshGitDiff(sessionId: number, cwd: string, file: string, stage: FileChange["stage"]): Promise<FileDiff> {
-  return invoke<FileDiff>("ssh_git_diff", { sessionId, cwd, file, stage });
+export function sshGitDiff(
+  sessionId: number,
+  cwd: string,
+  file: string,
+  stage: FileChange["stage"],
+  requestId: string,
+): Promise<FileDiff> {
+  return invoke<FileDiff>("ssh_git_diff", { sessionId, cwd, file, stage, requestId });
+}
+
+export function cancelGitDiff(requestId: string): Promise<boolean> {
+  return invoke<boolean>("fs_cancel_search", { requestId });
 }
 
 export function sshGitAheadBehind(sessionId: number, cwd: string): Promise<RemoteState> {

@@ -5,6 +5,11 @@ import {
   FileSearchGeneration,
   fileSearchSessionSignature,
 } from "../src/ui/lib/file-search-session.ts";
+import {
+  initialFileSearchLimit,
+  maxFileSearchLimit,
+  nextFileSearchLimit,
+} from "../src/ui/lib/file-search-pagination.ts";
 
 test("FileSearchGeneration drops stale async results after invalidate", () => {
   const gen = new FileSearchGeneration();
@@ -51,4 +56,15 @@ test("fileSearchSessionSignature encodes remote, base, mode, and query", () => {
     }),
     "3||name|",
   );
+});
+
+test("file search limits grow by mode-specific pages and stay within backend caps", () => {
+  assert.equal(initialFileSearchLimit("name"), 80);
+  assert.equal(initialFileSearchLimit("content"), 200);
+  assert.equal(maxFileSearchLimit("name", false), 1_000);
+  assert.equal(maxFileSearchLimit("name", true), 200);
+  assert.equal(maxFileSearchLimit("content", true), 1_000);
+  assert.equal(nextFileSearchLimit(80, "name", false), 160);
+  assert.equal(nextFileSearchLimit(160, "name", true), 200);
+  assert.equal(nextFileSearchLimit(1_000, "content", false), 1_000);
 });

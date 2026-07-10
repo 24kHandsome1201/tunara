@@ -161,11 +161,14 @@ pub async fn ssh_git_status(
 #[tauri::command]
 pub async fn ssh_git_diff(
     state: State<'_, PtyState>,
+    search_state: State<'_, FsSearchCancellationState>,
     session_id: u32,
     cwd: String,
     file: String,
     stage: String,
+    request_id: String,
 ) -> Result<FileDiff, String> {
+    validate_request_id(&request_id)?;
     let session = ssh_session(&state, session_id)?;
     let ssh = match session.as_ref() {
         Session::Ssh(s) => s,
@@ -196,7 +199,12 @@ pub async fn ssh_git_diff(
     // Ask exec for one byte over the cap: exec truncates to its limit, so a
     // result strictly longer than MAX_DIFF_BYTES is the only unambiguous
     // overflow signal (a diff of exactly the cap is complete, not too large).
-    let out = ssh.exec(&cmd, MAX_DIFF_BYTES + 1).await?;
+    let cancelled = search_state.register(&request_id);
+    let result = ssh
+        .exec_cancellable(&cmd, MAX_DIFF_BYTES + 1, cancelled.clone())
+        .await;
+    search_state.finish(&request_id, &cancelled);
+    let out = result?;
     if out.len() > MAX_DIFF_BYTES {
         return Ok(FileDiff::TooLarge {
             path: file,

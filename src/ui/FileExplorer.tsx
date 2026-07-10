@@ -31,10 +31,11 @@ import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import { FileSearchGeneration } from "./lib/file-search-session";
-
-// Cap for name search (fs_search / ssh_fs_search). The backend truncates at this
-// count without a flag, so hitting it exactly is treated as "more results exist".
-const NAME_SEARCH_LIMIT = 80;
+import {
+  initialFileSearchLimit,
+  maxFileSearchLimit,
+  nextFileSearchLimit,
+} from "./lib/file-search-pagination";
 let nextLocalGrepRequest = 0;
 
 function createLocalGrepRequestId(): string {
@@ -89,6 +90,25 @@ function FileContentIcon() {
       <line x1="4" y1="10" x2="20" y2="10" />
       <line x1="4" y1="14" x2="14" y2="14" />
     </svg>
+  );
+}
+
+function SearchLimitControl({ canLoadMore, loading, onLoadMore }: { canLoadMore: boolean; loading: boolean; onLoadMore: () => void }) {
+  const t = useT();
+  if (loading) {
+    return <div aria-live="polite" style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.searching")}</div>;
+  }
+  return canLoadMore ? (
+    <button
+      type="button"
+      onClick={onLoadMore}
+      className="hover-bg"
+      style={{ margin: "4px var(--sp-2)", padding: "4px 8px", color: "var(--c-accent)", fontSize: "var(--fs-meta)", border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", cursor: "pointer" }}
+    >
+      {t("explorer.load_more")}
+    </button>
+  ) : (
+    <div style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.results_limit_reached")}</div>
   );
 }
 
@@ -162,6 +182,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const [searchError, setSearchError] = useState(false);
   const [searchTruncated, setSearchTruncated] = useState(false);
   const [searchMode, setSearchMode] = useState<"name" | "content">(lastFileSearchMode);
+  const [searchLimit, setSearchLimit] = useState(() => initialFileSearchLimit(lastFileSearchMode));
   const [grepHits, setGrepHits] = useState<GrepFileGroup[]>([]);
   const [grepTruncated, setGrepTruncated] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -183,6 +204,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     // Keep the user's remembered mode preference across the root change.
     // Content search works for remote sessions too (ssh_fs_grep).
     setSearchMode(lastFileSearchMode);
+    setSearchLimit(initialFileSearchLimit(lastFileSearchMode));
     if (isRemote && remotePtyId !== undefined) {
       let cancelled = false;
       setBaseDir(null);
@@ -279,11 +301,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       const runSearch: Promise<SearchHit[] | GrepResponse> =
         mode === "content"
           ? isRemote && remotePtyId !== undefined
-            ? sshGrep(remotePtyId, baseDir, q)
-            : fsGrep(q, baseDir, { requestId: localGrepRequestId!, caseInsensitive: false })
+            ? sshGrep(remotePtyId, baseDir, q, searchLimit)
+            : fsGrep(q, baseDir, { requestId: localGrepRequestId!, caseInsensitive: false, maxResults: searchLimit })
           : isRemote && remotePtyId !== undefined
-            ? sshSearch(remotePtyId, baseDir, q, NAME_SEARCH_LIMIT)
-            : fsSearch(baseDir, q, NAME_SEARCH_LIMIT, includeHidden);
+            ? sshSearch(remotePtyId, baseDir, q, searchLimit)
+            : fsSearch(baseDir, q, searchLimit, includeHidden);
       runSearch
         .then((result) => {
           requestSettled = true;
@@ -297,9 +319,9 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           } else {
             const hits = result as SearchHit[];
             setSearchHits(hits);
-            // fs_search/ssh_fs_search cap results at NAME_SEARCH_LIMIT without a
+            // fs_search/ssh_fs_search cap results at searchLimit without a
             // truncated flag, so infer truncation from hitting the cap exactly.
-            setSearchTruncated(hits.length >= NAME_SEARCH_LIMIT);
+            setSearchTruncated(hits.length >= searchLimit);
             setGrepHits([]);
             setGrepTruncated(false);
           }
@@ -330,7 +352,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         cancelRemoteSearch(remotePtyId);
       }
     };
-  }, [baseDir, searchQuery, searchMode, includeHidden, reloadKey, isRemote, remotePtyId]);
+  }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId]);
 
   useEffect(() => {
     if (!expandedFile) return;
@@ -350,6 +372,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
   const files = useMemo(() => entries.filter((e) => e.kind !== "dir"), [entries]);
   const isSearching = searchQuery.trim().length > 0;
+  const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
+
+  function loadMoreSearchResults() {
+    setSearchLimit((current) => nextFileSearchLimit(current, searchMode, isRemote));
+  }
 
   function refresh() {
     // Drop the remote search cache so Refresh actually re-runs ssh_fs_search
@@ -538,6 +565,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
               setSearchMode((m) => {
                 const next = m === "name" ? "content" : "name";
                 lastFileSearchMode = next;
+                setSearchLimit(initialFileSearchLimit(next));
                 return next;
               });
               setSearchQuery("");
@@ -554,7 +582,10 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setSearchLimit(initialFileSearchLimit(searchMode));
+            }}
             placeholder={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
             style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0 }}
           />
@@ -581,7 +612,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       >
         {isSearching ? (
           searchMode === "content" ? (
-            searchLoading ? (
+            searchLoading && grepHits.length === 0 ? (
               <PanelLoadingState label={t("explorer.searching")} />
             ) : searchError ? (
               <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
@@ -620,11 +651,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     ))}
                   </div>
                 ))}
-                {grepTruncated && <div style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.content_truncated")}</div>}
+                {(grepTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={loadMoreSearchResults} />}
               </>
             )
           ) : (
-          searchLoading ? (
+          searchLoading && searchHits.length === 0 ? (
             <PanelLoadingState label={t("explorer.searching")} />
           ) : searchError ? (
             <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
@@ -656,7 +687,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                   </div>
                 );
               })}
-              {searchTruncated && <div style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.results_truncated")}</div>}
+              {(searchTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={loadMoreSearchResults} />}
             </>
           )
           )

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatSize, type Session } from "./types";
 import {
+  cancelGitDiff,
   gitDiff,
   gitAheadBehind,
   sshGitDiff,
@@ -329,6 +330,12 @@ function fileRowKey(file: Pick<FileChange, "stage" | "path">): string {
   return `${file.stage}:${file.path}`;
 }
 
+let nextDiffRequest = 0;
+function createDiffRequestId(): string {
+  nextDiffRequest += 1;
+  return `diff-${Date.now().toString(36)}-${nextDiffRequest.toString(36)}`;
+}
+
 // Defined outside DiffPanel so React can reconcile rows by identity instead of
 // unmounting/remounting every row on each DiffPanel state change. The previous
 // nested definition created a fresh component type per render, which destroyed
@@ -516,21 +523,33 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const [expandedFileKey, setExpandedFileKey] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
   const [diffErrors, setDiffErrors] = useState<Record<string, string>>({});
-  const [loadingDiffKeys, setLoadingDiffKeys] = useState<Record<string, true>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const isComposingRef = useRef(false);
   const diffGenerationRef = useRef(0);
+  const activeDiffRequestsRef = useRef(new Map<string, { id: string; remote: boolean }>());
   const repoPathRef = useRef(repoPath);
   const sessionIdRef = useRef(session.id);
   repoPathRef.current = repoPath;
   sessionIdRef.current = session.id;
+
+  const cancelDiffRequest = useCallback((key: string) => {
+    const request = activeDiffRequestsRef.current.get(key);
+    if (!request) return;
+    activeDiffRequestsRef.current.delete(key);
+    if (request.remote) void cancelGitDiff(request.id).catch(() => {});
+  }, []);
+
+  const cancelAllDiffRequests = useCallback(() => {
+    for (const key of activeDiffRequestsRef.current.keys()) cancelDiffRequest(key);
+  }, [cancelDiffRequest]);
+
   useEffect(() => {
     let cancelled = false;
+    cancelAllDiffRequests();
     diffGenerationRef.current += 1;
     setExpandedFileKey(null);
     setDiffs({});
     setDiffErrors({});
-    setLoadingDiffKeys({});
     setRemote(null);
     if (notGit || (!isRemote && !repoPath)) return () => { cancelled = true; };
     // I3: remote (SSH) sessions now also resolve ahead/behind over the exec
@@ -542,32 +561,36 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       sshGitAheadBehind(ptyId, session.dir)
         .then((r) => !cancelled && setRemote(r))
         .catch(() => !cancelled && setRemote(null));
-      return () => { cancelled = true; };
+      return () => { cancelled = true; cancelAllDiffRequests(); };
     }
     gitAheadBehind(repoPath!)
       .then((r) => !cancelled && setRemote(r))
       .catch(() => !cancelled && setRemote(null));
     return () => {
       cancelled = true;
+      cancelAllDiffRequests();
     };
-  }, [repoPath, session.id, session.ptyId, session.dir, nonce, notGit, isRemote]);
+  }, [repoPath, session.id, session.ptyId, session.dir, nonce, notGit, isRemote, cancelAllDiffRequests]);
 
   useEffect(() => {
     if (expandedFileKey && !files.some((f) => fileRowKey(f) === expandedFileKey)) {
+      cancelDiffRequest(expandedFileKey);
       setExpandedFileKey(null);
     }
-  }, [files, expandedFileKey]);
+  }, [cancelDiffRequest, files, expandedFileKey]);
 
   const toggleFile = useCallback((file: FileChange) => {
     const key = fileRowKey(file);
     if (expandedFileKey === key) {
+      cancelDiffRequest(key);
       setExpandedFileKey(null);
       setSearchQuery("");
       return;
     }
+    if (expandedFileKey) cancelDiffRequest(expandedFileKey);
     setExpandedFileKey(key);
     setSearchQuery("");
-  }, [expandedFileKey]);
+  }, [cancelDiffRequest, expandedFileKey]);
 
   const copyHunk = useCallback(async (text: string) => {
     const ok = await copyText(text);
@@ -588,23 +611,25 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
 
   const loadFileDiff = useCallback(async (file: FileChange) => {
     const key = fileRowKey(file);
-    if (diffs[key] || loadingDiffKeys[key]) return;
+    if (diffs[key] || activeDiffRequestsRef.current.has(key)) return;
     const generation = diffGenerationRef.current;
     const requestedRepoPath = repoPath;
     const requestedSessionId = session.id;
+    const requestId = createDiffRequestId();
+    activeDiffRequestsRef.current.set(key, { id: requestId, remote: isRemote });
     setDiffErrors((prev) => {
       if (!prev[key]) return prev;
       const next = { ...prev };
       delete next[key];
       return next;
     });
-    setLoadingDiffKeys((prev) => ({ ...prev, [key]: true }));
     const diffPromise = isRemote
-      ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, session.dir, file.path, file.stage) : Promise.reject(new Error("no ptyId")))
+      ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, session.dir, file.path, file.stage, requestId) : Promise.reject(new Error("no ptyId")))
       : (requestedRepoPath ? gitDiff(requestedRepoPath, file.path, file.stage) : Promise.reject(new Error("no repoPath")));
     try {
       const d = await diffPromise;
       if (
+        activeDiffRequestsRef.current.get(key)?.id === requestId &&
         diffGenerationRef.current === generation &&
         repoPathRef.current === requestedRepoPath &&
         sessionIdRef.current === requestedSessionId
@@ -612,26 +637,24 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         setDiffs((prev) => ({ ...prev, [key]: d }));
       }
     } catch (e) {
-      console.error("[DiffPanel] git_diff load failed", { repoPath: requestedRepoPath, file: file.path, error: e });
       if (
-        diffGenerationRef.current === generation
+        activeDiffRequestsRef.current.get(key)?.id === requestId
+        && diffGenerationRef.current === generation
         && repoPathRef.current === requestedRepoPath
         && sessionIdRef.current === requestedSessionId
       ) {
+        console.error("[DiffPanel] git_diff load failed", { repoPath: requestedRepoPath, file: file.path, error: e });
         setDiffErrors((prev) => ({ ...prev, [key]: e instanceof Error ? e.message : String(e) }));
       }
     } finally {
-      setLoadingDiffKeys((prev) => {
-        if (!prev[key]) return prev;
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      if (activeDiffRequestsRef.current.get(key)?.id === requestId) {
+        activeDiffRequestsRef.current.delete(key);
+      }
     }
-  }, [diffs, isRemote, loadingDiffKeys, repoPath, session.id, session.ptyId, session.dir]);
+  }, [diffs, isRemote, repoPath, session.id, session.ptyId, session.dir]);
 
   // Hold the latest loadFileDiff in a ref so DiffFileRow's IntersectionObserver
-  // effect doesn't re-subscribe every time diffs/loadingDiffKeys change. The
+  // effect doesn't re-subscribe every time the diff cache changes. The
   // callback identity churn is harmless (the guard inside prevents duplicate
   // loads), but re-subscribing every observer on every load completion is
   // wasted work.
@@ -642,7 +665,10 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   }, []);
 
   const hasChanges = files.length > 0;
-  const refresh = () => useSessionsStore.getState().refreshGit(session.id);
+  const refresh = () => {
+    cancelAllDiffRequests();
+    useSessionsStore.getState().refreshGit(session.id);
+  };
 
   const stagedFiles = files.filter((f) => f.stage === "staged");
   const unstagedFiles = files.filter((f) => f.stage === "unstaged");
@@ -735,7 +761,13 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                       title={section.title}
                       count={section.files.length}
                       expanded={!collapsed}
-                      onToggle={() => toggleDiffSectionCollapsed(section.key)}
+                      onToggle={() => {
+                        if (!collapsed && expandedFileKey && section.files.some((file) => fileRowKey(file) === expandedFileKey)) {
+                          cancelDiffRequest(expandedFileKey);
+                          setExpandedFileKey(null);
+                        }
+                        toggleDiffSectionCollapsed(section.key);
+                      }}
                       titleColor={section.titleColor}
                       accentBorder={section.accentBorder}
                     />
