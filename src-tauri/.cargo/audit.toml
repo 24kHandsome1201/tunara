@@ -17,23 +17,6 @@
 #
 # Revisit when `rsa` ships a fixed release or russh exposes a way to build
 # without the RSA feature.
-#
-# RUSTSEC-2026-0194 / RUSTSEC-2026-0195 — unbounded namespace/attribute
-# allocation in `quick-xml` readers enables memory-exhaustion DoS when parsing
-# attacker-controlled XML. Fixed in quick-xml >= 0.41.0, but we pull quick-xml
-# ONLY transitively through `plist` inside `tauri` (see `cargo tree -i
-# quick-xml`), and the latest `plist` (1.9.0, already locked) still pins
-# quick-xml 0.39.x — 0.41 is not reachable from our dependency graph yet.
-#
-# Why the residual risk is acceptable for Tunara:
-#  - quick-xml here parses macOS property lists (app bundle Info.plist,
-#    system plists) read locally by tauri — trusted, local input, not
-#    network-facing or attacker-supplied XML.
-#  - Worst case is a memory-exhaustion DoS of the local desktop app, which a
-#    local attacker able to plant a malicious plist could achieve more simply.
-#
-# Revisit when `plist` releases a version on quick-xml >= 0.41 (then
-# `cargo update -p plist -p quick-xml` and drop these two ignores).
 
 [advisories]
-ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0194", "RUSTSEC-2026-0195"]
+ignore = ["RUSTSEC-2023-0071"]

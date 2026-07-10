@@ -35,6 +35,11 @@ fn show_main_window(app: &AppHandle, reason: &str) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be first: a second process must exit before it can start hook
+        // listeners, restore PTYs, or open the shared workspace store.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app, "single-instance");
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -108,8 +113,10 @@ pub fn run() {
             // Text config: ~/.config/tunara/config.toml
             modules::config::load_config,
             modules::config::save_config,
+            modules::workspace_store::workspace_store_file_state,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,
+            modules::ssh::ssh_cancel_open,
             // §ssh-client 未知主机密钥 TOFU 指纹确认回传
             modules::ssh::ssh_host_key_decision,
             // §ssh-client Phase 2 主机 profile 管理(无凭证存储)

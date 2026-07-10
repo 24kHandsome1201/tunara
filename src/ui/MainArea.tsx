@@ -137,7 +137,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
       }
       let cancelled = false;
       setRemote(null);
-      sshGitStatus(activePtyId)
+      sshGitStatus(activePtyId, activeDir ?? "")
         .then((status) => {
           if (cancelled) return;
           useSessionsStore.getState().updateSession(activeId, {

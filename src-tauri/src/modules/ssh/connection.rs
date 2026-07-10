@@ -6,6 +6,8 @@
 // SFTP channel on the same connection).
 
 use std::collections::HashMap;
+use std::fmt::Display;
+use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -37,6 +39,26 @@ pub enum HostKeyPolicy {
 /// parks a oneshot here while the frontend dialog is up; `resolve_host_key_prompt`
 /// (driven by the `ssh_host_key_decision` command) wakes it.
 static PENDING_PROMPTS: OnceLock<Mutex<HashMap<String, oneshot::Sender<bool>>>> = OnceLock::new();
+const HOST_KEY_PROMPT_TIMEOUT: Duration = Duration::from_secs(120);
+const SSH_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const SSH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(135);
+const SSH_AUTH_TIMEOUT: Duration = Duration::from_secs(45);
+const SSH_CHANNEL_SETUP_TIMEOUT: Duration = Duration::from_secs(15);
+
+pub(super) async fn await_stage<T, E, F>(
+    label: &str,
+    timeout: Duration,
+    future: F,
+) -> Result<T, String>
+where
+    E: Display,
+    F: Future<Output = Result<T, E>>,
+{
+    tokio::time::timeout(timeout, future)
+        .await
+        .map_err(|_| format!("{label} timed out after {}s", timeout.as_secs()))?
+        .map_err(|e| format!("{label} failed: {e}"))
+}
 
 fn pending_prompts() -> &'static Mutex<HashMap<String, oneshot::Sender<bool>>> {
     PENDING_PROMPTS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -62,6 +84,13 @@ fn next_prompt_id(host: &str, port: u16) -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(1);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("hkp-{host}-{port}-{n}")
+}
+
+async fn await_host_key_decision(receiver: oneshot::Receiver<bool>, timeout: Duration) -> bool {
+    match tokio::time::timeout(timeout, receiver).await {
+        Ok(Ok(decision)) => decision,
+        Ok(Err(_)) | Err(_) => false,
+    }
 }
 
 /// russh client handler. Host-key verification happens in `check_server_key`.
@@ -112,8 +141,9 @@ impl ClientHandler {
         if sent.is_err() {
             return false; // frontend channel gone; guard cleans up
         }
-        // Ok(accept) → user's choice; Err → sender dropped (shutdown) → refuse.
-        rx.await.unwrap_or(false)
+        // A lost frontend event must not park ssh_open forever. Sender drop and
+        // timeout both fail closed; PromptGuard removes the registry entry.
+        await_host_key_decision(rx, HOST_KEY_PROMPT_TIMEOUT).await
     }
 }
 
@@ -126,6 +156,14 @@ impl client::Handler for ClientHandler {
             Verdict::Mismatch => {
                 log::warn!(
                     "ssh host-key MISMATCH for {}:{} — refusing (possible MITM)",
+                    self.host,
+                    self.port
+                );
+                Ok(false)
+            }
+            Verdict::Revoked => {
+                log::warn!(
+                    "ssh host key for {}:{} is explicitly REVOKED — refusing",
                     self.host,
                     self.port
                 );
@@ -182,6 +220,7 @@ impl client::Handler for ClientHandler {
 /// by one SHORT line typed into the interactive shell (see
 /// `stage_remote_integration` for why it must never be sent inline).
 const REMOTE_INTEGRATION: &str = include_str!("scripts/remote-integration.sh");
+const AGENT_HOOK_HELPER: &str = include_str!("../agent/scripts/agent-hook.sh");
 
 /// Bound on queued input messages (keystrokes/resizes) waiting for the pump.
 /// Far above human input rate; on overflow we drop rather than buffer forever.
@@ -238,6 +277,7 @@ impl SshSession {
             // doesn't drop the session (Tabby hit KeepaliveTimeout otherwise).
             keepalive_interval: Some(Duration::from_secs(30)),
             keepalive_max: 3,
+            nodelay: true,
             ..Default::default()
         });
 
@@ -250,18 +290,49 @@ impl SshSession {
             on_event: on_event.clone(),
         };
 
-        let mut handle = client::connect(config, (params.host.as_str(), params.port), handler)
-            .await
-            .map_err(|e| format!("connect {}:{} failed: {e}", params.host, params.port))?;
+        // Bound DNS/TCP establishment separately from the SSH handshake: the
+        // latter may legitimately wait for the user's host-key decision.
+        let socket = tokio::time::timeout(
+            SSH_TCP_CONNECT_TIMEOUT,
+            tokio::net::TcpStream::connect((params.host.as_str(), params.port)),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "connect {}:{} timed out after {}s",
+                params.host,
+                params.port,
+                SSH_TCP_CONNECT_TIMEOUT.as_secs()
+            )
+        })?
+        .map_err(|e| format!("connect {}:{} failed: {e}", params.host, params.port))?;
+        if let Err(e) = socket.set_nodelay(true) {
+            log::debug!("ssh: set TCP_NODELAY failed: {e}");
+        }
+        let mut handle = await_stage(
+            &format!("SSH handshake {}:{}", params.host, params.port),
+            SSH_HANDSHAKE_TIMEOUT,
+            client::connect_stream(config, socket, handler),
+        )
+        .await?;
 
-        auth::authenticate(&mut handle, &params.auth).await?;
+        await_stage(
+            "SSH authentication",
+            SSH_AUTH_TIMEOUT,
+            auth::authenticate(&mut handle, &params.auth),
+        )
+        .await?;
 
-        let mut channel = handle
-            .channel_open_session()
-            .await
-            .map_err(|e| format!("open session channel failed: {e}"))?;
-        channel
-            .request_pty(
+        let mut channel = await_stage(
+            "open session channel",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            handle.channel_open_session(),
+        )
+        .await?;
+        if let Err(error) = await_stage(
+            "request PTY",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            channel.request_pty(
                 false,
                 "xterm-256color",
                 params.cols as u32,
@@ -269,13 +340,23 @@ impl SshSession {
                 0,
                 0,
                 &[],
-            )
-            .await
-            .map_err(|e| format!("request pty failed: {e}"))?;
-        channel
-            .request_shell(true)
-            .await
-            .map_err(|e| format!("request shell failed: {e}"))?;
+            ),
+        )
+        .await
+        {
+            let _ = channel.close().await;
+            return Err(error);
+        }
+        if let Err(error) = await_stage(
+            "request shell",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            channel.request_shell(true),
+        )
+        .await
+        {
+            let _ = channel.close().await;
+            return Err(error);
+        }
 
         // Install remote shell integration: stage the bootstrap into a private
         // remote temp file over a separate exec channel, then type only a
@@ -317,7 +398,6 @@ impl SshSession {
             let mut accepting_input = true;
             loop {
                 tokio::select! {
-                    biased;
                     msg = channel.wait() => {
                         let Some(msg) = msg else { break };
                         match msg {
@@ -379,11 +459,12 @@ impl SshSession {
         if let Some(s) = guard.as_ref() {
             return Ok(s.clone());
         }
-        let channel = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|e| format!("open sftp channel failed: {e}"))?;
+        let channel = await_stage(
+            "open SFTP channel",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            self.handle.channel_open_session(),
+        )
+        .await?;
         // If the subsystem request fails (server has no sftp-server / Subsystem
         // sftp disabled), `channel` is still a plain russh Channel — which has
         // NO Drop-side CLOSE (see the exec() cleanup contract below), so simply
@@ -391,16 +472,139 @@ impl SshSession {
         // connection. Close it explicitly first, mirroring exec(). On success
         // the channel is consumed by into_stream() (whose ChannelStream self-
         // closes on drop), so only the request-failure path needs this.
-        if let Err(e) = channel.request_subsystem(true, "sftp").await {
+        if let Err(e) = await_stage(
+            "request SFTP subsystem",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            channel.request_subsystem(true, "sftp"),
+        )
+        .await
+        {
             let _ = channel.close().await;
-            return Err(format!("request sftp subsystem failed: {e}"));
+            return Err(e);
         }
-        let session = russh_sftp::client::SftpSession::new(channel.into_stream())
-            .await
-            .map_err(|e| format!("sftp init failed: {e}"))?;
+        let session = await_stage(
+            "initialize SFTP",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            russh_sftp::client::SftpSession::new(channel.into_stream()),
+        )
+        .await?;
         let arc = std::sync::Arc::new(session);
         *guard = Some(arc.clone());
         Ok(arc)
+    }
+
+    /// Read a remote directory a page at a time, enforcing limits before pages
+    /// accumulate into one unbounded high-level `ReadDir`. A dedicated SFTP
+    /// channel keeps cleanup local: every success, timeout, protocol error, and
+    /// limit rejection explicitly closes both the directory handle and session.
+    pub async fn read_dir_bounded(
+        &self,
+        path: &str,
+        max_entries: usize,
+        max_name_bytes: usize,
+        timeout: Duration,
+    ) -> Result<Vec<russh_sftp::protocol::File>, String> {
+        use russh_sftp::client::error::Error as SftpError;
+        use russh_sftp::protocol::StatusCode;
+
+        let channel = await_stage(
+            "open directory SFTP channel",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            self.handle.channel_open_session(),
+        )
+        .await?;
+        if let Err(error) = await_stage(
+            "request directory SFTP subsystem",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            channel.request_subsystem(true, "sftp"),
+        )
+        .await
+        {
+            let _ = channel.close().await;
+            return Err(error);
+        }
+
+        let raw = russh_sftp::client::RawSftpSession::new(channel.into_stream());
+        raw.set_timeout(15);
+        if let Err(error) = await_stage(
+            "initialize directory SFTP",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            raw.init(),
+        )
+        .await
+        {
+            let _ = raw.close_session();
+            return Err(error);
+        }
+        let handle = match await_stage(
+            "open remote directory",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            raw.opendir(path),
+        )
+        .await
+        {
+            Ok(handle) => handle.handle,
+            Err(error) => {
+                let _ = raw.close_session();
+                return Err(error);
+            }
+        };
+
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut files = Vec::new();
+        let mut name_bytes = 0usize;
+        let result = loop {
+            let Some(remaining) = deadline.checked_duration_since(tokio::time::Instant::now())
+            else {
+                break Err(format!(
+                    "read remote directory timed out after {}s",
+                    timeout.as_secs()
+                ));
+            };
+            let page = match tokio::time::timeout(remaining, raw.readdir(handle.clone())).await {
+                Ok(Ok(page)) => page,
+                Ok(Err(SftpError::Status(status))) if status.status_code == StatusCode::Eof => {
+                    break Ok(files);
+                }
+                Ok(Err(error)) => break Err(format!("read remote directory failed: {error}")),
+                Err(_) => {
+                    break Err(format!(
+                        "read remote directory timed out after {}s",
+                        timeout.as_secs()
+                    ));
+                }
+            };
+
+            let mut limit_error = None;
+            for file in page.files {
+                if files.len() >= max_entries {
+                    limit_error = Some(format!("remote directory exceeds {max_entries} entries"));
+                    break;
+                }
+                let Some(next_name_bytes) = name_bytes
+                    .checked_add(file.filename.len())
+                    .and_then(|value| value.checked_add(file.longname.len()))
+                else {
+                    limit_error = Some("remote directory name size overflow".to_string());
+                    break;
+                };
+                if next_name_bytes > max_name_bytes {
+                    limit_error = Some(format!(
+                        "remote directory names exceed {max_name_bytes} bytes"
+                    ));
+                    break;
+                }
+                name_bytes = next_name_bytes;
+                files.push(file);
+            }
+            if let Some(error) = limit_error {
+                break Err(error);
+            }
+        };
+
+        let _ = tokio::time::timeout(Duration::from_secs(2), raw.close(handle)).await;
+        let _ = raw.close_session();
+        result
     }
 
     // These run on the sync Tauri command thread, so they use `try_send`
@@ -443,8 +647,60 @@ impl SshSession {
     /// Errors surface as strings; callers (e.g. remote git status) degrade to
     /// a "remote git unavailable" message instead of crashing the session.
     pub async fn exec(&self, command: &str, max_bytes: usize) -> Result<String, String> {
-        exec_on(&self.handle, command, max_bytes, Duration::from_secs(15)).await
+        exec_on(
+            &self.handle,
+            command,
+            max_bytes,
+            Duration::from_secs(15),
+            false,
+        )
+        .await
     }
+
+    /// Execute a probe where a non-zero status is part of the caller's state
+    /// machine rather than a transport failure (for example, Git with no
+    /// upstream). All other SSH commands should use `exec`.
+    pub async fn exec_allow_nonzero(
+        &self,
+        command: &str,
+        max_bytes: usize,
+    ) -> Result<String, String> {
+        exec_on(
+            &self.handle,
+            command,
+            max_bytes,
+            Duration::from_secs(15),
+            true,
+        )
+        .await
+    }
+}
+
+fn exec_status_error(
+    exit_status: Option<u32>,
+    exit_signal: Option<&str>,
+    stderr: &[u8],
+) -> Option<String> {
+    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
+    if let Some(signal) = exit_signal {
+        return Some(if stderr.is_empty() {
+            format!("remote command terminated by signal {signal}")
+        } else {
+            stderr
+        });
+    }
+    match exit_status {
+        Some(0) | None => None,
+        Some(status) => Some(if stderr.is_empty() {
+            format!("remote command exited with status {status}")
+        } else {
+            stderr
+        }),
+    }
+}
+
+fn stderr_only_is_error(allow_nonzero: bool, exit_status: Option<u32>) -> bool {
+    !allow_nonzero || exit_status.is_none() || exit_status == Some(0)
 }
 
 /// `SshSession::exec`, as a free function so it can also run during
@@ -454,20 +710,31 @@ async fn exec_on(
     command: &str,
     max_bytes: usize,
     timeout: Duration,
+    allow_nonzero: bool,
 ) -> Result<String, String> {
-    let mut channel = handle
-        .channel_open_session()
-        .await
-        .map_err(|e| format!("open exec channel failed: {e}"))?;
-    channel
-        .exec(true, command)
-        .await
-        .map_err(|e| format!("exec failed: {e}"))?;
+    let mut channel = await_stage(
+        "open exec channel",
+        SSH_CHANNEL_SETUP_TIMEOUT,
+        handle.channel_open_session(),
+    )
+    .await?;
+    if let Err(error) = await_stage(
+        "start remote command",
+        SSH_CHANNEL_SETUP_TIMEOUT,
+        channel.exec(true, command),
+    )
+    .await
+    {
+        let _ = channel.close().await;
+        return Err(error);
+    }
 
     let mut out: Vec<u8> = Vec::new();
     let mut stderr_buf: Vec<u8> = Vec::new();
     let mut exceeded = false;
     let mut timed_out = false;
+    let mut exit_status: Option<u32> = None;
+    let mut exit_signal: Option<String> = None;
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         tokio::select! {
@@ -503,7 +770,15 @@ async fn exec_on(
                             stderr_buf.extend_from_slice(&data[..room.min(data.len())]);
                         }
                     }
-                    ChannelMsg::ExitStatus { .. } | ChannelMsg::Eof | ChannelMsg::Close => break,
+                    // ExitStatus may arrive before the final stdout/stderr
+                    // packets. Record it and keep draining until EOF/Close.
+                    ChannelMsg::ExitStatus { exit_status: status } => {
+                        exit_status = Some(status);
+                    }
+                    ChannelMsg::ExitSignal { signal_name, .. } => {
+                        exit_signal = Some(format!("{signal_name:?}"));
+                    }
+                    ChannelMsg::Eof | ChannelMsg::Close => break,
                     _ => {}
                 }
             }
@@ -522,10 +797,17 @@ async fn exec_on(
         return Err(format!("exec timed out ({}s)", timeout.as_secs()));
     }
 
+    if !allow_nonzero {
+        if let Some(error) = exec_status_error(exit_status, exit_signal.as_deref(), &stderr_buf) {
+            return Err(error);
+        }
+    }
+
     // If we have no stdout but stderr produced something, return stderr so
     // the caller gets a descriptive error (e.g. "fatal: not a git
     // repository"). Trim to keep the toast/message readable.
-    if out.is_empty() && !stderr_buf.is_empty() {
+    if out.is_empty() && !stderr_buf.is_empty() && stderr_only_is_error(allow_nonzero, exit_status)
+    {
         let msg = String::from_utf8_lossy(&stderr_buf).trim().to_string();
         return Err(if msg.is_empty() {
             "remote command produced no output".into()
@@ -568,19 +850,10 @@ async fn stage_remote_integration(
     handle: &Handle<ClientHandler>,
     session_id: &str,
 ) -> Result<String, String> {
-    // Only safe ASCII session ids reach here (logical ids are uuids), but
-    // defend against a stray quote breaking the shell by stripping anything
-    // outside the id charset before substitution. An empty id disables the
-    // agent wrappers via the script's own `[ -n ... ]` guard, leaving
-    // OSC 7 / 133 intact.
-    let safe_sid: String = session_id
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-        .collect();
-    let script = REMOTE_INTEGRATION.replace("__TUNARA_SESSION_ID__", &safe_sid);
+    let script = render_remote_integration(session_id);
     let encoded = B64.encode(script.as_bytes());
     let command = integration_stage_command(&encoded);
-    let out = exec_on(handle, &command, 4096, Duration::from_secs(5)).await?;
+    let out = exec_on(handle, &command, 4096, Duration::from_secs(5), false).await?;
     // Some servers print a banner/MOTD even on exec channels; take the last
     // line that looks like our mktemp path instead of requiring clean output.
     let path = out
@@ -591,6 +864,21 @@ async fn stage_remote_integration(
         Some(path) => Ok(path.to_string()),
         None => Err(format!("unexpected staging output: {:?}", out.trim())),
     }
+}
+
+fn render_remote_integration(session_id: &str) -> String {
+    // Only safe ASCII session ids reach here (logical ids are uuids), but
+    // defend against a stray quote breaking the shell by stripping anything
+    // outside the id charset before substitution. An empty id disables the
+    // agent wrappers via the script's own `[ -n ... ]` guard, leaving
+    // OSC 7 / 133 intact.
+    let safe_sid: String = session_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        .collect();
+    REMOTE_INTEGRATION
+        .replace("__TUNARA_SESSION_ID__", &safe_sid)
+        .replace("__TUNARA_AGENT_HOOK_B64__", &B64.encode(AGENT_HOOK_HELPER))
 }
 
 /// One-shot exec command that writes the base64 payload to a fresh `mktemp`
@@ -664,7 +952,12 @@ mod tests {
     /// into the shell line — only into the exec-channel stage command.
     #[test]
     fn payload_travels_on_the_exec_channel_only() {
-        let encoded = B64.encode(REMOTE_INTEGRATION.as_bytes());
+        let rendered = render_remote_integration("session-1'$(id)");
+        assert!(!rendered.contains("__TUNARA_SESSION_ID__"));
+        assert!(!rendered.contains("__TUNARA_AGENT_HOOK_B64__"));
+        assert!(rendered.contains("session-1id"));
+        assert!(rendered.contains(&B64.encode(AGENT_HOOK_HELPER)[..32]));
+        let encoded = B64.encode(rendered.as_bytes());
         assert!(
             encoded.len() > 4096,
             "payload no longer exceeds the canonical limit; if this shrank on \
@@ -687,5 +980,50 @@ mod tests {
         assert!(!is_safe_remote_path("/tmp/evil-si-abc"));
         assert!(!is_safe_remote_path("/tmp/.tunara-si-x y"));
         assert!(!is_safe_remote_path("/tmp/.tunara-si-x\"$(id)\""));
+    }
+
+    #[tokio::test]
+    async fn host_key_prompt_accepts_an_explicit_decision() {
+        let (tx, rx) = oneshot::channel();
+        tx.send(true).expect("decision receiver alive");
+        assert!(await_host_key_decision(rx, Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn host_key_prompt_timeout_fails_closed() {
+        let (_tx, rx) = oneshot::channel();
+        assert!(!await_host_key_decision(rx, Duration::from_millis(1)).await);
+    }
+
+    #[tokio::test]
+    async fn stalled_ssh_stage_returns_a_named_timeout() {
+        let result: Result<(), String> = await_stage(
+            "test stage",
+            Duration::from_millis(1),
+            std::future::pending::<Result<(), &str>>(),
+        )
+        .await;
+        assert!(matches!(result, Err(ref e) if e.contains("test stage timed out")));
+    }
+
+    #[test]
+    fn exec_status_is_not_hidden_by_partial_stdout() {
+        assert_eq!(
+            exec_status_error(Some(2), None, b"fatal: broken\n"),
+            Some("fatal: broken".to_string())
+        );
+        assert_eq!(
+            exec_status_error(Some(7), None, b""),
+            Some("remote command exited with status 7".to_string())
+        );
+        assert_eq!(exec_status_error(Some(0), None, b"warning"), None);
+    }
+
+    #[test]
+    fn allow_nonzero_does_not_turn_stderr_back_into_a_transport_error() {
+        assert!(!stderr_only_is_error(true, Some(1)));
+        assert!(stderr_only_is_error(true, Some(0)));
+        assert!(stderr_only_is_error(true, None));
+        assert!(stderr_only_is_error(false, Some(1)));
     }
 }

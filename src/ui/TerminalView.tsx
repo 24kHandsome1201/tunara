@@ -6,7 +6,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openSessionPty, reportSshOpenFailure, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { cancelSshOpen, openSessionPty, reportSshOpenFailure, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
@@ -29,9 +29,10 @@ import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/termina
 import { registerTerminalDeviceAttributesHandler } from "@/modules/terminal/lib/terminal-device-attributes";
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification"; import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
-import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh"; import { scanTerminalInputBuffer } from "@/modules/terminal/lib/terminal-input-buffer";
-import { detectAgentCommand, HOOK_READY_AGENTS, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
+import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh";
+import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
 import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
+import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
@@ -172,10 +173,8 @@ function TerminalViewImpl({
       term.attachCustomKeyEventHandler((e) => handleCopyKeyEvent(term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
       // OSC 133 shell integration:
       // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
-      let hasAgent = false;
-      let currentAgentCode: AgentCode | null = null;
-      let agentStartupPending = false;
       let osc133Active = false;
+      let osc133InputFallback = false;
       let promptEndRow = -1;
       let lastExitCode = 0;
       let startupReadyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -189,23 +188,11 @@ function TerminalViewImpl({
         terminal: term,
         getSessionId: () => sessionIdRef.current,
         getCurrentSession,
-        isTrackingCodex: () => hasAgent && currentAgentCode === "CX",
+        isTrackingCodex: () => getCurrentSession()?.agent === "CX",
         onBusy: (id) => useSessionsStore.getState().handleAgentBusy(id),
         onReady: (id) => useSessionsStore.getState().handleAgentReady(id),
       });
-      const syncAgentTrackingFromStore = () => {
-        const sess = getCurrentSession();
-        if (sess?.agent && (!hasAgent || currentAgentCode !== sess.agent)) {
-          hasAgent = true;
-          currentAgentCode = sess.agent;
-          agentStartupPending = sess.agentActivity === "starting";
-        }
-        return sess;
-      };
-      const clearAgentTracking = () => {
-        hasAgent = false;
-        currentAgentCode = null;
-        agentStartupPending = false;
+      const resetAgentObservers = () => {
         if (startupReadyTimer) {
           clearTimeout(startupReadyTimer);
           startupReadyTimer = null;
@@ -217,27 +204,17 @@ function TerminalViewImpl({
         startupReadyTimer = setTimeout(() => {
           startupReadyTimer = null;
           const s = getCurrentSession();
-          if (!shouldUseStartupQuietReadyFallback(currentAgentCode, s?.agentActivity, agentStartupPending)) return;
-          agentStartupPending = false;
+          if (!shouldUseStartupQuietReadyFallback(s?.agent, s?.agentActivity)) return;
           useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
         }, delay);
       };
       const markAgentDetected = (agent: AgentCode, command?: string) => {
-        const sess = getCurrentSession();
-        hasAgent = true;
-        currentAgentCode = agent;
-        agentStartupPending = sess?.agent === agent
-          ? sess.agentActivity === "starting"
-          : HOOK_READY_AGENTS.has(agent);
         if (startupReadyTimer) {
           clearTimeout(startupReadyTimer);
           startupReadyTimer = null;
         }
-        if (sess?.agent !== agent) {
-          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent, command);
-        } else if (command) {
-          useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent, command);
-        }
+        codexStateTracker.reset();
+        useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent, command);
       };
       const applyAgentLifecycleEvent = (data: string) => {
         const notification = parseTerminalNotificationOsc777(data);
@@ -255,31 +232,29 @@ function TerminalViewImpl({
         const current = getCurrentSession();
         if (!current?.agent || current.agent !== payload.agent) return true;
         if (payload.event === "exit") {
-          clearAgentTracking();
+          resetAgentObservers();
           useSessionsStore.getState().handleAgentExited(sessionIdRef.current, payload.code ?? lastExitCode);
           requestInformationalAttention();
           return true;
         }
+        if (payload.agentSessionId) {
+          useSessionsStore.getState().recordAgentSessionId(
+            sessionIdRef.current,
+            payload.agent,
+            payload.agentSessionId,
+          );
+        }
+        if (payload.event === "busy") {
+          resetAgentObservers();
+          useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
+          return true;
+        }
         if (payload.event === "idle" || payload.event === "stop") {
-          agentStartupPending = false;
+          resetAgentObservers();
           useSessionsStore.getState().handleAgentReady(sessionIdRef.current);
         }
         return true;
       };
-      cleanups.push(
-        useSessionsStore.subscribe((state) => {
-          const sess = state.sessions.find((s) => s.id === sessionIdRef.current);
-          if (sess?.agent && (!hasAgent || currentAgentCode !== sess.agent)) {
-            hasAgent = true;
-            currentAgentCode = sess.agent;
-            agentStartupPending = sess.agentActivity === "starting";
-          } else if (sess?.agent && currentAgentCode === sess.agent && HOOK_READY_AGENTS.has(sess.agent)) {
-            agentStartupPending = sess.agentActivity === "starting";
-          } else if (!sess?.agent && hasAgent) {
-            clearAgentTracking();
-          }
-        }),
-      );
       cleanups.push(registerCwdHandler(term, handleCwdChange));
       const titleDisposable = term.onTitleChange((title) => {
         const clean = cleanTerminalText(title);
@@ -298,12 +273,12 @@ function TerminalViewImpl({
       }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
-        const trackedSession = syncAgentTrackingFromStore();
-        if (hasAgent || trackedSession?.agent) {
+        const trackedSession = getCurrentSession();
+        if (trackedSession?.agent) {
           if (marker === "A") {
             const exitCode = lastExitCode;
             blocks.finishBlock(exitCode, currentBufferRow());
-            clearAgentTracking();
+            resetAgentObservers();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
             requestInformationalAttention();
             osc133Active = true;
@@ -311,7 +286,7 @@ function TerminalViewImpl({
             const exitCode = parseInt(data.slice(2), 10) || 0;
             lastExitCode = exitCode;
             blocks.finishBlock(exitCode, currentBufferRow());
-            clearAgentTracking();
+            resetAgentObservers();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
             requestInformationalAttention();
           }
@@ -319,9 +294,11 @@ function TerminalViewImpl({
         }
         if (marker === "A") {
           osc133Active = true;
+          osc133InputFallback = data === "A;input-fallback";
         } else if (marker === "B") {
           promptEndRow = term.buffer.active.cursorY + term.buffer.active.baseY;
         } else if (marker === "C") {
+          osc133InputFallback = false;
           const oscCommand = extractCommandFromOsc(data);
           if (osc133Active && (promptEndRow >= 0 || oscCommand)) {
             const cmd = oscCommand || extractCommandFromBuffer(term, promptEndRow);
@@ -377,13 +354,13 @@ function TerminalViewImpl({
           outputBuffer.push(bytes);
           blocks.updateActiveBlockEnd(currentBufferRow());
           snapshotScheduler.schedule();
-          if (hasAgent && currentAgentCode) {
-            if (PROMPT_READY_AGENTS.has(currentAgentCode)) {
+          const current = getCurrentSession();
+          if (current?.agent) {
+            if (PROMPT_READY_AGENTS.has(current.agent)) {
               codexStateTracker.schedule();
               return;
             }
-            const sess = getCurrentSession();
-            if (shouldUseStartupQuietReadyFallback(currentAgentCode, sess?.agentActivity, agentStartupPending)) {
+            if (shouldUseStartupQuietReadyFallback(current.agent, current.agentActivity)) {
               scheduleStartupQuietReady();
             }
           }
@@ -411,6 +388,7 @@ function TerminalViewImpl({
             : undefined,
         });
       } catch (e) {
+        if (disposed) return;
         term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
         setOpenError(String(e));
         const cur = getCurrentSession();
@@ -445,12 +423,13 @@ function TerminalViewImpl({
       let inputBuffer = "";
       // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = (submitted: string) => {
-        if (osc133Active) return;
+        if (!shouldScanTerminalInput(osc133Active, osc133InputFallback)) return;
         const trimmed = cleanTerminalText(submitted).trim();
-        if (!hasAgent && trimmed && isMeaningfulCommand(trimmed)) {
+        const currentAgent = getCurrentSession()?.agent;
+        if (!currentAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }
-        if (!hasAgent) {
+        if (!currentAgent) {
           const agent = detectAgentCommand(submitted);
           if (agent) {
             markAgentDetected(agent, submitted);
@@ -467,16 +446,15 @@ function TerminalViewImpl({
         if (!inputToPtyEnabled) return;
         writePty(data);
         const submitAgentInput = (submitted: string) => {
-          if (!hasAgent) return;
+          const sess = getCurrentSession();
+          if (!sess?.agent) return;
           const trimmed = cleanTerminalText(submitted).trim();
           if (!trimmed) return;
-          agentStartupPending = false;
           if (startupReadyTimer) {
             clearTimeout(startupReadyTimer);
             startupReadyTimer = null;
           }
-          const sess = getCurrentSession();
-          if (sess?.agent && sess.agentActivity !== "running") {
+          if (sess.agentActivity !== "running") {
             useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
           }
         };
@@ -504,17 +482,14 @@ function TerminalViewImpl({
       // Self-heal the idle-garble case: rebuild the WebGL atlas on focus /
       // visibility regain (see terminal-atlas-refresh for the root cause).
       cleanups.push(registerTerminalAtlasRefresh(rebuildWebglAtlas));
-      cleanups.push(() => {
-        if (startupReadyTimer) {
-          clearTimeout(startupReadyTimer);
-          startupReadyTimer = null;
-        }
-        codexStateTracker.dispose();
-      });
+      cleanups.push(resetAgentObservers);
       if (active) term.focus();
     })();
     return () => {
       disposed = true;
+      if (!ptyRef.current && session?.remote) {
+        void cancelSshOpen(sessionIdRef.current);
+      }
       // Run every cleanup even if one throws — a failing disposable must not
       // leak the rest (term.dispose / pty.close would be skipped otherwise).
       for (const fn of cleanups) safeDispose("step", fn);
@@ -535,9 +510,12 @@ function TerminalViewImpl({
   return (
     <>
       <TerminalViewChrome containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />
-      {!ptyReady && !openError && !exitCode && <ConnectingOverlay onCancel={() => useSessionsStore.getState().closeSession(sessionId)} />}
+      {!ptyReady && !openError && !exitCode && <ConnectingOverlay onCancel={() => {
+        void cancelSshOpen(sessionId);
+        useSessionsStore.getState().closeSession(sessionId);
+      }} />}
       {exitCode !== null && session && <TerminalExitBanner session={session} exitCode={exitCode} />}
-      {openError !== null && session && <PtyErrorBanner session={session} />}
+      {openError !== null && session && <PtyErrorBanner session={session} error={openError} />}
     </>
   );
 }

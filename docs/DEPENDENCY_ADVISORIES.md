@@ -29,7 +29,7 @@ Then: `cargo update`, re-run `cargo audit`, and remove `RUSTSEC-2023-0071` from 
 
 ---
 
-## RUSTSEC-2026-0194 / RUSTSEC-2026-0195 — `quick-xml` unbounded allocation DoS
+## Resolved: RUSTSEC-2026-0194 / RUSTSEC-2026-0195 — `quick-xml` unbounded allocation DoS
 
 | Field | Detail |
 |-------|--------|
@@ -37,25 +37,17 @@ Then: `cargo update`, re-run `cargo audit`, and remove `RUSTSEC-2023-0071` from 
 | Crate | `quick-xml` (transitive) |
 | Path | `tauri` → `plist` → `quick-xml` (`cargo tree -i quick-xml`) |
 | Fixed in | `quick-xml` ≥ 0.41.0 |
-| Blocked by | Latest `plist` (1.9.0, locked) still pins `quick-xml` 0.39.x |
+| Resolved | 2026-07-10: `plist` 1.10.0 permits `quick-xml` 0.41.0 |
 
-### Why we accept the risk
+### Resolution
 
-- `quick-xml` here parses **local macOS property lists** (app bundle `Info.plist`, system plists) read by Tauri — trusted, local input, not network-facing XML.
-- Worst case is a **memory-exhaustion DoS of the local desktop app**; a local attacker who can plant a malicious plist has simpler attack paths.
-
-### When to revisit
-
-- `plist` releases a version on `quick-xml` ≥ 0.41.
-
-Then:
+- Updated the lockfile to `plist` 1.10.0 and `quick-xml` 0.41.0.
+- Removed both advisory exceptions from `audit.toml` and the security workflow.
+- The dependency path remains covered by the normal `cargo audit` gate.
 
 ```bash
-cargo update -p plist -p quick-xml
-cargo audit   # should pass without quick-xml ignores
+cargo audit --ignore RUSTSEC-2023-0071
 ```
-
-Remove `RUSTSEC-2026-0194` and `RUSTSEC-2026-0195` from `audit.toml` and `.github/workflows/security.yml`.
 
 ---
 

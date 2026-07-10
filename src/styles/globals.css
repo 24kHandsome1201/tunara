@@ -237,6 +237,8 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
   outline: none;
+  border-color: color-mix(in srgb, var(--c-accent) 70%, var(--c-border-2)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 12%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

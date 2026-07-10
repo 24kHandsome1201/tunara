@@ -12,7 +12,12 @@ export type SshFailureReason = "auth" | "hostKey" | "connect" | "generic";
 export function classifySshFailure(error: string): SshFailureReason {
   const e = error.toLowerCase();
   if (e.includes("authentication failed") || e.includes("auth")) return "auth";
-  if (e.includes("mismatch") || e.includes("host key") || e.includes("host-key")) {
+  if (
+    e.includes("mismatch") ||
+    e.includes("host key") ||
+    e.includes("host-key") ||
+    e.includes("server key")
+  ) {
     return "hostKey";
   }
   if (

@@ -16,7 +16,7 @@ export type PtyEvent =
       fingerprint: string;
       keyType: string;
       /** "unknown" = first contact (accepting persists); "unverifiable" = key
-       *  couldn't be confirmed against a hashed/wildcard entry (not persisted). */
+       *  couldn't be confirmed against a relevant known_hosts record (not persisted). */
       reason: string;
     };
 
@@ -26,6 +26,27 @@ export async function answerHostKeyPrompt(promptId: string, accept: boolean): Pr
     await invoke("ssh_host_key_decision", { promptId, accept });
   } catch {
     /* prompt may have already resolved/timed out; nothing to do */
+  }
+}
+
+const sshOpenAttempts = new Map<string, string>();
+const cancelledSshOpenAttempts = new Set<string>();
+let sshOpenAttemptCounter = 0;
+
+function nextSshOpenAttemptId(): string {
+  return globalThis.crypto?.randomUUID?.()
+    ?? `ssh-${Date.now()}-${sshOpenAttemptCounter += 1}`;
+}
+
+/** Cancel an SSH open before it has returned a physical PTY id. */
+export async function cancelSshOpen(logicalSessionId: string): Promise<void> {
+  const openAttemptId = sshOpenAttempts.get(logicalSessionId);
+  if (!openAttemptId || cancelledSshOpenAttempts.has(openAttemptId)) return;
+  cancelledSshOpenAttempts.add(openAttemptId);
+  try {
+    await invoke("ssh_cancel_open", { openAttemptId });
+  } catch {
+    /* attempt may already have completed or failed */
   }
 }
 
@@ -158,9 +179,9 @@ export type SshConnectOptions = {
   keyPassphrase?: string;
   /** 密码认证，仅本次连接使用，绝不持久化。 */
   password?: string;
-  /** 首连未知主机密钥是否接受（TOFU），默认 true。 */
+  /** 是否无提示接受首连未知主机密钥；默认不接受并弹窗确认。 */
   acceptUnknownHostKey?: boolean;
-  /** Phase 4：注入远程 shell 集成（OSC 7 / OSC 133），默认 false。 */
+  /** 注入远程 shell 集成（OSC 7 / OSC 133 / agent lifecycle），默认开启。 */
   injectShellIntegration?: boolean;
 };
 
@@ -175,7 +196,10 @@ export async function openSshPty(
   handlers: PtyHandlers,
   conn: SshConnectOptions,
 ): Promise<PtySession> {
+  const openAttemptId = nextSshOpenAttemptId();
+  sshOpenAttempts.set(logicalSessionId, openAttemptId);
   const channel = new Channel<PtyEvent>();
+  const pendingPromptIds = new Set<string>();
   channel.onmessage = (event) => {
     switch (event.type) {
       case "data":
@@ -191,6 +215,7 @@ export async function openSshPty(
         // Enqueue (not overwrite) so a second concurrent connection's prompt
         // doesn't evict an unanswered first one — each parked ssh_open needs its
         // own answer or it stays blocked until the session is closed.
+        pendingPromptIds.add(event.promptId);
         useUIStore.getState().enqueueHostKeyPrompt({
           promptId: event.promptId,
           host: event.host,
@@ -203,20 +228,38 @@ export async function openSshPty(
     }
   };
 
-  const id = await invoke<number>("ssh_open", {
-    logicalSessionId,
-    host: conn.host,
-    port: conn.port ?? null,
-    user: conn.user,
-    identityFile: conn.identityFile ?? null,
-    keyPassphrase: conn.keyPassphrase ?? null,
-    password: conn.password ?? null,
-    acceptUnknownHostKey: conn.acceptUnknownHostKey ?? null,
-    injectShellIntegration: conn.injectShellIntegration ?? null,
-    cols,
-    rows,
-    onEvent: channel,
-  });
+  let id: number;
+  try {
+    id = await invoke<number>("ssh_open", {
+      logicalSessionId,
+      openAttemptId,
+      host: conn.host,
+      port: conn.port ?? null,
+      user: conn.user,
+      identityFile: conn.identityFile ?? null,
+      keyPassphrase: conn.keyPassphrase ?? null,
+      password: conn.password ?? null,
+      acceptUnknownHostKey: conn.acceptUnknownHostKey ?? null,
+      injectShellIntegration: conn.injectShellIntegration ?? null,
+      cols,
+      rows,
+      onEvent: channel,
+    });
+  } catch (error) {
+    // A host-key prompt can time out or its connection can fail while the
+    // dialog is still queued. Remove only prompts owned by this open attempt;
+    // otherwise the UI would show a dead fingerprint whose backend waiter is
+    // already gone.
+    for (const promptId of pendingPromptIds) {
+      useUIStore.getState().dismissHostKeyPrompt(promptId);
+    }
+    throw error;
+  } finally {
+    if (sshOpenAttempts.get(logicalSessionId) === openAttemptId) {
+      sshOpenAttempts.delete(logicalSessionId);
+    }
+    cancelledSshOpenAttempts.delete(openAttemptId);
+  }
 
   return {
     id,

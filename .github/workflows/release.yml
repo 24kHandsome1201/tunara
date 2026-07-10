@@ -17,7 +17,43 @@ on:
           - legacy
 
 jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create private draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq '.isDraft')
+            if [ "$IS_DRAFT" != "true" ]; then
+              echo "::error::Release $TAG is already public; refusing to mutate it from a rerun"
+              exit 1
+            fi
+            exit 0
+          fi
+
+          release_args=(
+            --draft
+            --verify-tag
+            --title "Tunara ${TAG}"
+            --notes "See CHANGELOG.md for release notes. Direct install assets are signed and notarized. The legacy DMG is the previous manual install path and is not used by Homebrew or auto-update."
+          )
+          if [[ "$TAG" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh release create "$TAG" "${release_args[@]}"
+
   publish-tauri:
+    needs: prepare-release
     if: github.event_name == 'push' || inputs.release_mode == 'both' || inputs.release_mode == 'direct'
     permissions:
       contents: write
@@ -94,7 +130,9 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Tunara ${{ github.ref_name }}"
           releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Use the normal dmg for direct install. The -legacy dmg is the previous manual install path and is not used by Homebrew or auto-update."
-          releaseDraft: false
+          # Keep the release private until both installer lanes and updater
+          # metadata pass the final asset gate below.
+          releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }} --config /tmp/tauri-release-ci.json
 
@@ -157,6 +195,7 @@ jobs:
           fi
 
   publish-legacy:
+    needs: prepare-release
     if: github.event_name == 'push' || inputs.release_mode == 'both' || inputs.release_mode == 'legacy'
     permissions:
       contents: write
@@ -247,22 +286,47 @@ jobs:
             exit 1
           fi
 
-          release_args=(
-            --title "Tunara ${TAG}"
-            --notes "Tunara ${TAG}. Direct install assets are signed and notarized when Apple notarization completes. The legacy DMG is the previous manual install path and is not used by Homebrew or auto-update."
-          )
-          if [[ "$TAG" == *-* ]]; then
-            release_args+=(--prerelease)
-          fi
-
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" "${release_args[@]}"
-          fi
-
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
           gh release upload "$TAG" "$LEGACY_DMG" --clobber
 
+  finalize-release:
+    needs:
+      - publish-tauri
+      - publish-legacy
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Verify the complete asset set and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          required_assets=(
+            "Tunara_${VERSION}_aarch64.dmg"
+            "Tunara_${VERSION}_aarch64-legacy.dmg"
+            "Tunara_${VERSION}_aarch64.app.tar.gz"
+            "Tunara_${VERSION}_aarch64.app.tar.gz.sig"
+            "latest.json"
+          )
+
+          for asset in "${required_assets[@]}"; do
+            if ! printf '%s\n' "$ASSETS" | grep -Fxq "$asset"; then
+              echo "::error::Release $TAG is missing required asset: $asset"
+              exit 1
+            fi
+          done
+
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
+          gh release edit "$TAG" --draft=false
+
   update-homebrew-cask:
-    needs: publish-tauri
+    needs: finalize-release
     if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     permissions:
@@ -289,29 +353,30 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF_NAME#v}"
 
+          DMG_NAME="Tunara_${TAG}_aarch64.dmg"
           DMG_URL=$(gh release view "${GITHUB_REF_NAME}" --json assets \
-            --jq '.assets[] | select(.name | test("Tunara_.*\\.dmg")) | .url' | head -1)
+            --jq ".assets[] | select(.name == \"${DMG_NAME}\") | .url")
           if [ -z "$DMG_URL" ]; then
-            echo "::error::No .dmg asset found on release ${GITHUB_REF_NAME}"
+            echo "::error::Required direct installer ${DMG_NAME} is missing from ${GITHUB_REF_NAME}"
             exit 1
           fi
 
           SHA=$(curl -fsSL "$DMG_URL" | shasum -a 256 | awk '{print $1}')
           echo "Computed sha256: $SHA for version $TAG"
 
-          # 更新 homebrew/tunara.rb 中的 version 和 sha256（覆盖 :no_check 或旧值）
-          sed -i.bak "s/version \".*\"/version \"$TAG\"/" homebrew/tunara.rb
-          sed -i.bak -E "s/^  sha256 .*/  sha256 \"$SHA\"/" homebrew/tunara.rb
-          rm -f homebrew/tunara.rb.bak
+          # 更新 Casks/tunara.rb 中的 version 和 sha256（覆盖 :no_check 或旧值）
+          sed -i.bak "s/version \".*\"/version \"$TAG\"/" Casks/tunara.rb
+          sed -i.bak -E "s/^  sha256 .*/  sha256 \"$SHA\"/" Casks/tunara.rb
+          rm -f Casks/tunara.rb.bak
 
-          if git diff --quiet homebrew/tunara.rb; then
+          if git diff --quiet Casks/tunara.rb; then
             echo "Homebrew cask already up to date; nothing to do."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add homebrew/tunara.rb
+          git add Casks/tunara.rb
           git commit -m "chore: update homebrew cask to v${TAG} (sha256 ${SHA:0:12}…) [skip ci]"
           # publish-tauri 的构建+公证耗时较长，期间 main 可能被人工推进；rebase
           # 吸收并发提交，保证下面是 fast-forward（满足 non_fast_forward /

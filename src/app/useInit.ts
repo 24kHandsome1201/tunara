@@ -57,16 +57,39 @@ export function useInit() {
 
     void loadUserConfig();
 
-    loadWorkspaceSnapshot().then((snapshot) => {
+    const notifiedPersistenceFailures = new Set<"restore" | "save">();
+    const notifyPersistenceFailure = (kind: "restore" | "save", detail?: string) => {
+      if (notifiedPersistenceFailures.has(kind)) return;
+      notifiedPersistenceFailures.add(kind);
+      if (detail) console.error(`[useInit] workspace ${kind} failed`, detail);
+      useUIStore.getState().addToast({
+        title: t(`workspace.${kind}_error.title`),
+        subtitle: t(`workspace.${kind}_error.subtitle`),
+        variant: "error",
+      });
+    };
+
+    loadWorkspaceSnapshot().then((result) => {
       const current = useSessionsStore.getState();
 
-      if (!snapshot) {
+      if (result.status === "error") {
+        notifyPersistenceFailure("restore", result.error);
         if (current.sessions.length === 0) {
           addSession(createSession("~", { title: t("session.default_title") }));
         }
         useUIStore.setState({ ready: true });
         return;
       }
+
+      if (result.status === "empty") {
+        if (current.sessions.length === 0) {
+          addSession(createSession("~", { title: t("session.default_title") }));
+        }
+        useUIStore.setState({ ready: true });
+        return;
+      }
+
+      const snapshot = result.snapshot;
 
       const restored = snapshot.sessions.map((p) => ({
         ...p,
@@ -179,7 +202,18 @@ export function useInit() {
     }
 
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
-    const persistNow = () => saveWorkspaceSnapshot(buildSnapshot());
+    // Serialize writes so a slower debounced save cannot finish after the
+    // close-time flush and overwrite its newer snapshot.
+    let persistQueue = Promise.resolve<"saved" | "blocked" | "error">("saved");
+    const persistNow = () => {
+      const snapshot = buildSnapshot();
+      const operation = persistQueue.then(() => saveWorkspaceSnapshot(snapshot));
+      persistQueue = operation;
+      return operation.then((result) => {
+        if (result !== "saved") notifyPersistenceFailure("save");
+        return result;
+      });
+    };
     const scheduleSave = () => {
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
@@ -196,7 +230,11 @@ export function useInit() {
             clearTimeout(saveTimer);
             saveTimer = null;
           }
-          await saveWorkspaceSnapshot(buildSnapshot());
+          const result = await persistNow();
+          // A corrupt/unreadable store blocks writes to preserve the original,
+          // but hiding is safe because the process and in-memory state stay
+          // alive. A transient write error keeps the window visible.
+          if (result === "error") return;
           await win.hide();
         }),
       );
@@ -254,8 +292,8 @@ export function useInit() {
     // output performs no redundant serialize + IPC + disk write every 30s.
     const timer = setInterval(() => {
       if (!consumeTerminalSnapshotDirty()) return;
-      void persistNow().then((saved) => {
-        if (!saved) markTerminalSnapshotDirty();
+      void persistNow().then((result) => {
+        if (result !== "saved") markTerminalSnapshotDirty();
       });
     }, 30_000);
     return () => {

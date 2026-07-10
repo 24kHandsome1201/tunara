@@ -61,8 +61,15 @@ export function SshConnect({ onClose }: SshConnectProps) {
   useEffect(() => {
     loadHosts()
       .then(setHosts)
-      .catch(() => setHosts([]));
-  }, []);
+      .catch(() => {
+        setHosts([]);
+        useUIStore.getState().addToast({
+          title: t("ssh.profile.load_failed"),
+          subtitle: "",
+          variant: "error",
+        });
+      });
+  }, [t]);
 
   const fillFrom = (p: SshHostProfile) => {
     setHost(p.host);
@@ -75,7 +82,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
     tryConfirm(`ssh-profile:${id}`, () => {
       removeHost(id)
         .then(setHosts)
-        .catch(() => {});
+        .catch(() => {
+          useUIStore.getState().addToast({
+            title: t("ssh.profile.remove_failed"),
+            subtitle: "",
+            variant: "error",
+          });
+        });
     });
   };
 
@@ -95,14 +108,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
       setHosts(latest);
       const added = fresh.length;
       useUIStore.getState().addToast({
-        sessionId: "",
         title: t("ssh.import.result"),
         subtitle: t("ssh.import.result_detail", { added, skipped }),
         variant: "success",
       });
     } catch {
       useUIStore.getState().addToast({
-        sessionId: "",
         title: t("ssh.import.failed"),
         subtitle: "",
         variant: "error",
@@ -113,6 +124,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   };
 
   const portText = port.trim();
+  const portInvalid = portText.length > 0 && parseSshPort(portText) === null;
   const canConnect =
     host.trim().length > 0 &&
     user.trim().length > 0 &&
@@ -126,8 +138,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
     const trimmedId = identityFile.trim();
 
     if (saveProfile) {
-      // 复用同 host+user 的已有 profile id，避免重复条目。
-      const existing = hosts.find((h) => h.host === trimmedHost && h.user === trimmedUser);
+      // 复用同 host+port+user 的已有 profile id，避免覆盖同主机的另一端口。
+      const existing = hosts.find((h) =>
+        h.host === trimmedHost && h.port === safePort && h.user === trimmedUser
+      );
       void saveHost({
         id: existing?.id ?? makeHostId(),
         label: existing?.label ?? `${trimmedUser}@${trimmedHost}`,
@@ -135,7 +149,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
         port: safePort,
         user: trimmedUser,
         identityFile: trimmedId,
-      }).catch(() => {});
+      }).catch(() => {
+        useUIStore.getState().addToast({
+          title: t("ssh.profile.save_failed"),
+          subtitle: "",
+          variant: "error",
+        });
+      });
     }
 
     const session = createRemoteSession({
@@ -193,6 +213,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         ref={containerRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="ssh-connect-title"
         tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === "Escape") onClose();
@@ -200,7 +221,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
           // users aren't forced to reach for the mouse. Mirrors HostKeyPrompt
           // and WorkflowParamPrompt, which both bind Enter to their primary
           // action.
-          if (e.key === "Enter") {
+          const target = e.target;
+          const interactiveControl = target instanceof HTMLButtonElement
+            || (target instanceof HTMLInputElement && target.type === "checkbox");
+          if (e.key === "Enter" && !interactiveControl) {
             e.preventDefault();
             if (canConnect) connect();
           }
@@ -212,6 +236,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           transform: "translate(-50%, -50%)",
           width: 440,
           maxWidth: "calc(100vw - 32px)",
+          maxHeight: "calc(100vh - 32px)",
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
@@ -230,9 +255,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
             justifyContent: "space-between",
             padding: "14px 18px",
             borderBottom: "1px solid var(--c-border-2)",
+            flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
+          <span id="ssh-connect-title" style={{ fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
             {t("ssh.title")}
           </span>
           <button
@@ -256,7 +282,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           </button>
         </div>
 
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}>
           <button
             onClick={onImportConfig}
             disabled={importing}
@@ -350,8 +376,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 3 }}>
-              <label style={labelStyle}>{t("ssh.host")}</label>
+              <label htmlFor="ssh-connect-host" style={labelStyle}>{t("ssh.host")}</label>
               <input
+                id="ssh-connect-host"
                 style={fieldStyle}
                 value={host}
                 placeholder={t("ssh.host_placeholder")}
@@ -361,19 +388,22 @@ export function SshConnect({ onClose }: SshConnectProps) {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>{t("ssh.port")}</label>
+              <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
               <input
+                id="ssh-connect-port"
                 style={fieldStyle}
                 value={port}
                 inputMode="numeric"
+                aria-invalid={portInvalid}
                 onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ""))}
               />
             </div>
           </div>
 
           <div>
-            <label style={labelStyle}>{t("ssh.user")}</label>
+            <label htmlFor="ssh-connect-user" style={labelStyle}>{t("ssh.user")}</label>
             <input
+              id="ssh-connect-user"
               style={fieldStyle}
               value={user}
               placeholder={t("ssh.user_placeholder")}
@@ -384,8 +414,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
           </div>
 
           <div>
-            <label style={labelStyle}>{t("ssh.identityFile")}</label>
+            <label htmlFor="ssh-connect-identity" style={labelStyle}>{t("ssh.identityFile")}</label>
             <input
+              id="ssh-connect-identity"
               style={fieldStyle}
               value={identityFile}
               placeholder={t("ssh.identity_placeholder")}
@@ -400,8 +431,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>{t("ssh.keyPassphrase")}</label>
+              <label htmlFor="ssh-connect-passphrase" style={labelStyle}>{t("ssh.keyPassphrase")}</label>
               <input
+                id="ssh-connect-passphrase"
                 style={fieldStyle}
                 type="password"
                 value={keyPassphrase}
@@ -411,8 +443,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={labelStyle}>{t("ssh.password")}</label>
+              <label htmlFor="ssh-connect-password" style={labelStyle}>{t("ssh.password")}</label>
               <input
+                id="ssh-connect-password"
                 style={fieldStyle}
                 type="password"
                 value={password}
@@ -449,6 +482,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             gap: 8,
             padding: "12px 18px",
             borderTop: "1px solid var(--c-border-2)",
+            flexShrink: 0,
           }}
         >
           <button

@@ -186,7 +186,8 @@ export const EDITOR_LABELS: Record<ExternalEditor, string> = {
 
 export interface Toast {
   id: string;
-  sessionId: string;
+  /** Optional for app-level failures that are not owned by a terminal session. */
+  sessionId?: string;
   title: string;
   subtitle: string;
   variant: "success" | "error" | "warning";
@@ -202,8 +203,8 @@ export interface HostKeyPrompt {
   fingerprint: string;
   keyType: string;
   /** "unknown" = first contact (accepting persists to known_hosts);
-   *  "unverifiable" = key couldn't be confirmed against a hashed/wildcard
-   *  entry — possible rotation/MITM, and accepting does NOT persist. */
+   *  "unverifiable" = a relevant known_hosts record could not be evaluated
+   *  safely — possible rotation/MITM, and accepting does NOT persist. */
   reason: string;
 }
 

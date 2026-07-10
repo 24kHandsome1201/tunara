@@ -513,7 +513,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     if (isRemote) {
       if (session.ptyId === undefined) return () => { cancelled = true; };
       const ptyId = session.ptyId;
-      sshGitAheadBehind(ptyId)
+      sshGitAheadBehind(ptyId, session.dir)
         .then((r) => !cancelled && setRemote(r))
         .catch(() => !cancelled && setRemote(null));
       return () => { cancelled = true; };
@@ -524,7 +524,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [repoPath, session.id, session.ptyId, nonce, notGit, isRemote]);
+  }, [repoPath, session.id, session.ptyId, session.dir, nonce, notGit, isRemote]);
 
   useEffect(() => {
     if (expandedFileKey && !files.some((f) => fileRowKey(f) === expandedFileKey)) {
@@ -568,7 +568,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     const requestedSessionId = session.id;
     setLoadingDiffKeys((prev) => ({ ...prev, [key]: true }));
     const diffPromise = isRemote
-      ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, file.path, file.stage) : Promise.reject(new Error("no ptyId")))
+      ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, session.dir, file.path, file.stage) : Promise.reject(new Error("no ptyId")))
       : (requestedRepoPath ? gitDiff(requestedRepoPath, file.path, file.stage) : Promise.reject(new Error("no repoPath")));
     try {
       const d = await diffPromise;
@@ -589,7 +589,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         return next;
       });
     }
-  }, [diffs, isRemote, loadingDiffKeys, repoPath, session.id, session.ptyId]);
+  }, [diffs, isRemote, loadingDiffKeys, repoPath, session.id, session.ptyId, session.dir]);
 
   // Hold the latest loadFileDiff in a ref so DiffFileRow's IntersectionObserver
   // effect doesn't re-subscribe every time diffs/loadingDiffKeys change. The

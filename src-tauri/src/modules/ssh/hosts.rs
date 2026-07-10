@@ -122,6 +122,53 @@ fn ssh_config_path() -> Result<PathBuf, String> {
     Ok(home.join(".ssh").join("config"))
 }
 
+/// Tokenize one OpenSSH config line without treating quoted spaces or an
+/// escaped `#` as separators/comments. Returns `None` for an unfinished quote
+/// or escape so malformed input is skipped instead of partially imported.
+fn ssh_config_tokens(line: &str) -> Option<Vec<String>> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+
+    for ch in line.chars() {
+        if escaped {
+            token.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(expected) = quote {
+            if ch == expected {
+                quote = None;
+            } else {
+                token.push(ch);
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '#' => break,
+            c if c.is_whitespace() => {
+                if !token.is_empty() {
+                    tokens.push(std::mem::take(&mut token));
+                }
+            }
+            _ => token.push(ch),
+        }
+    }
+    if escaped || quote.is_some() {
+        return None;
+    }
+    if !token.is_empty() {
+        tokens.push(token);
+    }
+    Some(tokens)
+}
+
 /// Parse the textual contents of an ssh_config into host profiles.
 ///
 /// Only static `Host <name>` blocks are imported. `Host *` (and any name
@@ -192,16 +239,42 @@ pub(crate) fn parse_ssh_config(raw: &str) -> SshImportResult {
     };
 
     for line in raw.lines() {
-        // Strip trailing comments (openssh allows `key value # comment`).
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        let Some(mut tokens) = ssh_config_tokens(line) else {
+            let raw_key = line
+                .trim_start()
+                .split(|c: char| c.is_whitespace() || c == '=')
+                .next()
+                .unwrap_or_default();
+            if raw_key.eq_ignore_ascii_case("host") || raw_key.eq_ignore_ascii_case("match") {
+                flush(
+                    &mut host_names,
+                    &mut host_name,
+                    &mut user,
+                    &mut port_raw,
+                    &mut identity_file,
+                    &mut in_block,
+                    &mut imported,
+                    &mut skipped,
+                );
+            }
+            skipped += 1;
+            continue;
+        };
+        if tokens.is_empty() {
             continue;
         }
-        let (key, rest) = match line.split_once(char::is_whitespace) {
-            Some((k, v)) => (k.to_string(), v.trim().to_string()),
-            None => (line.to_string(), String::new()),
-        };
+        let mut key = tokens.remove(0);
+        // OpenSSH accepts both `Key value` and `Key=value` spellings.
+        if let Some((left, right)) = key.clone().split_once('=') {
+            key = left.to_string();
+            if !right.is_empty() {
+                tokens.insert(0, right.to_string());
+            }
+        } else if tokens.first().is_some_and(|value| value == "=") {
+            tokens.remove(0);
+        }
         let key_lower = key.to_lowercase();
+        let first_value = tokens.first().cloned().unwrap_or_default();
 
         if key_lower == "host" {
             // Close the previous block, then start a new one.
@@ -216,7 +289,7 @@ pub(crate) fn parse_ssh_config(raw: &str) -> SshImportResult {
                 &mut skipped,
             );
             // `Host alpha beta gamma` → all three aliases share one block.
-            host_names = rest.split_whitespace().map(String::from).collect();
+            host_names = tokens;
             if host_names.is_empty() {
                 // `Host` with no name — malformed, skip.
                 skipped += 1;
@@ -240,10 +313,10 @@ pub(crate) fn parse_ssh_config(raw: &str) -> SshImportResult {
             skipped += 1;
         } else if in_block {
             match key_lower.as_str() {
-                "hostname" => host_name = rest,
-                "user" => user = rest,
-                "port" => port_raw = rest,
-                "identityfile" => identity_file = rest,
+                "hostname" => host_name = first_value.clone(),
+                "user" => user = first_value.clone(),
+                "port" => port_raw = first_value.clone(),
+                "identityfile" => identity_file = first_value,
                 // Include is not followed recursively; ignore all other
                 // directives (ProxyJump, ForwardAgent, …) — they don't affect
                 // the connection target tuple we store.
@@ -431,5 +504,32 @@ Host real
         assert_eq!(result.imported[0].user, "real");
         // Include line is not a Host block, so it doesn't count as skipped.
         assert_eq!(result.skipped, 0);
+    }
+
+    #[test]
+    fn parse_ssh_config_handles_inline_comments_quotes_and_equals() {
+        let raw = r#"
+Host="quoted host" other # two aliases, not a comment in quotes
+  HostName = real.example.com # trailing comment
+  User "deploy user"
+  IdentityFile "~/.ssh/id with spaces"
+"#;
+        let result = parse_ssh_config(raw);
+        assert_eq!(result.imported.len(), 2);
+        let quoted = result
+            .imported
+            .iter()
+            .find(|profile| profile.label == "quoted host")
+            .expect("quoted alias imported");
+        assert_eq!(quoted.host, "real.example.com");
+        assert_eq!(quoted.user, "deploy user");
+        assert_eq!(quoted.identity_file, "~/.ssh/id with spaces");
+    }
+
+    #[test]
+    fn parse_ssh_config_skips_unfinished_quoted_lines() {
+        let result = parse_ssh_config("Host good\n  HostName good.example\nHost \"broken\n");
+        assert_eq!(result.imported.len(), 1);
+        assert_eq!(result.skipped, 1);
     }
 }

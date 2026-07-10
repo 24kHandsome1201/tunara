@@ -7,6 +7,18 @@ const ESC = "\x1b";
 const BEL = "\x07";
 const STRING_TERMINATOR = "\\";
 
+/**
+ * Native OSC 133 command markers are authoritative when available. Remote
+ * Bash < 4.4 can emit prompt markers but has no non-invasive pre-exec hook, so
+ * its A marker explicitly asks the frontend to keep scanning submitted input.
+ */
+export function shouldScanTerminalInput(
+  osc133Active: boolean,
+  inputFallbackRequested: boolean,
+): boolean {
+  return !osc133Active || inputFallbackRequested;
+}
+
 function skipOscSequence(data: string, index: number): number {
   let i = index + 2;
   while (i < data.length) {

@@ -62,7 +62,7 @@ if [ -z "$__TUNARA_HOOKS_LOADED" ]; then
   _tunara_precmd
 fi
 
-# Agent wrapper: intercept hookable agents, inject --settings for lifecycle hooks
+# Agent wrapper: intercept hookable agents and compose native lifecycle hooks.
 # OSC 777 keeps the UI lifecycle reliable even when nc is missing or the hook socket is unavailable.
 if [ -n "$TUNARA_SESSION_ID" ]; then
   _tunara_agent_osc() {
@@ -87,27 +87,38 @@ if [ -n "$TUNARA_SESSION_ID" ]; then
     fi
   }
 
-  # Writes a Claude-Code --settings file pointing each lifecycle hook at the
+  # Writes one private runtime containing both a Droid settings file and a
+  # Claude plugin. Plugin hooks compose with Claude's user --settings instead
+  # of competing for the CLI's single effective settings argument.
   # host-provided agent-hook.sh helper. That helper reads the hook's stdin JSON,
   # extracts the agent's real session_id, and relays it as agent_session_id — so
   # resume uses the agent's own id instead of scraping the typed command line.
-  # The hook command is just `sh <helper> <event> <agent> <sid>`, so no quoting
-  # has to survive the nested settings JSON. Echoes the settings path, or
-  # nothing if the helper or config dir is unavailable.
+  # The hook command resolves the helper through the inherited config-dir env,
+  # keeping filesystem-path quoting valid inside settings JSON. Echoes the
+  # runtime path, or nothing if the helper/config directory is unavailable.
   _tunara_agent_write_hooks() {
     local sid="$1" agent="$2" config_dir="$3"
     [ -n "$config_dir" ] && [ -d "$config_dir" ] || return 1
     local helper="$config_dir/agent-hook.sh"
     [ -f "$helper" ] || return 1
-    local sf
-    sf="$(mktemp "$config_dir/tunara-agent-${sid}.XXXXXX.json" 2>/dev/null)" || return 1
-    chmod 600 "$sf" 2>/dev/null || true
-    local idle="sh ${helper} idle ${agent} ${sid}"
-    local stop="sh ${helper} stop ${agent} ${sid}"
+    local runtime sf
+    runtime="$(mktemp -d "$config_dir/tunara-agent-${sid}.XXXXXX" 2>/dev/null)" || return 1
+    chmod 700 "$runtime" 2>/dev/null || { rm -rf "$runtime"; return 1; }
+    mkdir -p "$runtime/.claude-plugin" "$runtime/hooks" || { rm -rf "$runtime"; return 1; }
+    sf="$runtime/settings.json"
+    # Keep the actual path out of JSON so home/config directories containing
+    # spaces or quotes remain valid hook commands.
+    local helper_command='sh \"$TUNARA_AGENT_CONFIG_DIR/agent-hook.sh\"'
+    local idle="${helper_command} idle ${agent} ${sid}"
+    local busy="${helper_command} busy ${agent} ${sid}"
+    local stop="${helper_command} stop ${agent} ${sid}"
     cat > "$sf" <<TUNARA_EOF
-{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
+{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"${busy}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
 TUNARA_EOF
-    printf '%s' "$sf"
+    cp "$sf" "$runtime/hooks/hooks.json" || { rm -rf "$runtime"; return 1; }
+    printf '%s\n' '{"name":"tunara-lifecycle","description":"Tunara session lifecycle bridge","version":"1.0.0"}' > "$runtime/.claude-plugin/plugin.json"
+    chmod 600 "$sf" "$runtime/hooks/hooks.json" "$runtime/.claude-plugin/plugin.json" 2>/dev/null || true
+    printf '%s' "$runtime"
     return 0
   }
 
@@ -115,21 +126,51 @@ TUNARA_EOF
     local real_bin="$1"; shift
     local agent="$1"; shift
     local sid="$TUNARA_SESSION_ID"
-    local sock="$TUNARA_HOOKS_SOCK"
     local config_dir="${TUNARA_AGENT_CONFIG_DIR:-}"
-    local sf=""
+    local runtime=""
     _tunara_agent_emit start "$agent"
-    if [ -n "$sock" ]; then
-      sf="$(_tunara_agent_write_hooks "$sid" "$agent" "$config_dir")" || sf=""
-    fi
-    if [ -n "$sf" ]; then
-      command "$real_bin" --settings "$sf" "$@"
+    # Native hooks primarily return over OSC 777 through /dev/tty; the Unix
+    # socket is an optional duplicate transport, not a prerequisite.
+    runtime="$(_tunara_agent_write_hooks "$sid" "$agent" "$config_dir")" || runtime=""
+    if [ -n "$runtime" ] && [ "$real_bin" = "claude" ]; then
+      command "$real_bin" --plugin-dir "$runtime" "$@"
+    elif [ -n "$runtime" ]; then
+      local user_settings="" has_user_settings=0 settings="$runtime/settings.json"
+      local -a forwarded=()
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --settings)
+            if [ "$#" -ge 2 ]; then
+              user_settings="$2"
+              has_user_settings=1
+              shift 2
+              continue
+            fi
+            forwarded+=("$1")
+            ;;
+          --settings=*)
+            user_settings="${1#--settings=}"
+            has_user_settings=1
+            ;;
+          *) forwarded+=("$1") ;;
+        esac
+        shift
+      done
+      if [ "$has_user_settings" = 1 ]; then
+        local merged="$runtime/merged-settings.json"
+        if sh "$config_dir/agent-hook.sh" merge-settings "$user_settings" "$settings" "$merged" 2>/dev/null; then
+          settings="$merged"
+        else
+          settings="$user_settings"
+        fi
+      fi
+      command "$real_bin" --settings "$settings" "${forwarded[@]}"
     else
       command "$real_bin" "$@"
     fi
     local ret=$?
     _tunara_agent_emit exit "$agent" "$ret"
-    rm -f "$sf" 2>/dev/null
+    [ -n "$runtime" ] && rm -rf "$runtime"
     return $ret
   }
 
@@ -143,8 +184,29 @@ TUNARA_EOF
     return $ret
   }
 
-  claude() { _tunara_agent_run claude CC "$@"; }
-  droid() { _tunara_agent_run droid DR "$@"; }
-  codex() { _tunara_agent_plain_run codex CX "$@"; }
+  _tunara_agent_alias_tail() {
+    local bin="$1" line value
+    line="$(alias "$bin" 2>/dev/null)" || return 0
+    value="${line#*=}"
+    eval "value=$value" 2>/dev/null || return 0
+    case "$value" in
+      "$bin ") ;;
+      "$bin "*) printf '%s' "${value#"$bin"}" ;;
+    esac
+  }
+  __tunara_claude_alias_tail="$(_tunara_agent_alias_tail claude)"
+  __tunara_droid_alias_tail="$(_tunara_agent_alias_tail droid)"
+  __tunara_codex_alias_tail="$(_tunara_agent_alias_tail codex)"
+  # A pre-existing alias takes precedence over a function during command
+  # lookup. Rebuild ordinary `agent <flags>` aliases so they enter Tunara's
+  # wrapper without losing the user's default model/profile/permission flags.
+  unalias claude droid codex 2>/dev/null
+  function claude { _tunara_agent_run claude CC "$@"; }
+  function droid { _tunara_agent_run droid DR "$@"; }
+  function codex { _tunara_agent_plain_run codex CX "$@"; }
+  [ -n "$__tunara_claude_alias_tail" ] && alias claude="_tunara_agent_run claude CC$__tunara_claude_alias_tail"
+  [ -n "$__tunara_droid_alias_tail" ] && alias droid="_tunara_agent_run droid DR$__tunara_droid_alias_tail"
+  [ -n "$__tunara_codex_alias_tail" ] && alias codex="_tunara_agent_plain_run codex CX$__tunara_codex_alias_tail"
+  unset __tunara_claude_alias_tail __tunara_droid_alias_tail __tunara_codex_alias_tail
 fi
 :

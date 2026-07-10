@@ -5,13 +5,22 @@ import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
 export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
 
-export type AgentLifecycleEventName = "start" | "idle" | "stop" | "exit";
+export type AgentLifecycleEventName = "start" | "busy" | "idle" | "stop" | "exit";
 
 export interface AgentLifecycleEvent {
   event: AgentLifecycleEventName;
   session: string;
   agent: AgentCode;
   code?: number;
+  agentSessionId?: string;
+}
+
+export interface AgentHookEvent {
+  event: AgentLifecycleEventName;
+  session: string;
+  agent: AgentCode;
+  code?: number;
+  agentSessionId?: string;
 }
 
 const AGENT_LIFECYCLE_OSC_PREFIXES = new Set(["tunara-agent", "conduit-agent"]);
@@ -47,11 +56,9 @@ export function initialAgentActivity(agent: AgentCode): AgentActivity {
 export function shouldUseStartupQuietReadyFallback(
   agent: AgentCode | null | undefined,
   activity: AgentActivity | undefined,
-  startupPending: boolean,
 ): boolean {
   return !!agent
     && HOOK_READY_AGENTS.has(agent)
-    && startupPending
     && activity === "starting";
 }
 
@@ -119,21 +126,60 @@ export function detectCodexScreenState(text: string): AgentScreenState {
 
 export function parseAgentLifecycleOsc(data: string): AgentLifecycleEvent | null {
   const parts = data.split(";");
+  if (parts.length > 6) return null;
   if (!AGENT_LIFECYCLE_OSC_PREFIXES.has(parts[0] ?? "")) return null;
 
   const event = parts[1] as AgentLifecycleEventName | undefined;
   const session = parts[2] ?? "";
   const agent = parts[3] ?? "";
   const codeText = parts[4] ?? "";
+  const agentSessionIdText = parts[5] ?? "";
 
-  if (event !== "start" && event !== "idle" && event !== "stop" && event !== "exit") return null;
+  if (event !== "start" && event !== "busy" && event !== "idle" && event !== "stop" && event !== "exit") return null;
   if (!session || !isAgentCode(agent)) return null;
+  if (event !== "exit" && codeText !== "") return null;
 
-  const code = codeText === "" ? undefined : Number.parseInt(codeText, 10);
+  const parsedCode = /^-?\d+$/.test(codeText) ? Number.parseInt(codeText, 10) : undefined;
+  const code = Number.isSafeInteger(parsedCode) ? parsedCode : undefined;
+  const agentSessionId = /^[A-Za-z0-9_-]{1,256}$/.test(agentSessionIdText)
+    ? agentSessionIdText
+    : undefined;
   return {
     event,
     session,
     agent,
-    ...(Number.isFinite(code) ? { code } : {}),
+    ...(code !== undefined ? { code } : {}),
+    ...(agentSessionId ? { agentSessionId } : {}),
+  };
+}
+
+/** Validate the native hook socket payload at the frontend boundary. Tauri's
+ * generic type parameter is compile-time only; malformed runtime data must not
+ * be allowed to manufacture an AgentCode or a successful exit. */
+export function parseAgentHookEvent(value: unknown): AgentHookEvent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const payload = value as Record<string, unknown>;
+  const event = payload.event;
+  const session = payload.session;
+  const agent = payload.agent;
+  const code = payload.code;
+  const agentSessionId = payload.agentSessionId;
+
+  if (event !== "start" && event !== "busy" && event !== "idle" && event !== "stop" && event !== "exit") return null;
+  if (typeof session !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(session)) return null;
+  if (typeof agent !== "string" || !isAgentCode(agent)) return null;
+  if (code != null && (typeof code !== "number" || !Number.isSafeInteger(code))) return null;
+  if (event !== "exit" && code != null) return null;
+
+  const cleanAgentSessionId = typeof agentSessionId === "string"
+    && /^[A-Za-z0-9_-]{1,256}$/.test(agentSessionId)
+    ? agentSessionId
+    : undefined;
+  return {
+    event,
+    session,
+    agent,
+    ...(typeof code === "number" ? { code } : {}),
+    ...(cleanAgentSessionId ? { agentSessionId: cleanAgentSessionId } : {}),
   };
 }

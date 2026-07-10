@@ -9,13 +9,21 @@
 // uses) and reaches the live SSH connection's SFTP subsystem.
 
 use serde::Serialize;
+use std::time::Duration;
 
+use super::connection::await_stage;
 use crate::modules::pty::{PtyState, Session};
 
 // 256 KiB preview cap, matching the local fs_read_file UI preview budget.
 const MAX_TEXT_PREVIEW_BYTES: u64 = 256 * 1024;
 // 10 MiB hard read cap, matching local fs.
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_REMOTE_DIR_ENTRIES: usize = 10_000;
+const MAX_REMOTE_DIR_NAME_BYTES: usize = 4 * 1024 * 1024;
+const SFTP_CONTROL_TIMEOUT: Duration = Duration::from_secs(15);
+const SFTP_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(30);
+const SFTP_PREVIEW_TIMEOUT: Duration = Duration::from_secs(60);
+const SFTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -71,23 +79,31 @@ pub async fn ssh_fs_read_dir(
     path: String,
     include_hidden: Option<bool>,
 ) -> Result<Vec<RemoteDirEntry>, String> {
-    let sftp = sftp_for(&state, id).await?;
     let include_hidden = include_hidden.unwrap_or(false);
-    let entries = sftp
-        .read_dir(&path)
-        .await
-        .map_err(|e| format!("read remote dir failed: {e}"))?;
+    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+    let entries = match session.as_ref() {
+        Session::Ssh(ssh) => {
+            ssh.read_dir_bounded(
+                &path,
+                MAX_REMOTE_DIR_ENTRIES,
+                MAX_REMOTE_DIR_NAME_BYTES,
+                SFTP_DIRECTORY_TIMEOUT,
+            )
+            .await?
+        }
+        Session::Local(_) => return Err("not a remote session".to_string()),
+    };
 
     let mut out: Vec<RemoteDirEntry> = Vec::new();
     for entry in entries {
-        let name = entry.file_name();
+        let name = entry.filename;
         if name == "." || name == ".." {
             continue;
         }
         if !include_hidden && name.starts_with('.') {
             continue;
         }
-        let meta = entry.metadata();
+        let meta = entry.attrs;
         let kind = if meta.is_dir() {
             EntryKind::Dir
         } else if meta.is_symlink() {
@@ -126,10 +142,12 @@ pub async fn ssh_fs_read_file(
 ) -> Result<RemoteReadResult, String> {
     let sftp = sftp_for(&state, id).await?;
 
-    let meta = sftp
-        .metadata(&path)
-        .await
-        .map_err(|e| format!("stat remote file failed: {e}"))?;
+    let meta = await_stage(
+        "stat remote file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.metadata(&path),
+    )
+    .await?;
     let size = meta.size.unwrap_or(0);
     if size > MAX_READ_BYTES {
         return Ok(RemoteReadResult::TooLarge {
@@ -145,16 +163,14 @@ pub async fn ssh_fs_read_file(
     // caps in-memory bytes at MAX_READ_BYTES + 1 regardless of what stat said;
     // reading exactly one byte past the cap lets us still report TooLarge.
     use tokio::io::AsyncReadExt;
-    let mut file = sftp
-        .open(&path)
-        .await
-        .map_err(|e| format!("open remote file failed: {e}"))?;
+    let mut file = await_stage("open remote file", SFTP_CONTROL_TIMEOUT, sftp.open(&path)).await?;
     let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_READ_BYTES + 1) as usize);
-    (&mut file)
-        .take(MAX_READ_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .await
-        .map_err(|e| format!("read remote file failed: {e}"))?;
+    await_stage(
+        "read remote file",
+        SFTP_PREVIEW_TIMEOUT,
+        (&mut file).take(MAX_READ_BYTES + 1).read_to_end(&mut bytes),
+    )
+    .await?;
 
     // If we hit the +1 byte, the real file is larger than the cap (stat
     // under-reported or lied). Don't hand back a preview we meant to refuse.
@@ -311,10 +327,12 @@ pub async fn ssh_fs_download(
     // Open both ends first. create_new makes the no-overwrite guarantee atomic,
     // closing the gap between validate_download_target's exists() check and this
     // write.
-    let mut remote = sftp
-        .open(&remote_path)
-        .await
-        .map_err(|e| format!("download open failed: {e}"))?;
+    let mut remote = await_stage(
+        "open remote download",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.open(&remote_path),
+    )
+    .await?;
     let mut local = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -347,11 +365,17 @@ pub async fn ssh_fs_download(
         let _ = tokio::fs::remove_file(target).await;
     }
     loop {
-        let n = match remote.read(&mut buf).await {
+        let n = match await_stage(
+            "read remote download chunk",
+            SFTP_CHUNK_TIMEOUT,
+            remote.read(&mut buf),
+        )
+        .await
+        {
             Ok(n) => n,
             Err(e) => {
                 cleanup_partial(local, &target).await;
-                return Err(format!("download read failed: {e}"));
+                return Err(e);
             }
         };
         if n == 0 {
@@ -428,7 +452,13 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
     };
 
     let sftp = ssh.sftp().await?;
-    let sftp_home = sftp.canonicalize(".").await.ok();
+    let sftp_home = await_stage(
+        "resolve remote home",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.canonicalize("."),
+    )
+    .await
+    .ok();
 
     // Skip the extra exec round-trip when SFTP already gave a usable home.
     let needs_fallback = sftp_home

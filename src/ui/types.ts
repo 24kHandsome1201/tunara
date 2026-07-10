@@ -98,7 +98,7 @@ export interface RemoteInfo {
   identityFile?: string;
   /**
    * Phase 4：连接时向远程 shell 注入集成脚本，启用远程 cwd / 命令边界 /
-   * agent 检测。默认关闭——失败时静默降级。
+   * agent 检测。默认开启——失败时静默降级，可由用户显式关闭。
    */
   injectShellIntegration?: boolean;
 }

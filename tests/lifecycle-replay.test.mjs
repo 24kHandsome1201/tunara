@@ -6,12 +6,12 @@ import {
   detectCodexScreenState,
   isSessionBusy,
   parseAgentLifecycleOsc,
+  parseAgentHookEvent,
   sessionDisplayRunState,
   shouldUseStartupQuietReadyFallback,
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
-import { scanTerminalInputBuffer } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
+import { scanTerminalInputBuffer, shouldScanTerminalInput } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
 import {
-  CODEX_DATA_BURST_BUSY_THRESHOLD,
   CODEX_STATE_CHECK_DELAY_MS,
   createCodexScreenStateTracker,
 } from "../src/modules/terminal/lib/terminal-codex-state.ts";
@@ -86,6 +86,7 @@ import {
 import {
   buildAgentResumeCommand,
   hasContinueFlag,
+  isResumableAgentInvocation,
   parseResumeId,
 } from "../src/modules/terminal/lib/agent-resume.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
@@ -133,6 +134,9 @@ function createHarness(initial = makeSession()) {
     if (!session.agent || session.agent !== payload.agent) return false;
     if (payload.event === "exit") {
       return apply(agentExitedUpdate(session, payload.code ?? 0, true, now));
+    }
+    if (payload.event === "busy") {
+      return apply(agentBusyUpdate(session, now));
     }
     if (payload.event === "idle" || payload.event === "stop") {
       return apply(agentReadyUpdate(session, true, now));
@@ -213,6 +217,12 @@ test("terminal input buffer handles editing keys and terminal escape noise", () 
   });
 });
 
+test("remote Bash 3.2 prompt markers keep submitted-input command detection enabled", () => {
+  assert.equal(shouldScanTerminalInput(false, false), true);
+  assert.equal(shouldScanTerminalInput(true, false), false);
+  assert.equal(shouldScanTerminalInput(true, true), true);
+});
+
 test("agent command detection maps first shell command token only", () => {
   assert.equal(detectAgentCommand("claude --dangerously-skip-permissions"), "CC");
   assert.equal(detectAgentCommand("\x1b[32mcodex\x1b[0m exec"), "CX");
@@ -234,7 +244,7 @@ test("agent resume command never falls back to the bare startup command", () => 
       lastSeenAt: 1,
       confidence: "unknown",
     }),
-    "codex exec resume --last",
+    "codex resume",
   );
   assert.equal(
     buildAgentResumeCommand({
@@ -244,18 +254,18 @@ test("agent resume command never falls back to the bare startup command", () => 
       lastSeenAt: 1,
       confidence: "unknown",
     }),
-    "claude --continue",
+    "claude --resume",
   );
   assert.equal(
     buildAgentResumeCommand({
       agent: "CX",
-      command: "codex exec resume 019eef70-c6e4-7430-845c-26b1b68ecac5",
+      command: "codex resume 019eef70-c6e4-7430-845c-26b1b68ecac5",
       cwd: "/repo",
       resumeId: "019eef70-c6e4-7430-845c-26b1b68ecac5",
       lastSeenAt: 1,
       confidence: "exact",
     }),
-    "codex exec resume 019eef70-c6e4-7430-845c-26b1b68ecac5",
+    "codex resume 019eef70-c6e4-7430-845c-26b1b68ecac5",
   );
 });
 
@@ -280,6 +290,29 @@ test("hasContinueFlag detects continue invocations", () => {
   assert.equal(hasContinueFlag("codex resume continue"), true);
   assert.equal(hasContinueFlag("claude --resume abc"), false);
   assert.equal(hasContinueFlag("claude"), false);
+});
+
+test("utility agent invocations never create resumable sessions", () => {
+  for (const command of [
+    "claude --version",
+    "claude --print hello",
+    "claude auth login",
+    "claude --model opus mcp list",
+  ]) {
+    assert.equal(isResumableAgentInvocation("CC", command), false, command);
+  }
+  for (const command of [
+    "codex --version",
+    "codex exec fix this",
+    "codex --profile work mcp list",
+    "codex login",
+  ]) {
+    assert.equal(isResumableAgentInvocation("CX", command), false, command);
+  }
+  assert.equal(isResumableAgentInvocation("CC", "claude explain this"), true);
+  assert.equal(isResumableAgentInvocation("CC", "claude --resume abc"), true);
+  assert.equal(isResumableAgentInvocation("CX", "codex resume abc"), true);
+  assert.equal(isResumableAgentInvocation("DR", "droid"), false);
 });
 
 test("keybinding parser accepts plus as a literal key", () => {
@@ -665,7 +698,58 @@ test("agent lifecycle OSC accepts current and legacy event prefixes", () => {
     session: "s-1",
     agent: "CC",
   });
+  assert.deepEqual(parseAgentLifecycleOsc("tunara-agent;busy;s-1;CC;"), {
+    event: "busy",
+    session: "s-1",
+    agent: "CC",
+  });
   assert.equal(parseAgentLifecycleOsc("other-agent;idle;s-1;CC;"), null);
+});
+
+test("agent lifecycle OSC carries a validated remote agent session id", () => {
+  assert.deepEqual(
+    parseAgentLifecycleOsc("tunara-agent;idle;s-1;CC;;550e8400-e29b-41d4-a716-446655440000"),
+    {
+      event: "idle",
+      session: "s-1",
+      agent: "CC",
+      agentSessionId: "550e8400-e29b-41d4-a716-446655440000",
+    },
+  );
+  assert.equal(
+    parseAgentLifecycleOsc("tunara-agent;exit;s-1;CC;0junk;")?.code,
+    undefined,
+  );
+  assert.equal(
+    parseAgentLifecycleOsc("tunara-agent;exit;s-1;CC;999999999999999999999;")?.code,
+    undefined,
+  );
+  assert.equal(parseAgentLifecycleOsc("tunara-agent;idle;s-1;CC;;bad;injected"), null);
+});
+
+test("native agent hook payloads are runtime-validated", () => {
+  assert.deepEqual(
+    parseAgentHookEvent({
+      event: "stop",
+      session: "s-123-1",
+      agent: "CC",
+      agentSessionId: "550e8400-e29b-41d4-a716-446655440000",
+    }),
+    {
+      event: "stop",
+      session: "s-123-1",
+      agent: "CC",
+      agentSessionId: "550e8400-e29b-41d4-a716-446655440000",
+    },
+  );
+  assert.equal(parseAgentHookEvent({ event: "stop", session: "s-1", agent: "bogus" }), null);
+  assert.equal(parseAgentHookEvent({ event: "exit", session: "s-1", code: 0 }), null);
+  assert.equal(parseAgentHookEvent({ event: "exit", session: "s-1", code: "0" }), null);
+  assert.equal(parseAgentHookEvent({ event: "idle", session: "../other", agent: "CC" }), null);
+  assert.equal(parseAgentHookEvent({ event: "exit", session: "s-1", code: Number.MAX_SAFE_INTEGER + 1 }), null);
+  assert.equal(parseAgentHookEvent({ event: "busy", session: "s-1", agent: "CC", code: 0 }), null);
+  assert.equal(parseAgentHookEvent({ event: "busy", session: "s-1", agent: "CC" })?.event, "busy");
+  assert.equal(parseAgentLifecycleOsc("tunara-agent;busy;s-1;CC;0"), null);
 });
 
 test("ConEmu OSC 9;9 cwd is parsed as a terminal cwd fallback", () => {
@@ -891,7 +975,7 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(h.session.agentActivity, "idle");
   assert.equal(isSessionBusy(h.session), false);
 
-  assert.equal(h.apply(agentBusyUpdate(h.session, 30)), true);
+  assert.equal(h.applyAgentOsc("tunara-agent;busy;s-1;CC;", 30), true);
   assert.equal(h.session.agentActivity, "running");
   assert.equal(isSessionBusy(h.session), true);
 
@@ -902,7 +986,7 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(deriveTitle(h.session).primary, "终端");
   assert.equal(isSessionBusy(h.session), false);
   assert.equal(h.session.lastExitCode, 0);
-  assert.equal(h.gitRefreshes, 2);
+  assert.equal(h.gitRefreshes, 1, "startup idle must not trigger an unnecessary git refresh");
 });
 
 test("terminal process exit updates session lifecycle even without OSC command end", () => {
@@ -951,7 +1035,7 @@ test("agent session title appends live activity and falls back to the bare name"
   assert.equal(deriveTitle(h.session).primary, "Claude Code · 加载中");
 
   // Working → "running" → name + 运行中.
-  assert.equal(h.apply(agentBusyUpdate(h.session, 20)), true);
+  assert.equal(h.applyAgentOsc("tunara-agent;busy;s-1;CC;", 20), true);
   assert.equal(h.session.agentActivity, "running");
   assert.equal(deriveTitle(h.session).primary, "Claude Code · 运行中");
 
@@ -981,6 +1065,7 @@ test("agent ready distinguishes startup idle from completed turns for sidebar st
 
   assert.equal(startupReady.completedAt, undefined);
   assert.equal(startupReady.unread, undefined);
+  assert.equal(startupUpdate.refreshGit, undefined);
   assert.equal(sessionDisplayRunState(startupReady), "idle");
 
   const backgroundStartupUpdate = agentReadyUpdate(startup, false, 15);
@@ -1017,22 +1102,18 @@ test("agent ready distinguishes startup idle from completed turns for sidebar st
     unread: false,
   });
   const repeatedIdleUpdate = agentReadyUpdate(repeatedIdle, false, 40);
-  const repeatedIdleDone = { ...repeatedIdle, ...repeatedIdleUpdate.patch };
-
-  assert.equal(repeatedIdleDone.completedAt, 30);
-  assert.equal(repeatedIdleDone.unread, false);
-  assert.equal(sessionDisplayRunState(repeatedIdleDone), "done");
+  assert.equal(repeatedIdleUpdate, null, "duplicate ready events must be idempotent");
+  assert.equal(sessionDisplayRunState(repeatedIdle), "done");
 });
 
 test("quiet ready fallback is startup-only and never completes an active agent turn", () => {
-  assert.equal(shouldUseStartupQuietReadyFallback("CC", "starting", true), true);
-  assert.equal(shouldUseStartupQuietReadyFallback("DR", "starting", true), true);
+  assert.equal(shouldUseStartupQuietReadyFallback("CC", "starting"), true);
+  assert.equal(shouldUseStartupQuietReadyFallback("DR", "starting"), true);
 
-  assert.equal(shouldUseStartupQuietReadyFallback("CC", "running", true), false);
-  assert.equal(shouldUseStartupQuietReadyFallback("CC", "running", false), false);
-  assert.equal(shouldUseStartupQuietReadyFallback("CC", "idle", true), false);
-  assert.equal(shouldUseStartupQuietReadyFallback("CX", "starting", true), false);
-  assert.equal(shouldUseStartupQuietReadyFallback(null, "starting", true), false);
+  assert.equal(shouldUseStartupQuietReadyFallback("CC", "running"), false);
+  assert.equal(shouldUseStartupQuietReadyFallback("CC", "idle"), false);
+  assert.equal(shouldUseStartupQuietReadyFallback("CX", "starting"), false);
+  assert.equal(shouldUseStartupQuietReadyFallback(null, "starting"), false);
 });
 
 test("lifecycle events for another session are ignored", () => {
@@ -1084,10 +1165,6 @@ test("Codex screen tracker does not mark ready prompt redraws as busy", async ()
     },
   });
 
-  for (let i = 1; i < CODEX_DATA_BURST_BUSY_THRESHOLD; i += 1) {
-    tracker.schedule();
-    assert.equal(busyCount, 0);
-  }
   tracker.schedule();
   assert.equal(busyCount, 0);
 
@@ -1098,7 +1175,7 @@ test("Codex screen tracker does not mark ready prompt redraws as busy", async ()
   tracker.dispose();
 });
 
-test("Codex screen tracker marks busy after the active turn shows work", async () => {
+test("Codex screen tracker marks busy from one semantic output update", async () => {
   let session = makeSession({ agent: "CX", agentActivity: "idle" });
   let busyCount = 0;
   let readyCount = 0;
@@ -1117,9 +1194,7 @@ test("Codex screen tracker marks busy after the active turn shows work", async (
     },
   });
 
-  for (let i = 0; i < CODEX_DATA_BURST_BUSY_THRESHOLD; i += 1) {
-    tracker.schedule();
-  }
+  tracker.schedule();
   assert.equal(busyCount, 0);
 
   await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));

@@ -55,7 +55,6 @@ export function useGlobalShortcut() {
         // accelerator string is invalid. Surface it so the user can rebind
         // instead of silently owning a dead hotkey.
         useUIStore.getState().addToast({
-          sessionId: "",
           title: t("settings.global_shortcut.conflict"),
           subtitle: next,
           variant: "error",

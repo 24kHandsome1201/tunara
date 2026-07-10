@@ -56,14 +56,14 @@ export function gitUnwatch(repoPath: string): Promise<void> {
 // remote repo without caring about the transport. `sessionId` is the
 // SshSession's pty id (the same u32 PtyState id the terminal uses).
 
-export function sshGitStatus(sessionId: number): Promise<StatusResult> {
-  return invoke<StatusResult>("ssh_git_status", { sessionId });
+export function sshGitStatus(sessionId: number, cwd: string): Promise<StatusResult> {
+  return invoke<StatusResult>("ssh_git_status", { sessionId, cwd });
 }
 
-export function sshGitDiff(sessionId: number, file: string, stage: FileChange["stage"]): Promise<FileDiff> {
-  return invoke<FileDiff>("ssh_git_diff", { sessionId, file, stage });
+export function sshGitDiff(sessionId: number, cwd: string, file: string, stage: FileChange["stage"]): Promise<FileDiff> {
+  return invoke<FileDiff>("ssh_git_diff", { sessionId, cwd, file, stage });
 }
 
-export function sshGitAheadBehind(sessionId: number): Promise<RemoteState> {
-  return invoke<RemoteState>("ssh_git_ahead_behind", { sessionId });
+export function sshGitAheadBehind(sessionId: number, cwd: string): Promise<RemoteState> {
+  return invoke<RemoteState>("ssh_git_ahead_behind", { sessionId, cwd });
 }

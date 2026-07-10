@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { fsGrep, fsReadDir, fsSearch, type DirEntry, type GrepResponse, type SearchHit } from "@/modules/fs/fs-bridge";
-import { sshReadDir, sshHome, sshSearch, sshGrep, invalidateRemoteSearchCache } from "@/modules/ssh/remote-fs-bridge";
+import { sshReadDir, sshHome, sshSearch, sshGrep, sshDownload, invalidateRemoteSearchCache } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -96,6 +97,31 @@ const folderEmptyIcon = (
 export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const t = useT();
   const isRemote = remotePtyId !== undefined;
+
+  const downloadRemoteFile = async (remotePath: string, fileName: string) => {
+    if (remotePtyId === undefined) return;
+    const localPath = await saveDialog({
+      title: t("explorer.download.choose_destination"),
+      defaultPath: fileName,
+    });
+    if (!localPath) return;
+    try {
+      const bytes = await sshDownload(remotePtyId, remotePath, localPath);
+      useUIStore.getState().addToast({
+        sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+        title: t("explorer.download.complete"),
+        subtitle: `${fileName} · ${formatSize(bytes)}`,
+        variant: "success",
+      });
+    } catch (error) {
+      useUIStore.getState().addToast({
+        sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+        title: t("explorer.download.failed"),
+        subtitle: String(error),
+        variant: "error",
+      });
+    }
+  };
   // For local sessions the base is rootDir directly; for remote we resolve the
   // remote $HOME via SFTP (rootDir is user@host, not a path). null = unresolved.
   const [baseDir, setBaseDir] = useState<string | null>(isRemote ? null : rootDir);
@@ -600,6 +626,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                         position: { x: e.clientX, y: e.clientY },
                         items: isRemote
                           ? [
+                              { id: "file:download", label: t("explorer.download"), icon: "download", action: () => { void downloadRemoteFile(fullPath, entry.name); } },
                               { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                             ]
                           : [

@@ -66,7 +66,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   };
 
   const handleClick = () => {
-    setActive(toast.sessionId);
+    if (toast.sessionId) setActive(toast.sessionId);
     dismiss();
   };
 

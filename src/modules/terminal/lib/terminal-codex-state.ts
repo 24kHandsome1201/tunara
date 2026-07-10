@@ -6,7 +6,6 @@ import {
 } from "./agent-lifecycle.ts";
 import { getTerminalTailText } from "./terminal-buffer-read.ts";
 
-export const CODEX_DATA_BURST_BUSY_THRESHOLD = 3;
 export const CODEX_STATE_CHECK_DELAY_MS = 500;
 
 interface CodexScreenStateTrackerOptions {
@@ -32,11 +31,9 @@ export function createCodexScreenStateTracker({
   onBusy,
   onReady,
 }: CodexScreenStateTrackerOptions): CodexScreenStateTracker {
-  let dataBurstCount = 0;
   let stateTimer: ReturnType<typeof setTimeout> | null = null;
 
   const reset = () => {
-    dataBurstCount = 0;
     if (stateTimer) {
       clearTimeout(stateTimer);
       stateTimer = null;
@@ -44,12 +41,9 @@ export function createCodexScreenStateTracker({
   };
 
   const schedule = () => {
-    dataBurstCount += 1;
     if (stateTimer) clearTimeout(stateTimer);
     stateTimer = setTimeout(() => {
-      const burstCount = dataBurstCount;
       stateTimer = null;
-      dataBurstCount = 0;
       if (!isTrackingCodex()) return;
 
       const current = getCurrentSession();
@@ -59,8 +53,7 @@ export function createCodexScreenStateTracker({
       const screenState = detectCodexScreenState(tail);
       if (
         screenState === "busy" &&
-        current.agentActivity !== "running" &&
-        burstCount >= CODEX_DATA_BURST_BUSY_THRESHOLD
+        current.agentActivity !== "running"
       ) {
         onBusy(getSessionId());
       } else if (screenState === "ready" && current.agentActivity !== "idle") {

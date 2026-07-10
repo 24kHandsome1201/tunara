@@ -93,6 +93,11 @@ test("agentBusyUpdate is a no-op when already running", () => {
   assert.equal(again, null, "busy when already running should not produce a patch");
 });
 
+test("agentReadyUpdate is idempotent once an agent is already idle", () => {
+  const s = baseSession({ agent: "CC", agentActivity: "idle", completedAt: NOW });
+  assert.equal(agentReadyUpdate(s, false, NOW + 100), null);
+});
+
 test("command lifecycle: detected → finished marks done/failed and refreshes git", () => {
   let s = baseSession();
 

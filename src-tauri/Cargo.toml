@@ -29,6 +29,8 @@ toml = "1"
 toml_edit = "0.25"
 portable-pty = "0.9"
 base64 = "0.22"
+hmac = "0.12"
+sha1 = "0.10"
 log = "0.4"
 parking_lot = "0.12"
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
@@ -65,6 +67,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-window-state = "2"
+tauri-plugin-single-instance = "2"
 
 [profile.dev]
 incremental = true

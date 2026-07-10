@@ -33,10 +33,10 @@ export function HostKeyPromptDialog() {
   if (!prompt) return null;
 
   const hostLabel = prompt.port === 22 ? prompt.host : `${prompt.host}:${prompt.port}`;
-  // "unverifiable" = host already in known_hosts but its key couldn't be
-  // matched against the stored (hashed/wildcard) entry — a possible key
-  // rotation or MITM, and this path deliberately does NOT persist the key. The
-  // copy must say so rather than reuse the first-use "we'll save it" wording.
+  // "unverifiable" = a relevant record (for example @cert-authority or a
+  // malformed hash) cannot be evaluated safely — a possible key rotation or
+  // MITM. This path deliberately does NOT persist the key, so the copy must not
+  // reuse the first-use "we'll save it" wording.
   const unverifiable = prompt.reason === "unverifiable";
   const titleKey = unverifiable ? "ssh.hostKey.unverifiable.title" : "ssh.hostKey.title";
   const bodyKey = unverifiable ? "ssh.hostKey.unverifiable.body" : "ssh.hostKey.body";

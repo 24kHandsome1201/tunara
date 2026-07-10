@@ -1,4 +1,5 @@
 import { load } from "@tauri-apps/plugin-store";
+import { invoke } from "@tauri-apps/api/core";
 import { sanitizeRecentDirs } from "./recent-dirs";
 import {
   dedupeById,
@@ -31,17 +32,38 @@ const UI_LAYOUT_KEY = "uiLayout";
 const WORKSPACE_SNAPSHOT_KEY = "workspaceSnapshot";
 
 type SessionStore = Awaited<ReturnType<typeof load>>;
+type WorkspaceStoreFileState = "missing" | "present";
+
+export type WorkspaceSnapshotLoadResult =
+  | { status: "loaded"; snapshot: WorkspaceSnapshotV1 }
+  | { status: "empty" }
+  | { status: "error"; error: string };
+
+export type WorkspaceSnapshotSaveResult = "saved" | "blocked" | "error";
+
+let workspacePersistenceBlocked = false;
 
 interface PersistedUILayout {
   sidebarVisible: boolean;
   panelVisible: boolean;
 }
 
+async function openCheckedStore(file: string): Promise<SessionStore> {
+  const fileState = await invoke<WorkspaceStoreFileState>("workspace_store_file_state", { file });
+  const store = await load(file, { defaults: {} });
+  if (fileState === "present") {
+    // Initial load swallows disk/JSON errors inside plugin-store. Reload does
+    // not, so an existing corrupt file cannot masquerade as an empty store.
+    await store.reload({ ignoreDefaults: true });
+  }
+  return store;
+}
+
 async function loadSessionStore(): Promise<SessionStore> {
-  const store = await load(STORE_FILE, { defaults: {} });
+  const store = await openCheckedStore(STORE_FILE);
   if ((await store.length()) > 0) return store;
 
-  const legacyStore = await load(LEGACY_STORE_FILE, { defaults: {} });
+  const legacyStore = await openCheckedStore(LEGACY_STORE_FILE);
   const legacyEntries = await legacyStore.entries<unknown>();
   if (legacyEntries.length === 0) return store;
 
@@ -58,36 +80,45 @@ function isPersistedUILayout(value: unknown): value is PersistedUILayout {
   return typeof layout.sidebarVisible === "boolean" && typeof layout.panelVisible === "boolean";
 }
 
-export async function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1): Promise<boolean> {
+export async function saveWorkspaceSnapshot(snapshot: WorkspaceSnapshotV1): Promise<WorkspaceSnapshotSaveResult> {
+  if (workspacePersistenceBlocked) return "blocked";
   try {
     const sanitized = sanitizeSnapshot(snapshot);
-    if (!sanitized) return false;
+    if (!sanitized) return "error";
     const store = await loadSessionStore();
     await store.set(WORKSPACE_SNAPSHOT_KEY, sanitized);
     await store.save();
-    return true;
+    return "saved";
   } catch {
     // store unavailable
-    return false;
+    return "error";
   }
 }
 
-export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | null> {
+export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotLoadResult> {
+  workspacePersistenceBlocked = false;
   try {
     const store = await loadSessionStore();
     const raw = await store.get<unknown>(WORKSPACE_SNAPSHOT_KEY);
     const snapshot = sanitizeSnapshot(raw);
-    if (snapshot) return snapshot;
+    if (snapshot) return { status: "loaded", snapshot };
+    if (raw !== undefined) throw new Error("workspace snapshot is invalid");
 
     const persisted = await store.get<unknown>(SESSIONS_KEY);
     const activeId = await store.get<unknown>(ACTIVE_KEY);
     const layoutRaw = await store.get<unknown>(UI_LAYOUT_KEY);
 
+    if (persisted !== undefined && !Array.isArray(persisted)) {
+      throw new Error("legacy sessions payload is invalid");
+    }
+    if (Array.isArray(persisted) && !persisted.every(isPersistedSession)) {
+      throw new Error("legacy sessions contain invalid entries");
+    }
     const sessions = Array.isArray(persisted)
-      ? dedupeById(persisted.filter(isPersistedSession).map(sanitizePersistedSession))
+      ? dedupeById(persisted.map(sanitizePersistedSession))
       : [];
 
-    if (sessions.length === 0) return null;
+    if (sessions.length === 0) return { status: "empty" };
 
     const activeSessionId = typeof activeId === "string" && sessions.some((s) => s.id === activeId)
       ? activeId
@@ -120,8 +151,9 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotV1 | nul
     await store.set(WORKSPACE_SNAPSHOT_KEY, migrated);
     await store.save();
 
-    return migrated;
-  } catch {
-    return null;
+    return { status: "loaded", snapshot: migrated };
+  } catch (error) {
+    workspacePersistenceBlocked = true;
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
   }
 }

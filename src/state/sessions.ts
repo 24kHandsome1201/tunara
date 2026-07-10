@@ -2,7 +2,11 @@ import { create } from "zustand";
 import type { Session, AgentCode, AgentResumeIntent, RemoteInfo, SshConnectSuggestion } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
-import { hasContinueFlag, parseResumeId } from "@/modules/terminal/lib/agent-resume";
+import {
+  hasContinueFlag,
+  isResumableAgentInvocation,
+  parseResumeId,
+} from "@/modules/terminal/lib/agent-resume";
 import { t } from "@/modules/i18n/core.ts";
 import {
   agentBusyUpdate,
@@ -202,10 +206,11 @@ function buildAgentResumeIntent(
 
   const normalized = command?.trim() || existing?.command || session.lastCommand?.trim() || "";
   if (!normalized) return undefined;
+  if (!isResumableAgentInvocation(agent, normalized)) return undefined;
 
   const resumeId = parseResumeId(normalized);
   const continueMatch = hasContinueFlag(normalized);
-  return {
+  const next: AgentResumeIntent = {
     agent,
     command: normalized,
     cwd: session.dir,
@@ -213,6 +218,16 @@ function buildAgentResumeIntent(
     lastSeenAt: Date.now(),
     confidence: resumeId ? "exact" : continueMatch ? "continue" : "unknown",
   };
+  if (
+    existing?.agent === next.agent
+    && existing.command === next.command
+    && existing.cwd === next.cwd
+    && existing.resumeId === next.resumeId
+    && existing.confidence === next.confidence
+  ) {
+    return undefined;
+  }
+  return next;
 }
 
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
@@ -455,7 +470,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const update = agentDetectedUpdate(session, agent);
     const agentResume = buildAgentResumeIntent(session, agent, command);
     if (update || agentResume) {
-      get().appendTimeline(id, "agent_start", AGENT_NAMES[agent] ?? agent);
+      // The wrapper and native hook can report the same process start through
+      // different channels. Updating resume metadata must not manufacture a
+      // second lifecycle entry for an already-detected agent.
+      if (update) get().appendTimeline(id, "agent_start", AGENT_NAMES[agent] ?? agent);
       get().updateSession(id, {
         ...(update?.patch ?? {}),
         ...(agentResume ? { agentResume } : {}),
@@ -496,7 +514,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const completedTurn = session?.agentActivity === "running";
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
-    get().appendTimeline(id, "agent_stop", session?.agent ? (AGENT_NAMES[session.agent] ?? session.agent) : undefined);
+    if (completedTurn) {
+      get().appendTimeline(id, "agent_stop", session?.agent ? (AGENT_NAMES[session.agent] ?? session.agent) : undefined);
+    }
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && completedTurn && session?.agent) {

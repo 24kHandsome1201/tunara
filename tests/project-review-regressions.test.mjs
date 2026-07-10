@@ -42,7 +42,7 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
   const cargo = read("src-tauri/Cargo.toml");
   const lock = read("src-tauri/Cargo.lock");
-  const cask = read("homebrew/tunara.rb");
+  const cask = read("Casks/tunara.rb");
   const changelog = read("CHANGELOG.md");
 
   const version = pkg.version;
@@ -59,6 +59,61 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   assert.doesNotMatch(cask, /com\.tunara\.app/);
   assert.match(cask, /Application Support\/dev\.tunara\.app/);
   assert.match(tauri.plugins.updater.endpoints[0], /github\.com\/24kHandsome1201\/tunara/);
+});
+
+test("release stays draft until direct, legacy, and updater assets are complete", () => {
+  const release = read(".github/workflows/release.yml");
+
+  assert.match(release, /prepare-release:[\s\S]*?gh release create "\$TAG" "\$\{release_args\[@\]\}"/);
+  assert.match(release, /releaseDraft: true/);
+  assert.doesNotMatch(release, /releaseDraft: false/);
+  assert.match(release, /finalize-release:[\s\S]*?needs:[\s\S]*?- publish-tauri[\s\S]*?- publish-legacy/);
+  assert.match(release, /required_assets=\([\s\S]*?aarch64\.dmg[\s\S]*?aarch64-legacy\.dmg[\s\S]*?latest\.json/);
+  assert.match(release, /gh release edit "\$TAG" --draft=false/);
+  assert.match(release, /DMG_NAME="Tunara_\$\{TAG\}_aarch64\.dmg"/);
+  assert.doesNotMatch(release, /select\(\.name \| test\("Tunara_\.\*\\\\\.dmg"\)\)/);
+  assert.match(release, /Casks\/tunara\.rb/);
+  assert.equal(existsSync(resolve(root, "homebrew/tunara.rb")), false);
+});
+
+test("SSH reconnect is transactional and host-key prompts fail closed", () => {
+  const ssh = read("src-tauri/src/modules/ssh/mod.rs");
+  const connection = read("src-tauri/src/modules/ssh/connection.rs");
+  const auth = read("src-tauri/src/modules/ssh/auth.rs");
+
+  const openIndex = ssh.indexOf("SshSession::open(params, on_event)");
+  const insertIndex = ssh.indexOf("state.insert(", openIndex);
+  assert.ok(openIndex >= 0 && insertIndex > openIndex, "replacement must happen after a successful SSH open");
+  assert.equal(ssh.slice(0, openIndex).includes("state.remove_logical"), false);
+  assert.match(connection, /HOST_KEY_PROMPT_TIMEOUT: Duration = Duration::from_secs\(120\)/);
+  assert.match(connection, /SSH_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs\(15\)/);
+  assert.match(connection, /tokio::time::timeout\([\s\S]*SSH_TCP_CONNECT_TIMEOUT[\s\S]*TcpStream::connect/);
+  assert.match(connection, /client::connect_stream\(config, socket, handler\)/);
+  assert.match(connection, /tokio::time::timeout\(timeout, receiver\)/);
+  assert.doesNotMatch(connection, /tokio::select! \{\s*biased;[\s\S]{0,300}input_rx\.recv/);
+
+  const explicitKeyIndex = auth.indexOf("if let Some(path) = &opts.identity_file");
+  const passwordIndex = auth.indexOf("if let Some(pw) = &opts.password");
+  const agentIndex = auth.indexOf("match try_agent(handle, &opts.user).await");
+  assert.ok(explicitKeyIndex >= 0 && agentIndex > explicitKeyIndex, "explicit identity must precede agent enumeration");
+  assert.ok(passwordIndex > explicitKeyIndex && agentIndex > passwordIndex, "supplied password must precede agent enumeration");
+  assert.match(auth, /metadata\.is_file\(\)/);
+  assert.match(auth, /MAX_IDENTITY_FILE_BYTES/);
+  assert.match(auth, /spawn_blocking/);
+});
+
+test("desktop runtime rejects a second process before shared state starts", () => {
+  const cargo = read("src-tauri/Cargo.toml");
+  const lib = read("src-tauri/src/lib.rs");
+
+  assert.match(cargo, /^tauri-plugin-single-instance = "2"$/m);
+  const builderIndex = lib.indexOf("tauri::Builder::default()");
+  const singleInstanceIndex = lib.indexOf(".plugin(tauri_plugin_single_instance::init", builderIndex);
+  const updaterIndex = lib.indexOf(".plugin(tauri_plugin_updater", builderIndex);
+  const setupIndex = lib.indexOf(".setup(|app|", builderIndex);
+  assert.ok(singleInstanceIndex > builderIndex && singleInstanceIndex < updaterIndex);
+  assert.ok(singleInstanceIndex < setupIndex, "single-instance guard must run before hook/store setup");
+  assert.match(lib, /show_main_window\(app, "single-instance"\)/);
 });
 
 test("dev app uses a separate macOS identity from release", () => {
@@ -227,7 +282,13 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.doesNotMatch(persistSnapshot, /p\.customTitle \? \{ customTitle: p\.customTitle \}/);
   assert.doesNotMatch(persistSnapshot, /p\.pinned \? \{ pinned: true \}/);
   assert.match(persist, /store\.get<unknown>\(SESSIONS_KEY\)/);
-  assert.match(persist, /persisted\.filter\(isPersistedSession\)/);
+  assert.match(persist, /persisted\.every\(isPersistedSession\)/);
+  assert.match(persist, /WorkspaceSnapshotLoadResult/);
+  assert.match(persist, /status: "loaded"/);
+  assert.match(persist, /status: "empty"/);
+  assert.match(persist, /status: "error"/);
+  assert.match(persist, /workspacePersistenceBlocked = true/);
+  assert.match(persist, /store\.reload\(\{ ignoreDefaults: true \}\)/);
   assert.match(persist, /typeof activeId === "string" && sessions\.some\(\(s\) => s\.id === activeId\)/);
   assert.match(persist, /function isPersistedUILayout\(value: unknown\): value is PersistedUILayout/);
   // The legacy per-key save/load helpers (saveSessions/loadSessions/
@@ -245,12 +306,12 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.doesNotMatch(persist, /store\.set\(ACTIVE_KEY/);
   assert.doesNotMatch(persist, /store\.set\(UI_LAYOUT_KEY/);
   assert.match(persist, /await store\.set\(WORKSPACE_SNAPSHOT_KEY, migrated\)/);
-  assert.match(persist, /saveWorkspaceSnapshot\(snapshot: WorkspaceSnapshotV1\): Promise<boolean>/);
+  assert.match(persist, /saveWorkspaceSnapshot\(snapshot: WorkspaceSnapshotV1\): Promise<WorkspaceSnapshotSaveResult>/);
   assert.match(persist, /const sanitized = sanitizeSnapshot\(snapshot\)/);
-  assert.match(persist, /if \(!sanitized\) return false/);
+  assert.match(persist, /if \(!sanitized\) return "error"/);
   assert.match(persist, /store\.set\(WORKSPACE_SNAPSHOT_KEY, sanitized\)/);
   assert.doesNotMatch(persist, /sanitizeSnapshot\(snapshot\) \?\? snapshot/);
-  assert.match(persist, /return true;[\s\S]*?catch \{[\s\S]*?return false;/);
+  assert.match(persist, /return "saved";[\s\S]*?catch \{[\s\S]*?return "error";/);
   assert.match(persist, /from "\.\/persist-snapshot\.ts"/);
   assert.match(persist, /export \{ sanitizeSnapshot \} from "\.\/persist-snapshot\.ts"/);
   assert.match(persistSnapshot, /export interface WorkspaceSnapshotV1/);
@@ -258,7 +319,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(persistSnapshot, /function isSafeRecordKey\(key: string\): boolean/);
   assert.match(persistSnapshot, /key !== "__proto__" && key !== "prototype" && key !== "constructor"/);
   assert.match(persistenceDoc, /rejects unsafe record keys such as `__proto__` \/ `prototype` \/ `constructor`/);
-  assert.match(persistenceDoc, /normal `useInit` runtime save path[\s\S]*writes the workspace snapshot directly/);
+  assert.match(persistenceDoc, /normal `useInit` runtime save path[\s\S]*writes the workspace\s+snapshot directly/);
   assert.doesNotMatch(persistenceDoc, /legacy `sessions`[\s\S]*keys and keep them in sync with the snapshot/);
   assert.match(persistSnapshot, /from "\.\.\/modules\/ssh\/hosts-model\.ts"/);
   assert.match(persistSnapshot, /const port = parseSshPort\(r\.port\)/);
@@ -406,7 +467,10 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(remoteFsBridge, /invoke<GrepResponse>\("ssh_fs_grep"/);
   // A directory Refresh must drop BOTH remote caches, or stale grep hits
   // outlive the reload the same way stale find hits used to.
-  assert.match(remoteFsBridge, /for \(const k of searchCache\.keys\(\)\)[\s\S]*?for \(const k of grepCache\.keys\(\)\)/);
+  assert.match(
+    remoteFsBridge,
+    /searchCache\.invalidateSession\(ptyId\);[\s\S]*?grepCache\.invalidateSession\(ptyId\);/,
+  );
   const remoteGit = read("src-tauri/src/modules/ssh/remote_git.rs");
   assert.match(remoteGit, /pub async fn ssh_fs_grep/);
   assert.match(remoteGit, /fn parse_grep_output\(raw: &str, root: &str, max_results: usize\)/);
@@ -513,10 +577,10 @@ test("session persistence is debounced and still flushed on close", () => {
   assert.match(init, /scheduleSave\(\);/);
   // 30s backstop flush is gated on the terminal-snapshot dirty flag, so an idle
   // or hidden app with no new output performs no redundant serialize + disk write.
-  assert.match(init, /setInterval\(\(\) => \{[\s\S]*?if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(saved\) => \{[\s\S]*?if \(!saved\) markTerminalSnapshotDirty\(\);[\s\S]*?\}, 30_000\)/);
+  assert.match(init, /setInterval\(\(\) => \{[\s\S]*?if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(result\) => \{[\s\S]*?if \(result !== "saved"\) markTerminalSnapshotDirty\(\);[\s\S]*?\}, 30_000\)/);
   assert.match(persistenceDoc, /consumeTerminalSnapshotDirty\(\)[\s\S]*?only flushes when terminal scrollback has[\s\S]*?changed since the last save/);
   assert.doesNotMatch(persistenceDoc, /setInterval\(persistNow, 30_000\) saves every 30 s/);
-  assert.match(init, /onCloseRequested\(async \(event\) => \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?await saveWorkspaceSnapshot[\s\S]*?await win\.hide\(\)/);
+  assert.match(init, /onCloseRequested\(async \(event\) => \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?const result = await persistNow\(\);[\s\S]*?if \(result === "error"\) return;[\s\S]*?await win\.hide\(\)/);
 });
 
 test("terminal snapshot writes flip a dirty flag the persist backstop consumes", () => {
@@ -539,7 +603,7 @@ test("terminal snapshot writes flip a dirty flag the persist backstop consumes",
   assert.match(snap, /if \(snapshots\.delete\(sessionId\)\) dirty = true;/);
   assert.doesNotMatch(snap, /restoreTerminalSnapshots[\s\S]*?dirty = true/);
   assert.match(init, /import \{[\s\S]*markTerminalSnapshotDirty[\s\S]*\} from "@\/modules\/terminal\/lib\/terminal-snapshot"/);
-  assert.match(init, /if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(saved\) => \{[\s\S]*?if \(!saved\) markTerminalSnapshotDirty\(\);/);
+  assert.match(init, /if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(result\) => \{[\s\S]*?if \(result !== "saved"\) markTerminalSnapshotDirty\(\);/);
   assert.match(sessions, /removeTerminalSnapshot\(id\)/);
   assert.match(scheduler, /shouldCapture = \(\) => true/);
   assert.match(scheduler, /if \(!shouldCapture\(\)\) return;/);
@@ -573,7 +637,7 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   // Remote (SSH) sessions route through the exec-channel git path, not the
   // local git2 path — guard that the remote branch exists and the local calls
   // never receive a raw dir.
-  assert.match(main, /sshGitStatus\(activePtyId\)/);
+  assert.match(main, /sshGitStatus\(activePtyId, activeDir \?\? ""\)/);
   assert.doesNotMatch(main, /gitAheadBehind\(active\.dir\)/);
   assert.doesNotMatch(main, /gitStatus\(active\.dir\)/);
   // The git effect depends on captured primitives, never the whole `active`
@@ -585,6 +649,18 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(main, /changes: \{ files: status\.files \}/);
   assert.doesNotMatch(main, /summary: status\.summary/);
   assert.match(settings, /maxWidth: "calc\(100vw - 32px\)"/);
+});
+
+test("remote file downloads are reachable from the explorer", () => {
+  const explorer = read("src/ui/FileExplorer.tsx");
+  const bridge = read("src/modules/ssh/remote-fs-bridge.ts");
+  const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
+
+  assert.match(explorer, /saveDialog\(\{/);
+  assert.match(explorer, /sshDownload\(remotePtyId, remotePath, localPath\)/);
+  assert.match(explorer, /id: "file:download"/);
+  assert.match(bridge, /invoke<number>\("ssh_fs_download"/);
+  assert.ok(capability.permissions.includes("dialog:allow-save"));
 });
 
 test("session store keeps active sessions visible in split mode and cleans per-session metadata", () => {
@@ -808,7 +884,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /ArrowDown/);
   assert.match(contextMenu, /role="separator"/);
   assert.match(contextMenu, /boxShadow: "var\(--shadow-menu\)"/);
-  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "editor" \| "copy" \| "rename" \| "search" \| "close"/);
+  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "editor" \| "copy" \| "download" \| "rename" \| "search" \| "close"/);
   assert.match(contextMenu, /id\?: string/);
   assert.match(contextMenu, /function menuEntryKey/);
   assert.match(contextMenu, /function MenuIcon/);
@@ -1145,7 +1221,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ registerTerminalPasteProtection \} from "@\/modules\/terminal\/lib\/terminal-paste-protection"/);
   assert.match(terminal, /import \{ schedulePendingInput \} from "@\/modules\/terminal\/lib\/terminal-pending-input"/);
   assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
-  assert.match(terminal, /import \{ scanTerminalInputBuffer \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
+  assert.match(terminal, /import \{ scanTerminalInputBuffer, shouldScanTerminalInput \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
   assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl\)/);
@@ -1305,7 +1381,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
   assert.match(terminalBufferRead, /export function getTerminalTailText/);
   assert.match(terminalCodexState, /export function createCodexScreenStateTracker/);
-  assert.match(terminalCodexState, /CODEX_DATA_BURST_BUSY_THRESHOLD/);
+  assert.doesNotMatch(terminalCodexState, /CODEX_DATA_BURST_BUSY_THRESHOLD|dataBurstCount/);
+  assert.match(terminalCodexState, /CODEX_STATE_CHECK_DELAY_MS/);
   assert.match(terminalCodexState, /detectCodexScreenState\(tail\)/);
   assert.match(terminalCommand, /export function isMeaningfulCommand/);
   assert.match(terminalFont, /export const TERMINAL_FONT_LOAD_TIMEOUT_MS = 200/);

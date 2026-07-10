@@ -6,20 +6,22 @@
 //   - key matches a stored entry  -> accept
 //   - host unknown                -> accept + remember (first use)
 //   - host known, key differs     -> REJECT (possible MITM)
+//   - key marked @revoked         -> REJECT unconditionally
 //
-// We deliberately keep this small: plain `host` / `[host]:port` lines, no cert
-// authorities, no revocation. Hashed (|1|) entries can't be matched by
-// plaintext, but we DETECT their presence: when no plaintext entry matches and
-// hashed entries exist, we return `Unverifiable` (not `Unknown`), so the caller
-// won't silently trust + persist a possibly-rotated key — the MITM case TOFU
-// exists to catch. Genuine first contact (no entries at all) still gets the
-// permissive first-use accept.
+// We deliberately keep this small: plain `host` / `[host]:port` lines and
+// OpenSSH markers. We reject @revoked keys. Certificate-authority validation is
+// not implemented, so a matching @cert-authority line fails closed as
+// Unverifiable rather than being mistaken for first use. OpenSSH's `|1|`
+// hashed hostnames are verified with their HMAC-SHA1 scheme.
 
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use hmac::{Hmac, Mac};
 use russh::keys::ssh_key::PublicKey;
+use sha1::Sha1;
 
 /// Result of checking a presented host key against the store.
 pub enum Verdict {
@@ -29,11 +31,13 @@ pub enum Verdict {
     Unknown,
     /// Host known but the key differs — refuse the connection.
     Mismatch,
-    /// The store contains hashed (`|1|`) entries we can't match by plaintext,
-    /// and no plaintext entry matched. We can neither confirm a match nor prove
-    /// a mismatch, so we must NOT silently trust + persist a possibly-rotated
-    /// key. Caller should accept only under an explicit allow-unknown policy and
-    /// must NOT remember it (remembering would mask a real future mismatch).
+    /// The exact presented key is explicitly marked `@revoked` by OpenSSH.
+    /// It must never be accepted, even under an allow-unknown policy.
+    Revoked,
+    /// The store contains a matching record we cannot safely evaluate (for
+    /// example a certificate-authority marker), or a malformed hashed record.
+    /// We can neither confirm a match nor prove a mismatch, so the caller must
+    /// not silently trust and persist the presented key.
     Unverifiable,
 }
 
@@ -43,8 +47,11 @@ fn known_hosts_path() -> Option<PathBuf> {
 
 /// Build the host token OpenSSH uses: `host` for port 22, `[host]:port` else.
 fn host_token(host: &str, port: u16) -> String {
+    // OpenSSH canonicalizes DNS hostnames to lower case before matching and
+    // hashing. ASCII normalization is also harmless for numeric IP literals.
+    let host = host.to_ascii_lowercase();
     if port == 22 {
-        host.to_string()
+        host
     } else {
         format!("[{host}]:{port}")
     }
@@ -54,8 +61,8 @@ fn host_token(host: &str, port: u16) -> String {
 /// against a host token. Plain patterns reduce to exact equality. Implemented
 /// as a classic two-pointer glob matcher to avoid pulling in a regex crate.
 fn host_pattern_match(pattern: &str, token: &str) -> bool {
-    let p: Vec<char> = pattern.chars().collect();
-    let t: Vec<char> = token.chars().collect();
+    let p: Vec<char> = pattern.to_ascii_lowercase().chars().collect();
+    let t: Vec<char> = token.to_ascii_lowercase().chars().collect();
     let (mut pi, mut ti) = (0usize, 0usize);
     // Backtrack points for the most recent `*`.
     let (mut star, mut mark): (Option<usize>, usize) = (None, 0);
@@ -85,11 +92,10 @@ fn host_pattern_match(pattern: &str, token: &str) -> bool {
 enum HostMatch {
     /// No positive pattern matched (or a negation excluded the line).
     None,
-    /// Matched via an exact (non-wildcard) pattern — a key mismatch here is a
-    /// genuine MITM signal.
+    /// Matched via an exact (non-wildcard) pattern.
     Exact,
-    /// Matched only via a wildcard pattern — one such line legitimately spans
-    /// many hosts with different keys, so a key mismatch isn't proof of MITM.
+    /// Matched via a wildcard pattern. The record still binds every matching
+    /// host to its key, so a different presented key is a mismatch.
     Wildcard,
 }
 
@@ -125,6 +131,23 @@ fn match_hosts_field(hosts_field: &str, token: &str) -> HostMatch {
     result
 }
 
+/// Match OpenSSH's hashed-host form: `|1|base64(salt)|base64(HMAC-SHA1)`.
+/// `None` means the record itself is malformed; a valid non-match is
+/// `Some(false)` and must not make unrelated hosts unverifiable.
+fn match_hashed_host(hosts_field: &str, token: &str) -> Option<bool> {
+    let encoded = hosts_field.strip_prefix("|1|")?;
+    let mut fields = encoded.split('|');
+    let salt = B64.decode(fields.next()?).ok()?;
+    let expected = B64.decode(fields.next()?).ok()?;
+    if fields.next().is_some() || expected.len() != 20 {
+        return None;
+    }
+    let mut mac = Hmac::<Sha1>::new_from_slice(&salt).ok()?;
+    let token = token.to_ascii_lowercase();
+    mac.update(token.as_bytes());
+    Some(mac.verify_slice(&expected).is_ok())
+}
+
 /// OpenSSH stores keys as `host keytype base64`. We compare on the
 /// `keytype base64` portion, which is exactly `PublicKey::to_openssh`
 /// minus the trailing comment.
@@ -153,6 +176,103 @@ fn verdict_for_read_error(kind: std::io::ErrorKind) -> Verdict {
     }
 }
 
+/// Check already-read known_hosts contents. Keeping parsing separate from file
+/// IO makes marker handling testable without touching the user's real SSH
+/// configuration.
+fn verify_contents(contents: &str, token: &str, presented: &str) -> Verdict {
+    let Some((presented_kind, presented_blob)) = presented.split_once(' ') else {
+        return Verdict::Unverifiable;
+    };
+    // Do not return early for a trust record: a later @revoked line for the
+    // same key must override it, independent of file ordering.
+    let mut trusted_match = false;
+    // A plain or hashed record matched this host, but its key did not.
+    let mut host_record_seen = false;
+    // A malformed hashed record could have represented this host, so it keeps
+    // first-use from silently winning. Valid hashed records are matched exactly
+    // and do not contaminate unrelated hosts.
+    let mut malformed_hashed_seen = false;
+    // CA and unknown markers are security-relevant records, but this compact
+    // verifier cannot validate them. Never reinterpret them as first contact.
+    let mut unverifiable_marker_seen = false;
+
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let mut fields = line.split_whitespace();
+        let Some(first) = fields.next() else {
+            continue;
+        };
+        let (marker, hosts_field) = if first.starts_with('@') {
+            let Some(hosts) = fields.next() else {
+                continue;
+            };
+            (Some(first), hosts)
+        } else {
+            (None, first)
+        };
+        let (Some(kind), Some(blob)) = (fields.next(), fields.next()) else {
+            continue;
+        };
+
+        let matched = if hosts_field.starts_with('|') {
+            match match_hashed_host(hosts_field, token) {
+                Some(true) => HostMatch::Exact,
+                Some(false) => HostMatch::None,
+                None => {
+                    malformed_hashed_seen = true;
+                    HostMatch::None
+                }
+            }
+        } else {
+            match_hosts_field(hosts_field, token)
+        };
+        if matches!(matched, HostMatch::None) {
+            continue;
+        }
+
+        let key_matches = kind == presented_kind && blob == presented_blob;
+
+        match marker {
+            Some("@revoked") => {
+                if key_matches {
+                    return Verdict::Revoked;
+                }
+                // A revocation record applies only to its key. It neither
+                // trusts nor rejects a different presented key.
+                continue;
+            }
+            Some("@cert-authority") | Some(_) => {
+                unverifiable_marker_seen = true;
+                continue;
+            }
+            None => {}
+        }
+
+        if key_matches {
+            trusted_match = true;
+            continue;
+        }
+        match matched {
+            HostMatch::Exact | HostMatch::Wildcard => host_record_seen = true,
+            HostMatch::None => {}
+        }
+    }
+
+    if trusted_match {
+        Verdict::Match
+    } else if host_record_seen {
+        Verdict::Mismatch
+    } else if malformed_hashed_seen || unverifiable_marker_seen {
+        Verdict::Unverifiable
+    } else {
+        Verdict::Unknown
+    }
+}
+
 /// Check the presented key against `~/.ssh/known_hosts`.
 pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
     let Some(path) = known_hosts_path() else {
@@ -178,72 +298,7 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
         return Verdict::Unknown;
     };
     let token = host_token(host, port);
-
-    // Exact (non-wildcard) entry for this host existed but no key matched.
-    let mut exact_seen = false;
-    // A wildcard entry (e.g. `*.example.com`) covered this host but its key
-    // differs. Because one wildcard line legitimately spans many hosts with
-    // different keys, that is NOT proof of a mismatch — but we also can't
-    // confirm trust, so it must downgrade to Unverifiable, never auto-trust.
-    let mut wildcard_seen = false;
-    // Track whether the file has any hashed entries. If we don't find a
-    // plaintext match, a hashed entry could be this host with a rotated key —
-    // we can't tell, so we must not silently accept+remember (that would be the
-    // exact MITM case TOFU exists to catch). OpenSSH hashes known_hosts by
-    // default on many systems, so this is a realistic, not theoretical, case.
-    let mut hashed_present = false;
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let mut parts = line.splitn(2, char::is_whitespace);
-        let Some(hosts_field) = parts.next() else {
-            continue;
-        };
-        let Some(rest) = parts.next() else {
-            continue;
-        };
-        // Hashed entries (|1|salt|hash) can't be matched by plaintext here.
-        // We can't decode them without an HMAC pass, but we MUST note they
-        // exist so we don't mistake a hashed host for an unknown one.
-        if hosts_field.starts_with('|') {
-            hashed_present = true;
-            continue;
-        }
-        // Honor comma-separated patterns, `*`/`?` wildcards, and `!` negation;
-        // distinguish whether the matching pattern was exact or a wildcard.
-        let matched = match_hosts_field(hosts_field, &token);
-        if matches!(matched, HostMatch::None) {
-            continue;
-        }
-        // `rest` is "keytype base64 [comment]"; compare type+blob.
-        let mut rit = rest.split_whitespace();
-        if let (Some(kind), Some(blob)) = (rit.next(), rit.next()) {
-            if format!("{kind} {blob}") == presented {
-                return Verdict::Match;
-            }
-        }
-        match matched {
-            HostMatch::Exact => exact_seen = true,
-            HostMatch::Wildcard => wildcard_seen = true,
-            HostMatch::None => {}
-        }
-    }
-
-    if exact_seen {
-        // A non-wildcard entry for this host existed but no key matched → MITM.
-        Verdict::Mismatch
-    } else if wildcard_seen || hashed_present {
-        // A wildcard covered this host (key differs, but that's expected across
-        // hosts) or hashed entries could be this host. Either way we can neither
-        // confirm nor disprove — fail safe: accept only under allow-unknown and
-        // never persist.
-        Verdict::Unverifiable
-    } else {
-        // Genuinely first contact — standard TOFU.
-        Verdict::Unknown
-    }
+    verify_contents(&contents, &token, &presented)
 }
 
 /// Append a newly-trusted host key to `~/.ssh/known_hosts` (first-use).
@@ -260,11 +315,28 @@ pub fn remember(host: &str, port: u16, key: &PublicKey) -> std::io::Result<()> {
         return Ok(());
     };
     let entry = format!("{} {}\n", host_token(host, port), line);
+    append_entry(&path, entry.as_bytes())
+}
+
+fn append_entry(path: &std::path::Path, entry: &[u8]) -> std::io::Result<()> {
     let mut f = fs::OpenOptions::new()
         .create(true)
+        .read(true)
         .append(true)
-        .open(&path)?;
-    f.write_all(entry.as_bytes())
+        .open(path)?;
+    // Preserve the line-oriented format when another SSH client left the file
+    // without a trailing newline. Appending directly would merge two host
+    // records and make both unreadable.
+    let len = f.metadata()?.len();
+    if len > 0 {
+        f.seek(SeekFrom::End(-1))?;
+        let mut last = [0u8; 1];
+        f.read_exact(&mut last)?;
+        if last[0] != b'\n' {
+            f.write_all(b"\n")?;
+        }
+    }
+    f.write_all(entry)
 }
 
 #[cfg(test)]
@@ -277,6 +349,22 @@ mod tests {
         assert_eq!(host_token("example.com", 2222), "[example.com]:2222");
     }
 
+    #[test]
+    fn appending_repairs_a_missing_trailing_newline() {
+        let path = std::env::temp_dir().join(format!(
+            "tunara-known-hosts-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        fs::write(&path, b"old.example ssh-ed25519 AAAAOLD").expect("write fixture");
+        append_entry(&path, b"new.example ssh-ed25519 AAAANEW\n").expect("append entry");
+        assert_eq!(
+            fs::read_to_string(&path).expect("read fixture"),
+            "old.example ssh-ed25519 AAAAOLD\nnew.example ssh-ed25519 AAAANEW\n"
+        );
+        let _ = fs::remove_file(path);
+    }
+
     // Guard the security-relevant invariant: Unverifiable must stay a distinct
     // verdict, never collapsed into Unknown (which would auto-trust+persist a
     // possibly-rotated key on a hashed-known_hosts host).
@@ -287,6 +375,7 @@ mod tests {
         }
         assert!(!auto_trusts(&Verdict::Unverifiable));
         assert!(!auto_trusts(&Verdict::Mismatch));
+        assert!(!auto_trusts(&Verdict::Revoked));
         assert!(!auto_trusts(&Verdict::Match));
         assert!(auto_trusts(&Verdict::Unknown));
     }
@@ -370,6 +459,99 @@ mod tests {
         assert!(matches!(
             match_hosts_field("*.example.com", "host01.example.com"),
             HostMatch::Wildcard
+        ));
+    }
+
+    #[test]
+    fn wildcard_record_rejects_a_different_key() {
+        let contents = "*.example.com ssh-ed25519 AAAAEXPECTED\n";
+        assert!(matches!(
+            verify_contents(contents, "host.example.com", "ssh-ed25519 AAAACHANGED"),
+            Verdict::Mismatch
+        ));
+    }
+
+    #[test]
+    fn openssh_hashed_hosts_match_only_their_own_token() {
+        // Fixture from russh's own known_hosts test: HMAC-SHA1 of example.com.
+        let hashed = "|1|O33ESRMWPVkMYIwJ1Uw+n877jTo=|nuuC5vEqXlEZ/8BXQR7m619W6Ak=";
+        assert_eq!(match_hashed_host(hashed, "example.com"), Some(true));
+        assert_eq!(match_hashed_host(hashed, "EXAMPLE.COM"), Some(true));
+        assert_eq!(match_hashed_host(hashed, "unrelated.example"), Some(false));
+        assert_eq!(match_hashed_host("|1|broken|record", "example.com"), None);
+    }
+
+    #[test]
+    fn dns_host_matching_is_ascii_case_insensitive_like_openssh() {
+        assert_eq!(host_token("EXAMPLE.COM", 22), "example.com");
+        assert!(host_pattern_match("*.Example.COM", "API.EXAMPLE.com"));
+        let contents = "example.com ssh-ed25519 AAAAEXPECTED\n";
+        assert!(matches!(
+            verify_contents(
+                contents,
+                &host_token("EXAMPLE.COM", 22),
+                "ssh-ed25519 AAAACHANGED"
+            ),
+            Verdict::Mismatch
+        ));
+    }
+
+    #[test]
+    fn unrelated_hashed_entry_does_not_poison_first_use() {
+        let contents = "|1|O33ESRMWPVkMYIwJ1Uw+n877jTo=|nuuC5vEqXlEZ/8BXQR7m619W6Ak= ssh-ed25519 AAAAEXAMPLE\n";
+        assert!(matches!(
+            verify_contents(contents, "new.example", "ssh-ed25519 AAAANEW"),
+            Verdict::Unknown
+        ));
+        assert!(matches!(
+            verify_contents(contents, "example.com", "ssh-ed25519 AAAAEXAMPLE"),
+            Verdict::Match
+        ));
+        assert!(matches!(
+            verify_contents(contents, "example.com", "ssh-ed25519 AAAACHANGED"),
+            Verdict::Mismatch
+        ));
+    }
+
+    #[test]
+    fn revoked_marker_rejects_the_exact_presented_key() {
+        let contents = concat!(
+            "example.com ssh-ed25519 AAAAREVOKED previously-trusted\n",
+            "@revoked * ssh-ed25519 AAAAREVOKED compromised\n",
+        );
+        assert!(matches!(
+            verify_contents(contents, "example.com", "ssh-ed25519 AAAAREVOKED"),
+            Verdict::Revoked
+        ));
+    }
+
+    #[test]
+    fn revoked_marker_does_not_revoke_a_different_key() {
+        let contents = "@revoked example.com ssh-ed25519 AAAAOLD compromised\n";
+        assert!(matches!(
+            verify_contents(contents, "example.com", "ssh-ed25519 AAAANEW"),
+            Verdict::Unknown
+        ));
+    }
+
+    #[test]
+    fn certificate_authority_marker_never_becomes_first_use() {
+        let contents = "@cert-authority *.example.com ssh-ed25519 AAAACA office-ca\n";
+        assert!(matches!(
+            verify_contents(contents, "host.example.com", "ssh-ed25519 AAAASERVER"),
+            Verdict::Unverifiable
+        ));
+    }
+
+    #[test]
+    fn ordinary_matching_key_still_wins_when_a_ca_marker_is_present() {
+        let contents = concat!(
+            "@cert-authority *.example.com ssh-ed25519 AAAACA office-ca\n",
+            "host.example.com ssh-ed25519 AAAASERVER\n",
+        );
+        assert!(matches!(
+            verify_contents(contents, "host.example.com", "ssh-ed25519 AAAASERVER"),
+            Verdict::Match
         ));
     }
 }

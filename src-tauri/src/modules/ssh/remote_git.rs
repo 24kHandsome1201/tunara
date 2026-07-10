@@ -36,25 +36,41 @@ const MAX_DIFF_BYTES: usize = 256 * 1024;
 /// DiffPanel shows the same "truncated" hint for local and remote diffs.
 const MAX_DIFF_LINES: usize = 2000;
 
-/// Parse `git status --porcelain=v1 --branch` output into a `StatusResult`.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn remote_git_cwd(cwd: &str) -> Result<String, String> {
+    if !cwd.starts_with('/') || cwd.len() > 4_096 || cwd.chars().any(char::is_control) {
+        return Err("remote git cwd must be an absolute path".to_string());
+    }
+    Ok(shell_quote(cwd))
+}
+
+/// Parse NUL-delimited `git status --porcelain=v1 --branch -z` output into a
+/// `StatusResult`.
 ///
 /// Uses porcelain v1 (not v2) because it is supported by every git 1.x/2.x and
-/// trivially line-parsable. The branch line `## branch...` carries the branch
-/// name; each `XY path` line carries stage + status. v1 doesn't give per-file
-/// added/removed counts, so those are 0 — the file row shows the status mark
-/// only, which is enough to decide whether to look at the diff.
+/// byte-stable. `-z` is essential: it disables Git's C-quoting and makes paths
+/// containing Unicode, quotes, and newlines unambiguous. The branch record
+/// `## branch...` carries the branch name; each `XY path` record carries stage
+/// + status. v1 doesn't give per-file added/removed counts, so those are 0.
 ///
 /// Pure function so it can be unit-tested without a live SSH connection.
 pub(crate) fn parse_porcelain_v1(raw: &str) -> StatusResult {
     let mut branch = String::from("HEAD");
     let mut files: Vec<FileChange> = Vec::new();
 
-    for line in raw.lines() {
-        if line.is_empty() {
+    for record in raw.split('\0') {
+        if record.is_empty() {
             continue;
         }
         // Branch header: `## main` or `## main...origin/main [ahead 1]`.
-        if let Some(rest) = line.strip_prefix("## ") {
+        if let Some(rest) = record.strip_prefix("## ") {
+            if let Some(unborn) = rest.strip_prefix("No commits yet on ") {
+                branch = unborn.to_string();
+                continue;
+            }
             // Take the branch name up to `...` (upstream) or ` [` (tracking
             // info) or end of line.
             let end = rest
@@ -66,69 +82,74 @@ pub(crate) fn parse_porcelain_v1(raw: &str) -> StatusResult {
         }
         // `XY path` — X = index status, Y = worktree status. At least two chars
         // + a space + path; shorter lines are malformed and skipped.
-        if line.len() < 4 {
+        if record.len() < 4 {
             continue;
         }
-        let x = line.as_bytes()[0] as char;
-        let y = line.as_bytes()[1] as char;
-        let path = line[3..].trim();
+        let x = record.as_bytes()[0] as char;
+        let y = record.as_bytes()[1] as char;
+        let path = &record[3..];
         if path.is_empty() {
             continue;
         }
-        // A rename in v1 is `R  old -> new`; keep the new path (after `->`).
-        let resolved_path = path.rsplit(" -> ").next().unwrap_or(path).to_string();
-
-        // Stage classification: X != ' ' && X != '?' → staged; Y != ' ' →
-        // unstaged; '?' (untracked) → untracked. Staged takes precedence so a
-        // file that's both staged and further modified shows once as staged
-        // (matches how the local git2 path would surface it via HEAD→index).
-        let (mark, stage): (char, &'static str) = if x == '?' && y == '?' {
-            ('?', "untracked")
-        } else if x != ' ' && x != '?' {
-            (x, "staged")
-        } else if y != ' ' {
-            (y, "unstaged")
-        } else {
-            // Both spaces but present — shouldn't happen in porcelain; skip.
+        if x == '?' && y == '?' {
+            files.push(file_change(path, '?', "untracked"));
             continue;
-        };
-
-        files.push(FileChange {
-            path: resolved_path,
-            status: mark.to_string(),
-            stage: stage.to_string(),
-            added: 0,
-            removed: 0,
-        });
+        }
+        if x == '!' && y == '!' {
+            continue;
+        }
+        // A file can have both an index delta and a further worktree delta
+        // (`MM`). Emit both rows so staged review never hides unstaged work.
+        if x != ' ' && x != '?' {
+            files.push(file_change(path, x, "staged"));
+        }
+        if y != ' ' && y != '?' {
+            files.push(file_change(path, y, "unstaged"));
+        }
     }
 
     files.sort_by(|a, b| a.path.cmp(&b.path).then(a.stage.cmp(&b.stage)));
     StatusResult { branch, files }
 }
 
-/// Run `git status --porcelain=v1 --branch` in the remote session's cwd and
+fn file_change(path: &str, status: char, stage: &str) -> FileChange {
+    FileChange {
+        path: path.to_string(),
+        status: status.to_string(),
+        stage: stage.to_string(),
+        added: 0,
+        removed: 0,
+    }
+}
+
+/// Run `git status --porcelain=v1 --branch -z` in the remote session's cwd and
 /// parse it into a `StatusResult` shaped exactly like the local `git_status`.
 #[tauri::command]
 pub async fn ssh_git_status(
     state: State<'_, PtyState>,
     session_id: u32,
+    cwd: String,
 ) -> Result<StatusResult, String> {
     let session = ssh_session(&state, session_id)?;
     let ssh = match session.as_ref() {
         Session::Ssh(s) => s,
         Session::Local(_) => return Err("not a remote session".to_string()),
     };
-    // `-C .` keeps us in the shell's cwd; `--no-renames` makes the path column
+    let cwd = remote_git_cwd(&cwd)?;
+    // Exec channels start in sshd's default directory, not the interactive
+    // shell's live cwd, so pass the OSC-7-tracked path explicitly.
+    // `--no-renames` makes the path column
     // stable (no `-> ` to split). No `2>&1` — the exec function captures stderr
     // separately and returns it as Err when stdout is empty, so a missing git
     // or a non-repo cwd surfaces as a clean error instead of being parsed as
     // bogus porcelain output.
-    let out = ssh
-        .exec(
-            "git -C . status --porcelain=v1 --branch --no-renames",
-            MAX_STATUS_BYTES,
-        )
-        .await?;
+    let command = format!("git -C {cwd} status --porcelain=v1 --branch --no-renames -z");
+    let out = ssh.exec(&command, MAX_STATUS_BYTES + 1).await?;
+    if out.len() > MAX_STATUS_BYTES {
+        return Err(format!(
+            "remote git status exceeds {MAX_STATUS_BYTES} bytes"
+        ));
+    }
     Ok(parse_porcelain_v1(&out))
 }
 
@@ -138,6 +159,7 @@ pub async fn ssh_git_status(
 pub async fn ssh_git_diff(
     state: State<'_, PtyState>,
     session_id: u32,
+    cwd: String,
     file: String,
     stage: String,
 ) -> Result<FileDiff, String> {
@@ -162,11 +184,12 @@ pub async fn ssh_git_diff(
     // Shell-quote the path minimally: wrap in single quotes and escape any
     // embedded single quotes. The file path comes from our own parsed status,
     // not user input, but quoting defends against paths with spaces/quotes.
-    let quoted = format!("'{}'", file.replace('\'', "'\\''"));
+    let quoted = shell_quote(&file);
+    let cwd = remote_git_cwd(&cwd)?;
     // No `2>&1` — let the exec function's stderr-capture return git errors
     // (e.g. "fatal: not a git repository") as Err instead of merging them
     // into the patch text.
-    let cmd = format!("git -C . diff {arg} -- {quoted}");
+    let cmd = format!("git -C {cwd} diff {arg} -- {quoted}");
     // Ask exec for one byte over the cap: exec truncates to its limit, so a
     // result strictly longer than MAX_DIFF_BYTES is the only unambiguous
     // overflow signal (a diff of exactly the cap is complete, not too large).
@@ -215,36 +238,30 @@ pub async fn ssh_git_diff(
 pub async fn ssh_git_ahead_behind(
     state: State<'_, PtyState>,
     session_id: u32,
+    cwd: String,
 ) -> Result<RemoteState, String> {
     let session = ssh_session(&state, session_id)?;
     let ssh = match session.as_ref() {
         Session::Ssh(s) => s,
         Session::Local(_) => return Err("not a remote session".to_string()),
     };
+    let cwd = remote_git_cwd(&cwd)?;
     // `rev-list --left-right --count @{u}...HEAD` prints "<behind>\t<ahead>"
-    // (one line, tab-separated). `-C .` keeps us in the shell's cwd.
-    let out = ssh
-        .exec(
-            "git -C . rev-list --left-right --count @{u}...HEAD 2>/dev/null",
-            256,
-        )
-        .await?;
+    // (one line, tab-separated).
+    let rev_list = format!("git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null");
+    let out = ssh.exec_allow_nonzero(&rev_list, 256).await?;
     let trimmed = out.trim();
     // Empty output: no upstream (git exited non-zero, stderr suppressed).
     if trimmed.is_empty() {
         // Fall back to reading the branch name so the UI can show it.
-        let branch_out = ssh
-            .exec("git -C . symbolic-ref --short HEAD 2>/dev/null", 128)
-            .await
-            .unwrap_or_default();
+        let branch_command = format!("git -C {cwd} symbolic-ref --short HEAD 2>/dev/null");
+        let branch_out = ssh.exec(&branch_command, 128).await.unwrap_or_default();
         let branch = branch_out.trim().to_string();
         if branch.is_empty() {
             // No HEAD ref at all → detached or unborn. Distinguish via
             // rev-parse HEAD: success means detached.
-            let head_out = ssh
-                .exec("git -C . rev-parse --short HEAD 2>/dev/null", 128)
-                .await
-                .unwrap_or_default();
+            let head_command = format!("git -C {cwd} rev-parse --short HEAD 2>/dev/null");
+            let head_out = ssh.exec(&head_command, 128).await.unwrap_or_default();
             let oid = head_out.trim().to_string();
             if oid.is_empty() {
                 return Ok(RemoteState::Unborn);
@@ -271,10 +288,8 @@ pub async fn ssh_git_ahead_behind(
         });
     };
     // Resolve the upstream name for the UI label.
-    let up_out = ssh
-        .exec("git -C . rev-parse --abbrev-ref @{u} 2>/dev/null", 128)
-        .await
-        .unwrap_or_default();
+    let upstream_command = format!("git -C {cwd} rev-parse --abbrev-ref @{{u}} 2>/dev/null");
+    let up_out = ssh.exec(&upstream_command, 128).await.unwrap_or_default();
     let upstream = up_out.trim().to_string();
     Ok(RemoteState::Ok {
         upstream,
@@ -504,12 +519,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn remote_git_cwd_is_absolute_and_shell_quoted() {
+        assert_eq!(
+            remote_git_cwd("/srv/repo with 'quote'").unwrap(),
+            "'/srv/repo with '\\''quote'\\'''"
+        );
+        assert!(remote_git_cwd("relative/repo").is_err());
+        assert!(remote_git_cwd("/srv/repo\nnext").is_err());
+    }
+
+    #[test]
     fn parse_porcelain_v1_branch_and_files() {
         let raw = "\
-## main
- M src/mod.rs
-A  new.txt
-?? untracked.log
+## main\0 M src/mod.rs\0A  new.txt\0?? untracked.log\0
 ";
         let result = parse_porcelain_v1(raw);
         assert_eq!(result.branch, "main");
@@ -538,16 +560,16 @@ A  new.txt
 
     #[test]
     fn parse_porcelain_v1_branch_with_upstream_tracking() {
-        let raw = "## main...origin/main [ahead 1]\n M a.txt\n";
+        let raw = "## main...origin/main [ahead 1]\0 M a.txt\0";
         let result = parse_porcelain_v1(raw);
         assert_eq!(result.branch, "main");
         assert_eq!(result.files.len(), 1);
     }
 
     #[test]
-    fn parse_porcelain_v1_rename_uses_new_path() {
-        // --no-renames is set in the command, but defend the parser anyway.
-        let raw = "R  old.txt -> new.txt\n";
+    fn parse_porcelain_v1_rename_status_is_staged() {
+        // --no-renames makes Git report the destination as an ordinary path.
+        let raw = "R  new.txt\0";
         let result = parse_porcelain_v1(raw);
         assert_eq!(result.files.len(), 1);
         assert_eq!(result.files[0].path, "new.txt");
@@ -558,26 +580,31 @@ A  new.txt
     fn parse_porcelain_v1_empty_repo_is_unborn() {
         // No `##` branch line in an unborn repo's porcelain output means we
         // fall back to "HEAD"; no crash.
-        let raw = "?? only.txt\n";
+        let raw = "## No commits yet on main\0?? only.txt\0";
         let result = parse_porcelain_v1(raw);
-        assert_eq!(result.branch, "HEAD");
+        assert_eq!(result.branch, "main");
         assert_eq!(result.files.len(), 1);
     }
 
     #[test]
     fn parse_porcelain_v1_malformed_lines_skipped() {
-        let raw = "## main\nXY\n M good.txt\n";
+        let raw = "## main\0XY\0 M good.txt\0";
         let result = parse_porcelain_v1(raw);
         assert_eq!(result.files.len(), 1);
         assert_eq!(result.files[0].path, "good.txt");
     }
 
     #[test]
-    fn parse_porcelain_v1_staged_takes_precedence_over_unstaged() {
-        // `M  file` (M in index, space in worktree) → staged.
-        let raw = "M  staged_only.txt\n";
+    fn parse_porcelain_v1_preserves_unicode_newlines_and_both_stages() {
+        let raw = "MM 中文\nfile.txt\0";
         let result = parse_porcelain_v1(raw);
+        assert_eq!(result.files.len(), 2);
+        assert!(result
+            .files
+            .iter()
+            .all(|file| file.path == "中文\nfile.txt"));
         assert_eq!(result.files[0].stage, "staged");
+        assert_eq!(result.files[1].stage, "unstaged");
     }
 
     // ── find output parsing (remote file search) ──────────────────────────

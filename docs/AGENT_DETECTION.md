@@ -83,19 +83,21 @@ When a match is found, `TerminalView.tsx` calls
 ### Path B — runtime hook lifecycle
 
 For agents that emit real lifecycle signals, Tunara injects shell wrappers and a
-hook config so the agent reports `start` / `idle` / `stop` / `exit` directly.
+hook config so the agent reports `start` / `busy` / `idle` / `stop` / `exit` directly.
 Two transports carry the same event shape, for redundancy:
 
-1. **OSC 777** — every wrapped agent always prints
+1. **OSC 777** — every wrapper prints process `start`/`exit`; hook-capable
+   agents also write per-turn `busy`/`idle`/`stop` events to `/dev/tty` from
+   their native hook helper. Events use
    `OSC 777 ; tunara-agent ; <event> ; <session> ; <agent> ; <code>` via
    `_tunara_agent_osc`. `TerminalView.tsx` registers
    `term.parser.registerOscHandler(777, applyAgentLifecycleEvent)`, which calls
    `parseAgentLifecycleOsc(data)` (accepts the `tunara-agent` and legacy
    `conduit-agent` prefixes) and routes by event. This path needs nothing
    external — it travels in the PTY byte stream.
-2. **Unix-socket hook** — when a hook socket is available, the wrapper also pipes
-   a JSON payload (`{"event","session","agent","code"}`) to the socket via
-   `nc -U "$TUNARA_HOOKS_SOCK"`. The backend
+2. **Unix-socket hook** — on local sessions, the same helper also pipes a JSON
+   payload (`{"event","session","agent","code","agent_session_id"}`) to the
+   socket via `nc -U "$TUNARA_HOOKS_SOCK"` when available. The backend
    [`hooks.rs`](../src-tauri/src/modules/agent/hooks.rs) `start_listener` binds a
    private `UnixListener` (under `$XDG_RUNTIME_DIR/tunara` or
    `~/.cache/tunara/runtime`, chmod `0700`), reads each connection, and re-emits
@@ -118,14 +120,21 @@ The injected scripts —
 [`config.fish`](../src-tauri/src/modules/pty/scripts/config.fish) — define shell
 functions that shadow the agent binaries. There are two wrapper flavors:
 
-- `_tunara_agent_run <bin> <code>` — full hook integration. Emits `start`, writes
-  a temp `--settings` JSON into `$TUNARA_AGENT_CONFIG_DIR`
-  (`tunara-agent-<sid>.XXXXXX.json`, chmod `600`) that registers the agent's own
-  `SessionStart` / `Stop` / `Notification(idle_prompt)` hooks to pipe `idle` /
-  `stop` events back over the socket, runs the real binary with `--settings`, and
-  emits `exit` with the exit code. Only used when both the socket and config dir
-  exist; otherwise it falls back to running the binary plain (still emitting
-  `start`/`exit`).
+- `_tunara_agent_run <bin> <code>` — full hook integration. Emits `start`, then
+  creates a private runtime directory in `$TUNARA_AGENT_CONFIG_DIR`
+  (`tunara-agent-<sid>.XXXXXX`, chmod `700`) containing the agent's own
+  `SessionStart` / `UserPromptSubmit` / `Stop` / `StopFailure` /
+  `Notification(idle_prompt)` hooks. They map to `idle` / `busy` / `stop`
+  semantic events, capture the agent's real session id, and emit over OSC 777
+  plus the optional local socket. Claude loads the runtime as a transient plugin
+  with `--plugin-dir`, so a user-supplied `--settings` remains independent.
+  Droid has only one effective settings input: the wrapper removes duplicate
+  `--settings` flags, preserves the last user value, appends Tunara's hooks to
+  the user's hook arrays, and passes one merged `--settings` file. It always
+  emits `exit` with the process exit code. Native hooks only require the private
+  config directory and helper; the socket is a redundant transport, not a
+  prerequisite. Remote SSH creates the same plugin/settings runtime on the
+  remote host and uses OSC 777 because the local Unix socket is unreachable.
 - `_tunara_agent_plain_run <bin> <code>` — emits `start` + `exit` only, no
   `--settings` injection. Used for agents whose `--settings`/hook contract Tunara
   does not drive.
@@ -133,14 +142,24 @@ functions that shadow the agent binaries. There are two wrapper flavors:
 Currently wired (identical across all three shells):
 
 ```sh
-claude() { _tunara_agent_run claude CC "$@"; }   # full hooks
-droid()  { _tunara_agent_run droid DR "$@"; }     # full hooks
-codex()  { _tunara_agent_plain_run codex CX "$@"; } # start/exit only
+function claude { _tunara_agent_run claude CC "$@"; }   # full hooks
+function droid  { _tunara_agent_run droid DR "$@"; }     # full hooks
+function codex  { _tunara_agent_plain_run codex CX "$@"; } # start/exit only
 ```
 
-The temp `--settings` file is cleaned up by the wrapper on exit, and orphans are
+Before installing these functions, the wrapper captures ordinary aliases whose
+expansion starts with the same agent binary. For example,
+`alias claude='claude --model opus'` is rebuilt through `_tunara_agent_run`, so
+the default flags and lifecycle events both survive. Arbitrary user-defined
+functions are not introspected or evaluated.
+
+The temp runtime directory is cleaned up by the wrapper on exit, and orphans are
 swept by `cleanup_hooks_settings` in
 [`wrapper.rs`](../src-tauri/src/modules/agent/wrapper.rs) when the PTY closes.
+The Droid merge helper prefers `python3`, then `node`, then `jq`. If none exists
+or the user settings cannot be parsed, the wrapper deliberately passes the
+original user settings unchanged; only exact per-turn state degrades to the
+wrapper's `start`/`exit` signals instead of silently discarding user policy.
 
 ### The state machine
 
@@ -174,9 +193,9 @@ Transitions (via the store handlers and the
 - **Detected** (`handleAgentDetected`) → `agent` set, `agentActivity =
   initialAgentActivity(agent)`, `runState = "idle"`, title becomes the agent name.
   Also builds an `AgentResumeIntent` (see below).
-- **Busy** (`handleAgentBusy`) → `agentActivity = "running"`. Fired when the user
-  submits input to a detected agent, or when the Codex screen-state tracker sees
-  busy indicators.
+- **Busy** (`handleAgentBusy`) → `agentActivity = "running"`. Fired by the
+  native `UserPromptSubmit` hook, by typed-input fallback, or when the Codex
+  screen-state tracker sees busy indicators.
 - **Ready** (`handleAgentReady`) → `agentActivity = "idle"`; if the previous
   state was `"running"` it counts as a completed turn (`completedAt`, `unread`
   when inactive, toast). Fired by hook `idle`/`stop`, by the OSC `idle`/`stop`
@@ -201,8 +220,15 @@ lines to decide `ready` vs `busy`.
 [`agent-resume.ts`](../src/modules/terminal/lib/agent-resume.ts) builds a resume
 command from an `AgentResumeIntent`. Only `CC` and `CX` have resume mappings:
 `claude --resume <id>` / `claude --continue`, and
-`codex exec resume <id>` / `codex exec resume --last`. Other agents return
+`codex resume <id>` / `codex resume --last`. When no exact id or explicit
+continue intent is known, both agents open their interactive resume picker;
+Tunara never guesses the globally most recent conversation for that case. Other agents return
 `null` (no resume).
+
+Non-interactive utility invocations (`claude --version`, `claude auth`,
+`codex exec`, `codex mcp`, and similar commands) are deliberately excluded
+from `AgentResumeIntent`; starting the binary is not itself evidence of an
+interactive session that can be resumed.
 
 ## Preflight & resolution
 
@@ -256,8 +282,8 @@ command ([`preflight.rs`](../src-tauri/src/modules/agent/preflight.rs)):
    [`zshrc.zsh`](../src-tauri/src/modules/pty/scripts/zshrc.zsh),
    [`bashrc.bash`](../src-tauri/src/modules/pty/scripts/bashrc.bash),
    [`config.fish`](../src-tauri/src/modules/pty/scripts/config.fish) — using
-   `_tunara_agent_run <bin> <CODE>` (if it accepts a `--settings` hook config
-   like Claude Code / Droid) or `_tunara_agent_plain_run <bin> <CODE>` (for
+   `_tunara_agent_run <bin> <CODE>` (after defining how its native hooks compose
+   with user configuration) or `_tunara_agent_plain_run <bin> <CODE>` (for
    `start`/`exit` only, like Codex). Then decide the readiness class: add the
    `code` to `HOOK_READY_AGENTS` or `PROMPT_READY_AGENTS` in
    [`agent-lifecycle.ts`](../src/modules/terminal/lib/agent-lifecycle.ts), or

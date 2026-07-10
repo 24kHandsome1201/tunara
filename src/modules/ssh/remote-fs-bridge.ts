@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DirEntry, GrepResponse, ReadResult, SearchHit } from "@/modules/fs/fs-bridge";
+import { RemoteOperationCache, remoteOperationCacheKey } from "./remote-operation-cache.ts";
 
 /**
  * 远程 SFTP 文件操作。返回类型与本地 fs-bridge 完全一致，
@@ -32,22 +33,11 @@ export function sshDownload(id: number, remotePath: string, localPath: string): 
 // for the same (session, root, query) triple so backspacing doesn't re-run
 // `find` on the remote every debounce window.
 
-/** Module-level result cache keyed by `${ptyId}|${root}|${query}`. Entries are
- *  small (≤80 hits) and evicted only by LRU cap — a remote search is the
+/** Module-level result cache keyed by a JSON tuple of session/root/query/limit.
+ *  Entries are small (≤80 hits) and evicted by an LRU cap — a remote search is the
  *  expensive kind (round-trips over SSH), so caching is high-value. */
-const searchCache = new Map<string, SearchHit[]>();
 const SEARCH_CACHE_MAX = 32;
-
-function cacheKey(ptyId: number, root: string, query: string): string {
-  return `${ptyId}|${root}|${query}`;
-}
-
-function evictIfNeeded(): void {
-  if (searchCache.size <= SEARCH_CACHE_MAX) return;
-  // Map preserves insertion order; drop the oldest entry.
-  const oldest = searchCache.keys().next().value;
-  if (oldest !== undefined) searchCache.delete(oldest);
-}
+const searchCache = new RemoteOperationCache<SearchHit[]>(SEARCH_CACHE_MAX);
 
 export function sshSearch(
   ptyId: number,
@@ -55,17 +45,14 @@ export function sshSearch(
   query: string,
   limit = 80,
 ): Promise<SearchHit[]> {
-  const key = cacheKey(ptyId, root, query);
+  const key = remoteOperationCacheKey("find", ptyId, root, query, limit);
   const cached = searchCache.get(key);
   if (cached) {
-    // Refresh LRU position by re-inserting at the end.
-    searchCache.delete(key);
-    searchCache.set(key, cached);
     return Promise.resolve(cached);
   }
+  const generation = searchCache.sessionGeneration(ptyId);
   return invoke<SearchHit[]>("ssh_fs_search", { sessionId: ptyId, root, query, limit }).then((hits) => {
-    evictIfNeeded();
-    searchCache.set(key, hits);
+    searchCache.setIfCurrent(key, ptyId, generation, hits);
     return hits;
   });
 }
@@ -76,8 +63,8 @@ export function sshSearch(
 // name search: grep is the most expensive remote round-trip we make from the
 // panel, and backspacing through a query must not re-run it every debounce.
 
-const grepCache = new Map<string, GrepResponse>();
 const GREP_CACHE_MAX = 16;
+const grepCache = new RemoteOperationCache<GrepResponse>(GREP_CACHE_MAX);
 
 export function sshGrep(
   ptyId: number,
@@ -85,35 +72,25 @@ export function sshGrep(
   pattern: string,
   maxResults = 200,
 ): Promise<GrepResponse> {
-  const key = cacheKey(ptyId, root, pattern);
+  const key = remoteOperationCacheKey("grep", ptyId, root, pattern, maxResults);
   const cached = grepCache.get(key);
   if (cached) {
-    grepCache.delete(key);
-    grepCache.set(key, cached);
     return Promise.resolve(cached);
   }
+  const generation = grepCache.sessionGeneration(ptyId);
   return invoke<GrepResponse>("ssh_fs_grep", {
     sessionId: ptyId,
     root,
     pattern,
     maxResults,
   }).then((resp) => {
-    if (grepCache.size >= GREP_CACHE_MAX) {
-      const oldest = grepCache.keys().next().value;
-      if (oldest !== undefined) grepCache.delete(oldest);
-    }
-    grepCache.set(key, resp);
+    grepCache.setIfCurrent(key, ptyId, generation, resp);
     return resp;
   });
 }
 
 /** Invalidate the caches for one session (e.g. after a directory reload). */
 export function invalidateRemoteSearchCache(ptyId: number): void {
-  const prefix = `${ptyId}|`;
-  for (const k of searchCache.keys()) {
-    if (k.startsWith(prefix)) searchCache.delete(k);
-  }
-  for (const k of grepCache.keys()) {
-    if (k.startsWith(prefix)) grepCache.delete(k);
-  }
+  searchCache.invalidateSession(ptyId);
+  grepCache.invalidateSession(ptyId);
 }

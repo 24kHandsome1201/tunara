@@ -52,11 +52,9 @@ jobs:
       - name: Run cargo audit
         working-directory: src-tauri
         # RUSTSEC-2023-0071 (rsa Marvin attack) is a transitive russh dep with
-        # no upstream fix; RUSTSEC-2026-0194/0195 (quick-xml DoS) come via
-        # tauri -> plist, which still pins quick-xml < 0.41. Rationale for all
-        # three lives in src-tauri/.cargo/audit.toml; passed explicitly too so
-        # the exceptions are visible in the workflow.
-        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195
+        # no upstream fix. The rationale lives in src-tauri/.cargo/audit.toml;
+        # the exception is passed explicitly so it stays visible in CI.
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
   pnpm-audit:
     name: pnpm audit

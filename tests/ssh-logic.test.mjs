@@ -13,6 +13,10 @@ import test from "node:test";
 
 import { classifySshFailure } from "../src/modules/ssh/failure-reason.ts";
 import {
+  RemoteOperationCache,
+  remoteOperationCacheKey,
+} from "../src/modules/ssh/remote-operation-cache.ts";
+import {
   toProfile,
   toRaw,
   makeHostId,
@@ -36,6 +40,8 @@ test("classifySshFailure buckets host-key errors including the kebab form", () =
   assert.equal(classifySshFailure("host key mismatch for example.com"), "hostKey");
   assert.equal(classifySshFailure("host-key MISMATCH — refusing"), "hostKey");
   assert.equal(classifySshFailure("server key MISMATCH"), "hostKey");
+  // russh returns this exact text when a first-use prompt is rejected.
+  assert.equal(classifySshFailure("SSH handshake failed: Unknown server key"), "hostKey");
 });
 
 test("classifySshFailure buckets connection errors", () => {
@@ -215,4 +221,43 @@ test("filterNewHostsById returns all when nothing exists", () => {
     { id: "ssh-config-b", label: "b", host: "b", port: 22, user: "u", identityFile: "" },
   ];
   assert.equal(filterNewHostsById([], incoming).length, 2);
+});
+
+test("remote operation cache keys include kind, limit, and delimiter-safe values", () => {
+  assert.notEqual(
+    remoteOperationCacheKey("find", 1, "/a|b", "c", 80),
+    remoteOperationCacheKey("find", 1, "/a", "b|c", 80),
+  );
+  assert.notEqual(
+    remoteOperationCacheKey("find", 1, "/a", "q", 80),
+    remoteOperationCacheKey("grep", 1, "/a", "q", 80),
+  );
+  assert.notEqual(
+    remoteOperationCacheKey("find", 1, "/a", "q", 80),
+    remoteOperationCacheKey("find", 1, "/a", "q", 200),
+  );
+});
+
+test("remote operation cache is bounded, refreshes LRU, and invalidates by session", () => {
+  const cache = new RemoteOperationCache(2);
+  cache.set("a", 1, "A");
+  cache.set("b", 2, "B");
+  assert.equal(cache.get("a"), "A"); // a is now newest
+  cache.set("c", 1, "C");
+  assert.equal(cache.size, 2);
+  assert.equal(cache.get("b"), undefined);
+  cache.invalidateSession(1);
+  assert.equal(cache.size, 0);
+});
+
+test("remote operation cache rejects responses invalidated while in flight", () => {
+  const cache = new RemoteOperationCache(2);
+  const staleGeneration = cache.sessionGeneration(7);
+  cache.invalidateSession(7);
+  assert.equal(cache.setIfCurrent("stale", 7, staleGeneration, "old"), false);
+  assert.equal(cache.get("stale"), undefined);
+
+  const currentGeneration = cache.sessionGeneration(7);
+  assert.equal(cache.setIfCurrent("fresh", 7, currentGeneration, "new"), true);
+  assert.equal(cache.get("fresh"), "new");
 });

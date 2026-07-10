@@ -35,7 +35,7 @@ export function agentReadyUpdate(
   isActive: boolean,
   now = Date.now(),
 ): SessionLifecycleUpdate | null {
-  if (!session?.agent) return null;
+  if (!session?.agent || session.agentActivity === "idle") return null;
   const completedTurn = session.agentActivity === "running";
   return {
     patch: {
@@ -44,7 +44,7 @@ export function agentReadyUpdate(
       ...(completedTurn ? { completedAt: now } : {}),
       ...(completedTurn && !isActive ? { unread: true } : {}),
     },
-    refreshGit: true,
+    ...(completedTurn ? { refreshGit: true } : {}),
   };
 }
 

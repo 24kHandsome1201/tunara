@@ -42,20 +42,25 @@ large set of live/ephemeral fields — `runState`, `agentActivity`,
 `gitState`, `changes`, `ptyId`, `pendingInput*`, `unread`. See §2 for which are
 saved.
 
-**Agent-hook handlers.** These mutate session state in response to the
-`agent-hook` Tauri event (the only agent-driven event channel), dispatched by
-`startHooksListener()` in `src/modules/terminal/lib/hooks-listener.ts`:
+**Agent lifecycle handlers.** Local Claude/Droid hooks arrive through the
+validated `agent-hook` Tauri event dispatched by `startHooksListener()` in
+`src/modules/terminal/lib/hooks-listener.ts`. Remote SSH hooks cannot reach the
+local hook socket, so the injected remote shell wrapper emits the same semantic
+events over OSC 777. Both channels converge on the session-store handlers:
 
 | `agent-hook` payload `event` | Store handler | Effect |
 | --- | --- | --- |
 | `"start"` (with `agent`) | `handleAgentDetected(id, agent)` | mark agent present, build `agentResume` intent |
+| `"busy"` | `handleAgentBusy(id)` | mark the current prompt turn as running |
 | `"exit"` | `handleAgentExited(id, code)` | clear agent state, refresh git, toast if backgrounded |
 | `"stop"` / `"idle"` | `handleAgentReady(id)` | agent turn complete, refresh git, toast if backgrounded |
 
-The listener guards each transition against the session's current `agent` so a
-stale event for a different agent is ignored. `handleAgentDetected` also derives
-an `AgentResumeIntent` (via `buildAgentResumeIntent`) by scanning the command
-for `--resume <id>` / `--continue`, used later to re-launch the agent.
+The Tauri listener validates untrusted payload shape before dispatch. The store
+guards each transition against the session's current `agent` so a stale event
+for a different agent is ignored, and repeated ready/idle events are
+idempotent. `handleAgentDetected` also derives an `AgentResumeIntent` (via
+`buildAgentResumeIntent`) by scanning the command for `--resume <id>` /
+`--continue`, used later to re-launch the agent.
 
 **Other lifecycle handlers** (`handleAgentBusy`, `handleCommandDetected`,
 `handleCommandFinished`, `handleCwdChange`, `handleShellTitle`,
@@ -188,19 +193,20 @@ to the config file, independently of the snapshot — see §1.)
 ### When it restores
 
 `useInit` calls `loadWorkspaceSnapshot()` once on mount (guarded by a ref so it
-runs a single time). On success it rebuilds `Session` objects from the persisted
+runs a single time). The loader returns an explicit `loaded` / `empty` / `error`
+result. On success it rebuilds `Session` objects from the persisted
 slice (re-attaching `agentResume`, forcing `runState: "idle"`), merges them with
 any sessions already created this run, re-derives `activeSessionId`, restores
 the `split`/layout/`commandUsage` into the UI store, loads `workflows`, and
 restores terminal buffers via `restoreTerminalSnapshots`. When no snapshot
-exists it seeds a single `~` terminal. `ready` is flipped to `true` at the end.
+exists it seeds a single `~` terminal. If the store exists but cannot be read or
+sanitized, Tunara opens an in-memory terminal, shows an error, and disables all
+workspace writes for that process so the original file cannot be overwritten.
+`ready` is flipped to `true` at the end.
 
-There are also standalone `loadSessions` / `saveSessions` / `loadUILayout` /
-`saveUILayout` helpers for the legacy `sessions` / `activeSessionId` /
-`uiLayout` keys. `saveSessions` and `saveUILayout` update the workspace snapshot
-when those helper paths are used, but the normal `useInit` runtime save path
-writes the workspace snapshot directly; it does not continuously mirror the
-legacy keys. The snapshot is the primary path used by `useInit`.
+The legacy `sessions` / `activeSessionId` / `uiLayout` keys are read only during
+one-time migration. The normal `useInit` runtime save path writes the workspace
+snapshot directly and never writes those legacy per-key values.
 
 ## 3. Store file naming & the conduit → tunara migration
 
@@ -235,13 +241,15 @@ returns a known-good shape (or drops the item) rather than trusting it.
 | Remote session sanitization | `persist-snapshot.ts` | White-lists host/port/user/identity path/shell-integration flag; drops any credential-like runtime fields before save or restore |
 | Workflow sanitization | `persist-snapshot.ts` | Array of `Workflow`, each run through `sanitizeWorkflow` (from `src/modules/workflows/template.ts`); invalid entries dropped |
 
-`sanitizeSnapshot` is the linchpin: `loadWorkspaceSnapshot`, `saveWorkspaceSnapshot`,
-`saveSessions`, and `saveUILayout` all route the stored blob through it, so a
-malformed file degrades gracefully (e.g. a split pointing at a deleted session
-falls back to single-pane) instead of crashing restore, and any orphan runtime
-state is pruned before it is written back. It lives in `persist-snapshot.ts` so
-Node tests can exercise the restore boundary without loading the Tauri Store
-plugin.
+`sanitizeSnapshot` is the linchpin: `loadWorkspaceSnapshot` and
+`saveWorkspaceSnapshot` both route the stored blob through it. Recoverable
+shape errors (for example, a split pointing at a deleted session) fall back to a
+safe value and orphan runtime state is pruned. An existing store that cannot be
+read or whose top-level snapshot is invalid is different: restore returns an
+explicit error and opens a process-local write circuit breaker, preserving the
+original file for diagnosis instead of silently replacing it. The sanitizer
+lives in `persist-snapshot.ts` so Node tests can exercise the restore boundary
+without loading the Tauri Store plugin.
 
 ### Testability boundary
 

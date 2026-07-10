@@ -2,6 +2,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
+import { sshFailureReason } from "@/modules/terminal/lib/pty-bridge";
 import type { Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 
@@ -99,6 +100,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
 
 interface PtyErrorBannerProps {
   session: Session;
+  error: string;
 }
 
 /**
@@ -106,9 +108,11 @@ interface PtyErrorBannerProps {
  * signal was a silent red inline line in the dead pane. The retry action
  * spawns a fresh terminal in the same cwd, mirroring the exit banner.
  */
-export function PtyErrorBanner({ session }: PtyErrorBannerProps) {
+export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
+  const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
+  const detail = isRemote ? sshFailureReason(error) : t("pty.error.subtitle");
 
   const retry = () => {
     const store = useSessionsStore.getState();
@@ -171,7 +175,7 @@ export function PtyErrorBanner({ session }: PtyErrorBannerProps) {
           minWidth: 0,
         }}
       >
-        {t("pty.error.title")} — {t("pty.error.subtitle")}
+        {title} — {detail}
       </span>
       <AccentActionButton onClick={retry} title={t("pty.error.retry")} ariaLabel={t("pty.error.retry")}>
         <RestartIcon size={10} />

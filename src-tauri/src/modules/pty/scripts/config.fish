@@ -50,22 +50,30 @@ if set -q TUNARA_SESSION_ID
     end
   end
 
-  # Writes a Claude-Code --settings file pointing each lifecycle hook at the
+  # Writes one private runtime containing a Droid settings file and a Claude
+  # plugin so Claude hooks compose with any user --settings argument.
   # host-provided agent-hook.sh helper. That helper reads the hook's stdin JSON,
   # extracts the agent's real session_id, and relays it as agent_session_id — so
   # resume uses the agent's own id instead of scraping the typed command line.
-  # The hook command is just `sh <helper> <event> <agent> <sid>`, so no quoting
-  # has to survive the nested settings JSON. Prints the settings path, or nothing.
+  # The helper path stays behind the inherited config-dir env so spaces and
+  # quotes remain valid inside settings JSON. Prints the runtime path, or nothing.
   function _tunara_agent_write_hooks --argument-names sid agent config_dir
     test -n "$config_dir"; and test -d "$config_dir"; or return 1
     set -l helper "$config_dir/agent-hook.sh"
     test -f "$helper"; or return 1
-    set -l sf (mktemp "$config_dir/tunara-agent-$sid.XXXXXX.json" 2>/dev/null); or return 1
-    chmod 600 "$sf" 2>/dev/null; or true
-    set -l idle "sh $helper idle $agent $sid"
-    set -l stop "sh $helper stop $agent $sid"
-    printf '{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"%s"}]}],"Stop":[{"hooks":[{"type":"command","command":"%s"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"%s"}]}]}}' $idle $stop $idle >$sf
-    printf '%s' $sf
+    set -l runtime (mktemp -d "$config_dir/tunara-agent-$sid.XXXXXX" 2>/dev/null); or return 1
+    chmod 700 "$runtime" 2>/dev/null; or begin; rm -rf "$runtime"; return 1; end
+    mkdir -p "$runtime/.claude-plugin" "$runtime/hooks"; or begin; rm -rf "$runtime"; return 1; end
+    set -l sf "$runtime/settings.json"
+    set -l helper_command 'sh \"$TUNARA_AGENT_CONFIG_DIR/agent-hook.sh\"'
+    set -l idle "$helper_command idle $agent $sid"
+    set -l busy "$helper_command busy $agent $sid"
+    set -l stop "$helper_command stop $agent $sid"
+    printf '{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"%s"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"%s"}]}],"Stop":[{"hooks":[{"type":"command","command":"%s"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"%s"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"%s"}]}]}}' $idle $busy $stop $stop $idle >$sf
+    cp "$sf" "$runtime/hooks/hooks.json"; or begin; rm -rf "$runtime"; return 1; end
+    printf '%s\n' '{"name":"tunara-lifecycle","description":"Tunara session lifecycle bridge","version":"1.0.0"}' > "$runtime/.claude-plugin/plugin.json"
+    chmod 600 "$sf" "$runtime/hooks/hooks.json" "$runtime/.claude-plugin/plugin.json" 2>/dev/null; or true
+    printf '%s' $runtime
     return 0
   end
 
@@ -75,24 +83,52 @@ if set -q TUNARA_SESSION_ID
     set -e argv[1]
     set -e argv[1]
     set -l sid $TUNARA_SESSION_ID
-    set -l sock $TUNARA_HOOKS_SOCK
     set -l config_dir ""
     if set -q TUNARA_AGENT_CONFIG_DIR
       set config_dir $TUNARA_AGENT_CONFIG_DIR
     end
-    set -l sf ""
+    set -l runtime ""
     _tunara_agent_emit start $agent
-    if test -n "$sock"
-      set sf (_tunara_agent_write_hooks "$sid" "$agent" "$config_dir")
-    end
-    if test -n "$sf"
-      command $real_bin --settings $sf $argv
+    set runtime (_tunara_agent_write_hooks "$sid" "$agent" "$config_dir")
+    if test -n "$runtime"; and test "$real_bin" = claude
+      command $real_bin --plugin-dir $runtime $argv
+    else if test -n "$runtime"
+      set -l user_settings ""
+      set -l has_user_settings 0
+      set -l forwarded
+      set -l i 1
+      while test $i -le (count $argv)
+        set -l arg $argv[$i]
+        if test "$arg" = --settings; and test (math $i + 1) -le (count $argv)
+          set i (math $i + 1)
+          set user_settings $argv[$i]
+          set has_user_settings 1
+        else if string match -q -- '--settings=*' "$arg"
+          set user_settings (string replace -r '^--settings=' '' -- "$arg")
+          set has_user_settings 1
+        else
+          set -a forwarded "$arg"
+        end
+        set i (math $i + 1)
+      end
+      set -l settings "$runtime/settings.json"
+      if test "$has_user_settings" = 1
+        set -l merged "$runtime/merged-settings.json"
+        if sh "$config_dir/agent-hook.sh" merge-settings "$user_settings" "$settings" "$merged" 2>/dev/null
+          set settings $merged
+        else
+          set settings $user_settings
+        end
+      end
+      command $real_bin --settings $settings $forwarded
     else
       command $real_bin $argv
     end
     set -l ret $status
     _tunara_agent_emit exit $agent $ret
-    rm -f $sf 2>/dev/null
+    if test -n "$runtime"
+      rm -rf "$runtime"
+    end
     return $ret
   end
 
