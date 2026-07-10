@@ -9,6 +9,8 @@ import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 import { formatTimelineRelativeTime, type TimelineEvent } from "@/state/timeline";
+import { SessionMascotIcon } from "./SessionMascotIcon";
+import { SessionMascotPicker } from "./SessionMascotPicker";
 
 interface SessionOverviewPanelProps {
   session: Session;
@@ -125,6 +127,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
     <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="no-scrollbar scroll-fade-y">
       <div style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          {session.mascot && <SessionMascotIcon id={session.mascot} size={30} />}
           {session.pinned && <span style={{ color: "var(--c-accent)", flexShrink: 0 }}>★</span>}
           <div style={{ fontSize: "var(--fs-title)", fontWeight: 750, color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={primary}>
             {primary}
@@ -143,6 +146,8 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
         <InfoCard label={isRemote ? t("overview.card.remote") : t("overview.card.cwd")} value={isRemote ? remoteLabel : session.dir} />
         <InfoCard label={t("overview.card.changes")} value={changes.fileCount > 0 ? t("overview.changes.files", { count: String(changes.fileCount) }) : changeHint} hint={changes.fileCount > 0 ? changeHint : undefined} />
       </div>
+
+      <SessionMascotPicker session={session} />
 
       {session.lastCommand && (
         <div style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: 12 }}>

@@ -8,6 +8,7 @@ import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
+import { SessionMascotIcon } from "./SessionMascotIcon";
 
 function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
@@ -37,6 +38,27 @@ function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean 
 function SessionIcon({ session }: { session: Session }) {
   const size = 24;
   const displayRunState = sessionDisplayRunState(session);
+
+  if (session.mascot) {
+    return (
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <div
+          style={{
+            width: size,
+            height: size,
+            borderRadius: "var(--r-badge)",
+            background: "var(--c-bg-3)",
+            display: "grid",
+            placeItems: "center",
+            overflow: "hidden",
+          }}
+        >
+          <SessionMascotIcon id={session.mascot} size={23} />
+        </div>
+        <StatusDot runState={displayRunState} unread={session.unread} />
+      </div>
+    );
+  }
 
   if (session.agent) {
     const style = getAgentCircleStyle(session.agent);

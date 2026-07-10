@@ -52,6 +52,7 @@ test("persisted session helpers keep only durable fields and restore idle runtim
     runState: "running",
     updatedAt: 10,
     customTitle: " Work ",
+    mascot: "fox",
     pinned: true,
     note: "ok\u0000note",
     agent: "CC",
@@ -76,6 +77,7 @@ test("persisted session helpers keep only durable fields and restore idle runtim
     branch: "main",
     updatedAt: 10,
     customTitle: "Work",
+    mascot: "fox",
     pinned: true,
     note: "oknote",
     remote: { host: "box", port: 22, user: "me", identityFile: "~/.ssh/id_ed25519", injectShellIntegration: true },
@@ -273,11 +275,13 @@ test("snapshot sanitizer drops malformed optional session fields without droppin
     sessions: [
       persistedSession("s-weird", "/repo", 1, {
         customTitle: { bad: true },
+        mascot: "dragon",
         pinned: "yes",
         note: 123,
       }),
       persistedSession("s-good", "/repo", 2, {
         customTitle: "  Keep me  ",
+        mascot: "panda",
         pinned: true,
         note: "ok",
       }),
@@ -293,6 +297,7 @@ test("snapshot sanitizer drops malformed optional session fields without droppin
     updatedAt: 1,
   });
   assert.equal(snapshot.sessions[1].customTitle, "Keep me");
+  assert.equal(snapshot.sessions[1].mascot, "panda");
   assert.equal(snapshot.sessions[1].pinned, true);
   assert.equal(snapshot.sessions[1].note, "ok");
 });

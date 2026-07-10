@@ -2,6 +2,7 @@
 import { AGENT_NAMES } from "../modules/agent/registry.ts";
 import { t } from "../modules/i18n/core.ts";
 import type { ConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
+import type { SessionMascotId } from "../modules/session/session-mascot.ts";
 export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
@@ -53,6 +54,7 @@ export interface Session {
 
   // ── 用户自定义标题（优先级最高） ──
   customTitle?: string;
+  mascot?: SessionMascotId;
   pinned?: boolean;
   note?: string;
 

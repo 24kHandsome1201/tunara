@@ -10,6 +10,14 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-07-11
+
+### 新功能
+- 新增 8 个可选会话吉祥物（猫、狗、狐狸、熊猫、仓鼠、青蛙、考拉、企鹅），在会话概览中选择后同步显示于侧栏和标题栏，并随工作区快照安全持久化；图标来自 MIT 许可的 Microsoft Fluent Emoji。
+
+### 修复与优化
+- Linux CI 不再假设 runner 预装 zsh：Bash 与 Zsh 远端集成测试拆分，Zsh 不可用时只跳过对应测试，macOS 仍执行两条真实 shell 用例。
+
 ## [1.12.0] - 2026-07-11
 
 ### 新功能

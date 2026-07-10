@@ -14,3 +14,11 @@
 - **版权头**：保留 terax 源文件中原有的版权与许可声明。
 
 > 新增代码（Tunara 特有）版权独立，整体仍以兼容方式分发。升级或替换复用部分时，请同步更新本文件与 `LICENSE`。
+
+## Microsoft Fluent Emoji
+
+- **来源**：https://github.com/microsoft/fluentui-emoji
+- **来源版本**：`62ecdc0d7ca5c6df32148c169556bc8d3782fca4`
+- **许可证**：MIT License
+- **当前复用范围**：`src/assets/mascots/` 中 8 个 Flat 风格动物 SVG，用作可选会话吉祥物。
+- **许可证副本**：`src/assets/mascots/LICENSE.md`

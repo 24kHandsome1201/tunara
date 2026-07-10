@@ -12,11 +12,12 @@ import { parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
 import { sanitizeRecentCommands } from "./recent-commands.ts";
+import { isSessionMascotId } from "../modules/session/session-mascot.ts";
 
 export type PersistedSession = Pick<
   Session,
   "id" | "title" | "dir" | "branch" | "updatedAt"
-> & { customTitle?: string; remote?: Session["remote"]; pinned?: boolean; note?: string };
+> & { customTitle?: string; remote?: Session["remote"]; mascot?: Session["mascot"]; pinned?: boolean; note?: string };
 
 export type PersistedSessionV2 = PersistedSession;
 
@@ -117,6 +118,7 @@ export function toPersistedSession(s: Session): PersistedSession {
     updatedAt: s.updatedAt,
   };
   if (customTitle) p.customTitle = customTitle;
+  if (isSessionMascotId(s.mascot)) p.mascot = s.mascot;
   if (s.pinned === true) p.pinned = true;
   if (note) p.note = note;
   // Persist remote connection info (no secrets) so an SSH session can be
@@ -147,6 +149,7 @@ export function sanitizePersistedSession(p: PersistedSession): PersistedSession 
   const customTitle = typeof p.customTitle === "string" ? p.customTitle.trim() : "";
   const note = sanitizeSessionNote(p.note);
   const remote = sanitizeRemoteInfo(p.remote);
+  const mascot = isSessionMascotId(p.mascot) ? p.mascot : undefined;
   return {
     id: p.id,
     title: p.title.trim() || t("session.default_title"),
@@ -155,6 +158,7 @@ export function sanitizePersistedSession(p: PersistedSession): PersistedSession 
     updatedAt: p.updatedAt,
     ...(customTitle ? { customTitle } : {}),
     ...(remote ? { remote } : {}),
+    ...(mascot ? { mascot } : {}),
     ...(p.pinned === true ? { pinned: true } : {}),
     ...(note ? { note } : {}),
   };

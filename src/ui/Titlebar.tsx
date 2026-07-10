@@ -9,6 +9,7 @@ import { CloseIcon } from "./shared";
 import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { SessionMascotIcon } from "./SessionMascotIcon";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -59,7 +60,18 @@ function GearIcon() {
   );
 }
 
-function TabButton({ isActive, label, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: { isActive: boolean; label: string; closeLabel: string; confirmCloseLabel: string; confirmClose?: boolean; onSelect: () => void; onClose: () => void }) {
+interface TabButtonProps {
+  isActive: boolean;
+  label: string;
+  mascot?: Session["mascot"];
+  closeLabel: string;
+  confirmCloseLabel: string;
+  confirmClose?: boolean;
+  onSelect: () => void;
+  onClose: () => void;
+}
+
+function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: TabButtonProps) {
   return (
     <div
       role="button"
@@ -87,7 +99,7 @@ function TabButton({ isActive, label, closeLabel, confirmCloseLabel, confirmClos
         transition: "background var(--duration-fast) ease",
       }}
     >
-      {isActive && (
+      {mascot ? <SessionMascotIcon id={mascot} size={18} /> : isActive && (
         <span style={{
           width: 5,
           height: 5,
@@ -354,6 +366,7 @@ export function Titlebar({
               <TabButton
                 isActive={s.id === activeSessionId}
                 label={tabLabel(s)}
+                mascot={s.mascot}
                 closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
                 confirmCloseLabel={t("destructive.confirm_again.close")}
                 confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
