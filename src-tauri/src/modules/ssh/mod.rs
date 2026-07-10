@@ -27,6 +27,7 @@
 
 pub mod auth;
 pub mod connection;
+mod flow_control;
 pub mod hosts;
 pub mod known_hosts;
 pub mod remote_git;

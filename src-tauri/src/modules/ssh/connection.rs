@@ -17,9 +17,12 @@ use russh::client::{self, Handle};
 use russh::keys::ssh_key::{HashAlg, PublicKey};
 use russh::ChannelMsg;
 use tauri::ipc::Channel as IpcChannel;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::oneshot;
 
 use super::auth::{self, AuthOptions};
+use super::flow_control::{
+    SshControl, SshOutputBatch, INPUT_WRITE_CHUNK_BYTES, OUTPUT_BATCH_INTERVAL,
+};
 use super::known_hosts::{self, Verdict};
 use crate::modules::pty::PtyEvent;
 
@@ -223,9 +226,6 @@ impl client::Handler for ClientHandler {
 const REMOTE_INTEGRATION: &str = include_str!("scripts/remote-integration.sh");
 const AGENT_HOOK_HELPER: &str = include_str!("../agent/scripts/agent-hook.sh");
 
-/// Bound on queued input messages (keystrokes/resizes) waiting for the pump.
-/// Far above human input rate; on overflow we drop rather than buffer forever.
-const INPUT_QUEUE_CAP: usize = 1024;
 const SSH_DISCONNECTED_EXIT_CODE: i32 = -2;
 
 /// Parameters to open an SSH session.
@@ -257,16 +257,18 @@ pub struct ConnectParams {
 /// same connection (Phase 3).
 pub struct SshSession {
     handle: Handle<ClientHandler>,
-    input_tx: mpsc::Sender<InputMsg>,
+    control: Arc<SshControl>,
     /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
     sftp: tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>,
 }
 
-enum InputMsg {
-    Data(Vec<u8>),
-    Resize { cols: u16, rows: u16 },
-    Close,
+fn emit_output(on_event: &IpcChannel<PtyEvent>, bytes: Vec<u8>) -> bool {
+    on_event
+        .send(PtyEvent::Data {
+            data: B64.encode(bytes),
+        })
+        .is_ok()
 }
 
 fn send_connection_status(on_event: &IpcChannel<PtyEvent>, phase: &str) {
@@ -405,22 +407,14 @@ impl SshSession {
             }
         }
 
-        // Bounded so a fast typist / large paste on a slow link can't grow the
-        // queue without limit while the pump is parked on `channel.data().await`.
-        // 1024 keystroke/resize messages is far beyond human input rate; on
-        // overflow `write` drops with an error rather than buffering unboundedly.
-        let (input_tx, mut input_rx) = mpsc::channel::<InputMsg>(INPUT_QUEUE_CAP);
+        let (control, mut resize_rx) = SshControl::new();
+        let pump_control = control.clone();
         send_connection_status(&on_event, "ready");
 
-        // Pump: remote output → PtyEvent::Data; frontend input → channel.
-        //
-        // Unlike the local PTY (which has a reader thread feeding a shared
-        // buffer drained by a 16ms flusher, hence its MAX_PENDING cap), the SSH
-        // path has NO intermediate accumulator: each `ChannelMsg::Data` is
-        // encoded and sent immediately, and russh's own per-channel flow-control
-        // window bounds how much the server can have in flight. `on_event.send`
-        // is non-blocking. So there is no unbounded buffer to cap here — don't
-        // "add MAX_PENDING" without first reintroducing a buffer that needs it.
+        // Pump: remote output is coalesced behind a strict byte/time bound;
+        // frontend Data, latest Resize, and Close each have independent control
+        // paths. In particular, Close can cancel a channel.data().await parked
+        // on SSH flow control instead of waiting behind a full paste queue.
         tauri::async_runtime::spawn(async move {
             // An interactive SSH channel can disappear without sending an
             // ExitStatus when the network or server dies. Keep that distinct
@@ -431,20 +425,36 @@ impl SshSession {
             // and the server may echo a burst of characters before the channel
             // closes. Output from channel.wait() keeps draining until Eof.
             let mut accepting_input = true;
-            loop {
+            let mut output = SshOutputBatch::new();
+            let mut flush_tick = tokio::time::interval(OUTPUT_BATCH_INTERVAL);
+            flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            flush_tick.tick().await;
+            'pump: loop {
                 tokio::select! {
+                    biased;
+                    _ = pump_control.wait_for_close() => {
+                        let _ = channel.eof().await;
+                        break;
+                    }
+                    _ = flush_tick.tick() => {
+                        if let Some(bytes) = output.flush() {
+                            if !emit_output(&on_event, bytes) { break; }
+                        }
+                    }
                     msg = channel.wait() => {
                         let Some(msg) = msg else { break };
                         match msg {
                             ChannelMsg::Data { ref data } => {
-                                let ev = PtyEvent::Data { data: B64.encode(data) };
-                                if on_event.send(ev).is_err() { break; }
+                                for bytes in output.push(data) {
+                                    if !emit_output(&on_event, bytes) { break 'pump; }
+                                }
                             }
                             // stderr (ext=1) is interleaved into the same stream;
                             // a terminal shows both on one screen.
                             ChannelMsg::ExtendedData { ref data, ext: 1 } => {
-                                let ev = PtyEvent::Data { data: B64.encode(data) };
-                                if on_event.send(ev).is_err() { break; }
+                                for bytes in output.push(data) {
+                                    if !emit_output(&on_event, bytes) { break 'pump; }
+                                }
                             }
                             ChannelMsg::ExitStatus { exit_status } => {
                                 exit_code = Some(exit_status as i32);
@@ -459,23 +469,49 @@ impl SshSession {
                             _ => {}
                         }
                     }
-                    input = input_rx.recv(), if accepting_input => {
+                    input = pump_control.next_input(), if accepting_input => {
                         match input {
-                            Some(InputMsg::Data(bytes)) => {
-                                if channel.data(&bytes[..]).await.is_err() {
-                                    accepting_input = false;
+                            Some(input) => {
+                                for chunk in input.bytes.chunks(INPUT_WRITE_CHUNK_BYTES) {
+                                    tokio::select! {
+                                        biased;
+                                        _ = pump_control.wait_for_close() => {
+                                            let _ = channel.eof().await;
+                                            break 'pump;
+                                        }
+                                        result = channel.data(chunk) => {
+                                            if result.is_err() {
+                                                accepting_input = false;
+                                                break;
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            Some(InputMsg::Resize { cols, rows }) => {
-                                let _ = channel.window_change(cols as u32, rows as u32, 0, 0).await;
-                            }
-                            Some(InputMsg::Close) | None => {
-                                let _ = channel.eof().await;
-                                break;
+                            None => accepting_input = false,
+                        }
+                    }
+                    changed = resize_rx.changed(), if accepting_input => {
+                        if changed.is_err() {
+                            accepting_input = false;
+                            continue;
+                        }
+                        let size = *resize_rx.borrow_and_update();
+                        if let Some((cols, rows)) = size {
+                            tokio::select! {
+                                biased;
+                                _ = pump_control.wait_for_close() => {
+                                    let _ = channel.eof().await;
+                                    break 'pump;
+                                }
+                                _ = channel.window_change(cols as u32, rows as u32, 0, 0) => {}
                             }
                         }
                     }
                 }
+            }
+            if let Some(bytes) = output.flush() {
+                let _ = emit_output(&on_event, bytes);
             }
             let _ = on_event.send(PtyEvent::Exit {
                 code: exit_code.unwrap_or(SSH_DISCONNECTED_EXIT_CODE),
@@ -484,7 +520,7 @@ impl SshSession {
 
         Ok(SshSession {
             handle,
-            input_tx,
+            control,
             sftp: tokio::sync::Mutex::new(None),
         })
     }
@@ -644,33 +680,22 @@ impl SshSession {
         result
     }
 
-    // These run on the sync Tauri command thread, so they use `try_send`
-    // (non-blocking). A full queue means the remote is far behind; dropping a
-    // keystroke is the same backpressure posture the local PTY takes on output
-    // overflow, and is preferable to blocking the UI thread.
+    // These run on the sync Tauri command thread. Reserving bytes and enqueueing
+    // one complete batch happen in one lock, so a rejected paste is all-or-none
+    // and no caller blocks on network flow control.
     pub fn write(&self, data: &[u8]) -> Result<(), String> {
-        self.input_tx
-            .try_send(InputMsg::Data(data.to_vec()))
-            .map_err(|e| match e {
-                mpsc::error::TrySendError::Full(_) => "ssh input queue full".to_string(),
-                mpsc::error::TrySendError::Closed(_) => "ssh session closed".to_string(),
-            })
+        self.control.try_enqueue(data)
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
-        self.input_tx
-            .try_send(InputMsg::Resize { cols, rows })
-            .map_err(|_| "ssh session closed or busy".to_string())
+        self.control.resize(cols, rows)
     }
 
-    /// Signal the pump task to close the channel. Returns Err if the pump task
-    /// is already gone (channel closed) — callers that surface close errors
-    /// (Session::kill) can then report it, matching the local-PTY path. The
-    /// connection `Handle` itself is dropped when the SshSession is dropped.
+    /// Close is idempotent and independent from Data/Resize backpressure. The
+    /// pump observes it with biased priority and can cancel an in-flight write.
     pub fn close(&self) -> Result<(), String> {
-        self.input_tx
-            .try_send(InputMsg::Close)
-            .map_err(|_| "ssh session already closed".to_string())
+        self.control.request_close();
+        Ok(())
     }
 
     /// Run a one-shot command on the remote host over a fresh exec channel on
@@ -1065,6 +1090,121 @@ impl Drop for SshSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    #[tokio::test]
+    #[ignore = "requires TUNARA_SSH_SMOKE_HOST and a working SSH agent"]
+    async fn real_ssh_control_and_output_batch_smoke() {
+        let host = std::env::var("TUNARA_SSH_SMOKE_HOST")
+            .expect("set TUNARA_SSH_SMOKE_HOST to an authorized test host");
+        let user = std::env::var("TUNARA_SSH_SMOKE_USER").unwrap_or_else(|_| "root".into());
+        let port = std::env::var("TUNARA_SSH_SMOKE_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(22);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let on_event = Channel::<PtyEvent>::new(move |body| {
+            let _ = tx.send(body);
+            Ok(())
+        });
+        let session = tokio::time::timeout(
+            Duration::from_secs(30),
+            SshSession::open(
+                ConnectParams {
+                    host,
+                    port,
+                    auth: AuthOptions {
+                        user,
+                        identity_file: None,
+                        key_passphrase: None,
+                        password: None,
+                    },
+                    policy: HostKeyPolicy::AcceptUnknown,
+                    cols: 80,
+                    rows: 24,
+                    initial_cwd: None,
+                    inject_shell_integration: false,
+                    session_id: "m1-real-smoke".into(),
+                },
+                on_event,
+            ),
+        )
+        .await
+        .expect("SSH open timeout")
+        .expect("SSH open");
+
+        session.resize(90, 30).expect("first resize");
+        session.resize(132, 43).expect("latest resize");
+        let marker = "__TUNARA_M1_REAL_SSH_OK__";
+        session
+            .write(
+                format!("head -c 131072 /dev/zero | tr '\\0' x; printf '\\n{marker}\\n'\n")
+                    .as_bytes(),
+            )
+            .expect("write output fixture");
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        let mut output = Vec::new();
+        let started = tokio::time::Instant::now();
+        let mut data_events = 0usize;
+        let completed = |bytes: &[u8]| {
+            bytes
+                .windows(marker.len())
+                .enumerate()
+                .any(|(offset, candidate)| {
+                    candidate == marker.as_bytes()
+                        && bytes[..offset].iter().filter(|byte| **byte == b'x').count() >= 131_072
+                })
+        };
+        while !completed(&output) {
+            let remaining = deadline
+                .checked_duration_since(tokio::time::Instant::now())
+                .expect("marker before deadline");
+            let body = tokio::time::timeout(remaining, rx.recv())
+                .await
+                .expect("SSH event timeout")
+                .expect("SSH event channel open");
+            let InvokeResponseBody::Json(json) = body else {
+                continue;
+            };
+            let event: serde_json::Value = serde_json::from_str(&json).expect("valid event JSON");
+            if event.get("type").and_then(serde_json::Value::as_str) == Some("data") {
+                data_events += 1;
+                let encoded = event
+                    .get("data")
+                    .and_then(serde_json::Value::as_str)
+                    .expect("data payload");
+                output.extend(B64.decode(encoded).expect("base64 output"));
+            }
+        }
+        assert!(completed(&output), "large output must arrive before marker");
+        eprintln!(
+            "real SSH smoke: {} output bytes in {} Data events over {} ms",
+            output.len(),
+            data_events,
+            started.elapsed().as_millis()
+        );
+
+        session.close().expect("first close");
+        session.close().expect("idempotent close");
+        let exit_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let remaining = exit_deadline
+                .checked_duration_since(tokio::time::Instant::now())
+                .expect("Exit before deadline");
+            let body = tokio::time::timeout(remaining, rx.recv())
+                .await
+                .expect("Exit timeout")
+                .expect("event channel open");
+            let InvokeResponseBody::Json(json) = body else {
+                continue;
+            };
+            let event: serde_json::Value = serde_json::from_str(&json).expect("valid event JSON");
+            if event.get("type").and_then(serde_json::Value::as_str) == Some("exit") {
+                break;
+            }
+        }
+    }
 
     /// Regression: the line typed into the interactive shell must stay far
     /// below the smallest canonical-mode tty line buffer (1024 on BSD/macOS,

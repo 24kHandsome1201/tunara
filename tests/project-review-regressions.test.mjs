@@ -1291,7 +1291,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const sshConnection = read("src-tauri/src/modules/ssh/connection.rs");
   assert.match(sshConnection, /let mut accepting_input = true/);
   assert.match(sshConnection, /accepting_input = false/);
-  assert.match(sshConnection, /input = input_rx\.recv\(\), if accepting_input/);
+  assert.match(sshConnection, /input = pump_control\.next_input\(\), if accepting_input/);
+  assert.match(sshConnection, /_ = pump_control\.wait_for_close\(\)/);
+  assert.match(sshConnection, /changed = resize_rx\.changed\(\), if accepting_input/);
   assert.match(terminalAttention, /import \{ UserAttentionType \} from "@tauri-apps\/api\/window"/);
   assert.match(terminalAttention, /tryGetCurrentWindow\(\)[\s\S]*?requestUserAttention\(UserAttentionType\.Informational\)/);
   assert.doesNotMatch(terminalAttention, /getCurrentWindow\(\)/);
