@@ -192,6 +192,7 @@ export function openSessionPty(
       host: opts.remote.host,
       port: opts.remote.port,
       user: opts.remote.user,
+      cwd: opts.cwd?.startsWith("/") ? opts.cwd : undefined,
       identityFile: opts.remote.identityFile,
       keyPassphrase: opts.remote.keyPassphrase,
       password: opts.remote.password,
@@ -206,6 +207,8 @@ export type SshConnectOptions = {
   host: string;
   port?: number;
   user: string;
+  /** 恢复远程会话时的绝对 POSIX cwd；伪目录 user@host 不会传入。 */
+  cwd?: string;
   /** 私钥文件路径；缺省走 ssh-agent。 */
   identityFile?: string;
   /** 加密私钥的口令，仅本次连接使用。 */
@@ -273,6 +276,7 @@ export async function openSshPty(
       host: conn.host,
       port: conn.port ?? null,
       user: conn.user,
+      cwd: conn.cwd ?? null,
       identityFile: conn.identityFile ?? null,
       keyPassphrase: conn.keyPassphrase ?? null,
       password: conn.password ?? null,

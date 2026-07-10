@@ -123,6 +123,19 @@ test("SSH connection state comes from backend phase evidence and remains ephemer
   assert.doesNotMatch(persisted, /Pick<[\s\S]*?"connection"/);
 });
 
+test("restored SSH sessions forward only absolute cwd through a staged, quoted bootstrap", () => {
+  const bridge = read("src/modules/terminal/lib/pty-bridge.ts");
+  const ssh = read("src-tauri/src/modules/ssh/mod.rs");
+  const connection = read("src-tauri/src/modules/ssh/connection.rs");
+
+  assert.match(bridge, /cwd: opts\.cwd\?\.startsWith\("\/"\) \? opts\.cwd : undefined/);
+  assert.match(bridge, /cwd: conn\.cwd \?\? null/);
+  assert.match(ssh, /SSH cwd must be an absolute POSIX path without control characters/);
+  assert.match(connection, /stage_remote_bootstrap\(/);
+  assert.match(connection, /render_remote_bootstrap\(/);
+  assert.match(connection, /saved remote directory unavailable/);
+});
+
 test("remote diff previews cancel superseded SSH exec requests", () => {
   const diff = read("src/ui/DiffPanel.tsx");
   const bridge = read("src/modules/git/git-bridge.ts");

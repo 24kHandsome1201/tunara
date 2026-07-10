@@ -117,6 +117,7 @@ fn validate_open_input(
     port: u16,
     user: &str,
     identity_file: Option<&str>,
+    cwd: Option<&str>,
 ) -> Result<(), String> {
     if host.is_empty()
         || host.len() > 1_024
@@ -148,6 +149,11 @@ fn validate_open_input(
             return Err("invalid SSH identity-file path".into());
         }
     }
+    if let Some(path) = cwd {
+        if !path.starts_with('/') || path.len() > 4_096 || path.chars().any(char::is_control) {
+            return Err("SSH cwd must be an absolute POSIX path without control characters".into());
+        }
+    }
     Ok(())
 }
 
@@ -166,6 +172,7 @@ pub async fn ssh_open(
     host: String,
     port: Option<u16>,
     user: String,
+    cwd: Option<String>,
     identity_file: Option<String>,
     key_passphrase: Option<String>,
     password: Option<String>,
@@ -182,6 +189,7 @@ pub async fn ssh_open(
         port,
         &user,
         identity_file.as_deref(),
+        cwd.as_deref(),
     )?;
     if open_attempt_id.is_empty()
         || open_attempt_id.len() > 256
@@ -211,6 +219,7 @@ pub async fn ssh_open(
         },
         cols,
         rows,
+        initial_cwd: cwd,
         // Default-on: remote shell integration gives cwd + command/agent
         // detection (incl. the OSC 777 agent wrappers that clear the "running"
         // badge when a remote agent exits). The UI sends an explicit `false`
@@ -305,14 +314,17 @@ mod tests {
             "host.example",
             22,
             "deploy",
-            Some("~/.ssh/id key")
+            Some("~/.ssh/id key"),
+            Some("/srv/项目")
         )
         .is_ok());
-        assert!(validate_open_input(None, "bad host", 22, "deploy", None).is_err());
-        assert!(validate_open_input(None, "host", 0, "deploy", None).is_err());
-        assert!(validate_open_input(None, "host", 22, "bad user", None).is_err());
-        assert!(validate_open_input(Some("../other"), "host", 22, "deploy", None).is_err());
-        assert!(validate_open_input(None, "host", 22, "deploy", Some("bad\0key")).is_err());
+        assert!(validate_open_input(None, "bad host", 22, "deploy", None, None).is_err());
+        assert!(validate_open_input(None, "host", 0, "deploy", None, None).is_err());
+        assert!(validate_open_input(None, "host", 22, "bad user", None, None).is_err());
+        assert!(validate_open_input(Some("../other"), "host", 22, "deploy", None, None).is_err());
+        assert!(validate_open_input(None, "host", 22, "deploy", Some("bad\0key"), None).is_err());
+        assert!(validate_open_input(None, "host", 22, "deploy", None, Some("relative")).is_err());
+        assert!(validate_open_input(None, "host", 22, "deploy", None, Some("/bad\npath")).is_err());
     }
 
     #[tokio::test]

@@ -219,7 +219,7 @@ impl client::Handler for ClientHandler {
 /// Remote shell-integration bootstrap (OSC 7 + OSC 133 hooks for bash/zsh).
 /// Staged into a private remote temp file over an exec channel, then sourced
 /// by one SHORT line typed into the interactive shell (see
-/// `stage_remote_integration` for why it must never be sent inline).
+/// `stage_remote_bootstrap` for why it must never be sent inline).
 const REMOTE_INTEGRATION: &str = include_str!("scripts/remote-integration.sh");
 const AGENT_HOOK_HELPER: &str = include_str!("../agent/scripts/agent-hook.sh");
 
@@ -236,6 +236,9 @@ pub struct ConnectParams {
     pub policy: HostKeyPolicy,
     pub cols: u16,
     pub rows: u16,
+    /// Absolute remote directory restored after the interactive shell starts.
+    /// A missing/unavailable directory degrades to the login home.
+    pub initial_cwd: Option<String>,
     /// Inject remote shell integration so the remote shell emits OSC 7 / OSC
     /// 133 (cwd + command boundaries) and wraps agents to emit OSC 777
     /// lifecycle events. Default-on (see ssh_open) — degrades silently on
@@ -370,19 +373,35 @@ impl SshSession {
             return Err(error);
         }
 
-        // Install remote shell integration: stage the bootstrap into a private
-        // remote temp file over a separate exec channel, then type only a
-        // SHORT ` . file; rm -f file` line into the shell. Both steps degrade
-        // silently (same posture as unsupported shells).
-        if params.inject_shell_integration {
-            match stage_remote_integration(&handle, &params.session_id).await {
+        // Stage shell integration and the saved cwd into one private bootstrap,
+        // then type only a SHORT source line into the interactive shell. This
+        // keeps long/unicode paths and the integration payload out of the tty's
+        // canonical input limit. If staging is unavailable, a normal-sized cwd
+        // still falls back to a directly typed, safely quoted `cd` command.
+        if params.inject_shell_integration || params.initial_cwd.is_some() {
+            match stage_remote_bootstrap(
+                &handle,
+                &params.session_id,
+                params.inject_shell_integration,
+                params.initial_cwd.as_deref(),
+            )
+            .await
+            {
                 Ok(path) => {
                     let line = integration_source_line(&path);
                     if let Err(e) = channel.data(line.as_bytes()).await {
-                        log::debug!("ssh shell-integration inject failed: {e}");
+                        log::debug!("ssh bootstrap inject failed: {e}");
                     }
                 }
-                Err(e) => log::debug!("ssh shell-integration staging failed: {e}"),
+                Err(e) => {
+                    log::debug!("ssh bootstrap staging failed: {e}");
+                    if let Some(cwd) = params.initial_cwd.as_deref() {
+                        let line = initial_cwd_fallback_line(cwd);
+                        if let Err(write_error) = channel.data(line.as_bytes()).await {
+                            log::debug!("ssh initial cwd fallback failed: {write_error}");
+                        }
+                    }
+                }
             }
         }
 
@@ -914,13 +933,16 @@ async fn wait_for_exec_cancel(cancelled: Option<&AtomicBool>) {
 /// `mktemp` creates the file 0600 with O_EXCL under a random name, so a
 /// co-tenant on the remote host can neither pre-plant a symlink nor read the
 /// staged script. The `sh -c` wrapper keeps the command portable when the
-/// login shell is fish/csh. Degrades with Err (caller skips injection) on
-/// servers without mktemp/base64 or with exec disabled.
-async fn stage_remote_integration(
+/// login shell is fish/csh. Degrades with Err on servers without
+/// mktemp/base64 or with exec disabled; the caller can still attempt a bounded
+/// direct cwd restore.
+async fn stage_remote_bootstrap(
     handle: &Handle<ClientHandler>,
     session_id: &str,
+    inject_shell_integration: bool,
+    initial_cwd: Option<&str>,
 ) -> Result<String, String> {
-    let script = render_remote_integration(session_id);
+    let script = render_remote_bootstrap(session_id, inject_shell_integration, initial_cwd);
     let encoded = B64.encode(script.as_bytes());
     let command = integration_stage_command(&encoded);
     let out = exec_on(handle, &command, 4096, Duration::from_secs(5), false, None).await?;
@@ -934,6 +956,32 @@ async fn stage_remote_integration(
         Some(path) => Ok(path.to_string()),
         None => Err(format!("unexpected staging output: {:?}", out.trim())),
     }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn render_remote_bootstrap(
+    session_id: &str,
+    inject_shell_integration: bool,
+    initial_cwd: Option<&str>,
+) -> String {
+    let mut script = if inject_shell_integration {
+        render_remote_integration(session_id)
+    } else {
+        String::new()
+    };
+    if let Some(cwd) = initial_cwd {
+        if !script.is_empty() && !script.ends_with('\n') {
+            script.push('\n');
+        }
+        let quoted = shell_quote(cwd);
+        script.push_str(&format!(
+            "if [ -d {quoted} ]; then\n  cd {quoted} || printf '%s%s\\n' '[tunara] saved remote directory unavailable: ' {quoted}\nelse\n  printf '%s%s\\n' '[tunara] saved remote directory unavailable: ' {quoted}\nfi\n"
+        ));
+    }
+    script
 }
 
 fn render_remote_integration(session_id: &str) -> String {
@@ -965,9 +1013,19 @@ fn integration_stage_command(encoded: &str) -> String {
 /// `2>/dev/null` silences non-POSIX shells (fish sources it and hits the
 /// bash/zsh guards; csh errors once — same posture as the old inline eval).
 /// Must stay far below 1024 bytes, the smallest (BSD) canonical-mode tty line
-/// buffer — see `stage_remote_integration` and the regression test below.
+/// buffer — see `stage_remote_bootstrap` and the regression test below.
 fn integration_source_line(path: &str) -> String {
     format!(" . \"{path}\" 2>/dev/null; rm -f \"{path}\"\n")
+}
+
+fn initial_cwd_fallback_line(cwd: &str) -> String {
+    let line = format!(" cd {}\n", shell_quote(cwd));
+    if line.len() < 1_024 {
+        line
+    } else {
+        " printf '%s\\n' '[tunara] saved remote directory path is too long to restore' >&2\n"
+            .to_string()
+    }
 }
 
 /// Accept only the path shape our own stage command can produce — an absolute
@@ -1037,6 +1095,36 @@ mod tests {
         assert!(stage.contains(&encoded));
         let line = integration_source_line("/tmp/.tunara-si-AbCd012345");
         assert!(!line.contains(&encoded[..32]));
+    }
+
+    #[test]
+    fn remote_bootstrap_restores_a_shell_quoted_unicode_cwd() {
+        let cwd = "/srv/可爱动物/it's-here";
+        let rendered = render_remote_bootstrap("session-1", true, Some(cwd));
+        assert!(rendered.contains("cd '/srv/可爱动物/it'\"'\"'s-here'"));
+        assert!(rendered.contains("saved remote directory unavailable"));
+        assert!(rendered.contains("session-1"));
+        let line = integration_source_line("/tmp/.tunara-si-AbCd012345");
+        assert!(!line.contains(cwd), "cwd stays in the staged payload");
+    }
+
+    #[test]
+    fn cwd_only_bootstrap_does_not_install_shell_integration() {
+        let rendered = render_remote_bootstrap("session-1", false, Some("/srv/app"));
+        assert!(rendered.contains("cd '/srv/app'"));
+        assert!(!rendered.contains("__tunara_"));
+    }
+
+    #[test]
+    fn initial_cwd_fallback_is_tty_bounded() {
+        assert_eq!(
+            initial_cwd_fallback_line("/srv/my app"),
+            " cd '/srv/my app'\n"
+        );
+        let long = format!("/{}", "'".repeat(4_096));
+        let line = initial_cwd_fallback_line(&long);
+        assert!(line.len() < 1_024);
+        assert!(line.contains("too long"));
     }
 
     #[test]
