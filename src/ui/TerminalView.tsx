@@ -37,7 +37,7 @@ import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; 
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
-import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame";
+import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark";
 import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner";
 interface TerminalViewProps {
   sessionId: string;
@@ -354,7 +354,7 @@ function TerminalViewImpl({
       // await openSessionPty() return.
       let inputToPtyEnabled = true;
       const ptyHandlers = {
-        onData: (bytes: Uint8Array) => {
+        onData: (bytes: Uint8Array) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
           outputBuffer.push(bytes);
           blocks.updateActiveBlockEnd(currentBufferRow());
           snapshotScheduler.schedule();
@@ -417,6 +417,7 @@ function TerminalViewImpl({
         return;
       }
       ptyRef.current = pty;
+      if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkWriter(sessionIdRef.current, (data) => pty.write(data)));
       setPtyReady(true); // triggers the pendingInput effect once, now that pty is live
       if (transport === "local") {
         useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
@@ -542,7 +543,6 @@ function TerminalViewImpl({
     </>
   );
 }
-
 // Memoized (with stable props from MainArea) so a MainArea re-render on each
 // agent heartbeat doesn't re-render every mounted terminal.
 export const TerminalView = memo(TerminalViewImpl);

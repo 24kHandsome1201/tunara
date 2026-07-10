@@ -18,6 +18,7 @@ import { useKeybindings } from "./useKeybindings";
 import { useDockBadge } from "./useDockBadge";
 import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useUpdateReminder } from "./useUpdateReminder";
+import { useTerminalBenchmark } from "./useTerminalBenchmark";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 
@@ -192,6 +193,7 @@ export default function App() {
   useDockBadge();
   useGlobalShortcut();
   useUpdateReminder(ready);
+  useTerminalBenchmark(ready);
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);
