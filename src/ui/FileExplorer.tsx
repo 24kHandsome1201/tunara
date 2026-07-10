@@ -30,6 +30,7 @@ import { useT, t as staticT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
+import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
 import { FileSearchGeneration } from "./lib/file-search-session";
 import {
   initialFileSearchLimit,
@@ -52,7 +53,7 @@ interface FileExplorerProps {
   rootDir: string;
   /**
    * 远程 SSH 会话的 PTY id。存在则文件操作走 SFTP；否则走本地 fs。
-   * 远程模式下 rootDir 形如 user@host，需先解析远程 home 作为起点。
+   * rootDir 有 OSC 7 识别出的绝对路径时从该 cwd 打开；旧会话标签才解析 home。
    */
   remotePtyId?: number;
 }
@@ -165,8 +166,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       });
     }
   };
-  // For local sessions the base is rootDir directly; for remote we resolve the
-  // remote $HOME via SFTP (rootDir is user@host, not a path). null = unresolved.
+  // For local sessions the base is rootDir directly. Remote sessions use an
+  // OSC 7 absolute cwd when available, otherwise resolve $HOME via SFTP.
   const [baseDir, setBaseDir] = useState<string | null>(isRemote ? null : rootDir);
   const [currentPath, setCurrentPath] = useState(isRemote ? "" : rootDir);
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -206,6 +207,12 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     setSearchMode(lastFileSearchMode);
     setSearchLimit(initialFileSearchLimit(lastFileSearchMode));
     if (isRemote && remotePtyId !== undefined) {
+      const knownRoot = knownRemoteExplorerRoot(rootDir);
+      if (knownRoot) {
+        setBaseDir(knownRoot);
+        setCurrentPath(knownRoot);
+        return;
+      }
       let cancelled = false;
       setBaseDir(null);
       setLoading(true);

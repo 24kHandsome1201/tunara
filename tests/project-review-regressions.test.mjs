@@ -95,6 +95,8 @@ test("SSH reconnect is transactional and host-key prompts fail closed", () => {
   const explicitKeyIndex = auth.indexOf("if let Some(path) = &opts.identity_file");
   const passwordIndex = auth.indexOf("if let Some(pw) = &opts.password");
   const agentIndex = auth.indexOf("match try_agent(handle, &opts.user).await");
+  const noneIndex = auth.indexOf("handle.authenticate_none(&opts.user).await");
+  assert.ok(noneIndex >= 0 && explicitKeyIndex > noneIndex, "none authentication probe must run first");
   assert.ok(explicitKeyIndex >= 0 && agentIndex > explicitKeyIndex, "explicit identity must precede agent enumeration");
   assert.ok(passwordIndex > explicitKeyIndex && agentIndex > passwordIndex, "supplied password must precede agent enumeration");
   assert.match(auth, /metadata\.is_file\(\)/);
@@ -1069,6 +1071,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
 test("follow-up review fixes polish dense UI surfaces", () => {
   const titlebar = read("src/ui/Titlebar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarNewTerminal = read("src/ui/SidebarNewTerminalControl.tsx");
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const main = read("src/ui/MainArea.tsx");
@@ -1104,7 +1107,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.equal(titlebar.match(/transform: titlebarControlTransform/g)?.length, 3);
   assert.match(titlebar, /paddingLeft: 8/);
   assert.match(tokens, /--h-titlebar: 36px/);
-  assert.match(sidebar, /padding: "8px 12px 6px"/);
+  assert.match(sidebarNewTerminal, /padding: "8px 12px 6px"/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);
   assert.match(sidebar, /const visibleSessionIds = groupEntries\.flatMap/);
   assert.match(sidebar, /const tabbableSessionId = visibleSessionIds\.includes\(activeSessionId\)/);
@@ -1250,7 +1253,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
 
   assert.match(terminal, /import \{ TerminalViewChrome \} from "\.\/TerminalViewChrome"/);
-  assert.match(terminal, /import \{ createInputQueueFullWarner, emitTerminalNotification, requestInformationalAttention, safeDispose \} from "\.\/terminal-attention"/);
+  assert.match(terminal, /import \{ createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose \} from "\.\/terminal-attention"/);
   assert.match(terminal, /registerTerminalClipboardHandler\(term/);
   assert.match(terminal, /registerTerminalDeviceAttributesHandler\(term/);
   assert.match(terminal, /terminalClipboardWrite/);

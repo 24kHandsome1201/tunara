@@ -10,8 +10,8 @@ import { useUIStore } from "@/state/ui";
 import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
 import { buildSessionMenuItems } from "./sidebar-session-menu";
 import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-dir-group-menu";
-import { formatShortcut } from "./formatShortcut";
 import { useT } from "@/modules/i18n";
+import { SidebarNewTerminalControl } from "./SidebarNewTerminalControl";
 
 // Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
 interface DragState {
@@ -25,6 +25,7 @@ interface SidebarProps {
   activeSessionId: string;
   onSelectSession: (id: string) => void;
   onNewTerminal?: () => void;
+  onNewTerminalInDirectory?: () => void;
   onCloseSession?: (id: string) => void;
 }
 
@@ -33,6 +34,7 @@ export function Sidebar({
   activeSessionId,
   onSelectSession,
   onNewTerminal,
+  onNewTerminalInDirectory,
   onCloseSession,
 }: SidebarProps) {
   const t = useT();
@@ -43,7 +45,6 @@ export function Sidebar({
     position: { x: number; y: number };
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
-  const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
   const dragRef = useRef<DragState | null>(null);
   const dragStartY = useRef(0);
   const dragStarted = useRef(false);
@@ -197,50 +198,10 @@ export function Sidebar({
       aria-label={t("sidebar.aria_label")}
     >
       {onNewTerminal && (
-        <div style={{ padding: "8px 12px 6px" }}>
-          <button
-            onClick={onNewTerminal}
-            style={{
-              width: "100%",
-              height: "var(--h-btn-md)",
-              padding: "0 8px 0 10px",
-              border: "1px solid var(--c-border-2)",
-              borderRadius: "var(--r-btn)",
-              background: "var(--c-bg-white)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-smooth)",
-            }}
-            className="hover-accent-bg"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-accent)", lineHeight: 1 }}>
-              {t("sidebar.new_terminal")}
-            </span>
-            <span
-              style={{
-                marginLeft: "auto",
-                height: 18,
-                display: "inline-flex",
-                alignItems: "center",
-                fontSize: "var(--fs-meta)",
-                color: "var(--c-text-5)",
-                fontFamily: "var(--font-mono)",
-                background: "var(--c-bg-2)",
-                borderRadius: "var(--r-badge)",
-                padding: "0 6px",
-                flexShrink: 0,
-              }}
-            >
-              {formatShortcut(newTerminalShortcut)}
-            </span>
-          </button>
-        </div>
+        <SidebarNewTerminalControl
+          onNewTerminal={onNewTerminal}
+          onNewTerminalInDirectory={onNewTerminalInDirectory}
+        />
       )}
 
       <div style={{ padding: "6px 12px" }}>

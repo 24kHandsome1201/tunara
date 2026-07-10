@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { type Session, AGENT_NAMES } from "./types";
 import { AgentBadge } from "./agents";
-import { groupAgentActivity } from "@/modules/agent/global-activity";
+import { deriveSessionAttention, type SessionAttentionKind } from "@/modules/session/session-attention";
 import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
-import { AccentActionButton, ResumeIcon } from "./lib/ui-primitives";
+import { AccentActionButton, RestartIcon, ResumeIcon } from "./lib/ui-primitives";
 
-// 全局 Agent 活动条（.design/global-agent-bar.html 原型的实现）。
-// 挂在 Sidebar 顶部：折叠时一行汇总计数，展开后按 等你回复/正在跑/可恢复 分组。
-// 没有任何 agent 相关会话时整条隐藏——不留空壳。
+// Sidebar 的统一会话动态层。展示需要处理、正在运行、可恢复三类派生状态；
+// 没有可操作状态时整条隐藏，不制造第二套持久化状态或独立工作区。
 interface GlobalAgentBarProps {
   sessions: Session[];
   onSelectSession: (id: string) => void;
@@ -68,21 +68,36 @@ function GroupLabel({ label, count, accent }: { label: string; count: number; ac
 
 interface ActivityRowProps {
   session: Session;
-  variant: "wait" | "run" | "resumable";
+  variant: "attention" | "run" | "resumable";
+  attentionKind?: SessionAttentionKind;
   resumeCommand?: string;
   onSelect: (id: string) => void;
 }
 
-function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowProps) {
+function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect }: ActivityRowProps) {
   const t = useT();
   const agentCode = session.agent ?? session.agentResume?.agent;
   const fileCount = session.changes?.files.length ?? 0;
-  const tagColor = variant === "run" ? "var(--c-accent)" : "var(--c-warning)";
-  const tagLabel = variant === "wait"
+  const isSshAttention = attentionKind === "ssh-failed" || attentionKind === "ssh-disconnected";
+  const tagColor = variant === "run"
+    ? "var(--c-accent)"
+    : attentionKind === "agent-ready"
+      ? "var(--c-warning)"
+      : "var(--c-error)";
+  const tagLabel = attentionKind === "agent-ready"
     ? t("gbar.tag.wait")
-    : session.agentActivity === "starting"
-      ? t("gbar.tag.starting")
-      : t("gbar.tag.run");
+    : attentionKind === "command-failed"
+      ? t("gbar.tag.command_failed")
+      : attentionKind === "ssh-disconnected"
+        ? t("gbar.tag.ssh_disconnected")
+        : attentionKind === "ssh-failed"
+          ? t("gbar.tag.ssh_failed")
+          : session.agentActivity === "starting"
+            ? t("gbar.tag.starting")
+            : t("gbar.tag.run");
+  const displayName = isSshAttention && session.remote
+    ? `${session.remote.user}@${session.remote.host}`
+    : rowName(session, agentCode);
 
   const select = () => onSelect(session.id);
   const fillResume = (e: React.MouseEvent) => {
@@ -94,12 +109,24 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
     });
     onSelect(session.id);
   };
+  const reconnect = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!session.remote) return;
+    useUIStore.getState().openSshConnect({
+      host: session.remote.host,
+      user: session.remote.user,
+      port: session.remote.port,
+      identityFile: session.remote.identityFile,
+      injectShellIntegration: session.remote.injectShellIntegration,
+      reconnectSessionId: session.id,
+    });
+  };
 
   return (
     <div
       role="button"
       tabIndex={0}
-      className={variant === "wait" ? "gbar-row gbar-row-wait" : "gbar-row"}
+      className={variant === "attention" ? "gbar-row gbar-row-wait" : "gbar-row"}
       onClick={select}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -118,12 +145,21 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
         minWidth: 0,
       }}
     >
-      <AgentBadge agent={agentCode} size={18} />
+      {agentCode ? (
+        <AgentBadge agent={agentCode} size={18} />
+      ) : (
+        <span
+          aria-hidden="true"
+          style={{ width: 18, height: 18, borderRadius: "var(--r-badge)", display: "grid", placeItems: "center", flexShrink: 0, color: tagColor, background: `color-mix(in srgb, ${tagColor} 10%, transparent)`, border: `1px solid color-mix(in srgb, ${tagColor} 24%, transparent)`, fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", fontWeight: 800 }}
+        >
+          {isSshAttention ? <RestartIcon size={10} /> : "!"}
+        </span>
+      )}
       <span
         className="text-ellipsis"
         style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-primary)", flexShrink: 0, maxWidth: "52%" }}
       >
-        {rowName(session, agentCode)}
+        {displayName}
       </span>
       <span
         className="text-ellipsis"
@@ -131,7 +167,7 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
       >
         {session.dir}
       </span>
-      {variant === "wait" && fileCount > 0 && (
+      {attentionKind === "agent-ready" && fileCount > 0 && (
         <span
           style={{
             fontFamily: "var(--font-mono)",
@@ -148,7 +184,12 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
           {t("agent.status.file_count", { count: fileCount })}
         </span>
       )}
-      {variant === "resumable" ? (
+      {isSshAttention ? (
+        <AccentActionButton onClick={reconnect} title={t("gbar.action.reconnect")} ariaLabel={t("gbar.action.reconnect")}>
+          <RestartIcon size={10} />
+          {t("gbar.action.reconnect")}
+        </AccentActionButton>
+      ) : variant === "resumable" ? (
         <AccentActionButton onClick={fillResume} title={t("agent.status.resume")} ariaLabel={t("agent.status.resume")}>
           <ResumeIcon size={9} />
           {t("agent.status.resume")}
@@ -191,11 +232,11 @@ function ActivityRow({ session, variant, resumeCommand, onSelect }: ActivityRowP
 export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const groups = useMemo(() => groupAgentActivity(sessions), [sessions]);
+  const groups = useMemo(() => deriveSessionAttention(sessions), [sessions]);
 
   if (groups.total === 0) return null;
 
-  const liveCount = groups.wait.length + groups.run.length;
+  const liveCount = groups.attention.length + groups.running.length;
 
   return (
     <div style={{ padding: "2px 12px 6px", flexShrink: 0 }}>
@@ -236,14 +277,14 @@ export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProp
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto", minWidth: 0 }}>
             <CountChip
-              count={groups.wait.length}
-              color="var(--c-warning)"
-              label={t("gbar.count.wait", { count: groups.wait.length })}
+              count={groups.attention.length}
+              color="var(--c-error)"
+              label={t("gbar.count.attention", { count: groups.attention.length })}
             />
             <CountChip
-              count={groups.run.length}
+              count={groups.running.length}
               color="var(--c-accent)"
-              label={t("gbar.count.run", { count: groups.run.length })}
+              label={t("gbar.count.run", { count: groups.running.length })}
             />
             {liveCount === 0 && (
               <CountChip
@@ -283,18 +324,18 @@ export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProp
               className="no-scrollbar"
               style={{ borderTop: "1px solid var(--c-border-1)", padding: 6, maxHeight: 280, overflowY: "auto" }}
             >
-              {groups.wait.length > 0 && (
-                <div role="group" aria-label={t("gbar.group.wait")}>
-                  <GroupLabel label={t("gbar.group.wait")} count={groups.wait.length} accent />
-                  {groups.wait.map((s) => (
-                    <ActivityRow key={s.id} session={s} variant="wait" onSelect={onSelectSession} />
+              {groups.attention.length > 0 && (
+                <div role="group" aria-label={t("gbar.group.attention")}>
+                  <GroupLabel label={t("gbar.group.attention")} count={groups.attention.length} accent />
+                  {groups.attention.map(({ session, kind }) => (
+                    <ActivityRow key={session.id} session={session} variant="attention" attentionKind={kind} onSelect={onSelectSession} />
                   ))}
                 </div>
               )}
-              {groups.run.length > 0 && (
+              {groups.running.length > 0 && (
                 <div role="group" aria-label={t("gbar.group.run")}>
-                  <GroupLabel label={t("gbar.group.run")} count={groups.run.length} />
-                  {groups.run.map((s) => (
+                  <GroupLabel label={t("gbar.group.run")} count={groups.running.length} />
+                  {groups.running.map((s) => (
                     <ActivityRow key={s.id} session={s} variant="run" onSelect={onSelectSession} />
                   ))}
                 </div>

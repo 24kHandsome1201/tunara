@@ -13,6 +13,7 @@ import { hasPromptableParams, resolveTemplate } from "@/modules/workflows/templa
 import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 import { RUNBOOK_BLUEPRINTS, appendRunbookToNote } from "@/modules/runbook/blueprints";
+import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 
 interface Command {
   id: string;
@@ -93,6 +94,20 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         uiStore.getState().recordCommandUse("new-terminal");
         useSessionsStore.getState().newTerminal();
         onClose();
+      },
+    });
+
+    cmds.push({
+      id: "new-terminal-directory",
+      label: t("palette.cmd.new_terminal_in_directory"),
+      icon: <CmdIcon d="M3 6.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "terminal"],
+      originalIndex: idx++,
+      action: () => {
+        uiStore.getState().recordCommandUse("new-terminal-directory");
+        onClose();
+        void openNewTerminalDirectoryDialog();
       },
     });
 

@@ -10,6 +10,18 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-07-11
+
+### 新功能
+- 新建终端支持原生目录选择器：侧栏分体按钮、标题栏加号右键菜单和命令面板共用同一条受并发保护的创建路径；取消选择不产生会话，创建后 PTY 的真实 cwd 与所选绝对路径一致。
+- 侧栏 Agent 活动条升级为统一“会话动态”：从现有连接、命令、Agent、未读与恢复证据派生“需要处理 / 正在运行 / 可恢复”，SSH 可原位打开重连，恢复命令只填入终端、不自动执行。
+
+### 修复与优化
+- SSH 认证补齐 OpenSSH 的 `none` 探测，支持 Tailscale SSH 等无需公钥、密码或 agent key 的服务端认证方式，同时保持显式密钥、密码、ssh-agent 的既有回退顺序。
+- 修复冷启动或后台恢复时终端永久停在等待状态：布局初始化和前端输出缓冲不再无限依赖可能被 WKWebView 暂停的 `requestAnimationFrame`，增加有界定时兜底；SSH 输出、OSC 7 目录和 OSC 133 命令完成事件不会再一起滞留。
+- 远端文件面板优先跟随 OSC 7 识别出的绝对 cwd，只有旧会话仍是 `user@host` 标签时才回退到 SFTP Home；SSH 实测可从 `/root` 切换到 `/tmp` 并同步终端状态和文件浏览起点。
+- 更新架构与路线图，记录连接状态事件、可取消的本地/远端搜索和按需 Diff 加载现状。
+
 ### 安全
 - 升级 `plist` 至 1.10.0、`quick-xml` 至 0.41.0，修复 RUSTSEC-2026-0194 / RUSTSEC-2026-0195，并移除对应的 `cargo audit` 例外。
 

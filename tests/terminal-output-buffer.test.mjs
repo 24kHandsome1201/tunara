@@ -54,6 +54,28 @@ test("buffered chunks merge into a single write per animation frame", () => {
   buffer.dispose();
 });
 
+test("backgrounded terminals flush when animation frames are suspended", () => {
+  const { term, writes } = makeTerminalStub();
+  let fireTimeout;
+  let cancelledFrame;
+  const buffer = createTerminalOutputBuffer(term, {
+    requestFrame: () => 91,
+    cancelFrame: (handle) => { cancelledFrame = handle; },
+    scheduleTimeout: (callback) => {
+      fireTimeout = callback;
+      return 42;
+    },
+    cancelTimeout: () => {},
+  });
+  buffer.push(new TextEncoder().encode("remote OSC output"));
+  assert.equal(writes.length, 0);
+  fireTimeout();
+  assert.equal(writes.length, 1);
+  assert.equal(text(writes[0]), "remote OSC output");
+  assert.equal(cancelledFrame, 91);
+  buffer.dispose();
+});
+
 test("overflow drops the backlog but keeps the chunk that arrived", () => {
   const { term, writes } = makeTerminalStub();
   const buffer = createTerminalOutputBuffer(term);

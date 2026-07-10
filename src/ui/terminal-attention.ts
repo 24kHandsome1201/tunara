@@ -2,6 +2,7 @@ import { UserAttentionType } from "@tauri-apps/api/window";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalNotification } from "@/modules/terminal/lib/terminal-notification";
 import { useUIStore } from "@/state/ui";
+import { useSessionsStore } from "@/state/sessions";
 import { t } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "./lib/current-window";
 
@@ -53,4 +54,20 @@ export function safeDispose(label: string, fn: () => void): void {
   } catch (e) {
     console.error(`TerminalView cleanup (${label}) failed:`, e);
   }
+}
+
+export function reportTerminalInitializationFailure(
+  sessionId: string,
+  remote: boolean,
+  error: unknown,
+): string {
+  const detail = String(error);
+  console.error("[TerminalView] initialization failed", error);
+  useSessionsStore.getState().handleConnectionEvent(sessionId, {
+    type: "failed",
+    transport: remote ? "ssh" : "local",
+    reason: "pty",
+    detail,
+  });
+  return detail;
 }

@@ -18,12 +18,14 @@ import { useKeybindings } from "./useKeybindings";
 import { useDockBadge } from "./useDockBadge";
 import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useEffect } from "react";
+import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
 // lets the memoized Titlebar skip re-rendering when only unrelated state moved.
 const closeSessionById = (id: string) => useSessionsStore.getState().closeSession(id);
 const newTerminal = () => useSessionsStore.getState().newTerminal();
+const newTerminalInDirectory = () => { void openNewTerminalDirectoryDialog(); };
 const openSettings = () => useUIStore.getState().setOverlay("settings");
 
 interface ResizeHandleProps {
@@ -230,6 +232,7 @@ export default function App() {
         onSelectSession={setActive}
         onCloseSession={closeSessionById}
         onNewTerminal={newTerminal}
+        onNewTerminalInDirectory={newTerminalInDirectory}
         onOpenSettings={openSettings}
       />
 
@@ -284,6 +287,7 @@ export default function App() {
             activeSessionId={activeSessionId ?? ""}
             onSelectSession={setActive}
             onNewTerminal={newTerminal}
+            onNewTerminalInDirectory={newTerminalInDirectory}
             onCloseSession={closeSessionById}
           />
           {sidebarVisible && <SidebarResizeHandle />}

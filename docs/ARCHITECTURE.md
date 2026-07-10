@@ -24,7 +24,8 @@ fixed three-pane layout under a custom titlebar:
 ```
 
 - **Left — `Sidebar`** ([`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx)): session
-  list grouped by working directory, with live agent status.
+  list grouped by working directory, plus a derived attention/running/recovery
+  layer for SSH, commands, and agents.
 - **Center — `MainArea`** ([`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) →
   [`TerminalView`](../src/ui/TerminalView.tsx)): the actual terminals. xterm.js +
   WebGL, one per session, optionally split into two panes.
@@ -84,7 +85,7 @@ module.
 
 | Command | Does | Frontend caller |
 |---|---|---|
-| `pty_open` | Spawn a local login shell over a PTY; returns physical id, streams output on a `Channel<PtyEvent>` | `openPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `pty_open` | Spawn a local login shell over a PTY; returns physical id, streams `data`, `exit`, and `connectionStatus` events on a `Channel<PtyEvent>` | `openPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `pty_write` | Write input bytes to a session (local or SSH) | `PtySession.write`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `pty_resize` | Resize a session's PTY/SSH window | `PtySession.resize`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `pty_close` | Kill/close a session and drop it from `PtyState` | `PtySession.close`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
@@ -97,15 +98,19 @@ their own commands.
 
 | Command | Does | Frontend caller |
 |---|---|---|
-| `ssh_open` | Open a russh interactive shell; same `Channel<PtyEvent>` contract as `pty_open`, plus the `hostKeyPrompt` variant | `openSshPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `ssh_open` | Open a russh interactive shell; same `Channel<PtyEvent>` contract as `pty_open`, with backend `connectionStatus` phases plus the `hostKeyPrompt` variant | `openSshPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `ssh_cancel_open` | Cancel an in-flight handshake/auth/shell-open attempt by generation id | `cancelSshOpen`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_host_key_decision` | Reply to a parked TOFU host-key prompt (accept/reject by `promptId`) | `answerHostKeyPrompt`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_hosts_load` | Read saved host profiles (no credentials) | `loadHosts`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_save` | Upsert a host profile, return the new list | `saveHost`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_remove` | Delete a host profile by id | `removeHost`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
+| `ssh_hosts_import_config` | Import static host profiles from `~/.ssh/config` | `importSshConfig`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_fs_read_dir` | List a remote directory over SFTP | `sshReadDir`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_read_file` | Read a remote file over SFTP | `sshReadFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_download` | Download a remote file to a local path, return bytes written | `sshDownload`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
-| `ssh_fs_home` | Resolve the remote home dir (initial path for the file panel) | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_fs_home` | Resolve the remote home dir when no OSC 7 absolute cwd is known | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_fs_search` / `ssh_fs_grep` | Cancellable remote filename/content search over exec channels | `sshSearch` / `sshGrep`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_git_status` / `ssh_git_diff` / `ssh_git_ahead_behind` | Read-only remote Git inspection over exec channels | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 
 ### `fs` — local filesystem (read-only) [`modules/fs`](../src-tauri/src/modules/fs/mod.rs)
 
@@ -115,6 +120,7 @@ their own commands.
 | `fs_read_file` | Read a file (text/binary/too-large classified) | `fsReadFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_search` | Fuzzy filename search under a root | `fsSearch`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_grep` | Content grep under a root | `fsGrep`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) (via [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx)) |
+| `fs_cancel_search` | Cancel the active local or remote search generation | `fsCancelGrep` / `cancelRemoteSearch` in the filesystem bridges |
 
 ### `git` — status / diff / watch [`modules/git`](../src-tauri/src/modules/git/mod.rs)
 

@@ -8,6 +8,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { CloseIcon } from "./shared";
 import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -29,6 +30,7 @@ interface TitlebarProps {
   onSelectSession: (id: string) => void;
   onCloseSession: (id: string) => void;
   onNewTerminal: () => void;
+  onNewTerminalInDirectory: () => void;
   onOpenSettings: () => void;
 }
 
@@ -189,6 +191,7 @@ export function Titlebar({
   onSelectSession,
   onCloseSession,
   onNewTerminal,
+  onNewTerminalInDirectory,
   onOpenSettings,
 }: TitlebarProps) {
   const t = useT();
@@ -200,6 +203,21 @@ export function Titlebar({
   const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
+  const [newTerminalMenu, setNewTerminalMenu] = useState<{
+    items: MenuEntry[];
+    position: { x: number; y: number };
+  } | null>(null);
+
+  const openNewTerminalMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    setNewTerminalMenu({
+      position: { x: event.clientX, y: event.clientY },
+      items: [
+        { id: "new-terminal", label: t("titlebar.new_terminal"), icon: "terminal", action: onNewTerminal },
+        { id: "new-terminal-directory", label: t("titlebar.new_terminal_in_directory"), icon: "folder", action: onNewTerminalInDirectory },
+      ],
+    });
+  };
 
   function tabLabel(s: Session): string {
     const { primary } = deriveTitle(s);
@@ -346,6 +364,7 @@ export function Titlebar({
           ))}
           <button
             onClick={onNewTerminal}
+            onContextMenu={openNewTerminalMenu}
             title={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
             aria-label={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
             style={{
@@ -430,6 +449,13 @@ export function Titlebar({
 
         {!_isMac && <WindowControls />}
       </div>
+      {newTerminalMenu && (
+        <ContextMenu
+          items={newTerminalMenu.items}
+          position={newTerminalMenu.position}
+          onClose={() => setNewTerminalMenu(null)}
+        />
+      )}
     </div>
   );
 }

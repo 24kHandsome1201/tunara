@@ -20,6 +20,7 @@
     "core:window:allow-is-fullscreen",
     "opener:default",
     "dialog:allow-confirm",
+    "dialog:allow-open",
     "dialog:allow-save",
     "log:default",
     "os:default",

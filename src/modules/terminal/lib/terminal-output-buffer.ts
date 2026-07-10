@@ -1,17 +1,42 @@
 import type { Terminal } from "@xterm/xterm";
 
 const MAX_PENDING_BYTES = 2 * 1024 * 1024;
+export const TERMINAL_OUTPUT_FRAME_TIMEOUT_MS = 120;
 const OVERFLOW_NOTICE = new TextEncoder().encode(
   "\x1bc\x1b[2m[tunara: dropped frontend output backlog]\x1b[0m\r\n",
 );
 
-export function createTerminalOutputBuffer(term: Terminal) {
+type TimerHandle = ReturnType<typeof setTimeout>;
+
+interface TerminalOutputBufferOptions {
+  timeoutMs?: number;
+  requestFrame?: (callback: FrameRequestCallback) => number;
+  cancelFrame?: (handle: number) => void;
+  scheduleTimeout?: (callback: () => void, timeoutMs: number) => TimerHandle;
+  cancelTimeout?: (handle: TimerHandle) => void;
+}
+
+export function createTerminalOutputBuffer(term: Terminal, {
+  timeoutMs = TERMINAL_OUTPUT_FRAME_TIMEOUT_MS,
+  requestFrame = (callback) => requestAnimationFrame(callback),
+  cancelFrame = (handle) => cancelAnimationFrame(handle),
+  scheduleTimeout = (callback, delay) => setTimeout(callback, delay),
+  cancelTimeout = (handle) => clearTimeout(handle),
+}: TerminalOutputBufferOptions = {}) {
   let pendingData: Uint8Array[] = [];
   let pendingBytes = 0;
   let writeRafId = 0;
+  let writeTimer: TimerHandle | null = null;
+
+  const cancelPendingFlush = () => {
+    if (writeRafId) cancelFrame(writeRafId);
+    if (writeTimer !== null) cancelTimeout(writeTimer);
+    writeRafId = 0;
+    writeTimer = null;
+  };
 
   const flush = () => {
-    writeRafId = 0;
+    cancelPendingFlush();
     if (pendingData.length === 1) {
       term.write(pendingData[0]);
     } else if (pendingData.length > 1) {
@@ -44,11 +69,13 @@ export function createTerminalOutputBuffer(term: Terminal) {
         pendingData.push(data);
         pendingBytes += data.byteLength;
       }
-      if (!writeRafId) writeRafId = requestAnimationFrame(flush);
+      if (!writeRafId && writeTimer === null) {
+        writeRafId = requestFrame(flush);
+        writeTimer = scheduleTimeout(flush, timeoutMs);
+      }
     },
     dispose() {
-      if (writeRafId) cancelAnimationFrame(writeRafId);
-      writeRafId = 0;
+      cancelPendingFlush();
       pendingData = [];
       pendingBytes = 0;
     },

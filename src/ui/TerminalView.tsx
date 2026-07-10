@@ -36,7 +36,8 @@ import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/term
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
-import { createInputQueueFullWarner, emitTerminalNotification, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
+import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
+import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame";
 import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner";
 interface TerminalViewProps {
   sessionId: string;
@@ -44,10 +45,8 @@ interface TerminalViewProps {
   active: boolean;
   pendingInput?: string;
   pendingInputSubmit?: boolean;
-  /** Called with this view's session id once pendingInput has been delivered. */
   onPendingInputConsumed?: (sessionId: string) => void;
 }
-
 function TerminalViewImpl({
   sessionId,
   dir,
@@ -160,7 +159,7 @@ function TerminalViewImpl({
       // changes cell metrics; fitting before it loads would measure stale
       // dimensions, causing a cols/rows mismatch with the PTY that shows
       // as garbled output until the next resize.
-      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await waitForTerminalLayoutFrame();
       if (disposed || !containerRef.current) return;
       fit.fit();
       const searchAddon = new SearchAddon();
@@ -425,7 +424,6 @@ function TerminalViewImpl({
           transport: "local",
         });
       }
-
       // Expose the live PTY id on the session so the remote file panel can
       // locate the backend SSH connection for SFTP commands.
       useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
@@ -507,7 +505,9 @@ function TerminalViewImpl({
       cleanups.push(registerTerminalAtlasRefresh(rebuildWebglAtlas));
       cleanups.push(resetAgentObservers);
       if (active) term.focus();
-    })();
+    })().catch((error) => {
+      if (!disposed) setOpenError(reportTerminalInitializationFailure(sessionIdRef.current, Boolean(session?.remote), error));
+    });
     return () => {
       disposed = true;
       if (!ptyRef.current && session?.remote) {

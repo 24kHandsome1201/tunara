@@ -1,4 +1,4 @@
-// SSH authentication chain: explicit key file → password → ssh-agent.
+// SSH authentication chain: none probe → explicit key file → password → ssh-agent.
 //
 // Tunara stores NO credentials. Auth is delegated to the system: the
 // ssh-agent (if reachable), an on-disk private key, or a password the user
@@ -45,6 +45,15 @@ pub async fn authenticate(
     opts: &AuthOptions,
 ) -> Result<(), String> {
     let mut errors: Vec<String> = Vec::new();
+
+    // OpenSSH starts with the "none" method both to discover allowed methods
+    // and to support intentionally credential-free accounts. A rejection is
+    // the normal case and should not pollute the final diagnostic.
+    match handle.authenticate_none(&opts.user).await {
+        Ok(result) if result.success() => return Ok(()),
+        Ok(_) => {}
+        Err(error) => errors.push(format!("none: {error}")),
+    }
 
     // 1) An identity selected in the host profile is an explicit user choice.
     // Try it before enumerating agent keys so a large agent cannot consume the
