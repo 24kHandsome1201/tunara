@@ -4,11 +4,11 @@
 
 ## 当前结论
 
-当前唯一 Active Milestone 是 `M0 Phase 1 真实验收`。在本节未完成项全部有真实证据前，不启动编辑器、Preview、Timeline、Companion 或 Recipe。M0 完成后先进入 `M1 Terminal + SSH 性能与乱码稳定性`。
+`M0 Phase 1 真实验收` 已完成，证据见 [M0 已挂载终端性能基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)。当前唯一 Active Milestone 是 `M1 Terminal + SSH 性能与乱码稳定性`，按 [M1 实施规格](./M1_TERMINAL_SSH_PERFORMANCE.md) 执行；M1 未完成前不启动编辑器、Preview、Timeline、Companion 或 Recipe。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
-| Phase 1 Workspace / Worktree | 进行中 | common git dir 稳定身份、本地 linked worktree 发现、SSH 同形解析与 cwd 恢复、概览与 Inspector 来源、侧栏层级表达、缓存与取消过期前端请求 | 10+ 已挂载 WebView 终端的 renderer 与输入性能基线 |
+| Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线 | 保持回归；主线进入 M1 性能与乱码稳定性 |
 | Phase 2 Markdown / 单文件轻编辑 | 未开始 | 已有只读文件预览与外部编辑器逃生口 | 阅读器、冲突检测、本地安全写、SSH 原子写回完整闭环 |
 | Phase 3 Workspace Preview | 未开始 | 终端已有 URL 检测基础能力待盘点 | workspace 绑定、安全 WebView、来源/截图/错误摘要闭环 |
 | Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
@@ -18,7 +18,7 @@
 | Herdr spike | 暂不进入关键路径 | GOAL 已记录实验边界 | 只有主线阶段验证后再单独决策 |
 | Surface / Action / Dogfood | 未系统化 | Terminal、Review、Files 已有事实源边界，破坏性确认有局部实现 | 建立统一 SurfaceRef/ActionRef、feature flag、数据生命周期与本地可查看/关闭/清空的 dogfood 指标 |
 
-## M1 预备账本，当前不开工
+## M1 执行账本，当前 Active Milestone
 
 - [ ] 固化冷启动、首个 PTY 可输入、输入回显、10 session、bundle 大小基线。
 - [ ] 建立 50/200MiB Unicode/ANSI/OSC/alternate-screen 高输出 fixture 与 reference capture。
@@ -47,7 +47,7 @@
 - [x] 576×433 窄窗口、vertical split、双 PTY、冷重启恢复与中文路径已在真实开发 bundle 验收。
 - [x] 独立 optimized release 验收 bundle 在 640×480 下完成 vertical split、本地中文 linked worktree、真实 SSH cwd/workspace 与冷重启回归，未读写正式应用数据。
 - [x] 10 条真实本地 PTY 同时存活，逐条写入/读回唯一 marker、接收 Exit 并清空物理/逻辑注册表；本机测试约 0.31 秒。
-- [ ] 10+ 已挂载 WebView 终端下的 renderer RSS、输入延迟和帧时间基线。
+- [x] 10+ 已挂载 WebView 终端下的 renderer RSS、输入延迟和帧时间基线：12/12 ready，输入 p95 23ms，301 帧、frame p95 19ms，详见 [报告](./benchmarks/m0-terminal-baseline-2026-07-11.md)。
 - [x] 可审阅截图覆盖 optimized release 的本地 linked worktree、真实 SSH 分屏、Workspace Inspector 与 16 个动物图标；截图发现并修复 CSP 阻断小 SVG 与 SSH bootstrap 回显，干净 SSH 会话复拍后直接落到目标目录提示符。
 
 ## 每阶段通用门禁

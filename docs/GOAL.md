@@ -1020,7 +1020,7 @@ Herdr、Workflow Recipe、原生 iOS、系统推送、公网 Relay 和手机 PTY
 
 ### 当前 Active Milestone
 
-当前唯一 Active Milestone 是 M0：完成 Phase 1 Workspace/Worktree 的真实验收。完成后进入 M1，而不是直接实现编辑器、Preview、Timeline 或 Companion。
+M0 Phase 1 Workspace/Worktree 真实验收已完成，证据见 [M0 已挂载终端性能基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)。当前唯一 Active Milestone 是 M1：按 [Terminal + SSH 性能与乱码稳定性实施规格](./M1_TERMINAL_SSH_PERFORMANCE.md) 固化剩余基线、改造 SSH 输入/控制面与输出批处理，并完成慢链路、高输出和 renderer fallback 验收。M1 完成前不启动编辑器、Preview、Timeline 或 Companion。
 
 ## 17. 推荐起点
 

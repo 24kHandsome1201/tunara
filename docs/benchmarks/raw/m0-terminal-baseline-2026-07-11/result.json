@@ -1,0 +1,38 @@
+{
+  "commit": "719f6777f8902d32cca8551a6825a12106d93f49",
+  "buildMode": "optimized release benchmark bundle",
+  "macOS": "26.1 (25B5072a)",
+  "hardware": "Apple M2",
+  "requestedTerminals": 12,
+  "pid": 58203,
+  "process": {
+    "appRssPeakKiB": 110672,
+    "rendererRssDeltaPeakKiB": 257264,
+    "ptyRssPeakKiB": 56784,
+    "totalIncrementalRssPeakKiB": 406656,
+    "totalIncrementalRssMeanKiB": 349821.20,
+    "cpuMeanPercent": 5.31
+  },
+  "bundleKiB": 14284,
+  "terminal": {
+    "benchmark": "m0-mounted-terminals",
+    "timestamp": "2026-07-10T23:07:58.428Z",
+    "requestedTerminals": 12,
+    "readyTerminals": 12,
+    "minimumSatisfied": true,
+    "inputEcho": {
+      "count": 12,
+      "p50Ms": 20,
+      "p95Ms": 23,
+      "maxMs": 23
+    },
+    "frames": {
+      "count": 301,
+      "p50Ms": 17,
+      "p95Ms": 19,
+      "maxMs": 23
+    },
+    "frameSampleValid": true,
+    "failures": []
+  }
+}
