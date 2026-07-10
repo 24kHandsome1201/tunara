@@ -13,6 +13,7 @@
 mod commit;
 
 pub mod watcher;
+pub mod workspace;
 pub use watcher::GitWatcherState;
 
 use std::cell::RefCell;

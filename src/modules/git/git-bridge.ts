@@ -18,6 +18,38 @@ export interface StatusResult {
   files: FileChange[];
 }
 
+export interface RepositoryRef {
+  id: string;
+  name: string;
+  commonGitDir: string;
+  transport: "local" | "ssh";
+  host?: string;
+  bare: boolean;
+}
+
+export interface WorktreeRef {
+  id: string;
+  name: string;
+  path: string;
+  branch?: string;
+  head?: string;
+  detached: boolean;
+  dirtyFiles?: number;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+  current: boolean;
+  locked: boolean;
+  available: boolean;
+  error?: string;
+}
+
+export interface WorkspaceContext {
+  repository: RepositoryRef;
+  currentWorktreeId?: string;
+  worktrees: WorktreeRef[];
+}
+
 export type FileDiff =
   | { kind: "text"; path: string; patch: string; truncated: boolean; totalLines: number }
   | { kind: "binary"; path: string }
@@ -41,6 +73,10 @@ export function gitDiff(repoPath: string, file: string, stage: FileChange["stage
 
 export function gitAheadBehind(repoPath: string): Promise<RemoteState> {
   return invoke<RemoteState>("git_ahead_behind", { repoPath });
+}
+
+export function gitWorkspaceContext(repoPath: string): Promise<WorkspaceContext> {
+  return invoke<WorkspaceContext>("git_workspace_context", { repoPath });
 }
 
 export function gitWatch(repoPath: string): Promise<void> {
@@ -76,4 +112,17 @@ export function cancelGitDiff(requestId: string): Promise<boolean> {
 
 export function sshGitAheadBehind(sessionId: number, cwd: string): Promise<RemoteState> {
   return invoke<RemoteState>("ssh_git_ahead_behind", { sessionId, cwd });
+}
+
+export function sshGitWorkspaceContext(
+  sessionId: number,
+  cwd: string,
+  repositoryKey: string,
+  requestId: string,
+): Promise<WorkspaceContext> {
+  return invoke<WorkspaceContext>("ssh_git_workspace_context", { sessionId, cwd, repositoryKey, requestId });
+}
+
+export function cancelGitRequest(requestId: string): Promise<boolean> {
+  return invoke<boolean>("fs_cancel_search", { requestId });
 }

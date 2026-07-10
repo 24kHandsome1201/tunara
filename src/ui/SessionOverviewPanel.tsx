@@ -11,6 +11,7 @@ import { useT } from "@/modules/i18n";
 import { formatTimelineRelativeTime, type TimelineEvent } from "@/state/timeline";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 import { SessionMascotPicker } from "./SessionMascotPicker";
+import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 
 interface SessionOverviewPanelProps {
   session: Session;
@@ -105,6 +106,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
   const connectionHint = session.connection
     ? `${session.connection.phase === "ready" ? `${t("connection.phase.ready")} · ` : ""}${t(`connection.source.${session.connection.source}`)} · ${formatTimelineRelativeTime(session.connection.updatedAt)}`
     : undefined;
+  const currentWorktree = currentWorkspaceWorktree(session.workspace);
 
   const openNotes = () => {
     useUIStore.getState().setPanelVisible(true);
@@ -148,6 +150,78 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       </div>
 
       <SessionMascotPicker session={session} />
+
+      {session.workspaceState === "unavailable" && (
+        <div role="status" style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: "9px 11px", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>
+          <strong style={{ color: "var(--c-error)" }}>{t("workspace.unavailable")}</strong>
+          <span> · {t("workspace.unavailable_hint")}</span>
+        </div>
+      )}
+
+      {session.workspace && currentWorktree && (
+        <section
+          aria-label={t("workspace.title")}
+          style={{
+            marginBottom: 12,
+            border: "1px solid var(--c-border-1)",
+            borderRadius: "var(--r-card)",
+            background: "var(--c-bg-white)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "10px 12px", borderBottom: session.workspace.worktrees.length > 1 ? "1px solid var(--c-border-1)" : undefined }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("workspace.title")}</span>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
+                {session.workspace.repository.transport === "ssh" ? "SSH" : t("workspace.local")}
+              </span>
+            </div>
+            <div style={{ marginTop: 5, display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
+              <strong style={{ fontSize: "var(--fs-body)", color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {session.workspace.repository.name}
+              </strong>
+              <span style={{ color: "var(--c-text-6)" }}>/</span>
+              <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={currentWorktree.path}>
+                {currentWorktree.name}
+              </span>
+            </div>
+            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
+              <span>{currentWorktree.detached ? t("workspace.detached") : `⎇ ${currentWorktree.branch ?? t("workspace.unknown_branch")}`}</span>
+              {(currentWorktree.ahead ?? 0) > 0 && <span>↑{currentWorktree.ahead}</span>}
+              {(currentWorktree.behind ?? 0) > 0 && <span>↓{currentWorktree.behind}</span>}
+              <span style={{ color: currentWorktree.dirtyFiles === undefined ? "var(--c-text-5)" : currentWorktree.dirtyFiles > 0 ? "var(--c-warning)" : "var(--c-success)" }}>
+                {currentWorktree.dirtyFiles === undefined
+                  ? t("workspace.dirty_unknown")
+                  : currentWorktree.dirtyFiles > 0
+                  ? t("workspace.dirty_files", { count: String(currentWorktree.dirtyFiles) })
+                  : t("workspace.clean")}
+              </span>
+            </div>
+          </div>
+
+          {session.workspace.worktrees.length > 1 && (
+            <div style={{ padding: "8px 12px 10px" }}>
+              <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 6 }}>
+                {t("workspace.other_worktrees", { count: String(session.workspace.worktrees.length - 1) })}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {session.workspace.worktrees.filter((worktree) => !worktree.current).map((worktree) => (
+                  <div key={worktree.id} title={worktree.error ?? worktree.path} style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, fontSize: "var(--fs-meta)" }}>
+                    <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: !worktree.available ? "var(--c-error)" : worktree.dirtyFiles === undefined ? "var(--c-text-6)" : worktree.dirtyFiles > 0 ? "var(--c-warning)" : "var(--c-text-6)", flexShrink: 0 }} />
+                    <span style={{ color: "var(--c-text-3)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                      {worktree.name}
+                    </span>
+                    <span style={{ color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+                      {worktree.detached ? t("workspace.detached_short") : worktree.branch ?? t("workspace.unknown_branch")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {session.lastCommand && (
         <div style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: 12 }}>

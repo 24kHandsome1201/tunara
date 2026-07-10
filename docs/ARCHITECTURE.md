@@ -111,6 +111,7 @@ their own commands.
 | `ssh_fs_home` | Resolve the remote home dir when no OSC 7 absolute cwd is known | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_search` / `ssh_fs_grep` | Cancellable remote filename/content search over exec channels | `sshSearch` / `sshGrep`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_git_status` / `ssh_git_diff` / `ssh_git_ahead_behind` | Read-only remote Git inspection over exec channels | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
+| `ssh_git_workspace_context` | Read-only remote repository/common-dir/worktree discovery with the same shape as local discovery | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 
 ### `fs` — local filesystem (read-only) [`modules/fs`](../src-tauri/src/modules/fs/mod.rs)
 
@@ -129,6 +130,7 @@ their own commands.
 | `git_status` | Branch + per-file change summary (cached, invalidated by the watcher) | `gitStatus`, [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 | `git_diff` | Per-file diff (text/binary/too-large/metadata) | `gitDiff`, [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 | `git_ahead_behind` | Upstream ahead/behind state | `gitAheadBehind`, [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
+| `git_workspace_context` | Stable common-dir repository identity plus current and linked worktrees | `gitWorkspaceContext`, [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 | `git_watch` | Start (refcounted) a filesystem watcher on a repo | `gitWatch`, [`git-bridge.ts`](../src/modules/git/git-bridge.ts) (via [`git-watcher.ts`](../src/modules/git/git-watcher.ts)) |
 | `git_unwatch` | Release one refcount on a repo's watcher | `gitUnwatch`, [`git-bridge.ts`](../src/modules/git/git-bridge.ts) (via [`git-watcher.ts`](../src/modules/git/git-watcher.ts)) |
 
@@ -223,7 +225,7 @@ For backend-originated notifications with no single waiting caller, the backend
 - **Emitter**: the debounced filesystem watcher in
   [`git/watcher.rs`](../src-tauri/src/modules/git/watcher.rs) (`app.emit("git-changed", …)`),
   fired ~300 ms after a non-noisy change in a watched repo. It also invalidates
-  the cached `git_status` for that repo first.
+  cached `git_status` and workspace/worktree discovery before emitting.
 - **Listener**: `startGitWatcherListener()` in
   [`git-watcher.ts`](../src/modules/git/git-watcher.ts). For every session whose
   `dir` matches the changed repo, it calls `refreshGit(session.id)`.

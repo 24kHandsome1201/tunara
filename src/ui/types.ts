@@ -3,6 +3,7 @@ import { AGENT_NAMES } from "../modules/agent/registry.ts";
 import { t } from "../modules/i18n/core.ts";
 import type { ConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
 import type { SessionMascotId } from "../modules/session/session-mascot.ts";
+import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
 export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
@@ -89,6 +90,9 @@ export interface Session {
     files: ChangedFile[];
     commit?: string;
   };
+  /** Read-only, refreshable Git repository/worktree context. Not persisted. */
+  workspace?: WorkspaceContext;
+  workspaceState?: "unknown" | "loading" | "ready" | "notGit" | "unavailable";
 
   updatedAt: number;
 }

@@ -592,6 +592,7 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   const types = read("src/ui/types.ts");
   const bridge = read("src/modules/git/git-bridge.ts");
   const main = read("src/ui/MainArea.tsx");
+  const gitContext = read("src/ui/useSessionGitContext.ts");
   const diff = read("src/ui/DiffPanel.tsx");
   const watcher = read("src/modules/git/git-watcher.ts");
   const lifecycle = read("src/modules/terminal/lib/session-lifecycle.ts");
@@ -602,8 +603,8 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.match(types, /gitState\?: GitState;/);
   assert.match(main, /activeIsRemote/);
   assert.match(main, /getNumberRecordValue\(s\.gitNonce, active\.id\)/);
-  assert.match(main, /gitState: "repo"/);
-  assert.match(main, /gitState: "notGit"/);
+  assert.match(gitContext, /gitState: status \? "repo" : "notGit"/);
+  assert.match(gitContext, /gitState: "notGit"/);
   assert.match(lifecycle, /gitState: "unknown"/);
   // Stable empty-array identity + frontend-composed localized summary. The
   // store/IPC carry no display string anymore (the backend used to bake
@@ -690,6 +691,7 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   const app = read("src/app/App.tsx");
   const keys = read("src/app/useKeybindings.ts");
   const main = read("src/ui/MainArea.tsx");
+  const gitContext = read("src/ui/useSessionGitContext.ts");
   const settings = read("src/ui/overlays/Settings.tsx");
 
   assert.match(app, /const sidebarEffectiveWidth = sidebarVisible/);
@@ -702,24 +704,24 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
   assert.match(keys, /splitFocusTarget\(ui\.split, st\.activeSessionId, direction\)/);
   assert.match(keys, /if \(target\) st\.setActive\(target\)/);
-  assert.match(main, /const repoPath = normalizeLocalRepoPath\(activeDir\);/);
-  assert.match(main, /if \(!repoPath\) \{[\s\S]*?setRemote\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
-  assert.match(main, /gitAheadBehind\(repoPath\)/);
-  assert.match(main, /gitStatus\(repoPath\)/);
+  assert.match(gitContext, /const repoPath = activeIsRemote \? undefined : normalizeLocalRepoPath\(activeDir\);/);
+  assert.match(gitContext, /if \(!activeIsRemote && !repoPath\) \{[\s\S]*?setRemoteState\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
+  assert.match(gitContext, /gitAheadBehind\(repoPath!\)/);
+  assert.match(gitContext, /gitStatus\(repoPath!\)/);
   // Remote (SSH) sessions route through the exec-channel git path, not the
   // local git2 path — guard that the remote branch exists and the local calls
   // never receive a raw dir.
-  assert.match(main, /sshGitStatus\(activePtyId, activeDir \?\? ""\)/);
-  assert.doesNotMatch(main, /gitAheadBehind\(active\.dir\)/);
-  assert.doesNotMatch(main, /gitStatus\(active\.dir\)/);
+  assert.match(gitContext, /sshGitStatus\(activePtyId!, activeDir \?\? ""\)/);
+  assert.doesNotMatch(gitContext, /gitAheadBehind\(active\.dir\)/);
+  assert.doesNotMatch(gitContext, /gitStatus\(active\.dir\)/);
   // The git effect depends on captured primitives, never the whole `active`
   // object: updateSession bumps updatedAt on every patch, and the effect
   // itself calls updateSession, so an object dependency would loop.
-  assert.match(main, /\}, \[activeDir, activeId, activePtyId, activeIsRemote, nonce\]\);/);
+  assert.match(gitContext, /\}, \[activeDir, activeId, activePtyId, activeIsRemote, activeRemoteKey, nonce\]\);/);
   // The localized changes summary is composed in DiffPanel from `files`; the
   // store no longer carries a pre-baked display string.
-  assert.match(main, /changes: \{ files: status\.files \}/);
-  assert.doesNotMatch(main, /summary: status\.summary/);
+  assert.match(gitContext, /changes: status \? \{ files: status\.files \} : undefined/);
+  assert.doesNotMatch(gitContext, /summary: status\.summary/);
   assert.match(settings, /maxWidth: "calc\(100vw - 32px\)"/);
 });
 

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use git2::Repository;
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use serde::Serialize;
@@ -32,11 +33,20 @@ pub struct CachedStatus {
     pub expiry: Instant,
 }
 
+pub struct CachedWorkspace {
+    pub workspace: super::workspace::WorkspaceContext,
+    pub expiry: Instant,
+}
+
 #[derive(Default)]
 pub struct GitWatcherState {
     inner: Mutex<HashMap<PathBuf, WatcherEntry>>,
     /// git_status cache: repo_path string -> (result, expiry).
     pub status_cache: Mutex<HashMap<String, CachedStatus>>,
+    /// Workspace/worktree discovery cache. It is invalidated alongside status
+    /// because branch, dirty state and linked-worktree metadata share Git's
+    /// watcher surface.
+    pub workspace_cache: Mutex<HashMap<String, CachedWorkspace>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -101,6 +111,9 @@ pub fn git_watch(
                 if let Ok(mut cache) = state.status_cache.lock() {
                     cache.remove(&cache_path);
                 }
+                if let Ok(mut cache) = state.workspace_cache.lock() {
+                    cache.clear();
+                }
             }
             let _ = app_handle.emit(
                 "git-changed",
@@ -116,6 +129,22 @@ pub fn git_watch(
         .watcher()
         .watch(&watch_target, RecursiveMode::Recursive)
         .map_err(|e| format!("watch {}: {}", watch_target.display(), e))?;
+
+    // A linked worktree stores HEAD/index/worktree registration in the main
+    // repository's common Git directory, outside the checkout we just
+    // watched. Observe that directory too so adding/removing another worktree
+    // or switching this worktree's branch invalidates workspace context
+    // immediately. For a main checkout `.git` is already below watch_target.
+    if let Ok(repo) = Repository::discover(&expanded) {
+        if let Ok(common_dir) = super::workspace::common_git_dir(&repo) {
+            if !common_dir.starts_with(&watch_target) {
+                debouncer
+                    .watcher()
+                    .watch(&common_dir, RecursiveMode::Recursive)
+                    .map_err(|e| format!("watch {}: {}", common_dir.display(), e))?;
+            }
+        }
+    }
 
     map.insert(
         key,

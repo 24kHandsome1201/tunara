@@ -16,6 +16,7 @@ use crate::modules::fs::grep::{
     validate_request_id, FsSearchCancellationState, GrepHit, GrepResponse,
 };
 use crate::modules::fs::search::SearchHit;
+use crate::modules::git::workspace::{RepositoryRef, WorkspaceContext, WorktreeRef};
 use crate::modules::git::{FileChange, FileDiff, RemoteState, StatusResult};
 use crate::modules::pty::{PtyState, Session};
 
@@ -154,6 +155,177 @@ pub async fn ssh_git_status(
         ));
     }
     Ok(parse_porcelain_v1(&out))
+}
+
+fn remote_basename(path: &str) -> String {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or("repository")
+        .to_string()
+}
+
+/// Parse a NUL-delimited header plus `git worktree list --porcelain -z`.
+/// Paths may contain whitespace or newlines; NUL is the only delimiter Git
+/// forbids in a path, so the transport stays lossless.
+pub(crate) fn parse_remote_workspace(
+    raw: &str,
+    repository_key: &str,
+) -> Result<WorkspaceContext, String> {
+    let mut common_dir = None::<String>;
+    let mut current_path = None::<String>;
+    let mut bare = false;
+    let mut worktrees = Vec::<WorktreeRef>::new();
+    let mut current: Option<WorktreeRef> = None;
+
+    let flush = |value: &mut Option<WorktreeRef>, output: &mut Vec<WorktreeRef>| {
+        if let Some(worktree) = value.take() {
+            output.push(worktree);
+        }
+    };
+
+    for record in raw.split('\0') {
+        if record.is_empty() {
+            flush(&mut current, &mut worktrees);
+            continue;
+        }
+        if let Some(value) = record.strip_prefix("tunara-common ") {
+            common_dir = Some(value.to_string());
+            continue;
+        }
+        if let Some(value) = record.strip_prefix("tunara-current ") {
+            if !value.is_empty() {
+                current_path = Some(value.to_string());
+            }
+            continue;
+        }
+        if let Some(value) = record.strip_prefix("tunara-bare ") {
+            bare = value == "true";
+            continue;
+        }
+        if let Some(path) = record.strip_prefix("worktree ") {
+            flush(&mut current, &mut worktrees);
+            current = Some(WorktreeRef {
+                id: String::new(),
+                name: remote_basename(path),
+                path: path.to_string(),
+                branch: None,
+                head: None,
+                detached: false,
+                dirty_files: None,
+                upstream: None,
+                ahead: None,
+                behind: None,
+                current: false,
+                locked: false,
+                available: true,
+                error: None,
+            });
+            continue;
+        }
+        let Some(worktree) = current.as_mut() else {
+            continue;
+        };
+        if let Some(head) = record.strip_prefix("HEAD ") {
+            worktree.head = Some(head.to_string());
+        } else if let Some(branch) = record.strip_prefix("branch refs/heads/") {
+            worktree.branch = Some(branch.to_string());
+        } else if record == "detached" {
+            worktree.detached = true;
+        } else if record == "bare" {
+            // Bare repositories have no checkout and cannot be a session's
+            // current worktree, but retaining the row explains the topology.
+            worktree.available = false;
+            worktree.error = Some("bare repository".to_string());
+        } else if record == "locked" || record.starts_with("locked ") {
+            worktree.locked = true;
+        } else if record == "prunable" || record.starts_with("prunable ") {
+            worktree.available = false;
+            worktree.error = Some(
+                record
+                    .strip_prefix("prunable ")
+                    .unwrap_or("prunable worktree")
+                    .to_string(),
+            );
+        }
+    }
+    flush(&mut current, &mut worktrees);
+
+    let common_dir = common_dir.ok_or_else(|| "remote workspace common dir missing".to_string())?;
+    let repository_id = format!("ssh:{repository_key}:{common_dir}");
+    for worktree in &mut worktrees {
+        worktree.id = format!("{repository_id}::{}", worktree.path);
+        worktree.current = current_path.as_deref() == Some(worktree.path.as_str());
+    }
+    worktrees.sort_by(|a, b| b.current.cmp(&a.current).then(a.path.cmp(&b.path)));
+    let current_worktree_id = worktrees
+        .iter()
+        .find(|worktree| worktree.current)
+        .map(|worktree| worktree.id.clone());
+    let name_path = current_path.as_deref().unwrap_or(&common_dir);
+
+    Ok(WorkspaceContext {
+        repository: RepositoryRef {
+            id: repository_id,
+            name: remote_basename(name_path),
+            common_git_dir: common_dir,
+            transport: "ssh".to_string(),
+            host: Some(repository_key.to_string()),
+            bare,
+        },
+        current_worktree_id,
+        worktrees,
+    })
+}
+
+/// Discover remote repository/worktree topology over the existing SSH
+/// connection. This is read-only and separate from the interactive shell.
+#[tauri::command]
+pub async fn ssh_git_workspace_context(
+    state: State<'_, PtyState>,
+    search_state: State<'_, FsSearchCancellationState>,
+    session_id: u32,
+    cwd: String,
+    repository_key: String,
+    request_id: String,
+) -> Result<WorkspaceContext, String> {
+    validate_request_id(&request_id)?;
+    if repository_key.is_empty()
+        || repository_key.len() > 512
+        || repository_key.chars().any(char::is_control)
+    {
+        return Err("invalid remote repository identity".to_string());
+    }
+    let session = ssh_session(&state, session_id)?;
+    let ssh = match session.as_ref() {
+        Session::Ssh(s) => s,
+        Session::Local(_) => return Err("not a remote session".to_string()),
+    };
+    let cwd = remote_git_cwd(&cwd)?;
+    let command = format!(
+        "cd {cwd} && common=$(git rev-parse --git-common-dir) && common_abs=$(cd \"$common\" && pwd -P) && current=$(git rev-parse --show-toplevel 2>/dev/null || true) && bare=$(git rev-parse --is-bare-repository) && printf 'tunara-common %s\\0tunara-current %s\\0tunara-bare %s\\0' \"$common_abs\" \"$current\" \"$bare\" && git worktree list --porcelain -z"
+    );
+    let cancelled = search_state.register(&request_id);
+    let result = ssh
+        .exec_cancellable(&command, MAX_STATUS_BYTES + 1, cancelled.clone())
+        .await;
+    search_state.finish(&request_id, &cancelled);
+    let out = result?;
+    if out.len() > MAX_STATUS_BYTES {
+        return Err(format!(
+            "remote git workspace exceeds {MAX_STATUS_BYTES} bytes"
+        ));
+    }
+    let workspace = parse_remote_workspace(&out, &repository_key)?;
+    log::info!(
+        "git workspace discovered transport=ssh repository={} host={} worktrees={} current={}",
+        workspace.repository.name,
+        repository_key,
+        workspace.worktrees.len(),
+        workspace.current_worktree_id.is_some()
+    );
+    Ok(workspace)
 }
 
 /// Run a remote `git diff` for one file/stage and wrap it as a `FileDiff::text`
@@ -577,6 +749,62 @@ pub async fn ssh_fs_grep(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_workspace_groups_worktrees_and_marks_current() {
+        let raw = concat!(
+            "tunara-common /srv/app/.git\0",
+            "tunara-current /srv/app-wt\0",
+            "tunara-bare false\0",
+            "worktree /srv/app\0",
+            "HEAD 1111111111111111111111111111111111111111\0",
+            "branch refs/heads/main\0\0",
+            "worktree /srv/app-wt\0",
+            "HEAD 2222222222222222222222222222222222222222\0",
+            "branch refs/heads/feature\0",
+            "locked maintenance\0\0",
+        );
+        let context = parse_remote_workspace(raw, "alice@example:22").unwrap();
+        assert_eq!(context.repository.transport, "ssh");
+        assert_eq!(context.repository.name, "app-wt");
+        assert_eq!(context.worktrees.len(), 2);
+        let current = context.worktrees.iter().find(|w| w.current).unwrap();
+        assert_eq!(current.branch.as_deref(), Some("feature"));
+        assert!(current.locked);
+        assert!(context.repository.id.contains("alice@example:22"));
+    }
+
+    #[test]
+    fn remote_workspace_preserves_newlines_and_prunable_state() {
+        let raw = concat!(
+            "tunara-common /srv/repo/.git\0",
+            "tunara-current /srv/repo\0",
+            "tunara-bare false\0",
+            "worktree /srv/repo\0HEAD abc\0branch refs/heads/main\0\0",
+            "worktree /srv/odd\nname\0HEAD def\0prunable missing gitdir\0\0",
+        );
+        let context = parse_remote_workspace(raw, "host").unwrap();
+        let stale = context.worktrees.iter().find(|w| !w.available).unwrap();
+        assert_eq!(stale.path, "/srv/odd\nname");
+        assert_eq!(stale.error.as_deref(), Some("missing gitdir"));
+        assert!(stale.dirty_files.is_none());
+    }
+
+    #[test]
+    fn same_remote_path_on_different_hosts_has_distinct_identity() {
+        let raw = concat!(
+            "tunara-common /srv/repo/.git\0",
+            "tunara-current /srv/repo\0",
+            "tunara-bare false\0",
+            "worktree /srv/repo\0HEAD abc\0detached\0\0",
+        );
+        let first = parse_remote_workspace(raw, "alice@one:22").unwrap();
+        let second = parse_remote_workspace(raw, "alice@two:22").unwrap();
+        assert_ne!(first.repository.id, second.repository.id);
+        assert_ne!(first.worktrees[0].id, second.worktrees[0].id);
+        assert!(first.worktrees[0].detached);
+        assert!(first.worktrees[0].branch.is_none());
+    }
 
     #[test]
     fn remote_git_cwd_is_absolute_and_shell_quoted() {

@@ -7,6 +7,7 @@ import { SessionNotesPanel } from "./SessionNotesPanel";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { CloseIcon, PanelEmptyState } from "./shared";
+import { WorkspaceSourceChip } from "./WorkspaceSource";
 
 interface InspectorPanelProps {
   session: Session;
@@ -55,7 +56,9 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
 
         <span style={{ flex: 1 }} />
 
-        {tab === "changes" && session.branch && (
+        <WorkspaceSourceChip session={session} />
+
+        {tab === "changes" && !session.workspace && session.branch && (
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
             ⎇ {session.branch}
           </span>

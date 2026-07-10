@@ -9,7 +9,10 @@ import { isSessionMascotId, SESSION_MASCOT_IDS } from "../src/modules/session/se
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 test("session mascot ids are stable, unique, and validated", () => {
-  assert.equal(new Set(SESSION_MASCOT_IDS).size, 8);
+  assert.equal(new Set(SESSION_MASCOT_IDS).size, 16);
+  assert.deepEqual(SESSION_MASCOT_IDS.slice(-8), [
+    "rabbit", "lion", "bear", "owl", "hedgehog", "raccoon", "sloth", "otter",
+  ]);
   for (const id of SESSION_MASCOT_IDS) assert.equal(isSessionMascotId(id), true);
   assert.equal(isSessionMascotId("dragon"), false);
   assert.equal(isSessionMascotId(null), false);

@@ -1,7 +1,6 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useRef } from "react";
 import { TerminalView } from "./TerminalView";
 import type { Session } from "./types";
-import { gitAheadBehind, gitStatus, sshGitStatus, type RemoteState } from "@/modules/git/git-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
@@ -9,8 +8,8 @@ import { AgentStatusBar } from "./AgentStatusBar";
 import { SshSuggestionBar } from "./SshSuggestionBar";
 import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
-import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { getNumberRecordValue } from "@/state/record-keys";
+import { useSessionGitContext } from "./useSessionGitContext";
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -99,7 +98,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const activeIsRemote = Boolean(active?.remote);
   const nonce = useSessionsStore((s) => active ? getNumberRecordValue(s.gitNonce, active.id) : 0);
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
-  const [remote, setRemote] = useState<RemoteState | null>(null);
   const split = useUIStore((s) => s.split);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -116,88 +114,18 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const activeId = active?.id;
   const activeDir = active?.dir;
   const activePtyId = active?.ptyId;
+  const activeRemoteKey = active?.remote
+    ? `${active.remote.user}@${active.remote.host}:${active.remote.port}`
+    : undefined;
 
-  useEffect(() => {
-    if (!activeId) {
-      setRemote(null);
-      return;
-    }
-    // Remote (SSH) sessions fetch git status over the SSH exec channel — no
-    // local repo path exists. The ptyId is the SshSession id the backend
-    // resolves in ssh_git_status. Missing ptyId means the session hasn't
-    // opened yet; fall through to the notGit branch until it does.
-    if (activeIsRemote) {
-      if (activePtyId === undefined) {
-        setRemote(null);
-        useSessionsStore.getState().updateSession(activeId, {
-          branch: "",
-          gitState: "notGit",
-          changes: undefined,
-        });
-        return;
-      }
-      let cancelled = false;
-      setRemote(null);
-      sshGitStatus(activePtyId, activeDir ?? "")
-        .then((status) => {
-          if (cancelled) return;
-          useSessionsStore.getState().updateSession(activeId, {
-            branch: status.branch,
-            gitState: "repo",
-            changes: { files: status.files },
-          });
-        })
-        .catch(() => {
-          if (!cancelled) {
-            // Remote git unavailable (no git on the host, or not a repo). Surface
-            // as notGit so the changes tab shows the empty/not-a-repo state
-            // instead of an infinite spinner.
-            useSessionsStore.getState().updateSession(activeId, {
-              branch: "",
-              gitState: "notGit",
-              changes: undefined,
-            });
-          }
-        });
-      return () => { cancelled = true; };
-    }
-
-    const repoPath = normalizeLocalRepoPath(activeDir);
-    if (!repoPath) {
-      setRemote(null);
-      useSessionsStore.getState().updateSession(activeId, {
-        branch: "",
-        gitState: "notGit",
-        changes: undefined,
-      });
-      return;
-    }
-    let cancelled = false;
-    setRemote(null);
-    gitAheadBehind(repoPath)
-      .then((r) => !cancelled && setRemote(r))
-      .catch(() => !cancelled && setRemote(null));
-    gitStatus(repoPath)
-      .then((status) => {
-        if (cancelled) return;
-        useSessionsStore.getState().updateSession(activeId, {
-          branch: status.branch,
-          gitState: "repo",
-          changes: { files: status.files },
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setRemote(null);
-          useSessionsStore.getState().updateSession(activeId, {
-            branch: "",
-            gitState: "notGit",
-            changes: undefined,
-          });
-        }
-      });
-    return () => { cancelled = true; };
-  }, [activeDir, activeId, activePtyId, activeIsRemote, nonce]);
+  const remote = useSessionGitContext({
+    activeId,
+    activeDir,
+    activePtyId,
+    activeIsRemote,
+    activeRemoteKey,
+    nonce,
+  });
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;

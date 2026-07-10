@@ -17,6 +17,8 @@ export function SidebarSearchIcon() {
 export function DirGroupHeader({
   dir,
   count,
+  workspace,
+  agentCount = 0,
   collapsed,
   onToggleCollapse,
   onNewTerminal,
@@ -26,6 +28,18 @@ export function DirGroupHeader({
 }: {
   dir: string;
   count: number;
+  workspace?: {
+    repositoryName: string;
+    worktreeName: string;
+    branch?: string;
+    detached: boolean;
+    dirtyFiles?: number;
+    ahead?: number;
+    behind?: number;
+    available: boolean;
+    transport: "local" | "ssh";
+  };
+  agentCount?: number;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onNewTerminal?: () => void;
@@ -76,19 +90,39 @@ export function DirGroupHeader({
         </svg>
       )}
       <FolderIcon />
-      <span
-        style={{
-          fontSize: "var(--fs-meta)",
-          fontWeight: 600,
-          fontFamily: "var(--font-mono)",
-          color: "var(--c-text-3)",
-          flex: 1,
-        }}
-        title={dir}
-      >
-        {dir.split("/").pop() || dir}
+      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={dir}>
+        <span
+          style={{
+            fontSize: workspace ? "var(--fs-badge)" : "var(--fs-meta)",
+            fontWeight: workspace ? 650 : 600,
+            fontFamily: "var(--font-mono)",
+            color: workspace ? "var(--c-text-5)" : "var(--c-text-3)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            letterSpacing: workspace ? "0.02em" : undefined,
+          }}
+        >
+          {workspace ? workspace.repositoryName : dir.split("/").pop() || dir}
+          {workspace?.transport === "ssh" && (
+            <span style={{ marginLeft: 5, color: "var(--c-text-6)", fontSize: "var(--fs-badge)", fontWeight: 600 }}>SSH</span>
+          )}
+        </span>
+        {workspace && (
+          <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
+            <span aria-hidden="true" style={{ color: "var(--c-text-6)" }}>└</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{workspace.worktreeName}</span>
+            <span style={{ color: "var(--c-text-6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {workspace.detached ? t("workspace.detached_short") : workspace.branch}
+            </span>
+            {(workspace.ahead ?? 0) > 0 && <span style={{ color: "var(--c-text-5)" }}>↑{workspace.ahead}</span>}
+            {(workspace.behind ?? 0) > 0 && <span style={{ color: "var(--c-text-5)" }}>↓{workspace.behind}</span>}
+            <span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: "50%", background: !workspace.available ? "var(--c-error)" : workspace.dirtyFiles === undefined ? "var(--c-text-6)" : workspace.dirtyFiles > 0 ? "var(--c-warning)" : "var(--c-success)", flexShrink: 0 }} />
+          </span>
+        )}
       </span>
       <span
+        title={t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}
         style={{
           fontSize: "var(--fs-badge)",
           color: "var(--c-text-4)",
@@ -98,7 +132,7 @@ export function DirGroupHeader({
           fontFamily: "var(--font-mono)",
         }}
       >
-        {count}
+        {agentCount > 0 ? `${count} · ${agentCount}A` : count}
       </span>
       {onNewTerminal && (
         <button

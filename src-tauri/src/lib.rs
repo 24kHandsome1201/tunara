@@ -99,6 +99,7 @@ pub fn run() {
             modules::git::git_status,
             modules::git::git_diff,
             modules::git::git_ahead_behind,
+            modules::git::workspace::git_workspace_context,
             modules::git::watcher::git_watch,
             modules::git::watcher::git_unwatch,
             // Tunara 新增（§6.3 外部编辑器跳转）
@@ -127,6 +128,7 @@ pub fn run() {
             modules::ssh::remote_git::ssh_git_status,
             modules::ssh::remote_git::ssh_git_diff,
             modules::ssh::remote_git::ssh_git_ahead_behind,
+            modules::ssh::remote_git::ssh_git_workspace_context,
             modules::ssh::remote_git::ssh_fs_search,
             modules::ssh::remote_git::ssh_fs_grep,
         ])

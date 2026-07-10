@@ -7,6 +7,14 @@ export const SESSION_MASCOT_IDS = [
   "frog",
   "koala",
   "penguin",
+  "rabbit",
+  "lion",
+  "bear",
+  "owl",
+  "hedgehog",
+  "raccoon",
+  "sloth",
+  "otter",
 ] as const;
 
 export type SessionMascotId = (typeof SESSION_MASCOT_IDS)[number];

@@ -12,6 +12,7 @@ import { buildSessionMenuItems } from "./sidebar-session-menu";
 import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-dir-group-menu";
 import { useT } from "@/modules/i18n";
 import { SidebarNewTerminalControl } from "./SidebarNewTerminalControl";
+import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 
 // Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
 interface DragState {
@@ -284,11 +285,30 @@ export function Sidebar({
         {groupEntries.map(([dir, groupSessions]) => {
           const collapsed = hasTrueRecordKey(collapsedDirs, dir) && !q;
           const hasLocalFilesystem = dirGroupHasLocalFilesystem(groupSessions);
+          const workspaceSession = groupSessions.find((session) => session.workspace);
+          const workspaceContext = workspaceSession?.workspace;
+          const currentWorktree = currentWorkspaceWorktree(workspaceContext);
+          const workspace = workspaceContext && currentWorktree
+            ? {
+                repositoryName: workspaceContext.repository.name,
+                worktreeName: currentWorktree.name,
+                branch: currentWorktree.branch,
+                detached: currentWorktree.detached,
+                dirtyFiles: currentWorktree.dirtyFiles,
+                ahead: currentWorktree.ahead,
+                behind: currentWorktree.behind,
+                available: currentWorktree.available,
+                transport: workspaceContext.repository.transport,
+              }
+            : undefined;
+          const agentCount = groupSessions.filter((session) => Boolean(session.agent)).length;
           return (
           <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
             <DirGroupHeader
               dir={dir}
               count={groupSessions.length}
+              workspace={workspace}
+              agentCount={agentCount}
               collapsed={collapsed}
               onToggleCollapse={() => toggleDirCollapsed(dir)}
               onNewTerminal={hasLocalFilesystem ? () => useSessionsStore.getState().newTerminalInDir(dir) : undefined}

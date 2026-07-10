@@ -6,6 +6,14 @@ import hamsterUrl from "@/assets/mascots/hamster.svg";
 import koalaUrl from "@/assets/mascots/koala.svg";
 import pandaUrl from "@/assets/mascots/panda.svg";
 import penguinUrl from "@/assets/mascots/penguin.svg";
+import rabbitUrl from "@/assets/mascots/rabbit.svg";
+import lionUrl from "@/assets/mascots/lion.svg";
+import bearUrl from "@/assets/mascots/bear.svg";
+import owlUrl from "@/assets/mascots/owl.svg";
+import hedgehogUrl from "@/assets/mascots/hedgehog.svg";
+import raccoonUrl from "@/assets/mascots/raccoon.svg";
+import slothUrl from "@/assets/mascots/sloth.svg";
+import otterUrl from "@/assets/mascots/otter.svg";
 import { SESSION_MASCOT_IDS, type SessionMascotId } from "@/modules/session/session-mascot";
 
 const MASCOT_URLS: Record<SessionMascotId, string> = {
@@ -17,6 +25,14 @@ const MASCOT_URLS: Record<SessionMascotId, string> = {
   frog: frogUrl,
   koala: koalaUrl,
   penguin: penguinUrl,
+  rabbit: rabbitUrl,
+  lion: lionUrl,
+  bear: bearUrl,
+  owl: owlUrl,
+  hedgehog: hedgehogUrl,
+  raccoon: raccoonUrl,
+  sloth: slothUrl,
+  otter: otterUrl,
 };
 
 export const SESSION_MASCOTS = SESSION_MASCOT_IDS.map((id) => ({
