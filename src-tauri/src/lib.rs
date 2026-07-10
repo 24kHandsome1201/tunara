@@ -41,6 +41,7 @@ pub fn run() {
             show_main_window(app, "single-instance");
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(
@@ -63,6 +64,7 @@ pub fn run() {
         // dialog UI delegate) — native confirms must go through this plugin.
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyState::default())
+        .manage(fs::grep::FsSearchCancellationState::default())
         .manage(ResolverState::default())
         .manage(modules::git::GitWatcherState::default())
         .setup(|app| {
@@ -73,16 +75,6 @@ pub fn run() {
             let hook_listener = modules::agent::hooks::start_listener(app.handle().clone());
             app.manage(hook_listener);
             show_main_window(app.handle(), "setup");
-
-            // M6：macOS 毛玻璃（§3.6）
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
-                    let _ = apply_vibrancy(&window, NSVisualEffectMaterial::Sidebar, None, None);
-                }
-            }
 
             Ok(())
         })
@@ -95,6 +87,7 @@ pub fn run() {
             fs::file::fs_read_file,
             fs::search::fs_search,
             fs::grep::fs_grep,
+            fs::grep::fs_cancel_search,
             // Tunara 新增（§3.7.2 CLI 路径解析）
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,

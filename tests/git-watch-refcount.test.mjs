@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createWatchRefCount } from "../src/modules/git/lib/watch-refcount.ts";
+import {
+  createSerializedAsyncQueue,
+  createWatchRefCount,
+} from "../src/modules/git/lib/watch-refcount.ts";
 import {
   normalizeLocalRepoPath,
   normalizeRepoPath,
@@ -85,6 +88,48 @@ test("createWatchRefCount tracks distinct keys independently", () => {
   assert.deepEqual(releases, ["/b"]);
   assert.equal(rc.peek("/a"), 1);
   assert.equal(rc.peek("/b"), 0);
+});
+
+test("serialized async queue keeps rapid watch → unwatch → watch transitions balanced", async () => {
+  const queue = createSerializedAsyncQueue();
+  let backendRefs = 0;
+  let releaseFirstWatch;
+  const firstWatchGate = new Promise((resolve) => {
+    releaseFirstWatch = resolve;
+  });
+
+  const firstWatch = queue.enqueue("/repo", async () => {
+    await firstWatchGate;
+    backendRefs += 1;
+  });
+  const release = queue.enqueue("/repo", async () => {
+    if (backendRefs > 0) backendRefs -= 1;
+  });
+  const reacquire = queue.enqueue("/repo", async () => {
+    backendRefs += 1;
+  });
+
+  releaseFirstWatch();
+  await Promise.all([firstWatch, release, reacquire]);
+  assert.equal(backendRefs, 1);
+  assert.equal(queue.size(), 0);
+});
+
+test("serialized async queue continues after a failed operation", async () => {
+  const queue = createSerializedAsyncQueue();
+  const order = [];
+  const failed = queue.enqueue("/repo", async () => {
+    order.push("failed-watch");
+    throw new Error("watch failed");
+  });
+  const retry = queue.enqueue("/repo", async () => {
+    order.push("retry-watch");
+  });
+
+  await assert.rejects(failed, /watch failed/);
+  await retry;
+  assert.deepEqual(order, ["failed-watch", "retry-watch"]);
+  assert.equal(queue.size(), 0);
 });
 
 test("normalizeRepoPath strips any number of trailing slashes", () => {

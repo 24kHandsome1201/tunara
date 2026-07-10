@@ -1,7 +1,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useSessionsStore } from "@/state/sessions";
 import { gitWatch, gitUnwatch } from "./git-bridge";
-import { createWatchRefCount } from "./lib/watch-refcount";
+import { createSerializedAsyncQueue, createWatchRefCount } from "./lib/watch-refcount";
 import { sameRepoPath } from "./lib/path-normalize";
 
 interface GitChangedPayload {
@@ -11,6 +11,7 @@ interface GitChangedPayload {
 const WATCH_FALLBACK_POLL_MS = 5_000;
 const activeRepos = new Set<string>();
 const fallbackPollers = new Map<string, ReturnType<typeof setInterval>>();
+const backendOperations = createSerializedAsyncQueue();
 
 function refreshSessionsForRepo(repoPath: string): void {
   if (!repoPath) return;
@@ -35,19 +36,21 @@ function stopFallbackPoller(repoPath: string): void {
   fallbackPollers.delete(repoPath);
 }
 
-function releaseBackendWatch(repoPath: string): void {
-  gitUnwatch(repoPath).catch(() => {});
+function acquireBackendWatch(repoPath: string): Promise<void> {
+  return backendOperations.enqueue(repoPath, () => gitWatch(repoPath));
+}
+
+function releaseBackendWatch(repoPath: string): Promise<void> {
+  return backendOperations.enqueue(repoPath, () => gitUnwatch(repoPath));
 }
 
 const refCount = createWatchRefCount({
   onFirstAcquire: (repoPath) => {
     activeRepos.add(repoPath);
-    gitWatch(repoPath)
+    acquireBackendWatch(repoPath)
       .then(() => {
         if (activeRepos.has(repoPath)) {
           stopFallbackPoller(repoPath);
-        } else {
-          releaseBackendWatch(repoPath);
         }
       })
       .catch(() => {
@@ -59,7 +62,7 @@ const refCount = createWatchRefCount({
   onLastRelease: (repoPath) => {
     activeRepos.delete(repoPath);
     stopFallbackPoller(repoPath);
-    releaseBackendWatch(repoPath);
+    void releaseBackendWatch(repoPath).catch(() => {});
   },
 });
 

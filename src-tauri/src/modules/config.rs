@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use toml_edit::{value, DocumentMut, Item, Table};
 
 const MIN_FONT_SIZE: u16 = 10;
@@ -14,6 +15,7 @@ const MAX_SIDEBAR_WIDTH: u16 = 400;
 const MIN_PANEL_WIDTH: u16 = 240;
 const CONFIG_DIR: &str = "tunara";
 const LEGACY_CONFIG_DIR: &str = "conduit";
+static CONFIG_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
@@ -254,9 +256,15 @@ fn write_config(path: &Path, config: &TunaraConfig) -> Result<(), String> {
     } else {
         serialize_new_config(&config)?
     };
-    let tmp = path.with_extension("toml.tmp");
+    // Each process and write gets its own temporary path. This avoids two app
+    // instances or overlapping IPC calls replacing each other's temp file.
+    let sequence = CONFIG_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("toml.{}.{}.tmp", std::process::id(), sequence));
     fs::write(&tmp, body).map_err(|e| format!("write config failed: {e}"))?;
-    fs::rename(&tmp, path).map_err(|e| format!("replace config failed: {e}"))?;
+    if let Err(error) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("replace config failed: {error}"));
+    }
     Ok(())
 }
 

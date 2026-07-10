@@ -20,13 +20,12 @@ export type PtyEvent =
       reason: string;
     };
 
+/** Backend sentinel for an SSH transport that ended without ExitStatus. */
+export const SSH_DISCONNECTED_EXIT_CODE = -2;
+
 /** Reply to a pending SSH host-key prompt (backend ssh_open is parked on it). */
 export async function answerHostKeyPrompt(promptId: string, accept: boolean): Promise<void> {
-  try {
-    await invoke("ssh_host_key_decision", { promptId, accept });
-  } catch {
-    /* prompt may have already resolved/timed out; nothing to do */
-  }
+  await invoke("ssh_host_key_decision", { promptId, accept });
 }
 
 const sshOpenAttempts = new Map<string, string>();

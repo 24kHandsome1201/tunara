@@ -1,5 +1,11 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use ignore::WalkBuilder;
 use serde::Serialize;
+use tauri::State;
+
+use super::grep::{validate_request_id, FsSearchCancellationState};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,12 +23,12 @@ pub struct SearchHit {
 /// entries whose path contains `query` (case-insensitive substring on the
 /// path relative to root). Returns up to `limit` hits. An empty query returns
 /// nothing — callers should short-circuit before invoking.
-#[tauri::command]
-pub fn fs_search(
+fn fs_search_blocking(
     root: String,
     query: String,
     limit: Option<usize>,
     include_hidden: Option<bool>,
+    cancelled: Arc<AtomicBool>,
 ) -> Result<Vec<SearchHit>, String> {
     let q = query.trim().to_lowercase();
     if q.is_empty() {
@@ -56,6 +62,9 @@ pub fn fs_search(
         .build();
 
     for dent in walker.flatten() {
+        if cancelled.load(Ordering::Acquire) {
+            return Err("search cancelled".into());
+        }
         if out.len() >= scan_cap {
             break;
         }
@@ -93,5 +102,49 @@ pub fn fs_search(
     });
     out.truncate(cap);
 
+    if cancelled.load(Ordering::Acquire) {
+        return Err("search cancelled".into());
+    }
+
     Ok(out)
+}
+
+#[tauri::command]
+pub async fn fs_search(
+    root: String,
+    query: String,
+    limit: Option<usize>,
+    include_hidden: Option<bool>,
+    request_id: String,
+    state: State<'_, FsSearchCancellationState>,
+) -> Result<Vec<SearchHit>, String> {
+    validate_request_id(&request_id)?;
+    let cancelled = state.register(&request_id);
+    let worker_cancelled = cancelled.clone();
+    let worker_result = tauri::async_runtime::spawn_blocking(move || {
+        fs_search_blocking(root, query, limit, include_hidden, worker_cancelled)
+    })
+    .await;
+    state.finish(&request_id, &cancelled);
+    worker_result.map_err(|error| format!("filename search worker failed: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fs_search_blocking;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    #[test]
+    fn cancelled_filename_search_quits_before_scanning() {
+        let result = fs_search_blocking(
+            std::env::temp_dir().to_string_lossy().into_owned(),
+            "definitely-not-empty".into(),
+            Some(20),
+            None,
+            Arc::new(AtomicBool::new(true)),
+        );
+
+        assert_eq!(result.err().as_deref(), Some("search cancelled"));
+    }
 }

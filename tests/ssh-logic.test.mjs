@@ -27,6 +27,7 @@ import {
 import {
   stashSshCredentials,
   takeSshCredentials,
+  clearSshCredentials,
 } from "../src/modules/ssh/pending-credentials.ts";
 
 // ── failure-reason ───────────────────────────────────────────────────────
@@ -197,6 +198,12 @@ test("credentials for different sessions are independent", () => {
   // Consuming one does not affect the other's second read (both are one-shot).
   assert.equal(takeSshCredentials("a"), undefined);
   assert.equal(takeSshCredentials("b"), undefined);
+});
+
+test("clearSshCredentials removes secrets for a cancelled pre-open session", () => {
+  stashSshCredentials("cancelled", { password: "never-opened" });
+  clearSshCredentials("cancelled");
+  assert.equal(takeSshCredentials("cancelled"), undefined);
 });
 
 // ── ~/.ssh/config import dedup ───────────────────────────────────────────

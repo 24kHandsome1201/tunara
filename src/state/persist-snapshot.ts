@@ -6,6 +6,7 @@ import {
   MAX_TERMINAL_SNAPSHOTS,
   MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE,
 } from "../modules/terminal/lib/terminal-snapshot-limits.ts";
+import { trimTerminalSnapshotSerialized } from "../modules/terminal/lib/terminal-snapshot-trim.ts";
 import { parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
@@ -256,7 +257,7 @@ function sanitizeTerminalSnapshot(raw: unknown): PersistedTerminalSnapshot | nul
   }
 
   const serialized = t.serialized.length > MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE
-    ? t.serialized.slice(-MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE)
+    ? trimTerminalSnapshotSerialized(t.serialized, MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE)
     : t.serialized;
   return {
     serialized,

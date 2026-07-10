@@ -38,6 +38,7 @@ import {
   clearQueuedGitNonceBump,
   scheduleGitRefresh,
 } from "./sessions-git";
+import { clearSshCredentials } from "@/modules/ssh/pending-credentials";
 
 interface SessionsState {
   sessions: Session[];
@@ -151,6 +152,11 @@ export function createRemoteSession(remote: RemoteInfo, title?: string): Session
   return createSession(label, { title: title ?? label, remote });
 }
 
+function isSessionObserved(activeSessionId: string | null, sessionId: string): boolean {
+  return activeSessionId === sessionId
+    && (typeof document === "undefined" || document.hasFocus());
+}
+
 function ensureSessionVisibleInSplit(sessionId: string) {
   const ui = useUIStore.getState();
   const { split } = ui;
@@ -262,6 +268,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     // gitNonce key after the store entry below is deleted.
     clearQueuedGitNonceBump(id);
     removeTerminalSnapshot(id);
+    clearSshCredentials(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
@@ -510,7 +517,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   handleAgentReady: (id) => {
     const session = get().sessions.find((s) => s.id === id);
-    const isActive = get().activeSessionId === id;
+    const isActive = isSessionObserved(get().activeSessionId, id);
     const completedTurn = session?.agentActivity === "running";
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
@@ -543,7 +550,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   handleAgentExited: (id, exitCode) => {
     const session = get().sessions.find((s) => s.id === id);
-    const isActive = get().activeSessionId === id;
+    const isActive = isSessionObserved(get().activeSessionId, id);
     const update = agentExitedUpdate(session, exitCode, isActive);
     if (!update) return;
     get().appendTimeline(id, "agent_stop", session?.agent ? (AGENT_NAMES[session.agent] ?? session.agent) : undefined);
@@ -576,7 +583,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   handleCommandFinished: (id, exitCode) => {
     const session = get().sessions.find((s) => s.id === id);
-    const isActive = get().activeSessionId === id;
+    const isActive = isSessionObserved(get().activeSessionId, id);
     const update = commandFinishedUpdate(session, exitCode, isActive);
     if (!update) return;
     get().appendTimeline(id, "command_end", session?.lastCommand);
@@ -597,7 +604,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   handleTerminalExited: (id, exitCode) => {
     const session = get().sessions.find((s) => s.id === id);
-    const update = terminalExitedUpdate(session, exitCode, get().activeSessionId === id);
+    const update = terminalExitedUpdate(session, exitCode, isSessionObserved(get().activeSessionId, id));
     if (!update) return;
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);

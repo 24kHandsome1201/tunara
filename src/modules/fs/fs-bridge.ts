@@ -14,6 +14,18 @@ export interface SearchHit {
   isDir: boolean;
 }
 
+let nextLocalNameSearchRequest = 0;
+let activeLocalNameSearchRequestId: string | null = null;
+
+function createLocalNameSearchRequestId(): string {
+  nextLocalNameSearchRequest += 1;
+  return `name-${Date.now().toString(36)}-${nextLocalNameSearchRequest.toString(36)}`;
+}
+
+function cancelSearchRequest(requestId: string): Promise<boolean> {
+  return invoke<boolean>("fs_cancel_search", { requestId });
+}
+
 export type ReadResult =
   | { kind: "text"; content: string; size: number; truncated?: boolean }
   | { kind: "binary"; size: number }
@@ -33,7 +45,25 @@ export function fsSearch(
   limit = 80,
   includeHidden = false,
 ): Promise<SearchHit[]> {
-  return invoke<SearchHit[]>("fs_search", { root, query, limit, includeHidden });
+  if (activeLocalNameSearchRequestId) {
+    void cancelSearchRequest(activeLocalNameSearchRequestId).catch(() => {});
+  }
+  const requestId = createLocalNameSearchRequestId();
+  activeLocalNameSearchRequestId = requestId;
+  return invoke<SearchHit[]>("fs_search", { root, query, limit, includeHidden, requestId })
+    .finally(() => {
+      if (activeLocalNameSearchRequestId === requestId) {
+        activeLocalNameSearchRequestId = null;
+      }
+    });
+}
+
+export function fsCancelActiveNameSearch(): void {
+  const requestId = activeLocalNameSearchRequestId;
+  activeLocalNameSearchRequestId = null;
+  if (requestId) {
+    void cancelSearchRequest(requestId).catch(() => {});
+  }
 }
 
 // ── Content search (fs_grep) ───────────────────────────────────────────────
@@ -59,13 +89,18 @@ export interface GrepResponse {
 export function fsGrep(
   pattern: string,
   root: string,
-  opts?: { glob?: string[]; caseInsensitive?: boolean; maxResults?: number },
+  opts: { requestId: string; glob?: string[]; caseInsensitive?: boolean; maxResults?: number },
 ): Promise<GrepResponse> {
   return invoke<GrepResponse>("fs_grep", {
     pattern,
     root,
-    glob: opts?.glob,
-    caseInsensitive: opts?.caseInsensitive,
-    maxResults: opts?.maxResults,
+    glob: opts.glob,
+    caseInsensitive: opts.caseInsensitive,
+    maxResults: opts.maxResults,
+    requestId: opts.requestId,
   });
+}
+
+export function fsCancelGrep(requestId: string): Promise<boolean> {
+  return cancelSearchRequest(requestId);
 }

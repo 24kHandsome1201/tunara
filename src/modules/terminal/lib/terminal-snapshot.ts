@@ -1,5 +1,6 @@
 import type { PersistedTerminalSnapshot } from "@/state/persist";
 import { MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE, MAX_TERMINAL_SNAPSHOTS } from "./terminal-snapshot-limits.ts";
+import { trimTerminalSnapshotSerialized } from "./terminal-snapshot-trim.ts";
 
 const snapshots = new Map<string, PersistedTerminalSnapshot>();
 
@@ -27,7 +28,10 @@ function trimSnapshot(snapshot: PersistedTerminalSnapshot): PersistedTerminalSna
   if (snapshot.serialized.length <= MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE) return snapshot;
   return {
     ...snapshot,
-    serialized: snapshot.serialized.slice(-MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE),
+    serialized: trimTerminalSnapshotSerialized(
+      snapshot.serialized,
+      MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE,
+    ),
     truncated: true,
   };
 }

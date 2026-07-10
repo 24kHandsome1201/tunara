@@ -10,6 +10,37 @@ export interface WatchRefCount {
   size(): number;
 }
 
+export interface SerializedAsyncQueue {
+  enqueue(key: string, operation: () => Promise<void>): Promise<void>;
+  size(): number;
+}
+
+/**
+ * Serialize lifecycle operations for each key while allowing different keys
+ * to proceed independently. The queue tail always absorbs rejections so one
+ * failed watch cannot strand later unwatch/retry operations; callers still
+ * receive the original operation result for fallback handling.
+ */
+export function createSerializedAsyncQueue(): SerializedAsyncQueue {
+  const tails = new Map<string, Promise<void>>();
+
+  return {
+    enqueue(key: string, operation: () => Promise<void>) {
+      if (!key) return Promise.resolve();
+      const previous = (tails.get(key) ?? Promise.resolve()).catch(() => {});
+      const run = previous.then(operation);
+      const tail: Promise<void> = run.finally(() => {
+        if (tails.get(key) === tail) tails.delete(key);
+      });
+      tails.set(key, tail);
+      return tail;
+    },
+    size() {
+      return tails.size;
+    },
+  };
+}
+
 export function createWatchRefCount({
   onFirstAcquire,
   onLastRelease,

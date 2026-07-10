@@ -3,6 +3,7 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { createTerminalSnapshotScheduler } from "../src/modules/terminal/lib/terminal-snapshot-scheduler.ts";
+import { trimTerminalSnapshotSerialized } from "../src/modules/terminal/lib/terminal-snapshot-trim.ts";
 import {
   consumeTerminalSnapshotDirty,
   getTerminalSnapshot,
@@ -311,6 +312,16 @@ test("snapshot sanitizer bounds terminal snapshot count and serialized size", ()
   assert.equal(snapshot.terminals["s-9"].serialized.length, 256 * 1024);
   assert.equal(snapshot.terminals["s-9"].truncated, true);
   assert.equal(snapshot.terminals["s-1"], undefined);
+});
+
+test("terminal snapshot trimming preserves UTF-16 and ANSI boundaries", () => {
+  assert.equal(trimTerminalSnapshotSerialized("A😀tail", 5), "tail");
+  assert.equal(trimTerminalSnapshotSerialized("prefix\u001b[31mRED", 6), "RED");
+  assert.equal(
+    trimTerminalSnapshotSerialized("prefix\u001b]8;;https://example.test\u001b\\label", 12),
+    "label",
+  );
+  assert.equal(trimTerminalSnapshotSerialized("plain", 5), "plain");
 });
 
 test("terminal snapshot scheduler drops queued captures after the session is removed", async () => {

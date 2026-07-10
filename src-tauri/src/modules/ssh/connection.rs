@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -225,6 +226,7 @@ const AGENT_HOOK_HELPER: &str = include_str!("../agent/scripts/agent-hook.sh");
 /// Bound on queued input messages (keystrokes/resizes) waiting for the pump.
 /// Far above human input rate; on overflow we drop rather than buffer forever.
 const INPUT_QUEUE_CAP: usize = 1024;
+const SSH_DISCONNECTED_EXIT_CODE: i32 = -2;
 
 /// Parameters to open an SSH session.
 pub struct ConnectParams {
@@ -390,7 +392,10 @@ impl SshSession {
         // is non-blocking. So there is no unbounded buffer to cap here — don't
         // "add MAX_PENDING" without first reintroducing a buffer that needs it.
         tauri::async_runtime::spawn(async move {
-            let mut exit_code: i32 = 0;
+            // An interactive SSH channel can disappear without sending an
+            // ExitStatus when the network or server dies. Keep that distinct
+            // from a real zero exit so the UI never calls a disconnect clean.
+            let mut exit_code: Option<i32> = None;
             // Stop forwarding frontend keystrokes once the remote shell is
             // exiting — otherwise a passive disconnect races with queued input
             // and the server may echo a burst of characters before the channel
@@ -412,12 +417,12 @@ impl SshSession {
                                 if on_event.send(ev).is_err() { break; }
                             }
                             ChannelMsg::ExitStatus { exit_status } => {
-                                exit_code = exit_status as i32;
+                                exit_code = Some(exit_status as i32);
                                 accepting_input = false;
                             }
                             ChannelMsg::ExitSignal { .. } => {
                                 // Killed by a signal rather than a clean exit.
-                                exit_code = -1;
+                                exit_code = Some(-1);
                                 accepting_input = false;
                             }
                             ChannelMsg::Eof | ChannelMsg::Close => break,
@@ -442,7 +447,9 @@ impl SshSession {
                     }
                 }
             }
-            let _ = on_event.send(PtyEvent::Exit { code: exit_code });
+            let _ = on_event.send(PtyEvent::Exit {
+                code: exit_code.unwrap_or(SSH_DISCONNECTED_EXIT_CODE),
+            });
         });
 
         Ok(SshSession {
@@ -653,6 +660,28 @@ impl SshSession {
             max_bytes,
             Duration::from_secs(15),
             false,
+            None,
+        )
+        .await
+    }
+
+    /// Execute a search command that can be stopped when its UI request is
+    /// superseded. `exec_on` still owns channel teardown, so cancellation
+    /// sends CHANNEL_CLOSE instead of merely dropping the future and leaving
+    /// the remote `find`/`grep` process alive.
+    pub async fn exec_cancellable(
+        &self,
+        command: &str,
+        max_bytes: usize,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<String, String> {
+        exec_on(
+            &self.handle,
+            command,
+            max_bytes,
+            Duration::from_secs(15),
+            false,
+            Some(cancelled.as_ref()),
         )
         .await
     }
@@ -671,6 +700,7 @@ impl SshSession {
             max_bytes,
             Duration::from_secs(15),
             true,
+            None,
         )
         .await
     }
@@ -711,13 +741,21 @@ async fn exec_on(
     max_bytes: usize,
     timeout: Duration,
     allow_nonzero: bool,
+    cancelled: Option<&AtomicBool>,
 ) -> Result<String, String> {
+    if cancelled.is_some_and(|token| token.load(Ordering::Acquire)) {
+        return Err("remote command cancelled".into());
+    }
     let mut channel = await_stage(
         "open exec channel",
         SSH_CHANNEL_SETUP_TIMEOUT,
         handle.channel_open_session(),
     )
     .await?;
+    if cancelled.is_some_and(|token| token.load(Ordering::Acquire)) {
+        let _ = channel.close().await;
+        return Err("remote command cancelled".into());
+    }
     if let Err(error) = await_stage(
         "start remote command",
         SSH_CHANNEL_SETUP_TIMEOUT,
@@ -729,16 +767,24 @@ async fn exec_on(
         return Err(error);
     }
 
+    let cancellation = wait_for_exec_cancel(cancelled);
+    tokio::pin!(cancellation);
+
     let mut out: Vec<u8> = Vec::new();
     let mut stderr_buf: Vec<u8> = Vec::new();
     let mut exceeded = false;
     let mut timed_out = false;
+    let mut was_cancelled = false;
     let mut exit_status: Option<u32> = None;
     let mut exit_signal: Option<String> = None;
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         tokio::select! {
             biased;
+            _ = &mut cancellation => {
+                was_cancelled = true;
+                break;
+            }
             _ = tokio::time::sleep_until(deadline) => {
                 // Break (don't early-return) so we still close the channel
                 // below — russh Channel has no Drop-side CLOSE, so dropping
@@ -796,6 +842,9 @@ async fn exec_on(
     if timed_out {
         return Err(format!("exec timed out ({}s)", timeout.as_secs()));
     }
+    if was_cancelled {
+        return Err("remote command cancelled".into());
+    }
 
     if !allow_nonzero {
         if let Some(error) = exec_status_error(exit_status, exit_signal.as_deref(), &stderr_buf) {
@@ -826,6 +875,16 @@ async fn exec_on(
     Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
+async fn wait_for_exec_cancel(cancelled: Option<&AtomicBool>) {
+    let Some(cancelled) = cancelled else {
+        std::future::pending::<()>().await;
+        return;
+    };
+    while !cancelled.load(Ordering::Acquire) {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 /// Stage the shell-integration bootstrap into a private remote temp file via a
 /// one-shot exec channel, returning the remote path to source.
 ///
@@ -853,7 +912,7 @@ async fn stage_remote_integration(
     let script = render_remote_integration(session_id);
     let encoded = B64.encode(script.as_bytes());
     let command = integration_stage_command(&encoded);
-    let out = exec_on(handle, &command, 4096, Duration::from_secs(5), false).await?;
+    let out = exec_on(handle, &command, 4096, Duration::from_secs(5), false, None).await?;
     // Some servers print a banner/MOTD even on exec channels; take the last
     // line that looks like our mktemp path instead of requiring clean output.
     let path = out
@@ -1004,6 +1063,21 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(ref e) if e.contains("test stage timed out")));
+    }
+
+    #[tokio::test]
+    async fn exec_cancellation_waiter_resolves_only_after_token_flips() {
+        let cancelled = AtomicBool::new(false);
+        let waiter = wait_for_exec_cancel(Some(&cancelled));
+        tokio::pin!(waiter);
+
+        assert!(tokio::time::timeout(Duration::from_millis(5), &mut waiter)
+            .await
+            .is_err());
+        cancelled.store(true, Ordering::Release);
+        tokio::time::timeout(Duration::from_millis(100), &mut waiter)
+            .await
+            .expect("cancellation waiter should observe the token");
     }
 
     #[test]

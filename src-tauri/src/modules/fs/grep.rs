@@ -1,4 +1,5 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
@@ -8,10 +9,97 @@ use grep_searcher::{BinaryDetection, SearcherBuilder};
 use ignore::{WalkBuilder, WalkState};
 use parking_lot::Mutex;
 use serde::Serialize;
+use tauri::State;
 
 const FILE_SIZE_CAP: u64 = 5 * 1024 * 1024;
 const DEFAULT_MAX_RESULTS: usize = 200;
 const HARD_MAX_RESULTS: usize = 2000;
+const MAX_REQUEST_ID_LEN: usize = 128;
+const MAX_RECENTLY_FINISHED_REQUESTS: usize = 256;
+
+#[derive(Default)]
+struct FsSearchCancellationRegistry {
+    pending: HashMap<String, Arc<AtomicBool>>,
+    cancelled_before_start: HashSet<String>,
+    pre_cancel_order: VecDeque<String>,
+    recently_finished: HashSet<String>,
+    finished_order: VecDeque<String>,
+}
+
+#[derive(Default)]
+pub struct FsSearchCancellationState {
+    inner: Mutex<FsSearchCancellationRegistry>,
+}
+
+impl FsSearchCancellationState {
+    pub(crate) fn register(&self, request_id: &str) -> Arc<AtomicBool> {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let mut registry = self.inner.lock();
+        registry.recently_finished.remove(request_id);
+        registry
+            .finished_order
+            .retain(|finished| finished != request_id);
+        if registry.cancelled_before_start.remove(request_id) {
+            registry
+                .pre_cancel_order
+                .retain(|cancelled| cancelled != request_id);
+            cancelled.store(true, Ordering::Release);
+        }
+        registry
+            .pending
+            .insert(request_id.to_string(), cancelled.clone());
+        cancelled
+    }
+
+    pub(crate) fn finish(&self, request_id: &str, cancelled: &Arc<AtomicBool>) {
+        let mut registry = self.inner.lock();
+        if registry
+            .pending
+            .get(request_id)
+            .is_some_and(|current| Arc::ptr_eq(current, cancelled))
+        {
+            registry.pending.remove(request_id);
+        }
+        if registry.cancelled_before_start.remove(request_id) {
+            registry
+                .pre_cancel_order
+                .retain(|cancelled| cancelled != request_id);
+        }
+        if registry.recently_finished.insert(request_id.to_string()) {
+            registry.finished_order.push_back(request_id.to_string());
+        }
+        while registry.finished_order.len() > MAX_RECENTLY_FINISHED_REQUESTS {
+            if let Some(expired) = registry.finished_order.pop_front() {
+                registry.recently_finished.remove(&expired);
+            }
+        }
+    }
+
+    pub(super) fn cancel(&self, request_id: &str) -> bool {
+        let mut registry = self.inner.lock();
+        if registry.recently_finished.contains(request_id) {
+            return false;
+        }
+        if let Some(cancelled) = registry.pending.get(request_id) {
+            cancelled.store(true, Ordering::Release);
+        } else {
+            // The cancel IPC can overtake async command registration. Remember
+            // it so an obsolete query cannot begin a full filesystem scan.
+            if registry
+                .cancelled_before_start
+                .insert(request_id.to_string())
+            {
+                registry.pre_cancel_order.push_back(request_id.to_string());
+            }
+            while registry.pre_cancel_order.len() > MAX_RECENTLY_FINISHED_REQUESTS {
+                if let Some(expired) = registry.pre_cancel_order.pop_front() {
+                    registry.cancelled_before_start.remove(&expired);
+                }
+            }
+        }
+        true
+    }
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,13 +134,25 @@ fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, String> {
     Ok(Some(set))
 }
 
-#[tauri::command]
-pub fn fs_grep(
+pub(crate) fn validate_request_id(request_id: &str) -> Result<(), String> {
+    if request_id.is_empty()
+        || request_id.len() > MAX_REQUEST_ID_LEN
+        || !request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Err("invalid filesystem search request id".into());
+    }
+    Ok(())
+}
+
+fn fs_grep_blocking(
     pattern: String,
     root: String,
     glob: Option<Vec<String>>,
     case_insensitive: Option<bool>,
     max_results: Option<usize>,
+    cancelled: Arc<AtomicBool>,
 ) -> Result<GrepResponse, String> {
     if pattern.is_empty() {
         return Err("empty pattern".into());
@@ -104,9 +204,10 @@ pub fn fs_grep(
         let root_path = root_path.clone();
         let matcher = matcher.clone();
         let globs = globs.clone();
+        let cancelled = cancelled.clone();
 
         Box::new(move |dent| {
-            if truncated.load(Ordering::Relaxed) {
+            if cancelled.load(Ordering::Acquire) || truncated.load(Ordering::Relaxed) {
                 return WalkState::Quit;
             }
             let dent = match dent {
@@ -147,6 +248,9 @@ pub fn fs_grep(
                 &*matcher,
                 path,
                 UTF8(|line_num, text| {
+                    if cancelled.load(Ordering::Acquire) {
+                        return Ok(false);
+                    }
                     let line_text = text.trim_end_matches('\n').to_string();
                     let mut guard = hits_ref.lock();
                     if guard.len() >= cap {
@@ -172,6 +276,10 @@ pub fn fs_grep(
         Err(arc) => arc.lock().clone(),
     };
 
+    if cancelled.load(Ordering::Acquire) {
+        return Err("search cancelled".into());
+    }
+
     Ok(GrepResponse {
         hits: final_hits,
         truncated: truncated.load(Ordering::Relaxed),
@@ -179,9 +287,48 @@ pub fn fs_grep(
     })
 }
 
+#[tauri::command]
+pub async fn fs_grep(
+    pattern: String,
+    root: String,
+    glob: Option<Vec<String>>,
+    case_insensitive: Option<bool>,
+    max_results: Option<usize>,
+    request_id: String,
+    state: State<'_, FsSearchCancellationState>,
+) -> Result<GrepResponse, String> {
+    validate_request_id(&request_id)?;
+    let cancelled = state.register(&request_id);
+    let worker_cancelled = cancelled.clone();
+    let worker_result = tauri::async_runtime::spawn_blocking(move || {
+        fs_grep_blocking(
+            pattern,
+            root,
+            glob,
+            case_insensitive,
+            max_results,
+            worker_cancelled,
+        )
+    })
+    .await;
+    state.finish(&request_id, &cancelled);
+    worker_result.map_err(|error| format!("grep worker failed: {error}"))?
+}
+
+#[tauri::command]
+pub fn fs_cancel_search(
+    request_id: String,
+    state: State<'_, FsSearchCancellationState>,
+) -> Result<bool, String> {
+    validate_request_id(&request_id)?;
+    Ok(state.cancel(&request_id))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::build_globset;
+    use super::{build_globset, fs_grep_blocking, validate_request_id, FsSearchCancellationState};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     #[test]
     fn build_globset_returns_none_for_empty_patterns() {
@@ -204,5 +351,46 @@ mod tests {
     fn build_globset_reports_an_error_for_an_invalid_glob() {
         let err = build_globset(&["[unterminated".to_string()]).unwrap_err();
         assert!(err.starts_with("bad glob"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn cancellation_state_handles_cancel_before_and_after_registration() {
+        let state = FsSearchCancellationState::default();
+        assert!(state.cancel("before-start"));
+        let pre_cancelled = state.register("before-start");
+        assert!(pre_cancelled.load(Ordering::Acquire));
+        state.finish("before-start", &pre_cancelled);
+
+        let in_flight = state.register("in-flight");
+        assert!(state.cancel("in-flight"));
+        assert!(in_flight.load(Ordering::Acquire));
+        state.finish("in-flight", &in_flight);
+        assert!(!state.cancel("in-flight"));
+    }
+
+    #[test]
+    fn cancelled_grep_quits_before_scanning() {
+        let cancelled = Arc::new(AtomicBool::new(true));
+        let result = fs_grep_blocking(
+            "needle".into(),
+            std::env::temp_dir().to_string_lossy().into_owned(),
+            None,
+            None,
+            Some(20),
+            cancelled,
+        );
+        let error = match result {
+            Ok(_) => panic!("pre-cancelled grep must not return partial results"),
+            Err(error) => error,
+        };
+        assert_eq!(error, "search cancelled");
+    }
+
+    #[test]
+    fn grep_request_ids_are_bounded_and_shell_safe() {
+        assert!(validate_request_id("grep-42.local").is_ok());
+        assert!(validate_request_id("").is_err());
+        assert!(validate_request_id("bad/id").is_err());
+        assert!(validate_request_id(&"x".repeat(129)).is_err());
     }
 }

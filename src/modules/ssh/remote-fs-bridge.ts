@@ -38,6 +38,34 @@ export function sshDownload(id: number, remotePath: string, localPath: string): 
  *  expensive kind (round-trips over SSH), so caching is high-value. */
 const SEARCH_CACHE_MAX = 32;
 const searchCache = new RemoteOperationCache<SearchHit[]>(SEARCH_CACHE_MAX);
+let nextRemoteSearchRequest = 0;
+const activeRemoteSearchRequests = new Map<number, string>();
+
+function createRemoteSearchRequestId(ptyId: number): string {
+  nextRemoteSearchRequest += 1;
+  return `remote-${ptyId.toString(36)}-${Date.now().toString(36)}-${nextRemoteSearchRequest.toString(36)}`;
+}
+
+export function cancelRemoteSearch(ptyId: number): void {
+  const requestId = activeRemoteSearchRequests.get(ptyId);
+  activeRemoteSearchRequests.delete(ptyId);
+  if (requestId) {
+    void invoke<boolean>("fs_cancel_search", { requestId }).catch(() => {});
+  }
+}
+
+function beginRemoteSearch(ptyId: number): string {
+  cancelRemoteSearch(ptyId);
+  const requestId = createRemoteSearchRequestId(ptyId);
+  activeRemoteSearchRequests.set(ptyId, requestId);
+  return requestId;
+}
+
+function finishRemoteSearch(ptyId: number, requestId: string): void {
+  if (activeRemoteSearchRequests.get(ptyId) === requestId) {
+    activeRemoteSearchRequests.delete(ptyId);
+  }
+}
 
 export function sshSearch(
   ptyId: number,
@@ -45,16 +73,22 @@ export function sshSearch(
   query: string,
   limit = 80,
 ): Promise<SearchHit[]> {
+  cancelRemoteSearch(ptyId);
   const key = remoteOperationCacheKey("find", ptyId, root, query, limit);
   const cached = searchCache.get(key);
   if (cached) {
     return Promise.resolve(cached);
   }
   const generation = searchCache.sessionGeneration(ptyId);
-  return invoke<SearchHit[]>("ssh_fs_search", { sessionId: ptyId, root, query, limit }).then((hits) => {
-    searchCache.setIfCurrent(key, ptyId, generation, hits);
-    return hits;
-  });
+  const requestId = beginRemoteSearch(ptyId);
+  return invoke<SearchHit[]>("ssh_fs_search", {
+    request: { sessionId: ptyId, root, query, limit, requestId },
+  })
+    .then((hits) => {
+      searchCache.setIfCurrent(key, ptyId, generation, hits);
+      return hits;
+    })
+    .finally(() => finishRemoteSearch(ptyId, requestId));
 }
 
 // ── Remote content search (over the SSH exec channel) ─────────────────────
@@ -72,25 +106,31 @@ export function sshGrep(
   pattern: string,
   maxResults = 200,
 ): Promise<GrepResponse> {
+  cancelRemoteSearch(ptyId);
   const key = remoteOperationCacheKey("grep", ptyId, root, pattern, maxResults);
   const cached = grepCache.get(key);
   if (cached) {
     return Promise.resolve(cached);
   }
   const generation = grepCache.sessionGeneration(ptyId);
+  const requestId = beginRemoteSearch(ptyId);
   return invoke<GrepResponse>("ssh_fs_grep", {
-    sessionId: ptyId,
-    root,
-    pattern,
-    maxResults,
+    request: {
+      sessionId: ptyId,
+      root,
+      pattern,
+      maxResults,
+      requestId,
+    },
   }).then((resp) => {
     grepCache.setIfCurrent(key, ptyId, generation, resp);
     return resp;
-  });
+  }).finally(() => finishRemoteSearch(ptyId, requestId));
 }
 
 /** Invalidate the caches for one session (e.g. after a directory reload). */
 export function invalidateRemoteSearchCache(ptyId: number): void {
+  cancelRemoteSearch(ptyId);
   searchCache.invalidateSession(ptyId);
   grepCache.invalidateSession(ptyId);
 }

@@ -33,3 +33,8 @@ export function takeSshCredentials(sessionId: string): PendingSshCredentials | u
   if (creds) pending.delete(sessionId);
   return creds;
 }
+
+/** Drop credentials when a session is removed before its first PTY open. */
+export function clearSshCredentials(sessionId: string): void {
+  pending.delete(sessionId);
+}

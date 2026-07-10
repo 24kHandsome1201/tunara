@@ -9,9 +9,12 @@
 //! returns a descriptive error and the frontend surfaces "remote git
 //! unavailable" instead of crashing the session.
 
+use serde::Deserialize;
 use tauri::State;
 
-use crate::modules::fs::grep::{GrepHit, GrepResponse};
+use crate::modules::fs::grep::{
+    validate_request_id, FsSearchCancellationState, GrepHit, GrepResponse,
+};
 use crate::modules::fs::search::SearchHit;
 use crate::modules::git::{FileChange, FileDiff, RemoteState, StatusResult};
 use crate::modules::pty::{PtyState, Session};
@@ -302,13 +305,28 @@ pub async fn ssh_git_ahead_behind(
 /// frontend already caps at 80 results; this bounds the raw bytes.
 const MAX_SEARCH_BYTES: usize = 64 * 1024;
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFileSearchRequest {
+    session_id: u32,
+    root: String,
+    query: String,
+    limit: Option<usize>,
+    request_id: String,
+}
+
 /// Parse `find` output (one absolute path per line) into `SearchHit`s relative
 /// to `root`. Pure function so it can be unit-tested without a live SSH exec.
 pub(crate) fn parse_find_output(raw: &str, root: &str) -> Vec<SearchHit> {
     let root_trimmed = root.trim_end_matches('/');
     let mut out: Vec<SearchHit> = Vec::new();
     for line in raw.lines() {
-        let path = line.trim();
+        let line = line.trim();
+        let (is_dir, path) = match line.split_once('\t') {
+            Some(("d", path)) => (true, path.trim()),
+            Some(("f", path)) => (false, path.trim()),
+            _ => (false, line),
+        };
         if path.is_empty() {
             continue;
         }
@@ -320,14 +338,11 @@ pub(crate) fn parse_find_output(raw: &str, root: &str) -> Vec<SearchHit> {
             .unwrap_or_else(|| path.rsplit('/').next().unwrap_or(path))
             .to_string();
         let name = path.rsplit('/').next().unwrap_or(path).to_string();
-        // `find` without `-type` lists files and dirs; we can't tell which
-        // without a second stat, so mark everything as a non-dir. The file
-        // explorer search UI treats hits uniformly (open path / preview).
         out.push(SearchHit {
             path: path.to_string(),
             rel,
             name,
-            is_dir: false,
+            is_dir,
         });
     }
     out
@@ -343,11 +358,17 @@ pub(crate) fn parse_find_output(raw: &str, root: &str) -> Vec<SearchHit> {
 #[tauri::command]
 pub async fn ssh_fs_search(
     state: State<'_, PtyState>,
-    session_id: u32,
-    root: String,
-    query: String,
-    limit: Option<usize>,
+    search_state: State<'_, FsSearchCancellationState>,
+    request: RemoteFileSearchRequest,
 ) -> Result<Vec<SearchHit>, String> {
+    let RemoteFileSearchRequest {
+        session_id,
+        root,
+        query,
+        limit,
+        request_id,
+    } = request;
+    validate_request_id(&request_id)?;
     let session = ssh_session(&state, session_id)?;
     let ssh = match session.as_ref() {
         Session::Ssh(s) => s,
@@ -361,8 +382,17 @@ pub async fn ssh_fs_search(
     // `-not -path '*/.*'` skips hidden dirs/files (matches local ignore walk).
     // `2>/dev/null` suppresses permission-denied noise. `head` caps result count
     // so a massive tree doesn't stream forever.
-    let cmd = format!("find {root_q} -name {query_q} -not -path '*/.*' 2>/dev/null | head -{cap}");
-    let out = ssh.exec(&cmd, MAX_SEARCH_BYTES).await?;
+    let cmd = format!(
+        "find {root_q} -name {query_q} -not -path '*/.*' 2>/dev/null | \
+         while IFS= read -r p; do if [ -d \"$p\" ]; then printf 'd\\t%s\\n' \"$p\"; \
+         else printf 'f\\t%s\\n' \"$p\"; fi; done | head -{cap}"
+    );
+    let cancelled = search_state.register(&request_id);
+    let result = ssh
+        .exec_cancellable(&cmd, MAX_SEARCH_BYTES, cancelled.clone())
+        .await;
+    search_state.finish(&request_id, &cancelled);
+    let out = result?;
     Ok(parse_find_output(&out, &root))
 }
 
@@ -374,6 +404,17 @@ const MAX_GREP_BYTES: usize = 256 * 1024;
 /// Response cap defaults/limits, mirroring the local `fs_grep` contract.
 const REMOTE_GREP_DEFAULT_RESULTS: usize = 200;
 const REMOTE_GREP_HARD_MAX_RESULTS: usize = 1000;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteGrepRequest {
+    session_id: u32,
+    root: String,
+    pattern: String,
+    case_insensitive: Option<bool>,
+    max_results: Option<usize>,
+    request_id: String,
+}
 
 /// Parse `grep -rn` output (`./rel/path:LINE:text` per line, produced by
 /// grepping `.` after `cd`-ing into `root`) into `GrepHit`s plus a truncation
@@ -460,12 +501,18 @@ pub(crate) fn parse_grep_output(raw: &str, root: &str, max_results: usize) -> (V
 #[tauri::command]
 pub async fn ssh_fs_grep(
     state: State<'_, PtyState>,
-    session_id: u32,
-    root: String,
-    pattern: String,
-    case_insensitive: Option<bool>,
-    max_results: Option<usize>,
+    search_state: State<'_, FsSearchCancellationState>,
+    request: RemoteGrepRequest,
 ) -> Result<GrepResponse, String> {
+    let RemoteGrepRequest {
+        session_id,
+        root,
+        pattern,
+        case_insensitive,
+        max_results,
+        request_id,
+    } = request;
+    validate_request_id(&request_id)?;
     if pattern.is_empty() {
         return Err("empty pattern".into());
     }
@@ -498,7 +545,12 @@ pub async fn ssh_fs_grep(
         "cd {root_q} && grep -rEIn {case_flag}--exclude-dir=.git --exclude-dir=node_modules \
          --exclude-dir=target --exclude-dir=dist -e {pattern_q} . 2>/dev/null | head -n {head_cap}"
     );
-    let out = ssh.exec(&cmd, MAX_GREP_BYTES).await?;
+    let cancelled = search_state.register(&request_id);
+    let result = ssh
+        .exec_cancellable(&cmd, MAX_GREP_BYTES, cancelled.clone())
+        .await;
+    search_state.finish(&request_id, &cancelled);
+    let out = result?;
     let (hits, truncated) = parse_grep_output(&out, &root, cap);
     let files_scanned = {
         let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
@@ -625,6 +677,15 @@ mod tests {
         let raw = "/srv/app/a.txt\n";
         let hits = parse_find_output(raw, "/srv/app/");
         assert_eq!(hits[0].rel, "a.txt");
+    }
+
+    #[test]
+    fn parse_find_output_preserves_remote_entry_type() {
+        let raw = "d\t/srv/app/src\nf\t/srv/app/src/main.rs\n";
+        let hits = parse_find_output(raw, "/srv/app");
+        assert!(hits[0].is_dir);
+        assert!(!hits[1].is_dir);
+        assert_eq!(hits[0].rel, "src");
     }
 
     #[test]
