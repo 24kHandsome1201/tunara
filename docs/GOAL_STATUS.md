@@ -4,6 +4,8 @@
 
 ## 当前结论
 
+当前唯一 Active Milestone 是 `M0 Phase 1 真实验收`。在本节未完成项全部有真实证据前，不启动编辑器、Preview、Timeline、Companion 或 Recipe。M0 完成后先进入 `M1 Terminal + SSH 性能与乱码稳定性`。
+
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 进行中 | common git dir 稳定身份、本地 linked worktree 发现、SSH 同形解析、概览与 Inspector 来源、侧栏层级表达、缓存与取消过期前端请求 | 真实本地多 worktree 与 SSH 回归，大量 session 性能，失效 worktree fixture，正式 bundle 验收 |
@@ -16,6 +18,16 @@
 | Herdr spike | 暂不进入关键路径 | GOAL 已记录实验边界 | 只有主线阶段验证后再单独决策 |
 | Surface / Action / Dogfood | 未系统化 | Terminal、Review、Files 已有事实源边界，破坏性确认有局部实现 | 建立统一 SurfaceRef/ActionRef、feature flag、数据生命周期与本地可查看/关闭/清空的 dogfood 指标 |
 
+## M1 预备账本，当前不开工
+
+- [ ] 固化冷启动、首个 PTY 可输入、输入回显、10 session、bundle 大小基线。
+- [ ] 建立 50/200MiB Unicode/ANSI/OSC/alternate-screen 高输出 fixture 与 reference capture。
+- [ ] 真实 WebGL context loss、atlas rebuild、renderer fallback 和 30 分钟压力证据。
+- [ ] SSH 输出 4-16ms 或 64-256KiB 有界批处理，记录 IPC/CPU/RSS/p95 frame time。
+- [ ] SSH 输入改为字节预算，大粘贴分块，Close 独立取消，Resize latest-value 合并。
+- [ ] 100/200ms RTT 下连接、目录、preview、grep、diff、取消与恢复 benchmark。
+- [ ] Claude Code、Codex、Pi、OpenCode、Aider 和未知 TUI 的本地/SSH 兼容矩阵。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。
@@ -25,6 +37,7 @@
 - [x] Review 与 File Explorer 共用 Inspector 来源标签。
 - [x] 侧栏表达 Repository -> Worktree -> Session，并展示 session / Agent 数量。
 - [x] 扫描采用 TTL 缓存、watcher 主动失效和 React effect 取消过期回写。
+- [x] 未激活的恢复会话按 transport + host + cwd 去重，最多两路后台 hydration，不把全量扫描放进 PTY 热路径。
 - [x] bare repository、linked worktree、符号链接、detached/locked/prunable 解析有自动测试。
 - [x] 失效本地 linked worktree 独立 fixture。
 - [x] 同一路径位于不同 SSH 主机时 identity 不会错误归并。

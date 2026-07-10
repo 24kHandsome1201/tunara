@@ -10,6 +10,7 @@ import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { getNumberRecordValue } from "@/state/record-keys";
 import { useSessionGitContext } from "./useSessionGitContext";
+import { useWorkspaceHydration } from "./useWorkspaceHydration";
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -126,6 +127,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
     activeRemoteKey,
     nonce,
   });
+  useWorkspaceHydration(sessions, activeId);
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;
