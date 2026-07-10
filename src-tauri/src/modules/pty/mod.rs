@@ -219,3 +219,79 @@ pub fn pty_close(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    #[test]
+    fn ten_live_local_sessions_echo_input_exit_and_leave_no_registry_entries() {
+        const SESSION_COUNT: usize = 10;
+        let state = PtyState::default();
+        let mut probes = Vec::with_capacity(SESSION_COUNT);
+
+        for index in 0..SESSION_COUNT {
+            let logical_id = format!("m0-live-{index}");
+            let marker = format!("__TUNARA_M0_{index}__");
+            let (tx, rx) = mpsc::channel();
+            let channel = Channel::<PtyEvent>::new(move |body| {
+                let _ = tx.send(body);
+                Ok(())
+            });
+            let (session, _) = session::spawn(80, 24, None, channel, Some(&logical_id), None)
+                .expect("spawn real local shell");
+            let id = state.insert(session, Some(&logical_id));
+            probes.push((id, marker, rx));
+        }
+
+        for (id, marker, _) in &probes {
+            let command = format!("printf '%s\\n' '{marker}'; exit\n");
+            state
+                .get(*id)
+                .expect("registered live session")
+                .write(command.as_bytes())
+                .expect("write marker to PTY");
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(15);
+        for (_, marker, rx) in probes {
+            let mut output = Vec::new();
+            let mut exited = false;
+            while !exited && Instant::now() < deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let body = rx
+                    .recv_timeout(remaining)
+                    .expect("PTY event before deadline");
+                let InvokeResponseBody::Json(json) = body else {
+                    continue;
+                };
+                let event: serde_json::Value =
+                    serde_json::from_str(&json).expect("valid event JSON");
+                match event.get("type").and_then(serde_json::Value::as_str) {
+                    Some("data") => {
+                        let encoded = event
+                            .get("data")
+                            .and_then(serde_json::Value::as_str)
+                            .expect("data event payload");
+                        output.extend(B64.decode(encoded).expect("base64 PTY output"));
+                    }
+                    Some("exit") => exited = true,
+                    _ => {}
+                }
+            }
+            assert!(exited, "session did not emit Exit before deadline");
+            assert!(
+                String::from_utf8_lossy(&output).contains(&marker),
+                "session output did not contain its unique marker"
+            );
+        }
+
+        state.close_all();
+        assert!(state.sessions.read().is_empty());
+        assert!(state.logical_sessions.read().is_empty());
+    }
+}

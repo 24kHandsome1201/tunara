@@ -28,6 +28,16 @@ test("every session mascot ships a local SVG and the source license", () => {
   assert.match(license, /MIT License/);
 });
 
+test("mascot SVG imports stay external under the desktop CSP", () => {
+  const icon = readFileSync(resolve(root, "src/ui/SessionMascotIcon.tsx"), "utf8");
+  for (const id of SESSION_MASCOT_IDS) {
+    assert.ok(
+      icon.includes(`/mascots/${id}.svg?no-inline`),
+      `${id} must not become a CSP-blocked data URL`,
+    );
+  }
+});
+
 test("session mascots render in the overview picker, sidebar, and titlebar", () => {
   const overview = readFileSync(resolve(root, "src/ui/SessionOverviewPanel.tsx"), "utf8");
   const card = readFileSync(resolve(root, "src/ui/SessionCard.tsx"), "utf8");

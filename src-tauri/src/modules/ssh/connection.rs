@@ -967,11 +967,13 @@ fn render_remote_bootstrap(
     inject_shell_integration: bool,
     initial_cwd: Option<&str>,
 ) -> String {
-    let mut script = if inject_shell_integration {
-        render_remote_integration(session_id)
-    } else {
-        String::new()
-    };
+    // Erase the short source command from inside the staged script. Keeping
+    // this control sequence out of the typed line prevents the typed line from
+    // wrapping before it can erase itself.
+    let mut script = "printf '\\033[1A\\r\\033[2K'\n".to_string();
+    if inject_shell_integration {
+        script.push_str(&render_remote_integration(session_id));
+    }
     if let Some(cwd) = initial_cwd {
         if !script.is_empty() && !script.ends_with('\n') {
             script.push('\n');
@@ -1004,35 +1006,45 @@ fn render_remote_integration(session_id: &str) -> String {
 /// BSD base64 decode flag; stderr is discarded so failures stay quiet.
 fn integration_stage_command(encoded: &str) -> String {
     format!(
-        "sh -c 'f=$(mktemp /tmp/.tunara-si-XXXXXXXXXX) && {{ printf %s {encoded} | base64 --decode 2>/dev/null || printf %s {encoded} | base64 -D 2>/dev/null; }} > \"$f\" && printf %s \"$f\"'"
+        "sh -c 'f=$(mktemp /tmp/.t-XXXXXXXXXX) && {{ printf %s {encoded} | base64 --decode 2>/dev/null || printf %s {encoded} | base64 -D 2>/dev/null; }} > \"$f\" && printf %s \"$f\"'"
     )
 }
 
 /// The ONLY line typed into the interactive shell: source the staged file,
-/// then remove it. Leading space keeps it out of ignorespace-style history;
-/// `2>/dev/null` silences non-POSIX shells (fish sources it and hits the
-/// bash/zsh guards; csh errors once — same posture as the old inline eval).
-/// Must stay far below 1024 bytes, the smallest (BSD) canonical-mode tty line
-/// buffer — see `stage_remote_bootstrap` and the regression test below.
+/// then remove it. The path is unquoted only because `is_safe_remote_path`
+/// restricts it to a shell-inert ASCII charset. Leading space keeps it out of
+/// ignorespace-style history. Must stay far below 1024 bytes, the smallest
+/// (BSD) canonical-mode tty line buffer, and below a typical 64-column prompt
+/// line so the staged script can erase the echo without leaving a wrapped
+/// fragment behind.
 fn integration_source_line(path: &str) -> String {
-    format!(" . \"{path}\" 2>/dev/null; rm -f \"{path}\"\n")
+    format!(" . {path};rm -f {path}\n")
 }
 
 fn initial_cwd_fallback_line(cwd: &str) -> String {
-    let line = format!(" cd {}\n", shell_quote(cwd));
+    let line = clear_typed_line(&format!("cd {}", shell_quote(cwd)));
     if line.len() < 1_024 {
         line
     } else {
-        " printf '%s\\n' '[tunara] saved remote directory path is too long to restore' >&2\n"
-            .to_string()
+        clear_typed_line(
+            "printf '%s\\n' '[tunara] saved remote directory path is too long to restore'",
+        )
     }
 }
 
+/// The shell echoes the bootstrap input before executing it. As the first
+/// command, move to that just-echoed line and erase it; later bootstrap output
+/// (including an unavailable-cwd warning) remains visible. This avoids relying
+/// on PTY ECHO modes that login shells may reset during startup.
+fn clear_typed_line(command: &str) -> String {
+    format!(" printf '\\033[1A\\r\\033[2K';{command}\n")
+}
+
 /// Accept only the path shape our own stage command can produce — an absolute
-/// `/tmp/.tunara-si-*` path in a conservative charset. Anything else (error
+/// `/tmp/.t-*` path in a conservative charset. Anything else (error
 /// text, MOTD noise, a hostile multi-line blob) must not reach the shell line.
 fn is_safe_remote_path(path: &str) -> bool {
-    path.starts_with("/tmp/.tunara-si-")
+    path.starts_with("/tmp/.t-")
         && path.len() < 200
         && path
             .chars()
@@ -1062,7 +1074,7 @@ mod tests {
     /// prompt. Payload bytes may only travel over the exec channel.
     #[test]
     fn source_line_fits_every_canonical_tty_buffer() {
-        let line = integration_source_line("/tmp/.tunara-si-AbCd012345");
+        let line = integration_source_line("/tmp/.t-AbCd012345");
         assert!(
             line.len() < 256,
             "shell line too long: {} bytes",
@@ -1073,6 +1085,10 @@ mod tests {
         assert!(
             line.starts_with(' '),
             "leading space keeps it out of history"
+        );
+        assert!(
+            line.len() < 64,
+            "source command must stay on one typical prompt line"
         );
     }
 
@@ -1093,7 +1109,7 @@ mod tests {
         );
         let stage = integration_stage_command(&encoded);
         assert!(stage.contains(&encoded));
-        let line = integration_source_line("/tmp/.tunara-si-AbCd012345");
+        let line = integration_source_line("/tmp/.t-AbCd012345");
         assert!(!line.contains(&encoded[..32]));
     }
 
@@ -1101,10 +1117,11 @@ mod tests {
     fn remote_bootstrap_restores_a_shell_quoted_unicode_cwd() {
         let cwd = "/srv/可爱动物/it's-here";
         let rendered = render_remote_bootstrap("session-1", true, Some(cwd));
+        assert!(rendered.starts_with("printf '\\033[1A\\r\\033[2K'\n"));
         assert!(rendered.contains("cd '/srv/可爱动物/it'\"'\"'s-here'"));
         assert!(rendered.contains("saved remote directory unavailable"));
         assert!(rendered.contains("session-1"));
-        let line = integration_source_line("/tmp/.tunara-si-AbCd012345");
+        let line = integration_source_line("/tmp/.t-AbCd012345");
         assert!(!line.contains(cwd), "cwd stays in the staged payload");
     }
 
@@ -1119,7 +1136,7 @@ mod tests {
     fn initial_cwd_fallback_is_tty_bounded() {
         assert_eq!(
             initial_cwd_fallback_line("/srv/my app"),
-            " cd '/srv/my app'\n"
+            " printf '\\033[1A\\r\\033[2K';cd '/srv/my app'\n"
         );
         let long = format!("/{}", "'".repeat(4_096));
         let line = initial_cwd_fallback_line(&long);
@@ -1129,15 +1146,15 @@ mod tests {
 
     #[test]
     fn stage_output_path_is_validated() {
-        assert!(is_safe_remote_path("/tmp/.tunara-si-aB3xY9_qWe"));
+        assert!(is_safe_remote_path("/tmp/.t-aB3xY9_qWe"));
         // Error text, prompts, or anything shell-active must be rejected.
         assert!(!is_safe_remote_path(""));
         assert!(!is_safe_remote_path("mktemp: not found"));
-        assert!(!is_safe_remote_path("/tmp/.tunara-si-x; rm -rf ~"));
-        assert!(!is_safe_remote_path("/tmp/.tunara-si-x\n/etc/passwd"));
+        assert!(!is_safe_remote_path("/tmp/.t-x; rm -rf ~"));
+        assert!(!is_safe_remote_path("/tmp/.t-x\n/etc/passwd"));
         assert!(!is_safe_remote_path("/tmp/evil-si-abc"));
-        assert!(!is_safe_remote_path("/tmp/.tunara-si-x y"));
-        assert!(!is_safe_remote_path("/tmp/.tunara-si-x\"$(id)\""));
+        assert!(!is_safe_remote_path("/tmp/.t-x y"));
+        assert!(!is_safe_remote_path("/tmp/.t-x\"$(id)\""));
     }
 
     #[tokio::test]

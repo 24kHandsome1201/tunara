@@ -8,7 +8,7 @@
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
-| Phase 1 Workspace / Worktree | 进行中 | common git dir 稳定身份、本地 linked worktree 发现、SSH 同形解析与 cwd 恢复、概览与 Inspector 来源、侧栏层级表达、缓存与取消过期前端请求 | 大量真实 live session 性能与正式 release bundle 视觉验收 |
+| Phase 1 Workspace / Worktree | 进行中 | common git dir 稳定身份、本地 linked worktree 发现、SSH 同形解析与 cwd 恢复、概览与 Inspector 来源、侧栏层级表达、缓存与取消过期前端请求 | 10+ 已挂载 WebView 终端的 renderer 与输入性能基线 |
 | Phase 2 Markdown / 单文件轻编辑 | 未开始 | 已有只读文件预览与外部编辑器逃生口 | 阅读器、冲突检测、本地安全写、SSH 原子写回完整闭环 |
 | Phase 3 Workspace Preview | 未开始 | 终端已有 URL 检测基础能力待盘点 | workspace 绑定、安全 WebView、来源/截图/错误摘要闭环 |
 | Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
@@ -46,8 +46,9 @@
 - [x] `root@100.83.112.82` 真实 SSH 恢复 `/root/qclaw-wechat-client` 后识别远端 workspace；目录不存在时连接成功、回落 home 并显示明确提示。
 - [x] 576×433 窄窗口、vertical split、双 PTY、冷重启恢复与中文路径已在真实开发 bundle 验收。
 - [x] 独立 optimized release 验收 bundle 在 640×480 下完成 vertical split、本地中文 linked worktree、真实 SSH cwd/workspace 与冷重启回归，未读写正式应用数据。
-- [ ] 大量真实 live session 下 PTY 输入、内存与扫描调度无可感知回归。
-- [ ] 补一份可审阅的 release UI 截图证据；当前截图 daemon、系统截屏权限与 in-app browser 均不可用，因此不伪造视觉通过。
+- [x] 10 条真实本地 PTY 同时存活，逐条写入/读回唯一 marker、接收 Exit 并清空物理/逻辑注册表；本机测试约 0.31 秒。
+- [ ] 10+ 已挂载 WebView 终端下的 renderer RSS、输入延迟和帧时间基线。
+- [x] 可审阅截图覆盖 optimized release 的本地 linked worktree、真实 SSH 分屏、Workspace Inspector 与 16 个动物图标；截图发现并修复 CSP 阻断小 SVG 与 SSH bootstrap 回显，干净 SSH 会话复拍后直接落到目标目录提示符。
 
 ## 每阶段通用门禁
 
