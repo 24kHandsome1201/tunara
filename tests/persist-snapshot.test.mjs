@@ -81,10 +81,15 @@ test("persisted session helpers keep only durable fields and restore idle runtim
     remote: { host: "box", port: 22, user: "me", identityFile: "~/.ssh/id_ed25519", injectShellIntegration: true },
   });
 
-  assert.deepEqual(fromPersistedSession(persisted), {
+  const restored = fromPersistedSession(persisted);
+  const { connection, ...restoredDurableFields } = restored;
+  assert.deepEqual(restoredDurableFields, {
     ...persisted,
     runState: "idle",
   });
+  assert.equal(connection.transport, "ssh");
+  assert.equal(connection.phase, "pending");
+  assert.equal(connection.source, "restore");
 });
 
 // Regression: shell-integration injection is default-ON in the backend, so a

@@ -95,6 +95,11 @@ import { DEFAULT_KEYBINDINGS, matchesKeybinding, parseKeybinding, sanitizeKeybin
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand, resolveTerminalBlockRows } from "../src/modules/terminal/lib/terminal-blocks.ts";
 import { deriveTitle } from "../src/ui/types.ts";
 import { setLanguage } from "../src/modules/i18n/core.ts";
+import {
+  connectionDiagnostic,
+  initialConnectionEvidence,
+  reduceConnectionEvidence,
+} from "../src/modules/terminal/lib/connection-state.ts";
 
 // Agent title suffixes go through i18n; pin the locale so assertions are
 // deterministic regardless of the host's navigator.language.
@@ -183,6 +188,77 @@ function makeMarker(line) {
     },
   };
 }
+
+test("SSH connection evidence replays backend phases without inferring readiness from the terminal", () => {
+  let evidence = initialConnectionEvidence("ssh", "user", 10);
+  assert.deepEqual(evidence, {
+    transport: "ssh",
+    phase: "pending",
+    source: "user",
+    updatedAt: 10,
+  });
+
+  evidence = reduceConnectionEvidence(evidence, { type: "openRequested", transport: "ssh" }, 20);
+  evidence = reduceConnectionEvidence(evidence, { type: "backendPhase", transport: "ssh", phase: "handshaking" }, 30);
+  evidence = reduceConnectionEvidence(evidence, { type: "hostKeyPrompt" }, 40);
+  assert.equal(evidence.phase, "verifyingHostKey");
+  assert.equal(evidence.source, "hostKey");
+
+  evidence = reduceConnectionEvidence(evidence, { type: "backendPhase", transport: "ssh", phase: "authenticating" }, 50);
+  evidence = reduceConnectionEvidence(evidence, { type: "backendPhase", transport: "ssh", phase: "openingShell" }, 60);
+  evidence = reduceConnectionEvidence(evidence, { type: "ready", transport: "ssh", source: "backend" }, 70);
+  assert.deepEqual(evidence, {
+    transport: "ssh",
+    phase: "ready",
+    source: "backend",
+    updatedAt: 70,
+  });
+
+  evidence = reduceConnectionEvidence(evidence, { type: "exit", transport: "ssh", code: -2, disconnected: true }, 80);
+  assert.deepEqual(evidence, {
+    transport: "ssh",
+    phase: "disconnected",
+    source: "transport",
+    updatedAt: 80,
+    exitCode: -2,
+  });
+});
+
+test("connection failure evidence keeps the failed phase and produces bounded diagnostics", () => {
+  let evidence = initialConnectionEvidence("ssh", "restore", 10);
+  evidence = reduceConnectionEvidence(evidence, { type: "backendPhase", transport: "ssh", phase: "authenticating" }, 20);
+  evidence = reduceConnectionEvidence(evidence, {
+    type: "failed",
+    transport: "ssh",
+    reason: "auth",
+    detail: `authentication failed\n${"x".repeat(700)}`,
+    source: "renderer",
+  }, 30);
+
+  assert.equal(evidence.phase, "failed");
+  assert.equal(evidence.failedAtPhase, "authenticating");
+  assert.equal(evidence.detail.length, 500);
+  assert.doesNotMatch(evidence.detail, /\n/);
+
+  const replayed = reduceConnectionEvidence(evidence, {
+    type: "failed",
+    transport: "ssh",
+    reason: "auth",
+    detail: `authentication failed\n${"x".repeat(700)}`,
+    source: "renderer",
+  }, 40);
+  assert.equal(replayed, evidence, "duplicate evidence must not churn the session state or timeline");
+
+  const diagnostic = connectionDiagnostic({
+    sessionId: "s-1",
+    endpoint: "me@example.com:22",
+    evidence,
+  });
+  assert.match(diagnostic, /phase=failed/);
+  assert.match(diagnostic, /source=renderer/);
+  assert.match(diagnostic, /failedAtPhase=authenticating/);
+  assert.match(diagnostic, /reason=auth/);
+});
 
 test("terminal input buffer scans submissions across chunks", () => {
   let result = scanTerminalInputBuffer("", "cla");

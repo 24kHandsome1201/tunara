@@ -266,6 +266,12 @@ enum InputMsg {
     Close,
 }
 
+fn send_connection_status(on_event: &IpcChannel<PtyEvent>, phase: &str) {
+    let _ = on_event.send(PtyEvent::ConnectionStatus {
+        phase: phase.to_string(),
+    });
+}
+
 impl SshSession {
     /// Connect, authenticate, open a shell PTY, and start pumping output into
     /// `on_event`. Returns once the shell is live; output streaming continues
@@ -274,6 +280,7 @@ impl SshSession {
         params: ConnectParams,
         on_event: IpcChannel<PtyEvent>,
     ) -> Result<SshSession, String> {
+        send_connection_status(&on_event, "connecting");
         let config = Arc::new(client::Config {
             // Keep long-lived terminals alive; max>0 so a single missed reply
             // doesn't drop the session (Tabby hit KeepaliveTimeout otherwise).
@@ -311,6 +318,7 @@ impl SshSession {
         if let Err(e) = socket.set_nodelay(true) {
             log::debug!("ssh: set TCP_NODELAY failed: {e}");
         }
+        send_connection_status(&on_event, "handshaking");
         let mut handle = await_stage(
             &format!("SSH handshake {}:{}", params.host, params.port),
             SSH_HANDSHAKE_TIMEOUT,
@@ -318,6 +326,7 @@ impl SshSession {
         )
         .await?;
 
+        send_connection_status(&on_event, "authenticating");
         await_stage(
             "SSH authentication",
             SSH_AUTH_TIMEOUT,
@@ -325,6 +334,7 @@ impl SshSession {
         )
         .await?;
 
+        send_connection_status(&on_event, "openingShell");
         let mut channel = await_stage(
             "open session channel",
             SSH_CHANNEL_SETUP_TIMEOUT,
@@ -381,6 +391,7 @@ impl SshSession {
         // 1024 keystroke/resize messages is far beyond human input rate; on
         // overflow `write` drops with an error rather than buffering unboundedly.
         let (input_tx, mut input_rx) = mpsc::channel::<InputMsg>(INPUT_QUEUE_CAP);
+        send_connection_status(&on_event, "ready");
 
         // Pump: remote output → PtyEvent::Data; frontend input → channel.
         //
@@ -665,10 +676,10 @@ impl SshSession {
         .await
     }
 
-    /// Execute a search command that can be stopped when its UI request is
-    /// superseded. `exec_on` still owns channel teardown, so cancellation
-    /// sends CHANNEL_CLOSE instead of merely dropping the future and leaving
-    /// the remote `find`/`grep` process alive.
+    /// Execute a one-shot inspection command that can be stopped when its UI
+    /// request is superseded. `exec_on` still owns channel teardown, so
+    /// cancellation sends CHANNEL_CLOSE instead of merely dropping the future
+    /// and leaving the remote `find`/`grep`/`git diff` process alive.
     pub async fn exec_cancellable(
         &self,
         command: &str,

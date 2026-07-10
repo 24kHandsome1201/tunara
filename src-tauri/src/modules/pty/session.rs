@@ -34,6 +34,11 @@ pub enum PtyEvent {
     Exit {
         code: i32,
     },
+    /// Fine-grained SSH open progress. Local PTYs use renderer-owned opening
+    /// and ready evidence because their spawn is synchronous.
+    ConnectionStatus {
+        phase: String,
+    },
     /// An unknown/unverifiable SSH host key needs the user to confirm the
     /// fingerprint before the connection proceeds (TOFU). The frontend shows a
     /// dialog and replies via the `ssh_host_key_decision` command keyed by

@@ -4,10 +4,12 @@ import { useSessionsStore } from "@/state/sessions";
 import { t } from "@/modules/i18n";
 import type { RemoteInfo } from "@/ui/types";
 import { classifySshFailure } from "@/modules/ssh/failure-reason";
+import type { BackendConnectionPhase } from "./connection-state";
 
 export type PtyEvent =
   | { type: "data"; data: string }
   | { type: "exit"; code: number }
+  | { type: "connectionStatus"; phase: BackendConnectionPhase }
   | {
       type: "hostKeyPrompt";
       promptId: string;
@@ -65,7 +67,15 @@ export function reportSshOpenFailure(
   error: string,
 ): void {
   if (!remote) return;
-  useSessionsStore.getState().updateSession(sessionId, { runState: "failed" });
+  const reason = classifySshFailure(error);
+  const store = useSessionsStore.getState();
+  store.updateSession(sessionId, { runState: "failed" });
+  store.handleConnectionEvent(sessionId, {
+    type: "failed",
+    transport: "ssh",
+    reason,
+    detail: error,
+  });
   useUIStore.getState().addToast({
     sessionId,
     title: `${remote.user}@${remote.host}`,
@@ -77,7 +87,28 @@ export function reportSshOpenFailure(
 export type PtyHandlers = {
   onData: (bytes: Uint8Array) => void;
   onExit?: (code: number) => void;
+  onConnectionStatus?: (phase: PtyConnectionStatusPhase) => void;
 };
+
+export type PtyConnectionStatusPhase = BackendConnectionPhase | "verifyingHostKey";
+
+export function recordPtyConnectionStatus(sessionId: string, phase: PtyConnectionStatusPhase): void {
+  useSessionsStore.getState().handleConnectionEvent(
+    sessionId,
+    phase === "verifyingHostKey"
+      ? { type: "hostKeyPrompt" }
+      : { type: "backendPhase", transport: "ssh", phase },
+  );
+}
+
+export function recordPtyExit(sessionId: string, remote: boolean, code: number): void {
+  useSessionsStore.getState().handleConnectionEvent(sessionId, {
+    type: "exit",
+    transport: remote ? "ssh" : "local",
+    code,
+    disconnected: remote && code === SSH_DISCONNECTED_EXIT_CODE,
+  });
+}
 
 export type PtySession = {
   id: number;
@@ -108,6 +139,9 @@ export async function openPty(
         break;
       case "exit":
         handlers.onExit?.(event.code);
+        break;
+      case "connectionStatus":
+        handlers.onConnectionStatus?.(event.phase);
         break;
     }
   };
@@ -207,7 +241,11 @@ export async function openSshPty(
       case "exit":
         handlers.onExit?.(event.code);
         break;
+      case "connectionStatus":
+        handlers.onConnectionStatus?.(event.phase);
+        break;
       case "hostKeyPrompt":
+        handlers.onConnectionStatus?.("verifyingHostKey");
         // Queue the confirmation in the UI store; an app-level dialog renders
         // the head and calls answerHostKeyPrompt with the user's decision. The
         // backend ssh_open call is blocked inside check_server_key until then.

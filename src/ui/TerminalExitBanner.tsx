@@ -5,6 +5,38 @@ import { t as staticT } from "@/modules/i18n";
 import { SSH_DISCONNECTED_EXIT_CODE, sshFailureReason } from "@/modules/terminal/lib/pty-bridge";
 import type { Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
+import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/lib/connection-state";
+import { copyText } from "./lib/clipboard";
+
+function ConnectionDiagnosticButton({ session }: { session: Session }) {
+  const t = useT();
+  const copy = async () => {
+    const endpoint = session.remote
+      ? `${session.remote.user}@${session.remote.host}:${session.remote.port}`
+      : undefined;
+    const ok = await copyText(connectionDiagnostic({
+      sessionId: session.id,
+      endpoint,
+      evidence: session.connection,
+    }));
+    useUIStore.getState().addToast({
+      sessionId: session.id,
+      title: ok ? t("connection.diagnostics.copied") : t("toast.copy_error"),
+      subtitle: "",
+      variant: ok ? "success" : "error",
+    });
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => { void copy(); }}
+      className="hover-bg"
+      style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 6px", borderRadius: "var(--r-btn)", flexShrink: 0 }}
+    >
+      {t("connection.diagnostics.copy")}
+    </button>
+  );
+}
 
 interface TerminalExitBannerProps {
   session: Session;
@@ -95,6 +127,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
       >
         {label}
       </span>
+      {isRemote && <ConnectionDiagnosticButton session={session} />}
       <AccentActionButton onClick={restart} title={actionLabel} ariaLabel={actionLabel}>
         <RestartIcon size={10} />
         {actionLabel}
@@ -118,6 +151,9 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const isRemote = !!session.remote;
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
   const detail = isRemote ? sshFailureReason(error) : t("pty.error.subtitle");
+  const phase = session.connection?.failedAtPhase;
+  const phaseLabel = phase ? t(`connection.phase.${phase}`) : "";
+  const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
 
   const retry = () => {
     const store = useSessionsStore.getState();
@@ -182,8 +218,9 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
           minWidth: 0,
         }}
       >
-        {title} — {detail}
+        {summary}
       </span>
+      <ConnectionDiagnosticButton session={session} />
       <AccentActionButton onClick={retry} title={t("pty.error.retry")} ariaLabel={t("pty.error.retry")}>
         <RestartIcon size={10} />
         {t("pty.error.retry")}
@@ -198,7 +235,8 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
  * pane is blank with no signal. Lifted out of TerminalView to keep that file
  * under its regression-tested line budget.
  */
-export function ConnectingOverlay({ onCancel }: { onCancel?: () => void }) {
+export function ConnectingOverlay({ phase, onCancel }: { phase?: ConnectionPhase; onCancel?: () => void }) {
+  const label = staticT(`connection.phase.${phase ?? "connecting"}`);
   return (
     <div
       aria-live="polite"
@@ -217,7 +255,7 @@ export function ConnectingOverlay({ onCancel }: { onCancel?: () => void }) {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "loadPulse 1.5s var(--ease-in-out) infinite" }} />
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
-          {staticT("ssh.connecting")}
+          {label}
         </span>
         {onCancel && (
           <button

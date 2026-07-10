@@ -5,6 +5,9 @@ export type TimelineEventType =
   | "command_end"
   | "agent_start"
   | "agent_stop"
+  | "connection_ready"
+  | "connection_failed"
+  | "connection_lost"
   | "git_change"
   | "note_saved";
 

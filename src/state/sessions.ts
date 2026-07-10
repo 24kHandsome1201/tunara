@@ -39,6 +39,11 @@ import {
   scheduleGitRefresh,
 } from "./sessions-git";
 import { clearSshCredentials } from "@/modules/ssh/pending-credentials";
+import {
+  initialConnectionEvidence,
+  reduceConnectionEvidence,
+  type ConnectionEvent,
+} from "@/modules/terminal/lib/connection-state";
 
 interface SessionsState {
   sessions: Session[];
@@ -70,6 +75,7 @@ interface SessionsState {
   togglePinnedSession: (id: string) => void;
   setSessionNote: (id: string, note: string) => void;
   appendTimeline: (id: string, type: TimelineEvent["type"], detail?: string) => void;
+  handleConnectionEvent: (id: string, event: ConnectionEvent) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
   recordAgentSessionId: (id: string, agent: AgentCode, agentSessionId: string) => void;
@@ -127,6 +133,7 @@ export function createSession(
   },
 ): Session {
   const id = makeSessionId();
+  const now = Date.now();
   return {
     id,
     agent: opts?.agent,
@@ -136,10 +143,11 @@ export function createSession(
     branch: opts?.branch ?? "",
     gitState: "unknown",
     runState: "idle" as const,
+    connection: initialConnectionEvidence(opts?.remote ? "ssh" : "local", "user", now),
     pendingInput: opts?.pendingInput,
     pendingInputSubmit: opts?.pendingInputSubmit,
     remote: opts?.remote,
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
 }
 
@@ -377,6 +385,22 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         },
       };
     });
+  },
+
+  handleConnectionEvent: (id, event) => {
+    const session = get().sessions.find((candidate) => candidate.id === id);
+    if (!session) return;
+    const previousPhase = session.connection?.phase;
+    const connection = reduceConnectionEvidence(session.connection, event);
+    if (connection === session.connection) return;
+    if (connection.phase === "ready" && previousPhase !== "ready") {
+      get().appendTimeline(id, "connection_ready", connection.transport);
+    } else if (connection.phase === "failed") {
+      get().appendTimeline(id, "connection_failed", connection.reason);
+    } else if (connection.phase === "disconnected") {
+      get().appendTimeline(id, "connection_lost", connection.transport);
+    }
+    get().updateSession(id, { connection });
   },
 
   setSessionNote: (id, note) => {

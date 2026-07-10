@@ -68,6 +68,9 @@ function ActionButton({ children, onClick }: { children: React.ReactNode; onClic
 }
 
 function statusLabel(session: Session, t: ReturnType<typeof useT>): string {
+  if (session.connection && session.connection.phase !== "ready") {
+    return t(`connection.phase.${session.connection.phase}`);
+  }
   if (isSessionBusy(session)) return t("overview.status.running");
   const state = sessionDisplayRunState(session);
   if (state === "done") return t("overview.status.done");
@@ -97,10 +100,25 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
     : session.gitState === "notGit"
       ? t("overview.changes.not_git")
       : t("overview.changes.clean");
+  const connectionHint = session.connection
+    ? `${session.connection.phase === "ready" ? `${t("connection.phase.ready")} · ` : ""}${t(`connection.source.${session.connection.source}`)} · ${formatTimelineRelativeTime(session.connection.updatedAt)}`
+    : undefined;
 
   const openNotes = () => {
     useUIStore.getState().setPanelVisible(true);
     useUIStore.getState().setInspectorTab("notes");
+  };
+
+  const reconnectRemote = () => {
+    if (!session.remote) return;
+    useUIStore.getState().openSshConnect({
+      host: session.remote.host,
+      user: session.remote.user,
+      port: session.remote.port,
+      identityFile: session.remote.identityFile,
+      injectShellIntegration: session.remote.injectShellIntegration,
+      reconnectSessionId: session.id,
+    });
   };
 
   return (
@@ -120,7 +138,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <InfoCard label={t("overview.card.status")} value={statusLabel(session, t)} hint={session.lastExitCode !== undefined ? `exit ${session.lastExitCode}` : undefined} />
+        <InfoCard label={t("overview.card.status")} value={statusLabel(session, t)} hint={connectionHint ?? (session.lastExitCode !== undefined ? `exit ${session.lastExitCode}` : undefined)} />
         <InfoCard label={t("overview.card.agent")} value={agentName} hint={session.agentActivity ? t(`overview.agent_activity.${session.agentActivity}`) : undefined} />
         <InfoCard label={isRemote ? t("overview.card.remote") : t("overview.card.cwd")} value={isRemote ? remoteLabel : session.dir} />
         <InfoCard label={t("overview.card.changes")} value={changes.fileCount > 0 ? t("overview.changes.files", { count: String(changes.fileCount) }) : changeHint} hint={changes.fileCount > 0 ? changeHint : undefined} />
@@ -178,6 +196,11 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
         {!isRemote && (
           <ActionButton onClick={() => useSessionsStore.getState().refreshGit(session.id)}>
             {t("overview.action.refresh_git")}
+          </ActionButton>
+        )}
+        {isRemote && session.connection && ["disconnected", "failed", "exited"].includes(session.connection.phase) && (
+          <ActionButton onClick={reconnectRemote}>
+            {t("terminal.exited.reconnect")}
           </ActionButton>
         )}
       </div>

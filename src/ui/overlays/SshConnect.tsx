@@ -195,6 +195,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
         terminalProgress: undefined,
         reconnectNonce: (existingSession.reconnectNonce ?? 0) + 1,
       });
+      useSessionsStore.getState().handleConnectionEvent(existingSession.id, {
+        type: "openRequested",
+        transport: "ssh",
+        source: "user",
+      });
       useSessionsStore.getState().setActive(existingSession.id);
     } else {
       addSession(session); // addSession 已将其设为活动会话

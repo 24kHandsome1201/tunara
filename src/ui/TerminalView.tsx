@@ -6,7 +6,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { cancelSshOpen, openSessionPty, reportSshOpenFailure, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { cancelSshOpen, openSessionPty, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
 import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
@@ -344,6 +344,11 @@ function TerminalViewImpl({
       });
       cleanups.push(snapshotScheduler.dispose);
       const cwd = dir === "~" ? undefined : dir;
+      const transport = getCurrentSession()?.remote ? "ssh" : "local";
+      useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
+        type: "openRequested",
+        transport,
+      });
       const outputBuffer = createTerminalOutputBuffer(term);
       cleanups.push(() => outputBuffer.dispose());
       // Declared before ptyHandlers so onExit can flip it even if exit races the
@@ -368,9 +373,13 @@ function TerminalViewImpl({
         onExit: (code: number) => {
           if (disposed) return;
           inputToPtyEnabled = false;
+          recordPtyExit(sessionIdRef.current, Boolean(getCurrentSession()?.remote), code);
           handleTerminalProcessExit(term, sessionIdRef.current, code, Boolean(getCurrentSession()?.remote));
           snapshotScheduler.flush();
           setExitCode(code);
+        },
+        onConnectionStatus: (phase: PtyConnectionStatusPhase) => {
+          recordPtyConnectionStatus(sessionIdRef.current, phase);
         },
       };
       let pty;
@@ -393,7 +402,15 @@ function TerminalViewImpl({
         setOpenError(String(e));
         const cur = getCurrentSession();
         reportSshOpenFailure(sessionIdRef.current, cur?.remote, String(e));
-        if (!cur?.remote) useUIStore.getState().addToast({ sessionId: sessionIdRef.current, title: t("pty.error.title"), subtitle: t("pty.error.subtitle"), variant: "error" });
+        if (!cur?.remote) {
+          useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
+            type: "failed",
+            transport: "local",
+            reason: "pty",
+            detail: String(e),
+          });
+          useUIStore.getState().addToast({ sessionId: sessionIdRef.current, title: t("pty.error.title"), subtitle: t("pty.error.subtitle"), variant: "error" });
+        }
         return;
       }
       if (disposed) {
@@ -402,6 +419,12 @@ function TerminalViewImpl({
       }
       ptyRef.current = pty;
       setPtyReady(true); // triggers the pendingInput effect once, now that pty is live
+      if (transport === "local") {
+        useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
+          type: "ready",
+          transport: "local",
+        });
+      }
 
       // Expose the live PTY id on the session so the remote file panel can
       // locate the backend SSH connection for SFTP commands.
@@ -510,7 +533,7 @@ function TerminalViewImpl({
   return (
     <>
       <TerminalViewChrome containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />
-      {!ptyReady && !openError && !exitCode && <ConnectingOverlay onCancel={() => {
+      {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {
         void cancelSshOpen(sessionId);
         useSessionsStore.getState().closeSession(sessionId);
       }} />}

@@ -7,6 +7,7 @@ import {
   MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE,
 } from "../modules/terminal/lib/terminal-snapshot-limits.ts";
 import { trimTerminalSnapshotSerialized } from "../modules/terminal/lib/terminal-snapshot-trim.ts";
+import { initialConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
 import { parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
@@ -160,9 +161,11 @@ export function sanitizePersistedSession(p: PersistedSession): PersistedSession 
 }
 
 export function fromPersistedSession(p: PersistedSession): Session {
+  const session = sanitizePersistedSession(p);
   return {
-    ...sanitizePersistedSession(p),
+    ...session,
     runState: "idle",
+    connection: initialConnectionEvidence(session.remote ? "ssh" : "local", "restore"),
   };
 }
 
