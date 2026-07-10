@@ -16,6 +16,8 @@ export interface TerminalCommandBlock {
   completedAt?: number;
 }
 
+export const MAX_RETAINED_TERMINAL_BLOCKS = 240;
+
 export function resolveTerminalBlockRows(
   block: Pick<TerminalCommandBlock, "startRow" | "endRow" | "startMarker" | "endMarker">,
 ): { startRow: number; endRow: number } | null {
@@ -27,6 +29,20 @@ export function resolveTerminalBlockRows(
     : block.endRow;
   if (startRow === null || endRow === null || endRow < startRow) return null;
   return { startRow, endRow };
+}
+
+/**
+ * Keep command history aligned with xterm scrollback. Markers are disposed by
+ * xterm when their rows leave the buffer, so those blocks can no longer be
+ * revealed or copied and should disappear from the navigation model too.
+ */
+export function retainNavigableTerminalBlocks(
+  blocks: readonly TerminalCommandBlock[],
+  limit = MAX_RETAINED_TERMINAL_BLOCKS,
+): TerminalCommandBlock[] {
+  const navigable = blocks.filter((block) => resolveTerminalBlockRows(block) !== null);
+  const boundedLimit = Math.max(0, Math.floor(limit));
+  return boundedLimit === 0 ? [] : navigable.slice(-boundedLimit);
 }
 
 export function findStickyCommandBlock(

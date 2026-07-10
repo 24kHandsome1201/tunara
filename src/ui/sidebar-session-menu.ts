@@ -26,8 +26,20 @@ export function buildSessionMenuItems({
     ui.setPanelVisible(true);
     ui.setInspectorTab("notes");
   };
+  const chooseMascot = () => {
+    onSelectSession(session.id);
+    const ui = useUIStore.getState();
+    ui.setPanelVisible(true);
+    ui.setInspectorTab("overview");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const picker = document.querySelector<HTMLElement>(`[data-session-mascot-picker="${session.id}"]`);
+      picker?.scrollIntoView({ block: "nearest" });
+      picker?.querySelector<HTMLButtonElement>("button[aria-pressed='true']")?.focus();
+    }));
+  };
   const items: MenuEntry[] = [
     { id: "session:pin", label: session.pinned ? t("sidebar.session.unpin") : t("sidebar.session.pin"), icon: "pin", action: () => { useSessionsStore.getState().togglePinnedSession(session.id); } },
+    { id: "session:mascot", label: t("sidebar.session.choose_mascot"), icon: "mascot", action: chooseMascot },
     { id: "session:notes", label: t("sidebar.session.open_notes"), icon: "note", action: openNotes },
     { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
   ];

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type MenuIconName = "terminal" | "editor" | "copy" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note";
+export type MenuIconName = "terminal" | "editor" | "copy" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
 
 export interface MenuItem {
   id?: string;
@@ -107,6 +107,17 @@ function MenuIcon({ name }: { name: MenuIconName }) {
       </svg>
     );
   }
+  if (name === "mascot") {
+    return (
+      <svg {...common}>
+        <circle cx="7" cy="7" r="2" />
+        <circle cx="17" cy="7" r="2" />
+        <circle cx="4.5" cy="13" r="1.8" />
+        <circle cx="19.5" cy="13" r="1.8" />
+        <path d="M8 18.2c0-2.6 1.8-4.7 4-4.7s4 2.1 4 4.7c0 1.6-1.3 2.8-2.8 2.1L12 19.7l-1.2.6C9.3 21 8 19.8 8 18.2Z" />
+      </svg>
+    );
+  }
   return (
     <svg {...common}>
       <path d="M4 7h16" />
@@ -172,6 +183,12 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
+  useEffect(() => {
+    ref.current
+      ?.querySelector<HTMLElement>(`[data-menu-index="${activeIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
   function moveActive(delta: number) {
     if (enabledIndices.length === 0) return;
     const current = enabledIndices.indexOf(activeIndex);
@@ -217,6 +234,9 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
         borderRadius: "var(--r-input)",
         boxShadow: "var(--shadow-menu)",
         padding: "4px 0",
+        maxHeight: "min(420px, calc(100vh - 16px))",
+        overflowY: "auto",
+        overscrollBehavior: "contain",
         outline: "none",
         animation: "ctxMenuIn var(--duration-fast) ease",
       }}
@@ -236,6 +256,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
           <div
             key={menuEntryKey(items, item, i)}
             role="menuitem"
+            data-menu-index={i}
             aria-disabled={item.disabled ? true : undefined}
             tabIndex={-1}
             className={cls}

@@ -3,7 +3,7 @@ import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-block
 import { buildBlockContextMenuItems } from "@/modules/terminal/lib/terminal-blocks-menu";
 import { useT } from "@/modules/i18n";
 import { hasTrueRecordKey } from "@/state/record-keys";
-import { ContextMenu } from "./ContextMenu";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 function ExitCodeBadge({ code, completed }: { code: number | undefined; completed: boolean }) {
   const t = useT();
@@ -69,8 +69,12 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
     collapsed: boolean;
     position: { x: number; y: number };
   } | null>(null);
-  const visibleBlocks = blocks.slice(-5).reverse();
-  if (visibleBlocks.length === 0) return null;
+  const [historyMenu, setHistoryMenu] = useState<{ x: number; y: number } | null>(null);
+  const historyCandidates = blocks.filter((block) => block.id !== stickyBlock?.id);
+  const visibleBlocks = historyCandidates.slice(-5).reverse();
+  const hiddenBlockCount = Math.max(0, historyCandidates.length - 5);
+  const hiddenBlocks = historyCandidates.slice(0, hiddenBlockCount).reverse();
+  if (historyCandidates.length === 0 && !stickyBlock) return null;
 
   const openContextMenu = (
     block: TerminalCommandBlock,
@@ -78,6 +82,7 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
     collapsed: boolean,
     position: { x: number; y: number },
   ) => {
+    setHistoryMenu(null);
     setContextMenu({ block, completed, collapsed, position });
   };
 
@@ -91,6 +96,15 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
         onToggle,
       })
     : [];
+  const historyItems: MenuEntry[] = hiddenBlocks.map((block) => {
+    const prefix = !block.completedAt ? "•" : block.exitCode === 0 ? "✓" : String(block.exitCode ?? "?");
+    return {
+      id: `block-history:${block.id}`,
+      label: `${prefix}  ${block.command}`,
+      icon: "terminal",
+      action: () => onReveal(block.id),
+    };
+  });
 
   return (
     <div style={{ minHeight: 32, flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "4px 8px 0", overflowX: "auto" }} className="no-scrollbar">
@@ -262,11 +276,45 @@ export function TerminalBlocksBar({ blocks, collapsedBlockIds, stickyBlock, onCo
           </div>
         );
       })}
+      {hiddenBlocks.length > 0 && (
+        <button
+          type="button"
+          className="cmd-chip hover-bg"
+          aria-label={t("block.history.more", { count: hiddenBlocks.length })}
+          title={t("block.history.more", { count: hiddenBlocks.length })}
+          onClick={(event) => {
+            setContextMenu(null);
+            const rect = event.currentTarget.getBoundingClientRect();
+            setHistoryMenu({ x: rect.left, y: rect.bottom + 4 });
+          }}
+          style={{
+            height: 24,
+            padding: "0 8px",
+            border: "1px solid var(--c-border-1)",
+            borderRadius: "var(--r-btn)",
+            background: "var(--c-bg-1)",
+            color: "var(--c-text-4)",
+            fontSize: "var(--fs-meta)",
+            fontFamily: "var(--font-mono)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          {t("block.history.more", { count: hiddenBlocks.length })}
+        </button>
+      )}
       {contextMenu && (
         <ContextMenu
           items={contextItems}
           position={contextMenu.position}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+      {historyMenu && (
+        <ContextMenu
+          items={historyItems}
+          position={historyMenu}
+          onClose={() => setHistoryMenu(null)}
         />
       )}
     </div>

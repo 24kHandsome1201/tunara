@@ -10,6 +10,7 @@ import {
   findStickyCommandBlock,
   formatTerminalBlockCommandAndOutput,
   normalizeBlockCommand,
+  retainNavigableTerminalBlocks,
   resolveTerminalBlockRows,
   type TerminalBlockMarker,
   type TerminalCommandBlock,
@@ -90,7 +91,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
 
   const updateBlocks = useCallback((updater: (blocks: TerminalCommandBlock[]) => TerminalCommandBlock[]) => {
     setBlocks((current) => {
-      const next = updater(current).slice(-24);
+      const next = retainNavigableTerminalBlocks(updater(current));
       const retained = new Set(next.map((item) => item.id));
       for (const item of current) {
         if (!retained.has(item.id)) disposeBlockMarkers(item);

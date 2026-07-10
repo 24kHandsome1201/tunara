@@ -33,3 +33,12 @@ test("session mascots render in the overview picker, sidebar, and titlebar", () 
   assert.match(card, /<SessionMascotIcon id=\{session\.mascot\}/);
   assert.match(titlebar, /mascot=\{s\.mascot\}/);
 });
+
+test("session mascots are discoverable from the session context menu", () => {
+  const menu = readFileSync(resolve(root, "src/ui/sidebar-session-menu.ts"), "utf8");
+  const picker = readFileSync(resolve(root, "src/ui/SessionMascotPicker.tsx"), "utf8");
+  assert.match(menu, /id: "session:mascot"/);
+  assert.match(menu, /setInspectorTab\("overview"\)/);
+  assert.match(menu, /data-session-mascot-picker/);
+  assert.match(picker, /data-session-mascot-picker=\{session\.id\}/);
+});

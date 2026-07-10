@@ -33,7 +33,7 @@ export function useKeybindings() {
           break;
         }
         case "openSettings":
-          ui.setOverlay("settings");
+          ui.openSettings();
           break;
         case "toggleSidebar":
           ui.toggleSidebar();

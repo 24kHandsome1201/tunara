@@ -34,10 +34,9 @@ interface Preflight {
   hint: string | null;
 }
 
-type SettingsTab = "appearance" | "workflows" | "cli" | "app";
 type UpdateStatus = "idle" | "checking" | "current" | "available" | "downloading" | "restarting" | "error";
 
-const TABS: SettingsTab[] = ["appearance", "workflows", "cli", "app"];
+const TABS = ["appearance", "workflows", "cli", "app"] as const;
 
 function terminalThemePreviewColors(
   id: TerminalThemeName,
@@ -151,6 +150,8 @@ const SOURCE_LABEL_KEYS: Record<ResolveSource, string> = {
 
 export function Settings({ onClose }: SettingsProps) {
   const t = useT();
+  const activeTab = useUIStore((s) => s.settingsTab);
+  const setActiveTab = useUIStore((s) => s.setSettingsTab);
   const language = useUIStore((s) => s.language);
   const setLanguage = useUIStore((s) => s.setLanguage);
   const globalShortcut = useUIStore((s) => s.globalShortcut);
@@ -189,7 +190,6 @@ export function Settings({ onClose }: SettingsProps) {
   const configError = useUIStore((s) => s.configError);
 
   const isDark = isDarkTheme(theme);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   // Subscribe to the workflow count so the footer "clear all" button's
   // disabled state stays reactive (getState() in render wouldn't re-render
   // when workflows change, leaving the button enabled after a clear).
@@ -210,6 +210,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [updateVersion, setUpdateVersion] = useState("");
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const updateRef = useRef<Update | null>(null);
+  const appTabCheckStartedRef = useRef(false);
 
   useEffect(() => {
     void getVersion().then(setAppVersion).catch(() => {});
@@ -220,7 +221,7 @@ export function Settings({ onClose }: SettingsProps) {
     };
   }, []);
 
-  const checkForUpdates = async () => {
+  const checkForUpdates = useCallback(async () => {
     if (updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting") return;
     setUpdateStatus("checking");
     setUpdateProgress(null);
@@ -241,7 +242,7 @@ export function Settings({ onClose }: SettingsProps) {
       console.warn("[Settings] update check failed", error);
       setUpdateStatus("error");
     }
-  };
+  }, [updateStatus]);
 
   const installUpdate = async () => {
     const update = updateRef.current;
@@ -269,6 +270,12 @@ export function Settings({ onClose }: SettingsProps) {
       setUpdateProgress(null);
     }
   };
+
+  useEffect(() => {
+    if (activeTab !== "app" || appTabCheckStartedRef.current) return;
+    appTabCheckStartedRef.current = true;
+    void checkForUpdates();
+  }, [activeTab, checkForUpdates]);
 
   const loadPreflights = useCallback((items: ResolvedCommand[]) => {
     // Only check login state for CLIs that are actually installed — an auth

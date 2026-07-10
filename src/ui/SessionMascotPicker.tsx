@@ -26,7 +26,10 @@ export function SessionMascotPicker({ session }: { session: Session }) {
   };
 
   return (
-    <div style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: 12 }}>
+    <div
+      data-session-mascot-picker={session.id}
+      style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: 12 }}
+    >
       <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 3 }}>
         {t("mascot.title")}
       </div>

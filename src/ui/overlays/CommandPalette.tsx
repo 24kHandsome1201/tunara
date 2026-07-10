@@ -446,7 +446,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       section: t("palette.section.action"),
       scopes: ["action", "app"],
       originalIndex: idx++,
-      action: () => { uiStore.getState().recordCommandUse("settings"); uiStore.getState().setOverlay("settings"); },
+      action: () => { uiStore.getState().recordCommandUse("settings"); uiStore.getState().openSettings(); },
     });
 
     cmds.push({

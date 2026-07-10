@@ -173,6 +173,8 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
 
 export type InspectorTab = "overview" | "changes" | "files" | "notes";
 
+export type SettingsTab = "appearance" | "workflows" | "cli" | "app";
+
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
 
 export const EXTERNAL_EDITORS: ExternalEditor[] = ["vscode", "cursor", "zed", "sublime"];
@@ -192,6 +194,12 @@ export interface Toast {
   subtitle: string;
   variant: "success" | "error" | "warning";
   agentCode?: string;
+  action?: {
+    kind: "open-settings";
+    tab: SettingsTab;
+    label: string;
+  };
+  durationMs?: number;
 }
 
 /** A pending SSH host-key confirmation (TOFU). The backend ssh_open call is
@@ -237,6 +245,7 @@ interface UIState extends AppearanceSettings {
   viewportWidth: number;
   split: SplitState;
   inspectorTab: InspectorTab;
+  settingsTab: SettingsTab;
   toasts: Toast[];
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
    *  so two SSH connections that both hit an unknown/unverifiable host key
@@ -256,6 +265,8 @@ interface UIState extends AppearanceSettings {
   setOverlay: (o: OverlayType) => void;
   openSshConnect: (prefill?: SshConnectPrefill | null) => void;
   setInspectorTab: (t: InspectorTab) => void;
+  setSettingsTab: (t: SettingsTab) => void;
+  openSettings: (tab?: SettingsTab) => void;
   setTheme: (t: ThemeType) => void;
   setAccent: (c: string) => void;
   setCursorStyle: (c: CursorStyle) => void;
@@ -312,6 +323,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
     inspectorTab: "overview" as InspectorTab,
+    settingsTab: "appearance" as SettingsTab,
     toasts: [],
     hostKeyPrompts: [],
     pendingWorkflow: null,
@@ -328,6 +340,12 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setOverlay: (overlay) => set(overlay === "ssh" ? { overlay } : { overlay, sshPrefill: null }),
     openSshConnect: (prefill) => set({ overlay: "ssh", sshPrefill: prefill ?? null }),
     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
+    setSettingsTab: (settingsTab) => set({ settingsTab }),
+    openSettings: (settingsTab) => set((state) => ({
+      overlay: "settings",
+      settingsTab: settingsTab ?? state.settingsTab,
+      sshPrefill: null,
+    })),
     setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
     setAccent: (accent) => set({ accent: sanitizeAccent(accent) }),
     setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),

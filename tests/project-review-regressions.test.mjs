@@ -880,7 +880,8 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(toast, /exitTimerRef/);
   assert.match(toast, /minWidth: 260/);
   assert.match(toast, /maxWidth: "min\(340px, calc\(100vw - 24px\)\)"/);
-  assert.match(toast, /borderLeft: `3px solid \$\{accentColor\}`/);
+  assert.doesNotMatch(toast, /borderLeft: `3px solid \$\{accentColor\}`/);
+  assert.match(toast, /toast\.action\?\.kind === "open-settings"/);
   assert.doesNotMatch(toast, /width: 260/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
@@ -1431,7 +1432,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminalBlocks, /navigator\.clipboard\.writeText/);
   assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
   assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
-  assert.match(terminalBlocksBar, /import \{ ContextMenu \} from "\.\/ContextMenu"/);
+  assert.match(terminalBlocksBar, /import \{ ContextMenu, type MenuEntry \} from "\.\/ContextMenu"/);
   assert.match(terminalBlocksBar, /import \{ buildBlockContextMenuItems \} from "@\/modules\/terminal\/lib\/terminal-blocks-menu"/);
   assert.match(terminalBlocksBar, /import \{ hasTrueRecordKey \} from "@\/state\/record-keys"/);
   assert.match(terminalBlocksBar, /className="cmd-chip"/);
@@ -1447,7 +1448,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // Block status / current-output labels are localized via i18n (no hardcoded Chinese).
   assert.match(terminalBlocksBar, /t\("block\.current_output"\)/);
   assert.match(terminalBlocksBar, /stickyBlock/);
-  assert.match(terminalBlocksBar, /const visibleBlocks = blocks\.slice\(-5\)\.reverse\(\)/);
+  assert.match(terminalBlocksBar, /const visibleBlocks = historyCandidates\.slice\(-5\)\.reverse\(\)/);
+  assert.match(terminalBlocksBar, /t\("block\.history\.more"/);
   assert.match(terminalBlocksBar, /completed=\{completed\}/);
   assert.match(terminalBlocksBar, /t\("block\.status\.running"\)/);
   assert.doesNotMatch(terminalBlocksBar, /当前输出|更多操作/);

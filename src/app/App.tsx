@@ -17,6 +17,7 @@ import { useTheme } from "./useTheme";
 import { useKeybindings } from "./useKeybindings";
 import { useDockBadge } from "./useDockBadge";
 import { useGlobalShortcut } from "./useGlobalShortcut";
+import { useUpdateReminder } from "./useUpdateReminder";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 
@@ -26,7 +27,7 @@ import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-d
 const closeSessionById = (id: string) => useSessionsStore.getState().closeSession(id);
 const newTerminal = () => useSessionsStore.getState().newTerminal();
 const newTerminalInDirectory = () => { void openNewTerminalDirectoryDialog(); };
-const openSettings = () => useUIStore.getState().setOverlay("settings");
+const openSettings = () => useUIStore.getState().openSettings();
 
 interface ResizeHandleProps {
   edge: "left" | "right";
@@ -190,6 +191,7 @@ export default function App() {
   useKeybindings();
   useDockBadge();
   useGlobalShortcut();
+  useUpdateReminder(ready);
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);

@@ -6,7 +6,7 @@ import { AgentBadge } from "./agents";
 import { CloseIcon } from "./shared";
 import { copyText } from "./lib/clipboard";
 
-const TOAST_DURATION = 4000;
+const DEFAULT_TOAST_DURATION = 4000;
 const EXIT_DURATION = 250;
 
 function ToastItem({ toast }: { toast: Toast }) {
@@ -19,7 +19,8 @@ function ToastItem({ toast }: { toast: Toast }) {
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const remainRef = useRef(TOAST_DURATION);
+  const duration = toast.durationMs ?? DEFAULT_TOAST_DURATION;
+  const remainRef = useRef(duration);
   const startRef = useRef(Date.now());
   const exitingRef = useRef(false);
 
@@ -37,13 +38,13 @@ function ToastItem({ toast }: { toast: Toast }) {
 
   useEffect(() => {
     startRef.current = Date.now();
-    timerRef.current = setTimeout(() => dismissRef.current(), TOAST_DURATION);
+    timerRef.current = setTimeout(() => dismissRef.current(), duration);
     return () => {
       clearTimeout(timerRef.current);
       clearTimeout(exitTimerRef.current);
       clearTimeout(copiedTimerRef.current);
     };
-  }, []);
+  }, [duration]);
 
   const handleCopy = () => {
     const text = toast.subtitle ? `${toast.title}\n${toast.subtitle}` : toast.title;
@@ -66,7 +67,11 @@ function ToastItem({ toast }: { toast: Toast }) {
   };
 
   const handleClick = () => {
-    if (toast.sessionId) setActive(toast.sessionId);
+    if (toast.action?.kind === "open-settings") {
+      useUIStore.getState().openSettings(toast.action.tab);
+    } else if (toast.sessionId) {
+      setActive(toast.sessionId);
+    }
     dismiss();
   };
 
@@ -92,7 +97,6 @@ function ToastItem({ toast }: { toast: Toast }) {
         border: "1px solid var(--c-border-1)",
         borderRadius: "var(--r-card)",
         boxShadow: "var(--shadow-notif)",
-        borderLeft: `3px solid ${accentColor}`,
         padding: "10px 12px 8px 12px",
         display: "flex",
         alignItems: "center",
@@ -144,6 +148,31 @@ function ToastItem({ toast }: { toast: Toast }) {
           {toast.subtitle}
         </div>
       </div>
+
+      {toast.action && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleClick();
+          }}
+          className="hover-accent-bg"
+          style={{
+            height: 26,
+            padding: "0 9px",
+            borderRadius: "var(--r-btn)",
+            border: "1px solid var(--c-accent-border)",
+            background: "var(--c-accent-bg-soft)",
+            color: "var(--c-accent)",
+            fontSize: "var(--fs-meta)",
+            fontWeight: 700,
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
 
       {toast.variant === "error" && (
         <button
@@ -213,7 +242,7 @@ function ToastItem({ toast }: { toast: Toast }) {
           background: accentColor,
           opacity: 0.5,
           transformOrigin: "left",
-          animation: paused ? "none" : `toastProgress ${TOAST_DURATION}ms linear forwards`,
+          animation: `toastProgress ${duration}ms linear forwards`,
           animationPlayState: paused ? "paused" : "running",
         }} />
       </div>

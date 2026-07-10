@@ -51,7 +51,7 @@ The terminal is the product, not an accessory. Sessions run real `portable-pty`;
 
 - Multi-session PTYs, horizontal/vertical split, max two panes (no recursive tiling — predictability wins)
 - ⌘F in-terminal search with match counts
-- Command-block output filters: text / regex / case / invert / context lines
+- Command-block history follows live scrollback, with navigation and output filters for text / regex / case / invert / context lines
 - Clickable URLs, configurable scrollback (1k–20k lines)
 - OSC 7 cwd tracking, OSC 133 shell integration
 - 7 terminal themes: default, catppuccin, tokyo-night, one-dark, solarized, github-light, rose-pine-dawn
@@ -104,6 +104,7 @@ The right pane is a read-only git diff for "one more look before commit." Reads 
 - Light/dark mode + system follow, 5 accent colors
 - Solid paper surfaces + native macOS overlay titlebar
 - Toast notifications: exit animation, hover pause, progress bar
+- Delayed signed-update reminders that stay silent until a release is actually available
 - Right-click menus on sessions, directory groups, and files
 - Responsive layout: narrow windows auto-collapse sidebar / right rail
 - Window-state persistence (position, size)
