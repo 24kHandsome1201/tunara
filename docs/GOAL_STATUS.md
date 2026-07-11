@@ -41,6 +41,8 @@
 
 - [x] SSH Codex 正常退出补证：`de-netcup /root` 中 Codex 0.144.1 以 read-only sandbox 进入 ready prompt，官方 `/exit` 后真实 xterm 快照恢复 `root@de-netcup:~#`，随后远端 shell 实际输出 `TUNARA_SSH_CODEX_SHELL_OK`。安装版启动即“已完成”仍按 `93244ca` 的历史缺陷处理，不作为当前源码回归。
 
+- [x] Titlebar tab/关闭交互语义修复：安装版辅助技术树把会话选择与关闭合成一个按钮，点击 Pi tab 误进入关闭确认；未二次确认，会话保持运行。`2c7350f` 已用具名 `tablist`、独立 `tab` 与独立 close button 拆开职责，关闭图标继续保持 hover/focus 才显现，所有 tab 主体均可键盘到达，中英文名称齐全。2 项定向、427 项全量、typecheck、lint、build 均通过；本地 Vite 已启动但内置浏览器无 IAB backend，新 bundle 视觉复验仍待完成。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。

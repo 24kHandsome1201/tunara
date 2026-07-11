@@ -512,6 +512,33 @@
     "clipboardClaimed": false,
     "resumeClaimed": false
   },
+  "titlebarTabAccessibility": {
+    "capturedAt": "2026-07-11T10:20:00Z",
+    "installedAppVersion": "1.14.0",
+    "observedDefect": {
+      "selectionAndCloseFlattenedIntoOneAccessibilityButton": true,
+      "clickingPiTabArmedCloseConfirmationInsteadOfSelecting": true,
+      "secondCloseConfirmationPerformed": false,
+      "sessionRemainedRunning": true
+    },
+    "sourceFixCommit": "2c7350f",
+    "sourceBehavior": {
+      "tablistNamedInEnglishAndChinese": true,
+      "selectionUsesDedicatedTabButton": true,
+      "closeUsesDedicatedButton": true,
+      "closeAffordanceVisibleOnHoverOrKeyboardFocus": true,
+      "allTabSelectionButtonsKeyboardReachable": true
+    },
+    "currentSourceAutomatedVerification": {
+      "titlebarTestsPassed": 2,
+      "fullNodeTestsPassed": 427,
+      "typecheckPassed": true,
+      "lintPassed": true,
+      "productionBuildPassed": true
+    },
+    "currentSourceBundleVisualReverificationPending": true,
+    "visualReverificationGap": "The local Vite server started, but the Codex in-app browser reported no available IAB backend; no screenshot claim was made."
+  },
   "capture": {
     "screenshotSuitableForTerminalJudgement": false,
     "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. The exact-session xterm snapshot and persisted UI state were used instead."
