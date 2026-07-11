@@ -33,6 +33,8 @@
 
 - [x] SSH OpenCode 安装版交互补证：远端交互式 Bash 的 `opencode` 命中旧 `/root/.opencode/bin/opencode` 1.1.56，系统 `/usr/local/bin/opencode` 已是 1.17.18；旧核心加载浮动 `oh-my-openagent@latest` 4.16.3 后在 `src/plugin/index.ts:90` 报 `fn3 is not a function`。warm cache、隔离 cache、隔离 HOME 对照与 Tunara 内 `type -a`/双版本输出共同证明这是远端 PATH/插件版本漂移，不是 Tunara transport 或渲染故障。使用明确路径 `/usr/local/bin/opencode --pure` 后，1.17.18 在 horizontal 50/50 分屏、Finder 后台切回、快速选择 4 项、token `1.17` 精确复制粘贴且未提交、`Ctrl+C` 清空、`/exit` 与远端 shell marker `TUNARA_SSH_OPENCODE_SHELL_OK` 全部通过；provider/resume 仍不宣称通过。
 
+- [x] 本地 OpenCode 安装版交互补证与跨 Agent 恢复修复：OpenCode 1.17.18 以 `opencode --pure` 被识别为 `OpenCode · 运行中`，在 horizontal 50/50 分屏、Finder 后台切回、快速选择 3 项、token `1.17` 精确复制粘贴且未提交、`Ctrl+C` 清空、`/exit` 与本地 shell marker `TUNARA_LOCAL_OPENCODE_SHELL_OK` 全部通过。取证发现同一 pane 之前的 Claude `agentResume` 在 OpenCode 启停后仍残留，界面却用内存 `lastAgent` 错显 `OpenCode 可恢复`；`a956004` 在 Agent 身份切换时清除不匹配的旧 resume，并让历史脏快照优先显示真正恢复意图所属 Agent，115 项定向、424 项全量、typecheck、lint、build 均通过，新 bundle 实机复验仍待完成。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。
