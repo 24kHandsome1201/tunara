@@ -31,6 +31,8 @@ mod flow_control;
 pub mod hosts;
 pub mod known_hosts;
 pub mod remote_git;
+#[cfg(test)]
+mod rtt_benchmark;
 pub mod sftp;
 
 use auth::AuthOptions;

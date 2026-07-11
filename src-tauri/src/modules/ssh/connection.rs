@@ -38,6 +38,10 @@ pub enum HostKeyPolicy {
     /// Accept and persist without asking. Only set when the user has already
     /// confirmed (e.g. an explicit "trust without prompting" opt-in).
     AcceptUnknown,
+    /// Test-only delayed TCP proxies terminate locally but forward the real
+    /// server key. Accept without touching the user's known_hosts file.
+    #[cfg(test)]
+    AcceptForTest,
 }
 
 /// Pending host-key confirmations, keyed by a per-prompt id. `check_server_key`
@@ -175,6 +179,8 @@ impl client::Handler for ClientHandler {
                 Ok(false)
             }
             Verdict::Unknown => match self.policy {
+                #[cfg(test)]
+                HostKeyPolicy::AcceptForTest => Ok(true),
                 HostKeyPolicy::AcceptUnknown => {
                     if let Err(e) = known_hosts::remember(&self.host, self.port, key) {
                         log::warn!("ssh: failed to persist new host key: {e}");
@@ -199,6 +205,8 @@ impl client::Handler for ClientHandler {
                 // explicit decision, and deliberately do NOT remember it —
                 // persisting would mask a real mismatch on the next connection.
                 match self.policy {
+                    #[cfg(test)]
+                    HostKeyPolicy::AcceptForTest => Ok(true),
                     HostKeyPolicy::AcceptUnknown => {
                         log::warn!(
                             "ssh host {}:{} not verifiable against hashed/wildcard known_hosts — \

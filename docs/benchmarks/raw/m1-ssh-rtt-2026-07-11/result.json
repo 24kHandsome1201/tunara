@@ -1,0 +1,28 @@
+{
+  "benchmark": "m1-ssh-rtt-operations",
+  "target": "100.83.112.82",
+  "cwd": "/root/qclaw-wechat-client",
+  "sampleCountPerScenario": 5,
+  "scenarios": [
+    {
+      "configuredRttMs": 100,
+      "connect": { "count": 5, "p50Ms": 2286.75, "p95Ms": 2445.13, "maxMs": 2445.13 },
+      "pwd": { "count": 5, "p50Ms": 812.39, "p95Ms": 852.93, "maxMs": 852.93 },
+      "preview4KiB": { "count": 5, "p50Ms": 867.79, "p95Ms": 928.4, "maxMs": 928.4 },
+      "grep": { "count": 5, "p50Ms": 872.98, "p95Ms": 923.57, "maxMs": 923.57 },
+      "diffStat": { "count": 5, "p50Ms": 864.03, "p95Ms": 898.59, "maxMs": 898.59 },
+      "sftpReadDir": { "count": 5, "p50Ms": 2395.87, "p95Ms": 2553.9, "maxMs": 2553.9 },
+      "cancelEffective": { "count": 5, "p50Ms": 124.9, "p95Ms": 148.32, "maxMs": 148.32 }
+    },
+    {
+      "configuredRttMs": 200,
+      "connect": { "count": 5, "p50Ms": 2876.93, "p95Ms": 2979.17, "maxMs": 2979.17 },
+      "pwd": { "count": 5, "p50Ms": 1058.8, "p95Ms": 1084.69, "maxMs": 1084.69 },
+      "preview4KiB": { "count": 5, "p50Ms": 1171.38, "p95Ms": 1369.38, "maxMs": 1369.38 },
+      "grep": { "count": 5, "p50Ms": 1162.51, "p95Ms": 1174.43, "maxMs": 1174.43 },
+      "diffStat": { "count": 5, "p50Ms": 1170.87, "p95Ms": 1174.6, "maxMs": 1174.6 },
+      "sftpReadDir": { "count": 5, "p50Ms": 3087.62, "p95Ms": 3213.19, "maxMs": 3213.19 },
+      "cancelEffective": { "count": 5, "p50Ms": 223.49, "p95Ms": 233.42, "maxMs": 233.42 }
+    }
+  ]
+}
