@@ -54,10 +54,12 @@ export interface AnimationFrameEvaluation {
 }
 
 const writers = new Map<string, BenchmarkWriter>();
+const writerGenerations = new Map<string, number>();
 const snapshotReaders = new Map<string, BenchmarkSnapshotReader>();
 const rendererControls = new Map<string, BenchmarkRendererControl>();
 const pendingInputProbes = new Map<string, PendingInputProbe>();
 const outputOverflows = new Map<string, number>();
+const exitEvents = new Map<string, number[]>();
 
 interface PendingOutputProbe {
   tracker: TerminalOutputSequenceTracker;
@@ -276,10 +278,68 @@ export function registerTerminalBenchmarkWriter(
   writer: BenchmarkWriter,
 ): () => void {
   if (!TERMINAL_BENCHMARK_MODE) return () => {};
+  writerGenerations.set(sessionId, (writerGenerations.get(sessionId) ?? 0) + 1);
   writers.set(sessionId, writer);
   return () => {
     if (writers.get(sessionId) === writer) writers.delete(sessionId);
   };
+}
+
+export function terminalBenchmarkWriterGeneration(sessionId: string): number {
+  return writerGenerations.get(sessionId) ?? 0;
+}
+
+export async function waitForTerminalBenchmarkWriterGeneration(
+  sessionId: string,
+  afterGeneration: number,
+  timeoutMs = 30_000,
+): Promise<number> {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
+    const generation = terminalBenchmarkWriterGeneration(sessionId);
+    if (generation > afterGeneration && writers.has(sessionId)) return generation;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`benchmark writer did not reconnect: ${sessionId}`);
+}
+
+export function writeTerminalBenchmark(sessionId: string, data: string): Promise<void> {
+  const writer = writers.get(sessionId);
+  return writer
+    ? writer(data)
+    : Promise.reject(new Error(`benchmark writer unavailable: ${sessionId}`));
+}
+
+export function recordTerminalBenchmarkExit(sessionId: string, code: number): void {
+  if (!TERMINAL_BENCHMARK_MODE) return;
+  const events = exitEvents.get(sessionId) ?? [];
+  events.push(code);
+  exitEvents.set(sessionId, events);
+}
+
+export function terminalBenchmarkExitCount(sessionId: string): number {
+  return exitEvents.get(sessionId)?.length ?? 0;
+}
+
+export async function waitForTerminalBenchmarkExit(
+  sessionId: string,
+  afterCount: number,
+  expectedCode: number,
+  timeoutMs = 30_000,
+): Promise<{ code: number; count: number }> {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
+    const events = exitEvents.get(sessionId) ?? [];
+    if (events.length > afterCount) {
+      const code = events[afterCount];
+      if (code !== expectedCode) {
+        throw new Error(`benchmark terminal exited with ${code}, expected ${expectedCode}`);
+      }
+      return { code, count: events.length };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`benchmark terminal exit timed out: ${sessionId}`);
 }
 
 export function registerTerminalBenchmarkSnapshotReader(

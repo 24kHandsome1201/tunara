@@ -5,6 +5,7 @@ import { t } from "@/modules/i18n";
 import type { RemoteInfo } from "@/ui/types";
 import { classifySshFailure } from "@/modules/ssh/failure-reason";
 import type { BackendConnectionPhase } from "./connection-state";
+import { recordTerminalBenchmarkExit, TERMINAL_BENCHMARK_MODE } from "./terminal-benchmark";
 
 export type PtyEvent =
   | { type: "data"; data: string }
@@ -102,6 +103,7 @@ export function recordPtyConnectionStatus(sessionId: string, phase: PtyConnectio
 }
 
 export function recordPtyExit(sessionId: string, remote: boolean, code: number): void {
+  if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkExit(sessionId, code);
   useSessionsStore.getState().handleConnectionEvent(sessionId, {
     type: "exit",
     transport: remote ? "ssh" : "local",

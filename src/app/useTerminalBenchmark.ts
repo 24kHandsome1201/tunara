@@ -5,6 +5,7 @@ import {
   probeTerminalInputEcho,
   probeTerminalHighOutput,
   readTerminalBenchmarkSnapshot,
+  terminalBenchmarkExitCount,
   sampleAnimationFrames,
   summarizeDurations,
   TERMINAL_BENCHMARK_MODE,
@@ -14,9 +15,14 @@ import {
   TERMINAL_OUTPUT_REFERENCE,
   terminalBenchmarkOverflowCount,
   terminalBenchmarkRendererMode,
+  terminalBenchmarkWriterGeneration,
   triggerTerminalBenchmarkContextLoss,
+  waitForTerminalBenchmarkExit,
+  waitForTerminalBenchmarkWriterGeneration,
   waitForTerminalBenchmarkWriters,
+  writeTerminalBenchmark,
 } from "@/modules/terminal/lib/terminal-benchmark";
+import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
 
 const MIN_MOUNTED_TERMINALS = 10;
 const TARGET_MOUNTED_TERMINALS = 12;
@@ -64,6 +70,78 @@ async function sampleControlInput(sessionId: string, nonce: string): Promise<num
     ));
   }
   return latencies;
+}
+
+async function runM1SshRecovery(sessionId: string) {
+  const store = useSessionsStore.getState();
+  const sessionBefore = store.sessions.find((session) => session.id === sessionId);
+  if (!sessionBefore?.remote) throw new Error("SSH recovery benchmark requires a remote session");
+
+  const exitCountBefore = terminalBenchmarkExitCount(sessionId);
+  const writerGenerationBefore = terminalBenchmarkWriterGeneration(sessionId);
+  const disconnectStartedAt = performance.now();
+  await writeTerminalBenchmark(sessionId, 'kill -9 "$PPID"\n');
+  const exit = await waitForTerminalBenchmarkExit(
+    sessionId,
+    exitCountBefore,
+    SSH_DISCONNECTED_EXIT_CODE,
+  );
+  const disconnectMs = Math.round((performance.now() - disconnectStartedAt) * 100) / 100;
+  await delay(50);
+
+  const disconnectedSession = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
+  const disconnectedEvidence = disconnectedSession?.connection;
+  const reconnectStartedAt = performance.now();
+  useSessionsStore.getState().updateSession(sessionId, {
+    ptyId: undefined,
+    runState: "idle",
+    startedAt: undefined,
+    completedAt: undefined,
+    lastExitCode: undefined,
+    terminalProgress: undefined,
+    reconnectNonce: (disconnectedSession?.reconnectNonce ?? 0) + 1,
+  });
+  useSessionsStore.getState().handleConnectionEvent(sessionId, {
+    type: "openRequested",
+    transport: "ssh",
+    source: "user",
+  });
+  useSessionsStore.getState().setActive(sessionId);
+
+  const writerGenerationAfter = await waitForTerminalBenchmarkWriterGeneration(
+    sessionId,
+    writerGenerationBefore,
+  );
+  const reconnectMs = Math.round((performance.now() - reconnectStartedAt) * 100) / 100;
+  const marker = `__TUNARA_M1_SSH_RECOVERED_${Date.now().toString(36)}__`;
+  const markerEchoMs = Math.round((await probeTerminalInputEcho(sessionId, marker)) * 100) / 100;
+  const snapshot = await readTerminalBenchmarkSnapshot(sessionId);
+  const recoveredSession = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
+  const exitCountAfter = terminalBenchmarkExitCount(sessionId);
+  const markerVisible = snapshot.includes(marker);
+
+  return {
+    exitCode: exit.code,
+    exitCountBefore,
+    exitCountAfter,
+    disconnectMs,
+    disconnectedPhase: disconnectedEvidence?.phase ?? null,
+    disconnectedEvidenceExitCode: disconnectedEvidence?.exitCode ?? null,
+    writerGenerationBefore,
+    writerGenerationAfter,
+    reconnectMs,
+    markerEchoMs,
+    markerVisible,
+    recoveredPhase: recoveredSession?.connection?.phase ?? null,
+    passed: exit.code === SSH_DISCONNECTED_EXIT_CODE
+      && exit.count === exitCountBefore + 1
+      && exitCountAfter === exitCountBefore + 1
+      && disconnectedEvidence?.phase === "disconnected"
+      && disconnectedEvidence.exitCode === SSH_DISCONNECTED_EXIT_CODE
+      && writerGenerationAfter > writerGenerationBefore
+      && markerVisible
+      && recoveredSession?.connection?.phase === "ready",
+  };
 }
 
 async function runM1OutputBenchmark(readyIds: string[]) {
@@ -153,6 +231,14 @@ async function runM1OutputBenchmark(readyIds: string[]) {
     });
     await delay(500);
   }
+  let sshRecovery: Awaited<ReturnType<typeof runM1SshRecovery>> | { passed: false; error: string } | null = null;
+  if (TERMINAL_BENCHMARK_TRANSPORT === "ssh") {
+    try {
+      sshRecovery = await runM1SshRecovery(floodSessionId);
+    } catch (error) {
+      sshRecovery = { passed: false, error: String(error) };
+    }
+  }
   return {
     benchmark: "m1-terminal-high-output",
     transport: TERMINAL_BENCHMARK_TRANSPORT,
@@ -163,8 +249,10 @@ async function runM1OutputBenchmark(readyIds: string[]) {
     fixtureTimeoutMs: m1FixtureTimeoutMs(),
     reference: TERMINAL_OUTPUT_REFERENCE,
     webglFallback,
+    sshRecovery,
     fixtures,
     passed: webglFallback.passed
+      && (sshRecovery === null || sshRecovery.passed)
       && fixtures.length === m1OutputSizes().length
       && fixtures.every((fixture) => fixture.passed),
   };
