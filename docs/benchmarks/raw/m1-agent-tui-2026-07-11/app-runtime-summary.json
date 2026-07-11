@@ -128,6 +128,13 @@
       "submittedToAgent": false,
       "inputClearedWithCtrlC": true
     },
+    "exit": {
+      "method": "Ctrl+D at an empty Pi prompt",
+      "documentedHintObserved": "ctrl+c/ctrl+d clear/exit",
+      "ordinaryLocalShellRestored": true,
+      "shellProbe": "printf 'TUNARA_LOCAL_PI_SHELL_OK\\n'",
+      "shellMarkerObserved": "TUNARA_LOCAL_PI_SHELL_OK"
+    },
     "installedVersionDefectObserved": {
       "permanentRunningLabel": true,
       "rootCause": "Pi had no prompt-ready detector, and its persistent footer could not clear the submitted-input busy transition.",

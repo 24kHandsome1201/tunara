@@ -45,6 +45,8 @@
 
 - [x] 恢复按钮与运行时长当前 bundle 复验：点击 Claude Code 恢复卡无需额外回车，立即进入“启动中/加载中”并生成 `claude --resume` 命令块，`9a69d97` 复验通过。同期发现持久化未来时间戳令侧栏显示 `-207s`；`11d817a` 把相对时间格式化提取为纯函数并钳制负差值，重建 bundle 同一路径显示 `0s`。2 项定向、429 项全量、typecheck、lint、build 均通过。
 
+- [x] 本地 Pi 正常退出补证：Pi 0.79.4 ready prompt 明确给出 `ctrl+c/ctrl+d clear/exit`；空输入发送 `Ctrl+D` 后 alternate screen 交还普通 zsh，真实 xterm 快照记录 `TUNARA_LOCAL_PI_SHELL_OK`。未触发模型调用或修改 Pi 配置。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。
