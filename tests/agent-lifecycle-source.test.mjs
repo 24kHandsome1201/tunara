@@ -449,6 +449,7 @@ test("agent lifecycle policy preserves prompt state for Codex and Pi", () => {
   assert.match(tracker, /const screenState = detectPromptAgentScreenState\(current\.agent, tail\);/);
   assert.match(tracker, /screenState === "busy"[\s\S]*current\.agentActivity === "idle"[\s\S]*onBusy\(getSessionId\(\)\)/);
   assert.doesNotMatch(tracker, /dataBurstCount|BURST_BUSY_THRESHOLD/);
+  assert.match(read("src/modules/terminal/lib/terminal-buffer-read.ts"), /const end = Math\.min\(buffer\.length - 1, cursorRow \+ rowCount\);/);
   assert.match(utils, /export function cleanTerminalLines\(text: string\): string/);
 });
 

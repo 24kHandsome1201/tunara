@@ -14,6 +14,7 @@ import {
   shouldUseStartupQuietReadyFallback,
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
+import { getTerminalTailText } from "../src/modules/terminal/lib/terminal-buffer-read.ts";
 import {
   PROMPT_AGENT_STATE_CHECK_DELAY_MS,
   createPromptAgentScreenStateTracker,
@@ -164,12 +165,13 @@ function createHarness(initial = makeSession()) {
   };
 }
 
-function makeTailTerminal(lines) {
+function makeTailTerminal(lines, cursorY = lines.length - 1) {
   return {
     buffer: {
       active: {
         baseY: 0,
-        cursorY: lines.length - 1,
+        cursorY,
+        length: lines.length,
         getLine(row) {
           const text = lines[row];
           return text === undefined
@@ -1340,6 +1342,32 @@ test("Pi screen replay gives the running indicator precedence over its ready foo
   assert.equal(detectPiScreenState(busy), "busy");
   assert.equal(detectPromptAgentScreenState("PI", ready), "ready");
   assert.equal(detectPromptAgentScreenState("PI", busy), "busy");
+});
+
+test("Pi screen replay recognizes a ready footer clipped by a narrow split", () => {
+  const narrowSplit = [
+    "─────────────────────────────────",
+    "~/code/pi5x/rail (main)",
+    "$0.000 (sub) 0.0%/272k (auto)  gp",
+  ].join("\n");
+
+  assert.equal(detectPiScreenState(narrowSplit), "ready");
+});
+
+test("terminal tail includes bounded TUI status rows below the input cursor", () => {
+  const terminal = makeTailTerminal([
+    "Pi",
+    "input cursor",
+    "─────────────────────────────────",
+    "~/code/pi5x/rail (main)",
+    "$0.000 (sub) 0.0%/272k (auto)  gp",
+    "",
+  ], 1);
+
+  const tail = getTerminalTailText(terminal, 12);
+  assert.match(tail, /input cursor/);
+  assert.match(tail, /\$0\.000 \(sub\) 0\.0%\/272k \(auto\)/);
+  assert.equal(detectPiScreenState(tail), "ready");
 });
 
 test("prompt agent screen tracker moves Pi from startup and running back to ready", async () => {

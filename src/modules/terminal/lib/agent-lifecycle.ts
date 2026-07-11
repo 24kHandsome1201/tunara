@@ -130,7 +130,11 @@ export function detectCodexScreenState(text: string): AgentScreenState {
 }
 
 const PI_BUSY_PATTERN = /Running\.\.\. \(escape\/ctrl\+c to cancel\)/i;
-const PI_READY_STATUS_PATTERN = /^\$\d+(?:\.\d+)?\s+\([^)]*\)\s+\d+(?:\.\d+)?%\/\S+\s+\([^)]*\)\s+.+•\s*$/m;
+// Pi's status bar is clipped at the viewport edge instead of being preserved as
+// one logical line. In a narrow split the model name and trailing bullet may be
+// absent from xterm's readable tail, while the cost/context segment remains.
+// Treat that stable segment as ready; the explicit busy marker below still wins.
+const PI_READY_STATUS_PATTERN = /^\$\d+(?:\.\d+)?\s+\([^)]*\)\s+\d+(?:\.\d+)?%\/\S+\s+\([^)]*\)(?:\s|$)/m;
 
 export function detectPiScreenState(text: string): AgentScreenState {
   const recent = cleanTerminalLines(text)
