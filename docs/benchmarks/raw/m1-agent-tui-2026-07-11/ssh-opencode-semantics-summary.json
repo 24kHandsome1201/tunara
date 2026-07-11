@@ -1,0 +1,26 @@
+{
+  "capturedAt": "2026-07-11T18:14:20.240757+00:00",
+  "commit": "128a540f759086ebc8ff4d29fa117b7c96641509",
+  "target": "de-netcup",
+  "agent": "opencode",
+  "safety": {
+    "providerEndpoint": "loopback-only HTTP 401 stub",
+    "externalModelReached": false,
+    "toolsEnabled": false,
+    "rawLogsRetained": false
+  },
+  "checks": {
+    "readyPromptVisible": true,
+    "slashMenuOpened": true,
+    "slashMenuFiltered": true,
+    "slashMenuCancelled": true,
+    "multilineAVisible": true,
+    "multilineBVisible": true,
+    "multilineCancelled": true,
+    "loopbackFailureObserved": true,
+    "historyRestored": true,
+    "historyCancelled": true,
+    "normalExitObserved": true
+  },
+  "passed": true
+}
