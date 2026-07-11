@@ -1,36 +1,35 @@
 import type { Terminal } from "@xterm/xterm";
 import type { Session } from "../../../ui/types.ts";
 import {
-  CODEX_SCREEN_STATE_RECENT_LINE_LIMIT,
-  detectCodexScreenState,
+  detectPromptAgentScreenState,
+  PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT,
+  PROMPT_READY_AGENTS,
 } from "./agent-lifecycle.ts";
 import { getTerminalTailText } from "./terminal-buffer-read.ts";
 
-export const CODEX_STATE_CHECK_DELAY_MS = 500;
+export const PROMPT_AGENT_STATE_CHECK_DELAY_MS = 500;
 
-interface CodexScreenStateTrackerOptions {
+interface PromptAgentScreenStateTrackerOptions {
   terminal: Terminal;
   getSessionId: () => string;
   getCurrentSession: () => Session | undefined;
-  isTrackingCodex: () => boolean;
   onBusy: (sessionId: string) => void;
   onReady: (sessionId: string) => void;
 }
 
-export interface CodexScreenStateTracker {
+export interface PromptAgentScreenStateTracker {
   schedule: () => void;
   reset: () => void;
   dispose: () => void;
 }
 
-export function createCodexScreenStateTracker({
+export function createPromptAgentScreenStateTracker({
   terminal,
   getSessionId,
   getCurrentSession,
-  isTrackingCodex,
   onBusy,
   onReady,
-}: CodexScreenStateTrackerOptions): CodexScreenStateTracker {
+}: PromptAgentScreenStateTrackerOptions): PromptAgentScreenStateTracker {
   let stateTimer: ReturnType<typeof setTimeout> | null = null;
 
   const reset = () => {
@@ -44,22 +43,17 @@ export function createCodexScreenStateTracker({
     if (stateTimer) clearTimeout(stateTimer);
     stateTimer = setTimeout(() => {
       stateTimer = null;
-      if (!isTrackingCodex()) return;
-
       const current = getCurrentSession();
-      if (current?.agent !== "CX") return;
+      if (!current?.agent || !PROMPT_READY_AGENTS.has(current.agent)) return;
 
-      const tail = getTerminalTailText(terminal, CODEX_SCREEN_STATE_RECENT_LINE_LIMIT);
-      const screenState = detectCodexScreenState(tail);
-      if (
-        screenState === "busy" &&
-        current.agentActivity === "idle"
-      ) {
+      const tail = getTerminalTailText(terminal, PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT);
+      const screenState = detectPromptAgentScreenState(current.agent, tail);
+      if (screenState === "busy" && current.agentActivity === "idle") {
         onBusy(getSessionId());
       } else if (screenState === "ready" && current.agentActivity !== "idle") {
         onReady(getSessionId());
       }
-    }, CODEX_STATE_CHECK_DELAY_MS);
+    }, PROMPT_AGENT_STATE_CHECK_DELAY_MS);
   };
 
   return {

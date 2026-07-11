@@ -31,7 +31,7 @@ import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification"; import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
-import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createCodexScreenStateTracker } from "@/modules/terminal/lib/terminal-codex-state";
+import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
@@ -182,11 +182,10 @@ function TerminalViewImpl({
         lineCwdTracker.record(cwd, term.registerMarker(0));
         useSessionsStore.getState().handleCwdChange(sessionIdRef.current, cwd);
       };
-      const codexStateTracker = createCodexScreenStateTracker({
+      const promptAgentStateTracker = createPromptAgentScreenStateTracker({
         terminal: term,
         getSessionId: () => sessionIdRef.current,
         getCurrentSession,
-        isTrackingCodex: () => getCurrentSession()?.agent === "CX",
         onBusy: (id) => useSessionsStore.getState().handleAgentBusy(id),
         onReady: (id) => useSessionsStore.getState().handleAgentReady(id),
       });
@@ -195,7 +194,7 @@ function TerminalViewImpl({
           clearTimeout(startupReadyTimer);
           startupReadyTimer = null;
         }
-        codexStateTracker.reset();
+        promptAgentStateTracker.reset();
       };
       const scheduleStartupQuietReady = (delay = 3000) => {
         if (startupReadyTimer) clearTimeout(startupReadyTimer);
@@ -211,7 +210,7 @@ function TerminalViewImpl({
           clearTimeout(startupReadyTimer);
           startupReadyTimer = null;
         }
-        codexStateTracker.reset();
+        promptAgentStateTracker.reset();
         useSessionsStore.getState().handleAgentDetected(sessionIdRef.current, agent, command);
       };
       const applyAgentLifecycleEvent = (data: string) => {
@@ -361,7 +360,7 @@ function TerminalViewImpl({
           const current = getCurrentSession();
           if (current?.agent) {
             if (PROMPT_READY_AGENTS.has(current.agent)) {
-              codexStateTracker.schedule();
+              promptAgentStateTracker.schedule();
               return;
             }
             if (shouldUseStartupQuietReadyFallback(current.agent, current.agentActivity)) {

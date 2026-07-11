@@ -1251,7 +1251,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalBlocksPure = read("src/modules/terminal/lib/terminal-blocks.ts");
   const terminalBlocksBar = read("src/ui/TerminalBlocksBar.tsx");
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
-  const terminalCodexState = read("src/modules/terminal/lib/terminal-codex-state.ts");
+  const terminalPromptAgentState = read("src/modules/terminal/lib/terminal-prompt-agent-state.ts");
   const terminalCommand = read("src/modules/terminal/lib/terminal-command.ts");
   const terminalFont = read("src/modules/terminal/lib/terminal-font.ts");
   const terminalHyperlinks = read("src/modules/terminal/lib/terminal-hyperlinks.ts");
@@ -1306,7 +1306,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ useTerminalQuickSelect \} from "\.\/useTerminalQuickSelect"/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
   assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
-  assert.match(terminal, /import \{ createCodexScreenStateTracker \} from "@\/modules\/terminal\/lib\/terminal-codex-state"/);
+  assert.match(terminal, /import \{ createPromptAgentScreenStateTracker \} from "@\/modules\/terminal\/lib\/terminal-prompt-agent-state"/);
   assert.match(terminal, /import \{ isMeaningfulCommand \} from "@\/modules\/terminal\/lib\/terminal-command"/);
   assert.match(terminal, /import \{ waitForTerminalFontReady \} from "@\/modules\/terminal\/lib\/terminal-font"/);
   assert.match(terminal, /import \{ createTerminalHyperlinkHandler \} from "@\/modules\/terminal\/lib\/terminal-hyperlinks"/);
@@ -1477,10 +1477,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBufferRead, /export function extractCommandFromBuffer/);
   assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
   assert.match(terminalBufferRead, /export function getTerminalTailText/);
-  assert.match(terminalCodexState, /export function createCodexScreenStateTracker/);
-  assert.doesNotMatch(terminalCodexState, /CODEX_DATA_BURST_BUSY_THRESHOLD|dataBurstCount/);
-  assert.match(terminalCodexState, /CODEX_STATE_CHECK_DELAY_MS/);
-  assert.match(terminalCodexState, /detectCodexScreenState\(tail\)/);
+  assert.match(terminalPromptAgentState, /export function createPromptAgentScreenStateTracker/);
+  assert.doesNotMatch(terminalPromptAgentState, /CODEX_DATA_BURST_BUSY_THRESHOLD|dataBurstCount/);
+  assert.match(terminalPromptAgentState, /PROMPT_AGENT_STATE_CHECK_DELAY_MS/);
+  assert.match(terminalPromptAgentState, /detectPromptAgentScreenState\(current\.agent, tail\)/);
   assert.match(terminalCommand, /export function isMeaningfulCommand/);
   assert.match(terminalFont, /export const TERMINAL_FONT_LOAD_TIMEOUT_MS = 200/);
   assert.match(terminalFont, /export function buildTerminalFontFamily/);

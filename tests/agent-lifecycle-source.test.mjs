@@ -409,13 +409,13 @@ test("agent hook runtime files avoid predictable shared tmp paths", () => {
   assert.match(ssh, /SshSession::open\(params, on_event\)[\s\S]*state\.insert\([\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
 });
 
-test("agent lifecycle policy preserves line structure for Codex", () => {
+test("agent lifecycle policy preserves prompt state for Codex and Pi", () => {
   const policy = read("src/modules/terminal/lib/agent-lifecycle.ts");
-  const tracker = read("src/modules/terminal/lib/terminal-codex-state.ts");
+  const tracker = read("src/modules/terminal/lib/terminal-prompt-agent-state.ts");
   const utils = read("src/modules/terminal/lib/terminal-utils.ts");
 
   assert.match(policy, /export const HOOK_READY_AGENTS = new Set<AgentCode>\(\["CC", "DR"\]\);/);
-  assert.match(policy, /export const PROMPT_READY_AGENTS = new Set<AgentCode>\(\["CX"\]\);/);
+  assert.match(policy, /export const PROMPT_READY_AGENTS = new Set<AgentCode>\(\["CX", "PI"\]\);/);
   assert.match(policy, /export function detectAgentCommand\(commandLine: string\): AgentCode \| null/);
   assert.match(policy, /export function isAgentShellTitle\(title: string\): boolean/);
   assert.match(policy, /export function initialAgentActivity\(agent: AgentCode\): AgentActivity/);
@@ -433,16 +433,20 @@ test("agent lifecycle policy preserves line structure for Codex", () => {
   assert.match(policy, /\\bWorking\\b/);
   assert.match(policy, /Pursuing goal/);
   assert.match(policy, /background terminal running/);
-  assert.match(policy, /export const CODEX_SCREEN_STATE_RECENT_LINE_LIMIT = 12;/);
-  assert.match(policy, /lines\.slice\(-CODEX_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
+  assert.match(policy, /export const PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT = 12;/);
+  assert.match(policy, /lines\.slice\(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
   assert.match(policy, /return CODEX_BUSY_INDICATORS\.some\(\(pattern\) => pattern\.test\(text\)\);/);
   assert.match(policy, /const currentTurnText = recent\.slice\(promptIndex \+ 1\)\.join\("\\n"\);/);
   assert.match(policy, /return hasCodexBusyIndicator\(currentTurnText\) \? "busy" : "ready";/);
   assert.match(policy, /new Set\(\["tunara-agent", "conduit-agent"\]\)/);
   assert.match(policy, /export function parseAgentLifecycleOsc\(data: string\): AgentLifecycleEvent \| null/);
-  assert.match(tracker, /export const CODEX_STATE_CHECK_DELAY_MS = 500;/);
-  assert.match(tracker, /getTerminalTailText\(terminal, CODEX_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
-  assert.match(tracker, /const screenState = detectCodexScreenState\(tail\);/);
+  assert.match(policy, /export function detectPiScreenState\(text: string\): AgentScreenState/);
+  assert.match(policy, /PI_BUSY_PATTERN\.test\(recent\)[\s\S]*return "busy"/);
+  assert.match(policy, /PI_READY_STATUS_PATTERN\.test\(recent\)[\s\S]*return "ready"/);
+  assert.match(policy, /export function detectPromptAgentScreenState\(agent: AgentCode, text: string\)/);
+  assert.match(tracker, /export const PROMPT_AGENT_STATE_CHECK_DELAY_MS = 500;/);
+  assert.match(tracker, /getTerminalTailText\(terminal, PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
+  assert.match(tracker, /const screenState = detectPromptAgentScreenState\(current\.agent, tail\);/);
   assert.match(tracker, /screenState === "busy"[\s\S]*current\.agentActivity === "idle"[\s\S]*onBusy\(getSessionId\(\)\)/);
   assert.doesNotMatch(tracker, /dataBurstCount|BURST_BUSY_THRESHOLD/);
   assert.match(utils, /export function cleanTerminalLines\(text: string\): string/);
@@ -508,7 +512,7 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.doesNotMatch(listener, /if \(!current\?\.agent\) store\.handleAgentDetected/);
   assert.match(zshrc, /printf '\\e\]133;C;%s\\e\\\\' "\$\(.*"\$1"\)"/);
   assert.match(terminal, /import \{ detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback \}/);
-  assert.match(terminal, /import \{ createCodexScreenStateTracker \}/);
+  assert.match(terminal, /import \{ createPromptAgentScreenStateTracker \}/);
   assert.match(terminal, /const agentLifecycleDisposable = term\.parser\.registerOscHandler\(777, applyAgentLifecycleEvent\);/);
   assert.doesNotMatch(terminal, /const HOOKABLE_AGENTS/);
   assert.doesNotMatch(terminal, /const PROMPT_DETECTED_AGENTS/);
@@ -518,9 +522,9 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /registerCwdHandler\(term, handleCwdChange\)/);
   assert.doesNotMatch(terminal, /registerCwdHandler\(term, \(cwd\) => \{[\s\S]{0,400}handleAgentExited/);
   assert.match(terminal, /const trackedSession = getCurrentSession\(\);[\s\S]*if \(trackedSession\?\.agent\) \{/);
-  assert.match(terminal, /if \(PROMPT_READY_AGENTS\.has\(current\.agent\)\) \{[\s\S]*?codexStateTracker\.schedule\(\);[\s\S]*?return;/);
-  assert.match(terminal, /createCodexScreenStateTracker\(\{[\s\S]*isTrackingCodex: \(\) => getCurrentSession\(\)\?\.agent === "CX"/);
-  assert.match(terminal, /codexStateTracker\.schedule\(\);/);
+  assert.match(terminal, /if \(PROMPT_READY_AGENTS\.has\(current\.agent\)\) \{[\s\S]*?promptAgentStateTracker\.schedule\(\);[\s\S]*?return;/);
+  assert.match(terminal, /createPromptAgentScreenStateTracker\(\{/);
+  assert.match(terminal, /promptAgentStateTracker\.schedule\(\);/);
   assert.doesNotMatch(terminal, /codexDataBurstCount/);
   assert.match(terminal, /shouldUseStartupQuietReadyFallback\(current\.agent, current\.agentActivity\)[\s\S]*scheduleStartupQuietReady\(\);/);
   assert.doesNotMatch(terminal, /sess\?\.agentActivity === "running"[\s\S]{0,120}scheduleStartupQuietReady/);

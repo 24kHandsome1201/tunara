@@ -3,7 +3,7 @@ import { AGENT_CODES, AGENT_COMMANDS, AGENT_NAMES, AGENT_SHELL_TITLE_FRAGMENTS, 
 import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
-export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
 
 export type AgentLifecycleEventName = "start" | "busy" | "idle" | "stop" | "exit";
 
@@ -92,7 +92,7 @@ export const CODEX_BUSY_INDICATORS = [
   /Pursuing goal/i,
   /background terminal running/i,
 ] as const;
-export const CODEX_SCREEN_STATE_RECENT_LINE_LIMIT = 12;
+export const PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT = 12;
 
 function isCodexPromptLine(line: string): boolean {
   return CODEX_PROMPT_PATTERN.test(line);
@@ -107,7 +107,7 @@ export function detectCodexScreenState(text: string): AgentScreenState {
     .split("\n")
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
-  const recent = lines.slice(-CODEX_SCREEN_STATE_RECENT_LINE_LIMIT);
+  const recent = lines.slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT);
   let promptIndex = -1;
   for (let i = recent.length - 1; i >= 0; i -= 1) {
     if (isCodexPromptLine(recent[i])) {
@@ -126,6 +126,25 @@ export function detectCodexScreenState(text: string): AgentScreenState {
     return "busy";
   }
 
+  return null;
+}
+
+const PI_BUSY_PATTERN = /Running\.\.\. \(escape\/ctrl\+c to cancel\)/i;
+const PI_READY_STATUS_PATTERN = /^\$\d+(?:\.\d+)?\s+\([^)]*\)\s+\d+(?:\.\d+)?%\/\S+\s+\([^)]*\)\s+.+•\s*$/m;
+
+export function detectPiScreenState(text: string): AgentScreenState {
+  const recent = cleanTerminalLines(text)
+    .split("\n")
+    .slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT)
+    .join("\n");
+  if (PI_BUSY_PATTERN.test(recent)) return "busy";
+  if (PI_READY_STATUS_PATTERN.test(recent)) return "ready";
+  return null;
+}
+
+export function detectPromptAgentScreenState(agent: AgentCode, text: string): AgentScreenState {
+  if (agent === "CX") return detectCodexScreenState(text);
+  if (agent === "PI") return detectPiScreenState(text);
   return null;
 }
 

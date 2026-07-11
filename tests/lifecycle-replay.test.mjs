@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   detectAgentCommand,
   detectCodexScreenState,
+  detectPiScreenState,
+  detectPromptAgentScreenState,
   hasCompletedAgentTurn,
   isSessionBusy,
   parseAgentLifecycleOsc,
@@ -13,9 +15,9 @@ import {
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
 import {
-  CODEX_STATE_CHECK_DELAY_MS,
-  createCodexScreenStateTracker,
-} from "../src/modules/terminal/lib/terminal-codex-state.ts";
+  PROMPT_AGENT_STATE_CHECK_DELAY_MS,
+  createPromptAgentScreenStateTracker,
+} from "../src/modules/terminal/lib/terminal-prompt-agent-state.ts";
 import { parseOsc7 } from "../src/modules/terminal/lib/osc-handlers.ts";
 import {
   findTerminalFileLinkMatches,
@@ -1230,16 +1232,15 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
   assert.equal(isSessionBusy(h.session), false);
 });
 
-test("Codex screen tracker does not complete startup while the first prompt is painting", async () => {
+test("prompt agent screen tracker does not complete Codex startup while the first prompt is painting", async () => {
   let session = makeSession({ agent: "CX", agentActivity: "starting" });
   const lines = ["Codex", "Working", "esc to interrupt"];
   let busyCount = 0;
   let readyCount = 0;
-  const tracker = createCodexScreenStateTracker({
+  const tracker = createPromptAgentScreenStateTracker({
     terminal: makeTailTerminal(lines),
     getSessionId: () => "s-1",
     getCurrentSession: () => session,
-    isTrackingCodex: () => true,
     onBusy: () => {
       busyCount += 1;
       session = { ...session, agentActivity: "running" };
@@ -1251,14 +1252,14 @@ test("Codex screen tracker does not complete startup while the first prompt is p
   });
 
   tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
   assert.equal(busyCount, 0, "startup paint must not manufacture a running turn");
   assert.equal(readyCount, 0);
   assert.equal(session.agentActivity, "starting");
 
   lines.splice(0, lines.length, "Codex", "› ");
   tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
   assert.equal(busyCount, 0);
   assert.equal(readyCount, 1);
   assert.equal(session.agentActivity, "idle");
@@ -1266,15 +1267,14 @@ test("Codex screen tracker does not complete startup while the first prompt is p
   tracker.dispose();
 });
 
-test("Codex screen tracker does not mark ready prompt redraws as busy", async () => {
+test("prompt agent screen tracker does not mark ready Codex prompt redraws as busy", async () => {
   let session = makeSession({ agent: "CX", agentActivity: "idle" });
   let busyCount = 0;
   let readyCount = 0;
-  const tracker = createCodexScreenStateTracker({
+  const tracker = createPromptAgentScreenStateTracker({
     terminal: makeTailTerminal(["Codex", "Working", "esc to interrupt", "› "]),
     getSessionId: () => "s-1",
     getCurrentSession: () => session,
-    isTrackingCodex: () => true,
     onBusy: () => {
       busyCount += 1;
       session = { ...session, agentActivity: "running" };
@@ -1288,22 +1288,21 @@ test("Codex screen tracker does not mark ready prompt redraws as busy", async ()
   tracker.schedule();
   assert.equal(busyCount, 0);
 
-  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
   assert.equal(busyCount, 0);
   assert.equal(readyCount, 0);
 
   tracker.dispose();
 });
 
-test("Codex screen tracker marks busy from one semantic output update", async () => {
+test("prompt agent screen tracker marks Codex busy from one semantic output update", async () => {
   let session = makeSession({ agent: "CX", agentActivity: "idle" });
   let busyCount = 0;
   let readyCount = 0;
-  const tracker = createCodexScreenStateTracker({
+  const tracker = createPromptAgentScreenStateTracker({
     terminal: makeTailTerminal(["Codex", "› fix this", "Working", "esc to interrupt"]),
     getSessionId: () => "s-1",
     getCurrentSession: () => session,
-    isTrackingCodex: () => true,
     onBusy: () => {
       busyCount += 1;
       session = { ...session, agentActivity: "running" };
@@ -1317,9 +1316,73 @@ test("Codex screen tracker marks busy from one semantic output update", async ()
   tracker.schedule();
   assert.equal(busyCount, 0);
 
-  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
   assert.equal(busyCount, 1);
   assert.equal(readyCount, 0);
+
+  tracker.dispose();
+});
+
+test("Pi screen replay gives the running indicator precedence over its ready footer", () => {
+  const ready = [
+    "pi v0.79.4",
+    "~",
+    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+  ].join("\n");
+  const busy = [
+    "$ sleep 2",
+    "Running... (escape/ctrl+c to cancel)",
+    "~",
+    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+  ].join("\n");
+
+  assert.equal(detectPiScreenState(ready), "ready");
+  assert.equal(detectPiScreenState(busy), "busy");
+  assert.equal(detectPromptAgentScreenState("PI", ready), "ready");
+  assert.equal(detectPromptAgentScreenState("PI", busy), "busy");
+});
+
+test("prompt agent screen tracker moves Pi from startup and running back to ready", async () => {
+  let session = makeSession({ agent: "PI", agentActivity: "starting" });
+  const lines = ["pi v0.79.4", "~", "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •"];
+  let busyCount = 0;
+  let readyCount = 0;
+  const tracker = createPromptAgentScreenStateTracker({
+    terminal: makeTailTerminal(lines),
+    getSessionId: () => "s-pi",
+    getCurrentSession: () => session,
+    onBusy: () => {
+      busyCount += 1;
+      session = { ...session, agentActivity: "running" };
+    },
+    onReady: () => {
+      readyCount += 1;
+      session = { ...session, agentActivity: "idle" };
+    },
+  });
+
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(readyCount, 1);
+  assert.equal(session.agentActivity, "idle");
+
+  session = { ...session, agentActivity: "running" };
+  lines.splice(0, lines.length,
+    "$ sleep 2",
+    "Running... (escape/ctrl+c to cancel)",
+    "~",
+    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+  );
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(busyCount, 0, "submitted input already establishes the running transition");
+  assert.equal(session.agentActivity, "running");
+
+  lines.splice(0, lines.length, "~", "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •");
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(readyCount, 2);
+  assert.equal(session.agentActivity, "idle");
 
   tracker.dispose();
 });
