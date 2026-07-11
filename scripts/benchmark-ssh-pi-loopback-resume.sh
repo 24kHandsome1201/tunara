@@ -9,7 +9,7 @@ remote_result="$(mktemp /tmp/tunara-ssh-pi-loopback-result.XXXXXXXX.json)"
 cleanup() { rm -f "$archive" "$remote_result"; }
 trap cleanup EXIT
 
-COPYFILE_DISABLE=1 tar -cf "$archive" -C "$ROOT" \
+COPYFILE_DISABLE=1 tar --no-xattrs -cf "$archive" -C "$ROOT" \
   scripts/pi-resume-probe.sh \
   scripts/fixtures/pi-loopback-provider.py
 
