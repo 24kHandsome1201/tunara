@@ -1,0 +1,51 @@
+{
+  "capturedAt": "2026-07-11T18:35:43Z",
+  "commit": "15d1d6003bc58905026e7bab4db2c6721d3bfbd5",
+  "sshTarget": "de-netcup",
+  "safety": {
+    "credentialValuesLogged": false,
+    "temporarySessionsDeleted": true,
+    "temporaryHistoriesDeleted": true,
+    "rawLogsRetained": false
+  },
+  "authenticationInventory": {
+    "localOpenCode": ["MiniMax api", "OpenAI oauth"],
+    "sshOpenCode": ["OpenAI oauth"],
+    "localProviderEnvironmentVariablesPresent": false,
+    "sshProviderEnvironmentVariablesPresent": false
+  },
+  "resume": {
+    "localOpenCode": {
+      "sessionIdentityObserved": true,
+      "firstMarkerObserved": false,
+      "resumeMarkerObserved": false,
+      "jsonEvents": 0,
+      "errorClass": "timeout",
+      "passed": false
+    },
+    "sshOpenCode": {
+      "sessionIdentityObserved": true,
+      "firstMarkerObserved": false,
+      "resumeMarkerObserved": false,
+      "jsonEvents": 2,
+      "errorClass": "missing_or_invalid_api_key",
+      "passed": false
+    },
+    "localAider": {
+      "historyIdentityObserved": true,
+      "firstMarkerObserved": false,
+      "resumeMarkerObserved": false,
+      "errorClass": "missing_or_invalid_api_key",
+      "passed": false
+    },
+    "sshAider": {
+      "historyIdentityObserved": true,
+      "firstMarkerObserved": false,
+      "resumeMarkerObserved": false,
+      "errorClass": "missing_or_invalid_api_key",
+      "passed": false
+    }
+  },
+  "passed": false,
+  "result": "provider credentials remain the external blocker; session and history identity paths are intact"
+}
