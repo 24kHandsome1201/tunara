@@ -482,6 +482,20 @@ export function probeTerminalInputEcho(
   marker: string,
   timeoutMs = 5_000,
 ): Promise<number> {
+  return probeTerminalCommandMarker(
+    sessionId,
+    `printf '%s\\n' '${marker}'\n`,
+    marker,
+    timeoutMs,
+  );
+}
+
+export function probeTerminalCommandMarker(
+  sessionId: string,
+  command: string,
+  marker: string,
+  timeoutMs = 5_000,
+): Promise<number> {
   const writer = writers.get(sessionId);
   if (!writer) return Promise.reject(new Error(`benchmark writer unavailable: ${sessionId}`));
 
@@ -506,7 +520,7 @@ export function probeTerminalInputEcho(
       }, timeoutMs),
     };
     pendingInputProbes.set(sessionId, probe);
-    void writer(`printf '%s\\n' '${marker}'\n`).catch((error) => {
+    void writer(command).catch((error) => {
       if (pendingInputProbes.get(sessionId) !== probe) return;
       pendingInputProbes.delete(sessionId);
       clearTimeout(probe.timer);

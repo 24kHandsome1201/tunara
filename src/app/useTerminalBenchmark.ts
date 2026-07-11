@@ -3,6 +3,7 @@ import { useSessionsStore } from "@/state/sessions";
 import {
   evaluateAnimationFrames,
   probeTerminalInputEcho,
+  probeTerminalCommandMarker,
   probeTerminalHighOutput,
   readTerminalBenchmarkSnapshot,
   terminalBenchmarkExitCount,
@@ -114,11 +115,17 @@ async function runM1SshRecovery(sessionId: string) {
   );
   const reconnectMs = Math.round((performance.now() - reconnectStartedAt) * 100) / 100;
   const marker = `__TUNARA_M1_SSH_RECOVERED_${Date.now().toString(36)}__`;
-  const markerEchoMs = Math.round((await probeTerminalInputEcho(sessionId, marker)) * 100) / 100;
+  const cwdReference = `${marker}:${sessionBefore.dir}`;
+  const markerEchoMs = Math.round((await probeTerminalCommandMarker(
+    sessionId,
+    `printf '%s:%s\\n' '${marker}' "$PWD"\n`,
+    cwdReference,
+  )) * 100) / 100;
   const snapshot = await readTerminalBenchmarkSnapshot(sessionId);
   const recoveredSession = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
   const exitCountAfter = terminalBenchmarkExitCount(sessionId);
   const markerVisible = snapshot.includes(marker);
+  const cwdReferenceVisible = snapshot.includes(cwdReference);
 
   return {
     exitCode: exit.code,
@@ -132,6 +139,8 @@ async function runM1SshRecovery(sessionId: string) {
     reconnectMs,
     markerEchoMs,
     markerVisible,
+    cwd: sessionBefore.dir,
+    cwdReferenceVisible,
     recoveredPhase: recoveredSession?.connection?.phase ?? null,
     passed: exit.code === SSH_DISCONNECTED_EXIT_CODE
       && exit.count === exitCountBefore + 1
@@ -140,6 +149,7 @@ async function runM1SshRecovery(sessionId: string) {
       && disconnectedEvidence.exitCode === SSH_DISCONNECTED_EXIT_CODE
       && writerGenerationAfter > writerGenerationBefore
       && markerVisible
+      && cwdReferenceVisible
       && recoveredSession?.connection?.phase === "ready",
   };
 }
