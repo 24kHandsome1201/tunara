@@ -456,6 +456,8 @@
   "preview.too_large": "文件过大（{{size}}）",
   "split.handle.horizontal": "拖动调整左右分栏比例（方向键、Shift+方向键大幅、Home/End 极值、Enter 居中）",
   "split.handle.vertical": "拖动调整上下分栏比例（方向键、Shift+方向键大幅、Home/End 极值、Enter 居中）",
+  "layout.resize.sidebar": "调整会话侧栏宽度（方向键、Shift+方向键大幅、Home/End 极值、Enter 重置）",
+  "layout.resize.inspector": "调整 Inspector 宽度（方向键、Shift+方向键大幅、Home/End 极值、Enter 重置）",
   "quick_select.title": "快速选择",
   "quick_select.copy": "复制",
   "quick_select.open": "打开",

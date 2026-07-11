@@ -199,7 +199,8 @@ html[data-chrome="borderless"] {
 }
 
 /* Panel resize handle: visible line on hover */
-.panel-resize-handle::after {
+.panel-resize-handle::after,
+.sidebar-resize-handle::after {
   content: "";
   position: absolute;
   top: 0;
@@ -211,7 +212,10 @@ html[data-chrome="borderless"] {
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-smooth), background var(--duration-fast) var(--ease-smooth), width var(--duration-fast) var(--ease-out-expo);
 }
-.panel-resize-handle:hover::after { opacity: 1; background: var(--c-accent); width: 3px; }
+.panel-resize-handle:hover::after,
+.panel-resize-handle:focus-visible::after,
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:focus-visible::after { opacity: 1; background: var(--c-accent); width: 3px; }
 
 /* Dir group header: + / × buttons fade on hover */
 .dir-group-header .dir-group-add,

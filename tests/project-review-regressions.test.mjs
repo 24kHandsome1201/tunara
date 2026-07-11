@@ -478,11 +478,15 @@ test("app shell keeps shared resize and window lifecycle plumbing centralized", 
   const init = read("src/app/useInit.ts");
 
   assert.match(app, /interface ResizeHandleProps/);
-  assert.match(app, /function ResizeHandle\(\{ edge, getWidth, setWidth, direction, className \}: ResizeHandleProps\)/);
+  assert.match(app, /function ResizeHandle\(\{ edge, getWidth, setWidth, minWidth, getMaxWidth, defaultWidth, ariaLabel, direction, className \}: ResizeHandleProps\)/);
   assert.match(app, /<ResizeHandle[\s\S]*edge="left"[\s\S]*direction=\{-1\}/);
   assert.match(app, /<ResizeHandle[\s\S]*edge="right"[\s\S]*direction=\{1\}/);
   assert.doesNotMatch(app, /function PanelResizeHandle\(\)[\s\S]*?document\.addEventListener\("pointermove"/);
   assert.doesNotMatch(app, /function SidebarResizeHandle\(\)[\s\S]*?document\.addEventListener\("pointermove"/);
+  assert.match(app, /role="separator"[\s\S]*tabIndex=\{0\}[\s\S]*aria-orientation="vertical"/);
+  assert.match(app, /resolveResizeHandleWidth\(\{/);
+  assert.match(app, /ariaLabel=\{t\("layout\.resize\.sidebar"\)\}/);
+  assert.match(app, /ariaLabel=\{t\("layout\.resize\.inspector"\)\}/);
 
   assert.match(init, /const win = tryGetCurrentWindow\(\);/);
   assert.match(init, /win\.isFullscreen\(\)/);

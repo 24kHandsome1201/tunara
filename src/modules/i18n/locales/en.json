@@ -456,6 +456,8 @@
   "preview.too_large": "File too large ({{size}})",
   "split.handle.horizontal": "Drag to adjust left/right split ratio (arrow keys, Shift+arrow for larger steps, Home/End for extremes, Enter to center)",
   "split.handle.vertical": "Drag to adjust top/bottom split ratio (arrow keys, Shift+arrow for larger steps, Home/End for extremes, Enter to center)",
+  "layout.resize.sidebar": "Resize session sidebar (arrow keys, Shift+arrow for larger steps, Home/End for extremes, Enter to reset)",
+  "layout.resize.inspector": "Resize Inspector (arrow keys, Shift+arrow for larger steps, Home/End for extremes, Enter to reset)",
   "quick_select.title": "Quick select",
   "quick_select.copy": "Copy",
   "quick_select.open": "Open",

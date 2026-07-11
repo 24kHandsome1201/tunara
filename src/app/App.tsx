@@ -22,6 +22,7 @@ import { useTerminalBenchmark } from "./useTerminalBenchmark";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { resolveAppShellLayout } from "./lib/app-shell-layout";
+import { resolveResizeHandleWidth } from "./lib/resize-handle";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -35,11 +36,30 @@ interface ResizeHandleProps {
   edge: "left" | "right";
   getWidth: () => number;
   setWidth: (width: number) => void;
+  minWidth: number;
+  getMaxWidth: () => number;
+  defaultWidth: number;
+  ariaLabel: string;
   direction: 1 | -1;
   className?: string;
 }
 
-function ResizeHandle({ edge, getWidth, setWidth, direction, className }: ResizeHandleProps) {
+function ResizeHandle({ edge, getWidth, setWidth, minWidth, getMaxWidth, defaultWidth, ariaLabel, direction, className }: ResizeHandleProps) {
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const width = resolveResizeHandleWidth({
+      key: e.key,
+      shiftKey: e.shiftKey,
+      currentWidth: getWidth(),
+      minWidth,
+      maxWidth: getMaxWidth(),
+      defaultWidth,
+      direction,
+    });
+    if (width === null) return;
+    e.preventDefault();
+    setWidth(width);
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
@@ -73,6 +93,14 @@ function ResizeHandle({ edge, getWidth, setWidth, direction, className }: Resize
     <div
       className={className}
       onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      role="separator"
+      tabIndex={0}
+      aria-orientation="vertical"
+      aria-valuenow={Math.round(getWidth())}
+      aria-valuemin={minWidth}
+      aria-valuemax={Math.round(getMaxWidth())}
+      aria-label={ariaLabel}
       style={{
         position: "absolute",
         top: 0,
@@ -87,6 +115,7 @@ function ResizeHandle({ edge, getWidth, setWidth, direction, className }: Resize
 }
 
 function PanelResizeHandle() {
+  const t = useT();
   const setPanelWidth = useUIStore((s) => s.setPanelWidth);
   return (
     <ResizeHandle
@@ -94,18 +123,28 @@ function PanelResizeHandle() {
       edge="left"
       getWidth={() => useUIStore.getState().panelWidth}
       setWidth={setPanelWidth}
+      minWidth={240}
+      getMaxWidth={() => Math.max(240, Math.floor(window.innerWidth * 0.45))}
+      defaultWidth={320}
+      ariaLabel={t("layout.resize.inspector")}
       direction={-1}
     />
   );
 }
 
 function SidebarResizeHandle() {
+  const t = useT();
   const setSidebarWidth = useUIStore((s) => s.setSidebarWidth);
   return (
     <ResizeHandle
+      className="sidebar-resize-handle"
       edge="right"
       getWidth={() => useUIStore.getState().sidebarWidth}
       setWidth={setSidebarWidth}
+      minWidth={200}
+      getMaxWidth={() => 400}
+      defaultWidth={272}
+      ariaLabel={t("layout.resize.sidebar")}
       direction={1}
     />
   );
