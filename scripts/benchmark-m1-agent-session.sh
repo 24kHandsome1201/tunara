@@ -132,6 +132,11 @@ TUNARA_PI_USE_NPX=1 ssh "${ssh_args[@]}" "$remote" \
   > "$WORK/resume-ssh-pi.json" 2>&1 &
 resume_ssh_pi_pid=$!
 
+ssh "${ssh_args[@]}" "$remote" "/bin/bash -s" \
+  < "$ROOT/scripts/remote-claude-resume.sh" \
+  > "$WORK/resume-ssh-claude.json" 2>&1 &
+resume_ssh_claude_pid=$!
+
 wait "$permission_codex_pid" || true
 wait "$permission_claude_pid" || true
 [[ -e "$CLAUDE_PROBE" ]] && printf '1\n' > "$WORK/permission-claude-probe-created" \
@@ -144,6 +149,7 @@ wait "$resume_local_opencode_pid"
 wait "$resume_ssh_opencode_pid"
 wait "$resume_local_pi_pid"
 wait "$resume_ssh_pi_pid"
+wait "$resume_ssh_claude_pid"
 
 python3 "$ROOT/scripts/summarize-agent-session.py" \
   --input "$WORK" \

@@ -134,6 +134,30 @@ def pi_resume_result(root: Path, scope: str) -> dict[str, object]:
     }
 
 
+def claude_ssh_resume_result(root: Path) -> dict[str, object]:
+    raw = read(root / "resume-ssh-claude.json")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    def boolean(key: str) -> bool:
+        return payload.get(key) is True
+
+    error_class = payload.get("errorClass")
+    events = payload.get("jsonEvents")
+    return {
+        "sessionIdentityObserved": boolean("sessionIdentityObserved"),
+        "firstMarkerObserved": boolean("firstMarkerObserved"),
+        "resumeMarkerObserved": boolean("resumeMarkerObserved"),
+        "jsonEvents": events if isinstance(events, int) and events >= 0 else 0,
+        "errorClass": error_class if isinstance(error_class, str) else None,
+        "passed": boolean("passed"),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, type=Path)
@@ -177,6 +201,7 @@ def main() -> None:
         "sshOpenCode": opencode_resume_result(args.input, "ssh"),
         "localPi": pi_resume_result(args.input, "local"),
         "sshPi": pi_resume_result(args.input, "ssh"),
+        "sshClaude": claude_ssh_resume_result(args.input),
     }
     result = {
         "commit": args.commit,

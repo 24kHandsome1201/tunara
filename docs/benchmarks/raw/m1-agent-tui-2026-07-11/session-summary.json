@@ -1,7 +1,7 @@
 {
   "commit": "67720ee27e9065e9d56fa4a10804dd77a7309404",
   "capturedAt": "2026-07-11T05:51:31.034129+00:00",
-  "followUpCapturedAt": "2026-07-11T06:48:26+00:00",
+  "followUpCapturedAt": "2026-07-11T06:55:23+00:00",
   "sshTarget": "de-netcup",
   "safety": "temporary directories and probe cleaned; raw output deleted after summary",
   "permission": {
@@ -78,11 +78,19 @@
       "jsonEvents": 1,
       "errorClass": "missing_or_invalid_api_key",
       "passed": false
+    },
+    "sshClaude": {
+      "sessionIdentityObserved": true,
+      "firstMarkerObserved": false,
+      "resumeMarkerObserved": false,
+      "jsonEvents": 2,
+      "errorClass": "provider_402",
+      "passed": false
     }
   },
   "summary": {
     "permissionPromptsObserved": 1,
     "resumePassed": 4,
-    "resumeEntries": 8
+    "resumeEntries": 9
   }
 }

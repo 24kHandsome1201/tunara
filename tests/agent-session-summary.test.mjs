@@ -54,6 +54,16 @@ function writeResumeFixtures(dir) {
       passed: true,
     })}\n`);
   }
+  writeFileSync(join(dir, "resume-ssh-claude.json"), `${JSON.stringify({
+    firstExit: 0,
+    resumeExit: 0,
+    sessionIdentityObserved: true,
+    firstMarkerObserved: true,
+    resumeMarkerObserved: true,
+    jsonEvents: 4,
+    errorClass: null,
+    passed: true,
+  })}\n`);
 }
 
 function summarize(dir, output) {
@@ -87,12 +97,12 @@ test("agent session summary recognizes compact TUI prompts and explicit resume I
     assert.equal(result.permission.localCodex.result, "prompt_observed");
     assert.deepEqual(result.summary, {
       permissionPromptsObserved: 2,
-      resumePassed: 8,
-      resumeEntries: 8,
+      resumePassed: 9,
+      resumeEntries: 9,
     });
     for (const [name, entry] of Object.entries(result.resume)) {
       if (name === "sshAider") assert.equal(entry.historyIdentityObserved, true);
-      else if (name.endsWith("OpenCode") || name.endsWith("Pi")) assert.equal(entry.sessionIdentityObserved, true);
+      else if (name.endsWith("OpenCode") || name.endsWith("Pi") || name === "sshClaude") assert.equal(entry.sessionIdentityObserved, true);
       else assert.equal(entry.idObserved, true);
       assert.equal(entry.firstMarkerObserved, true);
       assert.equal(entry.resumeMarkerObserved, true);
@@ -143,4 +153,11 @@ test("remote session probes isolate stdin and clean their dedicated state", () =
   assert.match(pi, /error_class = None if strong_success else/);
   assert.match(pi, /trap cleanup EXIT/);
   assert.equal((pi.match(/< \/dev\/null/g) ?? []).length, 2);
+
+  const claude = read("scripts/remote-claude-resume.sh");
+  assert.match(claude, /CLAUDE_CONFIG_DIR="\$work\/config"/);
+  assert.match(claude, /--session-id "\$session_id"/);
+  assert.match(claude, /--resume "\$session_id"/);
+  assert.match(claude, /trap cleanup EXIT/);
+  assert.equal((claude.match(/< \/dev\/null/g) ?? []).length, 2);
 });
