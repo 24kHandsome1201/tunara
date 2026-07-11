@@ -23,7 +23,7 @@
 - [ ] 固化冷启动、首个 PTY 可输入、输入回显、10 session、bundle 大小基线。
 - [x] 建立 50/200MiB Unicode/ANSI/OSC/alternate-screen 高输出 fixture 与 reference capture；本地 optimized bundle 顺序完整、溢出 0、frame p95 18/19ms，见 [报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)。
 - [x] 真实 WebGL context loss、atlas rebuild、renderer fallback 和 30 分钟压力证据。context loss -> DOM fallback -> reference 可见 -> 重新激活 WebGL 已通过；38 分 44 秒、16 GiB、64 轮压力全部顺序完整且 overflow 为 0，见 [高输出报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)与[长压报告](./benchmarks/m1-terminal-stress-2026-07-11.md)。
-- [ ] SSH 输出 4-16ms 或 64-256KiB 有界批处理，记录 IPC/CPU/RSS/p95 frame time。8ms / 128KiB 实现、2MiB xterm ACK 窗口与真实 128KiB smoke 已通过；本地高输出证据已完成，SSH 50/200MiB 对照仍待补齐，见 [控制面证据](./benchmarks/m1-ssh-control-2026-07-11.md)与[本地高输出报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)。
+- [x] SSH 输出 8ms / 128KiB 有界批处理与 2MiB xterm ACK 窗口已完成；真实 `de-netcup` optimized bundle 的 50/200MiB 均顺序完整、overflow 为 0、frame p95 18ms，CPU mean 4.78%，见 [SSH 高输出报告](./benchmarks/m1-ssh-high-output-2026-07-11.md)。
 - [x] SSH 输入改为字节预算，大粘贴分块，Close 独立取消，Resize latest-value 合并；本地确定性测试与真实 `de-netcup` close/resize smoke 已通过。
 - [ ] 100/200ms RTT 下连接、目录、preview、grep、diff、取消与恢复 benchmark。真实 `de-netcup` 集成层 5 样本统计已完成，optimized bundle 与断线恢复仍待补齐，见 [RTT harness 报告](./benchmarks/m1-ssh-rtt-harness-2026-07-11.md)。
 - [ ] Claude Code、Codex、Pi、OpenCode、Aider 和未知 TUI 的本地/SSH 兼容矩阵。

@@ -4,7 +4,7 @@
 
 M1 的第一批 SSH 热路径改造已通过本地确定性测试和真实 `de-netcup` smoke：输入按 256 KiB 字节预算限流，单次粘贴全有或全无；Close 不排在 Data/Resize 后并可重复调用；Resize 只保留最新值；输出以 8ms / 128 KiB 双阈值有界批处理并在退出前 flush。
 
-本报告只证明控制面与 128 KiB 真实输出链路。50/200 MiB fixture、100/200ms RTT、CPU/RSS/frame time 和 30 分钟压力仍属于后续门禁，未据此宣告 M1 完成。
+本报告证明控制面与 128 KiB 真实输出链路。后续已补齐 SSH 50/200 MiB、CPU/RSS/frame time，见 [SSH 高输出报告](./m1-ssh-high-output-2026-07-11.md)；断线恢复与兼容矩阵仍属于后续门禁，未据此宣告 M1 完成。
 
 ## 环境与实现边界
 
@@ -51,7 +51,7 @@ cargo test --manifest-path src-tauri/Cargo.toml \
 
 ## 后续门禁
 
-- 50/200 MiB Unicode/ANSI/OSC/alternate-screen fixture 与 reference capture。
+- 50/200 MiB Unicode/ANSI/OSC/alternate-screen fixture 与 reference capture 已完成，见 [SSH 高输出报告](./m1-ssh-high-output-2026-07-11.md)。
 - 100/200ms RTT 下连接、目录、preview、grep、diff、取消与恢复的 p50/p95/max。
 - IPC/CPU/RSS/frame time 的同条件对照，以及 WebGL fallback/context loss。
-- optimized macOS bundle 的 30 分钟压力与断网恢复。
+- optimized macOS bundle 的 38 分钟本地压力已完成；SSH 断网恢复仍待补齐。

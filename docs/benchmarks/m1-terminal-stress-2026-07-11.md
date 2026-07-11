@@ -59,6 +59,6 @@ WebGL context loss -> DOM fallback -> reference 可见 -> 重新激活 WebGL 同
 
 ## 剩余边界
 
-- SSH 50/200 MiB 高输出仍需与本地结果对照。
+- SSH 50/200 MiB 高输出已完成并与本地结果对照，见 [SSH 高输出报告](./m1-ssh-high-output-2026-07-11.md)。
 - 主题、字体、连字开关、IME 和真实截图矩阵仍需补齐。
 - 睡眠唤醒不与本轮防锁屏压力同时执行，需单独做恢复回归。

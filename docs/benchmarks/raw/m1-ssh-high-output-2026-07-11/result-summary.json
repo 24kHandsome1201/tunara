@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-07-11T02:40:54.162Z",
+  "commit": "c005a2420960be49be51df778e27ba296b2be95c",
+  "buildMode": "optimized release M1 ssh benchmark bundle",
+  "transport": "ssh",
+  "host": "root@100.83.112.82:22",
+  "cwd": "/root/qclaw-wechat-client",
+  "bundleKiB": 14300,
+  "fixtureTimeoutMs": 1800000,
+  "fixtures": [
+    {
+      "sizeMiB": 50,
+      "expectedBytes": 52428800,
+      "receivedBytes": 52428800,
+      "expectedBlocks": 800,
+      "dataEvents": 5779,
+      "sequenceValid": true,
+      "transferMs": 173128,
+      "overflowCount": 0,
+      "referenceVisible": true,
+      "renderDrainMs": 19,
+      "inputP50Ms": 272,
+      "inputP95Ms": 306,
+      "frameSamples": 301,
+      "frameP50Ms": 17,
+      "frameP95Ms": 18,
+      "frameMaxMs": 31,
+      "passed": true
+    },
+    {
+      "sizeMiB": 200,
+      "expectedBytes": 209715200,
+      "receivedBytes": 209715200,
+      "expectedBlocks": 3200,
+      "dataEvents": 19860,
+      "sequenceValid": true,
+      "transferMs": 615617,
+      "overflowCount": 0,
+      "referenceVisible": true,
+      "renderDrainMs": 15,
+      "inputP50Ms": 268,
+      "inputP95Ms": 272,
+      "frameSamples": 301,
+      "frameP50Ms": 17,
+      "frameP95Ms": 18,
+      "frameMaxMs": 20,
+      "passed": true
+    }
+  ],
+  "webglFallback": {
+    "before": "webgl",
+    "triggered": true,
+    "after": "dom",
+    "fallbackReferenceVisible": true,
+    "afterReactivation": "webgl",
+    "passed": true
+  },
+  "process": {
+    "appRssPeakKiB": 116768,
+    "rendererRssDeltaPeakKiB": 416976,
+    "totalIncrementalRssPeakKiB": 517408,
+    "totalIncrementalRssMeanKiB": 453285.21,
+    "firstQuarterMeanKiB": 479629,
+    "lastQuarterMeanKiB": 458486,
+    "lastSampleKiB": 425024,
+    "cpuMeanPercent": 4.78
+  },
+  "remoteFixtureCleaned": true,
+  "passed": true
+}
