@@ -8,6 +8,7 @@ import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
+import { formatElapsed } from "./lib/elapsed";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 
 function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
@@ -227,15 +228,6 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
       />
     </div>
   );
-}
-
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
 }
 
 function useElapsed(startedAt: number | undefined, active: boolean): string | null {
