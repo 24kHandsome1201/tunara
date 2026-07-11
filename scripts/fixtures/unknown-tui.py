@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import os
+import select
 import signal
 import sys
+import termios
 import time
+import tty
 
 
 ALT_SCREEN_ENTER = "\x1b[?1049h"
@@ -17,6 +20,9 @@ FOCUS_REPORTING_ENTER = "\x1b[?1004h"
 FOCUS_REPORTING_LEAVE = "\x1b[?1004l"
 MOUSE_TRACKING_ENTER = "\x1b[?1000h\x1b[?1006h"
 MOUSE_TRACKING_LEAVE = "\x1b[?1006l\x1b[?1000l"
+STDIN_FD = sys.stdin.fileno()
+ORIGINAL_TERMIOS = termios.tcgetattr(STDIN_FD)
+TERMINAL_RESTORED = False
 
 
 def write(value: str) -> None:
@@ -29,12 +35,17 @@ def geometry() -> str:
 
 
 def restore_terminal() -> None:
+    global TERMINAL_RESTORED
+    if TERMINAL_RESTORED:
+        return
     write(
         MOUSE_TRACKING_LEAVE
         + FOCUS_REPORTING_LEAVE
         + BRACKETED_PASTE_LEAVE
         + ALT_SCREEN_LEAVE
     )
+    termios.tcsetattr(STDIN_FD, termios.TCSANOW, ORIGINAL_TERMIOS)
+    TERMINAL_RESTORED = True
 
 
 def on_resize(_signum: int, _frame: object) -> None:
@@ -50,6 +61,26 @@ def on_interrupt(_signum: int, _frame: object) -> None:
 signal.signal(signal.SIGWINCH, on_resize)
 signal.signal(signal.SIGTERM, on_interrupt)
 
+tty.setraw(STDIN_FD)
+write("\x1b[?2004$p\x1b[6n\x1b[14t\x1b]10;?\x07")
+query_response = bytearray()
+deadline = time.monotonic() + 1.5
+while time.monotonic() < deadline:
+    readable, _, _ = select.select([STDIN_FD], [], [], max(0, deadline - time.monotonic()))
+    if not readable:
+        break
+    query_response.extend(os.read(STDIN_FD, 4096))
+    if all(
+        token in query_response
+        for token in (
+            b"\x1b[?2004;1$y",
+            b"\x1b[1;1R",
+            b"\x1b[4;800;1200t",
+            b"\x1b]10;rgb:",
+        )
+    ):
+        break
+
 write(
     ALT_SCREEN_ENTER
     + BRACKETED_PASTE_ENTER
@@ -57,6 +88,16 @@ write(
     + MOUSE_TRACKING_ENTER
     + "\x1b[2J\x1b[H"
 )
+query_complete = all(
+    token in query_response
+    for token in (
+        b"\x1b[?2004;1$y",
+        b"\x1b[1;1R",
+        b"\x1b[4;800;1200t",
+        b"\x1b]10;rgb:",
+    )
+)
+write(f"TUNARA_UNKNOWN_QUERY_RESPONSES:{'complete' if query_complete else 'incomplete'}\r\n")
 write(f"TUNARA_UNKNOWN_START:{geometry()}\r\n")
 write("TUNARA_UNKNOWN_TOOL_CALL:running\r\n")
 for index in range(256):
@@ -66,9 +107,9 @@ write("TUNARA_UNKNOWN_WAITING_CONFIRMATION:visible\r\n")
 write("TUNARA_UNKNOWN_FAILURE:recoverable\r\n")
 write("TUNARA_UNKNOWN_RESUME:ready\r\n")
 
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    write("\r\nTUNARA_UNKNOWN_EXIT:interrupt\r\n")
-    restore_terminal()
+while True:
+    readable, _, _ = select.select([STDIN_FD], [], [], 1)
+    if readable and b"\x03" in os.read(STDIN_FD, 4096):
+        write("\r\nTUNARA_UNKNOWN_EXIT:interrupt\r\n")
+        restore_terminal()
+        break

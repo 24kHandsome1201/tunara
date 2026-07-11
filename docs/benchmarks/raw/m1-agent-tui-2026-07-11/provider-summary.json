@@ -1,0 +1,118 @@
+{
+  "commit": "ba9272498b473abbb1dcfb10aec9e72c4e93de10",
+  "capturedAt": "2026-07-11T04:48:58.960661+00:00",
+  "sshTarget": "de-netcup",
+  "safety": "read-only probes; raw output deleted after redacted summary",
+  "matrix": {
+    "local": {
+      "claude": {
+        "returnCode": 0,
+        "capturedBytes": 14098,
+        "jsonEvents": 9,
+        "markerObserved": true,
+        "toolEventObserved": true,
+        "completionPassed": true,
+        "toolCallPassed": true,
+        "errorClass": null
+      },
+      "codex": {
+        "returnCode": 0,
+        "capturedBytes": 2299,
+        "jsonEvents": 7,
+        "markerObserved": true,
+        "toolEventObserved": true,
+        "completionPassed": true,
+        "toolCallPassed": true,
+        "errorClass": null
+      },
+      "pi": {
+        "returnCode": 1,
+        "capturedBytes": 38,
+        "jsonEvents": 0,
+        "markerObserved": false,
+        "toolEventObserved": false,
+        "completionPassed": false,
+        "toolCallPassed": null,
+        "errorClass": "missing_api_key"
+      },
+      "opencode": {
+        "returnCode": 124,
+        "capturedBytes": 0,
+        "jsonEvents": 0,
+        "markerObserved": false,
+        "toolEventObserved": false,
+        "completionPassed": false,
+        "toolCallPassed": null,
+        "errorClass": "timeout"
+      },
+      "aider": {
+        "returnCode": 0,
+        "capturedBytes": 626,
+        "jsonEvents": 0,
+        "markerObserved": false,
+        "toolEventObserved": false,
+        "completionPassed": false,
+        "toolCallPassed": null,
+        "errorClass": "missing_api_key"
+      }
+    },
+    "ssh": {
+      "claude": {
+        "returnCode": 1,
+        "capturedBytes": 3950,
+        "jsonEvents": 3,
+        "markerObserved": false,
+        "toolEventObserved": true,
+        "completionPassed": false,
+        "toolCallPassed": false,
+        "errorClass": "provider_402"
+      },
+      "codex": {
+        "returnCode": 0,
+        "capturedBytes": 680,
+        "jsonEvents": 6,
+        "markerObserved": true,
+        "toolEventObserved": true,
+        "completionPassed": true,
+        "toolCallPassed": true,
+        "errorClass": null
+      },
+      "pi": {
+        "returnCode": 1,
+        "capturedBytes": 296,
+        "jsonEvents": 0,
+        "markerObserved": false,
+        "toolEventObserved": false,
+        "completionPassed": false,
+        "toolCallPassed": null,
+        "errorClass": "missing_api_key"
+      },
+      "opencode": {
+        "returnCode": 1,
+        "capturedBytes": 167,
+        "jsonEvents": 1,
+        "markerObserved": false,
+        "toolEventObserved": false,
+        "completionPassed": false,
+        "toolCallPassed": null,
+        "errorClass": "provider_401"
+      },
+      "aider": {
+        "returnCode": 0,
+        "capturedBytes": 1204,
+        "jsonEvents": 0,
+        "markerObserved": true,
+        "toolEventObserved": false,
+        "completionPassed": true,
+        "toolCallPassed": null,
+        "errorClass": null
+      }
+    }
+  },
+  "summary": {
+    "entries": 10,
+    "completionPassed": 4,
+    "toolCallPassed": 3,
+    "blockedOrFailed": 6
+  }
+}

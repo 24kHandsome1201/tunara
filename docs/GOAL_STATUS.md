@@ -26,7 +26,7 @@
 - [x] SSH 输出 8ms / 128KiB 有界批处理与 2MiB xterm ACK 窗口已完成；真实 `de-netcup` optimized bundle 的 50/200MiB 均顺序完整、overflow 为 0、frame p95 18ms，CPU mean 4.78%，见 [SSH 高输出报告](./benchmarks/m1-ssh-high-output-2026-07-11.md)。
 - [x] SSH 输入改为字节预算，大粘贴分块，Close 独立取消，Resize latest-value 合并；本地确定性测试与真实 `de-netcup` close/resize smoke 已通过。
 - [x] 100/200ms RTT 下连接、目录、preview、grep、diff、SFTP 与取消已有真实 `de-netcup` 5 样本统计；optimized bundle 会话级断开在 279ms 内产生唯一 `-2`，原位 reconnect 2.888s 并恢复原 cwd，见 [RTT 报告](./benchmarks/m1-ssh-rtt-harness-2026-07-11.md)与[恢复报告](./benchmarks/m1-ssh-recovery-2026-07-11.md)。
-- [ ] Claude Code、Codex、Pi、OpenCode、Aider 和未知 TUI 的本地/SSH 兼容矩阵。
+- [ ] Claude Code、Codex、Pi、OpenCode、Aider 和未知 TUI 的本地/SSH 兼容矩阵。TTY 基础层已形成可重复 smoke：5 个本地 Agent 与 5 个 SSH Agent 均完成启动 + resize，未知 TUI 的本地/SSH 完整协议合约通过；8/10 真实 Agent 格观察到 bracketed 多行 marker，5/10 在 fallback interrupt 前正常退出。provider 层 4/10 完成，3 格确认真实 tool event；权限、确认、失败/resume、分屏、后台和系统剪贴板仍未完成，见 [兼容性基线](./benchmarks/m1-agent-tui-compatibility-2026-07-11.md)。
 
 ## Phase 1 验收账本
 

@@ -7,12 +7,26 @@ if {$argc < 2} {
 
 set log_path [lindex $argv 0]
 set command [lrange $argv 1 end]
-set timeout 5
+# Cold Node/Python TUIs can spend several seconds loading plugins and caches;
+# ten seconds still keeps the smoke short while requiring a real first frame.
+set timeout 10
 set saw_output 0
 set exited_before_interrupt 0
 set exited_after_interrupt 0
 set resize_sent 0
 set exit_status -1
+set exercise_input [expr {[info exists env(TUNARA_TUI_EXERCISE_INPUT)] && $env(TUNARA_TUI_EXERCISE_INPUT) eq "1"}]
+set exit_method [expr {[info exists env(TUNARA_TUI_EXIT_METHOD)] ? $env(TUNARA_TUI_EXIT_METHOD) : "interrupt"}]
+set exit_method_code 0
+set exit_stage_code 0
+if {$exit_method eq "slash"} {
+  set exit_method_code 1
+} elseif {$exit_method eq "eof"} {
+  set exit_method_code 2
+} elseif {$exit_method ne "interrupt"} {
+  puts stderr "TUNARA_TUI_EXIT_METHOD must be interrupt, slash, or eof"
+  exit 2
+}
 
 # Match the terminal identity used by Tunara's local and SSH PTYs. Inheriting
 # TERM=dumb from a CI/automation shell makes TUIs deliberately disable their
@@ -28,6 +42,62 @@ proc record_spawn_output {handle bytes} {
   puts -nonewline $handle $bytes
 }
 
+proc safe_send {spawn_channel bytes} {
+  catch {send -i $spawn_channel -- $bytes}
+}
+
+proc safe_exit_send {spawn_channel bytes stage_code} {
+  set ::exit_stage_code $stage_code
+  catch {send -i $spawn_channel -- $bytes}
+}
+
+set terminal_query_stream ""
+set terminal_query_answers [dict create]
+
+proc query_occurrences {haystack needle} {
+  set count 0
+  set offset 0
+  while {1} {
+    set found [string first $needle $haystack $offset]
+    if {$found < 0} {
+      return $count
+    }
+    incr count
+    set offset [expr {$found + [string length $needle]}]
+  }
+}
+
+proc answer_new_queries {spawn_channel token response} {
+  set observed [query_occurrences $::terminal_query_stream $token]
+  set answered [expr {[dict exists $::terminal_query_answers $token] ? [dict get $::terminal_query_answers $token] : 0}]
+  while {$answered < $observed} {
+    safe_send $spawn_channel $response
+    incr answered
+  }
+  dict set ::terminal_query_answers $token $answered
+}
+
+proc respond_to_terminal_queries {spawn_channel bytes} {
+  append ::terminal_query_stream $bytes
+  foreach mode {1016 2027 2031 1004 2004 2026} {
+    set token "\033\[?$mode\$p"
+    set response "\033\[?$mode;1\$y"
+    answer_new_queries $spawn_channel $token $response
+  }
+  answer_new_queries $spawn_channel "\033\[6n" "\033\[1;1R"
+  answer_new_queries $spawn_channel "\033\[14t" "\033\[4;800;1200t"
+  answer_new_queries $spawn_channel "\033\]10;?\007" "\033\]10;rgb:ffff/ffff/ffff\007"
+  answer_new_queries $spawn_channel "\033\]11;?\007" "\033\]11;rgb:0000/0000/0000\007"
+  answer_new_queries $spawn_channel "\033\]4;0;?\007" "\033\]4;0;rgb:0000/0000/0000\007"
+  answer_new_queries $spawn_channel "\033\[>0q" "\033P>|Tunara benchmark\033\\"
+  answer_new_queries $spawn_channel "\033\[?u" "\033\[?0u"
+}
+
+proc handle_spawn_output {handle spawn_channel bytes} {
+  record_spawn_output $handle $bytes
+  respond_to_terminal_queries $spawn_channel $bytes
+}
+
 spawn -noecho {*}$command
 set child $spawn_id
 fconfigure $child -translation binary -encoding binary
@@ -35,18 +105,18 @@ fconfigure $child -translation binary -encoding binary
 expect {
   -i $child -re {.+} {
     set saw_output 1
-    record_spawn_output $log_handle $expect_out(buffer)
+    handle_spawn_output $log_handle $child $expect_out(buffer)
     exp_continue -continue_timer
   }
   -i $child eof {
     if {[info exists expect_out(buffer)]} {
-      record_spawn_output $log_handle $expect_out(buffer)
+      handle_spawn_output $log_handle $child $expect_out(buffer)
     }
     set exited_before_interrupt 1
   }
   timeout {
     if {[info exists expect_out(buffer)]} {
-      record_spawn_output $log_handle $expect_out(buffer)
+      handle_spawn_output $log_handle $child $expect_out(buffer)
     }
   }
 }
@@ -60,31 +130,58 @@ if {!$exited_before_interrupt} {
   }]} {
       set resize_sent 1
   }
-  # Keep draining the PTY while resize and interrupt output arrives. Waiting
-  # synchronously before the second expect can lose the final mode-restoration
-  # bytes when a fast TUI exits and closes its slave side immediately.
-  set first_interrupt [after 500 [list send -i $child "\003"]]
-  set second_interrupt [after 1000 [list send -i $child "\003"]]
-  set timeout 6
+  # Keep draining the PTY while resize, optional input probes, and exit output
+  # arrive. Waiting synchronously can lose final mode-restoration bytes when a
+  # fast TUI exits and closes its slave side immediately.
+  set scheduled {}
+  if {$exercise_input} {
+    lappend scheduled [after 100 [list safe_send $child "\033"]]
+    lappend scheduled [after 200 [list safe_send $child "\t"]]
+    lappend scheduled [after 300 [list safe_send $child "\033\[Z"]]
+    lappend scheduled [after 400 [list safe_send $child "\033\[200~TUNARA_MULTILINE_A\nTUNARA_MULTILINE_B\033\[201~"]]
+    # Cancel the unsent prompt before asking the TUI to exit.
+    lappend scheduled [after 1000 [list safe_send $child "\003"]]
+  }
+  set exit_delay [expr {$exercise_input ? 1600 : 500}]
+  if {$exit_method eq "slash"} {
+    lappend scheduled [after $exit_delay [list safe_exit_send $child "/exit\r" 1]]
+    # Some TUIs expose a different slash vocabulary; EOF is a safe fallback at
+    # an empty prompt, followed by interrupts only if both normal paths remain.
+    lappend scheduled [after [expr {$exit_delay + 2200}] [list safe_exit_send $child "\004" 2]]
+    lappend scheduled [after [expr {$exit_delay + 3200}] [list safe_exit_send $child "\003" 3]]
+    lappend scheduled [after [expr {$exit_delay + 3700}] [list safe_exit_send $child "\003" 3]]
+  } elseif {$exit_method eq "eof"} {
+    lappend scheduled [after $exit_delay [list safe_exit_send $child "\004" 2]]
+    # Prompt-toolkit TUIs may treat the first EOF as "clear current buffer";
+    # a second EOF at the now-empty prompt is their documented exit gesture.
+    lappend scheduled [after [expr {$exit_delay + 700}] [list safe_exit_send $child "\004" 2]]
+    lappend scheduled [after [expr {$exit_delay + 2200}] [list safe_exit_send $child "\003" 3]]
+    lappend scheduled [after [expr {$exit_delay + 2700}] [list safe_exit_send $child "\003" 3]]
+  } else {
+    lappend scheduled [after $exit_delay [list safe_exit_send $child "\003" 3]]
+    lappend scheduled [after [expr {$exit_delay + 500}] [list safe_exit_send $child "\003" 3]]
+  }
+  set timeout 8
   expect {
     -i $child -re {.+} {
-      record_spawn_output $log_handle $expect_out(buffer)
+      handle_spawn_output $log_handle $child $expect_out(buffer)
       exp_continue -continue_timer
     }
     -i $child eof {
       if {[info exists expect_out(buffer)]} {
-        record_spawn_output $log_handle $expect_out(buffer)
+        handle_spawn_output $log_handle $child $expect_out(buffer)
       }
       set exited_after_interrupt 1
     }
     timeout {
       if {[info exists expect_out(buffer)]} {
-        record_spawn_output $log_handle $expect_out(buffer)
+        handle_spawn_output $log_handle $child $expect_out(buffer)
       }
     }
   }
-  after cancel $first_interrupt
-  after cancel $second_interrupt
+  foreach scheduled_id $scheduled {
+    after cancel $scheduled_id
+  }
 }
 
 if {$exited_before_interrupt || $exited_after_interrupt} {
@@ -97,5 +194,10 @@ if {$exited_before_interrupt || $exited_after_interrupt} {
 }
 close $log_handle
 
-puts "saw_output=$saw_output exited_before_interrupt=$exited_before_interrupt resize_sent=$resize_sent exited_after_interrupt=$exited_after_interrupt exit_status=$exit_status"
+set normal_exit_observed [expr {$exited_after_interrupt && $exit_stage_code in {1 2}}]
+set terminal_queries_answered 0
+dict for {_token count} $terminal_query_answers {
+  incr terminal_queries_answered $count
+}
+puts "saw_output=$saw_output exited_before_interrupt=$exited_before_interrupt resize_sent=$resize_sent exited_after_interrupt=$exited_after_interrupt exit_status=$exit_status interaction_sent=$exercise_input exit_method_code=$exit_method_code exit_stage_code=$exit_stage_code normal_exit_observed=$normal_exit_observed terminal_queries_answered=$terminal_queries_answered"
 exit 0

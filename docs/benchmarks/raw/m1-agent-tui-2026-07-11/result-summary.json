@@ -1,0 +1,498 @@
+{
+  "commit": "ba9272498b473abbb1dcfb10aec9e72c4e93de10",
+  "capturedAt": "2026-07-11T04:46:51.615814+00:00",
+  "macOS": "26.1 (25B5072a)",
+  "sshTarget": "de-netcup",
+  "terminalIdentity": {
+    "TERM": "xterm-256color",
+    "COLORTERM": "truecolor"
+  },
+  "matrix": {
+    "local": {
+      "claude": {
+        "available": true,
+        "version": "2.1.178 (Claude Code)",
+        "capturedBytes": 4390,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 0,
+          "interaction_sent": 1,
+          "exit_method_code": 1,
+          "exit_stage_code": 1,
+          "normal_exit_observed": 1,
+          "terminal_queries_answered": 1
+        },
+        "protocol": {
+          "alternateScreen": true,
+          "alternateScreenRestored": true,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": true,
+          "trueColor": false,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "slash",
+          "completedAfter": "slash",
+          "normalExitObserved": true
+        }
+      },
+      "codex": {
+        "available": true,
+        "version": "codex-cli 0.144.1",
+        "capturedBytes": 7879,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 0,
+          "exit_status": -1,
+          "interaction_sent": 1,
+          "exit_method_code": 2,
+          "exit_stage_code": 3,
+          "normal_exit_observed": 0,
+          "terminal_queries_answered": 3
+        },
+        "protocol": {
+          "alternateScreen": false,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": false,
+          "trueColor": false,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": false,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "eof",
+          "completedAfter": "interrupt",
+          "normalExitObserved": false
+        }
+      },
+      "pi": {
+        "available": true,
+        "version": "0.79.4",
+        "capturedBytes": 40324,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 0,
+          "interaction_sent": 1,
+          "exit_method_code": 1,
+          "exit_stage_code": 2,
+          "normal_exit_observed": 1,
+          "terminal_queries_answered": 2
+        },
+        "protocol": {
+          "alternateScreen": false,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": false,
+          "mouseTracking": false,
+          "trueColor": true,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "slash",
+          "completedAfter": "eof",
+          "normalExitObserved": true
+        }
+      },
+      "opencode": {
+        "available": true,
+        "version": "1.17.18",
+        "capturedBytes": 11284,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 0,
+          "exit_status": -1,
+          "interaction_sent": 1,
+          "exit_method_code": 2,
+          "exit_stage_code": 3,
+          "normal_exit_observed": 0,
+          "terminal_queries_answered": 19
+        },
+        "protocol": {
+          "alternateScreen": true,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": true,
+          "trueColor": true,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": false,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": false
+        },
+        "exit": {
+          "requestedMethod": "eof",
+          "completedAfter": "interrupt",
+          "normalExitObserved": false
+        }
+      },
+      "aider": {
+        "available": true,
+        "version": "aider 0.86.2",
+        "capturedBytes": 5594,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 130,
+          "interaction_sent": 1,
+          "exit_method_code": 1,
+          "exit_stage_code": 0,
+          "normal_exit_observed": 0,
+          "terminal_queries_answered": 6
+        },
+        "protocol": {
+          "alternateScreen": false,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": false,
+          "mouseTracking": false,
+          "trueColor": false,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "slash",
+          "completedAfter": "none",
+          "normalExitObserved": false
+        }
+      },
+      "unknown": {
+        "available": true,
+        "version": "deterministic fixture",
+        "capturedBytes": 18160,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 0,
+          "interaction_sent": 0,
+          "exit_method_code": 0,
+          "exit_stage_code": 3,
+          "normal_exit_observed": 0,
+          "terminal_queries_answered": 4
+        },
+        "protocol": {
+          "alternateScreen": true,
+          "alternateScreenRestored": true,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": true,
+          "trueColor": true,
+          "cjk": true,
+          "emoji": true
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": false,
+          "multilineMarkersVisible": false
+        },
+        "exit": {
+          "requestedMethod": "interrupt",
+          "completedAfter": "interrupt",
+          "normalExitObserved": false
+        },
+        "fixture": {
+          "terminalQueriesAnswered": true,
+          "highOutputComplete": true,
+          "waitingVisible": true,
+          "failureVisible": true,
+          "resumeVisible": true,
+          "resizeObserved": true,
+          "interruptObserved": true
+        },
+        "contractPassed": true
+      }
+    },
+    "ssh": {
+      "claude": {
+        "available": true,
+        "version": "2.1.81 (Claude Code)",
+        "capturedBytes": 1207,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 1,
+          "interaction_sent": 1,
+          "exit_method_code": 1,
+          "exit_stage_code": 0,
+          "normal_exit_observed": 0,
+          "terminal_queries_answered": 2
+        },
+        "protocol": {
+          "alternateScreen": false,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": false,
+          "trueColor": false,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": false
+        },
+        "exit": {
+          "requestedMethod": "slash",
+          "completedAfter": "none",
+          "normalExitObserved": false
+        }
+      },
+      "codex": {
+        "available": true,
+        "version": "codex-cli 0.144.1",
+        "capturedBytes": 15228,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 0,
+          "interaction_sent": 1,
+          "exit_method_code": 2,
+          "exit_stage_code": 2,
+          "normal_exit_observed": 1,
+          "terminal_queries_answered": 2
+        },
+        "protocol": {
+          "alternateScreen": false,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": false,
+          "trueColor": true,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "eof",
+          "completedAfter": "eof",
+          "normalExitObserved": true
+        }
+      },
+      "pi": {
+        "available": true,
+        "version": "0.79.4",
+        "capturedBytes": 41114,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 0,
+          "interaction_sent": 1,
+          "exit_method_code": 1,
+          "exit_stage_code": 2,
+          "normal_exit_observed": 1,
+          "terminal_queries_answered": 2
+        },
+        "protocol": {
+          "alternateScreen": false,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": false,
+          "mouseTracking": false,
+          "trueColor": false,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "slash",
+          "completedAfter": "eof",
+          "normalExitObserved": true
+        }
+      },
+      "opencode": {
+        "available": true,
+        "version": "1.17.18",
+        "capturedBytes": 39836,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 0,
+          "interaction_sent": 1,
+          "exit_method_code": 1,
+          "exit_stage_code": 3,
+          "normal_exit_observed": 0,
+          "terminal_queries_answered": 16
+        },
+        "protocol": {
+          "alternateScreen": true,
+          "alternateScreenRestored": true,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": true,
+          "trueColor": true,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "slash",
+          "completedAfter": "interrupt",
+          "normalExitObserved": false
+        }
+      },
+      "aider": {
+        "available": true,
+        "version": "aider 0.86.2",
+        "capturedBytes": 5733,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 1,
+          "interaction_sent": 1,
+          "exit_method_code": 1,
+          "exit_stage_code": 1,
+          "normal_exit_observed": 1,
+          "terminal_queries_answered": 3
+        },
+        "protocol": {
+          "alternateScreen": false,
+          "alternateScreenRestored": false,
+          "bracketedPaste": true,
+          "focusReporting": false,
+          "mouseTracking": false,
+          "trueColor": false,
+          "cjk": false,
+          "emoji": false
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": true,
+          "multilineMarkersVisible": true
+        },
+        "exit": {
+          "requestedMethod": "slash",
+          "completedAfter": "slash",
+          "normalExitObserved": true
+        }
+      },
+      "unknown": {
+        "available": true,
+        "version": "deterministic fixture",
+        "capturedBytes": 17636,
+        "harness": {
+          "saw_output": 1,
+          "exited_before_interrupt": 0,
+          "resize_sent": 1,
+          "exited_after_interrupt": 1,
+          "exit_status": 0,
+          "interaction_sent": 0,
+          "exit_method_code": 0,
+          "exit_stage_code": 3,
+          "normal_exit_observed": 0,
+          "terminal_queries_answered": 4
+        },
+        "protocol": {
+          "alternateScreen": true,
+          "alternateScreenRestored": true,
+          "bracketedPaste": true,
+          "focusReporting": true,
+          "mouseTracking": true,
+          "trueColor": true,
+          "cjk": true,
+          "emoji": true
+        },
+        "startupPassed": true,
+        "interruptExitObserved": true,
+        "inputProbe": {
+          "sent": false,
+          "multilineMarkersVisible": false
+        },
+        "exit": {
+          "requestedMethod": "interrupt",
+          "completedAfter": "interrupt",
+          "normalExitObserved": false
+        },
+        "fixture": {
+          "terminalQueriesAnswered": true,
+          "highOutputComplete": true,
+          "waitingVisible": true,
+          "failureVisible": true,
+          "resumeVisible": true,
+          "resizeObserved": true,
+          "interruptObserved": true
+        },
+        "contractPassed": true
+      }
+    }
+  },
+  "summary": {
+    "actualAgentEntriesAvailable": 10,
+    "actualAgentEntriesStartedAndResized": 10,
+    "unknownLocalContractPassed": true,
+    "unknownSshContractPassed": true
+  }
+}
