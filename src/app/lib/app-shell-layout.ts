@@ -27,6 +27,27 @@ export interface AppShellLayout {
   minimumTerminalWorkspaceWidth: number;
 }
 
+export type AuxiliarySurface = "sidebar" | "panel";
+
+/**
+ * Compact drawers are mutually exclusive. Opening one closes the other before
+ * it can cover the full terminal, while wide docked panels remain independent.
+ */
+export function auxiliarySurfaceToCloseOnOpen(
+  input: AppShellLayoutInput,
+  opening: AuxiliarySurface,
+): AuxiliarySurface | null {
+  const projected = resolveAppShellLayout({
+    ...input,
+    sidebarVisible: opening === "sidebar" ? true : input.sidebarVisible,
+    panelVisible: opening === "panel" ? true : input.panelVisible,
+  });
+  if (!projected.sidebarOverlay || !projected.panelOverlay) return null;
+  if (opening === "sidebar" && input.panelVisible) return "panel";
+  if (opening === "panel" && input.sidebarVisible) return "sidebar";
+  return null;
+}
+
 function finiteWidth(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }

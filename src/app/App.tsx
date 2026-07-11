@@ -21,7 +21,7 @@ import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
-import { resolveAppShellLayout } from "./lib/app-shell-layout";
+import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
@@ -221,6 +221,8 @@ export default function App() {
   const overlay = useUIStore((s) => s.overlay);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const togglePanel = useUIStore((s) => s.togglePanel);
+  const setSidebarVisible = useUIStore((s) => s.setSidebarVisible);
+  const setPanelVisible = useUIStore((s) => s.setPanelVisible);
   const setOverlay = useUIStore((s) => s.setOverlay);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const panelWidth = useUIStore((s) => s.panelWidth);
@@ -262,6 +264,20 @@ export default function App() {
     splitMode,
   });
 
+  const layoutInput = { viewportWidth, sidebarVisible, panelVisible, sidebarWidth, panelWidth, splitMode };
+  const toggleSidebarWithoutStacking = () => {
+    if (!sidebarVisible && auxiliarySurfaceToCloseOnOpen(layoutInput, "sidebar") === "panel") {
+      setPanelVisible(false);
+    }
+    toggleSidebar();
+  };
+  const togglePanelWithoutStacking = () => {
+    if (!panelVisible && auxiliarySurfaceToCloseOnOpen(layoutInput, "panel") === "sidebar") {
+      setSidebarVisible(false);
+    }
+    togglePanel();
+  };
+
 
   return (
     <div
@@ -279,8 +295,8 @@ export default function App() {
         activeSessionId={activeSessionId ?? ""}
         panelVisible={panelVisible}
         sidebarVisible={sidebarVisible}
-        onToggleSidebar={toggleSidebar}
-        onTogglePanel={togglePanel}
+        onToggleSidebar={toggleSidebarWithoutStacking}
+        onTogglePanel={togglePanelWithoutStacking}
         onSelectSession={setActive}
         onCloseSession={closeSessionById}
         onNewTerminal={newTerminal}
@@ -291,7 +307,7 @@ export default function App() {
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
         {sidebarOverlay && sidebarVisible && (
           <div
-            onClick={toggleSidebar}
+            onClick={toggleSidebarWithoutStacking}
             style={{
               position: "absolute",
               inset: 0,
@@ -398,7 +414,7 @@ export default function App() {
             }}
           >
             {panelVisible && !panelOverlay && <PanelResizeHandle />}
-            <InspectorPanel session={activeSession} onClose={togglePanel} />
+            <InspectorPanel session={activeSession} onClose={togglePanelWithoutStacking} />
           </div>
         )}
 

@@ -7,6 +7,7 @@ import { CloseIcon } from "./shared";
 import { copyText } from "./lib/clipboard";
 
 const DEFAULT_TOAST_DURATION = 4000;
+const ERROR_TOAST_DURATION = 12000;
 const EXIT_DURATION = 250;
 
 function ToastItem({ toast }: { toast: Toast }) {
@@ -19,7 +20,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const duration = toast.durationMs ?? DEFAULT_TOAST_DURATION;
+  const duration = toast.durationMs ?? (toast.variant === "error" ? ERROR_TOAST_DURATION : DEFAULT_TOAST_DURATION);
   const remainRef = useRef(duration);
   const startRef = useRef(Date.now());
   const exitingRef = useRef(false);
@@ -83,10 +84,8 @@ function ToastItem({ toast }: { toast: Toast }) {
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={handleClick}
-      onKeyDown={(e) => e.key === "Enter" && handleClick()}
+      role={toast.variant === "error" ? "alert" : "status"}
+      aria-live={toast.variant === "error" ? "assertive" : "polite"}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={{
@@ -101,7 +100,7 @@ function ToastItem({ toast }: { toast: Toast }) {
         display: "flex",
         alignItems: "center",
         gap: 9,
-        cursor: "pointer",
+        cursor: "default",
         animation: exiting
           ? `toastOut ${EXIT_DURATION}ms var(--ease-smooth) forwards`
           : "toastIn var(--duration-slow) var(--ease-out-back)",
@@ -109,6 +108,17 @@ function ToastItem({ toast }: { toast: Toast }) {
         position: "relative",
       }}
     >
+      {(toast.action || toast.sessionId) && (
+        <button
+          type="button"
+          onClick={handleClick}
+          aria-label={toast.action?.label ?? `${toast.title}${toast.subtitle ? `, ${toast.subtitle}` : ""}`}
+          className="toast-primary-action"
+          style={{ position: "absolute", inset: 0, zIndex: 0, border: "none", background: "transparent", cursor: "pointer", borderRadius: "var(--r-card)" }}
+        />
+      )}
+
+      <div style={{ display: "contents", pointerEvents: "none" }}>
       {toast.agentCode ? (
         <AgentBadge agent={toast.agentCode} size={22} />
       ) : toast.variant === "success" ? (
@@ -148,6 +158,7 @@ function ToastItem({ toast }: { toast: Toast }) {
           {toast.subtitle}
         </div>
       </div>
+      </div>
 
       {toast.action && (
         <button
@@ -158,6 +169,8 @@ function ToastItem({ toast }: { toast: Toast }) {
           }}
           className="hover-accent-bg"
           style={{
+            position: "relative",
+            zIndex: 1,
             height: 26,
             padding: "0 9px",
             borderRadius: "var(--r-btn)",
@@ -180,6 +193,8 @@ function ToastItem({ toast }: { toast: Toast }) {
           title={t(copied ? "toast.copied" : "toast.copy_error")}
           aria-label={t(copied ? "toast.copied" : "toast.copy_error")}
           style={{
+            position: "relative",
+            zIndex: 1,
             width: 18,
             height: 18,
             borderRadius: 4,
@@ -208,8 +223,12 @@ function ToastItem({ toast }: { toast: Toast }) {
       )}
 
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); dismiss(); }}
+        aria-label={t("common.close")}
         style={{
+          position: "relative",
+          zIndex: 1,
           width: 18,
           height: 18,
           borderRadius: 4,

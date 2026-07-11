@@ -5,7 +5,7 @@ import { KEYBINDING_ACTIONS, hasPlatformModKey, matchesKeybinding, type Keybindi
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { isMac } from "@/ui/lib/platform";
 import { splitFocusTarget, type SplitFocusDirection } from "./lib/split-focus";
-import { resolveAppShellLayout } from "./lib/app-shell-layout";
+import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -37,9 +37,17 @@ export function useKeybindings() {
           ui.openSettings();
           break;
         case "toggleSidebar":
+          if (!ui.sidebarVisible && auxiliarySurfaceToCloseOnOpen({
+            viewportWidth: ui.viewportWidth, sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible,
+            sidebarWidth: ui.sidebarWidth, panelWidth: ui.panelWidth, splitMode: ui.split.mode,
+          }, "sidebar") === "panel") ui.setPanelVisible(false);
           ui.toggleSidebar();
           break;
         case "togglePanel":
+          if (!ui.panelVisible && auxiliarySurfaceToCloseOnOpen({
+            viewportWidth: ui.viewportWidth, sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible,
+            sidebarWidth: ui.sidebarWidth, panelWidth: ui.panelWidth, splitMode: ui.split.mode,
+          }, "panel") === "sidebar") ui.setSidebarVisible(false);
           ui.togglePanel();
           break;
         case "splitHorizontal":

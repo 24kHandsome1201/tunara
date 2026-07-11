@@ -348,14 +348,21 @@ export function Settings({ onClose }: SettingsProps) {
               <CloseIcon size={13} strokeWidth={2.2} />
             </button>
           </div>
-          <div style={{ display: "flex", gap: 18, borderBottom: "1px solid var(--c-border-1)" }}>
+          <div
+            className="no-scrollbar"
+            role="tablist"
+            aria-label={t("settings.title")}
+            style={{ display: "flex", gap: 18, borderBottom: "1px solid var(--c-border-1)", overflowX: "auto", overscrollBehaviorX: "contain", scrollSnapType: "x proximity" }}
+          >
             {TABS.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
+                role="tab"
+                aria-selected={activeTab === tab}
                 data-active={activeTab === tab ? "true" : "false"}
                 className="settings-tab-pill"
-                style={{ padding: "5px 0 8px", marginBottom: -1, border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "color var(--duration-fast) var(--ease-smooth)" }}
+                style={{ padding: "5px 0 8px", marginBottom: -1, border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "color var(--duration-fast) var(--ease-smooth)", whiteSpace: "nowrap", flexShrink: 0, scrollSnapAlign: "start" }}
               >
                 {t(`settings.tabs.${tab}`)}
               </button>

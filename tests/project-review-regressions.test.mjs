@@ -724,14 +724,15 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   const gitContext = read("src/ui/useSessionGitContext.ts");
   const settings = read("src/ui/overlays/Settings.tsx");
 
-  assert.match(app, /import \{ resolveAppShellLayout \} from "\.\/lib\/app-shell-layout"/);
+  assert.match(app, /import \{[^}]*resolveAppShellLayout[^}]*\} from "\.\/lib\/app-shell-layout"/);
   assert.match(app, /\{[\s\S]*sidebarOverlay,[\s\S]*panelOverlay,[\s\S]*sidebarEffectiveWidth,[\s\S]*panelEffectiveWidth,[\s\S]*\} = resolveAppShellLayout\(\{/);
   assert.match(app, /sidebarOverlay && sidebarReservedWidth > 0/);
   assert.match(app, /panelOverlay && panelReservedWidth > 0/);
   assert.match(app, /sidebarVisible && !sidebarOverlay && <SidebarResizeHandle \/>/);
   assert.match(app, /panelVisible && !panelOverlay && <PanelResizeHandle \/>/);
   assert.doesNotMatch(app, /panelOverlay && panelVisible && \([\s\S]*onClick=\{togglePanel\}/);
-  assert.match(app, /onClick=\{toggleSidebar\}/);
+  assert.match(app, /onClick=\{toggleSidebarWithoutStacking\}/);
+  assert.match(app, /onClose=\{togglePanelWithoutStacking\}/);
   assert.match(keys, /resolveAppShellLayout\(\{/);
   assert.match(keys, /if \(e\.key === "Escape"\)/);
   assert.match(keys, /ui\.setOverlay\(null\)/);

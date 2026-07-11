@@ -7,6 +7,7 @@ import {
   MIN_SIDEBAR_OVERLAY_WIDTH,
   MIN_TERMINAL_PANE_WIDTH,
   SPLIT_HANDLE_WIDTH,
+  auxiliarySurfaceToCloseOnOpen,
   resolveAppShellLayout,
 } from "../src/app/lib/app-shell-layout.ts";
 
@@ -109,4 +110,14 @@ test("hidden auxiliaries consume no width and overlay widths stay inside tiny vi
     assert.equal(onePane.panelEffectiveWidth, 640 - MIN_SIDEBAR_OVERLAY_WIDTH);
     assert.equal(onePane.terminalWorkspaceWidth, MIN_SINGLE_TERMINAL_WIDTH);
   }
+});
+
+test("opening a compact drawer closes its overlapping sibling", () => {
+  const compact = { ...defaults, viewportWidth: 640, splitMode: "horizontal" };
+  assert.equal(auxiliarySurfaceToCloseOnOpen({ ...compact, sidebarVisible: false }, "sidebar"), "panel");
+  assert.equal(auxiliarySurfaceToCloseOnOpen({ ...compact, panelVisible: false }, "panel"), "sidebar");
+
+  const wide = { ...defaults, viewportWidth: 1280, splitMode: "single" };
+  assert.equal(auxiliarySurfaceToCloseOnOpen({ ...wide, sidebarVisible: false }, "sidebar"), null);
+  assert.equal(auxiliarySurfaceToCloseOnOpen({ ...wide, panelVisible: false }, "panel"), null);
 });
