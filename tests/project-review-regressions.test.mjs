@@ -761,6 +761,8 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
   assert.match(source, /scheduleGitRefresh\(id, set\)/);
+  assert.match(source, /const splitContext = splitTerminalContextFromSession\(active\);/);
+  assert.match(source, /createSession\(splitContext\.dir,[\s\S]*remote: splitContext\.remote/);
   assert.match(source, /from "\.\/sessions-git"/);
   // refreshGit coalesces per-session nonce bumps into one store write via
   // bumpGitNonce → flushGitNonceBumps; the increment itself is unchanged.

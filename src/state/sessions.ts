@@ -24,7 +24,7 @@ import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
 import { pushRecentCommand } from "./recent-commands";
 import { sanitizeSessionNote } from "@/modules/session/session-notes";
-import { localTerminalCwdFromSession } from "@/modules/session/local-terminal-cwd";
+import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
 import { removeTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { getNumberRecordValue } from "@/state/record-keys";
 import {
@@ -738,7 +738,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   splitWithNewSession: (direction) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    const newSess = createSession(localTerminalCwdFromSession(active), { title: t("session.default_title") });
+    const splitContext = splitTerminalContextFromSession(active);
+    const newSess = createSession(splitContext.dir, {
+      title: t("session.default_title"),
+      remote: splitContext.remote,
+    });
     if (!active) {
       get().addSession(newSess);
       return;

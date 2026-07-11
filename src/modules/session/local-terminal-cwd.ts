@@ -1,8 +1,8 @@
 export const DEFAULT_LOCAL_TERMINAL_DIR = "~";
 
-interface SessionDirSource {
+interface SessionDirSource<Remote = unknown> {
   dir: string;
-  remote?: unknown;
+  remote?: Remote;
 }
 
 interface SessionRemoteSource {
@@ -16,4 +16,14 @@ export function canUseSessionDirForLocalTerminal(session: SessionRemoteSource | 
 export function localTerminalCwdFromSession(session: SessionDirSource | null | undefined): string {
   if (!session || !canUseSessionDirForLocalTerminal(session)) return DEFAULT_LOCAL_TERMINAL_DIR;
   return session.dir;
+}
+
+export function splitTerminalContextFromSession<Remote>(
+  session: SessionDirSource<Remote> | null | undefined,
+): { dir: string; remote?: Remote } {
+  if (!session) return { dir: DEFAULT_LOCAL_TERMINAL_DIR };
+  return {
+    dir: session.dir,
+    ...(session.remote ? { remote: { ...session.remote } } : {}),
+  };
 }
