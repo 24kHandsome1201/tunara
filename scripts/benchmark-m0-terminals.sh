@@ -10,9 +10,14 @@ APP_DIR="$ROOT/src-tauri/target/release/bundle/macos/$PRODUCT_NAME.app"
 APP_BIN="$APP_DIR/Contents/MacOS/tunara"
 APP_SUPPORT="$HOME/Library/Application Support/$IDENTIFIER"
 RESULTS_ROOT="${TUNARA_BENCHMARK_RESULTS:-/tmp/tunara-m0-benchmark}"
+SERIES_RUNS="${TUNARA_M0_SERIES_RUNS:-5}"
 
 if [[ "$COUNT" -lt 10 ]]; then
   echo "TUNARA_BENCHMARK_TERMINALS must be at least 10" >&2
+  exit 2
+fi
+if ! [[ "$SERIES_RUNS" =~ ^[0-9]+$ ]] || (( SERIES_RUNS < 3 || SERIES_RUNS % 2 == 0 )); then
+  echo "TUNARA_M0_SERIES_RUNS must be an odd integer of at least 3" >&2
   exit 2
 fi
 
@@ -85,7 +90,8 @@ run_benchmark() {
   stop_bundle
   write_fixture
 
-  local stamp result_dir log samples pid sample_pid line bundle_kib webkit_baseline
+  local stamp result_dir log samples pid sample_pid visibility_pid line bundle_kib webkit_baseline
+  local launch_epoch_ms window_visible_epoch_ms
   local app_rss_peak renderer_rss_delta_peak pty_rss_peak total_rss_peak total_rss_mean cpu_mean
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   result_dir="$RESULTS_ROOT/$stamp"
@@ -98,9 +104,26 @@ run_benchmark() {
   ' | sort -n > "$result_dir/webkit-baseline.csv"
   webkit_baseline="$(awk -F, '{ printf "%s%s:%s", (NR > 1 ? "," : ""), $1, $2 }' "$result_dir/webkit-baseline.csv")"
 
+  launch_epoch_ms="$(node -p 'Date.now()')"
   RUST_LOG=info "$APP_BIN" > "$log" 2>&1 &
   pid=$!
   trap 'kill "$pid" 2>/dev/null || true' EXIT
+
+  (
+    for _ in $(seq 1 400); do
+      state="$(osascript \
+        -e 'tell application "System Events"' \
+        -e "tell first process whose unix id is $pid to return {visible, count of windows}" \
+        -e 'end tell' 2>/dev/null || true)"
+      if [[ "$state" =~ ^true,\ [1-9][0-9]*$ ]]; then
+        node -p 'Date.now()'
+        exit 0
+      fi
+      sleep 0.05
+    done
+    echo 0
+  ) > "$result_dir/window-visible-epoch-ms" &
+  visibility_pid=$!
 
   printf 'timestamp_ms,app_rss_kib,renderer_rss_delta_kib,pty_rss_kib,total_incremental_rss_kib,app_pty_cpu_percent\n' > "$samples"
   (
@@ -143,6 +166,8 @@ run_benchmark() {
     sleep 0.25
   done
   wait "$sample_pid" || true
+  wait "$visibility_pid" || true
+  window_visible_epoch_ms="$(tr -d '[:space:]' < "$result_dir/window-visible-epoch-ms")"
 
   if [[ -z "$line" ]]; then
     echo "Benchmark report was not emitted. See $log" >&2
@@ -171,7 +196,9 @@ run_benchmark() {
     --argjson totalRssPeakKiB "$total_rss_peak" \
     --argjson totalRssMeanKiB "$total_rss_mean" \
     --argjson cpuMeanPercent "$cpu_mean" \
-    --argjson bundleKiB "$bundle_kib" '
+    --argjson bundleKiB "$bundle_kib" \
+    --argjson launchEpochMs "$launch_epoch_ms" \
+    --argjson windowVisibleEpochMs "$window_visible_epoch_ms" '
       {
         commit: $commit,
         buildMode: "optimized release benchmark bundle",
@@ -188,6 +215,16 @@ run_benchmark() {
           cpuMeanPercent: $cpuMeanPercent
         },
         bundleKiB: $bundleKiB,
+        startup: {
+          processLaunchEpochMs: $launchEpochMs,
+          windowVisibleEpochMs: (if $windowVisibleEpochMs > 0 then $windowVisibleEpochMs else null end),
+          launchToWindowVisibleMs: (if $windowVisibleEpochMs > 0 then $windowVisibleEpochMs - $launchEpochMs else null end),
+          launchToWebviewMs: ($terminal[0].startup.webviewTimeOriginEpochMs - $launchEpochMs),
+          launchToAppReadyMs: ($terminal[0].startup.webviewTimeOriginEpochMs - $launchEpochMs + $terminal[0].startup.appReadyMs),
+          launchToWritersReadyMs: ($terminal[0].startup.webviewTimeOriginEpochMs - $launchEpochMs + $terminal[0].startup.writersReadyMs),
+          launchToFirstInputReadyMs: (if $terminal[0].startup.firstInputReadyMs == null then null else $terminal[0].startup.webviewTimeOriginEpochMs - $launchEpochMs + $terminal[0].startup.firstInputReadyMs end),
+          launchToAllInputsReadyMs: ($terminal[0].startup.webviewTimeOriginEpochMs - $launchEpochMs + $terminal[0].startup.allInputsReadyMs)
+        },
         terminal: $terminal[0]
       }
     ' > "$result_dir/result.json"
@@ -197,16 +234,86 @@ run_benchmark() {
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   trap - EXIT
+  LAST_RESULT_PATH="$result_dir/result.json"
   echo "The isolated benchmark app has been stopped."
+}
+
+run_series() {
+  local series_stamp series_result
+  local -a results=()
+  series_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  for _ in $(seq 1 "$SERIES_RUNS"); do
+    run_benchmark
+    results+=("$LAST_RESULT_PATH")
+  done
+  series_result="$RESULTS_ROOT/series-$series_stamp.json"
+  jq -s \
+    --argjson inputP95BudgetMs 29.9 \
+    --argjson frameP95BudgetMs 33.4 \
+    --argjson rssPeakBudgetKiB 467654 '
+      def median: sort | .[(length / 2 | floor)];
+      {
+        sampleCount: length,
+        commits: ([.[].commit] | unique),
+        budgets: {
+          inputP95Ms: $inputP95BudgetMs,
+          frameP95Ms: $frameP95BudgetMs,
+          totalIncrementalRssPeakKiB: $rssPeakBudgetKiB
+        },
+        coldFirstRun: {
+          launchToWindowVisibleMs: .[0].startup.launchToWindowVisibleMs,
+          launchToFirstInputReadyMs: .[0].startup.launchToFirstInputReadyMs,
+          launchToAllInputsReadyMs: .[0].startup.launchToAllInputsReadyMs,
+          inputP95Ms: .[0].terminal.inputEcho.p95Ms,
+          frameP95Ms: .[0].terminal.frames.p95Ms,
+          totalIncrementalRssPeakKiB: .[0].process.totalIncrementalRssPeakKiB
+        },
+        median: {
+          launchToWindowVisibleMs: ([.[].startup.launchToWindowVisibleMs] | median),
+          launchToFirstInputReadyMs: ([.[].startup.launchToFirstInputReadyMs] | median),
+          launchToAllInputsReadyMs: ([.[].startup.launchToAllInputsReadyMs] | median),
+          inputP95Ms: ([.[].terminal.inputEcho.p95Ms] | median),
+          frameP95Ms: ([.[].terminal.frames.p95Ms] | median),
+          totalIncrementalRssPeakKiB: ([.[].process.totalIncrementalRssPeakKiB] | median),
+          bundleKiB: ([.[].bundleKiB] | median)
+        },
+        worst: {
+          launchToWindowVisibleMs: ([.[].startup.launchToWindowVisibleMs] | max),
+          launchToFirstInputReadyMs: ([.[].startup.launchToFirstInputReadyMs] | max),
+          inputP95Ms: ([.[].terminal.inputEcho.p95Ms] | max),
+          frameP95Ms: ([.[].terminal.frames.p95Ms] | max),
+          totalIncrementalRssPeakKiB: ([.[].process.totalIncrementalRssPeakKiB] | max)
+        },
+        runs: map({
+          timestamp: .terminal.timestamp,
+          startup: .startup,
+          readyTerminals: .terminal.readyTerminals,
+          inputP95Ms: .terminal.inputEcho.p95Ms,
+          frameP95Ms: .terminal.frames.p95Ms,
+          totalIncrementalRssPeakKiB: .process.totalIncrementalRssPeakKiB,
+          failures: .terminal.failures
+        })
+      }
+      | .passed = (
+          (.commits | length) == 1
+          and (.runs | all(.readyTerminals >= 10 and (.failures | length) == 0 and .frameP95Ms <= $frameP95BudgetMs))
+          and .median.inputP95Ms <= $inputP95BudgetMs
+          and .median.totalIncrementalRssPeakKiB <= $rssPeakBudgetKiB
+        )
+    ' "${results[@]}" > "$series_result"
+  echo "Benchmark series complete: $series_result"
+  jq -e '.passed == true' "$series_result" >/dev/null
 }
 
 case "$ACTION" in
   build) build_bundle ;;
   run) run_benchmark ;;
+  series) run_series ;;
   stop) stop_bundle ;;
   all) build_bundle; run_benchmark ;;
+  all-series) build_bundle; run_series ;;
   *)
-    echo "Usage: $0 [all|build|run|stop]" >&2
+    echo "Usage: $0 [all|all-series|build|run|series|stop]" >&2
     exit 2
     ;;
 esac

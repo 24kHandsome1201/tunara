@@ -274,6 +274,7 @@ export function useTerminalBenchmark(ready: boolean): void {
   useEffect(() => {
     if (!TERMINAL_BENCHMARK_MODE || !ready || startedRef.current) return;
     startedRef.current = true;
+    const appReadyMs = performance.now();
     let cancelled = false;
 
     void (async () => {
@@ -296,6 +297,7 @@ export function useTerminalBenchmark(ready: boolean): void {
       });
 
       const readyIds = await waitForTerminalBenchmarkWriters(ids);
+      const writersReadyMs = performance.now();
       if (cancelled) return;
       await delay(750);
 
@@ -318,12 +320,17 @@ export function useTerminalBenchmark(ready: boolean): void {
 
       const nonce = Date.now().toString(36);
       const framePromise = sampleAnimationFrames();
+      let firstInputReadyMs: number | null = null;
       const inputResults = await Promise.allSettled(
         readyIds.map((id, index) => probeTerminalInputEcho(
           id,
           `__TUNARA_M0_${index}_${nonce}__`,
-        )),
+        ).then((latency) => {
+          firstInputReadyMs ??= performance.now();
+          return latency;
+        })),
       );
+      const allInputsReadyMs = performance.now();
       const frameDeltas = await framePromise;
       if (cancelled) return;
 
@@ -338,6 +345,13 @@ export function useTerminalBenchmark(ready: boolean): void {
       const report = {
         benchmark: "m0-mounted-terminals",
         timestamp: new Date().toISOString(),
+        startup: {
+          webviewTimeOriginEpochMs: performance.timeOrigin,
+          appReadyMs: Math.round(appReadyMs * 100) / 100,
+          writersReadyMs: Math.round(writersReadyMs * 100) / 100,
+          firstInputReadyMs: firstInputReadyMs === null ? null : Math.round(firstInputReadyMs * 100) / 100,
+          allInputsReadyMs: Math.round(allInputsReadyMs * 100) / 100,
+        },
         requestedTerminals: ids.length,
         readyTerminals: readyIds.length,
         minimumSatisfied: readyIds.length >= MIN_MOUNTED_TERMINALS,
