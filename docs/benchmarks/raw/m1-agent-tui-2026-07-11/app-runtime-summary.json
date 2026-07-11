@@ -84,6 +84,29 @@
       "newBundleReverificationPending": true
     }
   },
+  "localPiRuntime": {
+    "capturedAt": "2026-07-11T08:05:00Z",
+    "version": "0.79.4",
+    "agentDetected": true,
+    "readySnapshot": {
+      "footerObserved": "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+      "runningIndicatorObserved": false
+    },
+    "controlledBusyProbe": {
+      "command": "!sleep 2",
+      "providerOrModelCallRequired": false,
+      "runningIndicatorObserved": "Running... (escape/ctrl+c to cancel)",
+      "readyFooterRemainedVisibleWhileBusy": true,
+      "runningIndicatorClearedAfterCompletion": true
+    },
+    "installedVersionDefectObserved": {
+      "permanentRunningLabel": true,
+      "rootCause": "Pi had no prompt-ready detector, and its persistent footer could not clear the submitted-input busy transition.",
+      "sourceFixCommit": "118a1c50ac59345c83a6ec1548a612954f31d87e",
+      "busyIndicatorPrecedesReadyFooter": true,
+      "newBundleReverificationPending": true
+    }
+  },
   "capture": {
     "screenshotSuitableForTerminalJudgement": false,
     "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. The exact-session xterm snapshot and persisted UI state were used instead."
