@@ -6,6 +6,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { AccentActionButton, RestartIcon, ResumeIcon } from "./lib/ui-primitives";
+import { agentResumePendingInput } from "@/modules/terminal/lib/agent-resume";
 
 // Sidebar 的统一会话动态层。展示需要处理、正在运行、可恢复三类派生状态；
 // 没有可操作状态时整条隐藏，不制造第二套持久化状态或独立工作区。
@@ -105,10 +106,7 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
   const fillResume = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!resumeCommand) return;
-    useSessionsStore.getState().updateSession(session.id, {
-      pendingInput: resumeCommand,
-      pendingInputSubmit: true,
-    });
+    useSessionsStore.getState().updateSession(session.id, agentResumePendingInput(resumeCommand));
     onSelect(session.id);
   };
   const reconnect = (e: React.MouseEvent) => {

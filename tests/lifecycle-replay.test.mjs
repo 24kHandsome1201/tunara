@@ -89,6 +89,7 @@ import {
   handlePrimaryDeviceAttributesQuery,
 } from "../src/modules/terminal/lib/terminal-device-attributes.ts";
 import {
+  agentResumePendingInput,
   buildAgentResumeCommand,
   buildAgentResumeIntent,
   buildAgentResumeLaunchCommand,
@@ -440,6 +441,176 @@ test("agent resume preserves only allowlisted permission and sandbox posture", (
   );
 });
 
+test("Pi resume preserves an exact identity, safe launcher, session directory, and tighter capabilities", () => {
+  const direct = {
+    agent: "PI",
+    command: "pi --no-tools --no-skills --session-dir '/tmp/pi sessions' --session-id pi-session-1",
+    cwd: "/repo",
+    provenance: { transport: "local" },
+    resumeId: "pi-session-1",
+    lastSeenAt: 1,
+    confidence: "exact",
+  };
+  assert.equal(
+    buildAgentResumeCommand(direct),
+    "pi --no-skills --no-tools --session-dir '/tmp/pi sessions' --session pi-session-1",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      ...direct,
+      command: "npx --yes @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --session=pi-session-2",
+      resumeId: "pi-session-2",
+    }),
+    "npx -y @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --session pi-session-2",
+  );
+});
+
+test("Pi only becomes resumable from an exact official session identity", () => {
+  assert.equal(parseResumeId("pi --session-id pi-123"), "pi-123");
+  assert.equal(parseResumeId("pi --session=pi-456"), "pi-456");
+  assert.equal(
+    parseResumeId("npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-789"),
+    "pi-789",
+  );
+  assert.equal(
+    parseResumeId("printf 'pi --session fake-id' && npx -y @earendil-works/pi-coding-agent@0.79.4 --session real-id"),
+    "real-id",
+  );
+  for (const command of [
+    "pi",
+    "pi --no-session",
+    "pi --print hello",
+    "pi --help",
+    "pi 'explain --session fake-id'",
+    "pi -- --session fake-id",
+    "pi explain --session fake-id",
+    "pi --session 'bad id'",
+    "pi --session 'bad;id'",
+    "npx -y @earendil-works/pi-coding-agent --session unpinned",
+    "npx -y @earendil-works/pi-coding-agent@latest --session floating",
+  ]) {
+    assert.equal(isResumableAgentInvocation("PI", command), false, command);
+  }
+  assert.equal(isResumableAgentInvocation("PI", "pi --session-id pi-123"), true);
+  assert.equal(
+    isResumableAgentInvocation("PI", "npx -y @earendil-works/pi-coding-agent@0.79.4 --session pinned"),
+    true,
+  );
+});
+
+test("Pi session directory parsing never consumes another option", () => {
+  const intent = {
+    agent: "PI",
+    command: "pi --session-dir --no-tools --session pi-id",
+    cwd: "/repo",
+    provenance: { transport: "local" },
+    resumeId: "pi-id",
+    lastSeenAt: 1,
+    confidence: "exact",
+  };
+  assert.equal(buildAgentResumeCommand(intent), "pi --no-tools --session pi-id");
+  assert.equal(parseResumeId("pi --session --no-tools"), null);
+});
+
+test("both resume buttons share one auto-submit patch", () => {
+  assert.deepEqual(agentResumePendingInput("pi --session pi-id"), {
+    pendingInput: "pi --session pi-id",
+    pendingInputSubmit: true,
+  });
+});
+
+test("Pi exact intent captures local or SSH provenance and replaces an older generation", () => {
+  const local = makeSession({ dir: "/local/repo" });
+  assert.deepEqual(
+    buildAgentResumeIntent(local, "PI", "pi --session-id local-pi", 10),
+    {
+      agent: "PI",
+      command: "pi --session-id local-pi",
+      cwd: "/local/repo",
+      provenance: { transport: "local" },
+      resumeId: "local-pi",
+      lastSeenAt: 10,
+      confidence: "exact",
+    },
+  );
+
+  const remote = makeSession({
+    dir: "/root/repo",
+    remote: { host: "de-netcup", port: 22, user: "root" },
+    agentResume: {
+      agent: "PI",
+      command: "pi --session old-pi",
+      cwd: "/old",
+      provenance: { transport: "local" },
+      resumeId: "old-pi",
+      lastSeenAt: 1,
+      confidence: "exact",
+    },
+  });
+  assert.deepEqual(
+    buildAgentResumeIntent(
+      remote,
+      "PI",
+      "npx -y @earendil-works/pi-coding-agent@0.79.4 --session-id remote-pi",
+      20,
+    ),
+    {
+      agent: "PI",
+      command: "npx -y @earendil-works/pi-coding-agent@0.79.4 --session-id remote-pi",
+      cwd: "/root/repo",
+      provenance: { transport: "ssh", host: "de-netcup", port: 22, user: "root" },
+      resumeId: "remote-pi",
+      lastSeenAt: 20,
+      confidence: "exact",
+    },
+  );
+});
+
+test("resume launch fails closed when transport or SSH identity changes", () => {
+  const intent = {
+    agent: "PI",
+    command: "npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
+    cwd: "/root/repo",
+    provenance: { transport: "ssh", host: "de-netcup", port: 22, user: "root" },
+    resumeId: "pi-id",
+    lastSeenAt: 1,
+    confidence: "exact",
+  };
+  assert.equal(buildAgentResumeLaunchCommand(intent, { dir: "/tmp" }), null);
+  assert.equal(
+    buildAgentResumeLaunchCommand(intent, {
+      dir: "/tmp",
+      remote: { host: "other-host", port: 22, user: "root" },
+      connection: { phase: "ready" },
+    }),
+    null,
+  );
+  assert.equal(
+    buildAgentResumeLaunchCommand(
+      { ...intent, provenance: { ...intent.provenance, identityFile: "~/.ssh/id_a" } },
+      {
+        dir: "/root/repo",
+        remote: { host: "de-netcup", port: 22, user: "root", identityFile: "~/.ssh/id_b" },
+        connection: { phase: "ready" },
+      },
+    ),
+    null,
+  );
+  assert.equal(
+    buildAgentResumeLaunchCommand(intent, {
+      dir: "/tmp",
+      remote: { host: "de-netcup", port: 22, user: "root" },
+      connection: { phase: "ready" },
+    }),
+    "cd -- /root/repo && npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
+  );
+  assert.equal(buildAgentResumeLaunchCommand({ ...intent, provenance: undefined }, {
+    dir: "/root/repo",
+    remote: { host: "de-netcup", port: 22, user: "root" },
+    connection: { phase: "ready" },
+  }), null);
+});
+
 test("agent resume drops dangerous, unknown, cross-agent, and shell-injection tokens", () => {
   const base = { cwd: "/repo", lastSeenAt: 1, confidence: "exact", resumeId: "safe-id" };
   assert.equal(
@@ -473,20 +644,21 @@ test("agent resume returns to its immutable launch cwd before starting", () => {
     agent: "CC",
     command: "claude --permission-mode plan",
     cwd: "/repo/it's safe",
+    provenance: { transport: "local" },
     resumeId: "session-1",
     lastSeenAt: 1,
     confidence: "exact",
   };
   assert.equal(
-    buildAgentResumeLaunchCommand(intent, "/elsewhere"),
+    buildAgentResumeLaunchCommand(intent, { dir: "/elsewhere" }),
     "cd -- '/repo/it'\\''s safe' && claude --permission-mode plan --resume session-1",
   );
   assert.equal(
-    buildAgentResumeLaunchCommand({ ...intent, cwd: "~/work tree" }, "/elsewhere"),
+    buildAgentResumeLaunchCommand({ ...intent, cwd: "~/work tree" }, { dir: "/elsewhere" }),
     'cd -- "$HOME"/\'work tree\' && claude --permission-mode plan --resume session-1',
   );
   assert.equal(
-    buildAgentResumeLaunchCommand(intent, intent.cwd),
+    buildAgentResumeLaunchCommand(intent, { dir: intent.cwd }),
     "claude --permission-mode plan --resume session-1",
   );
 });
@@ -496,6 +668,7 @@ test("a new same-agent process generation cannot inherit the previous exact id o
     agent: "CX",
     command: "codex --sandbox workspace-write --ask-for-approval on-request",
     cwd: "/old-repo",
+    provenance: { transport: "local" },
     resumeId: "old-thread",
     lastSeenAt: 10,
     confidence: "exact",
@@ -511,6 +684,7 @@ test("a new same-agent process generation cannot inherit the previous exact id o
       agent: "CX",
       command: "codex --sandbox read-only -a never",
       cwd: "/new-repo",
+      provenance: { transport: "local" },
       lastSeenAt: 20,
       confidence: "unknown",
     },
@@ -521,6 +695,7 @@ test("a new same-agent process generation cannot inherit the previous exact id o
     agent: "CX",
     command: oldExact.command,
     cwd: "/new-repo",
+    provenance: { transport: "local" },
     lastSeenAt: 21,
     confidence: "unknown",
   });
@@ -535,6 +710,7 @@ test("a new same-agent process generation cannot inherit the previous exact id o
       agent: "CX",
       command: "codex --sandbox read-only -a never",
       cwd: "/new-repo",
+      provenance: { transport: "local" },
       resumeId: "new-thread",
       lastSeenAt: 22,
       confidence: "exact",
@@ -547,6 +723,7 @@ test("ordinary shell navigation cannot rewrite stored resume provenance", () => 
     agent: "CC",
     command: "claude --permission-mode plan",
     cwd: "/original-repo",
+    provenance: { transport: "local" },
     resumeId: "session-1",
     lastSeenAt: 10,
     confidence: "exact",
@@ -565,6 +742,7 @@ test("duplicate detection for the active process preserves its exact resume prov
     agent: "CC",
     command: "claude --permission-mode plan",
     cwd: "/repo",
+    provenance: { transport: "local" },
     resumeId: "session-1",
     lastSeenAt: 10,
     confidence: "exact",

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { type Session, AGENT_NAMES } from "./types";
 import { AgentBadge } from "./agents";
 import { hasCompletedAgentTurn, isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
-import { buildAgentResumeLaunchCommand } from "@/modules/terminal/lib/agent-resume";
+import { agentResumePendingInput, buildAgentResumeLaunchCommand } from "@/modules/terminal/lib/agent-resume";
 import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
 import { AccentActionButton, ResumeIcon } from "./lib/ui-primitives";
@@ -18,7 +18,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   const [lastAgent, setLastAgent] = useState(session.agent);
 
   const agentCode = session.agent ?? lastAgent;
-  const resumeCommand = buildAgentResumeLaunchCommand(session.agentResume, session.dir);
+  const resumeCommand = buildAgentResumeLaunchCommand(session.agentResume, session);
   const resumeAgent = !session.agent && resumeCommand ? session.agentResume?.agent : undefined;
   const displayAgent = session.agent ?? resumeAgent ?? agentCode;
   const isBusy = !!session.agent && isAgentActivityBusy(session.agentActivity);
@@ -53,10 +53,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   const agentName = (AGENT_NAMES as Record<string, string>)[displayAgent] ?? displayAgent;
   const fillResumeCommand = () => {
     if (!resumeCommand) return;
-    useSessionsStore.getState().updateSession(session.id, {
-      pendingInput: resumeCommand,
-      pendingInputSubmit: true,
-    });
+    useSessionsStore.getState().updateSession(session.id, agentResumePendingInput(resumeCommand));
   };
 
   const statusLabel = resumeCommand && !session.agent

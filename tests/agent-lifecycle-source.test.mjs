@@ -473,6 +473,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(types, /export type AgentActivity = "starting" \| "idle" \| "running" \| "waiting_confirmation";/);
   assert.match(types, /agentActivity\?: AgentActivity;/);
   assert.match(types, /export interface AgentResumeIntent/);
+  assert.match(types, /transport: "ssh"; host: string; port: number; user: string/);
   assert.match(types, /agentResume\?: AgentResumeIntent;/);
   assert.match(types, /suppressShellTitle\?: boolean;/);
   assert.match(types, /export function isPromptLikeShellTitle\(title: string\): boolean/);
@@ -491,6 +492,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(source, /const resumeChanged = agentResume !== session\?\.agentResume/);
   assert.match(source, /agentResume,/);
   assert.match(source, /command: resolveAgentResumeSourceCommand\(/);
+  assert.match(source, /provenance: session\.remote/);
   assert.match(source, /agentReadyUpdate\(session, isActive\)/);
   assert.match(source, /agentWaitingConfirmationUpdate\(session, isActive\)/);
   assert.match(source, /agentBusyUpdate\(session\)/);
@@ -521,6 +523,8 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   const terminal = read("src/ui/TerminalView.tsx");
   const terminalExit = read("src/ui/terminal-exit.ts");
   const listener = read("src/modules/terminal/lib/hooks-listener.ts");
+  assert.match(terminal, /payload\.event === "start"[\s\S]*recordAgentSessionId\([\s\S]*return true/);
+  assert.match(listener, /event === "start"[\s\S]*recordAgentSessionId\(session, agent, agentSessionId\)[\s\S]*return/);
   const zshrc = read("src-tauri/src/modules/pty/scripts/zshrc.zsh");
 
   assert.match(listener, /if \(event === "start"\) \{[\s\S]*?store\.handleAgentDetected\(session, agent\);/);
@@ -581,8 +585,8 @@ test("UI renders sidebar progress only when an agent is busy", () => {
   assert.match(status, /const isBusy = !!session\.agent && isAgentActivityBusy\(session\.agentActivity\);/);
   assert.match(status, /const displayAgent = session\.agent \?\? resumeAgent \?\? agentCode;/);
   assert.match(status, /session\.agent && session\.agentActivity === "idle" && !hasCompletedAgentTurn\(session\)/);
-  assert.match(status, /pendingInput: resumeCommand,[\s\S]*pendingInputSubmit: true/);
-  assert.match(globalBar, /pendingInput: resumeCommand,[\s\S]*pendingInputSubmit: true/);
+  assert.match(status, /agentResumePendingInput\(resumeCommand\)/);
+  assert.match(globalBar, /agentResumePendingInput\(resumeCommand\)/);
   assert.match(main, /<AgentStatusBar session=/);
   assert.doesNotMatch(diff, /session\.runState !== "running"/);
 });

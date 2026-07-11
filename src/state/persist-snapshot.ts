@@ -77,9 +77,27 @@ export interface PersistedAgentResumeIntent {
   agent: "CC" | "CX" | "AM" | string;
   command: string;
   cwd: string;
+  provenance:
+    | { transport: "local" }
+    | { transport: "ssh"; host: string; port: number; user: string; identityFile?: string };
   resumeId?: string;
   lastSeenAt: number;
   confidence: "exact" | "continue" | "unknown";
+}
+
+function sanitizeResumeProvenance(raw: unknown): PersistedAgentResumeIntent["provenance"] | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (value.transport === "local") return { transport: "local" };
+  if (value.transport !== "ssh") return null;
+  const host = typeof value.host === "string" ? value.host.trim() : "";
+  const user = typeof value.user === "string" ? value.user.trim() : "";
+  const port = parseSshPort(value.port);
+  if (!host || host.length > 255 || !user || user.length > 255 || port === null) return null;
+  if (/[\0\r\n]/.test(host) || /[\0\r\n]/.test(user)) return null;
+  const identityFile = typeof value.identityFile === "string" ? value.identityFile.trim() : "";
+  if (identityFile.length > 1024 || /[\0\r\n]/.test(identityFile)) return null;
+  return { transport: "ssh", host, port, user, ...(identityFile ? { identityFile } : {}) };
 }
 
 export interface WorkspaceSnapshotV1 {
@@ -354,22 +372,40 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
 
   const agentResume: Record<string, PersistedAgentResumeIntent> = {};
   if (obj.agentResume && typeof obj.agentResume === "object") {
+    const sessionsById = new Map(sessions.map((session) => [session.id, session]));
     for (const [k, v] of Object.entries(obj.agentResume as Record<string, unknown>)) {
       if (!isSafeRecordKey(k) || !sessionIds.has(k)) continue;
       if (!v || typeof v !== "object") continue;
       const a = v as Record<string, unknown>;
+      const owningSession = sessionsById.get(k);
+      const legacyProvenance = !("provenance" in a) && owningSession
+        ? owningSession.remote
+          ? {
+              transport: "ssh" as const,
+              host: owningSession.remote.host,
+              port: owningSession.remote.port,
+              user: owningSession.remote.user,
+              ...(owningSession.remote.identityFile
+                ? { identityFile: owningSession.remote.identityFile }
+                : {}),
+            }
+          : { transport: "local" as const }
+        : null;
+      const provenance = sanitizeResumeProvenance(a.provenance) ?? legacyProvenance;
       if (
         typeof a.agent === "string" &&
         typeof a.command === "string" &&
         typeof a.cwd === "string" &&
         typeof a.lastSeenAt === "number" &&
         Number.isFinite(a.lastSeenAt) &&
+        provenance &&
         (a.confidence === "exact" || a.confidence === "continue" || a.confidence === "unknown")
       ) {
         agentResume[k] = {
           agent: a.agent,
           command: a.command,
           cwd: a.cwd,
+          provenance,
           ...(typeof a.resumeId === "string" ? { resumeId: a.resumeId } : {}),
           lastSeenAt: a.lastSeenAt,
           confidence: a.confidence,

@@ -11,6 +11,7 @@ export async function startHooksListener(): Promise<UnlistenFn> {
 
     if (event === "start") {
       store.handleAgentDetected(session, agent);
+      if (agentSessionId) store.recordAgentSessionId(session, agent, agentSessionId);
       return;
     }
     if (event === "exit") {

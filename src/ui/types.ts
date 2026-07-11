@@ -30,6 +30,9 @@ export interface AgentResumeIntent {
   agent: AgentCode | string;
   command: string;
   cwd: string;
+  provenance:
+    | { transport: "local" }
+    | { transport: "ssh"; host: string; port: number; user: string; identityFile?: string };
   resumeId?: string;
   lastSeenAt: number;
   confidence: "exact" | "continue" | "unknown";

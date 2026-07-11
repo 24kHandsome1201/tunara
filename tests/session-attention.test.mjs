@@ -49,10 +49,43 @@ test("running and resumable sessions are mutually exclusive derived groups", () 
   const groups = deriveSessionAttention([
     session("shell", { runState: "running" }),
     session("agent", { agent: "CC", agentActivity: "starting" }),
-    session("resume", { agentResume: { agent: "CX", command: "codex", cwd: "/repo", resumeId: "abc", lastSeenAt: 1, confidence: "exact" } }),
+    session("resume", { agentResume: { agent: "CX", command: "codex", cwd: "/repo", provenance: { transport: "local" }, resumeId: "abc", lastSeenAt: 1, confidence: "exact" } }),
   ]);
   assert.deepEqual(groups.running.map((item) => item.id), ["shell", "agent"]);
   assert.equal(groups.resumable.length, 1);
   assert.match(groups.resumable[0].resumeCommand, /codex resume abc/);
+  assert.match(groups.resumable[0].resumeCommand, /^cd -- \/repo &&/);
   assert.equal(groups.total, 3);
+});
+
+test("global attention uses cwd-aware commands and hides cross-transport resume intents", () => {
+  const piResume = {
+    agent: "PI",
+    command: "npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
+    cwd: "/root/original repo",
+    provenance: { transport: "ssh", host: "de-netcup", port: 22, user: "root" },
+    resumeId: "pi-id",
+    lastSeenAt: 1,
+    confidence: "exact",
+  };
+  const groups = deriveSessionAttention([
+    session("same-host", {
+      dir: "/tmp",
+      remote: { host: "de-netcup", port: 22, user: "root" },
+      connection: { phase: "ready" },
+      agentResume: piResume,
+    }),
+    session("other-host", {
+      dir: "/tmp",
+      remote: { host: "other", port: 22, user: "root" },
+      connection: { phase: "ready" },
+      agentResume: piResume,
+    }),
+  ]);
+  assert.equal(groups.resumable.length, 1);
+  assert.equal(
+    groups.resumable[0].resumeCommand,
+    "cd -- '/root/original repo' && npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
+  );
+  assert.deepEqual(groups.quiet.map((item) => item.id), ["other-host"]);
 });

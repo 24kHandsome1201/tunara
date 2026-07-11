@@ -1,6 +1,6 @@
 import type { Session } from "../../ui/types.ts";
 import { isAgentActivityBusy } from "../terminal/lib/agent-lifecycle.ts";
-import { buildAgentResumeCommand } from "../terminal/lib/agent-resume.ts";
+import { buildAgentResumeLaunchCommand } from "../terminal/lib/agent-resume.ts";
 
 export type SessionAttentionKind =
   | "ssh-failed"
@@ -54,7 +54,7 @@ export function deriveSessionAttention(sessions: readonly Session[]): SessionAtt
       running.push(session);
       continue;
     }
-    const resumeCommand = !session.agent ? buildAgentResumeCommand(session.agentResume) : null;
+    const resumeCommand = !session.agent ? buildAgentResumeLaunchCommand(session.agentResume, session) : null;
     if (resumeCommand) {
       resumable.push({ session, resumeCommand });
       continue;

@@ -140,10 +140,13 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
       savedAt: Number.NaN,
       activeSessionId: "s-active",
       sessions: [
-        persistedSession("s-active", "/active", 1),
+        persistedSession("s-active", "/active", 1, {
+          remote: { host: "de-netcup", port: 22, user: "root" },
+        }),
         persistedSession("s-a", "/repo-a", 1, { title: "old" }),
         persistedSession("s-a", "/repo-a", 5, { title: "new" }),
         persistedSession("s-b", "/repo-b", 2),
+        persistedSession("s-bad", "/repo-bad", 2),
         persistedSession("__proto__", "/polluted", 9),
         { id: "bad", title: "missing fields" },
       ],
@@ -172,7 +175,16 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
           agent: "CC",
           command: "claude --resume abc",
           cwd: "/repo-a",
+          provenance: { transport: "local" },
           resumeId: "abc",
+          lastSeenAt: 12,
+          confidence: "exact",
+        },
+        "s-active": {
+          agent: "PI",
+          command: "npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
+          cwd: "/active",
+          resumeId: "pi-id",
           lastSeenAt: 12,
           confidence: "exact",
         },
@@ -181,7 +193,16 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
           command: "codex",
           cwd: "/repo-b",
           lastSeenAt: 13,
-          confidence: "bad",
+          confidence: "exact",
+        },
+        "s-bad": {
+          agent: "CX",
+          command: "codex resume bad",
+          cwd: "/repo-bad",
+          provenance: { transport: "ssh", host: "", port: 22, user: "root" },
+          resumeId: "bad",
+          lastSeenAt: 13,
+          confidence: "exact",
         },
         orphan: {
           agent: "CC",
@@ -214,6 +235,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
       ["s-active", "终端"],
       ["s-a", "new"],
       ["s-b", "终端"],
+      ["s-bad", "终端"],
     ]);
     assert.deepEqual(snapshot.ui.collapsedDirs, { "/repo-a": true });
     assert.deepEqual(snapshot.ui.collapsedDiffSections, { staged: true, untracked: true });
@@ -222,7 +244,14 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.deepEqual(snapshot.ui.split, { mode: "vertical", paneA: "s-a", paneB: "s-b", ratio: 0.8 });
     assert.equal(snapshot.ui.inspectorTab, "overview");
     assert.deepEqual(Object.keys(snapshot.terminals), ["s-a"]);
-    assert.deepEqual(Object.keys(snapshot.agentResume), ["s-a"]);
+    assert.deepEqual(Object.keys(snapshot.agentResume), ["s-a", "s-active", "s-b"]);
+    assert.deepEqual(snapshot.agentResume["s-active"].provenance, {
+      transport: "ssh",
+      host: "de-netcup",
+      port: 22,
+      user: "root",
+    });
+    assert.deepEqual(snapshot.agentResume["s-b"].provenance, { transport: "local" });
     assert.deepEqual(snapshot.recentDirs, ["/repo-a", "/repo-b"]);
     assert.deepEqual(snapshot.recentCommands, ["git status", "pnpm test"]);
     assert.equal(Object.keys(snapshot.commandUsage).length, 50);

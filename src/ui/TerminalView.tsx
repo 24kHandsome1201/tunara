@@ -225,6 +225,7 @@ function TerminalViewImpl({
         if (payload.session !== sessionIdRef.current) return true;
         if (payload.event === "start") {
           markAgentDetected(payload.agent);
+          if (payload.agentSessionId) useSessionsStore.getState().recordAgentSessionId(sessionIdRef.current, payload.agent, payload.agentSessionId);
           return true;
         }
         const current = getCurrentSession();

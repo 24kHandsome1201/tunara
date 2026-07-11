@@ -504,6 +504,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
           AGENT_NAMES[agent] ?? agent,
         ),
         cwd: session.dir,
+        provenance: session.remote
+          ? {
+              transport: "ssh",
+              host: session.remote.host,
+              port: session.remote.port,
+              user: session.remote.user,
+              ...(session.remote.identityFile?.trim()
+                ? { identityFile: session.remote.identityFile.trim() }
+                : {}),
+            }
+          : { transport: "local" },
         resumeId: trimmed,
         lastSeenAt: Date.now(),
         confidence: "exact",

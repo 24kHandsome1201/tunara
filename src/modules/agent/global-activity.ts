@@ -3,7 +3,7 @@
 // 三组的语义（对应 .design/global-agent-bar.html 原型的 wait/run/done）：
 // - wait      agent 进程存活且 activity 为 idle —— 完成一轮、prompt 就绪，等用户输入。
 // - run       agent 进程存活且 busy（starting/running）。
-// - resumable agent 已退出，但留下了可执行的 resume 命令（CC/CX，见 agent-resume.ts）。
+// - resumable agent 已退出，但留下了与当前 transport 匹配的精确 resume 命令。
 import type { Session } from "../../ui/types.ts";
 import { isAgentActivityBusy } from "../terminal/lib/agent-lifecycle.ts";
 import { buildAgentResumeLaunchCommand } from "../terminal/lib/agent-resume.ts";
@@ -29,7 +29,7 @@ export function groupAgentActivity(sessions: readonly Session[]): AgentActivityG
       else wait.push(session);
       continue;
     }
-    const resumeCommand = buildAgentResumeLaunchCommand(session.agentResume, session.dir);
+    const resumeCommand = buildAgentResumeLaunchCommand(session.agentResume, session);
     if (resumeCommand) resumable.push({ session, resumeCommand });
   }
   return {

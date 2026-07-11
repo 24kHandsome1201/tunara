@@ -42,7 +42,7 @@ test("confirmation-blocked agents have an independent non-running group", () => 
 
 test("exited agents with a resume intent land in resumable with the built command", () => {
   const exited = session("a", {
-    agentResume: { agent: "CC", command: "claude", cwd: "~", resumeId: "abc", lastSeenAt: 1, confidence: "exact" },
+    agentResume: { agent: "CC", command: "claude", cwd: "~", provenance: { transport: "local" }, resumeId: "abc", lastSeenAt: 1, confidence: "exact" },
   });
   const groups = groupAgentActivity([exited]);
   assert.equal(groups.resumable.length, 1);
@@ -58,6 +58,7 @@ test("resumable agents return to their captured cwd before launch", () => {
         agent: "CX",
         command: "codex --sandbox read-only",
         cwd: "/original repo",
+        provenance: { transport: "local" },
         resumeId: "thread-1",
         lastSeenAt: 1,
         confidence: "exact",
@@ -72,7 +73,7 @@ test("resumable agents return to their captured cwd before launch", () => {
 
 test("resume intents that build no command (unsupported agent) are excluded", () => {
   const exited = session("a", {
-    agentResume: { agent: "GM", command: "gemini", cwd: "~", lastSeenAt: 1, confidence: "unknown" },
+    agentResume: { agent: "GM", command: "gemini", cwd: "~", provenance: { transport: "local" }, lastSeenAt: 1, confidence: "unknown" },
   });
   const groups = groupAgentActivity([exited]);
   assert.equal(groups.total, 0);
@@ -82,7 +83,7 @@ test("a live agent session is never double-counted as resumable", () => {
   const live = session("a", {
     agent: "CC",
     agentActivity: "idle",
-    agentResume: { agent: "CC", command: "claude", cwd: "~", resumeId: "abc", lastSeenAt: 1, confidence: "exact" },
+    agentResume: { agent: "CC", command: "claude", cwd: "~", provenance: { transport: "local" }, resumeId: "abc", lastSeenAt: 1, confidence: "exact" },
   });
   const groups = groupAgentActivity([live]);
   assert.equal(groups.wait.length, 1);
