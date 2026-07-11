@@ -122,6 +122,16 @@ ssh "${ssh_args[@]}" "$remote" "/bin/bash -s" \
   > "$WORK/resume-ssh-opencode.json" 2>&1 &
 resume_ssh_opencode_pid=$!
 
+"$ROOT/scripts/pi-resume-probe.sh" \
+  > "$WORK/resume-local-pi.json" 2>&1 &
+resume_local_pi_pid=$!
+
+TUNARA_PI_USE_NPX=1 ssh "${ssh_args[@]}" "$remote" \
+  "TUNARA_PI_USE_NPX=1 /bin/bash -s" \
+  < "$ROOT/scripts/pi-resume-probe.sh" \
+  > "$WORK/resume-ssh-pi.json" 2>&1 &
+resume_ssh_pi_pid=$!
+
 wait "$permission_codex_pid" || true
 wait "$permission_claude_pid" || true
 [[ -e "$CLAUDE_PROBE" ]] && printf '1\n' > "$WORK/permission-claude-probe-created" \
@@ -132,6 +142,8 @@ wait "$resume_ssh_codex_pid"
 wait "$resume_ssh_aider_pid"
 wait "$resume_local_opencode_pid"
 wait "$resume_ssh_opencode_pid"
+wait "$resume_local_pi_pid"
+wait "$resume_ssh_pi_pid"
 
 python3 "$ROOT/scripts/summarize-agent-session.py" \
   --input "$WORK" \

@@ -43,6 +43,16 @@ function writeResumeFixtures(dir) {
       errorClass: null,
       passed: true,
     })}\n`);
+    writeFileSync(join(dir, `resume-${scope}-pi.json`), `${JSON.stringify({
+      firstExit: 0,
+      resumeExit: 0,
+      sessionIdentityObserved: true,
+      firstMarkerObserved: true,
+      resumeMarkerObserved: true,
+      jsonEvents: 8,
+      errorClass: null,
+      passed: true,
+    })}\n`);
   }
 }
 
@@ -77,12 +87,12 @@ test("agent session summary recognizes compact TUI prompts and explicit resume I
     assert.equal(result.permission.localCodex.result, "prompt_observed");
     assert.deepEqual(result.summary, {
       permissionPromptsObserved: 2,
-      resumePassed: 6,
-      resumeEntries: 6,
+      resumePassed: 8,
+      resumeEntries: 8,
     });
     for (const [name, entry] of Object.entries(result.resume)) {
       if (name === "sshAider") assert.equal(entry.historyIdentityObserved, true);
-      else if (name.endsWith("OpenCode")) assert.equal(entry.sessionIdentityObserved, true);
+      else if (name.endsWith("OpenCode") || name.endsWith("Pi")) assert.equal(entry.sessionIdentityObserved, true);
       else assert.equal(entry.idObserved, true);
       assert.equal(entry.firstMarkerObserved, true);
       assert.equal(entry.resumeMarkerObserved, true);
@@ -125,4 +135,12 @@ test("remote session probes isolate stdin and clean their dedicated state", () =
   assert.match(opencode, /opencode session delete "\$session_id"/);
   assert.match(opencode, /trap cleanup EXIT/);
   assert.equal((opencode.match(/< \/dev\/null/g) ?? []).length, 3);
+
+  const pi = read("scripts/pi-resume-probe.sh");
+  assert.match(pi, /--session-id "\$session_id"/);
+  assert.match(pi, /--session "\$session_id"/);
+  assert.match(pi, /strong_success = identity and first_marker and resume_marker and statuses == \[0, 0\]/);
+  assert.match(pi, /error_class = None if strong_success else/);
+  assert.match(pi, /trap cleanup EXIT/);
+  assert.equal((pi.match(/< \/dev\/null/g) ?? []).length, 2);
 });

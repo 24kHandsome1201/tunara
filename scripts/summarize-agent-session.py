@@ -110,6 +110,30 @@ def opencode_resume_result(root: Path, scope: str) -> dict[str, object]:
     }
 
 
+def pi_resume_result(root: Path, scope: str) -> dict[str, object]:
+    raw = read(root / f"resume-{scope}-pi.json")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    def boolean(key: str) -> bool:
+        return payload.get(key) is True
+
+    error_class = payload.get("errorClass")
+    events = payload.get("jsonEvents")
+    return {
+        "sessionIdentityObserved": boolean("sessionIdentityObserved"),
+        "firstMarkerObserved": boolean("firstMarkerObserved"),
+        "resumeMarkerObserved": boolean("resumeMarkerObserved"),
+        "jsonEvents": events if isinstance(events, int) and events >= 0 else 0,
+        "errorClass": error_class if isinstance(error_class, str) else None,
+        "passed": boolean("passed"),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, type=Path)
@@ -151,6 +175,8 @@ def main() -> None:
         "sshAider": aider_resume_result(args.input),
         "localOpenCode": opencode_resume_result(args.input, "local"),
         "sshOpenCode": opencode_resume_result(args.input, "ssh"),
+        "localPi": pi_resume_result(args.input, "local"),
+        "sshPi": pi_resume_result(args.input, "ssh"),
     }
     result = {
         "commit": args.commit,
