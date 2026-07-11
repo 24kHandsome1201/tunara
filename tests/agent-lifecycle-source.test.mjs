@@ -533,7 +533,7 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /shouldUseStartupQuietReadyFallback\(current\.agent, current\.agentActivity\)[\s\S]*scheduleStartupQuietReady\(\);/);
   assert.doesNotMatch(terminal, /sess\?\.agentActivity === "running"[\s\S]{0,120}scheduleStartupQuietReady/);
   assert.match(terminal, /const submitAgentInput = \(submitted: string\) => \{[\s\S]*const trimmed = cleanTerminalText\(submitted\)\.trim\(\);[\s\S]*if \(!trimmed\) return;[\s\S]*handleAgentBusy\(sessionIdRef\.current\)/);
-  assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)[\s\S]*for \(const submitted of result\.submissions\) \{[\s\S]*submitAgentInput\(submitted\);[\s\S]*submitCommandBuffer\(submitted\);/);
+  assert.match(terminal, /scanTerminalInputBuffer\(inputState\.buffer, data, inputState\.bracketedPasteActive\)[\s\S]*inputState = result[\s\S]*for \(const submitted of result\.submissions\) \{[\s\S]*submitAgentInput\(submitted\);[\s\S]*submitCommandBuffer\(submitted\);/);
   assert.match(terminal, /const submittedCommand = pendingSubmittedShellCommand;[\s\S]*resolveTerminalCommandText\(data, submittedCommand, extractCommandFromBuffer/);
   assert.match(terminal, /if \(!currentAgent\) \{[\s\S]*const agent = detectAgentCommand\(submitted\);/);
   assert.match(terminal, /handleAgentBusy\(sessionIdRef\.current\)/);

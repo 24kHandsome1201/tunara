@@ -1337,7 +1337,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ handleCopyKeyEvent \} from "@\/modules\/terminal\/lib\/terminal-copy"/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
-  assert.match(terminal, /scanTerminalInputBuffer\(inputBuffer, data\)/);
+  assert.match(terminal, /scanTerminalInputBuffer\(inputState\.buffer, data, inputState\.bracketedPasteActive\)/);
   assert.match(terminalChrome, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
   assert.match(terminalChrome, /import \{ TerminalBlockFilterPanel \} from "\.\/TerminalBlockFilterPanel"/);
   assert.match(terminalChrome, /import \{ TerminalBlocksBar \} from "\.\/TerminalBlocksBar"/);
@@ -1499,6 +1499,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalResize, /export function observeTerminalResize/);
   assert.match(terminalResize, /new ResizeObserver/);
   assert.match(terminalInput, /export function scanTerminalInputBuffer/);
+  assert.match(terminalInput, /BRACKETED_PASTE_START/);
+  assert.match(terminalInput, /bracketedPasteActive/);
   assert.match(sidebar, /import \{ DirGroupHeader, SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
   assert.match(sidebarHeader, /export function DirGroupHeader/);
   assert.doesNotMatch(terminal, /new ResizeObserver/);

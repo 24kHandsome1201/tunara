@@ -442,7 +442,7 @@ function TerminalViewImpl({
           /* Resize can race with process exit or pane teardown. */
         });
       };
-      let inputBuffer = "";
+      let inputState = { buffer: "", bracketedPasteActive: false };
       const submitCommandBuffer = (submitted: string) => {
         const trimmed = cleanTerminalText(submitted).trim();
         const currentAgent = getCurrentSession()?.agent;
@@ -480,8 +480,8 @@ function TerminalViewImpl({
             useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
           }
         };
-        const result = scanTerminalInputBuffer(inputBuffer, data);
-        inputBuffer = result.buffer;
+        const result = scanTerminalInputBuffer(inputState.buffer, data, inputState.bracketedPasteActive);
+        inputState = result;
         for (const submitted of result.submissions) {
           submitAgentInput(submitted);
           submitCommandBuffer(submitted);

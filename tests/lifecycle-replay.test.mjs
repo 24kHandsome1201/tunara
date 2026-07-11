@@ -281,22 +281,57 @@ test("terminal input buffer handles editing keys and terminal escape noise", () 
   assert.deepEqual(scanTerminalInputBuffer("", "abc\x7fd\n"), {
     buffer: "",
     submissions: ["abd"],
+    bracketedPasteActive: false,
   });
   assert.deepEqual(scanTerminalInputBuffer("", "abc\x15d\n"), {
     buffer: "",
     submissions: ["d"],
+    bracketedPasteActive: false,
   });
   assert.deepEqual(scanTerminalInputBuffer("", "ab\x1b[Acd\n"), {
     buffer: "",
     submissions: ["abcd"],
+    bracketedPasteActive: false,
   });
   assert.deepEqual(scanTerminalInputBuffer("", "ab\x1b]0;title\x07cd\n"), {
     buffer: "",
     submissions: ["abcd"],
+    bracketedPasteActive: false,
   });
   assert.deepEqual(scanTerminalInputBuffer("", "one\ntwo\r"), {
     buffer: "",
     submissions: ["one", "two"],
+    bracketedPasteActive: false,
+  });
+});
+
+test("terminal input buffer keeps bracketed-paste newlines out of submissions", () => {
+  let result = scanTerminalInputBuffer("", "\x1b[200~one\rtwo\x1b[201~");
+  assert.deepEqual(result, {
+    buffer: "one\ntwo",
+    submissions: [],
+    bracketedPasteActive: false,
+  });
+
+  result = scanTerminalInputBuffer(result.buffer, "\r", result.bracketedPasteActive);
+  assert.deepEqual(result, {
+    buffer: "",
+    submissions: ["one\ntwo"],
+    bracketedPasteActive: false,
+  });
+});
+
+test("terminal input buffer preserves bracketed-paste state across data events", () => {
+  const started = scanTerminalInputBuffer("", "\x1b[200~one\r");
+  assert.deepEqual(started, {
+    buffer: "one\n",
+    submissions: [],
+    bracketedPasteActive: true,
+  });
+  assert.deepEqual(scanTerminalInputBuffer(started.buffer, "two\x1b[201~", started.bracketedPasteActive), {
+    buffer: "one\ntwo",
+    submissions: [],
+    bracketedPasteActive: false,
   });
 });
 

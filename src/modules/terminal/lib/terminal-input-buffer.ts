@@ -1,11 +1,14 @@
 export interface TerminalInputBufferScanResult {
   buffer: string;
   submissions: string[];
+  bracketedPasteActive: boolean;
 }
 
 const ESC = "\x1b";
 const BEL = "\x07";
 const STRING_TERMINATOR = "\\";
+const BRACKETED_PASTE_START = "\x1b[200~";
+const BRACKETED_PASTE_END = "\x1b[201~";
 
 /**
  * Native OSC 133 command markers are authoritative when available. Remote
@@ -35,13 +38,25 @@ function skipEscapeSequence(data: string, index: number): number {
   return i + 1 < data.length ? i + 1 : i;
 }
 
-export function scanTerminalInputBuffer(buffer: string, data: string): TerminalInputBufferScanResult {
+export function scanTerminalInputBuffer(
+  buffer: string,
+  data: string,
+  bracketedPasteActive = false,
+): TerminalInputBufferScanResult {
   let nextBuffer = buffer;
   const submissions: string[] = [];
 
   for (let i = 0; i < data.length; i += 1) {
     const ch = data[i];
-    if (ch === ESC) {
+    if (data.startsWith(BRACKETED_PASTE_START, i)) {
+      bracketedPasteActive = true;
+      i += BRACKETED_PASTE_START.length - 1;
+    } else if (data.startsWith(BRACKETED_PASTE_END, i)) {
+      bracketedPasteActive = false;
+      i += BRACKETED_PASTE_END.length - 1;
+    } else if (bracketedPasteActive && (ch === "\r" || ch === "\n")) {
+      if (!(ch === "\n" && data[i - 1] === "\r")) nextBuffer += "\n";
+    } else if (ch === ESC) {
       i = data[i + 1] === "]"
         ? skipOscSequence(data, i)
         : skipEscapeSequence(data, i);
@@ -57,5 +72,5 @@ export function scanTerminalInputBuffer(buffer: string, data: string): TerminalI
     }
   }
 
-  return { buffer: nextBuffer, submissions };
+  return { buffer: nextBuffer, submissions, bracketedPasteActive };
 }
