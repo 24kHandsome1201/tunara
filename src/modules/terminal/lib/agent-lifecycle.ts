@@ -1,6 +1,7 @@
 import type { AgentActivity, AgentCode, RunState, Session } from "../../../ui/types.ts";
 import { AGENT_CODES, AGENT_COMMANDS, AGENT_NAMES, AGENT_SHELL_TITLE_FRAGMENTS, agentCodeForCommand } from "../../agent/registry.ts";
 import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
+import { shellCommandName, splitShellCommandSegments, tokenizeShellWords } from "./shell-command.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
 export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
@@ -36,9 +37,43 @@ export function isAgentCode(value: string): value is AgentCode {
   return AGENT_CODES.has(value as AgentCode);
 }
 
+function detectAgentInSegment(segment: string): AgentCode | null {
+  const words = tokenizeShellWords(segment);
+  let index = 0;
+  while (index < words.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(words[index])) index += 1;
+  while (["command", "exec", "nohup"].includes(shellCommandName(words[index] ?? ""))) index += 1;
+  if (shellCommandName(words[index] ?? "") === "env") {
+    index += 1;
+    while (index < words.length && (words[index].startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(words[index]))) index += 1;
+  }
+
+  const direct = agentCodeForCommand(shellCommandName(words[index] ?? ""));
+  if (direct) return direct;
+
+  if (shellCommandName(words[index] ?? "") !== "uvx") return null;
+  index += 1;
+  while (index < words.length) {
+    const word = words[index];
+    if (word === "--from" || word === "--with" || word === "--python" || word === "--index-url") {
+      index += 2;
+      continue;
+    }
+    if (word.startsWith("-")) {
+      index += 1;
+      continue;
+    }
+    return agentCodeForCommand(shellCommandName(word));
+  }
+  return null;
+}
+
 export function detectAgentCommand(commandLine: string): AgentCode | null {
-  const cmd = cleanTerminalText(commandLine).trim().split(/\s+/)[0]?.toLowerCase() ?? "";
-  return agentCodeForCommand(cmd);
+  const cleaned = cleanTerminalText(commandLine).trim();
+  for (const segment of splitShellCommandSegments(cleaned)) {
+    const agent = detectAgentInSegment(segment);
+    if (agent) return agent;
+  }
+  return null;
 }
 
 export function isAgentShellTitle(title: string): boolean {
