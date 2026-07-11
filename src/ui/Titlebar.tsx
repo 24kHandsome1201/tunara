@@ -74,50 +74,57 @@ interface TabButtonProps {
 function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: TabButtonProps) {
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
       className="tab-btn"
       data-active={isActive ? "true" : "false"}
       style={{
         height: 28,
-        padding: "0 10px",
         borderRadius: "var(--r-pill)",
-        border: "none",
         background: isActive ? "var(--c-accent-bg-soft)" : "transparent",
-        cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        gap: 5,
         flexShrink: 0,
         transition: "background var(--duration-fast) ease",
       }}
     >
-      {mascot ? <SessionMascotIcon id={mascot} size={18} /> : isActive && (
+      <button
+        type="button"
+        role="tab"
+        aria-selected={isActive}
+        onClick={onSelect}
+        className="tab-select"
+        style={{
+          height: "100%",
+          padding: "0 5px 0 10px",
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          color: "inherit",
+          borderRadius: "var(--r-pill) 0 0 var(--r-pill)",
+        }}
+      >
+        {mascot ? <SessionMascotIcon id={mascot} size={18} /> : isActive && (
+          <span aria-hidden="true" style={{
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: "var(--c-accent)",
+            flexShrink: 0,
+            animation: "scaleIn var(--duration-fast) var(--ease-out-back)",
+          }} />
+        )}
         <span style={{
-          width: 5,
-          height: 5,
-          borderRadius: "50%",
-          background: "var(--c-accent)",
-          flexShrink: 0,
-          animation: "scaleIn var(--duration-fast) var(--ease-out-back)",
-        }} />
-      )}
-      <span style={{
-        fontSize: "var(--fs-secondary)",
-        fontWeight: isActive ? 600 : 400,
-        color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)",
-        fontFamily: "var(--font-ui)",
-        transition: "color var(--duration-fast) var(--ease-smooth), font-weight var(--duration-fast) var(--ease-smooth)",
-      }}>
-        {label}
-      </span>
+          fontSize: "var(--fs-secondary)",
+          fontWeight: isActive ? 600 : 400,
+          color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)",
+          fontFamily: "var(--font-ui)",
+          transition: "color var(--duration-fast) var(--ease-smooth), font-weight var(--duration-fast) var(--ease-smooth)",
+        }}>
+          {label}
+        </span>
+      </button>
       <button
         type="button"
         tabIndex={0}
@@ -129,7 +136,7 @@ function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, con
         style={{
           width: 20, height: 20, borderRadius: 5, border: "none", background: "transparent",
           display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          cursor: "pointer", padding: 0,
+          cursor: "pointer", padding: 0, marginRight: 4,
           color: confirmClose ? "var(--c-error)" : undefined,
         }}
       >
@@ -344,6 +351,8 @@ export function Titlebar({
       {showTabs ? (
         <div
           ref={tabsRef}
+          role="tablist"
+          aria-label={t("titlebar.tabs")}
           className="no-scrollbar"
           style={{
             display: "flex",

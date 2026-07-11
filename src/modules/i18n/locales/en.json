@@ -238,6 +238,7 @@
   "palette.cmd.close_all_sessions": "Close all sessions",
   "palette.cmd.close_other_sessions": "Close other sessions",
   "titlebar.tab.close": "Close",
+  "titlebar.tabs": "Terminal sessions",
   "titlebar.toggle_sidebar": "Toggle sidebar",
   "titlebar.new_terminal": "New terminal",
   "titlebar.new_terminal_in_directory": "New terminal in folder…",

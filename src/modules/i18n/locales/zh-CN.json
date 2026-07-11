@@ -238,6 +238,7 @@
   "palette.cmd.close_all_sessions": "关闭所有会话",
   "palette.cmd.close_other_sessions": "关闭其他会话",
   "titlebar.tab.close": "关闭",
+  "titlebar.tabs": "终端会话",
   "titlebar.toggle_sidebar": "折叠侧边栏",
   "titlebar.new_terminal": "新建终端",
   "titlebar.new_terminal_in_directory": "选择目录新建终端…",
