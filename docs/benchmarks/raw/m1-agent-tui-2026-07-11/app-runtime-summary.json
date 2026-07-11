@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-11T12:36:38Z",
+  "capturedAt": "2026-07-11T12:46:21Z",
   "installedApp": {
     "path": "/Applications/Tunara.app",
     "version": "1.14.0"
@@ -295,7 +295,7 @@
     }
   },
   "sshOpenCodeRuntime": {
-    "capturedAt": "2026-07-11T09:09:29Z",
+    "capturedAt": "2026-07-11T12:46:21Z",
     "installedAppVersion": "1.14.0",
     "target": "de-netcup",
     "cwd": "/root",
@@ -336,6 +336,31 @@
       "exactRoundTrip": true,
       "submittedToProvider": false,
       "inputClearedWithCtrlC": true
+    },
+    "bracketedPaste": {
+      "sourceApp": "installed Tunara 1.14.0",
+      "cwd": "/tmp",
+      "command": "/usr/local/bin/opencode --pure",
+      "controlledLines": 2,
+      "markers": [
+        "TUNARA_SSH_OPENCODE_LINE_ONE",
+        "TUNARA_SSH_OPENCODE_LINE_TWO"
+      ],
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "warningAccepted": true,
+      "evidenceSource": "Persisted xterm SerializeAddon workspace snapshot",
+      "bothLinesAdjacentInsideComposerBorder": true,
+      "alternateScreenPreserved": true,
+      "bracketedPasteModePreserved": true,
+      "focusModePreserved": true,
+      "mouseModePreserved": true,
+      "backgroundRoundTripPreservedInput": true,
+      "autoSubmittedToProvider": false,
+      "inputClearedWithCtrlC": true,
+      "bothMarkersAbsentFromPostClearSnapshot": true,
+      "tuiStillRunningAfterClear": true,
+      "gpuScreenshotUsedAsEvidence": false
     },
     "exit": {
       "command": "/exit",
