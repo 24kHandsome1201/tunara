@@ -154,9 +154,33 @@ test("remote session probes isolate stdin and clean their dedicated state", () =
   assert.match(pi, /--session-id "\$session_id"/);
   assert.match(pi, /--session "\$session_id"/);
   assert.match(pi, /strong_success = identity and first_marker and resume_marker and statuses == \[0, 0\]/);
-  assert.match(pi, /error_class = None if strong_success else/);
+  assert.match(pi, /error_class = "loopback_contract_failed"/);
   assert.match(pi, /trap cleanup EXIT/);
+  assert.match(pi, /TUNARA_PI_PROVIDER_MODE/);
+  assert.match(pi, /PI_CODING_AGENT_DIR="\$work\/agent"/);
+  assert.match(pi, /--provider tunara-loopback --model probe/);
+  assert.match(pi, /provider_state\.get\("mainRequestCount"\) == 2/);
+  assert.match(pi, /provider_state\.get\("firstAssistantMarkerReplayed"\) is True/);
   assert.equal((pi.match(/< \/dev\/null/g) ?? []).length, 2);
+
+  const provider = read("scripts/fixtures/pi-loopback-provider.py");
+  assert.match(provider, /HTTPServer\(\("127\.0\.0\.1", 0\), Handler\)/);
+  assert.match(provider, /role_contains\(messages, "user", FIRST_CONTEXT\)/);
+  assert.match(provider, /role_contains\(messages, "assistant", FIRST_MARKER\)/);
+  assert.match(provider, /"auxiliaryRequestCount"/);
+  assert.match(provider, /self\.headers\.get\("Authorization"\)/);
+  assert.match(provider, /"allRequestsAuthenticated"/);
+  assert.doesNotMatch(provider, /0\.0\.0\.0/);
+
+  const narrowRunner = read("scripts/benchmark-ssh-pi-loopback-resume.sh");
+  assert.match(narrowRunner, /TUNARA_PI_USE_NPX=1/);
+  assert.match(narrowRunner, /TUNARA_PI_PROVIDER_MODE=loopback/);
+  assert.match(narrowRunner, /scripts\/fixtures\/pi-loopback-provider\.py/);
+  assert.match(narrowRunner, /HOME="\$runtime\/home"/);
+  assert.match(narrowRunner, /NPM_CONFIG_USERCONFIG="\$runtime\/npmrc"/);
+  assert.match(narrowRunner, /-u OPENAI_API_KEY/);
+  assert.match(narrowRunner, /-u ANTHROPIC_API_KEY/);
+  assert.doesNotMatch(narrowRunner, /benchmark-m1-agent-session\.sh/);
 
   const claude = read("scripts/remote-claude-resume.sh");
   assert.match(claude, /CLAUDE_CONFIG_DIR="\$work\/config"/);
