@@ -35,7 +35,7 @@
 
 - [x] 本地 OpenCode 安装版交互补证与跨 Agent 恢复修复：OpenCode 1.17.18 以 `opencode --pure` 被识别为 `OpenCode · 运行中`，在 horizontal 50/50 分屏、Finder 后台切回、快速选择 3 项、token `1.17` 精确复制粘贴且未提交、`Ctrl+C` 清空、`/exit` 与本地 shell marker `TUNARA_LOCAL_OPENCODE_SHELL_OK` 全部通过。取证发现同一 pane 之前的 Claude `agentResume` 在 OpenCode 启停后仍残留，界面却用内存 `lastAgent` 错显 `OpenCode 可恢复`；`a956004` 在 Agent 身份切换时清除不匹配的旧 resume，并让历史脏快照优先显示真正恢复意图所属 Agent，115 项定向、424 项全量、typecheck、lint、build 均通过，新 bundle 实机复验仍待完成。
 
-- [x] 本地 Codex 安装版交互补证与恢复链修复：Codex 0.144.1 以 read-only sandbox 在 horizontal 50/50 中与 SSH shell 共存，Finder 后台切回保持 session/split；首次信任提示以 `Ctrl+C` 拒绝且未授予持久信任，快速选择 4 项、token `5` 精确复制粘贴且未提交，官方 `/exit` 后普通 zsh 输出 `TUNARA_LOCAL_CODEX_SHELL_OK`。取证发现“恢复”只预填不提交、污染下一条命令，以及精确 Codex session id 沿用旧 Claude source command 两个缺陷；`9a69d97` 已让恢复动作立即提交，`9202a37` 已将 source command 严格限定在同 Agent，当前源码 425 项全量、typecheck、lint、build 均通过。provider/context resume 未在本轮宣称通过，两个修复的新 bundle 实机复验仍待完成。
+- [x] 本地 Codex 安装版交互补证与恢复链修复：Codex 0.144.1 以 read-only sandbox 在 horizontal 50/50 中与 SSH shell 共存，Finder 后台切回保持 session/split；首次信任 review 明确选择“不信任继续，hooks 不运行”且仍进入 ready prompt。真实 xterm 快照证明 `/` 打开命令菜单、`/perm` 过滤为 `/permissions`、`Ctrl+C` 清空并恢复 prompt；快速选择 4 项、token `5` 精确复制粘贴且未提交，官方 `/exit` 后普通 zsh 输出 `TUNARA_LOCAL_CODEX_MENU_SHELL_OK`。方向选择与多行编辑仍未宣称通过。取证发现“恢复”只预填不提交、污染下一条命令，以及精确 Codex session id 沿用旧 Claude source command 两个缺陷；`9a69d97` 已让恢复动作立即提交，`9202a37` 已将 source command 严格限定在同 Agent，当前源码 425 项全量、typecheck、lint、build 均通过。两个修复的新 bundle 实机复验仍待完成。
 
 ## Phase 1 验收账本
 

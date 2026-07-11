@@ -378,8 +378,11 @@
     "command": "codex --sandbox read-only",
     "firstUseTrustBoundary": {
       "promptObserved": "Press t to trust all; enter to review",
+      "reviewScreenObserved": true,
+      "safeChoice": "Continue without trusting (hooks won't run)",
       "persistentTrustGranted": false,
-      "promptCancelledWithCtrlC": true
+      "promptCancelledWithCtrlC": true,
+      "readyPromptReachedAfterSafeChoice": true
     },
     "split": {
       "mode": "horizontal",
@@ -402,11 +405,30 @@
       "submittedToAgent": false,
       "inputClearedWithCtrlC": true
     },
+    "commandMenuSemantics": {
+      "slashOpenedCommandMenu": true,
+      "visibleCommandsIncluded": [
+        "/model",
+        "/fast",
+        "/ide",
+        "/permissions",
+        "/keymap",
+        "/vim",
+        "/experimental",
+        "/approve"
+      ],
+      "filterInput": "/perm",
+      "filteredResult": "/permissions",
+      "ctrlCClearedMenuAndRestoredPrompt": true,
+      "arrowSelectionClaimed": false,
+      "multilineEditingClaimed": false,
+      "evidenceSource": "Persisted xterm SerializeAddon snapshot; WebGL screenshot was not used."
+    },
     "exit": {
       "command": "/exit",
       "ordinaryLocalShellRestored": true,
-      "shellProbe": "printf 'TUNARA_LOCAL_CODEX_SHELL_OK\\n'",
-      "shellMarkerObserved": "TUNARA_LOCAL_CODEX_SHELL_OK"
+      "shellProbe": "printf 'TUNARA_LOCAL_CODEX_MENU_SHELL_OK\\n'",
+      "shellMarkerObserved": "TUNARA_LOCAL_CODEX_MENU_SHELL_OK"
     },
     "installedVersionDefectsObserved": {
       "startupDoneLabelWithoutCompletedTurn": {
