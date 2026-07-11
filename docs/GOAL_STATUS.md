@@ -31,6 +31,8 @@
 
 - [x] SSH Aider 安装版交互补证：`de-netcup /root` 上 Aider 0.86.2 明确拒绝 OpenRouter 登录/建号与打开文档；固定 `openai/gpt-4o-mini` 在无 `OPENAI_API_KEY` 时显示 `AuthenticationError` 后恢复 prompt，不伪报 provider 成功。horizontal 50/50 分屏、Finder 后台切回、快速选择 6 项、受控 token `86.2` 精确复制粘贴且未提交、官方 `/exit` 与远端 shell marker `TUNARA_SSH_AIDER_SHELL_OK` 均通过。取证同时暴露安装版裸 OSC 133 `C` 将 Bash prompt 混入命令块、漏识别 Aider 并沿用旧 Codex 身份的问题；`ca79bf3` 已改为优先使用真实提交输入，并通过 123 项定向、423 项全量、typecheck、lint 与 build，新 bundle 实机复验仍待完成。
 
+- [x] SSH OpenCode 安装版交互补证：远端交互式 Bash 的 `opencode` 命中旧 `/root/.opencode/bin/opencode` 1.1.56，系统 `/usr/local/bin/opencode` 已是 1.17.18；旧核心加载浮动 `oh-my-openagent@latest` 4.16.3 后在 `src/plugin/index.ts:90` 报 `fn3 is not a function`。warm cache、隔离 cache、隔离 HOME 对照与 Tunara 内 `type -a`/双版本输出共同证明这是远端 PATH/插件版本漂移，不是 Tunara transport 或渲染故障。使用明确路径 `/usr/local/bin/opencode --pure` 后，1.17.18 在 horizontal 50/50 分屏、Finder 后台切回、快速选择 4 项、token `1.17` 精确复制粘贴且未提交、`Ctrl+C` 清空、`/exit` 与远端 shell marker `TUNARA_SSH_OPENCODE_SHELL_OK` 全部通过；provider/resume 仍不宣称通过。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。
