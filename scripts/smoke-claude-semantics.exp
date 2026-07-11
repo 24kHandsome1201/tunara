@@ -89,6 +89,18 @@ fconfigure $child -translation binary -encoding binary
 
 capture_stage $child $log_prefix baseline 10
 
+if {$child_exited} {
+  set exit_status -1
+  if {![catch {set waited [wait -i $child]}]} {
+    set exit_status [lindex $waited 3]
+  }
+  set result_handle [open "$log_prefix.result" w]
+  puts $result_handle "child_exited=1 exit_status=$exit_status stages=1"
+  close $result_handle
+  puts "child_exited=1 exit_status=$exit_status stages=1"
+  exit 0
+}
+
 safe_send $child "\033\[Z"
 capture_stage $child $log_prefix shift-tab-1 1
 safe_send $child "\033\[Z"

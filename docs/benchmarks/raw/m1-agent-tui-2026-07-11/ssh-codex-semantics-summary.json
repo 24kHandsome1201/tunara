@@ -1,0 +1,27 @@
+{
+  "capturedAt": "2026-07-11T17:50:14.245064+00:00",
+  "commit": "6b1d84120cf5edeb744c8f5bf5d5d1e842945090",
+  "target": "de-netcup",
+  "agent": "codex",
+  "safety": {
+    "sandbox": "read-only",
+    "approvalPolicy": "never",
+    "hookTrustGranted": false,
+    "hookTrustDeniedDuringProbe": false,
+    "modelPromptSubmitted": false,
+    "rawLogsRetained": false
+  },
+  "checks": {
+    "readyPromptVisible": true,
+    "slashMenuOpened": true,
+    "slashMenuFiltered": true,
+    "slashMenuCancelled": true,
+    "historySearchOpened": true,
+    "historySearchCancelled": true,
+    "multilineAVisible": true,
+    "multilineBVisible": true,
+    "multilineCancelled": true,
+    "normalExitObserved": true
+  },
+  "passed": true
+}

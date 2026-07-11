@@ -15,6 +15,7 @@ test("Claude semantics probe captures every interaction in a separate stage", ()
   }
   assert.match(expectProbe, /log_user 0/);
   assert.match(expectProbe, /TUNARA_CLAUDE_SEMANTIC_A\\nTUNARA_CLAUDE_SEMANTIC_B/);
+  assert.match(expectProbe, /if \{\$child_exited\} \{[\s\S]*stages=1[\s\S]*exit 0/);
 });
 
 test("Claude semantics summary requires mode, menu, history, multiline, cancel, and exit evidence", () => {
