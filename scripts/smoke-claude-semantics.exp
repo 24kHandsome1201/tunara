@@ -12,6 +12,11 @@ set env(COLORTERM) truecolor
 set terminal_query_stream ""
 set terminal_query_answers [dict create]
 set child_exited 0
+set menu_filter [expr {[info exists env(TUNARA_CLAUDE_MENU_FILTER)] ? $env(TUNARA_CLAUDE_MENU_FILTER) : "a"}]
+if {[string length $menu_filter] != 1} {
+  puts stderr "TUNARA_CLAUDE_MENU_FILTER must be exactly one character"
+  exit 2
+}
 log_user 0
 
 proc safe_send {spawn_channel bytes} {
@@ -90,9 +95,15 @@ safe_send $child "\033\[Z"
 capture_stage $child $log_prefix shift-tab-2 1
 safe_send $child "\033\[Z"
 capture_stage $child $log_prefix shift-tab-3 1
+safe_send $child "\033\[Z"
+capture_stage $child $log_prefix shift-tab-4 1
 
 safe_send $child "/"
 capture_stage $child $log_prefix slash-menu 1
+safe_send $child $menu_filter
+capture_stage $child $log_prefix slash-filter 1
+safe_send $child "\177"
+capture_stage $child $log_prefix slash-filter-clear 1
 safe_send $child "\033\[B"
 capture_stage $child $log_prefix slash-down 1
 safe_send $child "\033\[A"
@@ -125,5 +136,8 @@ if {$child_exited} {
   catch {wait -i $child}
 }
 
-puts "child_exited=$child_exited exit_status=$exit_status stages=13"
+set result_handle [open "$log_prefix.result" w]
+puts $result_handle "child_exited=$child_exited exit_status=$exit_status stages=16"
+close $result_handle
+puts "child_exited=$child_exited exit_status=$exit_status stages=16"
 exit 0

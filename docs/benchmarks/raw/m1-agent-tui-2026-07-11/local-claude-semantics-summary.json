@@ -1,7 +1,7 @@
 {
-  "capturedAt": "2026-07-11T17:34:13.132969+00:00",
+  "capturedAt": "2026-07-11T17:34:09.175518+00:00",
   "commit": "24d3b1159e04c4751beb4f1125ca3198399d646f",
-  "target": "de-netcup",
+  "target": "local-macos",
   "agent": "claude",
   "safety": {
     "permissionMode": "plan",
@@ -13,9 +13,9 @@
     "acceptEditsVisible": true,
     "planModeVisible": true,
     "slashMenuOpened": true,
-    "slashMenuFiltered": false,
-    "slashFilterCleared": false,
-    "slashSelectionOutputObserved": true,
+    "slashMenuFiltered": true,
+    "slashFilterCleared": true,
+    "slashSelectionOutputObserved": false,
     "slashChoiceChanged": true,
     "slashMenuCancelled": true,
     "historySearchOpened": true,
