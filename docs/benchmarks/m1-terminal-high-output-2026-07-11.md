@@ -4,7 +4,7 @@
 
 真实 optimized macOS bundle 已通过 50 MiB 与 200 MiB 混合终端输出门禁：每个 64 KiB 序列块按顺序完整到达，前端 backlog 溢出为 0，alternate screen 退出后的 Unicode/ANSI reference 可见，5 秒可见窗口 frame p95 分别为 18ms / 19ms，低于 33.4ms 预算。
 
-这份报告证明本地 PTY 高输出链路和 renderer 最终检查点，不替代 SSH 慢链路、WebGL context loss、DOM fallback 或 30 分钟压力证据。
+这份报告证明本地 PTY 高输出链路和 renderer 最终检查点。后续同一 optimized bundle 已补跑真实 WebGL context loss、DOM fallback 与 WebGL 重建门禁；SSH 高输出和 30 分钟压力证据仍需单独完成。
 
 ## 环境与复跑
 
@@ -38,6 +38,20 @@ fixture 每 64 KiB 写入固定序列头，正文覆盖 ANSI/True Color、OSC ti
 
 整轮进程采样：app RSS peak 122,032 KiB，renderer 增量 RSS peak 589,232 KiB，PTY RSS peak 9,568 KiB，总增量 RSS peak 720,432 KiB、末样本 644,864 KiB，CPU mean 10.45%。单轮结果没有出现随输入字节等比例保存 250 MiB 正文的行为，但是否长期稳定仍由 30 分钟压力门验证。
 
+## WebGL context loss 与 DOM fallback
+
+使用 `WEBGL_lose_context` 在真实 WebGL renderer 上触发 context loss。xterm 为原生 context restore 保留 3 秒窗口，超时后 Tunara 自动释放失效 addon、清理 renderer registry、刷新全部可见行并切换到 DOM renderer。fallback 后写入的 reference 可见；切换到另一终端再返回后，新 WebGL context 成功建立。
+
+| 检查点 | 结果 |
+|---|---|
+| context loss 前 | WebGL |
+| context loss 触发 | 成功，renderer extension |
+| 3 秒恢复窗口后 | DOM fallback |
+| fallback 后 reference | 可见 |
+| 终端重新激活后 | WebGL |
+
+同轮回归中 50/200 MiB 仍顺序完整、overflow 为 0，输入 p95 为 22/23ms，frame p95 均为 18ms。原始摘要见 [result.json](./raw/m1-webgl-fallback-2026-07-11/result.json)。测试触发器由 benchmark compile flag 隔离，普通 production build 不包含 `WEBGL_lose_context` 或 benchmark marker。
+
 ## 发现并修复的问题
 
 第一次 1 MiB 校准暴露本地 PTY 在 1 MiB pending cap 后主动删除输出。修复后 reader 使用约 1 MiB 的有界同步队列；队列满时由内核 PTY 反压子进程，flusher 以 16ms / 128 KiB 聚合，不再切断 UTF-8、ANSI 或 OSC 字节流。
@@ -47,6 +61,6 @@ fixture 每 64 KiB 写入固定序列头，正文覆盖 ANSI/True Color、OSC ti
 ## 剩余边界
 
 - SSH 50/200 MiB 与 100/200ms RTT 尚未运行。
-- WebGL context loss、DOM fallback、主题/字体切换和真实截图矩阵尚未完成。
+- WebGL context loss、DOM fallback 与重新激活 WebGL 已完成；主题/字体切换和真实截图矩阵尚未完成。
 - 30 分钟遮挡、分屏、resize 与前后台压力尚未完成。
 - renderer RSS 在整轮末尾仍约 501 MiB 增量，需要在长压中确认平台缓存是否收敛。

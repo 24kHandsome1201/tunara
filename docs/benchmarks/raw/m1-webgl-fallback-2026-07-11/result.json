@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-07-11T00:31:34.053Z",
+  "buildMode": "optimized release M1 benchmark bundle",
+  "bundleKiB": 14300,
+  "commit": "fc5add7fcb43ac8871c6872ae2e680029c2ae7e0",
+  "hardware": "Apple M2",
+  "macOS": "26.1 (25B5072a)",
+  "webglFallback": {
+    "before": "webgl",
+    "triggered": true,
+    "method": "renderer-webgl-lose-context",
+    "after": "dom",
+    "fallbackReferenceVisible": true,
+    "afterReactivation": "webgl",
+    "passed": true
+  },
+  "fixtures": [
+    {
+      "sizeMiB": 50,
+      "receivedBytes": 52428800,
+      "expectedBytes": 52428800,
+      "overflowCount": 0,
+      "referenceVisible": true,
+      "inputP95Ms": 22,
+      "frameP95Ms": 18,
+      "passed": true
+    },
+    {
+      "sizeMiB": 200,
+      "receivedBytes": 209715200,
+      "expectedBytes": 209715200,
+      "overflowCount": 0,
+      "referenceVisible": true,
+      "inputP95Ms": 23,
+      "frameP95Ms": 18,
+      "passed": true
+    }
+  ],
+  "process": {
+    "appRssPeakKiB": 121088,
+    "rendererRssDeltaPeakKiB": 625744,
+    "ptyRssPeakKiB": 9632,
+    "totalIncrementalRssPeakKiB": 748832,
+    "totalIncrementalRssMeanKiB": 624082.05,
+    "cpuMeanPercent": 9.67
+  }
+}

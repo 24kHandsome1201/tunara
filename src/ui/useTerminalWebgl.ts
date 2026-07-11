@@ -1,6 +1,8 @@
 import { useEffect, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { fallbackTerminalContextIfCurrent } from "@/modules/terminal/lib/terminal-webgl-fallback";
+import { registerTerminalBenchmarkRendererControl, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark";
 
 export type TerminalWebglRenderer = WebglAddon;
 
@@ -13,6 +15,30 @@ interface ContextEntry {
 
 const contextMap = new Map<string, ContextEntry>();
 const lruOrder: string[] = [];
+
+function loseWebglContext(addon: WebglAddon | null, term: Terminal | null) {
+  if (!addon) return { triggered: false, method: "no-webgl-renderer" };
+  const internal = addon as unknown as { _renderer?: { _gl?: WebGL2RenderingContext } };
+  const internalGl = internal._renderer?._gl;
+  const internalExtension = internalGl?.getExtension("WEBGL_lose_context");
+  if (internalExtension) {
+    internalExtension.loseContext();
+    return { triggered: true, method: "renderer-webgl-lose-context" };
+  }
+  for (const canvas of term?.element?.querySelectorAll("canvas") ?? []) {
+    try {
+      const gl = canvas.getContext("webgl2");
+      const extension = gl?.getExtension("WEBGL_lose_context");
+      if (extension) {
+        extension.loseContext();
+        return { triggered: true, method: "canvas-webgl-lose-context" };
+      }
+    } catch {
+      // Other xterm canvases may already own a 2D context.
+    }
+  }
+  return { triggered: false, method: "webgl-lose-context-unavailable" };
+}
 
 function touchLRU(id: string) {
   const idx = lruOrder.indexOf(id);
@@ -44,6 +70,14 @@ export function useTerminalWebgl(
   termReady: boolean,
 ) {
   useEffect(() => {
+    if (!TERMINAL_BENCHMARK_MODE) return;
+    return registerTerminalBenchmarkRendererControl(sessionId, {
+      mode: () => webglRef.current ? "webgl" : "dom",
+      loseContext: () => loseWebglContext(webglRef.current, termRef.current),
+    });
+  }, [sessionId, termReady, termRef, webglRef]);
+
+  useEffect(() => {
     const term = termRef.current;
     if (!term) return;
     if (!active) return;
@@ -55,16 +89,26 @@ export function useTerminalWebgl(
       touchLRU(sessionId);
       return;
     }
+    if (existing) {
+      try { existing.addon.dispose(); } catch (e) { console.debug("[useTerminalWebgl] dispose replaced renderer failed", e); }
+      contextMap.delete(sessionId);
+      const index = lruOrder.indexOf(sessionId);
+      if (index >= 0) lruOrder.splice(index, 1);
+    }
 
     // Create a new WebGL context.
     try {
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => {
-        webgl.dispose();
-        contextMap.delete(sessionId);
-        const idx = lruOrder.indexOf(sessionId);
-        if (idx >= 0) lruOrder.splice(idx, 1);
-        if (webglRef.current === webgl) webglRef.current = null;
+        fallbackTerminalContextIfCurrent(webgl, term, () => {
+          const current = contextMap.get(sessionId);
+          return current?.addon === webgl && current.term === term;
+        }, () => {
+          contextMap.delete(sessionId);
+          const idx = lruOrder.indexOf(sessionId);
+          if (idx >= 0) lruOrder.splice(idx, 1);
+          if (webglRef.current === webgl) webglRef.current = null;
+        });
       });
       term.loadAddon(webgl);
       webglRef.current = webgl;

@@ -15,6 +15,12 @@ export const TERMINAL_OUTPUT_REFERENCE = "TUNARA_M1_OK 中文 🐟 é 界 ┌�
 
 type BenchmarkWriter = (data: string) => Promise<void>;
 type BenchmarkSnapshotReader = () => Promise<string>;
+type BenchmarkRendererMode = "webgl" | "dom";
+
+interface BenchmarkRendererControl {
+  mode: () => BenchmarkRendererMode;
+  loseContext: () => { triggered: boolean; method: string };
+}
 
 interface PendingInputProbe {
   marker: string;
@@ -35,6 +41,7 @@ export interface DurationSummary {
 
 const writers = new Map<string, BenchmarkWriter>();
 const snapshotReaders = new Map<string, BenchmarkSnapshotReader>();
+const rendererControls = new Map<string, BenchmarkRendererControl>();
 const pendingInputProbes = new Map<string, PendingInputProbe>();
 const outputOverflows = new Map<string, number>();
 
@@ -249,6 +256,38 @@ export function registerTerminalBenchmarkSnapshotReader(
   return () => {
     if (snapshotReaders.get(sessionId) === reader) snapshotReaders.delete(sessionId);
   };
+}
+
+export function registerTerminalBenchmarkRendererControl(
+  sessionId: string,
+  control: BenchmarkRendererControl,
+): () => void {
+  if (!TERMINAL_BENCHMARK_MODE) return () => {};
+  rendererControls.set(sessionId, control);
+  return () => {
+    if (rendererControls.get(sessionId) === control) rendererControls.delete(sessionId);
+  };
+}
+
+export function terminalBenchmarkRendererMode(sessionId: string): BenchmarkRendererMode | null {
+  return rendererControls.get(sessionId)?.mode() ?? null;
+}
+
+export async function triggerTerminalBenchmarkContextLoss(
+  sessionId: string,
+  // xterm deliberately allows three seconds for WebGL to restore before it
+  // emits onContextLoss. Leave headroom so this checks the real fallback path.
+  timeoutMs = 5_000,
+): Promise<{ before: BenchmarkRendererMode; after: BenchmarkRendererMode; triggered: boolean; method: string }> {
+  const control = rendererControls.get(sessionId);
+  if (!control) throw new Error(`benchmark renderer control unavailable: ${sessionId}`);
+  const before = control.mode();
+  const trigger = control.loseContext();
+  const deadline = performance.now() + timeoutMs;
+  while (control.mode() !== "dom" && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return { before, after: control.mode(), ...trigger };
 }
 
 export function readTerminalBenchmarkSnapshot(sessionId: string): Promise<string> {

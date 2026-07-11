@@ -11,6 +11,8 @@ import {
   TERMINAL_OUTPUT_BLOCK_BYTES,
   TERMINAL_OUTPUT_REFERENCE,
   terminalBenchmarkOverflowCount,
+  terminalBenchmarkRendererMode,
+  triggerTerminalBenchmarkContextLoss,
   waitForTerminalBenchmarkWriters,
 } from "@/modules/terminal/lib/terminal-benchmark";
 
@@ -68,6 +70,28 @@ async function runM1OutputBenchmark(readyIds: string[]) {
     throw new Error("M1 output benchmark build is missing node/root paths");
   }
 
+  const fallbackNonce = Date.now().toString(36);
+  const contextLoss = await triggerTerminalBenchmarkContextLoss(floodSessionId);
+  const fallbackMarker = `__TUNARA_M1_DOM_FALLBACK_${fallbackNonce}__`;
+  await probeTerminalInputEcho(floodSessionId, fallbackMarker);
+  const fallbackSnapshot = await readTerminalBenchmarkSnapshot(floodSessionId);
+  const fallbackReferenceVisible = fallbackSnapshot.includes(fallbackMarker);
+  useSessionsStore.setState({ activeSessionId: controlSessionId });
+  await delay(250);
+  useSessionsStore.setState({ activeSessionId: floodSessionId });
+  await delay(750);
+  const afterReactivation = terminalBenchmarkRendererMode(floodSessionId);
+  const webglFallback = {
+    ...contextLoss,
+    fallbackReferenceVisible,
+    afterReactivation,
+    passed: contextLoss.before === "webgl"
+      && contextLoss.triggered
+      && contextLoss.after === "dom"
+      && fallbackReferenceVisible
+      && afterReactivation === "webgl",
+  };
+
   const fixtures = [];
   for (const expectedBytes of m1OutputSizes()) {
     const nonce = `${Date.now().toString(36)}_${expectedBytes}`;
@@ -123,8 +147,10 @@ async function runM1OutputBenchmark(readyIds: string[]) {
     blockBytes: TERMINAL_OUTPUT_BLOCK_BYTES,
     frameP95BudgetMs: 33.4,
     reference: TERMINAL_OUTPUT_REFERENCE,
+    webglFallback,
     fixtures,
-    passed: fixtures.length === m1OutputSizes().length
+    passed: webglFallback.passed
+      && fixtures.length === m1OutputSizes().length
       && fixtures.every((fixture) => fixture.passed),
   };
 }

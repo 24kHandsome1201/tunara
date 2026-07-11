@@ -136,3 +136,45 @@ test("resize observer skips the rebuild when size is unchanged (no churn)", asyn
     else delete globalThis.ResizeObserver;
   }
 });
+
+test("context loss disposes WebGL before refreshing every DOM renderer row", async () => {
+  const { fallbackTerminalToDom } = await import(
+    "../src/modules/terminal/lib/terminal-webgl-fallback.ts"
+  );
+  const calls = [];
+  fallbackTerminalToDom(
+    { dispose: () => calls.push("dispose") },
+    { rows: 24, refresh: (start, end) => calls.push(`refresh:${start}:${end}`) },
+    () => calls.push("registry-cleanup"),
+  );
+  assert.deepEqual(calls, ["dispose", "registry-cleanup", "refresh:0:23"]);
+});
+
+test("context-loss cleanup and DOM refresh still run when WebGL dispose throws", async () => {
+  const { fallbackTerminalToDom } = await import(
+    "../src/modules/terminal/lib/terminal-webgl-fallback.ts"
+  );
+  const calls = [];
+  fallbackTerminalToDom(
+    { dispose: () => { throw new Error("lost GPU"); } },
+    { rows: 10, refresh: (start, end) => calls.push(`refresh:${start}:${end}`) },
+    () => calls.push("cleanup"),
+  );
+  assert.deepEqual(calls, ["cleanup", "refresh:0:9"]);
+});
+
+test("a stale context-loss event cannot evict the replacement renderer", async () => {
+  const { fallbackTerminalContextIfCurrent } = await import(
+    "../src/modules/terminal/lib/terminal-webgl-fallback.ts"
+  );
+  let removed = false;
+  let refreshed = false;
+  fallbackTerminalContextIfCurrent(
+    { dispose: () => { throw new Error("stale renderer must not be disposed"); } },
+    { rows: 4, refresh: () => { refreshed = true; } },
+    () => false,
+    () => { removed = true; },
+  );
+  assert.equal(refreshed, false, "the stale renderer cannot replace the current renderer with DOM");
+  assert.equal(removed, false, "the replacement registry entry survives");
+});
