@@ -113,6 +113,10 @@ ssh "${ssh_args[@]}" "$remote" "/bin/bash -s" \
   > "$WORK/resume-ssh-aider.json" 2>&1 &
 resume_ssh_aider_pid=$!
 
+TUNARA_AIDER_USE_UVX=1 "$ROOT/scripts/remote-aider-resume.sh" \
+  > "$WORK/resume-local-aider.json" 2>&1 &
+resume_local_aider_pid=$!
+
 "$ROOT/scripts/opencode-resume-probe.sh" \
   > "$WORK/resume-local-opencode.json" 2>&1 &
 resume_local_opencode_pid=$!
@@ -145,6 +149,7 @@ wait "$resume_claude_pid"
 wait "$resume_codex_pid"
 wait "$resume_ssh_codex_pid"
 wait "$resume_ssh_aider_pid"
+wait "$resume_local_aider_pid"
 wait "$resume_local_opencode_pid"
 wait "$resume_ssh_opencode_pid"
 wait "$resume_local_pi_pid"

@@ -21,16 +21,18 @@ function writeResumeFixtures(dir) {
     writeFileSync(join(dir, `${name}-first.log`), `${JSON.stringify({ [idKey]: id, result: firstMarker })}\n`);
     writeFileSync(join(dir, `${name}-resume.log`), `${JSON.stringify({ [idKey]: id, result: resumeMarker })}\n`);
   }
-  writeFileSync(join(dir, "resume-ssh-aider.json"), `${JSON.stringify({
-    firstExit: 0,
-    resumeExit: 0,
-    firstMarkerObserved: true,
-    resumeMarkerObserved: true,
-    historyIdentityObserved: true,
-    chatHistoryBytes: 512,
-    errorClass: null,
-    passed: true,
-  })}\n`);
+  for (const scope of ["local", "ssh"]) {
+    writeFileSync(join(dir, `resume-${scope}-aider.json`), `${JSON.stringify({
+      firstExit: 0,
+      resumeExit: 0,
+      firstMarkerObserved: true,
+      resumeMarkerObserved: true,
+      historyIdentityObserved: true,
+      chatHistoryBytes: 512,
+      errorClass: null,
+      passed: true,
+    })}\n`);
+  }
   for (const scope of ["local", "ssh"]) {
     writeFileSync(join(dir, `resume-${scope}-opencode.json`), `${JSON.stringify({
       createExit: 0,
@@ -97,11 +99,11 @@ test("agent session summary recognizes compact TUI prompts and explicit resume I
     assert.equal(result.permission.localCodex.result, "prompt_observed");
     assert.deepEqual(result.summary, {
       permissionPromptsObserved: 2,
-      resumePassed: 9,
-      resumeEntries: 9,
+      resumePassed: 10,
+      resumeEntries: 10,
     });
     for (const [name, entry] of Object.entries(result.resume)) {
-      if (name === "sshAider") assert.equal(entry.historyIdentityObserved, true);
+      if (name.endsWith("Aider")) assert.equal(entry.historyIdentityObserved, true);
       else if (name.endsWith("OpenCode") || name.endsWith("Pi") || name === "sshClaude") assert.equal(entry.sessionIdentityObserved, true);
       else assert.equal(entry.idObserved, true);
       assert.equal(entry.firstMarkerObserved, true);
@@ -139,6 +141,8 @@ test("remote session probes isolate stdin and clean their dedicated state", () =
   assert.match(aider, /trap cleanup EXIT/);
   assert.equal((aider.match(/< \/dev\/null/g) ?? []).length, 2);
   assert.doesNotMatch(aider, /--yes-always/);
+  assert.match(aider, /TUNARA_AIDER_USE_UVX/);
+  assert.match(aider, /uvx --from aider-chat aider/);
 
   const opencode = read("scripts/opencode-resume-probe.sh");
   assert.match(opencode, /title="Tunara-resume-probe-\$\$"/);

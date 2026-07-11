@@ -64,8 +64,8 @@ def resume_result(root: Path, name: str, first_marker: str, resume_marker: str) 
     }
 
 
-def aider_resume_result(root: Path) -> dict[str, object]:
-    raw = read(root / "resume-ssh-aider.json")
+def aider_resume_result(root: Path, scope: str) -> dict[str, object]:
+    raw = read(root / f"resume-{scope}-aider.json")
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -196,7 +196,8 @@ def main() -> None:
             "TUNARA_SSH_CODEX_FIRST_OK",
             "TUNARA_SSH_CODEX_RESUME_OK",
         ),
-        "sshAider": aider_resume_result(args.input),
+        "localAider": aider_resume_result(args.input, "local"),
+        "sshAider": aider_resume_result(args.input, "ssh"),
         "localOpenCode": opencode_resume_result(args.input, "local"),
         "sshOpenCode": opencode_resume_result(args.input, "ssh"),
         "localPi": pi_resume_result(args.input, "local"),

@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 set -u
 
-# Runs on the configured SSH benchmark target. Keep every Aider artifact in a
-# dedicated /tmp directory so this probe cannot create .aider* files in a
-# remote project or in the remote user's home directory.
+# Keep every Aider artifact in a dedicated /tmp directory so this probe cannot
+# create .aider* files in a project or in the user's home directory.
 work="$(mktemp -d /tmp/tunara-aider-resume.XXXXXXXX)"
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
+
+if [[ "${TUNARA_AIDER_USE_UVX:-0}" == "1" ]]; then
+  aider_command=(uvx --from aider-chat aider)
+else
+  aider_command=(aider)
+fi
 
 common=(
   --model openai/gpt-4o-mini
@@ -27,12 +32,12 @@ common=(
 
 # bash -s and Aider otherwise share stdin; /dev/null prevents Aider from
 # consuming the remainder of this probe script as chat input.
-timeout 120 aider "${common[@]}" \
+timeout 120 "${aider_command[@]}" "${common[@]}" \
   --message 'Remember token TUNARA_AIDER_CONTEXT_4173 and reply exactly TUNARA_AIDER_FIRST_OK.' \
   < /dev/null > "$work/first.log" 2>&1
 first_status=$?
 
-timeout 120 aider "${common[@]}" --restore-chat-history \
+timeout 120 "${aider_command[@]}" "${common[@]}" --restore-chat-history \
   --message 'If the remembered token is TUNARA_AIDER_CONTEXT_4173, reply exactly TUNARA_AIDER_RESUME_OK.' \
   < /dev/null > "$work/resume.log" 2>&1
 resume_status=$?
