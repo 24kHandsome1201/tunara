@@ -92,7 +92,21 @@ test("hidden auxiliaries consume no width and overlay widths stay inside tiny vi
     panelWidth: 540,
     splitMode: "horizontal",
   });
-  assert.ok(restoredWideWidths.sidebarEffectiveWidth >= MIN_SIDEBAR_OVERLAY_WIDTH);
+  assert.equal(restoredWideWidths.sidebarEffectiveWidth, MIN_SIDEBAR_OVERLAY_WIDTH);
+  assert.equal(restoredWideWidths.panelEffectiveWidth, 640 - MIN_SIDEBAR_OVERLAY_WIDTH);
   assert.ok(restoredWideWidths.panelEffectiveWidth >= MIN_PANEL_OVERLAY_WIDTH);
-  assert.ok(restoredWideWidths.sidebarEffectiveWidth + restoredWideWidths.panelEffectiveWidth <= 640);
+  assert.equal(restoredWideWidths.terminalWorkspaceWidth, MIN_TERMINAL_PANE_WIDTH * 2 + SPLIT_HANDLE_WIDTH);
+
+  for (const splitMode of ["single", "vertical"]) {
+    const onePane = resolveAppShellLayout({
+      ...defaults,
+      viewportWidth: 640,
+      sidebarWidth: 400,
+      panelWidth: 540,
+      splitMode,
+    });
+    assert.equal(onePane.sidebarEffectiveWidth, MIN_SIDEBAR_OVERLAY_WIDTH);
+    assert.equal(onePane.panelEffectiveWidth, 640 - MIN_SIDEBAR_OVERLAY_WIDTH);
+    assert.equal(onePane.terminalWorkspaceWidth, MIN_SINGLE_TERMINAL_WIDTH);
+  }
 });

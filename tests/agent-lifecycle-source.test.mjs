@@ -55,6 +55,8 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     assert.match(script, /"UserPromptSubmit":\[\{"hooks"/);
     assert.match(script, /"PreToolUse":\[\{"hooks"/);
     assert.match(script, /"PermissionRequest":\[\{"hooks"/);
+    assert.match(script, /"PostToolUse":\[\{"hooks"/);
+    assert.match(script, /"PostToolUseFailure":\[\{"hooks"/);
     assert.match(script, /"StopFailure":\[\{"hooks"/);
   }
 });
@@ -229,6 +231,7 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
     assert.match(claude, /SETTINGS_COUNT:1/);
     assert.match(droid, /SETTINGS:.*"model":"opus".*"SessionStart"/);
     assert.match(droid, /"UserPromptSubmit"/);
+    assert.doesNotMatch(droid, /"PermissionRequest"|"PostToolUse"|"PostToolUseFailure"/);
     assert.match(droid, /SETTINGS_COUNT:1/);
     assert.match(droid, /ARG:hello/);
   } finally {
@@ -258,6 +261,8 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(fish, /\$helper_command wait \$agent \$sid/);
   assert.match(fish, /"UserPromptSubmit":\[\{"hooks"/);
   assert.match(fish, /"PermissionRequest":\[\{"hooks"/);
+  assert.match(fish, /"PostToolUse":\[\{"hooks"/);
+  assert.match(fish, /"PostToolUseFailure":\[\{"hooks"/);
   assert.match(fish, /"StopFailure":\[\{"hooks"/);
   assert.match(fish, /command \$real_bin --plugin-dir \$runtime \$argv/);
   assert.match(fish, /merge-settings "\$user_settings" "\$settings" "\$merged"/);
@@ -278,7 +283,7 @@ test("remote SSH integration emits per-turn lifecycle hooks without a host socke
   const remote = read("src-tauri/src/modules/ssh/scripts/remote-integration.sh");
 
   assert.match(remote, /_tunara_r_agent_hooks\(\)/);
-  assert.match(remote, /SessionStart[\s\S]*UserPromptSubmit[\s\S]*PreToolUse[\s\S]*PermissionRequest[\s\S]*Stop[\s\S]*StopFailure[\s\S]*idle_prompt/);
+  assert.match(remote, /SessionStart[\s\S]*UserPromptSubmit[\s\S]*PreToolUse[\s\S]*PermissionRequest[\s\S]*PostToolUse[\s\S]*PostToolUseFailure[\s\S]*Stop[\s\S]*StopFailure[\s\S]*idle_prompt/);
   assert.match(remote, /sh \$\{helper\} busy \$\{agent\} \$\{sid\}/);
   assert.match(remote, /sh \$\{helper\} wait \$\{agent\} \$\{sid\}/);
   assert.match(remote, /__TUNARA_AGENT_HOOK_B64__/);
@@ -354,6 +359,7 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
     assert.match(claude, /SETTINGS_COUNT:1/);
     assert.match(droid, /SETTINGS:.*"model":"opus".*"SessionStart"/);
     assert.match(droid, /"UserPromptSubmit"/);
+    assert.doesNotMatch(droid, /"PermissionRequest"|"PostToolUse"|"PostToolUseFailure"/);
     assert.match(droid, /SETTINGS_COUNT:1/);
     assert.match(droid, /ARG:hello/);
   } finally {
