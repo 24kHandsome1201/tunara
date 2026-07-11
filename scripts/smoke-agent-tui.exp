@@ -1,0 +1,101 @@
+#!/usr/bin/expect -f
+
+if {$argc < 2} {
+  puts stderr "usage: smoke-agent-tui.exp LOG_PATH COMMAND ?ARG ...?"
+  exit 2
+}
+
+set log_path [lindex $argv 0]
+set command [lrange $argv 1 end]
+set timeout 5
+set saw_output 0
+set exited_before_interrupt 0
+set exited_after_interrupt 0
+set resize_sent 0
+set exit_status -1
+
+# Match the terminal identity used by Tunara's local and SSH PTYs. Inheriting
+# TERM=dumb from a CI/automation shell makes TUIs deliberately disable their
+# alternate-screen, color, and rich-input paths, producing a false matrix.
+set env(TERM) xterm-256color
+set env(COLORTERM) truecolor
+
+log_user 0
+set log_handle [open $log_path wb]
+fconfigure $log_handle -translation binary -encoding binary -buffering none
+
+proc record_spawn_output {handle bytes} {
+  puts -nonewline $handle $bytes
+}
+
+spawn -noecho {*}$command
+set child $spawn_id
+fconfigure $child -translation binary -encoding binary
+
+expect {
+  -i $child -re {.+} {
+    set saw_output 1
+    record_spawn_output $log_handle $expect_out(buffer)
+    exp_continue -continue_timer
+  }
+  -i $child eof {
+    if {[info exists expect_out(buffer)]} {
+      record_spawn_output $log_handle $expect_out(buffer)
+    }
+    set exited_before_interrupt 1
+  }
+  timeout {
+    if {[info exists expect_out(buffer)]} {
+      record_spawn_output $log_handle $expect_out(buffer)
+    }
+  }
+}
+
+if {!$exited_before_interrupt} {
+  if {![catch {
+    set child_pid [exp_pid -i $child]
+    set tty_name [string trim [exec ps -o tty= -p $child_pid]]
+    stty rows 40 columns 120 < /dev/$tty_name
+    exec kill -WINCH $child_pid
+  }]} {
+      set resize_sent 1
+  }
+  # Keep draining the PTY while resize and interrupt output arrives. Waiting
+  # synchronously before the second expect can lose the final mode-restoration
+  # bytes when a fast TUI exits and closes its slave side immediately.
+  set first_interrupt [after 500 [list send -i $child "\003"]]
+  set second_interrupt [after 1000 [list send -i $child "\003"]]
+  set timeout 6
+  expect {
+    -i $child -re {.+} {
+      record_spawn_output $log_handle $expect_out(buffer)
+      exp_continue -continue_timer
+    }
+    -i $child eof {
+      if {[info exists expect_out(buffer)]} {
+        record_spawn_output $log_handle $expect_out(buffer)
+      }
+      set exited_after_interrupt 1
+    }
+    timeout {
+      if {[info exists expect_out(buffer)]} {
+        record_spawn_output $log_handle $expect_out(buffer)
+      }
+    }
+  }
+  after cancel $first_interrupt
+  after cancel $second_interrupt
+}
+
+if {$exited_before_interrupt || $exited_after_interrupt} {
+  if {![catch {set waited [wait -i $child]}]} {
+    set exit_status [lindex $waited 3]
+  }
+} else {
+  catch {close -i $child}
+  catch {wait -i $child}
+}
+close $log_handle
+
+puts "saw_output=$saw_output exited_before_interrupt=$exited_before_interrupt resize_sent=$resize_sent exited_after_interrupt=$exited_after_interrupt exit_status=$exit_status"
+exit 0
