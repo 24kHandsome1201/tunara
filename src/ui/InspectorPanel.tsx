@@ -8,6 +8,7 @@ import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { CloseIcon, PanelEmptyState } from "./shared";
 import { WorkspaceSourceChip } from "./WorkspaceSource";
+import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 
 interface InspectorPanelProps {
   session: Session;
@@ -29,6 +30,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
         cursor: "pointer",
         fontSize: "var(--fs-secondary)",
         fontWeight: active ? 600 : 500,
+        flexShrink: 0,
+        whiteSpace: "nowrap",
         color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
         transition: "border-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
       }}
@@ -45,29 +48,27 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   const setTab = useUIStore((s) => s.setInspectorTab);
   const isRemote = !!session.remote;
   const tab = storeTab;
+  const showSourceSummary = Boolean(
+    currentWorkspaceWorktree(session.workspace)
+    || session.workspaceState === "unavailable"
+    || (tab === "changes" && !session.workspace && session.branch),
+  );
 
   return (
     <div style={{ width: "100%", background: "var(--c-bg-2)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-      <div style={{ height: "var(--h-titlebar)", background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 8px", gap: 0, flexShrink: 0 }}>
-        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
-        <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
-        <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
-        <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
-
-        <span style={{ flex: 1 }} />
-
-        <WorkspaceSourceChip session={session} />
-
-        {tab === "changes" && !session.workspace && session.branch && (
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
-            ⎇ {session.branch}
-          </span>
-        )}
+      <div style={{ minHeight: "var(--h-titlebar)", background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", paddingLeft: 8, gap: 0, flexShrink: 0 }}>
+        <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden" }}>
+          <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
+          <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
+          <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
+          <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
+        </div>
 
         {onClose && (
           <button
             onClick={onClose}
             title={t("diff.close_panel")}
+            aria-label={t("diff.close_panel")}
             className="hover-bg"
             style={{
               width: "var(--h-titlebar-control)", height: "var(--h-titlebar-control)",
@@ -79,6 +80,17 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
           </button>
         )}
       </div>
+
+      {showSourceSummary && (
+        <div style={{ minHeight: 28, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, background: "var(--c-bg-2)", borderBottom: "1px solid var(--c-border-1)", overflow: "hidden", flexShrink: 0 }}>
+          <WorkspaceSourceChip session={session} />
+          {tab === "changes" && !session.workspace && session.branch && (
+            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+              ⎇ {session.branch}
+            </span>
+          )}
+        </div>
+      )}
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div key={`overview-${tab}`} style={{ flex: 1, display: tab === "overview" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "overview" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>

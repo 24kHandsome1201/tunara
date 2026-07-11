@@ -21,6 +21,7 @@ import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
+import { resolveAppShellLayout } from "./lib/app-shell-layout";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -185,6 +186,7 @@ export default function App() {
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const panelWidth = useUIStore((s) => s.panelWidth);
   const viewportWidth = useUIStore((s) => s.viewportWidth);
+  const splitMode = useUIStore((s) => s.split.mode);
   const setViewportWidth = useUIStore((s) => s.setViewportWidth);
 
   useInit();
@@ -205,14 +207,21 @@ export default function App() {
   if (!ready) return <AppSplash />;
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
-  const sidebarOverlay = viewportWidth < 720;
-  const panelOverlay = viewportWidth < 900;
-  const sidebarEffectiveWidth = sidebarVisible
-    ? (sidebarOverlay ? Math.min(sidebarWidth, Math.max(240, viewportWidth * 0.86)) : sidebarWidth)
-    : 0;
-  const panelEffectiveWidth = panelVisible
-    ? (panelOverlay ? Math.min(panelWidth, Math.max(220, viewportWidth - 24)) : panelWidth)
-    : 0;
+  const {
+    sidebarOverlay,
+    panelOverlay,
+    sidebarEffectiveWidth,
+    panelEffectiveWidth,
+    sidebarReservedWidth,
+    panelReservedWidth,
+  } = resolveAppShellLayout({
+    viewportWidth,
+    sidebarVisible,
+    panelVisible,
+    sidebarWidth,
+    panelWidth,
+    splitMode,
+  });
 
 
   return (
@@ -241,19 +250,6 @@ export default function App() {
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
-        {panelOverlay && panelVisible && (
-          <div
-            onClick={togglePanel}
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 65,
-              background: "var(--backdrop-color)",
-              animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
-            }}
-          />
-        )}
-
         {sidebarOverlay && sidebarVisible && (
           <div
             onClick={toggleSidebar}
@@ -294,8 +290,12 @@ export default function App() {
             onNewTerminalInDirectory={newTerminalInDirectory}
             onCloseSession={closeSessionById}
           />
-          {sidebarVisible && <SidebarResizeHandle />}
+          {sidebarVisible && !sidebarOverlay && <SidebarResizeHandle />}
         </div>
+
+        {sidebarOverlay && sidebarReservedWidth > 0 && (
+          <div aria-hidden="true" style={{ width: sidebarReservedWidth, flexShrink: 0 }} />
+        )}
 
         {sessions.length > 0 && (
           <MainArea
@@ -348,7 +348,7 @@ export default function App() {
               top: panelOverlay ? 0 : undefined,
               right: panelOverlay ? 0 : undefined,
               bottom: panelOverlay ? 0 : undefined,
-              zIndex: panelOverlay ? 70 : undefined,
+              zIndex: panelOverlay ? 80 : undefined,
               boxShadow: panelOverlay && panelVisible ? "var(--shadow-overlay)" : undefined,
               width: panelEffectiveWidth,
               display: "flex",
@@ -357,9 +357,13 @@ export default function App() {
               transition: "width var(--duration-expand) var(--ease-out-expo)",
             }}
           >
-            {panelVisible && <PanelResizeHandle />}
+            {panelVisible && !panelOverlay && <PanelResizeHandle />}
             <InspectorPanel session={activeSession} onClose={togglePanel} />
           </div>
+        )}
+
+        {panelOverlay && panelReservedWidth > 0 && (
+          <div aria-hidden="true" style={{ width: panelReservedWidth, flexShrink: 0 }} />
         )}
       </div>
 

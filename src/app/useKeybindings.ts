@@ -5,6 +5,7 @@ import { KEYBINDING_ACTIONS, hasPlatformModKey, matchesKeybinding, type Keybindi
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { isMac } from "@/ui/lib/platform";
 import { splitFocusTarget, type SplitFocusDirection } from "./lib/split-focus";
+import { resolveAppShellLayout } from "./lib/app-shell-layout";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -92,19 +93,27 @@ export function useKeybindings() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         const ui = useUIStore.getState();
+        const compactLayout = resolveAppShellLayout({
+          viewportWidth: ui.viewportWidth,
+          sidebarVisible: ui.sidebarVisible,
+          panelVisible: ui.panelVisible,
+          sidebarWidth: ui.sidebarWidth,
+          panelWidth: ui.panelWidth,
+          splitMode: ui.split.mode,
+        });
         if (ui.overlay) {
           e.preventDefault();
           ui.setOverlay(null);
           return;
         }
-        if (!isEditableTarget(e.target) && ui.viewportWidth < 720 && ui.sidebarVisible) {
-          e.preventDefault();
-          ui.setSidebarVisible(false);
-          return;
-        }
-        if (!isEditableTarget(e.target) && ui.viewportWidth < 900 && ui.panelVisible) {
+        if (!isEditableTarget(e.target) && compactLayout.panelOverlay && ui.panelVisible) {
           e.preventDefault();
           ui.setPanelVisible(false);
+          return;
+        }
+        if (!isEditableTarget(e.target) && compactLayout.sidebarOverlay && ui.sidebarVisible) {
+          e.preventDefault();
+          ui.setSidebarVisible(false);
           return;
         }
       }

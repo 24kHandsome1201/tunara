@@ -720,14 +720,20 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   const gitContext = read("src/ui/useSessionGitContext.ts");
   const settings = read("src/ui/overlays/Settings.tsx");
 
-  assert.match(app, /const sidebarEffectiveWidth = sidebarVisible/);
-  assert.match(app, /const panelEffectiveWidth = panelVisible/);
-  assert.match(app, /onClick=\{togglePanel\}/);
+  assert.match(app, /import \{ resolveAppShellLayout \} from "\.\/lib\/app-shell-layout"/);
+  assert.match(app, /\{[\s\S]*sidebarOverlay,[\s\S]*panelOverlay,[\s\S]*sidebarEffectiveWidth,[\s\S]*panelEffectiveWidth,[\s\S]*\} = resolveAppShellLayout\(\{/);
+  assert.match(app, /sidebarOverlay && sidebarReservedWidth > 0/);
+  assert.match(app, /panelOverlay && panelReservedWidth > 0/);
+  assert.match(app, /sidebarVisible && !sidebarOverlay && <SidebarResizeHandle \/>/);
+  assert.match(app, /panelVisible && !panelOverlay && <PanelResizeHandle \/>/);
+  assert.doesNotMatch(app, /panelOverlay && panelVisible && \([\s\S]*onClick=\{togglePanel\}/);
   assert.match(app, /onClick=\{toggleSidebar\}/);
+  assert.match(keys, /resolveAppShellLayout\(\{/);
   assert.match(keys, /if \(e\.key === "Escape"\)/);
   assert.match(keys, /ui\.setOverlay\(null\)/);
   assert.match(keys, /ui\.setSidebarVisible\(false\)/);
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
+  assert.match(keys, /compactLayout\.panelOverlay[\s\S]*ui\.setPanelVisible\(false\)[\s\S]*compactLayout\.sidebarOverlay[\s\S]*ui\.setSidebarVisible\(false\)/);
   assert.match(keys, /splitFocusTarget\(ui\.split, st\.activeSessionId, direction\)/);
   assert.match(keys, /if \(target\) st\.setActive\(target\)/);
   assert.match(gitContext, /const repoPath = activeIsRemote \? undefined : normalizeLocalRepoPath\(activeDir\);/);
