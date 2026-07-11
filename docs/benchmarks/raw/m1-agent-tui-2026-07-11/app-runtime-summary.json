@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-11T12:55:36Z",
+  "capturedAt": "2026-07-11T13:06:20Z",
   "installedApp": {
     "path": "/Applications/Tunara.app",
     "version": "1.14.0"
@@ -635,7 +635,7 @@
     "resumeClaimed": false
   },
   "sshPiRuntime": {
-    "capturedAt": "2026-07-11T10:55:00Z",
+    "capturedAt": "2026-07-11T13:06:20Z",
     "installedAppVersion": "1.14.0",
     "target": "de-netcup",
     "cwd": "/root",
@@ -667,6 +667,28 @@
       "exactRoundTrip": true,
       "submittedToProvider": false,
       "inputClearedWithCtrlC": true
+    },
+    "bracketedPaste": {
+      "sourceApp": "installed Tunara 1.14.0",
+      "cwd": "/tmp",
+      "command": "npx -y @earendil-works/pi-coding-agent@0.79.4 --no-session",
+      "controlledLines": 2,
+      "markers": [
+        "TUNARA_SSH_PI_LINE_ONE",
+        "TUNARA_SSH_PI_LINE_TWO"
+      ],
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "warningAccepted": true,
+      "evidenceSource": "Persisted xterm SerializeAddon workspace snapshot",
+      "bothLinesInsidePiInputBounds": true,
+      "noModelFooterObserved": "0.0%/0 (auto) unknown",
+      "backgroundRoundTripPreservedInput": true,
+      "autoSubmittedToProvider": false,
+      "inputClearedWithCtrlC": true,
+      "bothMarkersAbsentFromPostClearSnapshot": true,
+      "piVersionPreservedAfterClear": true,
+      "noModelFooterPreservedAfterClear": true
     },
     "exit": {
       "method": "Ctrl+D at an empty Pi prompt",
