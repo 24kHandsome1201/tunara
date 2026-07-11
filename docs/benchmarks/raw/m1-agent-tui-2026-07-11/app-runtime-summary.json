@@ -99,6 +99,27 @@
       "readyFooterRemainedVisibleWhileBusy": true,
       "runningIndicatorClearedAfterCompletion": true
     },
+    "split": {
+      "mode": "horizontal",
+      "ratio": 0.5,
+      "pairedAgent": "ssh-codex",
+      "agentSessionPreserved": true
+    },
+    "backgroundReturn": {
+      "agentSessionPreserved": true,
+      "splitPreserved": true,
+      "terminalInputTargetPreserved": true
+    },
+    "clipboard": {
+      "method": "quick-select-visible-output",
+      "visibleItems": 8,
+      "controlledToken": "79.4",
+      "applicationAcknowledgedCopy": true,
+      "pastedBackIntoAgentInput": true,
+      "exactRoundTrip": true,
+      "submittedToAgent": false,
+      "inputClearedWithCtrlC": true
+    },
     "installedVersionDefectObserved": {
       "permanentRunningLabel": true,
       "rootCause": "Pi had no prompt-ready detector, and its persistent footer could not clear the submitted-input busy transition.",
