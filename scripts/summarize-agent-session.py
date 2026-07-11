@@ -64,6 +64,52 @@ def resume_result(root: Path, name: str, first_marker: str, resume_marker: str) 
     }
 
 
+def aider_resume_result(root: Path) -> dict[str, object]:
+    raw = read(root / "resume-ssh-aider.json")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    def boolean(key: str) -> bool:
+        return payload.get(key) is True
+
+    error_class = payload.get("errorClass")
+    return {
+        "historyIdentityObserved": boolean("historyIdentityObserved"),
+        "firstMarkerObserved": boolean("firstMarkerObserved"),
+        "resumeMarkerObserved": boolean("resumeMarkerObserved"),
+        "errorClass": error_class if isinstance(error_class, str) else None,
+        "passed": boolean("passed"),
+    }
+
+
+def opencode_resume_result(root: Path, scope: str) -> dict[str, object]:
+    raw = read(root / f"resume-{scope}-opencode.json")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    def boolean(key: str) -> bool:
+        return payload.get(key) is True
+
+    error_class = payload.get("errorClass")
+    events = payload.get("jsonEvents")
+    return {
+        "sessionIdentityObserved": boolean("sessionIdentityObserved"),
+        "firstMarkerObserved": boolean("firstMarkerObserved"),
+        "resumeMarkerObserved": boolean("resumeMarkerObserved"),
+        "jsonEvents": events if isinstance(events, int) and events >= 0 else 0,
+        "errorClass": error_class if isinstance(error_class, str) else None,
+        "passed": boolean("passed"),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, type=Path)
@@ -102,6 +148,9 @@ def main() -> None:
             "TUNARA_SSH_CODEX_FIRST_OK",
             "TUNARA_SSH_CODEX_RESUME_OK",
         ),
+        "sshAider": aider_resume_result(args.input),
+        "localOpenCode": opencode_resume_result(args.input, "local"),
+        "sshOpenCode": opencode_resume_result(args.input, "ssh"),
     }
     result = {
         "commit": args.commit,

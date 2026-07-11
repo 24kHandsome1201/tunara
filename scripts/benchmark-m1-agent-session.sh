@@ -108,6 +108,20 @@ resume_codex_pid=$!
 ) &
 resume_ssh_codex_pid=$!
 
+ssh "${ssh_args[@]}" "$remote" "/bin/bash -s" \
+  < "$ROOT/scripts/remote-aider-resume.sh" \
+  > "$WORK/resume-ssh-aider.json" 2>&1 &
+resume_ssh_aider_pid=$!
+
+"$ROOT/scripts/opencode-resume-probe.sh" \
+  > "$WORK/resume-local-opencode.json" 2>&1 &
+resume_local_opencode_pid=$!
+
+ssh "${ssh_args[@]}" "$remote" "/bin/bash -s" \
+  < "$ROOT/scripts/opencode-resume-probe.sh" \
+  > "$WORK/resume-ssh-opencode.json" 2>&1 &
+resume_ssh_opencode_pid=$!
+
 wait "$permission_codex_pid" || true
 wait "$permission_claude_pid" || true
 [[ -e "$CLAUDE_PROBE" ]] && printf '1\n' > "$WORK/permission-claude-probe-created" \
@@ -115,6 +129,9 @@ wait "$permission_claude_pid" || true
 wait "$resume_claude_pid"
 wait "$resume_codex_pid"
 wait "$resume_ssh_codex_pid"
+wait "$resume_ssh_aider_pid"
+wait "$resume_local_opencode_pid"
+wait "$resume_ssh_opencode_pid"
 
 python3 "$ROOT/scripts/summarize-agent-session.py" \
   --input "$WORK" \

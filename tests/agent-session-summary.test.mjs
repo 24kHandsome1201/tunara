@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const summarizer = resolve(root, "scripts/summarize-agent-session.py");
+const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 const resumeCases = [
   ["resume-local-claude", "session_id", "11111111-1111-4111-8111-111111111111", "TUNARA_CLAUDE_FIRST_OK", "TUNARA_CLAUDE_RESUME_OK"],
@@ -19,6 +20,29 @@ function writeResumeFixtures(dir) {
   for (const [name, idKey, id, firstMarker, resumeMarker] of resumeCases) {
     writeFileSync(join(dir, `${name}-first.log`), `${JSON.stringify({ [idKey]: id, result: firstMarker })}\n`);
     writeFileSync(join(dir, `${name}-resume.log`), `${JSON.stringify({ [idKey]: id, result: resumeMarker })}\n`);
+  }
+  writeFileSync(join(dir, "resume-ssh-aider.json"), `${JSON.stringify({
+    firstExit: 0,
+    resumeExit: 0,
+    firstMarkerObserved: true,
+    resumeMarkerObserved: true,
+    historyIdentityObserved: true,
+    chatHistoryBytes: 512,
+    errorClass: null,
+    passed: true,
+  })}\n`);
+  for (const scope of ["local", "ssh"]) {
+    writeFileSync(join(dir, `resume-${scope}-opencode.json`), `${JSON.stringify({
+      createExit: 0,
+      firstExit: 0,
+      resumeExit: 0,
+      sessionIdentityObserved: true,
+      firstMarkerObserved: true,
+      resumeMarkerObserved: true,
+      jsonEvents: 6,
+      errorClass: null,
+      passed: true,
+    })}\n`);
   }
 }
 
@@ -53,11 +77,13 @@ test("agent session summary recognizes compact TUI prompts and explicit resume I
     assert.equal(result.permission.localCodex.result, "prompt_observed");
     assert.deepEqual(result.summary, {
       permissionPromptsObserved: 2,
-      resumePassed: 3,
-      resumeEntries: 3,
+      resumePassed: 6,
+      resumeEntries: 6,
     });
-    for (const entry of Object.values(result.resume)) {
-      assert.equal(entry.idObserved, true);
+    for (const [name, entry] of Object.entries(result.resume)) {
+      if (name === "sshAider") assert.equal(entry.historyIdentityObserved, true);
+      else if (name.endsWith("OpenCode")) assert.equal(entry.sessionIdentityObserved, true);
+      else assert.equal(entry.idObserved, true);
       assert.equal(entry.firstMarkerObserved, true);
       assert.equal(entry.resumeMarkerObserved, true);
       assert.equal(entry.passed, true);
@@ -85,4 +111,18 @@ test("agent session summary does not relabel organization-policy auto-allow as a
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("remote session probes isolate stdin and clean their dedicated state", () => {
+  const aider = read("scripts/remote-aider-resume.sh");
+  assert.match(aider, /mktemp -d \/tmp\/tunara-aider-resume/);
+  assert.match(aider, /trap cleanup EXIT/);
+  assert.equal((aider.match(/< \/dev\/null/g) ?? []).length, 2);
+  assert.doesNotMatch(aider, /--yes-always/);
+
+  const opencode = read("scripts/opencode-resume-probe.sh");
+  assert.match(opencode, /title="Tunara-resume-probe-\$\$"/);
+  assert.match(opencode, /opencode session delete "\$session_id"/);
+  assert.match(opencode, /trap cleanup EXIT/);
+  assert.equal((opencode.match(/< \/dev\/null/g) ?? []).length, 3);
 });
