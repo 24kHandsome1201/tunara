@@ -886,29 +886,60 @@
         "tty": "pts/0",
         "commandShape": "claude --plugin-dir /tmp/.tunara-agent-* --permission-mode plan"
       },
+      "firstAttemptCorrection": {
+        "actualScreen": "custom API key selection",
+        "countedAsComposerEvidence": false,
+        "cleanupSignal": "SIGINT"
+      },
+      "readyComposer": {
+        "serializeAddonSnapshotObserved": true,
+        "cwd": "/tmp/tunara-claude-smoke",
+        "planModeOn": true,
+        "missingApiKeyObserved": true,
+        "providerCallPossible": false
+      },
+      "clipboard": {
+        "method": "quick-select-visible-output",
+        "visibleItems": 4,
+        "controlledToken": "4.5",
+        "hint": "a",
+        "systemClipboardReadBack": "4.5",
+        "pastedBackIntoComposer": true,
+        "serializeAddonSnapshot": "❯ 4.5",
+        "submittedToProvider": false,
+        "inputClearedWithCtrlC": true
+      },
       "bracketedPaste": {
         "controlledLines": 2,
+        "markers": [
+          "TUNARA_SSH_CLAUDE_REAL_LINE_ONE",
+          "TUNARA_SSH_CLAUDE_REAL_LINE_TWO"
+        ],
         "nativeWarningObserved": true,
         "warningLineCount": 2,
         "warningButtons": ["Cancel", "OK"],
         "warningAccepted": true,
         "busyHookObserved": false,
         "automaticProviderSubmissionObserved": false,
-        "bothLinesVisibleClaimed": false,
-        "inputClearedClaimed": false
+        "bothLinesVisibleInComposer": true,
+        "evidenceSource": "Persisted xterm SerializeAddon snapshot",
+        "inputClearedWithSecondCtrlC": true,
+        "markersAbsentAfterClear": true,
+        "readyFooterPreservedAfterClear": true
       },
       "exit": {
-        "slashExitSucceeded": false,
-        "ctrlDSucceeded": false,
-        "cleanupSignal": "SIGINT",
-        "processExitedAfterSigint": true,
-        "ordinaryShellMarkerObserved": false
+        "documentedPrompt": "Press Ctrl-C again to exit",
+        "method": "double Ctrl+C after an empty composer",
+        "ordinaryRemoteShellRestored": true,
+        "restoredPrompt": "root@de-netcup:/tmp/tunara-claude-smoke#",
+        "shellMarkerObserved": "TUNARA_SSH_CLAUDE_REAL_SHELL_OK",
+        "shellMarkerReadThroughIndependentSsh": true
       },
       "isolatedDirectoryCleaned": true
     },
     "providerSuccessClaimed": false,
-    "clipboardClaimed": false,
-    "normalExitClaimedForCurrentSourceRun": false,
+    "clipboardClaimed": true,
+    "normalExitClaimedForCurrentSourceRun": true,
     "resumeClaimed": false
   },
   "titlebarTabAccessibility": {
