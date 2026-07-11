@@ -1,0 +1,129 @@
+#!/usr/bin/expect -f
+
+if {$argc < 2} {
+  puts stderr "usage: smoke-claude-semantics.exp LOG_PREFIX COMMAND ?ARG ...?"
+  exit 2
+}
+
+set log_prefix [lindex $argv 0]
+set command [lrange $argv 1 end]
+set env(TERM) xterm-256color
+set env(COLORTERM) truecolor
+set terminal_query_stream ""
+set terminal_query_answers [dict create]
+set child_exited 0
+log_user 0
+
+proc safe_send {spawn_channel bytes} {
+  catch {send -i $spawn_channel -- $bytes}
+}
+
+proc query_occurrences {haystack needle} {
+  set count 0
+  set offset 0
+  while {1} {
+    set found [string first $needle $haystack $offset]
+    if {$found < 0} { return $count }
+    incr count
+    set offset [expr {$found + [string length $needle]}]
+  }
+}
+
+proc answer_new_queries {spawn_channel token response} {
+  set observed [query_occurrences $::terminal_query_stream $token]
+  set answered [expr {[dict exists $::terminal_query_answers $token] ? [dict get $::terminal_query_answers $token] : 0}]
+  while {$answered < $observed} {
+    safe_send $spawn_channel $response
+    incr answered
+  }
+  dict set ::terminal_query_answers $token $answered
+}
+
+proc respond_to_terminal_queries {spawn_channel bytes} {
+  append ::terminal_query_stream $bytes
+  foreach mode {1016 2027 2031 1004 2004 2026} {
+    answer_new_queries $spawn_channel "\033\[?$mode\$p" "\033\[?$mode;1\$y"
+  }
+  answer_new_queries $spawn_channel "\033\[6n" "\033\[1;1R"
+  answer_new_queries $spawn_channel "\033\[14t" "\033\[4;800;1200t"
+  answer_new_queries $spawn_channel "\033\]10;?\007" "\033\]10;rgb:ffff/ffff/ffff\007"
+  answer_new_queries $spawn_channel "\033\]11;?\007" "\033\]11;rgb:0000/0000/0000\007"
+  answer_new_queries $spawn_channel "\033\[>0q" "\033P>|Tunara semantics probe\033\\"
+  answer_new_queries $spawn_channel "\033\[?u" "\033\[?0u"
+}
+
+proc capture_stage {spawn_channel log_prefix stage seconds} {
+  set path "$log_prefix.$stage.log"
+  set handle [open $path wb]
+  fconfigure $handle -translation binary -encoding binary -buffering none
+  set timeout $seconds
+  expect {
+    -i $spawn_channel -re {.+} {
+      puts -nonewline $handle $expect_out(buffer)
+      respond_to_terminal_queries $spawn_channel $expect_out(buffer)
+      exp_continue -continue_timer
+    }
+    -i $spawn_channel eof {
+      if {[info exists expect_out(buffer)]} {
+        puts -nonewline $handle $expect_out(buffer)
+      }
+      set ::child_exited 1
+    }
+    timeout {
+      if {[info exists expect_out(buffer)]} {
+        puts -nonewline $handle $expect_out(buffer)
+      }
+    }
+  }
+  close $handle
+}
+
+spawn -noecho {*}$command
+set child $spawn_id
+fconfigure $child -translation binary -encoding binary
+
+capture_stage $child $log_prefix baseline 10
+
+safe_send $child "\033\[Z"
+capture_stage $child $log_prefix shift-tab-1 1
+safe_send $child "\033\[Z"
+capture_stage $child $log_prefix shift-tab-2 1
+safe_send $child "\033\[Z"
+capture_stage $child $log_prefix shift-tab-3 1
+
+safe_send $child "/"
+capture_stage $child $log_prefix slash-menu 1
+safe_send $child "\033\[B"
+capture_stage $child $log_prefix slash-down 1
+safe_send $child "\033\[A"
+capture_stage $child $log_prefix slash-up 1
+safe_send $child "\033"
+capture_stage $child $log_prefix slash-cancel 1
+
+safe_send $child "\022"
+capture_stage $child $log_prefix history 1
+safe_send $child "\033"
+capture_stage $child $log_prefix history-cancel 1
+
+safe_send $child "\033\[200~TUNARA_CLAUDE_SEMANTIC_A\nTUNARA_CLAUDE_SEMANTIC_B\033\[201~"
+capture_stage $child $log_prefix multiline 1
+safe_send $child "\003"
+capture_stage $child $log_prefix multiline-cancel 1
+
+safe_send $child "/exit\r"
+capture_stage $child $log_prefix exit 8
+
+set exit_status -1
+if {$child_exited} {
+  if {![catch {set waited [wait -i $child]}]} {
+    set exit_status [lindex $waited 3]
+  }
+} else {
+  catch {safe_send $child "\003"}
+  catch {safe_send $child "\003"}
+  catch {close -i $child}
+  catch {wait -i $child}
+}
+
+puts "child_exited=$child_exited exit_status=$exit_status stages=13"
+exit 0

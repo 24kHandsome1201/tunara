@@ -1,0 +1,27 @@
+{
+  "capturedAt": "2026-07-11T17:19:27.106811+00:00",
+  "commit": "62daac87728f81b02d2fbf5f5589b451fd097b22",
+  "target": "de-netcup",
+  "agent": "claude",
+  "safety": {
+    "permissionMode": "plan",
+    "modelPromptSubmitted": false,
+    "rawLogsRetained": false
+  },
+  "checks": {
+    "defaultModeVisibleAfterFirstShiftTab": true,
+    "acceptEditsVisibleAfterSecondShiftTab": true,
+    "planModeRestoredAfterThirdShiftTab": true,
+    "slashMenuOpened": true,
+    "slashSelectionMovedDown": true,
+    "slashSelectionMovedUp": true,
+    "slashMenuCancelled": true,
+    "historySearchOpened": true,
+    "historySearchCancelled": true,
+    "multilineAVisible": true,
+    "multilineBVisible": true,
+    "multilineCancelled": true,
+    "normalExitObserved": true
+  },
+  "passed": true
+}
