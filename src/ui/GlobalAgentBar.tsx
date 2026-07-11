@@ -105,7 +105,7 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
     if (!resumeCommand) return;
     useSessionsStore.getState().updateSession(session.id, {
       pendingInput: resumeCommand,
-      pendingInputSubmit: false,
+      pendingInputSubmit: true,
     });
     onSelect(session.id);
   };

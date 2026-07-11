@@ -54,7 +54,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
     if (!resumeCommand) return;
     useSessionsStore.getState().updateSession(session.id, {
       pendingInput: resumeCommand,
-      pendingInputSubmit: false,
+      pendingInputSubmit: true,
     });
   };
 
