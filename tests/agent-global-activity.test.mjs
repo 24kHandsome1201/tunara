@@ -11,6 +11,7 @@ test("groupAgentActivity returns empty groups for plain shell sessions", () => {
   const groups = groupAgentActivity([session("a"), session("b", { lastCommand: "ls" })]);
   assert.equal(groups.total, 0);
   assert.deepEqual(groups.wait, []);
+  assert.deepEqual(groups.confirmation, []);
   assert.deepEqual(groups.run, []);
   assert.deepEqual(groups.resumable, []);
 });
@@ -29,6 +30,14 @@ test("idle live agents land in wait (waiting for the user)", () => {
   const groups = groupAgentActivity([idle]);
   assert.deepEqual(groups.wait.map((s) => s.id), ["a"]);
   assert.equal(groups.run.length, 0);
+});
+
+test("confirmation-blocked agents have an independent non-running group", () => {
+  const groups = groupAgentActivity([session("a", { agent: "CC", agentActivity: "waiting_confirmation" })]);
+  assert.deepEqual(groups.confirmation.map((s) => s.id), ["a"]);
+  assert.equal(groups.wait.length, 0);
+  assert.equal(groups.run.length, 0);
+  assert.equal(groups.total, 1);
 });
 
 test("exited agents with a resume intent land in resumable with the built command", () => {

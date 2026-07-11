@@ -13,7 +13,7 @@ export type AgentCode = "CC" | "CX" | "AM" | "GM" | "CP" | "CR" | "DR" | "OC" | 
 export type RunState = "idle" | "running" | "done" | "failed";
 
 /** Agent 进程内的活动状态，独立于普通 shell 命令状态 */
-export type AgentActivity = "starting" | "idle" | "running";
+export type AgentActivity = "starting" | "idle" | "running" | "waiting_confirmation";
 
 /** Git 探测状态 */
 export type GitState = "unknown" | "repo" | "notGit";
@@ -176,6 +176,7 @@ export function isPromptLikeShellTitle(title: string): boolean {
 export function agentActivityLabel(activity?: AgentActivity): string | undefined {
   if (activity === "running") return t("sidebar.agent.activity.running");
   if (activity === "starting") return t("sidebar.agent.activity.starting");
+  if (activity === "waiting_confirmation") return t("sidebar.agent.activity.waiting_confirmation");
   return undefined;
 }
 

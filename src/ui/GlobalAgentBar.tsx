@@ -81,11 +81,13 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
   const isSshAttention = attentionKind === "ssh-failed" || attentionKind === "ssh-disconnected";
   const tagColor = variant === "run"
     ? "var(--c-accent)"
-    : attentionKind === "agent-ready"
+    : attentionKind === "agent-ready" || attentionKind === "agent-confirmation"
       ? "var(--c-warning)"
       : "var(--c-error)";
   const tagLabel = attentionKind === "agent-ready"
     ? t("gbar.tag.wait")
+    : attentionKind === "agent-confirmation"
+      ? t("gbar.tag.confirmation")
     : attentionKind === "command-failed"
       ? t("gbar.tag.command_failed")
       : attentionKind === "ssh-disconnected"

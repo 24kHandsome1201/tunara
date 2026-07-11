@@ -45,7 +45,7 @@ if [ -n "$ZSH_VERSION" ]; then
     if [ -n "__TUNARA_SESSION_ID__" ]; then
       _tunara_r_agent_emit() { printf '\e]777;tunara-agent;%s;%s;%s;%s\e\\' "$1" "__TUNARA_SESSION_ID__" "$2" "${3:-}"; }
       _tunara_r_agent_hooks() {
-        local sid="$1" agent="$2" runtime helper sf idle busy stop
+        local sid="$1" agent="$2" runtime helper sf idle busy wait stop
         runtime="$(mktemp -d /tmp/.tunara-agent-XXXXXXXX 2>/dev/null)" || return 1
         chmod 700 "$runtime" 2>/dev/null || { rm -rf "$runtime"; return 1; }
         helper="$runtime/hook.sh"
@@ -62,9 +62,10 @@ if [ -n "$ZSH_VERSION" ]; then
         mkdir -p "$runtime/.claude-plugin" "$runtime/hooks" || { rm -rf "$runtime"; return 1; }
         idle="sh ${helper} idle ${agent} ${sid}"
         busy="sh ${helper} busy ${agent} ${sid}"
+        wait="sh ${helper} wait ${agent} ${sid}"
         stop="sh ${helper} stop ${agent} ${sid}"
         cat > "$sf" <<TUNARA_REMOTE_SETTINGS
-{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"${busy}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
+{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"${busy}"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"${busy}"}]}],"PermissionRequest":[{"hooks":[{"type":"command","command":"${wait}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
 TUNARA_REMOTE_SETTINGS
         cp "$sf" "$runtime/hooks/hooks.json" || { rm -rf "$runtime"; return 1; }
         printf '%s\n' '{"name":"tunara-lifecycle","description":"Tunara session lifecycle bridge","version":"1.0.0"}' > "$runtime/.claude-plugin/plugin.json"
@@ -141,7 +142,7 @@ elif [ -n "$BASH_VERSION" ]; then
     if [ -n "__TUNARA_SESSION_ID__" ]; then
       _tunara_r_agent_emit() { printf '\e]777;tunara-agent;%s;%s;%s;%s\e\\' "$1" "__TUNARA_SESSION_ID__" "$2" "${3:-}"; }
       _tunara_r_agent_hooks() {
-        local sid="$1" agent="$2" runtime helper sf idle busy stop
+        local sid="$1" agent="$2" runtime helper sf idle busy wait stop
         runtime="$(mktemp -d /tmp/.tunara-agent-XXXXXXXX 2>/dev/null)" || return 1
         chmod 700 "$runtime" 2>/dev/null || { rm -rf "$runtime"; return 1; }
         helper="$runtime/hook.sh"
@@ -158,9 +159,10 @@ elif [ -n "$BASH_VERSION" ]; then
         mkdir -p "$runtime/.claude-plugin" "$runtime/hooks" || { rm -rf "$runtime"; return 1; }
         idle="sh ${helper} idle ${agent} ${sid}"
         busy="sh ${helper} busy ${agent} ${sid}"
+        wait="sh ${helper} wait ${agent} ${sid}"
         stop="sh ${helper} stop ${agent} ${sid}"
         cat > "$sf" <<TUNARA_REMOTE_SETTINGS
-{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"${busy}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
+{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"${busy}"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"${busy}"}]}],"PermissionRequest":[{"hooks":[{"type":"command","command":"${wait}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
 TUNARA_REMOTE_SETTINGS
         cp "$sf" "$runtime/hooks/hooks.json" || { rm -rf "$runtime"; return 1; }
         printf '%s\n' '{"name":"tunara-lifecycle","description":"Tunara session lifecycle bridge","version":"1.0.0"}' > "$runtime/.claude-plugin/plugin.json"

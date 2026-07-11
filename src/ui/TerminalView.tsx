@@ -187,6 +187,7 @@ function TerminalViewImpl({
         getSessionId: () => sessionIdRef.current,
         getCurrentSession,
         onBusy: (id) => useSessionsStore.getState().handleAgentBusy(id),
+        onWaitingConfirmation: (id) => useSessionsStore.getState().handleAgentWaitingConfirmation(id),
         onReady: (id) => useSessionsStore.getState().handleAgentReady(id),
       });
       const resetAgentObservers = () => {
@@ -235,15 +236,12 @@ function TerminalViewImpl({
           return true;
         }
         if (payload.agentSessionId) {
-          useSessionsStore.getState().recordAgentSessionId(
-            sessionIdRef.current,
-            payload.agent,
-            payload.agentSessionId,
-          );
+          useSessionsStore.getState().recordAgentSessionId(sessionIdRef.current, payload.agent, payload.agentSessionId);
         }
-        if (payload.event === "busy") {
+        if (payload.event === "busy" || payload.event === "wait") {
           resetAgentObservers();
-          useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
+          if (payload.event === "busy") useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
+          else useSessionsStore.getState().handleAgentWaitingConfirmation(sessionIdRef.current);
           return true;
         }
         if (payload.event === "idle" || payload.event === "stop") {

@@ -68,6 +68,7 @@ import {
   agentDetectedUpdate,
   agentExitedUpdate,
   agentReadyUpdate,
+  agentWaitingConfirmationUpdate,
   commandDetectedUpdate,
   cwdChangedUpdate,
   shellTitleUpdate,
@@ -947,6 +948,11 @@ test("agent lifecycle OSC accepts current and legacy event prefixes", () => {
     session: "s-1",
     agent: "CC",
   });
+  assert.deepEqual(parseAgentLifecycleOsc("tunara-agent;wait;s-1;CC;"), {
+    event: "wait",
+    session: "s-1",
+    agent: "CC",
+  });
   assert.equal(parseAgentLifecycleOsc("other-agent;idle;s-1;CC;"), null);
 });
 
@@ -972,6 +978,11 @@ test("agent lifecycle OSC carries a validated remote agent session id", () => {
 });
 
 test("native agent hook payloads are runtime-validated", () => {
+  assert.deepEqual(parseAgentHookEvent({ event: "wait", session: "s-1", agent: "CC" }), {
+    event: "wait",
+    session: "s-1",
+    agent: "CC",
+  });
   assert.deepEqual(
     parseAgentHookEvent({
       event: "stop",
@@ -1395,6 +1406,57 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
   assert.equal(h.apply(agentReadyUpdate(h.session, true, 30)), true);
   assert.equal(h.session.agentActivity, "idle");
   assert.equal(isSessionBusy(h.session), false);
+});
+
+test("Codex confirmation screen requires paired approval evidence and supports waiting → busy → ready", () => {
+  const confirmation = [
+    "Would you like to run the following command?",
+    "1. Yes, proceed",
+    "2. No, reject",
+    "Esc to cancel",
+  ].join("\n");
+  assert.equal(detectCodexScreenState(confirmation), "waiting_confirmation");
+  assert.equal(detectCodexScreenState("Would you like to run the following command?\nYes\nNo"), null);
+  assert.equal(detectCodexScreenState("Trust this folder?\n1. Yes, proceed\n2. No, reject\nEsc to cancel"), null);
+  assert.equal(detectCodexScreenState("Documentation: command requires approval"), null);
+  assert.equal(detectCodexScreenState(`${confirmation}\n› `), "ready", "a newer composer clears stale approval scrollback");
+
+  let s = makeSession({ agent: "CX", agentActivity: "running", unread: true });
+  s = { ...s, ...agentWaitingConfirmationUpdate(s, true).patch };
+  assert.equal(s.agentActivity, "waiting_confirmation");
+  assert.equal(s.unread, false);
+  assert.equal(isSessionBusy(s), false);
+  assert.equal(sessionDisplayRunState(s), "idle");
+  s = { ...s, ...agentBusyUpdate(s, 20).patch };
+  assert.equal(s.agentActivity, "running");
+  s = { ...s, ...agentWaitingConfirmationUpdate(s, true).patch };
+  s = { ...s, ...agentReadyUpdate(s, true, 30).patch };
+  assert.equal(s.agentActivity, "idle");
+  assert.equal(s.completedAt, 30);
+});
+
+test("prompt tracker emits confirmation only from a running Codex turn and clears it on busy", async () => {
+  let session = makeSession({ agent: "CX", agentActivity: "running" });
+  const lines = ["Would you like to run the following command?", "1. Yes, proceed", "2. No, reject", "Esc to cancel"];
+  let waitingCount = 0;
+  let busyCount = 0;
+  const tracker = createPromptAgentScreenStateTracker({
+    terminal: makeTailTerminal(lines),
+    getSessionId: () => "s-1",
+    getCurrentSession: () => session,
+    onWaitingConfirmation: () => { waitingCount += 1; session = { ...session, agentActivity: "waiting_confirmation" }; },
+    onBusy: () => { busyCount += 1; session = { ...session, agentActivity: "running" }; },
+    onReady: () => { session = { ...session, agentActivity: "idle" }; },
+  });
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(waitingCount, 1);
+  lines.splice(0, lines.length, "Working", "esc to interrupt");
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(busyCount, 1);
+  assert.equal(session.agentActivity, "running");
+  tracker.dispose();
 });
 
 test("prompt agent screen tracker does not complete Codex startup while the first prompt is painting", async () => {

@@ -68,8 +68,9 @@ if set -q TUNARA_SESSION_ID
     set -l helper_command 'sh \"$TUNARA_AGENT_CONFIG_DIR/agent-hook.sh\"'
     set -l idle "$helper_command idle $agent $sid"
     set -l busy "$helper_command busy $agent $sid"
+    set -l wait "$helper_command wait $agent $sid"
     set -l stop "$helper_command stop $agent $sid"
-    printf '{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"%s"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"%s"}]}],"Stop":[{"hooks":[{"type":"command","command":"%s"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"%s"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"%s"}]}]}}' $idle $busy $stop $stop $idle >$sf
+    printf '{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"%s"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"%s"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"%s"}]}],"PermissionRequest":[{"hooks":[{"type":"command","command":"%s"}]}],"Stop":[{"hooks":[{"type":"command","command":"%s"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"%s"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"%s"}]}]}}' $idle $busy $busy $wait $stop $stop $idle >$sf
     cp "$sf" "$runtime/hooks/hooks.json"; or begin; rm -rf "$runtime"; return 1; end
     printf '%s\n' '{"name":"tunara-lifecycle","description":"Tunara session lifecycle bridge","version":"1.0.0"}' > "$runtime/.claude-plugin/plugin.json"
     chmod 600 "$sf" "$runtime/hooks/hooks.json" "$runtime/.claude-plugin/plugin.json" 2>/dev/null; or true

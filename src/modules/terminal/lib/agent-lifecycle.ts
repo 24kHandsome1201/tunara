@@ -6,7 +6,7 @@ import { shellCommandName, splitShellCommandSegments, tokenizeShellWords } from 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
 export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
 
-export type AgentLifecycleEventName = "start" | "busy" | "idle" | "stop" | "exit";
+export type AgentLifecycleEventName = "start" | "busy" | "wait" | "idle" | "stop" | "exit";
 
 export interface AgentLifecycleEvent {
   event: AgentLifecycleEventName;
@@ -143,7 +143,7 @@ export function sessionDisplayRunState(session: Session): RunState {
   return session.completedAt ? "done" : "idle";
 }
 
-export type AgentScreenState = "ready" | "busy" | null;
+export type AgentScreenState = "ready" | "busy" | "waiting_confirmation" | null;
 
 export const CODEX_PROMPT_PATTERN = /^\s*›(?:\s|$)/;
 export const CODEX_BUSY_INDICATORS = [
@@ -162,12 +162,38 @@ function hasCodexBusyIndicator(text: string): boolean {
   return CODEX_BUSY_INDICATORS.some((pattern) => pattern.test(text));
 }
 
+const CODEX_CONFIRMATION_QUESTION_PATTERNS = [
+  /would you like to run(?: the following command)?/i,
+  /do you want to run(?: the following command)?/i,
+  /command requires approval/i,
+] as const;
+const CODEX_CONFIRMATION_ACCEPT_PATTERN = /(?:yes,?\s*proceed|allow once|press enter to confirm)/i;
+const CODEX_CONFIRMATION_REJECT_PATTERN = /(?:no,?\s*reject|tell codex .+ instead|esc to cancel)/i;
+
+function hasCodexConfirmationPrompt(lines: readonly string[]): boolean {
+  let questionIndex = -1;
+  let promptIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (promptIndex < 0 && isCodexPromptLine(lines[i])) promptIndex = i;
+    if (CODEX_CONFIRMATION_QUESTION_PATTERNS.some((pattern) => pattern.test(lines[i]))) {
+      questionIndex = i;
+      break;
+    }
+  }
+  if (questionIndex < 0 || questionIndex < promptIndex) return false;
+  const promptText = lines.slice(questionIndex).join("\n");
+  return CODEX_CONFIRMATION_ACCEPT_PATTERN.test(promptText)
+    && CODEX_CONFIRMATION_REJECT_PATTERN.test(promptText);
+}
+
 export function detectCodexScreenState(text: string): AgentScreenState {
   const lines = cleanTerminalLines(text)
     .split("\n")
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
   const recent = lines.slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT);
+  const recentText = recent.join("\n");
+  if (hasCodexConfirmationPrompt(recent)) return "waiting_confirmation";
   let promptIndex = -1;
   for (let i = recent.length - 1; i >= 0; i -= 1) {
     if (isCodexPromptLine(recent[i])) {
@@ -181,7 +207,6 @@ export function detectCodexScreenState(text: string): AgentScreenState {
     return hasCodexBusyIndicator(currentTurnText) ? "busy" : "ready";
   }
 
-  const recentText = recent.join("\n");
   if (hasCodexBusyIndicator(recentText)) {
     return "busy";
   }
@@ -227,7 +252,7 @@ export function parseAgentLifecycleOsc(data: string): AgentLifecycleEvent | null
   const codeText = parts[4] ?? "";
   const agentSessionIdText = parts[5] ?? "";
 
-  if (event !== "start" && event !== "busy" && event !== "idle" && event !== "stop" && event !== "exit") return null;
+  if (event !== "start" && event !== "busy" && event !== "wait" && event !== "idle" && event !== "stop" && event !== "exit") return null;
   if (!session || !isAgentCode(agent)) return null;
   if (event !== "exit" && codeText !== "") return null;
 
@@ -257,7 +282,7 @@ export function parseAgentHookEvent(value: unknown): AgentHookEvent | null {
   const code = payload.code;
   const agentSessionId = payload.agentSessionId;
 
-  if (event !== "start" && event !== "busy" && event !== "idle" && event !== "stop" && event !== "exit") return null;
+  if (event !== "start" && event !== "busy" && event !== "wait" && event !== "idle" && event !== "stop" && event !== "exit") return null;
   if (typeof session !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(session)) return null;
   if (typeof agent !== "string" || !isAgentCode(agent)) return null;
   if (code != null && (typeof code !== "number" || !Number.isSafeInteger(code))) return null;

@@ -14,6 +14,7 @@ interface PromptAgentScreenStateTrackerOptions {
   getSessionId: () => string;
   getCurrentSession: () => Session | undefined;
   onBusy: (sessionId: string) => void;
+  onWaitingConfirmation: (sessionId: string) => void;
   onReady: (sessionId: string) => void;
 }
 
@@ -28,6 +29,7 @@ export function createPromptAgentScreenStateTracker({
   getSessionId,
   getCurrentSession,
   onBusy,
+  onWaitingConfirmation,
   onReady,
 }: PromptAgentScreenStateTrackerOptions): PromptAgentScreenStateTracker {
   let stateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -48,7 +50,12 @@ export function createPromptAgentScreenStateTracker({
 
       const tail = getTerminalTailText(terminal, PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT);
       const screenState = detectPromptAgentScreenState(current.agent, tail);
-      if (screenState === "busy" && current.agentActivity === "idle") {
+      if (screenState === "waiting_confirmation" && current.agentActivity === "running") {
+        onWaitingConfirmation(getSessionId());
+      } else if (
+        screenState === "busy"
+        && (current.agentActivity === "idle" || current.agentActivity === "waiting_confirmation")
+      ) {
         onBusy(getSessionId());
       } else if (screenState === "ready" && current.agentActivity !== "idle") {
         onReady(getSessionId());

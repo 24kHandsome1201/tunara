@@ -34,6 +34,17 @@ test("only unread completed work asks for attention", () => {
   assert.deepEqual(groups.quiet.map((item) => item.id), ["agent-seen", "failure-seen"]);
 });
 
+test("agent confirmation always asks for attention below SSH failures and above completed work", () => {
+  const groups = deriveSessionAttention([
+    session("failed", { agent: "CC", agentActivity: "waiting_confirmation", remote: { host: "a", port: 22, user: "root" }, connection: { transport: "ssh", phase: "failed", source: "backend", updatedAt: 2 } }),
+    session("confirm", { agent: "CX", agentActivity: "waiting_confirmation", unread: false }),
+    session("ready", { agent: "CC", agentActivity: "idle", unread: true }),
+  ]);
+  assert.deepEqual(groups.attention.map((item) => item.kind), ["ssh-failed", "agent-confirmation", "agent-ready"]);
+  assert.equal(groups.running.length, 0);
+  assert.equal(groups.quiet.length, 0);
+});
+
 test("running and resumable sessions are mutually exclusive derived groups", () => {
   const groups = deriveSessionAttention([
     session("shell", { runState: "running" }),

@@ -22,6 +22,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   const resumeAgent = !session.agent && resumeCommand ? session.agentResume?.agent : undefined;
   const displayAgent = session.agent ?? resumeAgent ?? agentCode;
   const isBusy = !!session.agent && isAgentActivityBusy(session.agentActivity);
+  const isWaitingConfirmation = !!session.agent && session.agentActivity === "waiting_confirmation";
   const isStarting = session.agentActivity === "starting";
   const isCompletedTurn = visible && hasCompletedAgentTurn(session);
 
@@ -30,7 +31,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   }, [session.agent]);
 
   useEffect(() => {
-    if (isBusy) {
+    if (isBusy || isWaitingConfirmation) {
       setVisible(true);
       setFading(false);
     } else if (isCompletedTurn) {
@@ -41,7 +42,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       setVisible(false);
       setFading(false);
     }
-  }, [isBusy, isCompletedTurn, session.agent]);
+  }, [isBusy, isWaitingConfirmation, isCompletedTurn, session.agent]);
 
   // A prompt-aware agent reaching its first ready prompt only completed
   // startup. It has no completedAt evidence and must never flash "Done".
@@ -60,17 +61,24 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
 
   const statusLabel = resumeCommand && !session.agent
     ? t("agent.status.resumable")
+    : isWaitingConfirmation
+      ? t("agent.status.waiting_confirmation")
     : isBusy
       ? (isStarting ? t("sidebar.agent.activity.starting") : t("sidebar.agent.activity.running"))
       : t("agent.status.done");
   const statusColor = resumeCommand && !session.agent
     ? "var(--c-success)"
+    : isWaitingConfirmation
+      ? "var(--c-warning)"
     : isBusy
       ? "var(--c-accent)"
       : "var(--c-success)";
 
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
       onAnimationEnd={(e) => {
         if (fading && e.animationName === "statusBarSlideOut") {
           setVisible(false);
@@ -107,14 +115,14 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
         gap: 4,
         flexShrink: 0,
       }}>
-        {isBusy && (
+        {(isBusy || isWaitingConfirmation) && (
           <span style={{
             width: 5,
             height: 5,
             borderRadius: "50%",
             background: statusColor,
             flexShrink: 0,
-          }} />
+          }} aria-hidden="true" />
         )}
         {statusLabel}
       </span>

@@ -33,6 +33,7 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     assert.match(script, /TUNARA_AGENT_CONFIG_DIR\/agent-hook\.sh/);
     assert.match(script, /\$\{helper_command\} idle \$\{agent\} \$\{sid\}/);
     assert.match(script, /\$\{helper_command\} busy \$\{agent\} \$\{sid\}/);
+    assert.match(script, /\$\{helper_command\} wait \$\{agent\} \$\{sid\}/);
     assert.match(script, /\$\{helper_command\} stop \$\{agent\} \$\{sid\}/);
     assert.doesNotMatch(script, /if \[\[? -n "\$sock"/);
     // The injected settings JSON must not inline a printf|nc hook command — the
@@ -52,6 +53,8 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     assert.doesNotMatch(script, /\bdevin\(\) \{ _tunara_agent_run devin/);
     assert.match(script, /"SessionStart":\[\{"matcher":"startup\|resume"/);
     assert.match(script, /"UserPromptSubmit":\[\{"hooks"/);
+    assert.match(script, /"PreToolUse":\[\{"hooks"/);
+    assert.match(script, /"PermissionRequest":\[\{"hooks"/);
     assert.match(script, /"StopFailure":\[\{"hooks"/);
   }
 });
@@ -252,7 +255,9 @@ test("fish shell integration emits cwd, command, and agent lifecycle events", ()
   assert.match(fish, /set -l helper_command/);
   assert.match(fish, /\$helper_command idle \$agent \$sid/);
   assert.match(fish, /\$helper_command busy \$agent \$sid/);
+  assert.match(fish, /\$helper_command wait \$agent \$sid/);
   assert.match(fish, /"UserPromptSubmit":\[\{"hooks"/);
+  assert.match(fish, /"PermissionRequest":\[\{"hooks"/);
   assert.match(fish, /"StopFailure":\[\{"hooks"/);
   assert.match(fish, /command \$real_bin --plugin-dir \$runtime \$argv/);
   assert.match(fish, /merge-settings "\$user_settings" "\$settings" "\$merged"/);
@@ -273,8 +278,9 @@ test("remote SSH integration emits per-turn lifecycle hooks without a host socke
   const remote = read("src-tauri/src/modules/ssh/scripts/remote-integration.sh");
 
   assert.match(remote, /_tunara_r_agent_hooks\(\)/);
-  assert.match(remote, /SessionStart[\s\S]*UserPromptSubmit[\s\S]*Stop[\s\S]*StopFailure[\s\S]*idle_prompt/);
+  assert.match(remote, /SessionStart[\s\S]*UserPromptSubmit[\s\S]*PreToolUse[\s\S]*PermissionRequest[\s\S]*Stop[\s\S]*StopFailure[\s\S]*idle_prompt/);
   assert.match(remote, /sh \$\{helper\} busy \$\{agent\} \$\{sid\}/);
+  assert.match(remote, /sh \$\{helper\} wait \$\{agent\} \$\{sid\}/);
   assert.match(remote, /__TUNARA_AGENT_HOOK_B64__/);
   assert.match(remote, /base64 --decode[\s\S]*base64 -D/);
   assert.match(remote, /command "\$bin" --plugin-dir "\$runtime" "\$@"/);
@@ -458,7 +464,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   const source = read("src/state/sessions.ts");
   const lifecycle = read("src/modules/terminal/lib/session-lifecycle.ts");
 
-  assert.match(types, /export type AgentActivity = "starting" \| "idle" \| "running";/);
+  assert.match(types, /export type AgentActivity = "starting" \| "idle" \| "running" \| "waiting_confirmation";/);
   assert.match(types, /agentActivity\?: AgentActivity;/);
   assert.match(types, /export interface AgentResumeIntent/);
   assert.match(types, /agentResume\?: AgentResumeIntent;/);
@@ -480,6 +486,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(source, /agentResume,/);
   assert.match(source, /command: resolveAgentResumeSourceCommand\(/);
   assert.match(source, /agentReadyUpdate\(session, isActive\)/);
+  assert.match(source, /agentWaitingConfirmationUpdate\(session, isActive\)/);
   assert.match(source, /agentBusyUpdate\(session\)/);
   assert.match(source, /agentExitedUpdate\(session, exitCode, isActive\)/);
   assert.match(source, /commandDetectedUpdate\(session, command\)/);
@@ -511,8 +518,8 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
 
   assert.match(listener, /if \(event === "start"\) \{[\s\S]*?store\.handleAgentDetected\(session, agent\);/);
   assert.match(listener, /if \(event === "exit"\) \{[\s\S]*?if \(current\?\.agent === agent\) \{[\s\S]*?store\.handleAgentExited\(session, code \?\? 0\);/);
-  assert.match(listener, /if \(event === "busy" \|\| event === "stop" \|\| event === "idle"\)/);
-  assert.match(listener, /if \(event === "busy"\) store\.handleAgentBusy\(session\);[\s\S]*?else store\.handleAgentReady\(session\);/);
+  assert.match(listener, /if \(event === "busy" \|\| event === "wait" \|\| event === "stop" \|\| event === "idle"\)/);
+  assert.match(listener, /if \(event === "busy"\) store\.handleAgentBusy\(session\);[\s\S]*?event === "wait"[\s\S]*?handleAgentWaitingConfirmation\(session\)[\s\S]*?else store\.handleAgentReady\(session\);/);
   assert.doesNotMatch(listener, /if \(!current\?\.agent\) store\.handleAgentDetected/);
   assert.match(zshrc, /printf '\\e\]133;C;%s\\e\\\\' "\$\(.*"\$1"\)"/);
   assert.match(terminal, /import \{ detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback \}/);

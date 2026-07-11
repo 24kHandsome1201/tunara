@@ -11,7 +11,10 @@ import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
 import { formatElapsed } from "./lib/elapsed";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 
-function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
+function StatusDot({ runState, unread, waitingConfirmation = false }: { runState: RunState; unread?: boolean; waitingConfirmation?: boolean }) {
+  if (waitingConfirmation) {
+    return <span aria-hidden="true" style={{ position: "absolute", bottom: -1, right: -1, width: 8, height: 8, borderRadius: "50%", background: "var(--c-warning)", border: "2px solid var(--c-bg-white)" }} />;
+  }
   const showDone = (runState === "done" || runState === "failed") && unread;
   if (runState === "idle" || ((runState === "done" || runState === "failed") && !unread)) return null;
   const color = runState === "running"
@@ -56,7 +59,7 @@ function SessionIcon({ session }: { session: Session }) {
         >
           <SessionMascotIcon id={session.mascot} size={23} />
         </div>
-        <StatusDot runState={displayRunState} unread={session.unread} />
+        <StatusDot runState={displayRunState} unread={session.unread} waitingConfirmation={session.agentActivity === "waiting_confirmation"} />
       </div>
     );
   }
@@ -85,7 +88,7 @@ function SessionIcon({ session }: { session: Session }) {
             </span>
           )}
         </div>
-        <StatusDot runState={displayRunState} unread={session.unread} />
+        <StatusDot runState={displayRunState} unread={session.unread} waitingConfirmation={session.agentActivity === "waiting_confirmation"} />
       </div>
     );
   }
@@ -109,12 +112,15 @@ function SessionIcon({ session }: { session: Session }) {
           <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
       </div>
-      <StatusDot runState={displayRunState} unread={session.unread} />
+      <StatusDot runState={displayRunState} unread={session.unread} waitingConfirmation={session.agentActivity === "waiting_confirmation"} />
     </div>
   );
 }
 
-function StatusMark({ runState, exitCode }: { runState: RunState; exitCode?: number }) {
+function StatusMark({ runState, exitCode, waitingLabel }: { runState: RunState; exitCode?: number; waitingLabel?: string }) {
+  if (waitingLabel) {
+    return <span title={waitingLabel} aria-label={waitingLabel} style={{ color: "var(--c-warning)", fontSize: "var(--fs-meta)", lineHeight: 1, flexShrink: 0 }}>◆</span>;
+  }
   if (runState === "done") {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -441,7 +447,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatusMark runState={displayRunState} exitCode={session.lastExitCode} />
+            <StatusMark runState={displayRunState} exitCode={session.lastExitCode} waitingLabel={session.agentActivity === "waiting_confirmation" ? t("agent.status.waiting_confirmation") : undefined} />
             {session.pinned && (
               <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>★</span>
             )}
@@ -494,6 +500,11 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 }}
               >
                 {primary}
+              </span>
+            )}
+            {session.agentActivity === "waiting_confirmation" && (
+              <span style={{ flexShrink: 0, borderRadius: "var(--r-badge-sm)", padding: "0 4px", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 12%, transparent)", fontSize: "var(--fs-badge)", fontWeight: 700, lineHeight: "14px" }}>
+                {t("gbar.tag.confirmation")}
               </span>
             )}
           </div>

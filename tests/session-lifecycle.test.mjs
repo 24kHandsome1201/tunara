@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   agentDetectedUpdate,
   agentReadyUpdate,
+  agentWaitingConfirmationUpdate,
   agentBusyUpdate,
   agentExitedUpdate,
   commandDetectedUpdate,
@@ -96,6 +97,34 @@ test("agentBusyUpdate is a no-op when already running", () => {
 test("agentReadyUpdate is idempotent once an agent is already idle", () => {
   const s = baseSession({ agent: "CC", agentActivity: "idle", completedAt: NOW });
   assert.equal(agentReadyUpdate(s, false, NOW + 100), null);
+});
+
+test("agent confirmation lifecycle is conservative, reversible, and completes correctly", () => {
+  const starting = baseSession({ agent: "CC", agentActivity: "starting", unread: true });
+  assert.equal(agentWaitingConfirmationUpdate(starting, true), null);
+  assert.equal(agentWaitingConfirmationUpdate({ ...starting, agentActivity: "idle" }, true), null);
+
+  let s = { ...starting, agentActivity: "running", terminalProgress: { state: "indeterminate", updatedAt: NOW } };
+  const waiting = agentWaitingConfirmationUpdate(s, false);
+  assert.ok(waiting);
+  s = apply(s, waiting);
+  assert.equal(s.agentActivity, "waiting_confirmation");
+  assert.equal(s.unread, true);
+  assert.equal(s.completedAt, undefined);
+  assert.equal(s.terminalProgress, undefined);
+  assert.equal(agentWaitingConfirmationUpdate(s, false), null, "repeated waiting is idempotent");
+
+  s = apply(s, agentBusyUpdate(s, NOW + 10));
+  assert.equal(s.agentActivity, "running");
+  assert.equal(s.unread, false);
+  s = apply(s, agentWaitingConfirmationUpdate(s, true));
+  assert.equal(s.unread, false, "an observed confirmation clears stale unread state");
+  const ready = agentReadyUpdate(s, false, NOW + 20);
+  assert.equal(ready?.refreshGit, true);
+  s = apply(s, ready);
+  assert.equal(s.agentActivity, "idle");
+  assert.equal(s.completedAt, NOW + 20);
+  assert.equal(s.unread, true);
 });
 
 test("command lifecycle: detected → finished marks done/failed and refreshes git", () => {

@@ -5,6 +5,7 @@ import { buildAgentResumeCommand } from "../terminal/lib/agent-resume.ts";
 export type SessionAttentionKind =
   | "ssh-failed"
   | "ssh-disconnected"
+  | "agent-confirmation"
   | "agent-ready"
   | "command-failed";
 
@@ -24,6 +25,7 @@ export interface SessionAttentionGroups {
 function attentionKind(session: Session): SessionAttentionKind | null {
   if (session.remote && session.connection?.phase === "failed") return "ssh-failed";
   if (session.remote && session.connection?.phase === "disconnected") return "ssh-disconnected";
+  if (session.agent && session.agentActivity === "waiting_confirmation") return "agent-confirmation";
   if (session.agent && session.unread && !isAgentActivityBusy(session.agentActivity)) return "agent-ready";
   if (!session.agent && session.unread && session.runState === "failed" && session.lastCommand) {
     return "command-failed";

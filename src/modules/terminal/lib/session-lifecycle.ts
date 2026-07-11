@@ -36,7 +36,8 @@ export function agentReadyUpdate(
   now = Date.now(),
 ): SessionLifecycleUpdate | null {
   if (!session?.agent || session.agentActivity === "idle") return null;
-  const completedTurn = session.agentActivity === "running";
+  const completedTurn = session.agentActivity === "running"
+    || session.agentActivity === "waiting_confirmation";
   return {
     patch: {
       agentActivity: "idle",
@@ -45,6 +46,22 @@ export function agentReadyUpdate(
       ...(completedTurn && !isActive ? { unread: true } : {}),
     },
     ...(completedTurn ? { refreshGit: true } : {}),
+  };
+}
+
+export function agentWaitingConfirmationUpdate(
+  session: Session | undefined,
+  isActive: boolean,
+): SessionLifecycleUpdate | null {
+  if (!session?.agent || session.agentActivity !== "running") return null;
+  return {
+    patch: {
+      agentActivity: "waiting_confirmation",
+      runState: "idle",
+      completedAt: undefined,
+      terminalProgress: undefined,
+      unread: !isActive,
+    },
   };
 }
 

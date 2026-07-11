@@ -111,9 +111,10 @@ if [ -n "$TUNARA_SESSION_ID" ]; then
     local helper_command='sh \"$TUNARA_AGENT_CONFIG_DIR/agent-hook.sh\"'
     local idle="${helper_command} idle ${agent} ${sid}"
     local busy="${helper_command} busy ${agent} ${sid}"
+    local wait="${helper_command} wait ${agent} ${sid}"
     local stop="${helper_command} stop ${agent} ${sid}"
     cat > "$sf" <<TUNARA_EOF
-{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"${busy}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
+{"hooks":{"SessionStart":[{"matcher":"startup|resume","hooks":[{"type":"command","command":"${idle}"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"${busy}"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"${busy}"}]}],"PermissionRequest":[{"hooks":[{"type":"command","command":"${wait}"}]}],"Stop":[{"hooks":[{"type":"command","command":"${stop}"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"${stop}"}]}],"Notification":[{"matcher":"idle_prompt","hooks":[{"type":"command","command":"${idle}"}]}]}}
 TUNARA_EOF
     cp "$sf" "$runtime/hooks/hooks.json" || { rm -rf "$runtime"; return 1; }
     printf '%s\n' '{"name":"tunara-lifecycle","description":"Tunara session lifecycle bridge","version":"1.0.0"}' > "$runtime/.claude-plugin/plugin.json"

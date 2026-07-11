@@ -15,6 +15,7 @@ import {
   agentDetectedUpdate,
   agentExitedUpdate,
   agentReadyUpdate,
+  agentWaitingConfirmationUpdate,
   commandDetectedUpdate,
   commandFinishedUpdate,
   cwdChangedUpdate,
@@ -82,6 +83,7 @@ interface SessionsState {
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
   recordAgentSessionId: (id: string, agent: AgentCode, agentSessionId: string) => void;
   handleAgentReady: (id: string) => void;
+  handleAgentWaitingConfirmation: (id: string) => void;
   handleAgentBusy: (id: string) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
   handleCommandDetected: (id: string, command: string) => void;
@@ -554,7 +556,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleAgentReady: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     const isActive = isSessionObserved(get().activeSessionId, id);
-    const completedTurn = session?.agentActivity === "running";
+    const completedTurn = session?.agentActivity === "running"
+      || session?.agentActivity === "waiting_confirmation";
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
     if (completedTurn) {
@@ -573,6 +576,13 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         agentCode: session.agent,
       });
     }
+  },
+
+  handleAgentWaitingConfirmation: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    const isActive = isSessionObserved(get().activeSessionId, id);
+    const update = agentWaitingConfirmationUpdate(session, isActive);
+    if (update) get().updateSession(id, update.patch);
   },
 
   handleAgentBusy: (id) => {

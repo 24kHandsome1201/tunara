@@ -9,6 +9,7 @@ import { isAgentActivityBusy } from "../terminal/lib/agent-lifecycle.ts";
 import { buildAgentResumeCommand } from "../terminal/lib/agent-resume.ts";
 
 export interface AgentActivityGroups {
+  confirmation: Session[];
   wait: Session[];
   run: Session[];
   /** [session, resume 命令] —— 命令由 buildAgentResumeCommand 保证非空。 */
@@ -17,17 +18,25 @@ export interface AgentActivityGroups {
 }
 
 export function groupAgentActivity(sessions: readonly Session[]): AgentActivityGroups {
+  const confirmation: Session[] = [];
   const wait: Session[] = [];
   const run: Session[] = [];
   const resumable: AgentActivityGroups["resumable"] = [];
   for (const session of sessions) {
     if (session.agent) {
-      if (isAgentActivityBusy(session.agentActivity)) run.push(session);
+      if (session.agentActivity === "waiting_confirmation") confirmation.push(session);
+      else if (isAgentActivityBusy(session.agentActivity)) run.push(session);
       else wait.push(session);
       continue;
     }
     const resumeCommand = buildAgentResumeCommand(session.agentResume);
     if (resumeCommand) resumable.push({ session, resumeCommand });
   }
-  return { wait, run, resumable, total: wait.length + run.length + resumable.length };
+  return {
+    confirmation,
+    wait,
+    run,
+    resumable,
+    total: confirmation.length + wait.length + run.length + resumable.length,
+  };
 }

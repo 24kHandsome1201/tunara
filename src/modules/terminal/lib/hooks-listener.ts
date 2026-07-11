@@ -20,7 +20,7 @@ export async function startHooksListener(): Promise<UnlistenFn> {
       }
       return;
     }
-    if (event === "busy" || event === "stop" || event === "idle") {
+    if (event === "busy" || event === "wait" || event === "stop" || event === "idle") {
       const current = useSessionsStore.getState().sessions.find((s) => s.id === session);
       if (current?.agent === agent) {
         // The real agent session id rides in on the SessionStart/Stop/idle hook
@@ -28,6 +28,7 @@ export async function startHooksListener(): Promise<UnlistenFn> {
         // scraping the typed command.
         if (agentSessionId) store.recordAgentSessionId(session, agent, agentSessionId);
         if (event === "busy") store.handleAgentBusy(session);
+        else if (event === "wait") store.handleAgentWaitingConfirmation(session);
         else store.handleAgentReady(session);
       }
     }
