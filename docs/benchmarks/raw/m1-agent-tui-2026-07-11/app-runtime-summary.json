@@ -202,6 +202,65 @@
       "treatedAsCurrentSourceRegression": false
     }
   },
+  "sshAiderRuntime": {
+    "capturedAt": "2026-07-11T08:53:46Z",
+    "installedAppVersion": "1.14.0",
+    "target": "de-netcup",
+    "cwd": "/root",
+    "version": "0.86.2",
+    "command": "aider --model openai/gpt-4o-mini --no-git --no-auto-commits",
+    "accountBoundary": {
+      "openRouterLoginOrAccountCreationOffered": true,
+      "accepted": false,
+      "documentationOpenDeclined": true
+    },
+    "providerBoundary": {
+      "openAiApiKeyPresent": false,
+      "authenticationErrorObserved": true,
+      "promptRecoveredAfterError": true,
+      "modelResponseClaimed": false
+    },
+    "split": {
+      "mode": "horizontal",
+      "ratio": 0.5,
+      "remoteSessionPreserved": true
+    },
+    "backgroundReturn": {
+      "agentSessionPreserved": true,
+      "splitPreserved": true,
+      "terminalInputTargetPreserved": true
+    },
+    "clipboard": {
+      "method": "quick-select-visible-output",
+      "visibleItems": 6,
+      "controlledToken": "86.2",
+      "applicationAcknowledgedCopy": true,
+      "pastedBackIntoAgentInput": true,
+      "exactRoundTrip": true,
+      "submittedToProvider": false,
+      "inputClearedWithCtrlC": true
+    },
+    "exit": {
+      "command": "/exit",
+      "ordinaryRemoteShellRestored": true,
+      "shellProbe": "printf 'TUNARA_SSH_AIDER_SHELL_OK\\n'",
+      "shellMarkerObserved": "TUNARA_SSH_AIDER_SHELL_OK"
+    },
+    "installedVersionDefectObserved": {
+      "bashCommandBlockIncludedRenderedPrompt": true,
+      "staleCodexResumeIdentityDuringAider": true,
+      "rootCause": "A bare OSC 133 C marker from remote Bash forced command extraction from the rendered prompt row instead of the submitted input.",
+      "sourceFixCommit": "ca79bf37c40b85e90b919c68d16c50c24a674b46",
+      "currentSourceAutomatedVerification": {
+        "targetedTestsPassed": 123,
+        "fullNodeTestsPassed": 423,
+        "typecheckPassed": true,
+        "lintPassed": true,
+        "productionBuildPassed": true
+      },
+      "currentSourceBundleReverificationPending": true
+    }
+  },
   "capture": {
     "screenshotSuitableForTerminalJudgement": false,
     "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. The exact-session xterm snapshot and persisted UI state were used instead."
