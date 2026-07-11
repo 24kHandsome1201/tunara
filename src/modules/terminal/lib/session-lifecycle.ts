@@ -98,6 +98,7 @@ export function agentExitedUpdate(
       shellTitle: undefined,
       suppressShellTitle: true,
       terminalProgress: undefined,
+      ...(session.agentActivity === "starting" && exitCode !== 0 ? { agentResume: undefined } : {}),
       runState: exitCode === 0 ? "done" : "failed",
       completedAt: now,
       ...(!isActive ? { unread: true } : {}),

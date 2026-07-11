@@ -73,10 +73,11 @@ test("agent lifecycle: detected → busy → ready → exited clears agent and m
 });
 
 test("agent lifecycle: non-zero exit code marks failed", () => {
-  let s = apply(baseSession(), agentDetectedUpdate(baseSession(), "CX", NOW));
+  let s = apply(baseSession({ agentResume: { agent: "CX", command: "codex", cwd: "/tmp", lastSeenAt: NOW, confidence: "unknown" } }), agentDetectedUpdate(baseSession(), "CX", NOW));
   s = apply(s, agentExitedUpdate(s, 1, true, NOW + 50));
   assert.equal(s.runState, "failed");
   assert.equal(s.lastExitCode, 1);
+  assert.equal(s.agentResume, undefined, "a launch that fails before ready must not leave a false resume card");
   // Active session should NOT get unread on exit.
   assert.equal(s.unread, undefined);
 });

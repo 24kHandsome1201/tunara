@@ -10,9 +10,9 @@ if not set -q __TUNARA_HOOKS_LOADED
 
   function _tunara_precmd --on-event fish_prompt
     set -l ret $status
-    printf '\e]133;D;%s\e\\' $ret
+    printf '\e]133;D;%s;tunara-shell\e\\' $ret
     printf '\e]7;file://localhost%s\e\\' (_tunara_urlencode $PWD)
-    printf '\e]133;A\e\\'
+    printf '\e]133;A;tunara-shell\e\\'
   end
 
   function _tunara_preexec --on-event fish_preexec

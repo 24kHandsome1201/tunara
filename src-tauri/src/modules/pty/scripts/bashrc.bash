@@ -37,13 +37,13 @@ if [ -z "$__TUNARA_HOOKS_LOADED" ]; then
 
   _tunara_precmd() {
     local _tunara_ret=$?
-    printf '\e]133;D;%s\e\\' "$_tunara_ret"
+    printf '\e]133;D;%s;tunara-shell\e\\' "$_tunara_ret"
     printf '\e]7;file://localhost%s\e\\' "$(_tunara_urlencode "$PWD")"
     if [ -z "$__TUNARA_PS1_INJECTED" ]; then
       PS1="${PS1}"'\[\e]133;B\e\\\]'
       __TUNARA_PS1_INJECTED=1
     fi
-    printf '\e]133;A\e\\'
+    printf '\e]133;A;tunara-shell\e\\'
   }
 
   case ":${PROMPT_COMMAND:-}:" in

@@ -173,7 +173,7 @@ function TerminalViewImpl({
       let osc133Active = false;
       let osc133InputFallback = false;
       let pendingSubmittedShellCommand: string | null = null;
-      let promptEndRow = -1;
+      let promptEnd = { row: -1, column: 0 };
       let lastExitCode = 0;
       let startupReadyTimer: ReturnType<typeof setTimeout> | null = null;
       const getCurrentSession = () =>
@@ -270,15 +270,15 @@ function TerminalViewImpl({
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
         const trackedSession = getCurrentSession();
-        if (trackedSession?.agent) {
-          if (marker === "A") {
+        if (trackedSession?.agent) { const shellMarker = data.includes(";tunara-shell");
+          if (marker === "A" && shellMarker) {
             const exitCode = lastExitCode;
             blocks.finishBlock(exitCode, currentBufferRow());
             resetAgentObservers();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
             requestInformationalAttention();
             osc133Active = true;
-          } else if (marker === "D") {
+          } else if (marker === "D" && shellMarker) {
             const exitCode = parseInt(data.slice(2), 10) || 0;
             lastExitCode = exitCode;
             blocks.finishBlock(exitCode, currentBufferRow());
@@ -290,19 +290,20 @@ function TerminalViewImpl({
         }
         if (marker === "A") {
           osc133Active = true;
-          osc133InputFallback = data === "A;input-fallback";
+          osc133InputFallback = data.endsWith(";input-fallback");
           pendingSubmittedShellCommand = null;
+          promptEnd = { row: -1, column: 0 };
         } else if (marker === "B") {
-          promptEndRow = term.buffer.active.cursorY + term.buffer.active.baseY;
+          promptEnd = { row: term.buffer.active.cursorY + term.buffer.active.baseY, column: term.buffer.active.cursorX };
         } else if (marker === "C") {
           osc133InputFallback = false;
           const submittedCommand = pendingSubmittedShellCommand; pendingSubmittedShellCommand = null;
-          if (osc133Active && (promptEndRow >= 0 || submittedCommand || data.startsWith("C;"))) {
-            const cmd = resolveTerminalCommandText(data, submittedCommand, extractCommandFromBuffer(term, promptEndRow));
+          if (osc133Active && (promptEnd.row >= 0 || submittedCommand || data.startsWith("C;"))) {
+            const cmd = resolveTerminalCommandText(data, submittedCommand, extractCommandFromBuffer(term, promptEnd));
             if (cmd) {
               if (isMeaningfulCommand(cmd)) {
                 useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
-                blocks.beginBlock(cmd, promptEndRow >= 0 ? promptEndRow : currentBufferRow());
+                blocks.beginBlock(cmd, promptEnd.row >= 0 ? promptEnd.row : currentBufferRow());
               }
               const agent = detectAgentCommand(cmd);
               if (agent) {
@@ -446,15 +447,15 @@ function TerminalViewImpl({
         const trimmed = cleanTerminalText(submitted).trim();
         const currentAgent = getCurrentSession()?.agent;
         if (!currentAgent && trimmed) pendingSubmittedShellCommand = trimmed;
+        // Submitted input is exact and already crossed Enter; detect here so a
+        // later PS0/C screen read cannot lose launch provenance.
+        if (!currentAgent) {
+          const agent = detectAgentCommand(submitted);
+          if (agent) markAgentDetected(agent, submitted);
+        }
         if (!shouldScanTerminalInput(osc133Active, osc133InputFallback)) return;
         if (!currentAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
-        }
-        if (!currentAgent) {
-          const agent = detectAgentCommand(submitted);
-          if (agent) {
-            markAgentDetected(agent, submitted);
-          }
         }
         // 本地会话里手敲 ssh:提示「改用内置 SSH 打开远程文件」。
         // suggestSshConnect 内部已守卫远程会话/已忽略 host,这里只做检测。

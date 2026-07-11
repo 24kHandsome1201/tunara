@@ -59,7 +59,7 @@ const CODEX_RESUME_SANDBOXES = new Set(["read-only", "workspace-write"]);
 const CODEX_RESUME_APPROVAL_POLICIES = new Set(["untrusted", "on-failure", "on-request", "never"]);
 const PI_PACKAGE = /^@earendil-works\/pi-coding-agent(?:@[0-9A-Za-z][0-9A-Za-z._+-]{0,127})?$/;
 const PI_PINNED_PACKAGE = /^@earendil-works\/pi-coding-agent@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-const PI_TIGHTENING_FLAGS = ["--no-extensions", "--no-skills", "--no-context-files", "--no-tools"];
+const PI_TIGHTENING_FLAGS = ["--offline", "--no-extensions", "--no-skills", "--no-context-files", "--no-tools"];
 const PI_FLAGS_WITH_VALUES = new Set([
   "--api-key",
   "--mode",
@@ -81,6 +81,32 @@ function commandArgs(command: string, executable: string): string[] | null {
 function piInvocationWords(command: string): string[] | null {
   for (const segment of splitShellCommandSegments(command)) {
     if (detectAgentCommand(segment) === "PI") return tokenizeShellWords(segment);
+  }
+  return null;
+}
+
+function leadingSuccessfulCd(command: string): string | null {
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (escaped) { escaped = false; continue; }
+    if (char === "\\" && quote !== "'") { escaped = true; continue; }
+    if (quote) { if (char === quote) quote = null; continue; }
+    if (char === "'" || char === '"') { quote = char; continue; }
+    const pair = command.slice(index, index + 2);
+    if (pair === "&&") {
+      const words = tokenizeShellWords(command.slice(0, index));
+      const path = words[0] === "cd" && words[1] === "--" ? words[2] : words[0] === "cd" ? words[1] : undefined;
+      const expectedLength = words[1] === "--" ? 3 : 2;
+      return words.length === expectedLength
+        && path
+        && path.length <= 1024
+        && (/^\//.test(path) || /^~\//.test(path))
+        ? path
+        : null;
+    }
+    if (pair === "||" || char === ";" || char === "|") return null;
   }
   return null;
 }
@@ -259,10 +285,11 @@ export function buildAgentResumeIntent(
   const parsedResumeId = explicitCommand ? parseResumeId(normalized) : null;
   const resumeId = preserveActiveExact ? existing.resumeId : parsedResumeId ?? undefined;
   const continueMatch = explicitCommand ? hasContinueFlag(normalized) : false;
+  const launchCwd = explicitCommand ? leadingSuccessfulCd(normalized) ?? session.dir : session.dir;
   const next: AgentResumeIntent = {
     agent,
     command: normalized,
-    cwd: newGeneration ? session.dir : existing?.cwd ?? session.dir,
+    cwd: newGeneration ? launchCwd : existing?.cwd ?? launchCwd,
     provenance: session.remote
       ? {
           transport: "ssh",

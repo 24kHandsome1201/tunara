@@ -444,7 +444,7 @@ test("agent resume preserves only allowlisted permission and sandbox posture", (
 test("Pi resume preserves an exact identity, safe launcher, session directory, and tighter capabilities", () => {
   const direct = {
     agent: "PI",
-    command: "pi --no-tools --no-skills --session-dir '/tmp/pi sessions' --session-id pi-session-1",
+    command: "pi --offline --no-tools --no-skills --session-dir '/tmp/pi sessions' --session-id pi-session-1",
     cwd: "/repo",
     provenance: { transport: "local" },
     resumeId: "pi-session-1",
@@ -453,7 +453,7 @@ test("Pi resume preserves an exact identity, safe launcher, session directory, a
   };
   assert.equal(
     buildAgentResumeCommand(direct),
-    "pi --no-skills --no-tools --session-dir '/tmp/pi sessions' --session pi-session-1",
+    "pi --offline --no-skills --no-tools --session-dir '/tmp/pi sessions' --session pi-session-1",
   );
   assert.equal(
     buildAgentResumeCommand({
@@ -667,6 +667,23 @@ test("agent resume returns to its immutable launch cwd before starting", () => {
   assert.equal(
     buildAgentResumeLaunchCommand(intent, { dir: intent.cwd }),
     "claude --permission-mode plan --resume session-1",
+  );
+});
+
+test("agent resume captures a leading successful cd as the actual launch cwd", () => {
+  const session = makeSession({ dir: "/root" });
+  assert.equal(
+    buildAgentResumeIntent(
+      session,
+      "PI",
+      "cd '/tmp/work tree' && PI_CODING_AGENT_DIR=/tmp/pi-agent ./pi --session-id pi-session-1",
+      1,
+    )?.cwd,
+    "/tmp/work tree",
+  );
+  assert.equal(
+    buildAgentResumeIntent(session, "PI", "cd /tmp || ./pi --session-id pi-session-1", 1)?.cwd,
+    "/root",
   );
 });
 

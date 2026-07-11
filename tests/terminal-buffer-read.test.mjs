@@ -5,9 +5,47 @@ import test from "node:test";
 // (extractCommandFromBuffer / getTerminalTailText) iterate a live xterm.js
 // Terminal buffer and cannot run headless, so they are not covered here.
 import {
+  extractCommandFromBuffer,
   extractCommandFromOsc,
   resolveTerminalCommandText,
 } from "../src/modules/terminal/lib/terminal-buffer-read.ts";
+
+function terminalBuffer(lines, cursorY = lines.length - 1) {
+  return {
+    buffer: {
+      active: {
+        baseY: 0,
+        cursorY,
+        getLine(row) {
+          const line = lines[row];
+          if (!line) return undefined;
+          return {
+            isWrapped: Boolean(line.wrapped),
+            translateToString(_trimRight, start = 0) {
+              return line.text.slice(start).replace(/\s+$/, "");
+            },
+          };
+        },
+      },
+    },
+  };
+}
+
+test("extractCommandFromBuffer excludes the visible prompt before OSC 133 B", () => {
+  const term = terminalBuffer([{ text: "root@host:/tmp# pi --session abc" }]);
+  assert.equal(extractCommandFromBuffer(term, { row: 0, column: 16 }), "pi --session abc");
+});
+
+test("extractCommandFromBuffer rejoins terminal soft wraps without inserting spaces", () => {
+  const term = terminalBuffer([
+    { text: "root@host:/tmp# PI_CODING_AGENT_DIR=/tmp/agent ./pi --sess" },
+    { text: "ion-id 99999999-9999-4999-8999-999999999999", wrapped: true },
+  ]);
+  assert.equal(
+    extractCommandFromBuffer(term, { row: 0, column: 16 }),
+    "PI_CODING_AGENT_DIR=/tmp/agent ./pi --session-id 99999999-9999-4999-8999-999999999999",
+  );
+});
 
 test("extractCommandFromOsc decodes a plain C;-prefixed command", () => {
   assert.equal(extractCommandFromOsc("C;git status"), "git status");

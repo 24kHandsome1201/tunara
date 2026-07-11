@@ -36,13 +36,13 @@ if [[ -z "$__TUNARA_HOOKS_LOADED" ]]; then
 
   _tunara_precmd() {
     local _tunara_ret=$?
-    printf '\e]133;D;%s\e\\' "$_tunara_ret"
+    printf '\e]133;D;%s;tunara-shell\e\\' "$_tunara_ret"
     printf '\e]7;file://localhost%s\e\\' "$(_tunara_urlencode "$PWD")"
     # Re-inject prompt-end marker in case a framework rebuilt PS1 (p10k, starship).
     if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then
       PS1=$'%{\e]133;B\e\\%}'"$PS1"
     fi
-    printf '\e]133;A\e\\'
+    printf '\e]133;A;tunara-shell\e\\'
   }
 
   _tunara_preexec() {

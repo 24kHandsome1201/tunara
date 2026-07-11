@@ -296,7 +296,7 @@ test("remote SSH integration emits per-turn lifecycle hooks without a host socke
   assert.doesNotMatch(remote, /trap '_tunara_r_preexec' DEBUG/);
   assert.match(remote, /BASH_VERSINFO[\s\S]*PS0=/);
   assert.match(remote, /PS1=.*133;B/);
-  assert.match(remote, /133;A;input-fallback/);
+  assert.match(remote, /133;A;tunara-shell;input-fallback/);
   assert.match(remote, /PS1="\$\{PS1\}"/);
   assert.doesNotMatch(remote, /PS1='\\\[\\e\]133;B/);
   assert.match(remote, /function codex \{ _tunara_r_agent_plain_run codex CX/);

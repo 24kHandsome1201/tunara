@@ -37,7 +37,7 @@ if [ -n "$ZSH_VERSION" ]; then
     __TUNARA_REMOTE_LOADED=1
     autoload -Uz add-zsh-hook 2>/dev/null
     _tunara_r_enc() { local LC_ALL=C s="$1" i c; for ((i=1;i<=${#s};i++)); do c="${s[i]}"; case "$c" in [a-zA-Z0-9/._~-]) printf '%s' "$c";; *) printf '%%%02X' "'$c";; esac; done; }
-    _tunara_r_precmd() { local r=$?; printf '\e]133;D;%s\e\\' "$r"; printf '\e]7;file://localhost%s\e\\' "$(_tunara_r_enc "$PWD")"; if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then PS1=$'%{\e]133;B\e\\%}'"$PS1"; fi; printf '\e]133;A\e\\'; }
+    _tunara_r_precmd() { local r=$?; printf '\e]133;D;%s;tunara-shell\e\\' "$r"; printf '\e]7;file://localhost%s\e\\' "$(_tunara_r_enc "$PWD")"; if [[ "$PS1" != *$'\e]133;B\e\\'* ]]; then PS1=$'%{\e]133;B\e\\%}'"$PS1"; fi; printf '\e]133;A;tunara-shell\e\\'; }
     _tunara_r_preexec() { printf '\e]133;C;%s\e\\' "$(_tunara_r_enc "$1")"; }
     add-zsh-hook precmd _tunara_r_precmd 2>/dev/null
     add-zsh-hook preexec _tunara_r_preexec 2>/dev/null
@@ -132,7 +132,7 @@ elif [ -n "$BASH_VERSION" ]; then
        || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ]; }; then
       __TUNARA_REMOTE_INPUT_FALLBACK=1
     fi
-    _tunara_r_prompt() { local r=$?; printf '\e]133;D;%s\e\\' "$r"; printf '\e]7;file://localhost%s\e\\' "$(_tunara_r_enc "$PWD")"; case "$PS1" in *'\[\e]133;B\e\\\]'*) ;; *) PS1="${PS1}"'\[\e]133;B\e\\\]';; esac; if [ "$__TUNARA_REMOTE_INPUT_FALLBACK" = 1 ]; then printf '\e]133;A;input-fallback\e\\'; else printf '\e]133;A\e\\'; fi; }
+    _tunara_r_prompt() { local r=$?; printf '\e]133;D;%s;tunara-shell\e\\' "$r"; printf '\e]7;file://localhost%s\e\\' "$(_tunara_r_enc "$PWD")"; case "$PS1" in *'\[\e]133;B\e\\\]'*) ;; *) PS1="${PS1}"'\[\e]133;B\e\\\]';; esac; if [ "$__TUNARA_REMOTE_INPUT_FALLBACK" = 1 ]; then printf '\e]133;A;tunara-shell;input-fallback\e\\'; else printf '\e]133;A;tunara-shell\e\\'; fi; }
     case "$PROMPT_COMMAND" in *_tunara_r_prompt*) ;; *) PROMPT_COMMAND="_tunara_r_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac
     # Bash 4.4+ can emit a pre-exec marker through PS0 without taking over the
     # user's DEBUG trap. Older Bash keeps cwd/prompt integration and relies on

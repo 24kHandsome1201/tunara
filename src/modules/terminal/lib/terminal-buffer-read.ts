@@ -1,14 +1,26 @@
 import type { Terminal } from "@xterm/xterm";
 import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 
-export function extractCommandFromBuffer(term: Terminal, promptEndRow: number): string {
+export interface TerminalBufferPosition {
+  row: number;
+  column: number;
+}
+
+export function extractCommandFromBuffer(term: Terminal, promptEnd: TerminalBufferPosition): string {
   const cursorY = term.buffer.active.cursorY + term.buffer.active.baseY;
-  const parts: string[] = [];
-  for (let row = promptEndRow; row <= cursorY; row += 1) {
+  let command = "";
+  for (let row = promptEnd.row; row <= cursorY; row += 1) {
     const line = term.buffer.active.getLine(row);
-    if (line) parts.push(line.translateToString(true));
+    if (!line) continue;
+    const text = line.translateToString(true, row === promptEnd.row ? promptEnd.column : 0);
+    // A terminal soft-wrap is presentation only and must not manufacture a
+    // space inside flags, paths, environment names, or session IDs. Real
+    // multi-line shell input still receives a separator so adjacent commands
+    // cannot collapse into one token.
+    if (command && !line.isWrapped) command += " ";
+    command += text;
   }
-  return cleanTerminalText(parts.join(" ")).trim();
+  return cleanTerminalText(command).trim();
 }
 
 export function extractCommandFromOsc(data: string): string {
