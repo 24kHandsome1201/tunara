@@ -39,6 +39,8 @@
 
 - [x] 本地 Aider 安装版安全边界与 compound 命令识别修复：在 `/tmp` 用 `uvx --from aider-chat aider --no-git` 启动，无 key 时明确拒绝 OpenRouter 登录/建号和打开文档，未伪报 provider 成功；horizontal 50/50、Finder 后台往返和普通 zsh marker `TUNARA_LOCAL_AIDER_SHELL_OK` 通过。安装版只检查首 token，导致 compound + uvx 包装未识别 Aider、交互回答 `n` 错作标题；`d8d6a2b` 已加入引号感知的 shell segment/word 解析和 `uvx --from` 识别，并以负例防止普通文本误报。87 项定向、425 项全量、typecheck、lint、build 均通过，新 bundle 实机复验仍待完成；clipboard/resume 本轮未宣称通过。
 
+- [x] SSH Codex 正常退出补证：`de-netcup /root` 中 Codex 0.144.1 以 read-only sandbox 进入 ready prompt，官方 `/exit` 后真实 xterm 快照恢复 `root@de-netcup:~#`，随后远端 shell 实际输出 `TUNARA_SSH_CODEX_SHELL_OK`。安装版启动即“已完成”仍按 `93244ca` 的历史缺陷处理，不作为当前源码回归。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。

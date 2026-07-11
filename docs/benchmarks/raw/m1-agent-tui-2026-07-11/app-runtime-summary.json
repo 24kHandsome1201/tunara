@@ -76,6 +76,13 @@
       "submittedToAgent": false,
       "inputClearedWithCtrlC": true
     },
+    "exit": {
+      "command": "/exit",
+      "ordinaryRemoteShellRestored": true,
+      "restoredPrompt": "root@de-netcup:~#",
+      "shellProbe": "printf 'TUNARA_SSH_CODEX_SHELL_OK\\n'",
+      "shellMarkerObserved": "TUNARA_SSH_CODEX_SHELL_OK"
+    },
     "installedVersionDefectsObserved": {
       "startupDoneLabelWithoutCompletedTurn": true,
       "startupDoneLabelSourceFixCommit": "93244caaa18b731751627e31c107dd6a26914dbd",
