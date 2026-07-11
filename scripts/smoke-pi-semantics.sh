@@ -35,6 +35,20 @@ wait_for_text() {
   return 1
 }
 
+wait_for_absence() {
+  local pattern="$1"
+  local attempts="${2:-40}"
+  local screen
+  for ((i = 0; i < attempts; i += 1)); do
+    screen="$(tmux capture-pane -p -t "$session" 2>/dev/null || true)"
+    if ! grep -Eq "$pattern" <<< "$screen"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
 tmux new-session -d -s "$session" -x 120 -y 40 "$command_string"
 
 if ! wait_for_text 'pi v[0-9]+\.|No models available' 80; then
@@ -53,6 +67,16 @@ capture slash-filter
 tmux send-keys -t "$session" C-c
 sleep 0.5
 capture slash-cancel
+
+# Double bang executes a real shell command without adding it to model context.
+# Capture both sides of the transition so Pi's narrow footer state remains a
+# repeatable ready -> running -> ready regression gate.
+tmux send-keys -t "$session" '!!sleep 2'
+tmux send-keys -t "$session" Enter
+wait_for_text 'Running\.\.\. \(escape/ctrl\+c to cancel\)' 20 || true
+capture shell-busy
+wait_for_absence 'Running\.\.\. \(escape/ctrl\+c to cancel\)' 20 || true
+capture shell-ready
 
 # Double bang keeps the deterministic shell command out of model context while
 # still creating a real entry in Pi's session-scoped prompt history.
