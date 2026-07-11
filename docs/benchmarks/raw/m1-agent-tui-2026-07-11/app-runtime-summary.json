@@ -81,7 +81,8 @@
       "startupDoneLabelSourceFixCommit": "93244caaa18b731751627e31c107dd6a26914dbd",
       "newSplitPaneLostSshContext": true,
       "splitContextSourceFixCommit": "e687e3e8bfffa3ccd335d97ef90fc53a54b27c7d",
-      "newBundleReverificationPending": true
+      "newBundleReverificationPending": false,
+      "reverifiedByCurrentSourceDebugBundle": true
     }
   },
   "localPiRuntime": {
@@ -125,7 +126,41 @@
       "rootCause": "Pi had no prompt-ready detector, and its persistent footer could not clear the submitted-input busy transition.",
       "sourceFixCommit": "118a1c50ac59345c83a6ec1548a612954f31d87e",
       "busyIndicatorPrecedesReadyFooter": true,
-      "newBundleReverificationPending": true
+      "newBundleReverificationPending": false,
+      "reverifiedByCurrentSourceDebugBundle": true
+    }
+  },
+  "currentSourceDebugBundle": {
+    "capturedAt": "2026-07-11T08:31:00Z",
+    "app": {
+      "productName": "Tuna",
+      "identifier": "dev.tunara.app.dev",
+      "sourceCommit": "5fc3a0eb96804abbd1f8ef8123192d7e97ba3c95"
+    },
+    "sshSplitInheritance": {
+      "target": "de-netcup",
+      "sourceCwd": "/root",
+      "mode": "horizontal",
+      "ratio": 0.5,
+      "newPaneConnectionPhaseObserved": "negotiatingSsh",
+      "newPaneRemote": true,
+      "newPaneCwd": "/root",
+      "localFallbackObserved": false,
+      "result": "passed"
+    },
+    "localPiNarrowPaneLifecycle": {
+      "cols": 32,
+      "startupLabelObserved": "loading",
+      "firstUsePermissionPromptObserved": true,
+      "permissionChoice": "do-not-trust-this-session",
+      "persistentTrustGranted": false,
+      "clippedReadyFooterObserved": "$0.000 (sub) 0.0%/272k (auto)  gp",
+      "readyFooterBelowInputCursor": true,
+      "readyAfterPermissionChoice": true,
+      "controlledBusyCommand": "!sleep 3",
+      "runningLabelObserved": true,
+      "returnedToReadyAfterCompletion": true,
+      "result": "passed"
     }
   },
   "capture": {
