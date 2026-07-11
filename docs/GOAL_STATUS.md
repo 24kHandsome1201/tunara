@@ -37,6 +37,8 @@
 
 - [x] 本地 Codex 安装版交互补证与恢复链修复：Codex 0.144.1 以 read-only sandbox 在 horizontal 50/50 中与 SSH shell 共存，Finder 后台切回保持 session/split；首次信任 review 明确选择“不信任继续，hooks 不运行”且仍进入 ready prompt。真实 xterm 快照证明 `/` 打开命令菜单、`/perm` 过滤为 `/permissions`、`Ctrl+C` 清空并恢复 prompt；快速选择 4 项、token `5` 精确复制粘贴且未提交，官方 `/exit` 后普通 zsh 输出 `TUNARA_LOCAL_CODEX_MENU_SHELL_OK`。方向选择与多行编辑仍未宣称通过。取证发现“恢复”只预填不提交、污染下一条命令，以及精确 Codex session id 沿用旧 Claude source command 两个缺陷；`9a69d97` 已让恢复动作立即提交，`9202a37` 已将 source command 严格限定在同 Agent，当前源码 425 项全量、typecheck、lint、build 均通过。两个修复的新 bundle 实机复验仍待完成。
 
+- [x] 本地 Aider 安装版安全边界与 compound 命令识别修复：在 `/tmp` 用 `uvx --from aider-chat aider --no-git` 启动，无 key 时明确拒绝 OpenRouter 登录/建号和打开文档，未伪报 provider 成功；horizontal 50/50、Finder 后台往返和普通 zsh marker `TUNARA_LOCAL_AIDER_SHELL_OK` 通过。安装版只检查首 token，导致 compound + uvx 包装未识别 Aider、交互回答 `n` 错作标题；`d8d6a2b` 已加入引号感知的 shell segment/word 解析和 `uvx --from` 识别，并以负例防止普通文本误报。87 项定向、425 项全量、typecheck、lint、build 均通过，新 bundle 实机复验仍待完成；clipboard/resume 本轮未宣称通过。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。
