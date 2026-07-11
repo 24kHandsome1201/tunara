@@ -57,6 +57,10 @@
 
 - [x] SSH Claude 首次权限与后台安全拒绝：`de-netcup` 在 `/root` 和 `/tmp` 以 `claude --permission-mode plan` 启动均出现真实目录信任提示，明确说明会读取、写入或执行目录内容；`/root` 还列出 `.claude/settings.local.json` 与 `.claude/settings.json` 的执行授权来源。两次都选择 `No, exit`，未授予持久信任。第二次提示保持期间完成 Finder 后台往返，horizontal 50/50、prompt 与输入目标均保留；安全退出后恢复 `root@de-netcup:/tmp` Bash。provider、clipboard 与 resume 不宣称通过。
 
+- [x] SSH 恢复会话的 Fast Refresh 生命周期修复：当前源码冷启动时，真实 `de-netcup` SSH 后端 `ssh opened id=2` 后前端 `openSessionPty` 正常返回且 `disposed=false`，排除生产冷启动 IPC 卡死。随后受控 HMR 复现旧实现关闭 SSH/local PTY 后不再打开；根因是 effect cleanup 保留 `initRef=true`，刷新后的 effect 被单向锁短路。cleanup 现先释放初始化锁，真实 HMR 已连续完成 `SSH 2→4→6` 与本地 `1→3→5` 重建；辅助技术树恢复两个独立 `Terminal input`、无连接遮罩，Tunara pane 写入的 `TUNARA_SSH_SHELL_BASELINE` 由独立 SSH 读回。定向生命周期测试、typecheck、lint 与 diff check 通过。
+
+- [x] SSH Claude 当前 bundle 多行安全边界补证：恢复后的 `de-netcup` pane 在隔离 `/tmp/tunara-claude-smoke` 中启动真实 Claude Code plan mode，独立进程证据为 `claude --plugin-dir /tmp/.tunara-agent-* --permission-mode plan`、TTY `pts/0`。信任仅授予隔离临时目录；两行受控剪贴准确触发原生“即将粘贴 2 行”与 Cancel/OK，确认后未出现 Claude busy hook、没有自动 provider 提交。GPU/WKWebView 截图仍被系统捕获成黑块，快速选择也未在当前窄 pane 中形成可审阅 marker 证据；`/exit`/Ctrl+D 未自然结束，最终只向该测试 PID 发送温和 SIGINT 并清理临时目录。因此本项只证明预警与不自动提交，不宣称双行可见、取消清空、普通剪贴板回环、正常退出或 resume。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。

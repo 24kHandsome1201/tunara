@@ -123,6 +123,19 @@ test("SSH connection state comes from backend phase evidence and remains ephemer
   assert.doesNotMatch(persisted, /Pick<[\s\S]*?"connection"/);
 });
 
+test("terminal initialization latch resets when an effect lifecycle is cleaned up", () => {
+  const terminal = read("src/ui/TerminalView.tsx");
+  const cleanupIndex = terminal.indexOf("return () => {", terminal.indexOf("useEffect(() => {"));
+  const cleanup = terminal.slice(cleanupIndex, terminal.indexOf("};", cleanupIndex) + 2);
+
+  assert.ok(cleanupIndex >= 0, "TerminalView must expose an initialization cleanup");
+  assert.match(cleanup, /initRef\.current = false/);
+  assert.ok(
+    cleanup.indexOf("initRef.current = false") < cleanup.indexOf("ptyRef.current.close"),
+    "the latch must reopen before cleanup closes the previous PTY",
+  );
+});
+
 test("restored SSH sessions forward only absolute cwd through a staged, quoted bootstrap", () => {
   const bridge = read("src/modules/terminal/lib/pty-bridge.ts");
   const ssh = read("src-tauri/src/modules/ssh/mod.rs");

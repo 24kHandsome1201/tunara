@@ -510,7 +510,7 @@ function TerminalViewImpl({
       if (!disposed) setOpenError(reportTerminalInitializationFailure(sessionIdRef.current, Boolean(session?.remote), error));
     });
     return () => {
-      disposed = true;
+      disposed = true; initRef.current = false; // Fast Refresh preserves refs across effect lifecycles.
       if (!ptyRef.current && session?.remote) {
         void cancelSshOpen(sessionIdRef.current);
       }

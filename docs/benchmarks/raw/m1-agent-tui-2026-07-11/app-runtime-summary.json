@@ -862,8 +862,53 @@
       "ordinaryRemoteShellRestored": true,
       "restoredPrompt": "root@de-netcup:/tmp"
     },
+    "currentSourceDebugBundle": {
+      "capturedAt": "2026-07-11T15:04:47Z",
+      "restoredSsh": {
+        "coldStartBackendPtyId": 2,
+        "frontendOpenReturned": true,
+        "frontendDisposedAtReturn": false,
+        "accessibilityTerminalInputs": 2,
+        "connectingOverlayPresent": false,
+        "shellBaselineWrittenThroughTunara": "TUNARA_SSH_SHELL_BASELINE",
+        "shellBaselineReadThroughIndependentSsh": true
+      },
+      "fastRefreshRegression": {
+        "rootCause": "The TerminalView effect cleanup preserved initRef=true, so React Fast Refresh closed the live PTY and the refreshed effect skipped initialization.",
+        "beforeFixClosedWithoutReopen": [2, 1],
+        "afterFixSshPtySequence": [2, 4, 6],
+        "afterFixLocalPtySequence": [1, 3, 5],
+        "sourceFix": "Reset initRef before closing the previous PTY in effect cleanup.",
+        "targetedRegressionPassed": true
+      },
+      "isolatedTrustDirectory": "/tmp/tunara-claude-smoke",
+      "remoteProcess": {
+        "tty": "pts/0",
+        "commandShape": "claude --plugin-dir /tmp/.tunara-agent-* --permission-mode plan"
+      },
+      "bracketedPaste": {
+        "controlledLines": 2,
+        "nativeWarningObserved": true,
+        "warningLineCount": 2,
+        "warningButtons": ["Cancel", "OK"],
+        "warningAccepted": true,
+        "busyHookObserved": false,
+        "automaticProviderSubmissionObserved": false,
+        "bothLinesVisibleClaimed": false,
+        "inputClearedClaimed": false
+      },
+      "exit": {
+        "slashExitSucceeded": false,
+        "ctrlDSucceeded": false,
+        "cleanupSignal": "SIGINT",
+        "processExitedAfterSigint": true,
+        "ordinaryShellMarkerObserved": false
+      },
+      "isolatedDirectoryCleaned": true
+    },
     "providerSuccessClaimed": false,
     "clipboardClaimed": false,
+    "normalExitClaimedForCurrentSourceRun": false,
     "resumeClaimed": false
   },
   "titlebarTabAccessibility": {
@@ -930,6 +975,6 @@
   },
   "capture": {
     "screenshotSuitableForTerminalJudgement": false,
-    "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. The exact-session xterm snapshot and persisted UI state were used instead."
+    "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. For the current SSH Claude run, accessibility state, native sheet text, backend logs, remote process state, and an independent SSH shell probe were used; claims requiring visible composer evidence remain false."
   }
 }
