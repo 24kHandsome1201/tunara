@@ -20,7 +20,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   const agentCode = session.agent ?? lastAgent;
   const resumeCommand = buildAgentResumeCommand(session.agentResume);
   const resumeAgent = !session.agent && resumeCommand ? session.agentResume?.agent : undefined;
-  const displayAgent = agentCode ?? resumeAgent;
+  const displayAgent = session.agent ?? resumeAgent ?? agentCode;
   const isBusy = !!session.agent && isAgentActivityBusy(session.agentActivity);
   const isStarting = session.agentActivity === "starting";
   const isCompletedTurn = visible && hasCompletedAgentTurn(session);

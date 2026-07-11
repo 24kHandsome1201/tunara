@@ -92,6 +92,7 @@ import {
   hasContinueFlag,
   isResumableAgentInvocation,
   parseResumeId,
+  reconcileAgentResumeIntent,
 } from "../src/modules/terminal/lib/agent-resume.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
@@ -394,6 +395,28 @@ test("utility agent invocations never create resumable sessions", () => {
   assert.equal(isResumableAgentInvocation("CC", "claude --resume abc"), true);
   assert.equal(isResumableAgentInvocation("CX", "codex resume abc"), true);
   assert.equal(isResumableAgentInvocation("DR", "droid"), false);
+});
+
+test("a newly detected agent cannot inherit another agent's resume intent", () => {
+  const claudeResume = {
+    agent: "CC",
+    command: "claude --resume session-1",
+    cwd: "/repo",
+    resumeId: "session-1",
+    lastSeenAt: 1,
+    confidence: "exact",
+  };
+  const openCodeResume = {
+    agent: "OC",
+    command: "opencode --continue",
+    cwd: "/repo",
+    lastSeenAt: 2,
+    confidence: "continue",
+  };
+
+  assert.equal(reconcileAgentResumeIntent(claudeResume, "OC", undefined), undefined);
+  assert.equal(reconcileAgentResumeIntent(claudeResume, "CC", undefined), claudeResume);
+  assert.equal(reconcileAgentResumeIntent(claudeResume, "OC", openCodeResume), openCodeResume);
 });
 
 test("keybinding parser accepts plus as a literal key", () => {

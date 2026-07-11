@@ -475,7 +475,9 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(source, /agentDetectedUpdate\(session, agent\)/);
   assert.match(source, /function buildAgentResumeIntent/);
   assert.match(source, /handleAgentDetected: \(id, agent, command\)/);
-  assert.match(source, /agentResume: buildAgentResumeIntent|const agentResume = buildAgentResumeIntent/);
+  assert.match(source, /const agentResume = reconcileAgentResumeIntent\(/);
+  assert.match(source, /const resumeChanged = agentResume !== session\?\.agentResume/);
+  assert.match(source, /agentResume,/);
   assert.match(source, /agentReadyUpdate\(session, isActive\)/);
   assert.match(source, /agentBusyUpdate\(session\)/);
   assert.match(source, /agentExitedUpdate\(session, exitCode, isActive\)/);
@@ -561,6 +563,7 @@ test("UI renders sidebar progress only when an agent is busy", () => {
   assert.doesNotMatch(card, /const showBusyProgress = session\.runState === "running";/);
   assert.match(status, /import \{ hasCompletedAgentTurn, isAgentActivityBusy \}/);
   assert.match(status, /const isBusy = !!session\.agent && isAgentActivityBusy\(session\.agentActivity\);/);
+  assert.match(status, /const displayAgent = session\.agent \?\? resumeAgent \?\? agentCode;/);
   assert.match(status, /session\.agent && session\.agentActivity === "idle" && !hasCompletedAgentTurn\(session\)/);
   assert.match(main, /<AgentStatusBar session=/);
   assert.doesNotMatch(diff, /session\.runState !== "running"/);

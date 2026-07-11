@@ -6,6 +6,7 @@ import {
   hasContinueFlag,
   isResumableAgentInvocation,
   parseResumeId,
+  reconcileAgentResumeIntent,
 } from "@/modules/terminal/lib/agent-resume";
 import { t } from "@/modules/i18n/core.ts";
 import {
@@ -499,15 +500,20 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleAgentDetected: (id, agent, command) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = agentDetectedUpdate(session, agent);
-    const agentResume = buildAgentResumeIntent(session, agent, command);
-    if (update || agentResume) {
+    const agentResume = reconcileAgentResumeIntent(
+      session?.agentResume,
+      agent,
+      buildAgentResumeIntent(session, agent, command),
+    );
+    const resumeChanged = agentResume !== session?.agentResume;
+    if (update || resumeChanged) {
       // The wrapper and native hook can report the same process start through
       // different channels. Updating resume metadata must not manufacture a
       // second lifecycle entry for an already-detected agent.
       if (update) get().appendTimeline(id, "agent_start", AGENT_NAMES[agent] ?? agent);
       get().updateSession(id, {
         ...(update?.patch ?? {}),
-        ...(agentResume ? { agentResume } : {}),
+        agentResume,
       });
     }
   },

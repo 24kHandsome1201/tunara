@@ -107,6 +107,15 @@ export function hasContinueFlag(command: string): boolean {
   return /(?:^|\s)(?:--continue|continue)(?:\s|$)/.test(command);
 }
 
+export function reconcileAgentResumeIntent(
+  existing: AgentResumeIntent | undefined,
+  detectedAgent: AgentCode,
+  next: AgentResumeIntent | undefined,
+): AgentResumeIntent | undefined {
+  if (next) return next;
+  return existing?.agent === detectedAgent ? existing : undefined;
+}
+
 function shellQuoteToken(token: string): string {
   return /^[A-Za-z0-9._:@%/+=,-]+$/.test(token)
     ? token
