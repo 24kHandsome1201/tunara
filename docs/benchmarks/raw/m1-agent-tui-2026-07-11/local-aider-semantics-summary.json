@@ -1,0 +1,28 @@
+{
+  "capturedAt": "2026-07-11T18:21:47.913502+00:00",
+  "commit": "8f94bb4",
+  "target": "local-macos",
+  "agent": "aider",
+  "safety": {
+    "modelPromptSubmitted": false,
+    "historySeed": "local /settings command",
+    "gitEnabled": false,
+    "analyticsEnabled": false,
+    "browserEnabled": false,
+    "rawLogsRetained": false
+  },
+  "checks": {
+    "readyPromptVisible": true,
+    "slashMenuOpened": true,
+    "slashMenuFiltered": true,
+    "slashMenuCancelled": true,
+    "localSettingsExecuted": true,
+    "historyRestored": true,
+    "historyReturnedToBlank": true,
+    "multilineAVisible": true,
+    "multilineBVisible": true,
+    "multilineCancelled": true,
+    "normalExitObserved": true
+  },
+  "passed": true
+}

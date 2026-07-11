@@ -1,0 +1,28 @@
+{
+  "capturedAt": "2026-07-11T18:22:25.774436+00:00",
+  "commit": "8f94bb4",
+  "target": "de-netcup",
+  "agent": "aider",
+  "safety": {
+    "modelPromptSubmitted": false,
+    "historySeed": "local /settings command",
+    "gitEnabled": false,
+    "analyticsEnabled": false,
+    "browserEnabled": false,
+    "rawLogsRetained": false
+  },
+  "checks": {
+    "readyPromptVisible": true,
+    "slashMenuOpened": true,
+    "slashMenuFiltered": true,
+    "slashMenuCancelled": true,
+    "localSettingsExecuted": true,
+    "historyRestored": true,
+    "historyReturnedToBlank": true,
+    "multilineAVisible": true,
+    "multilineBVisible": true,
+    "multilineCancelled": true,
+    "normalExitObserved": true
+  },
+  "passed": true
+}
