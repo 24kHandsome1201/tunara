@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-11T13:06:20Z",
+  "capturedAt": "2026-07-11T13:14:33Z",
   "installedApp": {
     "path": "/Applications/Tunara.app",
     "version": "1.14.0"
@@ -93,7 +93,7 @@
     }
   },
   "localPiRuntime": {
-    "capturedAt": "2026-07-11T08:05:00Z",
+    "capturedAt": "2026-07-11T13:14:33Z",
     "version": "0.79.4",
     "agentDetected": true,
     "readySnapshot": {
@@ -127,6 +127,30 @@
       "exactRoundTrip": true,
       "submittedToAgent": false,
       "inputClearedWithCtrlC": true
+    },
+    "bracketedPaste": {
+      "sourceApp": "installed Tunara 1.14.0",
+      "cwd": "/tmp",
+      "canonicalCwdObserved": "/private/tmp",
+      "command": "pi --no-session",
+      "controlledLines": 2,
+      "markers": [
+        "TUNARA_LOCAL_PI_LINE_ONE",
+        "TUNARA_LOCAL_PI_LINE_TWO"
+      ],
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "warningAccepted": true,
+      "evidenceSource": "Persisted xterm SerializeAddon workspace snapshot",
+      "bothLinesInsidePiInputBounds": true,
+      "readyFooterObserved": "$0.000 (sub) 0.0%/272k (auto) gpt-5.5",
+      "backgroundRoundTripPreservedInput": true,
+      "autoSubmittedToProvider": false,
+      "inputClearedWithCtrlC": true,
+      "bothMarkersAbsentFromPostClearSnapshot": true,
+      "piVersionPreservedAfterClear": true,
+      "readyFooterPreservedAfterClear": true,
+      "agentLabelAfterClear": "Pi running"
     },
     "exit": {
       "method": "Ctrl+D at an empty Pi prompt",

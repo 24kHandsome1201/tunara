@@ -45,7 +45,7 @@
 
 - [x] 恢复按钮与运行时长当前 bundle 复验：点击 Claude Code 恢复卡无需额外回车，立即进入“启动中/加载中”并生成 `claude --resume` 命令块，`9a69d97` 复验通过。同期发现持久化未来时间戳令侧栏显示 `-207s`；`11d817a` 把相对时间格式化提取为纯函数并钳制负差值，重建 bundle 同一路径显示 `0s`。2 项定向、429 项全量、typecheck、lint、build 均通过。
 
-- [x] 本地 Pi 正常退出补证：Pi 0.79.4 ready prompt 明确给出 `ctrl+c/ctrl+d clear/exit`；空输入发送 `Ctrl+D` 后 alternate screen 交还普通 zsh，真实 xterm 快照记录 `TUNARA_LOCAL_PI_SHELL_OK`。未触发模型调用或修改 Pi 配置。
+- [x] 本地 Pi 退出与多行输入补证：Pi 0.79.4 ready prompt 明确给出 `ctrl+c/ctrl+d clear/exit`；空输入发送 `Ctrl+D` 后 alternate screen 交还普通 zsh，真实 xterm 快照记录 `TUNARA_LOCAL_PI_SHELL_OK`。在 `/tmp` 以 `pi --no-session` 重启后，两行粘贴触发原生 2 行预警；持久 xterm 快照在 Pi 输入区边界内同时记录 `TUNARA_LOCAL_PI_LINE_ONE` / `LINE_TWO`，下方保留 canonical `/private/tmp` 与 `$0.000 (sub) 0.0%/272k (auto) gpt-5.5` footer，后台切回不丢输入且未提交 provider；`Ctrl+C` 后的快照两 marker 均消失而 `Pi · 运行中` 保持。未触发模型调用或修改 Pi 配置。
 
 - [x] SSH Pi 安全边界、退出、剪贴板与状态识别闭环：`de-netcup /root` 用固定 `npx` 包启动 Pi 0.79.4，horizontal 50/50 与 Finder 后台往返保持；TUI 明确显示无可用模型和 `/login` 指引，不伪报 provider 成功。快速选择复制受控 token `79.4`，系统粘贴回空 prompt 后辅助树与画面均精确显示且未提交，以 `Ctrl+C` 清空；空输入 `Ctrl+D` 后恢复远端 Bash，真实快照记录 `TUNARA_SSH_PI_SHELL_OK`。`/tmp` 无模型 ready prompt 的两行粘贴还触发原生 2 行预警；持久 xterm 快照在 Pi 输入框上下边界内同时记录 `TUNARA_SSH_PI_LINE_ONE` / `LINE_TWO`，后台切回保留输入，下方仍为 `/tmp` 与 `0.0%/0 (auto) unknown`，未提交 provider；`Ctrl+C` 后的快照两 marker 均消失而 Pi TUI 与无模型 footer 保持。安装版未识别 scoped/versioned npx 包；`c5d4497` 只解析首个包位并显式映射官方 Pi 包，以 `npx left-pad pi` 负例防误报。当前源码 bundle 已真实识别 Pi；复验同时发现无模型 footer 会省略成本段而长期显示“加载中”，本轮将成本段改为可选并保留行首、context 百分比与 mode 约束，真实同路径已从 `Pi · 加载中 · 14s` 恢复为 idle/ready。resume 仍不宣称通过。
 
