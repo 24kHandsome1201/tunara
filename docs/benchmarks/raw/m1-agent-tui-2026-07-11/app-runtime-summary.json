@@ -1,0 +1,53 @@
+{
+  "capturedAt": "2026-07-11T06:10:19Z",
+  "installedApp": {
+    "path": "/Applications/Tunara.app",
+    "version": "1.14.0"
+  },
+  "fixture": "scripts/fixtures/unknown-tui.py",
+  "terminalIdentity": {
+    "initialGeometry": "22x82",
+    "splitGeometry": "22x40"
+  },
+  "runtime": {
+    "alternateScreenSnapshotObserved": true,
+    "snapshotSerializedLength": 1441,
+    "cjkObserved": true,
+    "emojiObserved": true,
+    "trueColorSequenceObserved": true,
+    "highOutputCompletionObserved": true,
+    "waitingMarkerObserved": true,
+    "recoverableFailureMarkerObserved": true,
+    "resumeMarkerObserved": true,
+    "split": {
+      "mode": "horizontal",
+      "ratio": 0.5,
+      "resizeMarkerObserved": true,
+      "secondTerminalCreated": true
+    },
+    "backgroundReturn": {
+      "sessionPreserved": true,
+      "splitPreserved": true,
+      "scrollbackMarkersPreserved": true,
+      "alternateScreenOwnershipPreserved": true
+    },
+    "copy": {
+      "method": "quick-select-visible-output",
+      "visibleItems": 15,
+      "knownToken": "255",
+      "applicationAcknowledged": true,
+      "systemClipboardReadBackPerformed": false,
+      "readBackNote": "The app success toast is emitted only after navigator.clipboard.writeText resolves; global clipboard read-back was intentionally not used."
+    },
+    "exit": {
+      "interruptHandled": true,
+      "sessionStatus": "completed",
+      "shellPromptRestored": true,
+      "layoutReturnedToSingle": true
+    }
+  },
+  "capture": {
+    "screenshotSuitableForTerminalJudgement": false,
+    "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. The exact-session xterm snapshot and persisted UI state were used instead."
+  }
+}

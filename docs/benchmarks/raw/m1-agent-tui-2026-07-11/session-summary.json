@@ -1,0 +1,48 @@
+{
+  "commit": "67720ee27e9065e9d56fa4a10804dd77a7309404",
+  "capturedAt": "2026-07-11T05:51:31.034129+00:00",
+  "sshTarget": "de-netcup",
+  "safety": "temporary directories and probe cleaned; raw output deleted after summary",
+  "permission": {
+    "localClaude": {
+      "explicitDefaultMode": true,
+      "toolPermissionPromptObserved": false,
+      "temporaryProbeCreated": true,
+      "result": "organization_policy_auto_allowed"
+    },
+    "localCodex": {
+      "untrustedPolicyForced": true,
+      "directoryTrustPromptObserved": true,
+      "promptInjectionRiskCopyObserved": true,
+      "result": "prompt_observed"
+    }
+  },
+  "resume": {
+    "localClaude": {
+      "idObserved": true,
+      "firstMarkerObserved": true,
+      "resumeMarkerObserved": true,
+      "jsonEvents": 2,
+      "passed": true
+    },
+    "localCodex": {
+      "idObserved": true,
+      "firstMarkerObserved": true,
+      "resumeMarkerObserved": true,
+      "jsonEvents": 8,
+      "passed": true
+    },
+    "sshCodex": {
+      "idObserved": true,
+      "firstMarkerObserved": true,
+      "resumeMarkerObserved": true,
+      "jsonEvents": 8,
+      "passed": true
+    }
+  },
+  "summary": {
+    "permissionPromptsObserved": 1,
+    "resumePassed": 3,
+    "resumeEntries": 3
+  }
+}
