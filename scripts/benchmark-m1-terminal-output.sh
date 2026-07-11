@@ -10,6 +10,12 @@ APP_BIN="$APP_DIR/Contents/MacOS/tunara"
 APP_SUPPORT="$HOME/Library/Application Support/$IDENTIFIER"
 RESULTS_ROOT="${TUNARA_BENCHMARK_RESULTS:-/tmp/tunara-m1-output-benchmark}"
 OUTPUT_BYTES="${TUNARA_M1_OUTPUT_BYTES:-52428800,209715200}"
+WAIT_SECONDS="${TUNARA_M1_WAIT_SECONDS:-600}"
+
+if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]] || (( WAIT_SECONDS < 1 )); then
+  echo "TUNARA_M1_WAIT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
 
 build_bundle() {
   local node
@@ -132,7 +138,9 @@ run_benchmark() {
   sample_pid=$!
 
   line=""
-  for _ in $(seq 1 2400); do
+  local wait_iterations
+  wait_iterations="$((WAIT_SECONDS * 4))"
+  for _ in $(seq 1 "$wait_iterations"); do
     line="$(grep -F '[benchmark:m1-output]' "$log" | tail -1 || true)"
     if [[ -n "$line" ]]; then break; fi
     if ! kill -0 "$pid" 2>/dev/null; then break; fi
