@@ -255,6 +255,34 @@
       "submittedToAgent": false,
       "inputClearedWithCtrlC": true
     },
+    "bracketedPaste": {
+      "capturedAt": "2026-07-11T14:20:00Z",
+      "sourceApp": "current source Debug bundle",
+      "cwd": "/private/tmp",
+      "controlledMarkers": [
+        "TUNARA_LOCAL_CLAUDE_FIXED_LINE_ONE",
+        "TUNARA_LOCAL_CLAUDE_FIXED_LINE_TWO"
+      ],
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "bothLinesVisibleInInput": true,
+      "autoSubmittedToProvider": false,
+      "planModePreserved": true,
+      "falseBusyBeforeFix": {
+        "observed": true,
+        "symptom": "The ready Claude prompt was labelled running after multiline paste and remained running after Ctrl+C cleared the input.",
+        "rootCause": "The terminal input scanner treated carriage returns inside the bracketed-paste envelope as real Enter submissions.",
+        "directReplayBeforeFix": {
+          "input": "ESC[200~one\\rtwoESC[201~",
+          "falseSubmissions": ["one"]
+        },
+        "sourceFixCommit": "12cc61baab2ed28fb41d35e452e26eb9a69b3e22"
+      },
+      "postFixAgentLabel": "Claude Code",
+      "postFixRunningLabelObserved": false,
+      "postFixSidebarTimerObserved": false,
+      "currentSourceDebugBundlePassed": true
+    },
     "exit": {
       "command": "/exit",
       "resumableStateObserved": true,
@@ -537,6 +565,32 @@
       "exactRoundTrip": true,
       "submittedToAgent": false,
       "inputClearedWithCtrlC": true
+    },
+    "bracketedPaste": {
+      "capturedAt": "2026-07-11T13:59:00Z",
+      "sourceApp": "current source Debug bundle",
+      "cwd": "/private/tmp",
+      "controlledMarkers": [
+        "TUNARA_LOCAL_CODEX_SAFE_LINE_ONE",
+        "TUNARA_LOCAL_CODEX_SAFE_LINE_TWO"
+      ],
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "bothLinesVisibleInComposer": true,
+      "stableAfterConfirmation": true,
+      "automaticSubmissionBeforeCleanup": false,
+      "workingStateBeforeCleanup": false,
+      "agentLabelBeforeCleanup": "Codex completed",
+      "operatorCleanupError": {
+        "occurred": true,
+        "cause": "Escape edits the previous Codex message instead of clearing multiline input; the subsequent /exit was appended and manually submitted.",
+        "controlledTextOnly": true,
+        "sensitiveDataSubmitted": false,
+        "backgroundProcessStoppedWithOfficialSlashCommand": true,
+        "ordinaryShellRestoredWithOfficialExit": true,
+        "countedAsAutomaticPasteFailure": false
+      },
+      "currentSourceDebugBundlePassed": true
     },
     "commandMenuSemantics": {
       "slashOpenedCommandMenu": true,
