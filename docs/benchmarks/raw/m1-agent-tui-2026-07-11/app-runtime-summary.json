@@ -46,6 +46,44 @@
       "layoutReturnedToSingle": true
     }
   },
+  "sshCodexRuntime": {
+    "capturedAt": "2026-07-11T07:25:53Z",
+    "target": "de-netcup",
+    "version": "0.144.1",
+    "startup": {
+      "agentDetected": true,
+      "alternateScreenSnapshotObserved": true,
+      "readyPromptObserved": true
+    },
+    "split": {
+      "mode": "horizontal",
+      "ratio": 0.5,
+      "agentSessionPreserved": true,
+      "alternateScreenSnapshotPreserved": true
+    },
+    "backgroundReturn": {
+      "agentSessionPreserved": true,
+      "splitPreserved": true,
+      "alternateScreenSnapshotPreserved": true
+    },
+    "clipboard": {
+      "method": "quick-select-visible-output",
+      "visibleItems": 5,
+      "controlledToken": "144.1",
+      "applicationAcknowledgedCopy": true,
+      "pastedBackIntoAgentInput": true,
+      "exactRoundTrip": true,
+      "submittedToAgent": false,
+      "inputClearedWithCtrlC": true
+    },
+    "installedVersionDefectsObserved": {
+      "startupDoneLabelWithoutCompletedTurn": true,
+      "startupDoneLabelSourceFixCommit": "93244caaa18b731751627e31c107dd6a26914dbd",
+      "newSplitPaneLostSshContext": true,
+      "splitContextSourceFixCommit": "e687e3e8bfffa3ccd335d97ef90fc53a54b27c7d",
+      "newBundleReverificationPending": true
+    }
+  },
   "capture": {
     "screenshotSuitableForTerminalJudgement": false,
     "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. The exact-session xterm snapshot and persisted UI state were used instead."
