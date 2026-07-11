@@ -86,6 +86,7 @@ pub fn run() {
             pty::pty_close,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,
+            fs::file::fs_write_text_file,
             fs::search::fs_search,
             fs::grep::fs_grep,
             fs::grep::fs_cancel_search,

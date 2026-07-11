@@ -27,7 +27,7 @@ function cancelSearchRequest(requestId: string): Promise<boolean> {
 }
 
 export type ReadResult =
-  | { kind: "text"; content: string; size: number; truncated?: boolean }
+  | { kind: "text"; content: string; size: number; truncated?: boolean; fingerprint?: string }
   | { kind: "binary"; size: number }
   | { kind: "toolarge"; size: number; limit: number };
 
@@ -37,6 +37,14 @@ export function fsReadDir(path: string, includeHidden = false): Promise<DirEntry
 
 export function fsReadFile(path: string): Promise<ReadResult> {
   return invoke<ReadResult>("fs_read_file", { path });
+}
+
+export type WriteTextResult =
+  | { status: "saved"; fingerprint: string; size: number }
+  | { status: "conflict"; currentFingerprint: string };
+
+export function fsWriteTextFile(path: string, content: string, expectedFingerprint: string): Promise<WriteTextResult> {
+  return invoke<WriteTextResult>("fs_write_text_file", { path, content, expectedFingerprint });
 }
 
 export function fsSearch(

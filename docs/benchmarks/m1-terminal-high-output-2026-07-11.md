@@ -60,7 +60,7 @@ fixture 每 64 KiB 写入固定序列头，正文覆盖 ANSI/True Color、OSC ti
 
 ## 剩余边界
 
-- SSH 50/200 MiB 与 100/200ms RTT 已完成；optimized bundle 断线恢复仍待补齐。
+- SSH 50/200 MiB、100/200ms RTT 与 optimized bundle 断线原位恢复均已完成，见 [SSH 恢复报告](./m1-ssh-recovery-2026-07-11.md)。
 - WebGL context loss、DOM fallback 与重新激活 WebGL 已完成；主题/字体切换和真实截图矩阵尚未完成。
 - 38 分 44 秒、16 GiB、四档 resize 与 18 次隐藏/恢复压力已完成，见[长压报告](./m1-terminal-stress-2026-07-11.md)。
 - renderer RSS 长压末四分位均值低于首四分位，平台缓存已在 38 分钟证据内确认可回收并收敛。

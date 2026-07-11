@@ -1,10 +1,9 @@
-//! Local filesystem reads for the file explorer, preview, and search.
+//! Local filesystem reads plus conflict-safe single-file text writes.
 //!
 //! Read-only by design — no write/edit commands (Tunara has no built-in
 //! editor). Submodules group the surface by concern:
 //! - [`tree`]: directory listing — `fs_read_dir`.
-//! - [`file`]: single-file reads — `fs_read_file` (text/binary/too-large,
-//!   capped preview).
+//! - [`file`]: capped reads and fingerprint-guarded atomic text replacement.
 //! - [`search`]: filename search — `fs_search`.
 //! - [`grep`]: content search — `fs_grep`.
 //!
