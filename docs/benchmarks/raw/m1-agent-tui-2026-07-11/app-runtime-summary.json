@@ -76,6 +76,26 @@
       "submittedToAgent": false,
       "inputClearedWithCtrlC": true
     },
+    "bracketedPaste": {
+      "capturedAt": "2026-07-11T13:38:02Z",
+      "cwd": "/tmp",
+      "agentVersion": "0.144.1",
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "controlledMarkers": [
+        "TUNARA_SOURCE_CODEX_LINE_ONE",
+        "TUNARA_SOURCE_CODEX_LINE_TWO"
+      ],
+      "bothLinesVisibleInComposer": true,
+      "stableAfterConfirmation": true,
+      "submittedToAgent": false,
+      "workingStateObserved": false,
+      "clearedWithEscape": true,
+      "sourceFixCommit": "6bebf09e16baa5e798efa19461882deacfa48ea5",
+      "sourceFixStrategy": "Capture DECSET 2004 before the asynchronous native sheet and reproduce xterm's newline normalization plus explicit bracketed-paste envelope after confirmation.",
+      "menuPasteUsesSameProtection": true,
+      "currentSourceDebugBundlePassed": true
+    },
     "exit": {
       "command": "/exit",
       "ordinaryRemoteShellRestored": true,
@@ -88,6 +108,14 @@
       "startupDoneLabelSourceFixCommit": "93244caaa18b731751627e31c107dd6a26914dbd",
       "newSplitPaneLostSshContext": true,
       "splitContextSourceFixCommit": "e687e3e8bfffa3ccd335d97ef90fc53a54b27c7d",
+      "multilinePasteAutoSubmitted": true,
+      "multilinePasteAutoSubmitMarkers": [
+        "TUNARA_SSH_CODEX_LINE_ONE",
+        "TUNARA_SSH_CODEX_LINE_TWO"
+      ],
+      "multilinePasteAutoSubmitInterrupted": true,
+      "multilinePasteSourceFixCommit": "6bebf09e16baa5e798efa19461882deacfa48ea5",
+      "contextMenuPastePreviouslyBypassedProtection": true,
       "newBundleReverificationPending": false,
       "reverifiedByCurrentSourceDebugBundle": true
     }

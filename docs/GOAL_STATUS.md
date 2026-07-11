@@ -41,6 +41,8 @@
 
 - [x] SSH Codex 正常退出补证：`de-netcup /root` 中 Codex 0.144.1 以 read-only sandbox 进入 ready prompt，官方 `/exit` 后真实 xterm 快照恢复 `root@de-netcup:~#`，随后远端 shell 实际输出 `TUNARA_SSH_CODEX_SHELL_OK`。安装版启动即“已完成”仍按 `93244ca` 的历史缺陷处理，不作为当前源码回归。
 
+- [x] SSH Codex 多行粘贴安全修复与当前 bundle 复验：安装版 1.14.0 的原生 2 行确认返回后，受控两行会立即提交给 Codex 并进入 Working；右键菜单粘贴也曾绕过 DOM paste 保护。`6bebf09` 在原生 sheet 打开前捕获 DECSET 2004，确认后复刻 xterm 的换行转换并显式发送 bracketed-paste envelope，菜单与键盘共用同一保护入口，终端 DOM 已卸载时拒绝异步回调。当前源码 Debug bundle 在真实 `de-netcup /tmp` Codex 0.144.1 中重测：原生确认准确显示 2 行，`TUNARA_SOURCE_CODEX_LINE_ONE` / `LINE_TWO` 稳定留在 composer，状态保持“已完成”，等待后未进入 Working，Escape 清空。438 项 Node、146 项 Rust（2 ignored）、typecheck、lint、build 与 `git diff --check` 通过。
+
 - [x] Titlebar tab/关闭交互语义修复：安装版辅助技术树把会话选择与关闭合成一个按钮，点击 Pi tab 误进入关闭确认；未二次确认，会话保持运行。`2c7350f` 已用具名 `tablist`、独立 `tab` 与独立 close button 拆开职责，关闭图标继续保持 hover/focus 才显现，所有 tab 主体均可键盘到达，中英文名称齐全。当前源码 Debug bundle 辅助树已显示具名“终端会话”tab group，每个会话为独立 tab + 独立关闭按钮，点击远端 tab 只改变 selected 状态，真实截图和行为复验通过。
 
 - [x] 恢复按钮与运行时长当前 bundle 复验：点击 Claude Code 恢复卡无需额外回车，立即进入“启动中/加载中”并生成 `claude --resume` 命令块，`9a69d97` 复验通过。同期发现持久化未来时间戳令侧栏显示 `-207s`；`11d817a` 把相对时间格式化提取为纯函数并钳制负差值，重建 bundle 同一路径显示 `0s`。2 项定向、429 项全量、typecheck、lint、build 均通过。
