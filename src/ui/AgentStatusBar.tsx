@@ -66,7 +66,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   const statusColor = resumeCommand && !session.agent
     ? "var(--c-success)"
     : isWaitingConfirmation
-      ? "var(--c-warning)"
+      ? "var(--c-warning-text)"
     : isBusy
       ? "var(--c-accent)"
       : "var(--c-success)";

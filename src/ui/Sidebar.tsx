@@ -94,7 +94,7 @@ export function Sidebar({
     });
   }, []);
 
-  const handleSessionKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>, sessionId: string) => {
+  const handleSessionKeyDown = useCallback((e: React.KeyboardEvent<HTMLElement>, sessionId: string) => {
     const ids = visibleSessionIdsRef.current;
     const currentIndex = ids.indexOf(sessionId);
     if (currentIndex === -1) return;

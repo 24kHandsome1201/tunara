@@ -83,7 +83,7 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
   const tagColor = variant === "run"
     ? "var(--c-accent)"
     : attentionKind === "agent-ready" || attentionKind === "agent-confirmation"
-      ? "var(--c-warning)"
+      ? "var(--c-warning-text)"
       : "var(--c-error)";
   const tagLabel = attentionKind === "agent-ready"
     ? t("gbar.tag.wait")
@@ -124,27 +124,26 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role="group"
+      aria-label={`${displayName} · ${tagLabel}`}
       className={variant === "attention" ? "gbar-row gbar-row-wait" : "gbar-row"}
-      onClick={select}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          select();
-        }
-      }}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 8,
         padding: "5px 8px",
         borderRadius: "var(--r-btn)",
-        cursor: "pointer",
         position: "relative",
         minWidth: 0,
       }}
     >
+      <button
+        type="button"
+        onClick={select}
+        aria-label={`${displayName} · ${tagLabel}`}
+        className="gbar-row-select"
+        style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0, padding: 0, border: "none", background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", borderRadius: "var(--r-btn)" }}
+      >
       {agentCode ? (
         <AgentBadge agent={agentCode} size={18} />
       ) : (
@@ -184,6 +183,7 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
           {t("agent.status.file_count", { count: fileCount })}
         </span>
       )}
+      </button>
       {isSshAttention ? (
         <AccentActionButton onClick={reconnect} title={t("gbar.action.reconnect")} ariaLabel={t("gbar.action.reconnect")}>
           <RestartIcon size={10} />

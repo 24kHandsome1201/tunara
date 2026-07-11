@@ -39,7 +39,9 @@
   --c-error: #e0556b;
   --c-error-bg: #fdf4f5;
   --c-error-bg-light: #fbe1e5;
-  --c-warning: #e2c08d;
+  --c-warning: oklch(59% 0.12 72);
+  --c-warning-text: oklch(43% 0.105 68);
+  --c-warning-bg: oklch(94% 0.04 78);
   --c-info: #3b82f6;
   --c-info-bg: #e6efff;
 

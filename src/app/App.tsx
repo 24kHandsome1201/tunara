@@ -357,22 +357,23 @@ export default function App() {
                 </svg>
               </div>
               <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>{t("app.empty.title")}</span>
-              <button
-                onClick={newTerminal}
-                className="hover-primary"
-                style={{
-                  padding: "8px 20px",
-                  borderRadius: "var(--r-btn)",
-                  border: "none",
-                  background: "var(--c-btn-primary-bg)",
-                  color: "var(--c-btn-primary-text)",
-                  fontSize: "var(--fs-body)",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                {t("sidebar.new_terminal")}
-              </button>
+              <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>{t("app.empty.hint")}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                <button
+                  onClick={newTerminal}
+                  className="hover-primary"
+                  style={{ padding: "8px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}
+                >
+                  {t("sidebar.new_terminal")}
+                </button>
+                <button
+                  onClick={newTerminalInDirectory}
+                  className="hover-bg"
+                  style={{ padding: "7px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}
+                >
+                  {t("sidebar.new_terminal_in_directory")}
+                </button>
+              </div>
             </div>
           </div>
         )}

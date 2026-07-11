@@ -408,6 +408,31 @@ export function Titlebar({
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
+          <button
+            type="button"
+            onClick={onNewTerminalInDirectory}
+            title={t("titlebar.new_terminal_in_directory")}
+            aria-label={t("titlebar.new_terminal_in_directory")}
+            className="hover-bg"
+            style={{
+              width: "var(--w-titlebar-control)",
+              height: "var(--h-titlebar-control)",
+              borderRadius: "var(--r-btn)",
+              border: "none",
+              background: "transparent",
+              color: "var(--c-text-4)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 6.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+              <path d="M3 9h18" />
+            </svg>
+          </button>
         </div>
       ) : (
         <div style={{ flex: 1 }} />

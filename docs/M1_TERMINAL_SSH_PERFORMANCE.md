@@ -20,6 +20,10 @@
 - 不增加终端正文遥测，不持久化 SSH 密码、口令或 benchmark 内容。
 - 不在本里程碑重做视觉系统；只修复性能导致的抖动、乱码和错误状态表达。
 
+## Agent / TUI 兼容性补充门
+
+Agent 和未知 TUI 的协议、输入、resize、状态与错误表达属于 M1，但仅用于证明终端正确性：本地与 SSH 不丢键、不破坏 alternate screen，不把 waiting / failed / disconnected 伪报为 running / completed，恢复时保持 transport、cwd、session identity 与原安全姿态。该门不要求为所有 Agent 配置外部 provider，不扩展为 Agent 管理平台，也不将凭据或组织策略阻断误记为 Tunara 缺陷。具体矩阵见 [M1 Agent / TUI 兼容性基线](./benchmarks/m1-agent-tui-compatibility-2026-07-11.md)。
+
 ## 依赖与复用
 
 - 复用 `PtySession` 前端接口、russh 长连接、现有连接 phase 证据、PTY output buffer、WebGL atlas rebuild 和 TerminalView benchmark compile flag。

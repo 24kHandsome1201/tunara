@@ -119,7 +119,7 @@ function SessionIcon({ session }: { session: Session }) {
 
 function StatusMark({ runState, exitCode, waitingLabel }: { runState: RunState; exitCode?: number; waitingLabel?: string }) {
   if (waitingLabel) {
-    return <span title={waitingLabel} aria-label={waitingLabel} style={{ color: "var(--c-warning)", fontSize: "var(--fs-meta)", lineHeight: 1, flexShrink: 0 }}>◆</span>;
+    return <span title={waitingLabel} aria-label={waitingLabel} style={{ color: "var(--c-warning-text)", fontSize: "var(--fs-meta)", lineHeight: 1, flexShrink: 0 }}>◆</span>;
   }
   if (runState === "done") {
     return (
@@ -275,7 +275,7 @@ interface SessionCardProps {
   onSelect: (id: string) => void;
   onClose?: (id: string) => void;
   onRename?: (id: string, name: string) => void;
-  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>, id: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLElement>, id: string) => void;
   onContextMenu?: (e: React.MouseEvent, session: Session) => void;
 }
 
@@ -336,7 +336,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
 
   const handleClick = () => onSelect(session.id);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (!editing && onRename && e.key === "F2") {
       e.preventDefault();
       startRename();
@@ -366,14 +366,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
 
   return (
     <div
-      role="button"
-      tabIndex={tabIndex ?? 0}
-      aria-current={active ? "page" : undefined}
       data-session-card-id={session.id}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
       onContextMenu={handleContextMenu}
       className="session-card"
       style={{
@@ -403,6 +396,21 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           transition: "opacity var(--duration-fast) ease",
         }}
       />
+
+      {!editing && (
+        <button
+          type="button"
+          tabIndex={tabIndex ?? 0}
+          aria-current={active ? "page" : undefined}
+          aria-label={primary}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          className="session-card-select"
+          style={{ position: "absolute", inset: 0, zIndex: 1, padding: 0, border: "none", borderRadius: "var(--r-card)", background: "transparent", cursor: "pointer" }}
+        />
+      )}
 
       {onClose && (
         <button
@@ -441,7 +449,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         </button>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative", zIndex: 1, pointerEvents: editing ? "auto" : "none" }}>
         <SessionIcon session={session} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -503,7 +511,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
               </span>
             )}
             {session.agentActivity === "waiting_confirmation" && (
-              <span style={{ flexShrink: 0, borderRadius: "var(--r-badge-sm)", padding: "0 4px", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 12%, transparent)", fontSize: "var(--fs-badge)", fontWeight: 700, lineHeight: "14px" }}>
+              <span style={{ flexShrink: 0, borderRadius: "var(--r-badge-sm)", padding: "0 4px", color: "var(--c-warning-text)", background: "var(--c-warning-bg)", fontSize: "var(--fs-badge)", fontWeight: 700, lineHeight: "14px" }}>
                 {t("gbar.tag.confirmation")}
               </span>
             )}
