@@ -16,6 +16,7 @@ import {
   analyzeTerminalPaste,
   confirmProtectedTerminalPaste,
   pasteWithCapturedBracketedMode,
+  registerTerminalPasteProtection,
   requestProtectedTerminalPaste,
   TERMINAL_LARGE_PASTE_WARNING_LENGTH,
 } from "../src/modules/terminal/lib/terminal-paste-protection.ts";
@@ -174,13 +175,62 @@ test("shared protected-paste entry captures bracketed mode before the async conf
     paste: (text) => pasted.push(text),
   };
   const intercepted = requestProtectedTerminalPaste(term, "line1\nline2", () =>
-    new Promise((resolve) => { resolveConfirmation = resolve; }));
+    new Promise((resolve) => { resolveConfirmation = resolve; }), () => true);
   assert.equal(intercepted, true);
 
   term.modes.bracketedPasteMode = false;
   resolveConfirmation(true);
   await flush();
   assert.deepEqual(pasted, ["\u001b[200~line1\rline2\u001b[201~"]);
+});
+
+test("shared protected-paste entry ignores confirmation after its target is superseded", async () => {
+  const pasted = [];
+  let current = true;
+  let resolveConfirmation;
+  const term = {
+    modes: { bracketedPasteMode: true },
+    input: (text) => pasted.push(text),
+    paste: (text) => pasted.push(text),
+  };
+  requestProtectedTerminalPaste(
+    term,
+    "line1\nline2",
+    () => new Promise((resolve) => { resolveConfirmation = resolve; }),
+    () => current,
+  );
+
+  current = false;
+  resolveConfirmation(true);
+  await flush();
+  assert.deepEqual(pasted, []);
+});
+
+test("registered paste protection invalidates an in-flight confirmation on dispose", async () => {
+  const pasted = [];
+  let resolveConfirmation;
+  let pasteListener;
+  const element = {
+    isConnected: true,
+    addEventListener: (_type, listener) => { pasteListener = listener; },
+    removeEventListener() {},
+  };
+  const registration = registerTerminalPasteProtection({
+    element,
+    modes: { bracketedPasteMode: true },
+    input: (text) => pasted.push(text),
+    paste: (text) => pasted.push(text),
+  }, () => new Promise((resolve) => { resolveConfirmation = resolve; }));
+  pasteListener({
+    clipboardData: { getData: () => "line1\nline2" },
+    preventDefault() {},
+    stopPropagation() {},
+  });
+
+  registration.dispose();
+  resolveConfirmation(true);
+  await flush();
+  assert.deepEqual(pasted, []);
 });
 
 // ── structural guard ─────────────────────────────────────────────────────
@@ -201,4 +251,12 @@ test("no window.confirm/alert/prompt anywhere in src (silent no-ops in wry)", ()
   };
   walk(root);
   assert.deepEqual(offenders, [], "use @tauri-apps/plugin-dialog instead");
+});
+
+test("context-menu paste invalidates confirmation when its terminal is replaced", () => {
+  const chrome = readFileSync(join(import.meta.dirname, "..", "src/ui/TerminalViewChrome.tsx"), "utf8");
+  assert.match(
+    chrome,
+    /requestProtectedTerminalPaste\(term, text,[\s\S]*?\(\) => getTerminal\(\) === term\)/,
+  );
 });

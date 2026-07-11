@@ -98,10 +98,13 @@ export function requestProtectedTerminalPaste(
   term: PasteTarget,
   text: string,
   confirmPaste: TerminalPasteConfirmer,
+  isCurrent: () => boolean,
 ): boolean {
   const bracketedPasteRequired = term.modes?.bracketedPasteMode === true;
-  return confirmProtectedTerminalPaste(text, confirmPaste, (value) =>
-    pasteWithCapturedBracketedMode(term, value, bracketedPasteRequired));
+  return confirmProtectedTerminalPaste(text, confirmPaste, (value) => {
+    if (!isCurrent()) return;
+    pasteWithCapturedBracketedMode(term, value, bracketedPasteRequired);
+  });
 }
 
 export function registerTerminalPasteProtection(
@@ -110,10 +113,11 @@ export function registerTerminalPasteProtection(
 ) {
   const element = term.element;
   if (!element) return { dispose() {} };
+  let active = true;
 
   const onPaste = (event: ClipboardEvent) => {
     const text = event.clipboardData?.getData("text/plain") ?? "";
-    const protectedPaste = requestProtectedTerminalPaste(term, text, confirmPaste);
+    const protectedPaste = requestProtectedTerminalPaste(term, text, confirmPaste, () => active);
     if (!protectedPaste) return;
     event.preventDefault();
     event.stopPropagation();
@@ -122,6 +126,7 @@ export function registerTerminalPasteProtection(
   element.addEventListener("paste", onPaste, true);
   return {
     dispose() {
+      active = false;
       element.removeEventListener("paste", onPaste, true);
     },
   };

@@ -70,7 +70,7 @@ export function TerminalViewChrome({
       const term = getTerminal();
       if (!term) return;
       const protectedPaste = requestProtectedTerminalPaste(term, text, (message) =>
-        tauriConfirmDialog(message, { kind: "warning" }));
+        tauriConfirmDialog(message, { kind: "warning" }), () => getTerminal() === term);
       if (!protectedPaste) term.paste(text);
     } catch {
       /* clipboard read denied / unavailable */

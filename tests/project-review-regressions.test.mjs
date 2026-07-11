@@ -1428,7 +1428,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalPasteProtection, /TERMINAL_LARGE_PASTE_WARNING_LENGTH = 5 \* 1024/);
   assert.match(terminalPasteProtection, /export function analyzeTerminalPaste/);
   assert.match(terminalPasteProtection, /event\.preventDefault\(\)/);
-  assert.match(terminalPasteProtection, /requestProtectedTerminalPaste\(term, text, confirmPaste\)/);
+  assert.match(
+    terminalPasteProtection,
+    /requestProtectedTerminalPaste\(term, text, confirmPaste, \(\) => active\)/,
+  );
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocksPure, /export function findStickyCommandBlock/);
   assert.match(terminalBlocksPure, /export function findNavigableCommandBlock/);
