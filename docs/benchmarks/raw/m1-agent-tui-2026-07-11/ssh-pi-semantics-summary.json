@@ -1,11 +1,12 @@
 {
-  "capturedAt": "2026-07-11T17:59:27.414947+00:00",
-  "commit": "ea2df1062d76ac3a0a7dbbe3d36c19bb9469fa3a",
+  "capturedAt": "2026-07-11T19:25:42.924959+00:00",
+  "commit": "c455d8334c4384d4fa63731ae5a762282050de1a",
   "target": "de-netcup",
   "agent": "pi",
   "safety": {
     "modelPromptSubmitted": false,
     "historySeed": "double-bang shell command excluded from model context",
+    "busyProbe": "double-bang sleep excluded from model context",
     "rawLogsRetained": false
   },
   "checks": {
@@ -13,6 +14,8 @@
     "slashMenuOpened": true,
     "slashMenuFiltered": true,
     "slashMenuCancelled": true,
+    "shellBusyVisible": true,
+    "shellReturnedToReady": true,
     "historyRestored": true,
     "historyReturnedToBlank": true,
     "multilineAVisible": true,

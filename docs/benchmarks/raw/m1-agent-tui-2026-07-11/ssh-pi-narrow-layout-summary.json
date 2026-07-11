@@ -1,0 +1,38 @@
+{
+  "capturedAt": "2026-07-11T19:20:00Z",
+  "appCommit": "4b0143126c71bc67c5c592d824a365c929f96e39",
+  "target": "de-netcup",
+  "agent": "pi",
+  "app": {
+    "identifier": "dev.tunara.app.dev",
+    "window": {
+      "width": 673,
+      "height": 506
+    },
+    "split": {
+      "mode": "horizontal",
+      "ratio": 0.5,
+      "sshPane": "s-1783706546898-1",
+      "localPane": "s-1782314487372-1"
+    },
+    "sidebarVisible": true,
+    "inspectorVisible": false,
+    "sshOpened": true
+  },
+  "terminalSnapshot": {
+    "cols": 56,
+    "rows": 39,
+    "truncated": false,
+    "piVersionVisible": "0.79.4",
+    "noModelsWarningVisible": true,
+    "readyFooterVisible": true,
+    "reconnectedShellPromptVisible": true
+  },
+  "visualEvidence": {
+    "windowListedByScreenshotDaemon": true,
+    "windowCaptureReturnedWallpaper": true,
+    "suitableForVisualJudgement": false
+  },
+  "status": "behavior-and-geometry-only",
+  "remaining": "Capture a readable current-window image with both sidebar and Inspector visible before closing the visual gate."
+}
