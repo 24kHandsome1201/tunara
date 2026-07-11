@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-11T06:10:19Z",
+  "capturedAt": "2026-07-11T12:01:01Z",
   "installedApp": {
     "path": "/Applications/Tunara.app",
     "version": "1.14.0"
@@ -476,7 +476,7 @@
     "providerOrContextResumeClaimed": false
   },
   "localAiderRuntime": {
-    "capturedAt": "2026-07-11T11:46:41Z",
+    "capturedAt": "2026-07-11T12:01:01Z",
     "installedAppVersion": "1.14.0",
     "cwd": "/tmp",
     "command": "cd /tmp && uvx --from aider-chat aider --no-git",
@@ -506,6 +506,20 @@
       "pastedBackIntoAgentInput": true,
       "exactRoundTrip": true,
       "submittedToProvider": false,
+      "inputClearedWithCtrlC": true
+    },
+    "bracketedPaste": {
+      "sourceApp": "installed Tunara 1.14.0",
+      "controlledLines": 2,
+      "markers": [
+        "TUNARA_AIDER_LINE_ONE",
+        "TUNARA_AIDER_LINE_TWO"
+      ],
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "warningAccepted": true,
+      "bothLinesVisibleInAgentInput": true,
+      "autoSubmittedToProvider": false,
       "inputClearedWithCtrlC": true
     },
     "exit": {
