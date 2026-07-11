@@ -312,10 +312,13 @@ test("agent command detection maps conservative shell command heads and wrappers
   assert.equal(detectAgentCommand("ampcode"), "AM");
   assert.equal(detectAgentCommand("cursor-agent run task"), "CR");
   assert.equal(detectAgentCommand("cd /tmp && uvx --from aider-chat aider --no-git"), "AD");
+  assert.equal(detectAgentCommand("npx -y @earendil-works/pi-coding-agent@0.79.4 --no-session"), "PI");
+  assert.equal(detectAgentCommand("cd /root && npx --yes @earendil-works/pi-coding-agent --no-session"), "PI");
   assert.equal(detectAgentCommand("cd '/tmp/a && b' && env TUNARA=1 codex --sandbox read-only"), "CX");
   assert.equal(detectAgentCommand("FOO=1 exec /usr/local/bin/opencode --pure"), "OC");
   assert.equal(detectAgentCommand("printf 'claude && aider'"), null);
   assert.equal(detectAgentCommand("echo aider | sed s/x/y/"), null);
+  assert.equal(detectAgentCommand("npx -y left-pad pi"), null);
   assert.equal(detectAgentCommand("agent run task"), null);
   assert.equal(detectAgentCommand("constructor"), null);
   assert.equal(detectAgentCommand("copilot suggest"), "CP");

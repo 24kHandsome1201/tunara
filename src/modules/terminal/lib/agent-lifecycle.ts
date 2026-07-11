@@ -25,6 +25,9 @@ export interface AgentHookEvent {
 }
 
 const AGENT_LIFECYCLE_OSC_PREFIXES = new Set(["tunara-agent", "conduit-agent"]);
+const NPX_AGENT_PACKAGES = new Map<string, AgentCode>([
+  ["@earendil-works/pi-coding-agent", "PI"],
+]);
 
 const AGENT_SHELL_TITLE_ALIASES = new Set(
   [
@@ -50,7 +53,29 @@ function detectAgentInSegment(segment: string): AgentCode | null {
   const direct = agentCodeForCommand(shellCommandName(words[index] ?? ""));
   if (direct) return direct;
 
-  if (shellCommandName(words[index] ?? "") !== "uvx") return null;
+  const wrapper = shellCommandName(words[index] ?? "");
+  if (wrapper === "npx") {
+    index += 1;
+    while (index < words.length) {
+      const word = words[index];
+      if (word === "--package" || word === "-p" || word === "--cache" || word === "-c" || word === "--call") {
+        index += 2;
+        continue;
+      }
+      if (word.startsWith("-")) {
+        index += 1;
+        continue;
+      }
+      const packageName = word.startsWith("@")
+        ? word.replace(/(@[^/]+\/[^@]+)@.+$/, "$1")
+        : word.replace(/@.+$/, "");
+      return NPX_AGENT_PACKAGES.get(packageName)
+        ?? agentCodeForCommand(shellCommandName(packageName));
+    }
+    return null;
+  }
+
+  if (wrapper !== "uvx") return null;
   index += 1;
   while (index < words.length) {
     const word = words[index];
