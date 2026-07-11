@@ -81,6 +81,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pty::pty_open,
             pty::pty_write,
+            pty::pty_output_ack,
             pty::pty_resize,
             pty::pty_close,
             fs::tree::fs_read_dir,

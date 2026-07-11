@@ -1,0 +1,81 @@
+{
+  "commit": "3609640782aaccba41ed3c885773a1897245542e",
+  "buildMode": "optimized release M1 benchmark bundle",
+  "macOS": "26.1 (25B5072a)",
+  "hardware": "Apple M2",
+  "pid": 22673,
+  "process": {
+    "appRssPeakKiB": 122032,
+    "rendererRssDeltaPeakKiB": 589232,
+    "ptyRssPeakKiB": 9568,
+    "totalIncrementalRssPeakKiB": 720432,
+    "totalIncrementalRssMeanKiB": 613899.70,
+    "cpuMeanPercent": 10.45
+  },
+  "bundleKiB": 14300,
+  "terminal": {
+    "benchmark": "m1-terminal-high-output",
+    "timestamp": "2026-07-11T00:05:49.226Z",
+    "readyTerminals": 2,
+    "blockBytes": 65536,
+    "frameP95BudgetMs": 33.4,
+    "reference": "TUNARA_M1_OK 中文 🐟 é 界 ┌─┐",
+    "fixtures": [
+      {
+        "expectedBytes": 52428800,
+        "receivedBytes": 52428800,
+        "expectedBlocks": 800,
+        "dataEvents": 401,
+        "sequenceValid": true,
+        "firstSequenceError": null,
+        "transferMs": 6428,
+        "sizeMiB": 50,
+        "overflowCount": 0,
+        "referenceVisible": true,
+        "renderDrainMs": 262,
+        "inputEcho": {
+          "count": 5,
+          "p50Ms": 21,
+          "p95Ms": 28,
+          "maxMs": 28
+        },
+        "frames": {
+          "count": 300,
+          "p50Ms": 17,
+          "p95Ms": 18,
+          "maxMs": 27
+        },
+        "frameSampleValid": true,
+        "passed": true
+      },
+      {
+        "expectedBytes": 209715200,
+        "receivedBytes": 209715200,
+        "expectedBlocks": 3200,
+        "dataEvents": 1601,
+        "sequenceValid": true,
+        "firstSequenceError": null,
+        "transferMs": 26415,
+        "sizeMiB": 200,
+        "overflowCount": 0,
+        "referenceVisible": true,
+        "renderDrainMs": 259,
+        "inputEcho": {
+          "count": 5,
+          "p50Ms": 22,
+          "p95Ms": 26,
+          "maxMs": 26
+        },
+        "frames": {
+          "count": 300,
+          "p50Ms": 17,
+          "p95Ms": 19,
+          "maxMs": 25
+        },
+        "frameSampleValid": true,
+        "passed": true
+      }
+    ],
+    "passed": true
+  }
+}

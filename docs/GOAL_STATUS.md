@@ -21,9 +21,9 @@
 ## M1 执行账本，当前 Active Milestone
 
 - [ ] 固化冷启动、首个 PTY 可输入、输入回显、10 session、bundle 大小基线。
-- [ ] 建立 50/200MiB Unicode/ANSI/OSC/alternate-screen 高输出 fixture 与 reference capture。
+- [x] 建立 50/200MiB Unicode/ANSI/OSC/alternate-screen 高输出 fixture 与 reference capture；本地 optimized bundle 顺序完整、溢出 0、frame p95 18/19ms，见 [报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)。
 - [ ] 真实 WebGL context loss、atlas rebuild、renderer fallback 和 30 分钟压力证据。
-- [ ] SSH 输出 4-16ms 或 64-256KiB 有界批处理，记录 IPC/CPU/RSS/p95 frame time。8ms / 128KiB 实现与真实 128KiB smoke 已通过，性能对照仍待补齐，见 [首批证据](./benchmarks/m1-ssh-control-2026-07-11.md)。
+- [ ] SSH 输出 4-16ms 或 64-256KiB 有界批处理，记录 IPC/CPU/RSS/p95 frame time。8ms / 128KiB 实现、2MiB xterm ACK 窗口与真实 128KiB smoke 已通过；本地高输出证据已完成，SSH 50/200MiB 对照仍待补齐，见 [控制面证据](./benchmarks/m1-ssh-control-2026-07-11.md)与[本地高输出报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)。
 - [x] SSH 输入改为字节预算，大粘贴分块，Close 独立取消，Resize latest-value 合并；本地确定性测试与真实 `de-netcup` close/resize smoke 已通过。
 - [ ] 100/200ms RTT 下连接、目录、preview、grep、diff、取消与恢复 benchmark。
 - [ ] Claude Code、Codex、Pi、OpenCode、Aider 和未知 TUI 的本地/SSH 兼容矩阵。

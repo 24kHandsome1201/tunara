@@ -24,6 +24,7 @@ use super::flow_control::{
     SshControl, SshOutputBatch, INPUT_WRITE_CHUNK_BYTES, OUTPUT_BATCH_INTERVAL,
 };
 use super::known_hosts::{self, Verdict};
+use crate::modules::pty::output_flow::OutputFlow;
 use crate::modules::pty::PtyEvent;
 
 /// How to handle a host key the store can't confirm (Unknown / Unverifiable).
@@ -258,17 +259,31 @@ pub struct ConnectParams {
 pub struct SshSession {
     handle: Handle<ClientHandler>,
     control: Arc<SshControl>,
+    output_flow: Arc<OutputFlow>,
     /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
     sftp: tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>,
 }
 
-fn emit_output(on_event: &IpcChannel<PtyEvent>, bytes: Vec<u8>) -> bool {
-    on_event
+async fn emit_output(
+    output_flow: &OutputFlow,
+    on_event: &IpcChannel<PtyEvent>,
+    bytes: Vec<u8>,
+) -> bool {
+    let byte_len = bytes.len();
+    if !output_flow.reserve(byte_len).await {
+        return false;
+    }
+    let sent = on_event
         .send(PtyEvent::Data {
             data: B64.encode(bytes),
         })
-        .is_ok()
+        .is_ok();
+    if !sent {
+        output_flow.acknowledge(byte_len);
+        output_flow.close();
+    }
+    sent
 }
 
 fn send_connection_status(on_event: &IpcChannel<PtyEvent>, phase: &str) {
@@ -409,6 +424,8 @@ impl SshSession {
 
         let (control, mut resize_rx) = SshControl::new();
         let pump_control = control.clone();
+        let output_flow = OutputFlow::new();
+        let pump_output_flow = output_flow.clone();
         send_connection_status(&on_event, "ready");
 
         // Pump: remote output is coalesced behind a strict byte/time bound;
@@ -438,7 +455,7 @@ impl SshSession {
                     }
                     _ = flush_tick.tick() => {
                         if let Some(bytes) = output.flush() {
-                            if !emit_output(&on_event, bytes) { break; }
+                            if !emit_output(&pump_output_flow, &on_event, bytes).await { break; }
                         }
                     }
                     msg = channel.wait() => {
@@ -446,14 +463,14 @@ impl SshSession {
                         match msg {
                             ChannelMsg::Data { ref data } => {
                                 for bytes in output.push(data) {
-                                    if !emit_output(&on_event, bytes) { break 'pump; }
+                                    if !emit_output(&pump_output_flow, &on_event, bytes).await { break 'pump; }
                                 }
                             }
                             // stderr (ext=1) is interleaved into the same stream;
                             // a terminal shows both on one screen.
                             ChannelMsg::ExtendedData { ref data, ext: 1 } => {
                                 for bytes in output.push(data) {
-                                    if !emit_output(&on_event, bytes) { break 'pump; }
+                                    if !emit_output(&pump_output_flow, &on_event, bytes).await { break 'pump; }
                                 }
                             }
                             ChannelMsg::ExitStatus { exit_status } => {
@@ -511,7 +528,7 @@ impl SshSession {
                 }
             }
             if let Some(bytes) = output.flush() {
-                let _ = emit_output(&on_event, bytes);
+                let _ = emit_output(&pump_output_flow, &on_event, bytes).await;
             }
             let _ = on_event.send(PtyEvent::Exit {
                 code: exit_code.unwrap_or(SSH_DISCONNECTED_EXIT_CODE),
@@ -521,6 +538,7 @@ impl SshSession {
         Ok(SshSession {
             handle,
             control,
+            output_flow,
             sftp: tokio::sync::Mutex::new(None),
         })
     }
@@ -694,8 +712,13 @@ impl SshSession {
     /// Close is idempotent and independent from Data/Resize backpressure. The
     /// pump observes it with biased priority and can cancel an in-flight write.
     pub fn close(&self) -> Result<(), String> {
+        self.output_flow.close();
         self.control.request_close();
         Ok(())
+    }
+
+    pub fn acknowledge_output(&self, bytes: usize) {
+        self.output_flow.acknowledge(bytes);
     }
 
     /// Run a one-shot command on the remote host over a fresh exec channel on

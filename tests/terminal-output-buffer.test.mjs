@@ -20,7 +20,7 @@ function pumpAnimationFrames() {
   for (const cb of pending) cb(performance.now());
 }
 
-const { createTerminalOutputBuffer } = await import(
+const { createTerminalOutputBuffer, MAX_TERMINAL_WRITE_BYTES } = await import(
   "../src/modules/terminal/lib/terminal-output-buffer.ts"
 );
 
@@ -31,8 +31,9 @@ function makeTerminalStub() {
   return {
     writes,
     term: {
-      write(data) {
+      write(data, callback) {
         writes.push(data);
+        callback?.();
       },
     },
   };
@@ -51,6 +52,50 @@ test("buffered chunks merge into a single write per animation frame", () => {
   pumpAnimationFrames();
   assert.equal(writes.length, 1);
   assert.equal(text(writes[0]), "hello world");
+  buffer.dispose();
+});
+
+test("backend credit is acknowledged only after xterm consumes the merged write", () => {
+  let completeWrite;
+  let acknowledged = 0;
+  const term = {
+    write(_data, callback) {
+      completeWrite = callback;
+    },
+  };
+  const buffer = createTerminalOutputBuffer(term);
+  buffer.push(new TextEncoder().encode("first"), () => { acknowledged += 1; });
+  buffer.push(new TextEncoder().encode("second"), () => { acknowledged += 1; });
+  pumpAnimationFrames();
+  assert.equal(acknowledged, 0);
+  completeWrite();
+  assert.equal(acknowledged, 2);
+  buffer.dispose();
+});
+
+test("high output is sliced to one bounded xterm write per completed frame", () => {
+  const writes = [];
+  const completions = [];
+  const term = {
+    write(data, callback) {
+      writes.push(data);
+      completions.push(callback);
+    },
+  };
+  const buffer = createTerminalOutputBuffer(term);
+  buffer.push(new Uint8Array(64 * 1024).fill(0x61));
+  buffer.push(new Uint8Array(64 * 1024).fill(0x62));
+  buffer.push(new Uint8Array(64 * 1024).fill(0x63));
+  pumpAnimationFrames();
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].byteLength, MAX_TERMINAL_WRITE_BYTES);
+  pumpAnimationFrames();
+  assert.equal(writes.length, 1, "next frame waits for xterm's write callback");
+  completions.shift()();
+  pumpAnimationFrames();
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].byteLength, 64 * 1024);
+  completions.shift()();
   buffer.dispose();
 });
 
@@ -78,7 +123,10 @@ test("backgrounded terminals flush when animation frames are suspended", () => {
 
 test("overflow drops the backlog but keeps the chunk that arrived", () => {
   const { term, writes } = makeTerminalStub();
-  const buffer = createTerminalOutputBuffer(term);
+  const dropped = [];
+  const buffer = createTerminalOutputBuffer(term, {
+    onOverflow: (bytes) => dropped.push(bytes),
+  });
   // Fill the pending buffer right up to the cap without flushing.
   buffer.push(new Uint8Array(MAX_PENDING_BYTES - 10).fill(0x61));
   // This chunk overflows: the backlog must be replaced by the reset notice,
@@ -97,6 +145,7 @@ test("overflow drops the backlog but keeps the chunk that arrived", () => {
   assert.ok(flushed.startsWith("\x1bc"), "notice leads with a hard reset");
   assert.ok(flushed.endsWith("FRESH-OUTPUT"), "triggering chunk preserved after the notice");
   assert.ok(!flushed.includes("aaa"), "backlog dropped");
+  assert.deepEqual(dropped, [MAX_PENDING_BYTES - 10]);
   buffer.dispose();
 });
 

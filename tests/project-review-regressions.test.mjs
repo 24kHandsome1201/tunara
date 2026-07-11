@@ -1321,7 +1321,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // window.confirm never renders in wry's WKWebView (silent false), which
   // silently dropped every multiline/large paste before the fix.
   assert.match(terminal, /registerTerminalPasteProtection\(term, \(message\) =>\s*tauriConfirmDialog\(message, \{ kind: "warning" \}\)/);
-  assert.match(terminal, /createTerminalOutputBuffer\(term\)/);
+  assert.match(terminal, /createTerminalOutputBuffer\(term, \{ onOverflow:/);
+  assert.match(terminal, /recordTerminalBenchmarkOverflow/);
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
   assert.match(terminal, /useTerminalQuickSelect\(termRef, \{ active, cwd: dir, sessionId \}\)/);

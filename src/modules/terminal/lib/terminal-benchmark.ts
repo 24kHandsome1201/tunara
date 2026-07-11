@@ -1,8 +1,20 @@
-export const TERMINAL_BENCHMARK_MODE =
-  typeof import.meta.env !== "undefined"
-  && import.meta.env.VITE_TUNARA_BENCHMARK === "m0";
+const configuredBenchmark = typeof import.meta.env !== "undefined"
+  ? import.meta.env.VITE_TUNARA_BENCHMARK
+  : undefined;
+
+export type TerminalBenchmarkVariant = "m0" | "m1-output";
+export const TERMINAL_BENCHMARK_VARIANT: TerminalBenchmarkVariant | null =
+  configuredBenchmark === "m0" || configuredBenchmark === "m1-output"
+    ? configuredBenchmark
+    : null;
+export const TERMINAL_BENCHMARK_MODE = TERMINAL_BENCHMARK_VARIANT !== null;
+
+export const TERMINAL_OUTPUT_BLOCK_BYTES = 64 * 1024;
+export const TERMINAL_OUTPUT_BLOCK_HEADER_BYTES = 32;
+export const TERMINAL_OUTPUT_REFERENCE = "TUNARA_M1_OK 中文 🐟 é 界 ┌─┐";
 
 type BenchmarkWriter = (data: string) => Promise<void>;
+type BenchmarkSnapshotReader = () => Promise<string>;
 
 interface PendingInputProbe {
   marker: string;
@@ -22,7 +34,167 @@ export interface DurationSummary {
 }
 
 const writers = new Map<string, BenchmarkWriter>();
+const snapshotReaders = new Map<string, BenchmarkSnapshotReader>();
 const pendingInputProbes = new Map<string, PendingInputProbe>();
+const outputOverflows = new Map<string, number>();
+
+interface PendingOutputProbe {
+  tracker: TerminalOutputSequenceTracker;
+  resolve: (result: TerminalOutputSequenceResult) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const pendingOutputProbes = new Map<string, PendingOutputProbe>();
+
+const encoder = new TextEncoder();
+
+function concatBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
+  if (left.byteLength === 0) return right;
+  const joined = new Uint8Array(left.byteLength + right.byteLength);
+  joined.set(left);
+  joined.set(right, left.byteLength);
+  return joined;
+}
+
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array, from = 0): number {
+  if (needle.byteLength === 0) return from <= haystack.byteLength ? from : -1;
+  const last = haystack.byteLength - needle.byteLength;
+  outer: for (let index = Math.max(0, from); index <= last; index += 1) {
+    for (let offset = 0; offset < needle.byteLength; offset += 1) {
+      if (haystack[index + offset] !== needle[offset]) continue outer;
+    }
+    return index;
+  }
+  return -1;
+}
+
+function tailForMarker(bytes: Uint8Array, marker: Uint8Array): Uint8Array {
+  const keep = Math.min(bytes.byteLength, Math.max(0, marker.byteLength - 1));
+  return keep > 0 ? bytes.slice(bytes.byteLength - keep) : new Uint8Array();
+}
+
+export function terminalOutputBlockHeader(index: number): Uint8Array {
+  const text = `@TUNARA-M1:${index.toString(16).padStart(8, "0")}@`
+    .padEnd(TERMINAL_OUTPUT_BLOCK_HEADER_BYTES, "-");
+  return encoder.encode(text);
+}
+
+export interface TerminalOutputSequenceResult {
+  expectedBytes: number;
+  receivedBytes: number;
+  expectedBlocks: number;
+  dataEvents: number;
+  sequenceValid: boolean;
+  firstSequenceError: string | null;
+  transferMs: number;
+}
+
+export class TerminalOutputSequenceTracker {
+  private readonly expectedBytes: number;
+  private readonly startMarker: Uint8Array;
+  private readonly endMarker: Uint8Array;
+  private phase: "start" | "payload" | "end" | "complete" = "start";
+  private seekTail: Uint8Array<ArrayBufferLike> = new Uint8Array();
+  private payloadBytes = 0;
+  private dataEvents = 0;
+  private firstSequenceError: string | null = null;
+  private payloadStartedAt = 0;
+
+  constructor(expectedBytes: number, nonce: string) {
+    if (!Number.isSafeInteger(expectedBytes) || expectedBytes < TERMINAL_OUTPUT_BLOCK_BYTES) {
+      throw new Error("terminal output fixture size is invalid");
+    }
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(nonce)) {
+      throw new Error("terminal output fixture nonce is invalid");
+    }
+    this.expectedBytes = expectedBytes;
+    this.startMarker = encoder.encode(`__TUNARA_M1_BEGIN_${nonce}__`);
+    this.endMarker = encoder.encode(`__TUNARA_M1_END_${nonce}__`);
+  }
+
+  push(data: Uint8Array): TerminalOutputSequenceResult | null {
+    if (this.phase === "complete") return null;
+    const phaseBefore = this.phase;
+    const result = this.consume(data);
+    if (phaseBefore !== "start" || this.phase !== "start") this.dataEvents += 1;
+    if (!result) return null;
+    this.phase = "complete";
+    return {
+      expectedBytes: this.expectedBytes,
+      receivedBytes: this.payloadBytes,
+      expectedBlocks: Math.ceil(this.expectedBytes / TERMINAL_OUTPUT_BLOCK_BYTES),
+      dataEvents: this.dataEvents,
+      sequenceValid: this.firstSequenceError === null,
+      firstSequenceError: this.firstSequenceError,
+      transferMs: Math.round((performance.now() - this.payloadStartedAt) * 100) / 100,
+    };
+  }
+
+  private consume(data: Uint8Array): boolean {
+    let remaining = data;
+    if (this.phase === "start") {
+      const combined = concatBytes(this.seekTail, remaining);
+      const markerAt = indexOfBytes(combined, this.startMarker);
+      if (markerAt < 0) {
+        this.seekTail = tailForMarker(combined, this.startMarker);
+        return false;
+      }
+      const newlineAt = combined.indexOf(0x0a, markerAt + this.startMarker.byteLength);
+      if (newlineAt < 0) {
+        this.seekTail = combined.slice(markerAt);
+        return false;
+      }
+      this.phase = "payload";
+      this.payloadStartedAt = performance.now();
+      this.seekTail = new Uint8Array();
+      remaining = combined.slice(newlineAt + 1);
+    }
+
+    if (this.phase === "payload") {
+      let offset = 0;
+      while (offset < remaining.byteLength && this.payloadBytes < this.expectedBytes) {
+        const blockOffset = this.payloadBytes % TERMINAL_OUTPUT_BLOCK_BYTES;
+        const payloadRemaining = this.expectedBytes - this.payloadBytes;
+        if (blockOffset < TERMINAL_OUTPUT_BLOCK_HEADER_BYTES) {
+          const blockIndex = Math.floor(this.payloadBytes / TERMINAL_OUTPUT_BLOCK_BYTES);
+          const expected = terminalOutputBlockHeader(blockIndex);
+          const take = Math.min(
+            remaining.byteLength - offset,
+            TERMINAL_OUTPUT_BLOCK_HEADER_BYTES - blockOffset,
+            payloadRemaining,
+          );
+          if (this.firstSequenceError === null) {
+            for (let index = 0; index < take; index += 1) {
+              if (remaining[offset + index] !== expected[blockOffset + index]) {
+                this.firstSequenceError = `block ${blockIndex} header mismatch at byte ${blockOffset + index}`;
+                break;
+              }
+            }
+          }
+          offset += take;
+          this.payloadBytes += take;
+          continue;
+        }
+        const toBlockEnd = TERMINAL_OUTPUT_BLOCK_BYTES - blockOffset;
+        const take = Math.min(remaining.byteLength - offset, toBlockEnd, payloadRemaining);
+        offset += take;
+        this.payloadBytes += take;
+      }
+      remaining = remaining.slice(offset);
+      if (this.payloadBytes === this.expectedBytes) {
+        this.phase = "end";
+      }
+    }
+
+    if (this.phase === "end") {
+      const combined = concatBytes(this.seekTail, remaining);
+      if (indexOfBytes(combined, this.endMarker) >= 0) return true;
+      this.seekTail = tailForMarker(combined, this.endMarker);
+    }
+    return false;
+  }
+}
 
 export function percentile(values: readonly number[], percentileValue: number): number | null {
   if (values.length === 0) return null;
@@ -68,8 +240,80 @@ export function registerTerminalBenchmarkWriter(
   };
 }
 
+export function registerTerminalBenchmarkSnapshotReader(
+  sessionId: string,
+  reader: BenchmarkSnapshotReader,
+): () => void {
+  if (!TERMINAL_BENCHMARK_MODE) return () => {};
+  snapshotReaders.set(sessionId, reader);
+  return () => {
+    if (snapshotReaders.get(sessionId) === reader) snapshotReaders.delete(sessionId);
+  };
+}
+
+export function readTerminalBenchmarkSnapshot(sessionId: string): Promise<string> {
+  const reader = snapshotReaders.get(sessionId);
+  return reader
+    ? reader()
+    : Promise.reject(new Error(`benchmark snapshot reader unavailable: ${sessionId}`));
+}
+
+export function recordTerminalBenchmarkOverflow(sessionId: string): void {
+  if (!TERMINAL_BENCHMARK_MODE) return;
+  outputOverflows.set(sessionId, (outputOverflows.get(sessionId) ?? 0) + 1);
+}
+
+export function terminalBenchmarkOverflowCount(sessionId: string): number {
+  return outputOverflows.get(sessionId) ?? 0;
+}
+
+export function probeTerminalHighOutput(
+  sessionId: string,
+  command: string,
+  expectedBytes: number,
+  nonce: string,
+  timeoutMs = 10 * 60_000,
+): Promise<TerminalOutputSequenceResult> {
+  const writer = writers.get(sessionId);
+  if (!writer) return Promise.reject(new Error(`benchmark writer unavailable: ${sessionId}`));
+
+  return new Promise((resolve, reject) => {
+    const previous = pendingOutputProbes.get(sessionId);
+    if (previous) {
+      clearTimeout(previous.timer);
+      previous.reject(new Error(`benchmark output probe superseded: ${sessionId}`));
+    }
+    const probe: PendingOutputProbe = {
+      tracker: new TerminalOutputSequenceTracker(expectedBytes, nonce),
+      resolve,
+      reject,
+      timer: setTimeout(() => {
+        if (pendingOutputProbes.get(sessionId) !== probe) return;
+        pendingOutputProbes.delete(sessionId);
+        reject(new Error(`benchmark output timed out: ${sessionId}`));
+      }, timeoutMs),
+    };
+    pendingOutputProbes.set(sessionId, probe);
+    void writer(command).catch((error) => {
+      if (pendingOutputProbes.get(sessionId) !== probe) return;
+      pendingOutputProbes.delete(sessionId);
+      clearTimeout(probe.timer);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    });
+  });
+}
+
 export function recordTerminalBenchmarkOutput(sessionId: string, bytes: Uint8Array): void {
   if (!TERMINAL_BENCHMARK_MODE) return;
+  const outputProbe = pendingOutputProbes.get(sessionId);
+  if (outputProbe) {
+    const result = outputProbe.tracker.push(bytes);
+    if (result) {
+      pendingOutputProbes.delete(sessionId);
+      clearTimeout(outputProbe.timer);
+      outputProbe.resolve(result);
+    }
+  }
   const probe = pendingInputProbes.get(sessionId);
   if (!probe) return;
   const scanned = scanBenchmarkMarker(

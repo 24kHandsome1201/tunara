@@ -37,8 +37,7 @@ import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; 
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
-import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark";
-import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner";
+import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -348,14 +347,15 @@ function TerminalViewImpl({
         type: "openRequested",
         transport,
       });
-      const outputBuffer = createTerminalOutputBuffer(term);
+      const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined });
       cleanups.push(() => outputBuffer.dispose());
+      if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkSnapshotReader(sessionIdRef.current, async () => { await outputBuffer.drain(); return serializeAddon.serialize(); }));
       // Declared before ptyHandlers so onExit can flip it even if exit races the
       // await openSessionPty() return.
       let inputToPtyEnabled = true;
       const ptyHandlers = {
-        onData: (bytes: Uint8Array) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
-          outputBuffer.push(bytes);
+        onData: (bytes: Uint8Array, acknowledge: () => void) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
+          outputBuffer.push(bytes, acknowledge);
           blocks.updateActiveBlockEnd(currentBufferRow());
           snapshotScheduler.schedule();
           const current = getCurrentSession();

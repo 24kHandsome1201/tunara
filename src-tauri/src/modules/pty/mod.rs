@@ -9,12 +9,13 @@
 //!
 //! Output flows to xterm.js as [`PtyEvent`] over a Tauri `Channel`: a reader
 //! thread fills a pending buffer, a flusher thread base64-encodes and sends it
-//! every 16 ms, and a waiter thread emits `Exit` last. Backpressure caps the
-//! buffer at 1 MiB (`MAX_PENDING`); on overflow the backlog is dropped with a
-//! terminal-reset notice. Local sessions inject shell integration via
+//! every 16 ms, and a waiter thread emits `Exit` last. A bounded reader queue
+//! applies kernel PTY backpressure instead of deleting terminal protocol bytes;
+//! each frontend event is capped at 128 KiB. Local sessions inject shell integration via
 //! [`shell_init`] (OSC 7/133 markers, agent-hook socket env).
 //!
 //! Commands: [`pty_open`], [`pty_write`], [`pty_resize`], [`pty_close`].
+pub(crate) mod output_flow;
 mod session;
 mod shell_init;
 
@@ -172,6 +173,16 @@ pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result
 }
 
 #[tauri::command]
+pub fn pty_output_ack(state: tauri::State<PtyState>, id: u32, bytes: usize) {
+    if bytes == 0 {
+        return;
+    }
+    if let Some(session) = state.sessions.read().get(&id).cloned() {
+        session.acknowledge_output(bytes);
+    }
+}
+
+#[tauri::command]
 pub fn pty_resize(
     state: tauri::State<PtyState>,
     id: u32,
@@ -293,5 +304,75 @@ mod tests {
         state.close_all();
         assert!(state.sessions.read().is_empty());
         assert!(state.logical_sessions.read().is_empty());
+    }
+
+    #[test]
+    fn high_output_is_backpressured_without_dropping_protocol_bytes() {
+        const PAYLOAD_BYTES: usize = 2 * 1024 * 1024;
+        const MARKER: &str = "__TUNARA_LOCAL_HIGH_OUTPUT_OK__";
+        let (tx, rx) = mpsc::channel();
+        let channel = Channel::<PtyEvent>::new(move |body| {
+            let _ = tx.send(body);
+            Ok(())
+        });
+        let (session, _) = session::spawn(80, 24, None, channel, Some("m1-local-output"), None)
+            .expect("spawn real local shell");
+        session
+            .write(
+                format!(
+                    "stty -echo -onlcr; head -c {PAYLOAD_BYTES} /dev/zero | tr '\\0' x; printf '\\n{MARKER}\\n'; exit\n"
+                )
+                .as_bytes(),
+            )
+            .expect("start high-output fixture");
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut output = Vec::with_capacity(PAYLOAD_BYTES + 4096);
+        let mut data_events = 0usize;
+        let mut largest_event = 0usize;
+        let mut exited = false;
+        while !exited && Instant::now() < deadline {
+            let body = rx
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .expect("PTY event before high-output deadline");
+            let InvokeResponseBody::Json(json) = body else {
+                continue;
+            };
+            let event: serde_json::Value = serde_json::from_str(&json).expect("valid event JSON");
+            match event.get("type").and_then(serde_json::Value::as_str) {
+                Some("data") => {
+                    let encoded = event
+                        .get("data")
+                        .and_then(serde_json::Value::as_str)
+                        .expect("data event payload");
+                    let bytes = B64.decode(encoded).expect("base64 PTY output");
+                    session.acknowledge_output(bytes.len());
+                    largest_event = largest_event.max(bytes.len());
+                    data_events += 1;
+                    output.extend(bytes);
+                }
+                Some("exit") => exited = true,
+                _ => {}
+            }
+        }
+
+        assert!(exited, "high-output session did not emit Exit");
+        assert!(data_events > 1, "fixture should exercise output batching");
+        assert!(
+            largest_event <= session::OUTPUT_BATCH_MAX,
+            "Data event exceeded the byte cap: {largest_event}"
+        );
+        assert!(
+            output.iter().filter(|byte| **byte == b'x').count() >= PAYLOAD_BYTES,
+            "high-output payload was truncated"
+        );
+        assert!(
+            String::from_utf8_lossy(&output).contains(MARKER),
+            "final marker was not delivered"
+        );
+        assert!(
+            !String::from_utf8_lossy(&output).contains("dropped output due to backpressure"),
+            "backpressure must not delete output"
+        );
     }
 }

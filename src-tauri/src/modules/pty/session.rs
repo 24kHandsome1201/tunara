@@ -1,29 +1,25 @@
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::thread;
 
 use parking_lot::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::ipc::Channel;
 
+use super::output_flow::OutputFlow;
 use super::shell_init;
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(16);
 const READ_BUF: usize = 8 * 1024;
-// Cap on buffered-but-not-yet-flushed bytes. On overflow we discard the
-// entire pending buffer and emit an SGR-reset + notice in its place.
-// Dropping a partial prefix would slice a CSI sequence in half and corrupt
-// xterm's screen state. 1 MiB is ~250 full 80x24 screens.
-const MAX_PENDING: usize = 1024 * 1024;
-// Hard reset (ESC c) + dim notice. Written verbatim into the stream when
-// we're forced to discard backlog.
-const OVERFLOW_NOTICE: &[u8] =
-    b"\x1bc\x1b[2m[tunara: dropped output due to backpressure]\x1b[0m\r\n";
+// Reader-to-flusher memory is bounded to about 1 MiB. When it fills, the
+// reader blocks and the kernel PTY applies backpressure to the child instead
+// of Tunara deleting an arbitrary span of terminal protocol bytes.
+const OUTPUT_QUEUE_MESSAGES: usize = 128;
+pub(super) const OUTPUT_BATCH_MAX: usize = 128 * 1024;
 
 #[derive(Serialize, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -100,8 +96,18 @@ impl Session {
     /// symmetrically.
     pub fn kill(&self) -> Result<(), String> {
         match self {
-            Session::Local(s) => s.killer.lock().kill().map_err(|e| e.to_string()),
+            Session::Local(s) => {
+                s.output_flow.close();
+                s.killer.lock().kill().map_err(|e| e.to_string())
+            }
             Session::Ssh(s) => s.close(),
+        }
+    }
+
+    pub fn acknowledge_output(&self, bytes: usize) {
+        match self {
+            Session::Local(s) => s.output_flow.acknowledge(bytes),
+            Session::Ssh(s) => s.acknowledge_output(bytes),
         }
     }
 }
@@ -111,10 +117,12 @@ pub struct LocalSession {
     pub master: Mutex<Box<dyn MasterPty + Send>>,
     pub writer: Mutex<Box<dyn Write + Send>>,
     pub killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    output_flow: Arc<OutputFlow>,
 }
 
 impl Drop for LocalSession {
     fn drop(&mut self) {
+        self.output_flow.close();
         let _ = self.killer.lock().kill();
     }
 }
@@ -145,35 +153,27 @@ pub fn spawn(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
+    let output_flow = OutputFlow::new();
     let session = Arc::new(Session::Local(LocalSession {
         master: Mutex::new(pair.master),
         writer: Mutex::new(writer),
         killer: Mutex::new(killer),
+        output_flow: output_flow.clone(),
     }));
 
-    let pending: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(READ_BUF)));
-    let done = Arc::new(AtomicBool::new(false));
+    let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(OUTPUT_QUEUE_MESSAGES);
 
-    let pending_r = pending.clone();
     let reader_thread = thread::Builder::new()
         .name("tunara-pty-reader".into())
         .spawn(move || {
             let mut buf = [0u8; READ_BUF];
-            let mut dropped_bytes: u64 = 0;
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let mut g = pending_r.lock();
-                        if g.len() + n > MAX_PENDING {
-                            // Discard the whole backlog rather than slicing
-                            // through escape sequences. Emit a hard reset so
-                            // xterm doesn't carry stale SGR/cursor state.
-                            dropped_bytes += g.len() as u64;
-                            g.clear();
-                            g.extend_from_slice(OVERFLOW_NOTICE);
+                        if output_tx.send(buf[..n].to_vec()).is_err() {
+                            break;
                         }
-                        g.extend_from_slice(&buf[..n]);
                     }
                     Err(e) => {
                         // Normal on child exit: the slave fd is closed and
@@ -184,52 +184,70 @@ pub fn spawn(
                     }
                 }
             }
-            if dropped_bytes > 0 {
-                log::warn!("pty backpressure: dropped {dropped_bytes} bytes (cap {MAX_PENDING})");
-            }
         })
         .map_err(|e| format!("spawn pty reader thread: {e}"))?;
 
     let on_event_flush = on_event.clone();
-    let pending_f = pending.clone();
-    let done_f = done.clone();
     let killer_f = flusher_killer.clone();
+    let output_flow_f = output_flow;
     let flusher_thread = thread::Builder::new()
         .name("tunara-pty-flusher".into())
-        .spawn(move || loop {
-            thread::sleep(FLUSH_INTERVAL);
-            let chunk = {
-                let mut g = pending_f.lock();
-                if g.is_empty() {
-                    if done_f.load(Ordering::Acquire) {
+        .spawn(move || {
+            let mut carry = None;
+            loop {
+                let first = match carry.take() {
+                    Some(bytes) => bytes,
+                    None => match output_rx.recv() {
+                        Ok(bytes) => bytes,
+                        Err(_) => break,
+                    },
+                };
+                let mut chunk = Vec::with_capacity(OUTPUT_BATCH_MAX);
+                chunk.extend_from_slice(&first);
+                let deadline = Instant::now() + FLUSH_INTERVAL;
+                let mut disconnected = false;
+                while chunk.len() < OUTPUT_BATCH_MAX {
+                    let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
                         break;
+                    };
+                    match output_rx.recv_timeout(remaining) {
+                        Ok(bytes) if chunk.len() + bytes.len() <= OUTPUT_BATCH_MAX => {
+                            chunk.extend_from_slice(&bytes);
+                        }
+                        Ok(bytes) => {
+                            carry = Some(bytes);
+                            break;
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => break,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            disconnected = true;
+                            break;
+                        }
                     }
-                    continue;
                 }
-                std::mem::take(&mut *g)
-            };
-            // NOTE on base64: Tauri v2 `Channel<T>` serializes via JSON;
-            // `Vec<u8>` would become a JSON int array (~3× worse than base64).
-            // A raw-bytes path via `InvokeResponseBody::Raw` exists but the
-            // data+exit multiplex through one channel is awkward. Base64's 33%
-            // overhead is trivial on local IPC — revisit if profiling says
-            // otherwise.
-            let event = PtyEvent::Data {
-                data: B64.encode(&chunk),
-            };
-            if let Err(e) = on_event_flush.send(event) {
-                log::debug!("pty flusher exiting, channel closed: {e}");
-                let _ = killer_f.lock().kill();
-                break;
+                // NOTE on base64: Tauri v2 `Channel<T>` serializes via JSON;
+                // `Vec<u8>` would become a JSON int array (~3× worse than base64).
+                let event = PtyEvent::Data {
+                    data: B64.encode(&chunk),
+                };
+                if !output_flow_f.reserve_blocking(chunk.len()) {
+                    break;
+                }
+                if let Err(e) = on_event_flush.send(event) {
+                    output_flow_f.acknowledge(chunk.len());
+                    output_flow_f.close();
+                    log::debug!("pty flusher exiting, channel closed: {e}");
+                    let _ = killer_f.lock().kill();
+                    break;
+                }
+                if disconnected && carry.is_none() {
+                    break;
+                }
             }
         })
         .map_err(|e| format!("spawn pty flusher thread: {e}"))?;
 
     let on_event_exit = on_event;
-    let pending_e = pending;
-    // Clone (not move) so a strong ref to `done` survives outside the waiter
-    // closure for the spawn-failure cleanup path below.
-    let done_e = done.clone();
     let waiter_spawn = thread::Builder::new()
         .name("tunara-pty-waiter".into())
         .spawn(move || {
@@ -240,45 +258,22 @@ pub fn spawn(
                     -1
                 }
             };
-            // Wait for the reader to hit EOF so `pending` stops growing, then
-            // drain the flusher before taking a final snapshot. Setting `done`
-            // and joining the flusher guarantees every Data it had taken is sent
-            // before we emit Exit — otherwise a chunk the flusher grabbed but
-            // hadn't yet encoded could land AFTER Exit, appending output below
-            // the "[process exited]" line on the frontend.
+            // Wait for the reader to hit EOF, then drain the bounded queue.
+            // Joining the flusher guarantees every Data event is sent before
+            // Exit, so output cannot land below the frontend exit banner.
             if let Err(e) = reader_thread.join() {
                 log::error!("pty reader thread panicked: {e:?}");
             }
-            done_e.store(true, Ordering::Release);
-            // The flusher loop breaks once `pending` is empty AND `done` is set,
-            // so on join it has flushed everything it took. Costs at most one
-            // FLUSH_INTERVAL of extra latency on Exit — negligible.
             if let Err(e) = flusher_thread.join() {
                 log::error!("pty flusher thread panicked: {e:?}");
-            }
-            // Any residue (almost always empty now) is sent before Exit so the
-            // Exit event is guaranteed last on this channel.
-            let tail = std::mem::take(&mut *pending_e.lock());
-            if !tail.is_empty() {
-                if let Err(e) = on_event_exit.send(PtyEvent::Data {
-                    data: B64.encode(&tail),
-                }) {
-                    log::debug!("pty final-data send failed (channel closed): {e}");
-                }
             }
             if let Err(e) = on_event_exit.send(PtyEvent::Exit { code }) {
                 log::debug!("pty exit send failed (channel closed): {e}");
             }
         });
     if let Err(e) = waiter_spawn {
-        // The reader + flusher threads are already running. Returning Err drops
-        // `session`, whose Drop kills the child, so the reader hits EOF and
-        // exits. But the flusher only breaks when it sees `pending` empty AND
-        // `done` set, and `done` is otherwise set solely inside the waiter
-        // closure that never spawned — so without this the flusher would spin
-        // every FLUSH_INTERVAL forever, one leaked thread per failed spawn. Set
-        // it here so the flusher observes `done` and exits cleanly.
-        done.store(true, Ordering::Release);
+        // Returning Err drops `session`, whose Drop kills the child. The reader
+        // then drops its sender and the flusher drains the queue before exiting.
         return Err(format!("spawn pty waiter thread: {e}"));
     }
 

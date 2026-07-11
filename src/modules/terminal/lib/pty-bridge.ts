@@ -85,7 +85,7 @@ export function reportSshOpenFailure(
 }
 
 export type PtyHandlers = {
-  onData: (bytes: Uint8Array) => void;
+  onData: (bytes: Uint8Array, acknowledge: () => void) => void;
   onExit?: (code: number) => void;
   onConnectionStatus?: (phase: PtyConnectionStatusPhase) => void;
 };
@@ -124,6 +124,36 @@ function decodeBase64(b64: string): Uint8Array {
   return arr;
 }
 
+function createOutputAcknowledger() {
+  let id: number | null = null;
+  let pendingBytes = 0;
+  let scheduled = false;
+  const flush = () => {
+    scheduled = false;
+    if (id === null || pendingBytes === 0) return;
+    const bytes = pendingBytes;
+    pendingBytes = 0;
+    void invoke("pty_output_ack", { id, bytes }).catch((error) => {
+      console.debug("[pty-bridge] output acknowledgement failed", error);
+    });
+  };
+  const schedule = () => {
+    if (scheduled || id === null || pendingBytes === 0) return;
+    scheduled = true;
+    void Promise.resolve().then(flush);
+  };
+  return {
+    setId(value: number) {
+      id = value;
+      schedule();
+    },
+    acknowledge(bytes: number) {
+      pendingBytes += bytes;
+      schedule();
+    },
+  };
+}
+
 export async function openPty(
   logicalSessionId: string,
   cols: number,
@@ -131,12 +161,20 @@ export async function openPty(
   handlers: PtyHandlers,
   cwd?: string,
 ): Promise<PtySession> {
+  const acknowledger = createOutputAcknowledger();
   const channel = new Channel<PtyEvent>();
   channel.onmessage = (event) => {
     switch (event.type) {
-      case "data":
-        handlers.onData(decodeBase64(event.data));
+      case "data": {
+        const bytes = decodeBase64(event.data);
+        let acknowledged = false;
+        handlers.onData(bytes, () => {
+          if (acknowledged) return;
+          acknowledged = true;
+          acknowledger.acknowledge(bytes.byteLength);
+        });
         break;
+      }
       case "exit":
         handlers.onExit?.(event.code);
         break;
@@ -153,6 +191,7 @@ export async function openPty(
     cwd: cwd ?? null,
     onEvent: channel,
   });
+  acknowledger.setId(id);
 
   return {
     id,
@@ -235,12 +274,20 @@ export async function openSshPty(
   const openAttemptId = nextSshOpenAttemptId();
   sshOpenAttempts.set(logicalSessionId, openAttemptId);
   const channel = new Channel<PtyEvent>();
+  const acknowledger = createOutputAcknowledger();
   const pendingPromptIds = new Set<string>();
   channel.onmessage = (event) => {
     switch (event.type) {
-      case "data":
-        handlers.onData(decodeBase64(event.data));
+      case "data": {
+        const bytes = decodeBase64(event.data);
+        let acknowledged = false;
+        handlers.onData(bytes, () => {
+          if (acknowledged) return;
+          acknowledged = true;
+          acknowledger.acknowledge(bytes.byteLength);
+        });
         break;
+      }
       case "exit":
         handlers.onExit?.(event.code);
         break;
@@ -301,6 +348,7 @@ export async function openSshPty(
     }
     cancelledSshOpenAttempts.delete(openAttemptId);
   }
+  acknowledger.setId(id);
 
   return {
     id,
