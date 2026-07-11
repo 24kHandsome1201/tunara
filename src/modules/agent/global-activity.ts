@@ -6,13 +6,13 @@
 // - resumable agent 已退出，但留下了可执行的 resume 命令（CC/CX，见 agent-resume.ts）。
 import type { Session } from "../../ui/types.ts";
 import { isAgentActivityBusy } from "../terminal/lib/agent-lifecycle.ts";
-import { buildAgentResumeCommand } from "../terminal/lib/agent-resume.ts";
+import { buildAgentResumeLaunchCommand } from "../terminal/lib/agent-resume.ts";
 
 export interface AgentActivityGroups {
   confirmation: Session[];
   wait: Session[];
   run: Session[];
-  /** [session, resume 命令] —— 命令由 buildAgentResumeCommand 保证非空。 */
+  /** [session, resume 命令]，命令会先恢复原始 cwd。 */
   resumable: Array<{ session: Session; resumeCommand: string }>;
   total: number;
 }
@@ -29,7 +29,7 @@ export function groupAgentActivity(sessions: readonly Session[]): AgentActivityG
       else wait.push(session);
       continue;
     }
-    const resumeCommand = buildAgentResumeCommand(session.agentResume);
+    const resumeCommand = buildAgentResumeLaunchCommand(session.agentResume, session.dir);
     if (resumeCommand) resumable.push({ session, resumeCommand });
   }
   return {

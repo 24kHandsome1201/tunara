@@ -485,7 +485,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(types, /primary = s\.title && !isPromptLikeShellTitle\(s\.title\) \? s\.title : t\("session\.default_title"\);/);
   assert.match(source, /agentActivity: opts\?\.agent \? initialAgentActivity\(opts\.agent\) : undefined,/);
   assert.match(source, /agentDetectedUpdate\(session, agent\)/);
-  assert.match(source, /function buildAgentResumeIntent/);
+  assert.match(read("src/modules/terminal/lib/agent-resume.ts"), /export function buildAgentResumeIntent/);
   assert.match(source, /handleAgentDetected: \(id, agent, command\)/);
   assert.match(source, /const agentResume = reconcileAgentResumeIntent\(/);
   assert.match(source, /const resumeChanged = agentResume !== session\?\.agentResume/);
@@ -499,6 +499,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(source, /commandFinishedUpdate\(session, exitCode, isActive\)/);
   assert.match(source, /terminalExitedUpdate\(session, exitCode, isSessionObserved\(get\(\)\.activeSessionId, id\)\)/);
   assert.match(source, /cwdChangedUpdate\(session, cwd\)/);
+  assert.doesNotMatch(source, /agentResume: \{ \.\.\.agentResume, cwd/);
   assert.match(source, /shellTitleUpdate\(session, title\)/);
   assert.match(source, /if \(update\.refreshGit\) get\(\)\.refreshGit\(id\);/);
   assert.match(lifecycle, /export function agentDetectedUpdate\([\s\S]*?if \(!session \|\| session\.agent === agent\) return null;[\s\S]*?agentActivity: initialAgentActivity\(agent\),[\s\S]*?runState: "idle",/);

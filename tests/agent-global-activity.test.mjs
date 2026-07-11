@@ -50,6 +50,26 @@ test("exited agents with a resume intent land in resumable with the built comman
   assert.equal(groups.resumable[0].resumeCommand, "claude --resume abc");
 });
 
+test("resumable agents return to their captured cwd before launch", () => {
+  const groups = groupAgentActivity([
+    session("resume", {
+      dir: "/current-repo",
+      agentResume: {
+        agent: "CX",
+        command: "codex --sandbox read-only",
+        cwd: "/original repo",
+        resumeId: "thread-1",
+        lastSeenAt: 1,
+        confidence: "exact",
+      },
+    }),
+  ]);
+  assert.equal(
+    groups.resumable[0]?.resumeCommand,
+    "cd -- '/original repo' && codex --sandbox read-only resume thread-1",
+  );
+});
+
 test("resume intents that build no command (unsupported agent) are excluded", () => {
   const exited = session("a", {
     agentResume: { agent: "GM", command: "gemini", cwd: "~", lastSeenAt: 1, confidence: "unknown" },

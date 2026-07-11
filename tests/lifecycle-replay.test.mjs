@@ -90,6 +90,8 @@ import {
 } from "../src/modules/terminal/lib/terminal-device-attributes.ts";
 import {
   buildAgentResumeCommand,
+  buildAgentResumeIntent,
+  buildAgentResumeLaunchCommand,
   hasContinueFlag,
   isResumableAgentInvocation,
   parseResumeId,
@@ -466,11 +468,117 @@ test("agent resume drops dangerous, unknown, cross-agent, and shell-injection to
   );
 });
 
+test("agent resume returns to its immutable launch cwd before starting", () => {
+  const intent = {
+    agent: "CC",
+    command: "claude --permission-mode plan",
+    cwd: "/repo/it's safe",
+    resumeId: "session-1",
+    lastSeenAt: 1,
+    confidence: "exact",
+  };
+  assert.equal(
+    buildAgentResumeLaunchCommand(intent, "/elsewhere"),
+    "cd -- '/repo/it'\\''s safe' && claude --permission-mode plan --resume session-1",
+  );
+  assert.equal(
+    buildAgentResumeLaunchCommand({ ...intent, cwd: "~/work tree" }, "/elsewhere"),
+    'cd -- "$HOME"/\'work tree\' && claude --permission-mode plan --resume session-1',
+  );
+  assert.equal(
+    buildAgentResumeLaunchCommand(intent, intent.cwd),
+    "claude --permission-mode plan --resume session-1",
+  );
+});
+
+test("a new same-agent process generation cannot inherit the previous exact id or cwd", () => {
+  const oldExact = {
+    agent: "CX",
+    command: "codex --sandbox workspace-write --ask-for-approval on-request",
+    cwd: "/old-repo",
+    resumeId: "old-thread",
+    lastSeenAt: 10,
+    confidence: "exact",
+  };
+  const exited = makeSession({
+    dir: "/new-repo",
+    agent: undefined,
+    agentResume: oldExact,
+  });
+  assert.deepEqual(
+    buildAgentResumeIntent(exited, "CX", "codex --sandbox read-only -a never", 20),
+    {
+      agent: "CX",
+      command: "codex --sandbox read-only -a never",
+      cwd: "/new-repo",
+      lastSeenAt: 20,
+      confidence: "unknown",
+    },
+  );
+
+  const hookFirst = buildAgentResumeIntent(exited, "CX", undefined, 21);
+  assert.deepEqual(hookFirst, {
+    agent: "CX",
+    command: oldExact.command,
+    cwd: "/new-repo",
+    lastSeenAt: 21,
+    confidence: "unknown",
+  });
+  assert.deepEqual(
+    buildAgentResumeIntent(
+      { ...exited, agent: "CX", agentResume: { ...hookFirst, resumeId: "new-thread", confidence: "exact" } },
+      "CX",
+      "codex --sandbox read-only -a never",
+      22,
+    ),
+    {
+      agent: "CX",
+      command: "codex --sandbox read-only -a never",
+      cwd: "/new-repo",
+      resumeId: "new-thread",
+      lastSeenAt: 22,
+      confidence: "exact",
+    },
+  );
+});
+
+test("ordinary shell navigation cannot rewrite stored resume provenance", () => {
+  const resume = {
+    agent: "CC",
+    command: "claude --permission-mode plan",
+    cwd: "/original-repo",
+    resumeId: "session-1",
+    lastSeenAt: 10,
+    confidence: "exact",
+  };
+  const session = makeSession({ dir: "/original-repo", agentResume: resume });
+  const update = cwdChangedUpdate(session, "/different-repo");
+  assert.ok(update);
+  const changed = { ...session, ...update.patch };
+  assert.equal(changed.dir, "/different-repo");
+  assert.equal(changed.agentResume, resume);
+  assert.equal(changed.agentResume.cwd, "/original-repo");
+});
+
+test("duplicate detection for the active process preserves its exact resume provenance", () => {
+  const exact = {
+    agent: "CC",
+    command: "claude --permission-mode plan",
+    cwd: "/repo",
+    resumeId: "session-1",
+    lastSeenAt: 10,
+    confidence: "exact",
+  };
+  const active = makeSession({ agent: "CC", agentResume: exact });
+  assert.equal(buildAgentResumeIntent(active, "CC", undefined, 20), undefined);
+  assert.equal(buildAgentResumeIntent(active, "CC", exact.command, 20), undefined);
+});
+
 test("parseResumeId extracts explicit ids but never flags", () => {
   // Real ids — the token after resume/--resume is a session id.
   assert.equal(parseResumeId("claude --resume abc-123"), "abc-123");
   assert.equal(parseResumeId("codex resume abc-123"), "abc-123");
-  assert.equal(parseResumeId("codex exec resume 019eef70-c6e4-7430"), "019eef70-c6e4-7430");
+  assert.equal(parseResumeId("claude --resume=abc-456"), "abc-456");
   // Flags after resume are NOT ids — mistaking `--last` for a session id would
   // produce a broken `resume --last` resume command.
   assert.equal(parseResumeId("codex resume --last"), null);
@@ -480,13 +588,21 @@ test("parseResumeId extracts explicit ids but never flags", () => {
   assert.equal(parseResumeId("claude"), null);
   assert.equal(parseResumeId("claude --continue"), null);
   assert.equal(parseResumeId("claude -r"), null);
+  assert.equal(parseResumeId("codex exec resume 019eef70-c6e4-7430"), null);
+  assert.equal(parseResumeId("claude 'explain --resume fake-id'"), null);
+  assert.equal(parseResumeId("printf 'claude --resume fake-id'"), null);
+  assert.equal(parseResumeId("codex --config 'note=resume fake-id'"), null);
+  assert.equal(parseResumeId("claude --resume 'bad id'"), null);
+  assert.equal(parseResumeId("claude --resume=abc-123;"), null);
 });
 
 test("hasContinueFlag detects continue invocations", () => {
   assert.equal(hasContinueFlag("claude --continue"), true);
-  assert.equal(hasContinueFlag("codex resume continue"), true);
+  assert.equal(hasContinueFlag("codex resume --last"), true);
   assert.equal(hasContinueFlag("claude --resume abc"), false);
   assert.equal(hasContinueFlag("claude"), false);
+  assert.equal(hasContinueFlag("claude 'please --continue this'"), false);
+  assert.equal(hasContinueFlag("codex exec resume --last"), false);
 });
 
 test("utility agent invocations never create resumable sessions", () => {

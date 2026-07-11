@@ -1,11 +1,9 @@
 import { create } from "zustand";
-import type { Session, AgentCode, AgentResumeIntent, RemoteInfo, SshConnectSuggestion } from "@/ui/types";
+import type { Session, AgentCode, RemoteInfo, SshConnectSuggestion } from "@/ui/types";
 import { AGENT_NAMES } from "@/ui/types";
 import { initialAgentActivity, isSessionBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import {
-  hasContinueFlag,
-  isResumableAgentInvocation,
-  parseResumeId,
+  buildAgentResumeIntent,
   reconcileAgentResumeIntent,
   resolveAgentResumeSourceCommand,
 } from "@/modules/terminal/lib/agent-resume";
@@ -206,46 +204,6 @@ function scheduleDirCloseConfirmationExpiry(dir: string, clear: (dir: string) =>
     clear(dir);
   }, CLOSE_CONFIRM_WINDOW_MS);
   dirCloseConfirmationTimers.set(dir, timer);
-}
-
-function buildAgentResumeIntent(
-  session: Session | undefined,
-  agent: AgentCode,
-  command?: string,
-): AgentResumeIntent | undefined {
-  if (!session) return undefined;
-
-  // A real agent session id captured from the hook (confidence "exact") is
-  // authoritative — never downgrade it by re-scraping the command line.
-  const existing = session.agentResume;
-  if (existing?.agent === agent && existing.confidence === "exact" && existing.resumeId) {
-    return undefined;
-  }
-
-  const normalized = command?.trim() || existing?.command || session.lastCommand?.trim() || "";
-  if (!normalized) return undefined;
-  if (!isResumableAgentInvocation(agent, normalized)) return undefined;
-
-  const resumeId = parseResumeId(normalized);
-  const continueMatch = hasContinueFlag(normalized);
-  const next: AgentResumeIntent = {
-    agent,
-    command: normalized,
-    cwd: session.dir,
-    ...(resumeId ? { resumeId } : {}),
-    lastSeenAt: Date.now(),
-    confidence: resumeId ? "exact" : continueMatch ? "continue" : "unknown",
-  };
-  if (
-    existing?.agent === next.agent
-    && existing.command === next.command
-    && existing.cwd === next.cwd
-    && existing.resumeId === next.resumeId
-    && existing.confidence === next.confidence
-  ) {
-    return undefined;
-  }
-  return next;
 }
 
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
@@ -658,15 +616,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   handleCwdChange: (id, cwd) => {
     const session = get().sessions.find((s) => s.id === id);
-    const agentResume = session?.agentResume;
     const update = cwdChangedUpdate(session, cwd);
     if (!update) return;
-    get().updateSession(id, {
-      ...update.patch,
-      ...(agentResume
-        ? { agentResume: { ...agentResume, cwd, lastSeenAt: Date.now() } }
-        : {}),
-    });
+    get().updateSession(id, update.patch);
     // Remote sessions' cwd is a remote path (and the dir label is user@host) —
     // keep it out of the local recent-dirs affordance, matching addSession.
     if (!session?.remote) get().recordRecentDir(cwd);

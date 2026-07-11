@@ -1,5 +1,4 @@
-import type { AgentResumeIntent } from "@/ui/types";
-import type { AgentCode } from "@/ui/types";
+import type { AgentCode, AgentResumeIntent, Session } from "@/ui/types";
 import { detectAgentCommand } from "./agent-lifecycle.ts";
 
 const NON_INTERACTIVE_FLAGS: Record<"CC" | "CX", ReadonlySet<string>> = {
@@ -96,20 +95,63 @@ export function isResumableAgentInvocation(agent: AgentCode, command: string): b
   return !firstPositional || !NON_INTERACTIVE_SUBCOMMANDS[agent].has(firstPositional);
 }
 
-/**
- * Extracts an explicit resume id from a typed agent command, e.g. the `<id>` in
- * `claude --resume <id>` or `codex resume <id>`. Returns null when the command
- * has no id — including `resume --last` / `--all` / `-r`, where the token after
- * `resume` is a flag, not an id. Mistaking a flag for an id yields a broken
- * resume command, so the leading `-` is explicitly excluded.
- */
+function firstPositionalIndex(args: string[]): number {
+  for (let index = 0; index < args.length; index += 1) {
+    const token = unquoteToken(args[index]);
+    if (token === "--") return index + 1;
+    if (token.startsWith("--") && token.includes("=")) continue;
+    if (token.startsWith("-")) {
+      if (FLAGS_WITH_VALUES.has(token)) index += 1;
+      continue;
+    }
+    return index;
+  }
+  return -1;
+}
+
+function normalizeResumeId(value: string): string | null {
+  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,255}$/.test(value) ? value : null;
+}
+
+/** Parse only real Claude/Codex resume CLI positions, never prompt text. */
 export function parseResumeId(command: string): string | null {
-  const match = command.match(/(?:^|\s)(?:--resume|resume)\s+(?!-)([^\s]+)/);
-  return match ? match[1] : null;
+  const agent = detectAgentCommand(command);
+  if (agent === "CC") {
+    const args = commandArgs(command, "claude") ?? [];
+    for (let index = 0; index < args.length; index += 1) {
+      const token = unquoteToken(args[index]);
+      if (token.startsWith("--resume=")) {
+        return normalizeResumeId(token.slice("--resume=".length));
+      }
+      if (token === "--resume") {
+        return normalizeResumeId(unquoteToken(args[index + 1] ?? ""));
+      }
+    }
+    return null;
+  }
+  if (agent === "CX") {
+    const args = commandArgs(command, "codex") ?? [];
+    const resumeIndex = firstPositionalIndex(args);
+    if (resumeIndex < 0 || unquoteToken(args[resumeIndex]) !== "resume") return null;
+    return normalizeResumeId(unquoteToken(args[resumeIndex + 1] ?? ""));
+  }
+  return null;
 }
 
 export function hasContinueFlag(command: string): boolean {
-  return /(?:^|\s)(?:--continue|continue)(?:\s|$)/.test(command);
+  const agent = detectAgentCommand(command);
+  if (agent === "CC") {
+    const args = commandArgs(command, "claude") ?? [];
+    return args.some((token) => unquoteToken(token) === "--continue");
+  }
+  if (agent === "CX") {
+    const args = commandArgs(command, "codex") ?? [];
+    const resumeIndex = firstPositionalIndex(args);
+    return resumeIndex >= 0
+      && unquoteToken(args[resumeIndex]) === "resume"
+      && unquoteToken(args[resumeIndex + 1] ?? "") === "--last";
+  }
+  return false;
 }
 
 export function reconcileAgentResumeIntent(
@@ -119,6 +161,51 @@ export function reconcileAgentResumeIntent(
 ): AgentResumeIntent | undefined {
   if (next) return next;
   return existing?.agent === detectedAgent ? existing : undefined;
+}
+
+/** Build resume provenance for one detected agent process generation. */
+export function buildAgentResumeIntent(
+  session: Session | undefined,
+  agent: AgentCode,
+  command?: string,
+  now = Date.now(),
+): AgentResumeIntent | undefined {
+  if (!session) return undefined;
+
+  const existing = session.agentResume;
+  const explicitCommand = command?.trim() ?? "";
+  const sameRunningAgent = session.agent === agent;
+  if (sameRunningAgent && !explicitCommand) return undefined;
+
+  const normalized = explicitCommand || existing?.command || session.lastCommand?.trim() || "";
+  if (!normalized || !isResumableAgentInvocation(agent, normalized)) return undefined;
+
+  const newGeneration = !sameRunningAgent;
+  const preserveActiveExact = !newGeneration
+    && existing?.agent === agent
+    && existing.confidence === "exact"
+    && Boolean(existing.resumeId);
+  const parsedResumeId = explicitCommand ? parseResumeId(normalized) : null;
+  const resumeId = preserveActiveExact ? existing.resumeId : parsedResumeId ?? undefined;
+  const continueMatch = explicitCommand ? hasContinueFlag(normalized) : false;
+  const next: AgentResumeIntent = {
+    agent,
+    command: normalized,
+    cwd: newGeneration ? session.dir : existing?.cwd ?? session.dir,
+    ...(resumeId ? { resumeId } : {}),
+    lastSeenAt: now,
+    confidence: resumeId ? "exact" : continueMatch ? "continue" : "unknown",
+  };
+  if (
+    existing?.agent === next.agent
+    && existing.command === next.command
+    && existing.cwd === next.cwd
+    && existing.resumeId === next.resumeId
+    && existing.confidence === next.confidence
+  ) {
+    return undefined;
+  }
+  return next;
 }
 
 export function resolveAgentResumeSourceCommand(
@@ -141,6 +228,12 @@ function shellQuoteToken(token: string): string {
   return /^[A-Za-z0-9._:@%/+=,-]+$/.test(token)
     ? token
     : `'${token.replace(/'/g, "'\\''")}'`;
+}
+
+function shellQuoteCwd(cwd: string): string {
+  if (cwd === "~") return '"$HOME"';
+  if (cwd.startsWith("~/")) return `"$HOME"/${shellQuoteToken(cwd.slice(2))}`;
+  return shellQuoteToken(cwd);
 }
 
 function unquoteToken(token: string): string {
@@ -226,4 +319,15 @@ export function buildAgentResumeCommand(intent: AgentResumeIntent | undefined): 
     return joinCommand(prefix);
   }
   return null;
+}
+
+export function buildAgentResumeLaunchCommand(
+  intent: AgentResumeIntent | undefined,
+  currentCwd: string,
+): string | null {
+  const command = buildAgentResumeCommand(intent);
+  if (!command || !intent) return command;
+  const resumeCwd = intent.cwd.trim();
+  if (!resumeCwd || resumeCwd === currentCwd) return command;
+  return `cd -- ${shellQuoteCwd(resumeCwd)} && ${command}`;
 }
