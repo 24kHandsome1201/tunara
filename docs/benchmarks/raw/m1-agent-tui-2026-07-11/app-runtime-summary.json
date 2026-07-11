@@ -476,7 +476,7 @@
     "providerOrContextResumeClaimed": false
   },
   "localAiderRuntime": {
-    "capturedAt": "2026-07-11T10:05:00Z",
+    "capturedAt": "2026-07-11T11:46:41Z",
     "installedAppVersion": "1.14.0",
     "cwd": "/tmp",
     "command": "cd /tmp && uvx --from aider-chat aider --no-git",
@@ -497,6 +497,16 @@
       "finderRoundTripPerformed": true,
       "splitPreserved": true,
       "shellSessionPreserved": true
+    },
+    "clipboard": {
+      "sourceApp": "current source Debug bundle",
+      "method": "quick-select-visible-output hint",
+      "controlledToken": "86.2",
+      "applicationAcknowledgedCopy": true,
+      "pastedBackIntoAgentInput": true,
+      "exactRoundTrip": true,
+      "submittedToProvider": false,
+      "inputClearedWithCtrlC": true
     },
     "exit": {
       "ordinaryLocalShellRestored": true,
@@ -520,7 +530,27 @@
       "reverifiedByCurrentSourceDebugBundle": true,
       "reverificationEvidence": "A deterministic five-second /tmp uvx fixture launched through the same compound command shape and the current bundle displayed Aider · running, then returned to an ordinary /tmp terminal after exit."
     },
-    "clipboardClaimed": false,
+    "quickSelectFocusTransition": {
+      "installedAppDefectObserved": true,
+      "focusedElementWhileDialogVisible": "Terminal input",
+      "hintKeysLeakedIntoAgentInput": "a'a",
+      "rootCause": "A generic div did not reliably honor autoFocus, while the closing command palette focus trap unconditionally restored the old terminal focus.",
+      "sourceFix": {
+        "dialogFocusedInMountEffect": true,
+        "closingTrapPreservesFocusClaimedByNextOverlay": true,
+        "targetedTestsPassed": 40,
+        "typecheckPassed": true,
+        "lintPassed": true,
+        "debugBundlePassed": true
+      },
+      "runtimeEvidence": {
+        "dialogOwnedFocus": true,
+        "hintCopiedWithoutTerminalInput": true,
+        "escapeClosedDialog": true,
+        "terminalFocusRestoredAfterEscape": true
+      }
+    },
+    "clipboardClaimed": true,
     "resumeClaimed": false
   },
   "sshPiRuntime": {

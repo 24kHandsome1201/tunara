@@ -1379,6 +1379,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectOverlay, /function stepSelection\(direction: 1 \| -1\)/);
   assert.match(terminalQuickSelectOverlay, /hint\.startsWith\(typedHint\)/);
   assert.doesNotMatch(terminalQuickSelectOverlay, /ArrowDown[\s\S]*setTypedHint\(""\)/);
+  assert.match(terminalQuickSelectOverlay, /const dialogRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(terminalQuickSelectOverlay, /useEffect\(\(\) => \{[\s\S]*dialogRef\.current\?\.focus\(\);[\s\S]*\}, \[\]\)/);
+  assert.match(terminalQuickSelectOverlay, /ref=\{dialogRef\}[\s\S]*role="dialog"/);
+  assert.doesNotMatch(terminalQuickSelectOverlay, /\sautoFocus(?:\s|=)/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(commandPalette, /id: "quick-select-visible-output"/);
   assert.match(commandPalette, /label: t\("palette\.cmd\.quick_select"\)/);

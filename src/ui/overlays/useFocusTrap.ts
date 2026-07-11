@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { shouldRestoreFocusAfterTrapUnmount } from "./focus-trap-policy";
 
 const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -12,10 +13,11 @@ const FOCUSABLE_SELECTOR =
 export function useFocusTrap(ref: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
+    const trappedContainer = ref.current;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Tab") return;
-      const container = ref.current;
+      const container = trappedContainer;
       if (!container) return;
 
       const focusable = Array.from(
@@ -48,7 +50,17 @@ export function useFocusTrap(ref: React.RefObject<HTMLElement | null>) {
     document.addEventListener("keydown", onKeyDown, true);
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
-      prev?.focus?.();
+      const container = trappedContainer;
+      const active = document.activeElement as HTMLElement | null;
+      const activeInsideClosingTrap = !!active && !!container?.contains(active);
+      const activeAtDocumentRoot = !active
+        || active === document.body
+        || active === document.documentElement;
+      // Overlay transitions can mount and focus the next dialog before this
+      // cleanup runs. Do not steal focus back to the terminal in that case.
+      if (shouldRestoreFocusAfterTrapUnmount(activeInsideClosingTrap, activeAtDocumentRoot)) {
+        prev?.focus?.();
+      }
     };
   }, [ref]);
 }

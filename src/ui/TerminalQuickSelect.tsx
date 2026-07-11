@@ -13,6 +13,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
   const t = useT();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [typedHint, setTypedHint] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const hintedItems = useMemo(
     () => items.map((item, index) => ({ item, hint: quickSelectHint(index) })),
@@ -22,6 +23,13 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
   useEffect(() => {
     setSelectedIndex((index) => Math.min(index, Math.max(0, items.length - 1)));
   }, [items.length]);
+
+  // `autoFocus` on a generic div is not reliable in WKWebView. Focus in a
+  // mount effect so a command-palette focus trap finishes unmounting first and
+  // the quick-select dialog deterministically owns Escape/hint key events.
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const selected = listRef.current?.querySelector(`[data-quick-select-index="${selectedIndex}"]`) as HTMLElement | null;
@@ -74,9 +82,9 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
         }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         tabIndex={-1}
-        autoFocus
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
