@@ -56,6 +56,6 @@ SSH output batcher 使用 8ms / 128 KiB 双阈值。在慢链路下平均 Data I
 
 ## 剩余边界
 
-- optimized bundle 的 SSH transport 中断、唯一 disconnected 证据与原位 reconnect 尚未自动化验收。
-- 100/200ms RTT 集成层已有 5 样本统计，仍需补 bundle 层恢复闭环。
+- optimized bundle 的 SSH transport 中断、唯一 disconnected 证据与原位 reconnect 已完成，见 [恢复报告](./m1-ssh-recovery-2026-07-11.md)。
+- 100/200ms RTT 集成层已有 5 样本统计，bundle 层恢复闭环也已完成。
 - Claude Code、Codex、Pi、OpenCode、Aider 和未知 TUI 的本地/SSH 兼容矩阵仍待完成。

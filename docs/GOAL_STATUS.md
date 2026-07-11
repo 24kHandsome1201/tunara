@@ -25,7 +25,7 @@
 - [x] 真实 WebGL context loss、atlas rebuild、renderer fallback 和 30 分钟压力证据。context loss -> DOM fallback -> reference 可见 -> 重新激活 WebGL 已通过；38 分 44 秒、16 GiB、64 轮压力全部顺序完整且 overflow 为 0，见 [高输出报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)与[长压报告](./benchmarks/m1-terminal-stress-2026-07-11.md)。
 - [x] SSH 输出 8ms / 128KiB 有界批处理与 2MiB xterm ACK 窗口已完成；真实 `de-netcup` optimized bundle 的 50/200MiB 均顺序完整、overflow 为 0、frame p95 18ms，CPU mean 4.78%，见 [SSH 高输出报告](./benchmarks/m1-ssh-high-output-2026-07-11.md)。
 - [x] SSH 输入改为字节预算，大粘贴分块，Close 独立取消，Resize latest-value 合并；本地确定性测试与真实 `de-netcup` close/resize smoke 已通过。
-- [ ] 100/200ms RTT 下连接、目录、preview、grep、diff、取消与恢复 benchmark。真实 `de-netcup` 集成层 5 样本统计已完成，optimized bundle 与断线恢复仍待补齐，见 [RTT harness 报告](./benchmarks/m1-ssh-rtt-harness-2026-07-11.md)。
+- [x] 100/200ms RTT 下连接、目录、preview、grep、diff、SFTP 与取消已有真实 `de-netcup` 5 样本统计；optimized bundle 会话级断开在 279ms 内产生唯一 `-2`，原位 reconnect 2.888s 并恢复原 cwd，见 [RTT 报告](./benchmarks/m1-ssh-rtt-harness-2026-07-11.md)与[恢复报告](./benchmarks/m1-ssh-recovery-2026-07-11.md)。
 - [ ] Claude Code、Codex、Pi、OpenCode、Aider 和未知 TUI 的本地/SSH 兼容矩阵。
 
 ## Phase 1 验收账本

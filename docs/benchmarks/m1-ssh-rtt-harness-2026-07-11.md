@@ -4,7 +4,7 @@
 
 真实 `de-netcup` 已通过 100ms 与 200ms 配置 RTT 下的 5 轮连接、cwd、4KiB preview、grep、diff、SFTP 目录读取和取消测试。所有 10 个 SSH session 均完成认证、操作和关闭；取消从 token 生效到命令返回的 p95 为 148.32ms / 233.42ms。
 
-这是 russh 集成层的真实主机 harness，不是 optimized Tauri bundle UI 结果。它证明传输、channel 清理与取消语义；UI 缓存、交互状态和 bundle 帧时间仍需后续门禁。
+这是 russh 集成层的真实主机 harness，不是把 synthetic RTT 注入 optimized Tauri UI。它证明传输、channel 清理与取消语义；optimized bundle 的 UI 帧、SSH 高输出和断线恢复由 [SSH 高输出报告](./m1-ssh-high-output-2026-07-11.md)与[恢复报告](./m1-ssh-recovery-2026-07-11.md)分别提供。三份证据共同覆盖 M1 的传输层统计与真实应用恢复闭环。
 
 ## 方法
 
@@ -40,8 +40,7 @@ cargo test --manifest-path src-tauri/Cargo.toml \
 
 SFTP 首次读取包含 subsystem/channel 初始化，因此明显高于复用同一 exec transport 的小型命令。200ms 下 preview p95 的额外波动来自 4KiB 多包传输；本报告只记录事实，不用单次最低值替代统计。
 
-## 剩余门禁
+## 后续加压
 
-- optimized Tauri bundle 下复跑同样操作并记录 UI 状态、CPU/RSS/frame time。
 - 增加目录连续导航与缓存对照、10MiB preview cap、10,000 项目录和并发 inspection。
-- 增加断线、网络切换、睡眠唤醒、SFTP timeout 与恢复。
+- 增加网络切换、睡眠唤醒和 SFTP timeout；会话级断线与原位恢复已由 optimized bundle 完成。

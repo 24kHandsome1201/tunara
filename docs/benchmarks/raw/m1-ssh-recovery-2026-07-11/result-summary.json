@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-07-11T03:01:21.008Z",
+  "commit": "2c5d7f4d97067c53145fed9c4e2d12e80c6c1b06",
+  "buildMode": "optimized release M1 ssh benchmark bundle",
+  "transport": "ssh",
+  "host": "root@100.83.112.82:22",
+  "cwd": "/root/qclaw-wechat-client",
+  "fixture": {
+    "expectedBytes": 1048576,
+    "receivedBytes": 1048576,
+    "expectedBlocks": 16,
+    "dataEvents": 120,
+    "sequenceValid": true,
+    "transferMs": 6353,
+    "overflowCount": 0,
+    "referenceVisible": true,
+    "inputP95Ms": 277,
+    "frameSamples": 301,
+    "frameP95Ms": 18,
+    "passed": true
+  },
+  "recovery": {
+    "exitCode": -2,
+    "exitCountBefore": 0,
+    "exitCountAfter": 1,
+    "disconnectMs": 279,
+    "disconnectedPhase": "disconnected",
+    "disconnectedEvidenceExitCode": -2,
+    "writerGenerationBefore": 1,
+    "writerGenerationAfter": 2,
+    "reconnectMs": 2888,
+    "markerEchoMs": 428,
+    "markerVisible": true,
+    "cwd": "/root/qclaw-wechat-client",
+    "cwdReferenceVisible": true,
+    "recoveredPhase": "ready",
+    "passed": true
+  },
+  "process": {
+    "appRssPeakKiB": 116496,
+    "rendererRssDeltaPeakKiB": 303056,
+    "ptyRssPeakKiB": 2592,
+    "totalIncrementalRssPeakKiB": 410432,
+    "totalIncrementalRssMeanKiB": 344344.39,
+    "cpuMeanPercent": 4.17
+  },
+  "remoteSshServiceActive": true,
+  "remoteFixtureCleaned": true,
+  "passed": true
+}
