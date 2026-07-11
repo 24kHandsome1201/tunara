@@ -20,6 +20,17 @@ export function extractCommandFromOsc(data: string): string {
   }
 }
 
+export function resolveTerminalCommandText(
+  oscData: string,
+  submittedCommand: string | null,
+  bufferCommand: string,
+): string {
+  const oscCommand = extractCommandFromOsc(oscData);
+  if (oscCommand) return oscCommand;
+  const submitted = cleanTerminalText(submittedCommand ?? "").trim();
+  return submitted || bufferCommand;
+}
+
 export function getTerminalTailText(term: Terminal, rowCount = 12): string {
   const buffer = term.buffer.active;
   const cursorRow = buffer.baseY + buffer.cursorY;

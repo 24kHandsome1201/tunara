@@ -12,7 +12,7 @@ import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
 import type { AgentCode } from "./types";
 import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
-import { extractCommandFromBuffer, extractCommandFromOsc } from "@/modules/terminal/lib/terminal-buffer-read";
+import { extractCommandFromBuffer, resolveTerminalCommandText } from "@/modules/terminal/lib/terminal-buffer-read";
 import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
 import { waitForTerminalFontReady } from "@/modules/terminal/lib/terminal-font";
 import { createTerminalHyperlinkHandler } from "@/modules/terminal/lib/terminal-hyperlinks";
@@ -169,10 +169,10 @@ function TerminalViewImpl({
       // ⌘C copy runs first: on a selection it copies and short-circuits the chain
       // (returns false) so search/blocks don't see the key; otherwise it passes through.
       term.attachCustomKeyEventHandler((e) => handleCopyKeyEvent(term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
-      // OSC 133 shell integration:
-      // A = prompt start, B = prompt end (input start), C = command execution start, D;N = command end (exit code N)
+      // OSC 133: A prompt start, B input start, C command start, D;N command end.
       let osc133Active = false;
       let osc133InputFallback = false;
+      let pendingSubmittedShellCommand: string | null = null;
       let promptEndRow = -1;
       let lastExitCode = 0;
       let startupReadyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -292,13 +292,14 @@ function TerminalViewImpl({
         if (marker === "A") {
           osc133Active = true;
           osc133InputFallback = data === "A;input-fallback";
+          pendingSubmittedShellCommand = null;
         } else if (marker === "B") {
           promptEndRow = term.buffer.active.cursorY + term.buffer.active.baseY;
         } else if (marker === "C") {
           osc133InputFallback = false;
-          const oscCommand = extractCommandFromOsc(data);
-          if (osc133Active && (promptEndRow >= 0 || oscCommand)) {
-            const cmd = oscCommand || extractCommandFromBuffer(term, promptEndRow);
+          const submittedCommand = pendingSubmittedShellCommand; pendingSubmittedShellCommand = null;
+          if (osc133Active && (promptEndRow >= 0 || submittedCommand || data.startsWith("C;"))) {
+            const cmd = resolveTerminalCommandText(data, submittedCommand, extractCommandFromBuffer(term, promptEndRow));
             if (cmd) {
               if (isMeaningfulCommand(cmd)) {
                 useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
@@ -442,11 +443,11 @@ function TerminalViewImpl({
         });
       };
       let inputBuffer = "";
-      // Fallback keystroke command detection — only used when OSC 133 is not active
       const submitCommandBuffer = (submitted: string) => {
-        if (!shouldScanTerminalInput(osc133Active, osc133InputFallback)) return;
         const trimmed = cleanTerminalText(submitted).trim();
         const currentAgent = getCurrentSession()?.agent;
+        if (!currentAgent && trimmed) pendingSubmittedShellCommand = trimmed;
+        if (!shouldScanTerminalInput(osc133Active, osc133InputFallback)) return;
         if (!currentAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }

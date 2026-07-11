@@ -1305,7 +1305,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
   assert.match(terminal, /import \{ useTerminalQuickSelect \} from "\.\/useTerminalQuickSelect"/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
-  assert.match(terminal, /import \{ extractCommandFromBuffer, extractCommandFromOsc \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
+  assert.match(terminal, /import \{ extractCommandFromBuffer, resolveTerminalCommandText \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
+  assert.match(terminal, /pendingSubmittedShellCommand = trimmed/);
+  assert.match(terminal, /resolveTerminalCommandText\([\s\S]*submittedCommand[\s\S]*extractCommandFromBuffer/);
   assert.match(terminal, /import \{ createPromptAgentScreenStateTracker \} from "@\/modules\/terminal\/lib\/terminal-prompt-agent-state"/);
   assert.match(terminal, /import \{ isMeaningfulCommand \} from "@\/modules\/terminal\/lib\/terminal-command"/);
   assert.match(terminal, /import \{ waitForTerminalFontReady \} from "@\/modules\/terminal\/lib\/terminal-font"/);

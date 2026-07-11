@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// Only extractCommandFromOsc is pure (string -> string). The other two exports
+// The command text helpers are pure. The other two exports
 // (extractCommandFromBuffer / getTerminalTailText) iterate a live xterm.js
 // Terminal buffer and cannot run headless, so they are not covered here.
-import { extractCommandFromOsc } from "../src/modules/terminal/lib/terminal-buffer-read.ts";
+import {
+  extractCommandFromOsc,
+  resolveTerminalCommandText,
+} from "../src/modules/terminal/lib/terminal-buffer-read.ts";
 
 test("extractCommandFromOsc decodes a plain C;-prefixed command", () => {
   assert.equal(extractCommandFromOsc("C;git status"), "git status");
@@ -34,4 +37,22 @@ test("extractCommandFromOsc swallows malformed percent-encoding and returns empt
 
 test("extractCommandFromOsc handles an empty command after the sentinel", () => {
   assert.equal(extractCommandFromOsc("C;"), "");
+});
+
+test("resolveTerminalCommandText prefers an OSC payload when the shell provides one", () => {
+  assert.equal(
+    resolveTerminalCommandText("C;git%20status", "echo stale", "root@host:~# git status"),
+    "git status",
+  );
+});
+
+test("resolveTerminalCommandText uses submitted input for Bash PS0 markers", () => {
+  assert.equal(
+    resolveTerminalCommandText("C", "  aider --no-git  ", "root@host:~# aider --no-git"),
+    "aider --no-git",
+  );
+});
+
+test("resolveTerminalCommandText falls back to the terminal buffer without submitted input", () => {
+  assert.equal(resolveTerminalCommandText("C", null, "git status"), "git status");
 });
