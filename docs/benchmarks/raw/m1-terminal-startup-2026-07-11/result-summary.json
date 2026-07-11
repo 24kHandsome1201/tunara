@@ -1,0 +1,41 @@
+{
+  "sampleCount": 5,
+  "commit": "2d06004677bac67ba8375006db2441467b69a352",
+  "budgets": {
+    "inputP95Ms": 29.9,
+    "frameP95Ms": 33.4,
+    "totalIncrementalRssPeakKiB": 467654
+  },
+  "coldFirstRun": {
+    "launchToWindowVisibleMs": 560,
+    "launchToFirstInputReadyMs": 1772,
+    "launchToAllInputsReadyMs": 1778,
+    "inputP95Ms": 26,
+    "frameP95Ms": 18,
+    "totalIncrementalRssPeakKiB": 408352
+  },
+  "median": {
+    "launchToWindowVisibleMs": 502,
+    "launchToFirstInputReadyMs": 1639,
+    "launchToAllInputsReadyMs": 1639,
+    "inputP95Ms": 27,
+    "frameP95Ms": 18,
+    "totalIncrementalRssPeakKiB": 413088,
+    "bundleKiB": 14300
+  },
+  "worst": {
+    "launchToWindowVisibleMs": 560,
+    "launchToFirstInputReadyMs": 1772,
+    "inputP95Ms": 30,
+    "frameP95Ms": 18,
+    "totalIncrementalRssPeakKiB": 416816
+  },
+  "runs": [
+    { "timestamp": "2026-07-11T03:20:45.264Z", "windowVisibleMs": 560, "firstInputReadyMs": 1772, "allInputsReadyMs": 1778, "readyTerminals": 12, "inputP95Ms": 26, "frameP95Ms": 18, "rssPeakKiB": 408352, "failures": 0 },
+    { "timestamp": "2026-07-11T03:21:11.980Z", "windowVisibleMs": 477, "firstInputReadyMs": 1639, "allInputsReadyMs": 1639, "readyTerminals": 12, "inputP95Ms": 27, "frameP95Ms": 18, "rssPeakKiB": 414032, "failures": 0 },
+    { "timestamp": "2026-07-11T03:21:38.616Z", "windowVisibleMs": 527, "firstInputReadyMs": 1656, "allInputsReadyMs": 1668, "readyTerminals": 12, "inputP95Ms": 30, "frameP95Ms": 18, "rssPeakKiB": 416816, "failures": 0 },
+    { "timestamp": "2026-07-11T03:22:05.148Z", "windowVisibleMs": 486, "firstInputReadyMs": 1600, "allInputsReadyMs": 1605, "readyTerminals": 12, "inputP95Ms": 26, "frameP95Ms": 18, "rssPeakKiB": 412976, "failures": 0 },
+    { "timestamp": "2026-07-11T03:22:31.730Z", "windowVisibleMs": 502, "firstInputReadyMs": 1614, "allInputsReadyMs": 1625, "readyTerminals": 12, "inputP95Ms": 28, "frameP95Ms": 18, "rssPeakKiB": 413088, "failures": 0 }
+  ],
+  "passed": true
+}

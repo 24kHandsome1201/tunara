@@ -20,7 +20,7 @@
 
 ## M1 执行账本，当前 Active Milestone
 
-- [ ] 固化冷启动、首个 PTY 可输入、输入回显、10 session、bundle 大小基线。
+- [x] 固化进程冷启动、首个 PTY 可输入、输入回显、12 session 与 bundle 大小基线。5-run optimized bundle 中位数为窗口可见 502ms、首 PTY 可输入 1.639s、输入 p95 27ms、frame p95 18ms、RSS peak 413,088KiB、bundle 14,300KiB，见 [启动报告](./benchmarks/m1-terminal-startup-2026-07-11.md)。
 - [x] 建立 50/200MiB Unicode/ANSI/OSC/alternate-screen 高输出 fixture 与 reference capture；本地 optimized bundle 顺序完整、溢出 0、frame p95 18/19ms，见 [报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)。
 - [x] 真实 WebGL context loss、atlas rebuild、renderer fallback 和 30 分钟压力证据。context loss -> DOM fallback -> reference 可见 -> 重新激活 WebGL 已通过；38 分 44 秒、16 GiB、64 轮压力全部顺序完整且 overflow 为 0，见 [高输出报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)与[长压报告](./benchmarks/m1-terminal-stress-2026-07-11.md)。
 - [x] SSH 输出 8ms / 128KiB 有界批处理与 2MiB xterm ACK 窗口已完成；真实 `de-netcup` optimized bundle 的 50/200MiB 均顺序完整、overflow 为 0、frame p95 18ms，CPU mean 4.78%，见 [SSH 高输出报告](./benchmarks/m1-ssh-high-output-2026-07-11.md)。
