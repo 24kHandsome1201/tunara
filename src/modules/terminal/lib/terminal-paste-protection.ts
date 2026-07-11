@@ -11,7 +11,30 @@ export interface TerminalPasteWarning {
 
 interface PasteTarget {
   element?: HTMLElement | null;
+  modes?: { bracketedPasteMode: boolean };
+  input?(data: string, wasUserInput?: boolean): void;
   paste(data: string): void;
+}
+
+const BRACKETED_PASTE_START = "\u001b[200~";
+const BRACKETED_PASTE_END = "\u001b[201~";
+
+export function pasteWithCapturedBracketedMode(
+  term: PasteTarget,
+  text: string,
+  bracketedPasteMode: boolean,
+): void {
+  if (term.element && !term.element.isConnected) return;
+  if (!bracketedPasteMode || !term.input) {
+    term.paste(text);
+    return;
+  }
+  // Match xterm's Clipboard.paste transformation, but use the mode captured
+  // before the native confirmation sheet steals focus. Codex can briefly clear
+  // DECSET 2004 while that sheet closes; consulting the live mode at that point
+  // converts embedded newlines into Return and submits the prompt.
+  const normalized = text.replace(/\r?\n/g, "\r");
+  term.input(`${BRACKETED_PASTE_START}${normalized}${BRACKETED_PASTE_END}`, true);
 }
 
 export function analyzeTerminalPaste(text: string): TerminalPasteWarning | null {
@@ -71,6 +94,16 @@ export function confirmProtectedTerminalPaste(
   return true;
 }
 
+export function requestProtectedTerminalPaste(
+  term: PasteTarget,
+  text: string,
+  confirmPaste: TerminalPasteConfirmer,
+): boolean {
+  const bracketedPasteRequired = term.modes?.bracketedPasteMode === true;
+  return confirmProtectedTerminalPaste(text, confirmPaste, (value) =>
+    pasteWithCapturedBracketedMode(term, value, bracketedPasteRequired));
+}
+
 export function registerTerminalPasteProtection(
   term: PasteTarget,
   confirmPaste: TerminalPasteConfirmer,
@@ -80,7 +113,7 @@ export function registerTerminalPasteProtection(
 
   const onPaste = (event: ClipboardEvent) => {
     const text = event.clipboardData?.getData("text/plain") ?? "";
-    const protectedPaste = confirmProtectedTerminalPaste(text, confirmPaste, (value) => term.paste(value));
+    const protectedPaste = requestProtectedTerminalPaste(term, text, confirmPaste);
     if (!protectedPaste) return;
     event.preventDefault();
     event.stopPropagation();

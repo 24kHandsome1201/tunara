@@ -1349,7 +1349,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalChrome, /<TerminalBlockFilterPanel/);
   assert.match(terminalChrome, /\{quickSelectOverlay\}/);
   assert.match(terminalChrome, /onContextMenu=\{handleContextMenu\}/);
-  assert.match(terminalChrome, /term\.paste\(text\)/);
+  assert.match(terminalChrome, /requestProtectedTerminalPaste\(term, text/);
   assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelect, /export type TerminalQuickSelectKind = "url" \| "file" \| "text"/);
   assert.match(terminalQuickSelect, /export function collectTerminalQuickSelectItems/);
@@ -1415,7 +1415,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalPasteProtection, /TERMINAL_LARGE_PASTE_WARNING_LENGTH = 5 \* 1024/);
   assert.match(terminalPasteProtection, /export function analyzeTerminalPaste/);
   assert.match(terminalPasteProtection, /event\.preventDefault\(\)/);
-  assert.match(terminalPasteProtection, /term\.paste\(value\)/);
+  assert.match(terminalPasteProtection, /requestProtectedTerminalPaste\(term, text, confirmPaste\)/);
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocksPure, /export function findStickyCommandBlock/);
   assert.match(terminalBlocksPure, /export function findNavigableCommandBlock/);

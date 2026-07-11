@@ -1,6 +1,7 @@
 import { useState, type RefObject } from "react";
 import type { ReactNode } from "react";
 import type { Terminal } from "@xterm/xterm";
+import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { TerminalBlockFilterPanel } from "./TerminalBlockFilterPanel";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalBlocksBar } from "./TerminalBlocksBar";
@@ -9,6 +10,7 @@ import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
+import { requestProtectedTerminalPaste } from "@/modules/terminal/lib/terminal-paste-protection";
 
 interface TerminalViewChromeProps {
   containerRef: RefObject<HTMLDivElement | null>;
@@ -62,11 +64,14 @@ export function TerminalViewChrome({
   };
 
   const pasteClipboard = async () => {
-    const term = getTerminal();
-    if (!term) return;
     try {
       const text = await navigator.clipboard.readText();
-      if (text) term.paste(text); // routes through bracketed-paste protection
+      if (!text) return;
+      const term = getTerminal();
+      if (!term) return;
+      const protectedPaste = requestProtectedTerminalPaste(term, text, (message) =>
+        tauriConfirmDialog(message, { kind: "warning" }));
+      if (!protectedPaste) term.paste(text);
     } catch {
       /* clipboard read denied / unavailable */
     }

@@ -15,6 +15,8 @@ import { join } from "node:path";
 import {
   analyzeTerminalPaste,
   confirmProtectedTerminalPaste,
+  pasteWithCapturedBracketedMode,
+  requestProtectedTerminalPaste,
   TERMINAL_LARGE_PASTE_WARNING_LENGTH,
 } from "../src/modules/terminal/lib/terminal-paste-protection.ts";
 import { setLanguage } from "../src/modules/i18n/core.ts";
@@ -117,6 +119,68 @@ test("a rejecting confirmer is treated as cancel, not an unhandled rejection", a
   assert.equal(intercepted, true);
   await flush();
   assert.equal(pasted, 0);
+});
+
+test("confirmed paste preserves bracketed mode captured before a native dialog focus transition", () => {
+  const pasted = [];
+  const input = [];
+  const term = {
+    modes: { bracketedPasteMode: false },
+    input: (text, wasUserInput) => input.push([text, wasUserInput]),
+    paste: (text) => pasted.push(text),
+  };
+  pasteWithCapturedBracketedMode(term, "line1\nline2", true);
+  assert.deepEqual(pasted, []);
+  assert.deepEqual(input, [["\u001b[200~line1\rline2\u001b[201~", true]]);
+});
+
+test("captured bracketed paste normalizes LF and CRLF exactly like xterm", () => {
+  const pasted = [];
+  const input = [];
+  const term = {
+    input: (text) => input.push(text),
+    paste: (text) => pasted.push(text),
+  };
+  pasteWithCapturedBracketedMode(term, "one\r\ntwo\nthree\rfour", true);
+  assert.deepEqual(pasted, []);
+  assert.deepEqual(input, ["\u001b[200~one\rtwo\rthree\rfour\u001b[201~"]);
+});
+
+test("ordinary paste does not wait when bracketed mode was not active before confirmation", () => {
+  const pasted = [];
+  pasteWithCapturedBracketedMode({
+    modes: { bracketedPasteMode: false },
+    paste: (text) => pasted.push(text),
+  }, "echo one\necho two", false);
+  assert.deepEqual(pasted, ["echo one\necho two"]);
+});
+
+test("confirmed paste is ignored after its terminal element is detached", () => {
+  const pasted = [];
+  pasteWithCapturedBracketedMode({
+    element: { isConnected: false },
+    input: (text) => pasted.push(text),
+    paste: (text) => pasted.push(text),
+  }, "line1\nline2", true);
+  assert.deepEqual(pasted, []);
+});
+
+test("shared protected-paste entry captures bracketed mode before the async confirmer", async () => {
+  const pasted = [];
+  let resolveConfirmation;
+  const term = {
+    modes: { bracketedPasteMode: true },
+    input: (text) => pasted.push(text),
+    paste: (text) => pasted.push(text),
+  };
+  const intercepted = requestProtectedTerminalPaste(term, "line1\nline2", () =>
+    new Promise((resolve) => { resolveConfirmation = resolve; }));
+  assert.equal(intercepted, true);
+
+  term.modes.bracketedPasteMode = false;
+  resolveConfirmation(true);
+  await flush();
+  assert.deepEqual(pasted, ["\u001b[200~line1\rline2\u001b[201~"]);
 });
 
 // ── structural guard ─────────────────────────────────────────────────────
