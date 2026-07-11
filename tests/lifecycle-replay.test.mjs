@@ -395,6 +395,76 @@ test("agent resume command never falls back to the bare startup command", () => 
   );
 });
 
+test("agent resume preserves only allowlisted permission and sandbox posture", () => {
+  const base = { cwd: "/repo", lastSeenAt: 1 };
+  assert.equal(
+    buildAgentResumeCommand({
+      ...base,
+      agent: "CC",
+      command: "claude --permission-mode plan --model sonnet",
+      resumeId: "claude-session",
+      confidence: "exact",
+    }),
+    "claude --permission-mode plan --resume claude-session",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      ...base,
+      agent: "CC",
+      command: "claude --permission-mode=default",
+      confidence: "continue",
+    }),
+    "claude --permission-mode default --continue",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      ...base,
+      agent: "CX",
+      command: "env X=1 codex --sandbox read-only -a never",
+      resumeId: "codex-thread",
+      confidence: "exact",
+    }),
+    "codex --sandbox read-only --ask-for-approval never resume codex-thread",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      ...base,
+      agent: "CX",
+      command: "codex --sandbox=workspace-write --ask-for-approval=on-request",
+      confidence: "unknown",
+    }),
+    "codex --sandbox workspace-write --ask-for-approval on-request resume",
+  );
+});
+
+test("agent resume drops dangerous, unknown, cross-agent, and shell-injection tokens", () => {
+  const base = { cwd: "/repo", lastSeenAt: 1, confidence: "exact", resumeId: "safe-id" };
+  assert.equal(
+    buildAgentResumeCommand({
+      ...base,
+      agent: "CC",
+      command: "claude --permission-mode bypassPermissions; touch /tmp/pwned",
+    }),
+    "claude --resume safe-id",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      ...base,
+      agent: "CX",
+      command: "codex --sandbox danger-full-access --ask-for-approval never; echo pwned",
+    }),
+    "codex resume safe-id",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      ...base,
+      agent: "CX",
+      command: "claude --permission-mode plan",
+    }),
+    "codex resume safe-id",
+  );
+});
+
 test("parseResumeId extracts explicit ids but never flags", () => {
   // Real ids — the token after resume/--resume is a session id.
   assert.equal(parseResumeId("claude --resume abc-123"), "abc-123");

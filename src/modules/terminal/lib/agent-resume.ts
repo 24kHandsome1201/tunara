@@ -53,6 +53,10 @@ const FLAGS_WITH_VALUES = new Set([
   "-s",
 ]);
 
+const CLAUDE_RESUME_PERMISSION_MODES = new Set(["default", "plan"]);
+const CODEX_RESUME_SANDBOXES = new Set(["read-only", "workspace-write"]);
+const CODEX_RESUME_APPROVAL_POLICIES = new Set(["untrusted", "on-failure", "on-request", "never"]);
+
 function commandArgs(command: string, executable: string): string[] | null {
   const tokens = command.trim().match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
   const executableIndex = tokens.findIndex((token) => {
@@ -139,21 +143,87 @@ function shellQuoteToken(token: string): string {
     : `'${token.replace(/'/g, "'\\''")}'`;
 }
 
+function unquoteToken(token: string): string {
+  if (token.length >= 2) {
+    const first = token[0];
+    const last = token[token.length - 1];
+    if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
+      return token.slice(1, -1);
+    }
+  }
+  return token;
+}
+
+function allowedOptionValue(
+  args: string[],
+  names: readonly string[],
+  allowed: ReadonlySet<string>,
+): string | null {
+  for (let index = 0; index < args.length; index += 1) {
+    const token = unquoteToken(args[index]);
+    for (const name of names) {
+      if (token === name) {
+        const value = unquoteToken(args[index + 1] ?? "");
+        if (allowed.has(value)) return value;
+      } else if (token.startsWith(`${name}=`)) {
+        const value = unquoteToken(token.slice(name.length + 1));
+        if (allowed.has(value)) return value;
+      }
+    }
+  }
+  return null;
+}
+
+function resumeSafetyFlags(intent: AgentResumeIntent): string[] {
+  if (intent.agent !== "CC" && intent.agent !== "CX") return [];
+  const executable = intent.agent === "CC" ? "claude" : "codex";
+  const args = commandArgs(intent.command, executable) ?? [];
+  if (intent.agent === "CC") {
+    const permissionMode = allowedOptionValue(
+      args,
+      ["--permission-mode"],
+      CLAUDE_RESUME_PERMISSION_MODES,
+    );
+    return permissionMode ? ["--permission-mode", permissionMode] : [];
+  }
+
+  const flags: string[] = [];
+  const sandbox = allowedOptionValue(
+    args,
+    ["--sandbox", "-s"],
+    CODEX_RESUME_SANDBOXES,
+  );
+  if (sandbox) flags.push("--sandbox", sandbox);
+  const approval = allowedOptionValue(
+    args,
+    ["--ask-for-approval", "-a"],
+    CODEX_RESUME_APPROVAL_POLICIES,
+  );
+  if (approval) flags.push("--ask-for-approval", approval);
+  return flags;
+}
+
+function joinCommand(tokens: string[]): string {
+  return tokens.map(shellQuoteToken).join(" ");
+}
+
 export function buildAgentResumeCommand(intent: AgentResumeIntent | undefined): string | null {
   if (!intent) return null;
   if (intent.agent === "CC") {
+    const prefix = ["claude", ...resumeSafetyFlags(intent)];
     if (intent.resumeId && intent.confidence === "exact") {
-      return `claude --resume ${shellQuoteToken(intent.resumeId)}`;
+      return joinCommand([...prefix, "--resume", intent.resumeId]);
     }
-    if (intent.confidence === "continue") return "claude --continue";
-    return "claude --resume";
+    if (intent.confidence === "continue") return joinCommand([...prefix, "--continue"]);
+    return joinCommand([...prefix, "--resume"]);
   }
   if (intent.agent === "CX") {
+    const prefix = ["codex", ...resumeSafetyFlags(intent), "resume"];
     if (intent.resumeId && intent.confidence === "exact") {
-      return `codex resume ${shellQuoteToken(intent.resumeId)}`;
+      return joinCommand([...prefix, intent.resumeId]);
     }
-    if (intent.confidence === "continue") return "codex resume --last";
-    return "codex resume";
+    if (intent.confidence === "continue") return joinCommand([...prefix, "--last"]);
+    return joinCommand(prefix);
   }
   return null;
 }
