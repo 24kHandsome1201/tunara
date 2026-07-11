@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BENCHMARK="$ROOT/scripts/benchmark-m1-terminal-output.sh"
 APP_BIN="$ROOT/src-tauri/target/release/bundle/macos/Tunara M1 Benchmark.app/Contents/MacOS/tunara"
 CHUNK_BYTES="${TUNARA_M1_STRESS_CHUNK_BYTES:-268435456}"
-CHUNKS="${TUNARA_M1_STRESS_CHUNKS:-56}"
+CHUNKS="${TUNARA_M1_STRESS_CHUNKS:-64}"
 WAIT_SECONDS="${TUNARA_M1_WAIT_SECONDS:-2700}"
 RESIZE_INTERVAL_SECONDS="${TUNARA_M1_RESIZE_INTERVAL_SECONDS:-15}"
 
@@ -93,8 +93,12 @@ exercise_window &
 stimulus_pid=$!
 trap 'kill "$stimulus_pid" 2>/dev/null || true; rm -f "$EVENTS_FILE" "$RUN_LOG"' EXIT
 
+set +e
 TUNARA_M1_WAIT_SECONDS="$WAIT_SECONDS" "$BENCHMARK" run | tee "$RUN_LOG"
+benchmark_status=${PIPESTATUS[0]}
+set -e
 
+kill "$stimulus_pid" 2>/dev/null || true
 wait "$stimulus_pid" 2>/dev/null || true
 result_path="$(awk '/^Benchmark complete: / { print $3 }' "$RUN_LOG" | tail -1)"
 if [[ -n "$result_path" && -f "$result_path" ]]; then
@@ -103,3 +107,4 @@ if [[ -n "$result_path" && -f "$result_path" ]]; then
 fi
 rm -f "$EVENTS_FILE" "$RUN_LOG"
 trap - EXIT
+exit "$benchmark_status"

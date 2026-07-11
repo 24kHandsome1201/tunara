@@ -39,6 +39,14 @@ export interface DurationSummary {
   maxMs: number | null;
 }
 
+export interface AnimationFrameEvaluation {
+  frames: DurationSummary;
+  totalFrameDeltas: number;
+  backgroundRafSuspended: boolean;
+  frameSampleValid: boolean;
+  passed: boolean;
+}
+
 const writers = new Map<string, BenchmarkWriter>();
 const snapshotReaders = new Map<string, BenchmarkSnapshotReader>();
 const rendererControls = new Map<string, BenchmarkRendererControl>();
@@ -221,6 +229,27 @@ export function summarizeDurations(values: readonly number[]): DurationSummary {
     p50Ms: rounded(percentile(values, 0.5)),
     p95Ms: rounded(percentile(values, 0.95)),
     maxMs: rounded(values.length > 0 ? Math.max(...values) : null),
+  };
+}
+
+export function evaluateAnimationFrames(
+  deltas: readonly number[],
+  p95BudgetMs = 33.4,
+  minimumVisibleSamples = 60,
+  backgroundGapMs = 1_000,
+): AnimationFrameEvaluation {
+  const visibleDeltas = deltas.filter((delta) => delta < backgroundGapMs);
+  const frames = summarizeDurations(visibleDeltas);
+  const backgroundRafSuspended = deltas.some((delta) => delta >= backgroundGapMs);
+  const frameSampleValid = visibleDeltas.length >= minimumVisibleSamples;
+  return {
+    frames,
+    totalFrameDeltas: deltas.length,
+    backgroundRafSuspended,
+    frameSampleValid,
+    passed: (frameSampleValid || backgroundRafSuspended)
+      && frames.p95Ms !== null
+      && frames.p95Ms <= p95BudgetMs,
   };
 }
 

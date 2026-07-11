@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  evaluateAnimationFrames,
   percentile,
   scanBenchmarkMarker,
   summarizeDurations,
@@ -9,6 +10,20 @@ import {
   TERMINAL_OUTPUT_BLOCK_BYTES,
   terminalOutputBlockHeader,
 } from "../src/modules/terminal/lib/terminal-benchmark.ts";
+
+test("terminal benchmark separates intentional background rAF suspension from visible frame time", () => {
+  const visible = Array.from({ length: 120 }, () => 16.7);
+  const backgrounded = evaluateAnimationFrames([...visible.slice(0, 20), 5_215]);
+  assert.equal(backgrounded.backgroundRafSuspended, true);
+  assert.equal(backgrounded.frameSampleValid, false);
+  assert.equal(backgrounded.frames.p95Ms, 16.7);
+  assert.equal(backgrounded.passed, true);
+
+  const visibleJank = evaluateAnimationFrames([...visible, ...Array.from({ length: 10 }, () => 80)]);
+  assert.equal(visibleJank.backgroundRafSuspended, false);
+  assert.equal(visibleJank.frameSampleValid, true);
+  assert.equal(visibleJank.passed, false);
+});
 
 test("terminal benchmark percentile uses nearest-rank semantics", () => {
   assert.equal(percentile([], 0.95), null);

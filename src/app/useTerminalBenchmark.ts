@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import {
+  evaluateAnimationFrames,
   probeTerminalInputEcho,
   probeTerminalHighOutput,
   readTerminalBenchmarkSnapshot,
@@ -120,7 +121,7 @@ async function runM1OutputBenchmark(readyIds: string[]) {
     const overflowCount = terminalBenchmarkOverflowCount(floodSessionId) - overflowBefore;
     const referenceVisible = snapshot.includes(TERMINAL_OUTPUT_REFERENCE);
     const inputEcho = summarizeDurations(inputLatencies);
-    const frames = summarizeDurations(frameDeltas);
+    const frameEvaluation = evaluateAnimationFrames(frameDeltas);
     fixtures.push({
       ...output,
       sizeMiB: Math.round(expectedBytes / 1024 / 1024),
@@ -128,15 +129,12 @@ async function runM1OutputBenchmark(readyIds: string[]) {
       referenceVisible,
       renderDrainMs,
       inputEcho,
-      frames,
-      frameSampleValid: frameDeltas.length >= 60,
+      ...frameEvaluation,
       passed: output.sequenceValid
         && output.receivedBytes === expectedBytes
         && overflowCount === 0
         && referenceVisible
-        && frameDeltas.length >= 60
-        && frames.p95Ms !== null
-        && frames.p95Ms <= 33.4,
+        && frameEvaluation.passed,
     });
     await delay(500);
   }
