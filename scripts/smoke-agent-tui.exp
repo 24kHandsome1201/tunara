@@ -19,6 +19,7 @@ set exercise_input [expr {[info exists env(TUNARA_TUI_EXERCISE_INPUT)] && $env(T
 set exit_method [expr {[info exists env(TUNARA_TUI_EXIT_METHOD)] ? $env(TUNARA_TUI_EXIT_METHOD) : "interrupt"}]
 set exit_method_code 0
 set exit_stage_code 0
+set interaction_mask 0
 if {$exit_method eq "slash"} {
   set exit_method_code 1
 } elseif {$exit_method eq "eof"} {
@@ -44,6 +45,11 @@ proc record_spawn_output {handle bytes} {
 
 proc safe_send {spawn_channel bytes} {
   catch {send -i $spawn_channel -- $bytes}
+}
+
+proc probe_send {spawn_channel bytes bit} {
+  set ::interaction_mask [expr {$::interaction_mask | $bit}]
+  safe_send $spawn_channel $bytes
 }
 
 proc safe_exit_send {spawn_channel bytes stage_code} {
@@ -135,14 +141,21 @@ if {!$exited_before_interrupt} {
   # fast TUI exits and closes its slave side immediately.
   set scheduled {}
   if {$exercise_input} {
-    lappend scheduled [after 100 [list safe_send $child "\033"]]
-    lappend scheduled [after 200 [list safe_send $child "\t"]]
-    lappend scheduled [after 300 [list safe_send $child "\033\[Z"]]
-    lappend scheduled [after 400 [list safe_send $child "\033\[200~TUNARA_MULTILINE_A\nTUNARA_MULTILINE_B\033\[201~"]]
+    lappend scheduled [after 100 [list probe_send $child "\033" 1]]
+    lappend scheduled [after 200 [list probe_send $child "\t" 2]]
+    lappend scheduled [after 300 [list probe_send $child "\033\[Z" 4]]
+    lappend scheduled [after 400 [list probe_send $child "\033\[A" 8]]
+    lappend scheduled [after 500 [list probe_send $child "\033\[B" 16]]
+    lappend scheduled [after 600 [list probe_send $child "\033\[D" 32]]
+    lappend scheduled [after 700 [list probe_send $child "\033\[C" 64]]
+    lappend scheduled [after 800 [list probe_send $child "\022" 128]]
+    # Escape closes reverse-search or any key-dispatch overlay before paste.
+    lappend scheduled [after 900 [list probe_send $child "\033" 1]]
+    lappend scheduled [after 1000 [list probe_send $child "\033\[200~TUNARA_MULTILINE_A\nTUNARA_MULTILINE_B\033\[201~" 256]]]
     # Cancel the unsent prompt before asking the TUI to exit.
-    lappend scheduled [after 1000 [list safe_send $child "\003"]]
+    lappend scheduled [after 1400 [list probe_send $child "\003" 512]]
   }
-  set exit_delay [expr {$exercise_input ? 1600 : 500}]
+  set exit_delay [expr {$exercise_input ? 2100 : 500}]
   if {$exit_method eq "slash"} {
     lappend scheduled [after $exit_delay [list safe_exit_send $child "/exit\r" 1]]
     # Some TUIs expose a different slash vocabulary; EOF is a safe fallback at
@@ -199,5 +212,5 @@ set terminal_queries_answered 0
 dict for {_token count} $terminal_query_answers {
   incr terminal_queries_answered $count
 }
-puts "saw_output=$saw_output exited_before_interrupt=$exited_before_interrupt resize_sent=$resize_sent exited_after_interrupt=$exited_after_interrupt exit_status=$exit_status interaction_sent=$exercise_input exit_method_code=$exit_method_code exit_stage_code=$exit_stage_code normal_exit_observed=$normal_exit_observed terminal_queries_answered=$terminal_queries_answered"
+puts "saw_output=$saw_output exited_before_interrupt=$exited_before_interrupt resize_sent=$resize_sent exited_after_interrupt=$exited_after_interrupt exit_status=$exit_status interaction_sent=$exercise_input interaction_mask=$interaction_mask exit_method_code=$exit_method_code exit_stage_code=$exit_stage_code normal_exit_observed=$normal_exit_observed terminal_queries_answered=$terminal_queries_answered"
 exit 0

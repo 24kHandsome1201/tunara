@@ -13,6 +13,19 @@ from pathlib import Path
 AGENTS = ("claude", "codex", "pi", "opencode", "aider", "unknown")
 SCOPES = ("local", "ssh")
 SUMMARY_PATTERN = re.compile(r"([a-z_]+)=(-?\d+)")
+INPUT_BITS = {
+    "escape": 1,
+    "tab": 2,
+    "shiftTab": 4,
+    "arrowUp": 8,
+    "arrowDown": 16,
+    "arrowLeft": 32,
+    "arrowRight": 64,
+    "ctrlR": 128,
+    "multiline": 256,
+    "ctrlC": 512,
+}
+FULL_INPUT_MASK = sum(INPUT_BITS.values())
 
 
 def read_text(path: Path) -> str:
@@ -49,6 +62,16 @@ def fixture_flags(data: bytes) -> dict[str, bool]:
         "resumeVisible": b"TUNARA_UNKNOWN_RESUME:ready",
         "resizeObserved": b"TUNARA_UNKNOWN_RESIZE:40x120",
         "interruptObserved": b"TUNARA_UNKNOWN_EXIT:interrupt",
+        "keyEscapeObserved": b"TUNARA_UNKNOWN_KEY_ESCAPE:observed",
+        "keyTabObserved": b"TUNARA_UNKNOWN_KEY_TAB:observed",
+        "keyShiftTabObserved": b"TUNARA_UNKNOWN_KEY_SHIFT_TAB:observed",
+        "keyArrowUpObserved": b"TUNARA_UNKNOWN_KEY_ARROW_UP:observed",
+        "keyArrowDownObserved": b"TUNARA_UNKNOWN_KEY_ARROW_DOWN:observed",
+        "keyArrowLeftObserved": b"TUNARA_UNKNOWN_KEY_ARROW_LEFT:observed",
+        "keyArrowRightObserved": b"TUNARA_UNKNOWN_KEY_ARROW_RIGHT:observed",
+        "keyCtrlRObserved": b"TUNARA_UNKNOWN_KEY_CTRL_R:observed",
+        "keyMultilineObserved": b"TUNARA_UNKNOWN_KEY_MULTILINE:observed",
+        "keyCtrlCObserved": b"TUNARA_UNKNOWN_KEY_CTRL_C:observed",
     }
     return {key: token in data for key, token in tokens.items()}
 
@@ -77,6 +100,11 @@ def summarize_entry(root: Path, scope: str, agent: str) -> dict[str, object]:
         "interruptExitObserved": bool(harness.get("exited_after_interrupt")),
         "inputProbe": {
             "sent": bool(harness.get("interaction_sent")),
+            "allKeysSent": harness.get("interaction_mask", 0) == FULL_INPUT_MASK,
+            "keysSent": {
+                key: bool(harness.get("interaction_mask", 0) & bit)
+                for key, bit in INPUT_BITS.items()
+            },
             "multilineMarkersVisible": all(
                 marker in data for marker in (b"TUNARA_MULTILINE_A", b"TUNARA_MULTILINE_B")
             ),
@@ -126,6 +154,21 @@ def main() -> None:
         for scope in SCOPES
         for agent in actual_agents
     )
+    full_input = sum(
+        bool(matrix[scope][agent].get("inputProbe", {}).get("allKeysSent"))
+        for scope in SCOPES
+        for agent in actual_agents
+    )
+    multiline_visible = sum(
+        bool(matrix[scope][agent].get("inputProbe", {}).get("multilineMarkersVisible"))
+        for scope in SCOPES
+        for agent in actual_agents
+    )
+    normal_exit = sum(
+        bool(matrix[scope][agent].get("exit", {}).get("normalExitObserved"))
+        for scope in SCOPES
+        for agent in actual_agents
+    )
     result = {
         "commit": args.commit,
         "capturedAt": datetime.now(timezone.utc).isoformat(),
@@ -136,6 +179,9 @@ def main() -> None:
         "summary": {
             "actualAgentEntriesAvailable": available,
             "actualAgentEntriesStartedAndResized": started,
+            "actualAgentEntriesFullInputProbe": full_input,
+            "actualAgentEntriesMultilineMarkersVisible": multiline_visible,
+            "actualAgentEntriesNormalExitObserved": normal_exit,
             "unknownLocalContractPassed": bool(matrix["local"]["unknown"].get("contractPassed")),
             "unknownSshContractPassed": bool(matrix["ssh"]["unknown"].get("contractPassed")),
         },

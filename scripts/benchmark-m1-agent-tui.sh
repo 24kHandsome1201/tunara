@@ -63,7 +63,7 @@ if command -v uvx >/dev/null 2>&1; then
 else
   record_unavailable local aider "uvx unavailable"
 fi
-"$SMOKE" "$WORK/local/unknown.log" "$FIXTURE" > "$WORK/local/unknown.summary" &
+TUNARA_TUI_EXERCISE_INPUT=1 "$SMOKE" "$WORK/local/unknown.log" "$FIXTURE" > "$WORK/local/unknown.summary" &
 jobs+=("$!")
 printf '%s\n' "deterministic fixture" > "$WORK/local/unknown.version"
 wait_jobs
@@ -141,7 +141,7 @@ if remote_available aider; then
 else
   record_unavailable ssh aider "command unavailable"
 fi
-"$SMOKE" "$WORK/ssh/unknown.log" ssh "${ssh_args[@]}" -tt "$remote" \
+TUNARA_TUI_EXERCISE_INPUT=1 "$SMOKE" "$WORK/ssh/unknown.log" ssh "${ssh_args[@]}" -tt "$remote" \
   python3 "$remote_fixture" > "$WORK/ssh/unknown.summary" &
 jobs+=("$!")
 printf '%s\n' "deterministic fixture" > "$WORK/ssh/unknown.version"

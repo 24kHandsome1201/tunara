@@ -1,6 +1,6 @@
 {
-  "commit": "ba9272498b473abbb1dcfb10aec9e72c4e93de10",
-  "capturedAt": "2026-07-11T04:46:51.615814+00:00",
+  "commit": "5a4d1e9c57ac5596a75fd14db1d1747945590d2b",
+  "capturedAt": "2026-07-11T07:10:52.782935+00:00",
   "macOS": "26.1 (25B5072a)",
   "sshTarget": "de-netcup",
   "terminalIdentity": {
@@ -12,7 +12,7 @@
       "claude": {
         "available": true,
         "version": "2.1.178 (Claude Code)",
-        "capturedBytes": 4390,
+        "capturedBytes": 6377,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -20,6 +20,7 @@
           "exited_after_interrupt": 1,
           "exit_status": 0,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 1,
           "exit_stage_code": 1,
           "normal_exit_observed": 1,
@@ -39,7 +40,19 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
-          "multilineMarkersVisible": true
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
+          "multilineMarkersVisible": false
         },
         "exit": {
           "requestedMethod": "slash",
@@ -50,7 +63,7 @@
       "codex": {
         "available": true,
         "version": "codex-cli 0.144.1",
-        "capturedBytes": 7879,
+        "capturedBytes": 11968,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -58,6 +71,7 @@
           "exited_after_interrupt": 0,
           "exit_status": -1,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 2,
           "exit_stage_code": 3,
           "normal_exit_observed": 0,
@@ -77,6 +91,18 @@
         "interruptExitObserved": false,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": true
         },
         "exit": {
@@ -88,7 +114,7 @@
       "pi": {
         "available": true,
         "version": "0.79.4",
-        "capturedBytes": 40324,
+        "capturedBytes": 41924,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -96,6 +122,7 @@
           "exited_after_interrupt": 1,
           "exit_status": 0,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 1,
           "exit_stage_code": 2,
           "normal_exit_observed": 1,
@@ -115,6 +142,18 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": true
         },
         "exit": {
@@ -126,7 +165,7 @@
       "opencode": {
         "available": true,
         "version": "1.17.18",
-        "capturedBytes": 11284,
+        "capturedBytes": 11087,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -134,6 +173,7 @@
           "exited_after_interrupt": 0,
           "exit_status": -1,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 2,
           "exit_stage_code": 3,
           "normal_exit_observed": 0,
@@ -153,6 +193,18 @@
         "interruptExitObserved": false,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": false
         },
         "exit": {
@@ -164,7 +216,7 @@
       "aider": {
         "available": true,
         "version": "aider 0.86.2",
-        "capturedBytes": 5594,
+        "capturedBytes": 5525,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -172,10 +224,11 @@
           "exited_after_interrupt": 1,
           "exit_status": 130,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 1,
-          "exit_stage_code": 0,
-          "normal_exit_observed": 0,
-          "terminal_queries_answered": 6
+          "exit_stage_code": 1,
+          "normal_exit_observed": 1,
+          "terminal_queries_answered": 5
         },
         "protocol": {
           "alternateScreen": false,
@@ -191,27 +244,40 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": true
         },
         "exit": {
           "requestedMethod": "slash",
-          "completedAfter": "none",
-          "normalExitObserved": false
+          "completedAfter": "slash",
+          "normalExitObserved": true
         }
       },
       "unknown": {
         "available": true,
         "version": "deterministic fixture",
-        "capturedBytes": 18160,
+        "capturedBytes": 18558,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
           "resize_sent": 1,
           "exited_after_interrupt": 1,
           "exit_status": 0,
-          "interaction_sent": 0,
+          "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 0,
-          "exit_stage_code": 3,
+          "exit_stage_code": 0,
           "normal_exit_observed": 0,
           "terminal_queries_answered": 4
         },
@@ -228,12 +294,24 @@
         "startupPassed": true,
         "interruptExitObserved": true,
         "inputProbe": {
-          "sent": false,
+          "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": false
         },
         "exit": {
           "requestedMethod": "interrupt",
-          "completedAfter": "interrupt",
+          "completedAfter": "none",
           "normalExitObserved": false
         },
         "fixture": {
@@ -243,7 +321,17 @@
           "failureVisible": true,
           "resumeVisible": true,
           "resizeObserved": true,
-          "interruptObserved": true
+          "interruptObserved": true,
+          "keyEscapeObserved": true,
+          "keyTabObserved": true,
+          "keyShiftTabObserved": true,
+          "keyArrowUpObserved": true,
+          "keyArrowDownObserved": true,
+          "keyArrowLeftObserved": true,
+          "keyArrowRightObserved": true,
+          "keyCtrlRObserved": true,
+          "keyMultilineObserved": true,
+          "keyCtrlCObserved": true
         },
         "contractPassed": true
       }
@@ -252,7 +340,7 @@
       "claude": {
         "available": true,
         "version": "2.1.81 (Claude Code)",
-        "capturedBytes": 1207,
+        "capturedBytes": 1258,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -260,6 +348,7 @@
           "exited_after_interrupt": 1,
           "exit_status": 1,
           "interaction_sent": 1,
+          "interaction_mask": 63,
           "exit_method_code": 1,
           "exit_stage_code": 0,
           "normal_exit_observed": 0,
@@ -279,6 +368,18 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": false,
+            "ctrlR": false,
+            "multiline": false,
+            "ctrlC": false
+          },
           "multilineMarkersVisible": false
         },
         "exit": {
@@ -290,7 +391,7 @@
       "codex": {
         "available": true,
         "version": "codex-cli 0.144.1",
-        "capturedBytes": 15228,
+        "capturedBytes": 18816,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -298,6 +399,7 @@
           "exited_after_interrupt": 1,
           "exit_status": 0,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 2,
           "exit_stage_code": 2,
           "normal_exit_observed": 1,
@@ -317,6 +419,18 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": true
         },
         "exit": {
@@ -328,7 +442,7 @@
       "pi": {
         "available": true,
         "version": "0.79.4",
-        "capturedBytes": 41114,
+        "capturedBytes": 43431,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -336,6 +450,7 @@
           "exited_after_interrupt": 1,
           "exit_status": 0,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 1,
           "exit_stage_code": 2,
           "normal_exit_observed": 1,
@@ -355,6 +470,18 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": true
         },
         "exit": {
@@ -366,7 +493,7 @@
       "opencode": {
         "available": true,
         "version": "1.17.18",
-        "capturedBytes": 39836,
+        "capturedBytes": 46034,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -374,6 +501,7 @@
           "exited_after_interrupt": 1,
           "exit_status": 0,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 1,
           "exit_stage_code": 3,
           "normal_exit_observed": 0,
@@ -393,6 +521,18 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": true
         },
         "exit": {
@@ -404,7 +544,7 @@
       "aider": {
         "available": true,
         "version": "aider 0.86.2",
-        "capturedBytes": 5733,
+        "capturedBytes": 5486,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
@@ -412,6 +552,7 @@
           "exited_after_interrupt": 1,
           "exit_status": 1,
           "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 1,
           "exit_stage_code": 1,
           "normal_exit_observed": 1,
@@ -431,6 +572,18 @@
         "interruptExitObserved": true,
         "inputProbe": {
           "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": true
         },
         "exit": {
@@ -442,16 +595,17 @@
       "unknown": {
         "available": true,
         "version": "deterministic fixture",
-        "capturedBytes": 17636,
+        "capturedBytes": 18762,
         "harness": {
           "saw_output": 1,
           "exited_before_interrupt": 0,
           "resize_sent": 1,
           "exited_after_interrupt": 1,
           "exit_status": 0,
-          "interaction_sent": 0,
+          "interaction_sent": 1,
+          "interaction_mask": 1023,
           "exit_method_code": 0,
-          "exit_stage_code": 3,
+          "exit_stage_code": 0,
           "normal_exit_observed": 0,
           "terminal_queries_answered": 4
         },
@@ -468,12 +622,24 @@
         "startupPassed": true,
         "interruptExitObserved": true,
         "inputProbe": {
-          "sent": false,
+          "sent": true,
+          "keysSent": {
+            "escape": true,
+            "tab": true,
+            "shiftTab": true,
+            "arrowUp": true,
+            "arrowDown": true,
+            "arrowLeft": true,
+            "arrowRight": true,
+            "ctrlR": true,
+            "multiline": true,
+            "ctrlC": true
+          },
           "multilineMarkersVisible": false
         },
         "exit": {
           "requestedMethod": "interrupt",
-          "completedAfter": "interrupt",
+          "completedAfter": "none",
           "normalExitObserved": false
         },
         "fixture": {
@@ -483,7 +649,17 @@
           "failureVisible": true,
           "resumeVisible": true,
           "resizeObserved": true,
-          "interruptObserved": true
+          "interruptObserved": true,
+          "keyEscapeObserved": true,
+          "keyTabObserved": true,
+          "keyShiftTabObserved": true,
+          "keyArrowUpObserved": true,
+          "keyArrowDownObserved": true,
+          "keyArrowLeftObserved": true,
+          "keyArrowRightObserved": true,
+          "keyCtrlRObserved": true,
+          "keyMultilineObserved": true,
+          "keyCtrlCObserved": true
         },
         "contractPassed": true
       }
@@ -492,6 +668,9 @@
   "summary": {
     "actualAgentEntriesAvailable": 10,
     "actualAgentEntriesStartedAndResized": 10,
+    "actualAgentEntriesFullInputProbe": 9,
+    "actualAgentEntriesMultilineMarkersVisible": 7,
+    "actualAgentEntriesNormalExitObserved": 6,
     "unknownLocalContractPassed": true,
     "unknownSshContractPassed": true
   }

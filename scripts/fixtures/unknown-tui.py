@@ -107,9 +107,31 @@ write("TUNARA_UNKNOWN_WAITING_CONFIRMATION:visible\r\n")
 write("TUNARA_UNKNOWN_FAILURE:recoverable\r\n")
 write("TUNARA_UNKNOWN_RESUME:ready\r\n")
 
+key_tokens = (
+    (b"\x1b", "ESCAPE"),
+    (b"\t", "TAB"),
+    (b"\x1b[Z", "SHIFT_TAB"),
+    (b"\x1b[A", "ARROW_UP"),
+    (b"\x1b[B", "ARROW_DOWN"),
+    (b"\x1b[D", "ARROW_LEFT"),
+    (b"\x1b[C", "ARROW_RIGHT"),
+    (b"\x12", "CTRL_R"),
+    (b"TUNARA_MULTILINE_A\nTUNARA_MULTILINE_B", "MULTILINE"),
+)
+observed_keys: set[str] = set()
+input_stream = bytearray()
+
 while True:
     readable, _, _ = select.select([STDIN_FD], [], [], 1)
-    if readable and b"\x03" in os.read(STDIN_FD, 4096):
+    if not readable:
+        continue
+    input_stream.extend(os.read(STDIN_FD, 4096))
+    for token, name in key_tokens:
+        if name not in observed_keys and token in input_stream:
+            observed_keys.add(name)
+            write(f"\r\nTUNARA_UNKNOWN_KEY_{name}:observed\r\n")
+    if b"\x03" in input_stream:
+        write("\r\nTUNARA_UNKNOWN_KEY_CTRL_C:observed\r\n")
         write("\r\nTUNARA_UNKNOWN_EXIT:interrupt\r\n")
         restore_terminal()
         break
