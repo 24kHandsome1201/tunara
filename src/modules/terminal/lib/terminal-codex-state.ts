@@ -53,7 +53,7 @@ export function createCodexScreenStateTracker({
       const screenState = detectCodexScreenState(tail);
       if (
         screenState === "busy" &&
-        current.agentActivity !== "running"
+        current.agentActivity === "idle"
       ) {
         onBusy(getSessionId());
       } else if (screenState === "ready" && current.agentActivity !== "idle") {

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   detectAgentCommand,
   detectCodexScreenState,
+  hasCompletedAgentTurn,
   isSessionBusy,
   parseAgentLifecycleOsc,
   parseAgentHookEvent,
@@ -1142,6 +1143,7 @@ test("agent ready distinguishes startup idle from completed turns for sidebar st
   assert.equal(startupReady.completedAt, undefined);
   assert.equal(startupReady.unread, undefined);
   assert.equal(startupUpdate.refreshGit, undefined);
+  assert.equal(hasCompletedAgentTurn(startupReady), false);
   assert.equal(sessionDisplayRunState(startupReady), "idle");
 
   const backgroundStartupUpdate = agentReadyUpdate(startup, false, 15);
@@ -1161,6 +1163,7 @@ test("agent ready distinguishes startup idle from completed turns for sidebar st
 
   assert.equal(activeDone.completedAt, 20);
   assert.equal(activeDone.unread, undefined);
+  assert.equal(hasCompletedAgentTurn(activeDone), true);
   assert.equal(sessionDisplayRunState(activeDone), "done");
   assert.equal(isSessionBusy(activeDone), false);
 
@@ -1206,8 +1209,13 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
 
   assert.equal(h.apply(agentDetectedUpdate(h.session, "CX", 10)), true);
   assert.equal(h.session.agent, "CX");
+  assert.equal(h.session.agentActivity, "starting");
+  assert.equal(isSessionBusy(h.session), true);
+
+  assert.equal(detectCodexScreenState("Codex\n\n› "), "ready");
+  assert.equal(h.apply(agentReadyUpdate(h.session, true, 15)), true);
   assert.equal(h.session.agentActivity, "idle");
-  assert.equal(isSessionBusy(h.session), false);
+  assert.equal(h.session.completedAt, undefined);
 
   assert.equal(detectCodexScreenState("Codex\nWorking\nesc to interrupt"), "busy");
   assert.equal(detectCodexScreenState("Codex\n› fix this\nWorking\nesc to interrupt"), "busy");
@@ -1220,6 +1228,42 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
   assert.equal(h.apply(agentReadyUpdate(h.session, true, 30)), true);
   assert.equal(h.session.agentActivity, "idle");
   assert.equal(isSessionBusy(h.session), false);
+});
+
+test("Codex screen tracker does not complete startup while the first prompt is painting", async () => {
+  let session = makeSession({ agent: "CX", agentActivity: "starting" });
+  const lines = ["Codex", "Working", "esc to interrupt"];
+  let busyCount = 0;
+  let readyCount = 0;
+  const tracker = createCodexScreenStateTracker({
+    terminal: makeTailTerminal(lines),
+    getSessionId: () => "s-1",
+    getCurrentSession: () => session,
+    isTrackingCodex: () => true,
+    onBusy: () => {
+      busyCount += 1;
+      session = { ...session, agentActivity: "running" };
+    },
+    onReady: () => {
+      readyCount += 1;
+      session = { ...session, agentActivity: "idle" };
+    },
+  });
+
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(busyCount, 0, "startup paint must not manufacture a running turn");
+  assert.equal(readyCount, 0);
+  assert.equal(session.agentActivity, "starting");
+
+  lines.splice(0, lines.length, "Codex", "› ");
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, CODEX_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(busyCount, 0);
+  assert.equal(readyCount, 1);
+  assert.equal(session.agentActivity, "idle");
+
+  tracker.dispose();
 });
 
 test("Codex screen tracker does not mark ready prompt redraws as busy", async () => {

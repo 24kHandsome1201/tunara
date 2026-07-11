@@ -48,8 +48,7 @@ export function isAgentShellTitle(title: string): boolean {
 }
 
 export function initialAgentActivity(agent: AgentCode): AgentActivity {
-  if (HOOK_READY_AGENTS.has(agent)) return "starting";
-  if (PROMPT_READY_AGENTS.has(agent)) return "idle";
+  if (HOOK_READY_AGENTS.has(agent) || PROMPT_READY_AGENTS.has(agent)) return "starting";
   return "running";
 }
 
@@ -70,6 +69,12 @@ export function isSessionBusy(session: Session): boolean {
   return session.agent
     ? isAgentActivityBusy(session.agentActivity)
     : session.runState === "running";
+}
+
+export function hasCompletedAgentTurn(session: Session): boolean {
+  return !!session.agent
+    && session.agentActivity === "idle"
+    && session.completedAt !== undefined;
 }
 
 export function sessionDisplayRunState(session: Session): RunState {

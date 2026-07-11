@@ -419,13 +419,13 @@ test("agent lifecycle policy preserves line structure for Codex", () => {
   assert.match(policy, /export function detectAgentCommand\(commandLine: string\): AgentCode \| null/);
   assert.match(policy, /export function isAgentShellTitle\(title: string\): boolean/);
   assert.match(policy, /export function initialAgentActivity\(agent: AgentCode\): AgentActivity/);
-  assert.match(policy, /if \(HOOK_READY_AGENTS\.has\(agent\)\) return "starting";/);
-  assert.match(policy, /if \(PROMPT_READY_AGENTS\.has\(agent\)\) return "idle";/);
+  assert.match(policy, /HOOK_READY_AGENTS\.has\(agent\) \|\| PROMPT_READY_AGENTS\.has\(agent\)/);
   assert.match(policy, /export function shouldUseStartupQuietReadyFallback\(/);
   assert.match(policy, /HOOK_READY_AGENTS\.has\(agent\)[\s\S]*activity === "starting"/);
   assert.doesNotMatch(policy, /startupPending/);
   assert.match(policy, /export function isSessionBusy\(session: Session\): boolean/);
   assert.match(policy, /session\.agent[\s\S]*isAgentActivityBusy\(session\.agentActivity\)[\s\S]*session\.runState === "running"/);
+  assert.match(policy, /export function hasCompletedAgentTurn\(session: Session\): boolean/);
   assert.match(policy, /export function sessionDisplayRunState\(session: Session\): RunState/);
   assert.match(policy, /export function detectCodexScreenState\(text: string\): AgentScreenState/);
   assert.match(policy, /cleanTerminalLines\(text\)[\s\S]*\.split\("\\n"\)/);
@@ -443,7 +443,7 @@ test("agent lifecycle policy preserves line structure for Codex", () => {
   assert.match(tracker, /export const CODEX_STATE_CHECK_DELAY_MS = 500;/);
   assert.match(tracker, /getTerminalTailText\(terminal, CODEX_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
   assert.match(tracker, /const screenState = detectCodexScreenState\(tail\);/);
-  assert.match(tracker, /screenState === "busy"[\s\S]*onBusy\(getSessionId\(\)\)/);
+  assert.match(tracker, /screenState === "busy"[\s\S]*current\.agentActivity === "idle"[\s\S]*onBusy\(getSessionId\(\)\)/);
   assert.doesNotMatch(tracker, /dataBurstCount|BURST_BUSY_THRESHOLD/);
   assert.match(utils, /export function cleanTerminalLines\(text: string\): string/);
 });
@@ -554,8 +554,9 @@ test("UI renders sidebar progress only when an agent is busy", () => {
   assert.match(card, /showBusyProgress && <BusyProgress \/>/);
   assert.match(card, /animation: "agentBusyProgress/);
   assert.doesNotMatch(card, /const showBusyProgress = session\.runState === "running";/);
-  assert.match(status, /import \{ isAgentActivityBusy \}/);
+  assert.match(status, /import \{ hasCompletedAgentTurn, isAgentActivityBusy \}/);
   assert.match(status, /const isBusy = !!session\.agent && isAgentActivityBusy\(session\.agentActivity\);/);
+  assert.match(status, /session\.agent && session\.agentActivity === "idle" && !hasCompletedAgentTurn\(session\)/);
   assert.match(main, /<AgentStatusBar session=/);
   assert.doesNotMatch(diff, /session\.runState !== "running"/);
 });

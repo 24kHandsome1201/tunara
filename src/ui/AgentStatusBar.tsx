@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { type Session, AGENT_NAMES } from "./types";
 import { AgentBadge } from "./agents";
-import { isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
+import { hasCompletedAgentTurn, isAgentActivityBusy } from "@/modules/terminal/lib/agent-lifecycle";
 import { buildAgentResumeCommand } from "@/modules/terminal/lib/agent-resume";
 import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
@@ -23,7 +23,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
   const displayAgent = agentCode ?? resumeAgent;
   const isBusy = !!session.agent && isAgentActivityBusy(session.agentActivity);
   const isStarting = session.agentActivity === "starting";
-  const isIdleAfterBusy = visible && !!session.agent && session.agentActivity === "idle";
+  const isCompletedTurn = visible && hasCompletedAgentTurn(session);
 
   useEffect(() => {
     if (session.agent) setLastAgent(session.agent);
@@ -33,7 +33,7 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
     if (isBusy) {
       setVisible(true);
       setFading(false);
-    } else if (isIdleAfterBusy) {
+    } else if (isCompletedTurn) {
       // 等一段时间让用户看到"已完成"，再触发出场动画
       const timer = setTimeout(() => setFading(true), 1200);
       return () => clearTimeout(timer);
@@ -41,8 +41,11 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       setVisible(false);
       setFading(false);
     }
-  }, [isBusy, isIdleAfterBusy, session.agent]);
+  }, [isBusy, isCompletedTurn, session.agent]);
 
+  // A prompt-aware agent reaching its first ready prompt only completed
+  // startup. It has no completedAt evidence and must never flash "Done".
+  if (session.agent && session.agentActivity === "idle" && !hasCompletedAgentTurn(session)) return null;
   if ((!visible && !resumeCommand) || !displayAgent) return null;
 
   const fileCount = session.changes?.files.length ?? 0;
