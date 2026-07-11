@@ -8,6 +8,12 @@ export const TERMINAL_BENCHMARK_VARIANT: TerminalBenchmarkVariant | null =
     ? configuredBenchmark
     : null;
 export const TERMINAL_BENCHMARK_MODE = TERMINAL_BENCHMARK_VARIANT !== null;
+export type TerminalBenchmarkTransport = "local" | "ssh";
+export const TERMINAL_BENCHMARK_TRANSPORT: TerminalBenchmarkTransport =
+  configuredBenchmark === "m1-output"
+    && import.meta.env.VITE_TUNARA_BENCHMARK_TRANSPORT === "ssh"
+    ? "ssh"
+    : "local";
 
 export const TERMINAL_OUTPUT_BLOCK_BYTES = 64 * 1024;
 export const TERMINAL_OUTPUT_BLOCK_HEADER_BYTES = 32;

@@ -8,6 +8,7 @@ import {
   sampleAnimationFrames,
   summarizeDurations,
   TERMINAL_BENCHMARK_MODE,
+  TERMINAL_BENCHMARK_TRANSPORT,
   TERMINAL_BENCHMARK_VARIANT,
   TERMINAL_OUTPUT_BLOCK_BYTES,
   TERMINAL_OUTPUT_REFERENCE,
@@ -42,6 +43,16 @@ function m1OutputSizes(): number[] {
   return parsed.length > 0 ? parsed : M1_DEFAULT_OUTPUT_BYTES;
 }
 
+function m1FixtureTimeoutMs(): number {
+  const configured: string | undefined = typeof import.meta.env !== "undefined"
+    ? import.meta.env.VITE_TUNARA_BENCHMARK_FIXTURE_TIMEOUT_MS
+    : undefined;
+  const parsed = Number(configured);
+  return Number.isSafeInteger(parsed) && parsed >= 1_000
+    ? parsed
+    : 10 * 60_000;
+}
+
 async function sampleControlInput(sessionId: string, nonce: string): Promise<number[]> {
   const latencies: number[] = [];
   for (let index = 0; index < 5; index += 1) {
@@ -64,11 +75,15 @@ async function runM1OutputBenchmark(readyIds: string[]) {
   const root = typeof import.meta.env !== "undefined"
     ? import.meta.env.VITE_TUNARA_BENCHMARK_ROOT
     : undefined;
+  const configuredFixturePath = typeof import.meta.env !== "undefined"
+    ? import.meta.env.VITE_TUNARA_BENCHMARK_FIXTURE_PATH
+    : undefined;
   if (!floodSessionId || !controlSessionId) {
     throw new Error("M1 output benchmark requires two mounted terminals");
   }
-  if (!nodePath || !root) {
-    throw new Error("M1 output benchmark build is missing node/root paths");
+  const fixturePath = configuredFixturePath || (root ? `${root}/scripts/terminal-output-fixture.mjs` : undefined);
+  if (!nodePath || !fixturePath) {
+    throw new Error("M1 output benchmark build is missing node/fixture paths");
   }
 
   const fallbackNonce = Date.now().toString(36);
@@ -99,7 +114,6 @@ async function runM1OutputBenchmark(readyIds: string[]) {
     const overflowBefore = terminalBenchmarkOverflowCount(floodSessionId);
     const framePromise = sampleAnimationFrames();
     const inputPromise = sampleControlInput(controlSessionId, nonce);
-    const fixturePath = `${root}/scripts/terminal-output-fixture.mjs`;
     const command = [
       "old=$(stty -g)",
       "stty -echo -onlcr",
@@ -113,6 +127,7 @@ async function runM1OutputBenchmark(readyIds: string[]) {
       command,
       expectedBytes,
       nonce,
+      m1FixtureTimeoutMs(),
     );
     const renderDrainStartedAt = performance.now();
     const snapshot = await readTerminalBenchmarkSnapshot(floodSessionId);
@@ -140,10 +155,12 @@ async function runM1OutputBenchmark(readyIds: string[]) {
   }
   return {
     benchmark: "m1-terminal-high-output",
+    transport: TERMINAL_BENCHMARK_TRANSPORT,
     timestamp: new Date().toISOString(),
     readyTerminals: readyIds.length,
     blockBytes: TERMINAL_OUTPUT_BLOCK_BYTES,
     frameP95BudgetMs: 33.4,
+    fixtureTimeoutMs: m1FixtureTimeoutMs(),
     reference: TERMINAL_OUTPUT_REFERENCE,
     webglFallback,
     fixtures,
@@ -167,7 +184,9 @@ export function useTerminalBenchmark(ready: boolean): void {
         ? M1_OUTPUT_TERMINALS
         : TARGET_MOUNTED_TERMINALS;
       const targets = initial.sessions
-        .filter((session) => !session.remote)
+        .filter((session) => TERMINAL_BENCHMARK_TRANSPORT === "ssh"
+          ? Boolean(session.remote)
+          : !session.remote)
         .slice(0, targetCount);
       const ids = targets.map((session) => session.id);
       const launchedSessionIds = Object.fromEntries(ids.map((id) => [id, true] as const));

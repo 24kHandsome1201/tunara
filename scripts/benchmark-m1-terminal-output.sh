@@ -11,19 +11,32 @@ APP_SUPPORT="$HOME/Library/Application Support/$IDENTIFIER"
 RESULTS_ROOT="${TUNARA_BENCHMARK_RESULTS:-/tmp/tunara-m1-output-benchmark}"
 OUTPUT_BYTES="${TUNARA_M1_OUTPUT_BYTES:-52428800,209715200}"
 WAIT_SECONDS="${TUNARA_M1_WAIT_SECONDS:-600}"
+TRANSPORT="${TUNARA_M1_BENCHMARK_TRANSPORT:-local}"
+BENCHMARK_NODE="${TUNARA_M1_BENCHMARK_NODE:-$(command -v node)}"
+FIXTURE_PATH="${TUNARA_M1_BENCHMARK_FIXTURE_PATH:-$ROOT/scripts/terminal-output-fixture.mjs}"
+FIXTURE_TIMEOUT_MS="${TUNARA_M1_FIXTURE_TIMEOUT_MS:-600000}"
 
 if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]] || (( WAIT_SECONDS < 1 )); then
   echo "TUNARA_M1_WAIT_SECONDS must be a positive integer" >&2
   exit 2
 fi
+if [[ "$TRANSPORT" != "local" && "$TRANSPORT" != "ssh" ]]; then
+  echo "TUNARA_M1_BENCHMARK_TRANSPORT must be local or ssh" >&2
+  exit 2
+fi
+if ! [[ "$FIXTURE_TIMEOUT_MS" =~ ^[0-9]+$ ]] || (( FIXTURE_TIMEOUT_MS < 1000 )); then
+  echo "TUNARA_M1_FIXTURE_TIMEOUT_MS must be an integer of at least 1000" >&2
+  exit 2
+fi
 
 build_bundle() {
-  local node
-  node="$(command -v node)"
   cd "$ROOT"
   VITE_TUNARA_BENCHMARK=m1-output \
+  VITE_TUNARA_BENCHMARK_TRANSPORT="$TRANSPORT" \
   VITE_TUNARA_BENCHMARK_OUTPUT_BYTES="$OUTPUT_BYTES" \
-  VITE_TUNARA_BENCHMARK_NODE="$node" \
+  VITE_TUNARA_BENCHMARK_NODE="$BENCHMARK_NODE" \
+  VITE_TUNARA_BENCHMARK_FIXTURE_PATH="$FIXTURE_PATH" \
+  VITE_TUNARA_BENCHMARK_FIXTURE_TIMEOUT_MS="$FIXTURE_TIMEOUT_MS" \
   VITE_TUNARA_BENCHMARK_ROOT="$ROOT" \
     pnpm tauri build --bundles app --config \
       "{\"identifier\":\"$IDENTIFIER\",\"productName\":\"$PRODUCT_NAME\"}"
@@ -35,10 +48,65 @@ stop_bundle() {
 
 write_fixture() {
   local branch now store
-  branch="$(git -C "$ROOT" branch --show-current)"
+  branch="${TUNARA_M1_REMOTE_BRANCH:-$(git -C "$ROOT" branch --show-current)}"
   now="$(($(date +%s) * 1000))"
   store="$APP_SUPPORT/tunara-sessions.json"
   mkdir -p "$APP_SUPPORT"
+  if [[ "$TRANSPORT" == "ssh" ]]; then
+    : "${TUNARA_M1_REMOTE_HOST:?TUNARA_M1_REMOTE_HOST is required for SSH benchmark}"
+    : "${TUNARA_M1_REMOTE_PORT:?TUNARA_M1_REMOTE_PORT is required for SSH benchmark}"
+    : "${TUNARA_M1_REMOTE_USER:?TUNARA_M1_REMOTE_USER is required for SSH benchmark}"
+    : "${TUNARA_M1_REMOTE_CWD:?TUNARA_M1_REMOTE_CWD is required for SSH benchmark}"
+    : "${TUNARA_M1_REMOTE_IDENTITY_FILE:?TUNARA_M1_REMOTE_IDENTITY_FILE is required for SSH benchmark}"
+    jq -n \
+      --arg dir "$TUNARA_M1_REMOTE_CWD" \
+      --arg branch "$branch" \
+      --arg host "$TUNARA_M1_REMOTE_HOST" \
+      --arg user "$TUNARA_M1_REMOTE_USER" \
+      --arg identity "$TUNARA_M1_REMOTE_IDENTITY_FILE" \
+      --argjson port "$TUNARA_M1_REMOTE_PORT" \
+      --argjson now "$now" '
+        def session($i): {
+          id: ("m1-ssh-output-" + ($i | tostring)),
+          title: (if $i == 0 then "SSH 高输出终端" else "SSH 输入对照终端" end),
+          dir: $dir,
+          branch: $branch,
+          mascot: (if $i == 0 then "otter" else "panda" end),
+          remote: {
+            host: $host,
+            port: $port,
+            user: $user,
+            identityFile: $identity,
+            injectShellIntegration: true
+          },
+          updatedAt: ($now + $i)
+        };
+        {
+          workspaceSnapshot: {
+            version: 1,
+            savedAt: $now,
+            activeSessionId: "m1-ssh-output-0",
+            sessions: [session(0), session(1)],
+            terminals: {},
+            agentResume: {},
+            recentDirs: [$dir],
+            recentCommands: [],
+            commandUsage: {},
+            workflows: [],
+            ui: {
+              sidebarVisible: true,
+              panelVisible: false,
+              collapsedDirs: {},
+              collapsedDiffSections: {},
+              inspectorTab: "overview",
+              split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 }
+            }
+          }
+        }
+      ' > "$store"
+    return
+  fi
+
   jq -n \
     --arg dir "$ROOT" \
     --arg branch "$branch" \
@@ -178,7 +246,7 @@ run_benchmark() {
     --argjson bundleKiB "$bundle_kib" '
       {
         commit: $commit,
-        buildMode: "optimized release M1 benchmark bundle",
+        buildMode: ("optimized release M1 " + $terminal[0].transport + " benchmark bundle"),
         macOS: $macos,
         hardware: $hardware,
         pid: $pid,
