@@ -448,7 +448,9 @@
         "nextTypedCommandWasConcatenated": true,
         "rootCause": "Resume buttons populated pending input without submitting it, leaving an invisible command that contaminated the next terminal submission.",
         "sourceFixCommit": "9a69d9771c5ed5425c219e56d144016db98b9821",
-        "currentSourceBundleReverificationPending": true
+        "currentSourceBundleReverificationPending": false,
+        "reverifiedByCurrentSourceDebugBundle": true,
+        "reverificationEvidence": "Clicking the existing Claude Code resume card immediately changed it from resumable to starting/loading and created a visible claude --resume command block without an extra Return key."
       },
       "exactSessionIdInheritedAnotherAgentCommand": {
         "observedResumeAgent": "Codex",
@@ -507,7 +509,9 @@
         "lintPassed": true,
         "productionBuildPassed": true
       },
-      "currentSourceBundleReverificationPending": true
+      "currentSourceBundleReverificationPending": false,
+      "reverifiedByCurrentSourceDebugBundle": true,
+      "reverificationEvidence": "A deterministic five-second /tmp uvx fixture launched through the same compound command shape and the current bundle displayed Aider · running, then returned to an ordinary /tmp terminal after exit."
     },
     "clipboardClaimed": false,
     "resumeClaimed": false
@@ -536,8 +540,43 @@
       "lintPassed": true,
       "productionBuildPassed": true
     },
-    "currentSourceBundleVisualReverificationPending": true,
-    "visualReverificationGap": "The local Vite server started, but the Codex in-app browser reported no available IAB backend; no screenshot claim was made."
+    "currentSourceBundleVisualReverificationPending": false,
+    "reverifiedByCurrentSourceDebugBundle": true,
+    "reverificationEvidence": {
+      "accessibilityTree": "A named Terminal sessions tab group exposed each session as a separate selectable tab followed by a separate Close button.",
+      "selectionBehavior": "Selecting root@de-netcup changed only its selected tab state and did not arm close confirmation.",
+      "visualScreenshotCaptured": true
+    }
+  },
+  "currentSourceDebugBundleLatest": {
+    "capturedAt": "2026-07-11T10:35:00Z",
+    "app": {
+      "productName": "Tuna",
+      "identifier": "dev.tunara.app.dev",
+      "sourceCommit": "11d817a"
+    },
+    "build": {
+      "profile": "dev",
+      "debugInfoDisabled": true,
+      "incrementalDisabled": true,
+      "unsignedAppBundle": true,
+      "coldBuildSeconds": 329,
+      "bundlePath": "src-tauri/target/debug/bundle/macos/Tuna.app"
+    },
+    "reverifiedFixes": {
+      "resumeActionSubmitsImmediately": true,
+      "compoundUvxAiderDetectedRunning": true,
+      "compoundUvxAiderReturnsToTerminal": true,
+      "titlebarTabAndCloseAreSeparateControls": true,
+      "titlebarTabSelectionDoesNotClose": true,
+      "futureElapsedTimeClampedToZeroSeconds": true
+    },
+    "elapsedTimeDefect": {
+      "observedBeforeFix": "-207s",
+      "sourceFixCommit": "11d817a",
+      "observedAfterFix": "0s",
+      "fullNodeTestsPassed": 429
+    }
   },
   "capture": {
     "screenshotSuitableForTerminalJudgement": false,

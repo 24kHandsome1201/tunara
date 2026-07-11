@@ -37,11 +37,13 @@
 
 - [x] 本地 Codex 安装版交互补证与恢复链修复：Codex 0.144.1 以 read-only sandbox 在 horizontal 50/50 中与 SSH shell 共存，Finder 后台切回保持 session/split；首次信任 review 明确选择“不信任继续，hooks 不运行”且仍进入 ready prompt。真实 xterm 快照证明 `/` 打开命令菜单、`/perm` 过滤为 `/permissions`、`Ctrl+C` 清空并恢复 prompt；快速选择 4 项、token `5` 精确复制粘贴且未提交，官方 `/exit` 后普通 zsh 输出 `TUNARA_LOCAL_CODEX_MENU_SHELL_OK`。方向选择与多行编辑仍未宣称通过。取证发现“恢复”只预填不提交、污染下一条命令，以及精确 Codex session id 沿用旧 Claude source command 两个缺陷；`9a69d97` 已让恢复动作立即提交，`9202a37` 已将 source command 严格限定在同 Agent，当前源码 425 项全量、typecheck、lint、build 均通过。两个修复的新 bundle 实机复验仍待完成。
 
-- [x] 本地 Aider 安装版安全边界与 compound 命令识别修复：在 `/tmp` 用 `uvx --from aider-chat aider --no-git` 启动，无 key 时明确拒绝 OpenRouter 登录/建号和打开文档，未伪报 provider 成功；horizontal 50/50、Finder 后台往返和普通 zsh marker `TUNARA_LOCAL_AIDER_SHELL_OK` 通过。安装版只检查首 token，导致 compound + uvx 包装未识别 Aider、交互回答 `n` 错作标题；`d8d6a2b` 已加入引号感知的 shell segment/word 解析和 `uvx --from` 识别，并以负例防止普通文本误报。87 项定向、425 项全量、typecheck、lint、build 均通过，新 bundle 实机复验仍待完成；clipboard/resume 本轮未宣称通过。
+- [x] 本地 Aider 安装版安全边界与 compound 命令识别修复：在 `/tmp` 用 `uvx --from aider-chat aider --no-git` 启动，无 key 时明确拒绝 OpenRouter 登录/建号和打开文档，未伪报 provider 成功；horizontal 50/50、Finder 后台往返和普通 zsh marker `TUNARA_LOCAL_AIDER_SHELL_OK` 通过。安装版只检查首 token，导致 compound + uvx 包装未识别 Aider、交互回答 `n` 错作标题；`d8d6a2b` 已加入引号感知的 shell segment/word 解析和 `uvx --from` 识别，并以负例防止普通文本误报。当前源码 Debug bundle 用 5 秒确定性 uvx fixture 实时显示 `Aider · 运行中`，退出后恢复 `/tmp` 终端，新 bundle 复验通过；clipboard/resume 本轮未宣称通过。
 
 - [x] SSH Codex 正常退出补证：`de-netcup /root` 中 Codex 0.144.1 以 read-only sandbox 进入 ready prompt，官方 `/exit` 后真实 xterm 快照恢复 `root@de-netcup:~#`，随后远端 shell 实际输出 `TUNARA_SSH_CODEX_SHELL_OK`。安装版启动即“已完成”仍按 `93244ca` 的历史缺陷处理，不作为当前源码回归。
 
-- [x] Titlebar tab/关闭交互语义修复：安装版辅助技术树把会话选择与关闭合成一个按钮，点击 Pi tab 误进入关闭确认；未二次确认，会话保持运行。`2c7350f` 已用具名 `tablist`、独立 `tab` 与独立 close button 拆开职责，关闭图标继续保持 hover/focus 才显现，所有 tab 主体均可键盘到达，中英文名称齐全。2 项定向、427 项全量、typecheck、lint、build 均通过；本地 Vite 已启动但内置浏览器无 IAB backend，新 bundle 视觉复验仍待完成。
+- [x] Titlebar tab/关闭交互语义修复：安装版辅助技术树把会话选择与关闭合成一个按钮，点击 Pi tab 误进入关闭确认；未二次确认，会话保持运行。`2c7350f` 已用具名 `tablist`、独立 `tab` 与独立 close button 拆开职责，关闭图标继续保持 hover/focus 才显现，所有 tab 主体均可键盘到达，中英文名称齐全。当前源码 Debug bundle 辅助树已显示具名“终端会话”tab group，每个会话为独立 tab + 独立关闭按钮，点击远端 tab 只改变 selected 状态，真实截图和行为复验通过。
+
+- [x] 恢复按钮与运行时长当前 bundle 复验：点击 Claude Code 恢复卡无需额外回车，立即进入“启动中/加载中”并生成 `claude --resume` 命令块，`9a69d97` 复验通过。同期发现持久化未来时间戳令侧栏显示 `-207s`；`11d817a` 把相对时间格式化提取为纯函数并钳制负差值，重建 bundle 同一路径显示 `0s`。2 项定向、429 项全量、typecheck、lint、build 均通过。
 
 ## Phase 1 验收账本
 
