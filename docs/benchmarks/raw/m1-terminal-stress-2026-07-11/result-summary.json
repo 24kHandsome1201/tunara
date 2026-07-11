@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-07-11T02:08:07.959Z",
+  "commit": "8443458815d38f90a79871c907092f0b67dbe04e",
+  "buildMode": "optimized release M1 benchmark bundle",
+  "hardware": "Apple M2",
+  "macOS": "26.1 (25B5072a)",
+  "bundleKiB": 14300,
+  "durationMs": 2324000,
+  "fixtureCount": 64,
+  "totalBytes": 17179869184,
+  "expectedBlocks": 262144,
+  "dataEvents": 131144,
+  "failedFixtures": 0,
+  "sequenceFailures": 0,
+  "overflowTotal": 0,
+  "referenceFailures": 0,
+  "backgroundSuspendedFixtures": 1,
+  "inputP95Ms": { "min": 22, "max": 30 },
+  "visibleFrameP95Ms": { "min": 18, "max": 19 },
+  "visibleFrameMaxMs": 31,
+  "renderDrainMaxMs": 273,
+  "webglFallback": {
+    "before": "webgl",
+    "triggered": true,
+    "method": "renderer-webgl-lose-context",
+    "after": "dom",
+    "fallbackReferenceVisible": true,
+    "afterReactivation": "webgl",
+    "passed": true
+  },
+  "windowEvents": {
+    "resize": 145,
+    "resizeFailedBeforeWindowReady": 1,
+    "hide": 18,
+    "show": 18
+  },
+  "process": {
+    "appRssPeakKiB": 119584,
+    "rendererRssDeltaPeakKiB": 627632,
+    "ptyRssPeakKiB": 10064,
+    "totalIncrementalRssPeakKiB": 739456,
+    "totalIncrementalRssMeanKiB": 516063.68,
+    "firstQuarterMeanKiB": 556945,
+    "lastQuarterMeanKiB": 487138,
+    "lastSampleKiB": 491328,
+    "cpuMeanPercent": 10.08
+  },
+  "passed": true
+}

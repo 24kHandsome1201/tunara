@@ -4,7 +4,7 @@
 
 真实 optimized macOS bundle 已通过 50 MiB 与 200 MiB 混合终端输出门禁：每个 64 KiB 序列块按顺序完整到达，前端 backlog 溢出为 0，alternate screen 退出后的 Unicode/ANSI reference 可见，5 秒可见窗口 frame p95 分别为 18ms / 19ms，低于 33.4ms 预算。
 
-这份报告证明本地 PTY 高输出链路和 renderer 最终检查点。后续同一 optimized bundle 已补跑真实 WebGL context loss、DOM fallback 与 WebGL 重建门禁；SSH 高输出和 30 分钟压力证据仍需单独完成。
+这份报告证明本地 PTY 高输出链路和 renderer 最终检查点。后续 optimized bundle 已补跑真实 WebGL context loss、DOM fallback、WebGL 重建与 38 分 44 秒压力门禁；SSH 高输出仍需单独完成。
 
 ## 环境与复跑
 
@@ -62,5 +62,5 @@ fixture 每 64 KiB 写入固定序列头，正文覆盖 ANSI/True Color、OSC ti
 
 - SSH 50/200 MiB 与 100/200ms RTT 尚未运行。
 - WebGL context loss、DOM fallback 与重新激活 WebGL 已完成；主题/字体切换和真实截图矩阵尚未完成。
-- 30 分钟遮挡、分屏、resize 与前后台压力尚未完成。
-- renderer RSS 在整轮末尾仍约 501 MiB 增量，需要在长压中确认平台缓存是否收敛。
+- 38 分 44 秒、16 GiB、四档 resize 与 18 次隐藏/恢复压力已完成，见[长压报告](./m1-terminal-stress-2026-07-11.md)。
+- renderer RSS 长压末四分位均值低于首四分位，平台缓存已在 38 分钟证据内确认可回收并收敛。
