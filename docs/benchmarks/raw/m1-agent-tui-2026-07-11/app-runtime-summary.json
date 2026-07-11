@@ -370,6 +370,73 @@
     },
     "providerOrContextResumeClaimed": false
   },
+  "localCodexRuntime": {
+    "capturedAt": "2026-07-11T09:40:00Z",
+    "installedAppVersion": "1.14.0",
+    "cwd": "/Users/mawei",
+    "version": "0.144.1",
+    "command": "codex --sandbox read-only",
+    "firstUseTrustBoundary": {
+      "promptObserved": "Press t to trust all; enter to review",
+      "persistentTrustGranted": false,
+      "promptCancelledWithCtrlC": true
+    },
+    "split": {
+      "mode": "horizontal",
+      "ratio": 0.5,
+      "pairedSession": "ssh-shell",
+      "agentSessionPreserved": true
+    },
+    "backgroundReturn": {
+      "agentSessionPreserved": true,
+      "splitPreserved": true,
+      "terminalInputTargetPreserved": true
+    },
+    "clipboard": {
+      "method": "quick-select-visible-output",
+      "visibleItems": 4,
+      "controlledToken": "5",
+      "applicationAcknowledgedCopy": true,
+      "pastedBackIntoAgentInput": true,
+      "exactRoundTrip": true,
+      "submittedToAgent": false,
+      "inputClearedWithCtrlC": true
+    },
+    "exit": {
+      "command": "/exit",
+      "ordinaryLocalShellRestored": true,
+      "shellProbe": "printf 'TUNARA_LOCAL_CODEX_SHELL_OK\\n'",
+      "shellMarkerObserved": "TUNARA_LOCAL_CODEX_SHELL_OK"
+    },
+    "installedVersionDefectsObserved": {
+      "startupDoneLabelWithoutCompletedTurn": {
+        "observed": true,
+        "sourceFixCommit": "93244caaa18b731751627e31c107dd6a26914dbd",
+        "treatedAsCurrentSourceRegression": false
+      },
+      "resumeActionOnlyPrefilledCommand": {
+        "observed": true,
+        "nextTypedCommandWasConcatenated": true,
+        "rootCause": "Resume buttons populated pending input without submitting it, leaving an invisible command that contaminated the next terminal submission.",
+        "sourceFixCommit": "9a69d9771c5ed5425c219e56d144016db98b9821",
+        "currentSourceBundleReverificationPending": true
+      },
+      "exactSessionIdInheritedAnotherAgentCommand": {
+        "observedResumeAgent": "Codex",
+        "observedSourceCommand": "claude --permission-mode plan",
+        "rootCause": "Exact session-id recording reused a prior resume command without requiring the stored intent to belong to the same agent.",
+        "sourceFixCommit": "9202a37",
+        "currentSourceAutomatedVerification": {
+          "fullNodeTestsPassed": 425,
+          "typecheckPassed": true,
+          "lintPassed": true,
+          "productionBuildPassed": true
+        },
+        "currentSourceBundleReverificationPending": true
+      }
+    },
+    "providerOrContextResumeClaimed": false
+  },
   "capture": {
     "screenshotSuitableForTerminalJudgement": false,
     "reason": "The app was on a non-current macOS Space and GPU/off-screen capture returned blank or black compositor surfaces. The exact-session xterm snapshot and persisted UI state were used instead."
