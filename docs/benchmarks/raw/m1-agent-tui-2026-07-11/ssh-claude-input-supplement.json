@@ -1,0 +1,53 @@
+{
+  "capturedAt": "2026-07-12T01:11:49+08:00",
+  "commit": "5bccf614eeb100fa2f86983346b1a9971c331e37",
+  "target": "de-netcup",
+  "agent": "claude",
+  "safety": {
+    "permissionMode": "plan",
+    "workspace": "/tmp/tunara-claude-smoke",
+    "workspaceWasEmpty": true,
+    "existingTrustEntryWasTrue": true,
+    "modelPromptSubmitted": false,
+    "rawLogDeleted": true,
+    "temporaryWorkspaceDeleted": true
+  },
+  "harness": {
+    "sawOutput": true,
+    "resizeSent": true,
+    "interactionMask": 1023,
+    "allTenInputClassesSent": true,
+    "exitedAfterProbe": true,
+    "exitStatus": 0,
+    "exitMethod": "slash",
+    "normalExitObserved": true
+  },
+  "semantics": {
+    "escapeSent": true,
+    "tabSent": true,
+    "shiftTabSent": true,
+    "arrowUpSent": true,
+    "arrowDownSent": true,
+    "arrowLeftSent": true,
+    "arrowRightSent": true,
+    "ctrlRSent": true,
+    "bracketedMultilineSent": true,
+    "ctrlCSent": true,
+    "multilineMarkerAVisible": true,
+    "multilineMarkerBVisible": true,
+    "multilineMarkersAdjacent": true,
+    "normalSlashExit": true
+  },
+  "failedSafePreflights": [
+    {
+      "workspace": "/root",
+      "interactionMask": 15,
+      "reason": "Claude trust prompt remained active; navigation reached the safe exit path. Not counted as a transport failure."
+    },
+    {
+      "workspace": "/root/qclaw-wechat-client",
+      "interactionMask": 31,
+      "reason": "Claude trust prompt remained active; navigation reached the safe exit path. Not counted as a transport failure."
+    }
+  ]
+}
