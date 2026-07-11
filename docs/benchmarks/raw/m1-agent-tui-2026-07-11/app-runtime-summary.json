@@ -543,6 +543,20 @@
       "pairedSession": "local-shell",
       "preservedDuringStartup": true
     },
+    "backgroundReturn": {
+      "agentSessionPreserved": true,
+      "splitPreserved": true,
+      "terminalInputTargetPreserved": true
+    },
+    "clipboard": {
+      "method": "quick-select-visible-output",
+      "controlledToken": "79.4",
+      "applicationAcknowledgedCopy": true,
+      "pastedBackIntoAgentInput": true,
+      "exactRoundTrip": true,
+      "submittedToProvider": false,
+      "inputClearedWithCtrlC": true
+    },
     "exit": {
       "method": "Ctrl+D at an empty Pi prompt",
       "ordinaryRemoteShellRestored": true,
@@ -561,9 +575,18 @@
         "lintPassed": true,
         "productionBuildPassed": true
       },
-      "currentSourceBundleReverificationPending": true
+      "currentSourceBundleReverificationPending": false,
+      "reverifiedByCurrentSourceDebugBundle": true,
+      "noModelReadyRegression": {
+        "observedFooter": "0.0%/0 (auto) unknown",
+        "beforeFixSidebar": "Pi · loading · 14s",
+        "rootCause": "The ready-footer pattern required a cost/subscription prefix that Pi omits when no model is configured.",
+        "targetedTestsPassed": 4,
+        "incrementalDebugBundlePassed": true,
+        "afterFixIdleReadyObserved": true
+      }
     },
-    "clipboardClaimed": false,
+    "clipboardClaimed": true,
     "resumeClaimed": false
   },
   "titlebarTabAccessibility": {

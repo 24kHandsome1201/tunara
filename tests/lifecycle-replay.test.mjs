@@ -1412,6 +1412,19 @@ test("Pi screen replay recognizes a ready footer clipped by a narrow split", () 
   assert.equal(detectPiScreenState(narrowSplit), "ready");
 });
 
+test("Pi screen replay recognizes the no-model ready footer without a cost segment", () => {
+  const noModel = [
+    "Warning: No models available. Use /login to log into a provider.",
+    "───────────────────────────────────────────────────────────",
+    "~",
+    "0.0%/0 (auto)                                       unknown",
+  ].join("\n");
+
+  assert.equal(detectPiScreenState(noModel), "ready");
+  assert.equal(detectPromptAgentScreenState("PI", noModel), "ready");
+  assert.equal(detectPiScreenState("download 0.0%/0 items (auto)"), null);
+});
+
 test("terminal tail includes bounded TUI status rows below the input cursor", () => {
   const terminal = makeTailTerminal([
     "Pi",
