@@ -47,6 +47,8 @@
 
 - [x] 本地 Pi 正常退出补证：Pi 0.79.4 ready prompt 明确给出 `ctrl+c/ctrl+d clear/exit`；空输入发送 `Ctrl+D` 后 alternate screen 交还普通 zsh，真实 xterm 快照记录 `TUNARA_LOCAL_PI_SHELL_OK`。未触发模型调用或修改 Pi 配置。
 
+- [x] SSH Pi 安全边界、退出与 npx 身份修复：`de-netcup /root` 用固定 `npx` 包启动 Pi 0.79.4，horizontal 50/50 保持；TUI 明确显示无可用模型和 `/login` 指引，不伪报 provider 成功。空输入 `Ctrl+D` 后恢复远端 Bash，真实快照记录 `TUNARA_SSH_PI_SHELL_OK`。安装版未识别 scoped/versioned npx 包；`c5d4497` 只解析首个包位并显式映射官方 Pi 包，以 `npx left-pad pi` 负例防误报。87 项定向、429 项全量、typecheck、lint、build 通过，新 bundle 实机复验仍待完成；clipboard/resume 未宣称通过。
+
 ## Phase 1 验收账本
 
 - [x] Repository identity 基于 canonical common git dir，不以展示目录名归并。
