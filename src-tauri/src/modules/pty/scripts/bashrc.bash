@@ -40,7 +40,7 @@ if [ -z "$__TUNARA_HOOKS_LOADED" ]; then
     printf '\e]133;D;%s\e\\' "$_tunara_ret"
     printf '\e]7;file://localhost%s\e\\' "$(_tunara_urlencode "$PWD")"
     if [ -z "$__TUNARA_PS1_INJECTED" ]; then
-      PS1='\[\e]133;B\e\\\]'"$PS1"
+      PS1="${PS1}"'\[\e]133;B\e\\\]'
       __TUNARA_PS1_INJECTED=1
     fi
     printf '\e]133;A\e\\'

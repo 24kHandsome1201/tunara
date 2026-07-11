@@ -132,7 +132,7 @@ elif [ -n "$BASH_VERSION" ]; then
        || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ]; }; then
       __TUNARA_REMOTE_INPUT_FALLBACK=1
     fi
-    _tunara_r_prompt() { local r=$?; printf '\e]133;D;%s\e\\' "$r"; printf '\e]7;file://localhost%s\e\\' "$(_tunara_r_enc "$PWD")"; case "$PS1" in *'\[\e]133;B\e\\\]'*) ;; *) PS1='\[\e]133;B\e\\\]'"$PS1";; esac; if [ "$__TUNARA_REMOTE_INPUT_FALLBACK" = 1 ]; then printf '\e]133;A;input-fallback\e\\'; else printf '\e]133;A\e\\'; fi; }
+    _tunara_r_prompt() { local r=$?; printf '\e]133;D;%s\e\\' "$r"; printf '\e]7;file://localhost%s\e\\' "$(_tunara_r_enc "$PWD")"; case "$PS1" in *'\[\e]133;B\e\\\]'*) ;; *) PS1="${PS1}"'\[\e]133;B\e\\\]';; esac; if [ "$__TUNARA_REMOTE_INPUT_FALLBACK" = 1 ]; then printf '\e]133;A;input-fallback\e\\'; else printf '\e]133;A\e\\'; fi; }
     case "$PROMPT_COMMAND" in *_tunara_r_prompt*) ;; *) PROMPT_COMMAND="_tunara_r_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}";; esac
     # Bash 4.4+ can emit a pre-exec marker through PS0 without taking over the
     # user's DEBUG trap. Older Bash keeps cwd/prompt integration and relies on

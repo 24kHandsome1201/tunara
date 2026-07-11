@@ -297,6 +297,8 @@ test("remote SSH integration emits per-turn lifecycle hooks without a host socke
   assert.match(remote, /BASH_VERSINFO[\s\S]*PS0=/);
   assert.match(remote, /PS1=.*133;B/);
   assert.match(remote, /133;A;input-fallback/);
+  assert.match(remote, /PS1="\$\{PS1\}"/);
+  assert.doesNotMatch(remote, /PS1='\\\[\\e\]133;B/);
   assert.match(remote, /function codex \{ _tunara_r_agent_plain_run codex CX/);
   assert.doesNotMatch(remote, /function codex \{ _tunara_r_agent_run codex CX/);
 });
@@ -374,12 +376,14 @@ test("remote Bash prompt integration installs OSC 133 B exactly once", () => {
     "--noprofile",
     "--norc",
     "-c",
-    'PS1=x; source "$1" >/dev/null; _tunara_r_prompt >/dev/null; before=${#PS1}; _tunara_r_prompt >/dev/null; printf "%s %s" "$before" "${#PS1}"',
+    'PS1=x; source "$1" >/dev/null; _tunara_r_prompt >/dev/null; before=${#PS1}; first=${PS1:0:1}; _tunara_r_prompt >/dev/null; printf "%s %s %s" "$before" "${#PS1}" "$first"',
     "bash",
     script,
   ], { encoding: "utf8" });
-  const [before, after] = output.trim().split(/\s+/).map(Number);
+  const [beforeText, afterText, first] = output.trim().split(/\s+/);
+  const [before, after] = [beforeText, afterText].map(Number);
   assert.equal(after, before);
+  assert.equal(first, "x", "OSC 133 B belongs after the visible Bash prompt");
 });
 
 test("agent hook runtime files avoid predictable shared tmp paths", () => {
