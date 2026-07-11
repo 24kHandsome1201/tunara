@@ -123,6 +123,7 @@ pub fn run() {
             // §ssh-client Phase 3 SFTP 远程文件(只读浏览 + 下载)
             modules::ssh::sftp::ssh_fs_read_dir,
             modules::ssh::sftp::ssh_fs_read_file,
+            modules::ssh::sftp::ssh_fs_write_text_file,
             modules::ssh::sftp::ssh_fs_download,
             modules::ssh::sftp::ssh_fs_home,
             // Remote git status/diff over the SSH exec channel (review rail for

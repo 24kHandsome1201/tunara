@@ -77,7 +77,7 @@
 
 - [x] 完成 [M2 实施规格](./M2_MARKDOWN_SAFE_EDITING.md)：固定 256 KiB/UTF-8/普通文件编辑边界、fingerprint 冲突合同、本地与 SSH 同目录临时文件+原子替换、未保存缓冲生命周期、动态加载与真实验收门。
 - [x] 本地安全写内核：完整、非截断、UTF-8、≤256 KiB 的普通文件读取返回 SHA-256 fingerprint，symlink 只读不发放 fingerprint；保存复查原内容，同目录 `create_new` 临时文件保留权限并 `sync_all` 后原子 rename，冲突返回结构化结果并不覆盖。定向 Rust 覆盖原子保存、同尺寸外部改写冲突、symlink 拒绝与 Unix `0640` 权限保留；最终 Node 全套、Rust 151 通过（2 ignored）、typecheck、lint、production build 与 `git diff --check` 全部通过。
-- [ ] SSH 安全写内核与断线/权限/冲突故障注入。
+- [ ] SSH 安全写内核与断线/权限/冲突故障注入。当前已完成第一段：完整、非截断、UTF-8、≤256 KiB 的远端普通文件读取才发放 SHA-256 fingerprint；保存入口拒绝 symlink、相对路径、父级穿越和非法 fingerprint，以 `CREATE|EXCLUDE` 在同目录创建临时文件，写入/flush/权限设置/sync/shutdown 后再次完整读取目标验证 expected fingerprint，再经同一 SSH 连接受控执行同目录 `mv -f --` 原子覆盖，最后重读校验内容与 mode。任何已知失败都会 best-effort 清理临时文件且从不先删除目标。`de-netcup` `/tmp` 实测 Unicode+空格路径、SHA-256 变化、`0640` 保持和零临时残留通过；SSH 合同 Node 2/2、相关 Rust 24/24、typecheck 与 lint 通过。仍需可注入的每阶段故障/断线、并发竞争、结果未知对账与 Tunara 产品链实测，故本项保持未完成。
 - [ ] 单文件编辑 surface，包含未保存、保存、冲突、重新读取和外部编辑器逃生口。
 - [ ] Markdown/MDX 目录、锚点、查找、代码块、表格与源码/预览切换。
 - [ ] 本地/SSH 真实保存重开、外部修改冲突、失败不破坏原文件、窄窗/中英文/键盘与首 PTY 性能验收。

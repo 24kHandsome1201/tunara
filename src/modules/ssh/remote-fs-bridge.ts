@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirEntry, GrepResponse, ReadResult, SearchHit } from "@/modules/fs/fs-bridge";
+import type { DirEntry, GrepResponse, ReadResult, SearchHit, WriteTextResult } from "@/modules/fs/fs-bridge";
 import { RemoteOperationCache, remoteOperationCacheKey } from "./remote-operation-cache.ts";
 
 /**
@@ -7,7 +7,7 @@ import { RemoteOperationCache, remoteOperationCacheKey } from "./remote-operatio
  * 这样 FileExplorer 可以按 session.kind 切换数据源而无需改 UI。
  *
  * `id` 是后端 PTY/SSH 会话的物理 id（session.ptyId）。
- * 只读浏览 + 下载——没有远程写/编辑。
+ * 浏览、下载，以及带指纹冲突检测的安全文本保存。
  */
 export function sshReadDir(id: number, path: string, includeHidden = false): Promise<DirEntry[]> {
   return invoke<DirEntry[]>("ssh_fs_read_dir", { id, path, includeHidden });
@@ -15,6 +15,20 @@ export function sshReadDir(id: number, path: string, includeHidden = false): Pro
 
 export function sshReadFile(id: number, path: string): Promise<ReadResult> {
   return invoke<ReadResult>("ssh_fs_read_file", { id, path });
+}
+
+export function sshWriteTextFile(
+  id: number,
+  path: string,
+  content: string,
+  expectedFingerprint: string,
+): Promise<WriteTextResult> {
+  return invoke<WriteTextResult>("ssh_fs_write_text_file", {
+    id,
+    path,
+    content,
+    expectedFingerprint,
+  });
 }
 
 /** 解析远程 home 目录，作为文件面板初始路径。 */

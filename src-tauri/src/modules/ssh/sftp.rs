@@ -3,13 +3,19 @@
 // These mirror the local fs_* commands' return shapes (DirEntry / ReadResult)
 // so the frontend FileExplorer can switch data source by session kind without
 // caring about the transport. Read-only browse + download only — no remote
-// edit/write (keeps Tunara's "no built-in editor" boundary).
+// plus the conflict-safe text-write contract used by the Phase 2 editor.
 //
 // Each command takes the session `id` (the same u32 PtyState id the terminal
 // uses) and reaches the live SSH connection's SFTP subsystem.
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::path::{Component, Path};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+use russh_sftp::protocol::{FileAttributes, OpenFlags};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::connection::await_stage;
 use crate::modules::pty::{PtyState, Session};
@@ -24,6 +30,8 @@ const SFTP_CONTROL_TIMEOUT: Duration = Duration::from_secs(15);
 const SFTP_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(30);
 const SFTP_PREVIEW_TIMEOUT: Duration = Duration::from_secs(60);
 const SFTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
+const SFTP_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
+static REMOTE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -48,6 +56,8 @@ pub enum RemoteReadResult {
         content: String,
         size: u64,
         truncated: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fingerprint: Option<String>,
     },
     Binary {
         size: u64,
@@ -56,6 +66,60 @@ pub enum RemoteReadResult {
         size: u64,
         limit: u64,
     },
+}
+
+fn content_fingerprint(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn validate_fingerprint(fingerprint: &str) -> Result<(), String> {
+    if fingerprint.len() != 64
+        || !fingerprint
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("expected fingerprint must be a lowercase SHA-256 hex digest".into());
+    }
+    Ok(())
+}
+
+fn validate_remote_edit_path(path: &str) -> Result<(&Path, &str), String> {
+    if path.contains(['\0', '\n', '\r']) {
+        return Err("editable path contains unsupported control characters".into());
+    }
+    let parsed = Path::new(path);
+    if !parsed.is_absolute() {
+        return Err("editable path must be absolute".into());
+    }
+    if parsed
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("editable path must not contain '..'".into());
+    }
+    let name = parsed
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| "editable path must name a UTF-8 file".to_string())?;
+    Ok((parsed, name))
+}
+
+fn remote_sibling_temp_path(path: &str, attempt: u32) -> Result<String, String> {
+    let (parsed, name) = validate_remote_edit_path(path)?;
+    let parent = parsed
+        .parent()
+        .ok_or_else(|| "editable path has no parent".to_string())?;
+    let nonce = REMOTE_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    Ok(parent
+        .join(format!(".{name}.tunara-{nonce}-{attempt}.tmp"))
+        .to_string_lossy()
+        .into_owned())
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 /// Resolve the SshSession behind a session id, or a descriptive error.
@@ -142,6 +206,13 @@ pub async fn ssh_fs_read_file(
 ) -> Result<RemoteReadResult, String> {
     let sftp = sftp_for(&state, id).await?;
 
+    let link_meta = await_stage(
+        "lstat remote file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.symlink_metadata(&path),
+    )
+    .await?;
+    let editable_regular = link_meta.is_regular() && !link_meta.is_symlink();
     let meta = await_stage(
         "stat remote file",
         SFTP_CONTROL_TIMEOUT,
@@ -162,7 +233,6 @@ pub async fn ssh_fs_read_file(
     // compromised peer could otherwise OOM us by streaming gigabytes. `take`
     // caps in-memory bytes at MAX_READ_BYTES + 1 regardless of what stat said;
     // reading exactly one byte past the cap lets us still report TooLarge.
-    use tokio::io::AsyncReadExt;
     let mut file = await_stage("open remote file", SFTP_CONTROL_TIMEOUT, sftp.open(&path)).await?;
     let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_READ_BYTES + 1) as usize);
     await_stage(
@@ -190,12 +260,205 @@ pub async fn ssh_fs_read_file(
     }
     match std::str::from_utf8(slice) {
         Ok(content) => Ok(RemoteReadResult::Text {
+            fingerprint: (editable_regular
+                && bytes.len() as u64 <= MAX_TEXT_PREVIEW_BYTES
+                && bytes.len() as u64 == size)
+                .then(|| content_fingerprint(&bytes)),
             content: content.to_string(),
             size,
             truncated: bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES,
         }),
         Err(_) => Ok(RemoteReadResult::Binary { size }),
     }
+}
+
+async fn read_remote_editable_bytes(
+    sftp: &russh_sftp::client::SftpSession,
+    path: &str,
+) -> Result<(Vec<u8>, u32), String> {
+    validate_remote_edit_path(path)?;
+    let metadata = await_stage(
+        "lstat editable remote file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.symlink_metadata(path),
+    )
+    .await?;
+    if metadata.is_symlink() || !metadata.is_regular() {
+        return Err("editable path must be a regular file".into());
+    }
+    if metadata.size.unwrap_or(0) > MAX_TEXT_PREVIEW_BYTES {
+        return Err(format!(
+            "editable file exceeds {MAX_TEXT_PREVIEW_BYTES} bytes"
+        ));
+    }
+    let mode = metadata
+        .permissions
+        .ok_or_else(|| "remote server did not report file permissions".to_string())?
+        & 0o7777;
+    let mut file = await_stage(
+        "open editable remote file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.open(path),
+    )
+    .await?;
+    let mut bytes = Vec::with_capacity(metadata.size.unwrap_or(0) as usize);
+    await_stage(
+        "read editable remote file",
+        SFTP_PREVIEW_TIMEOUT,
+        (&mut file)
+            .take(MAX_TEXT_PREVIEW_BYTES + 1)
+            .read_to_end(&mut bytes),
+    )
+    .await?;
+    if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
+        return Err(format!(
+            "editable file exceeds {MAX_TEXT_PREVIEW_BYTES} bytes"
+        ));
+    }
+    if bytes.iter().take(8 * 1024).any(|byte| *byte == 0) || std::str::from_utf8(&bytes).is_err() {
+        return Err("editable file must be UTF-8 text".into());
+    }
+    Ok((bytes, mode))
+}
+
+/// Conflict-safe remote text save. SFTP prepares a create-new sibling with the
+/// original mode and drains all write acknowledgements. The final `mv` runs on
+/// the same SSH connection because russh-sftp 2.3 does not expose OpenSSH's
+/// posix-rename extension; on the supported Unix hosts, same-directory `mv`
+/// delegates to atomic rename without ever removing the destination first.
+#[tauri::command]
+pub async fn ssh_fs_write_text_file(
+    state: tauri::State<'_, PtyState>,
+    id: u32,
+    path: String,
+    content: String,
+    expected_fingerprint: String,
+) -> Result<crate::modules::fs::file::WriteResult, String> {
+    if content.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
+        return Err(format!(
+            "editable content exceeds {MAX_TEXT_PREVIEW_BYTES} bytes"
+        ));
+    }
+    validate_fingerprint(&expected_fingerprint)?;
+    validate_remote_edit_path(&path)?;
+    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+    let ssh = match session.as_ref() {
+        Session::Ssh(ssh) => ssh,
+        Session::Local(_) => return Err("not a remote session".into()),
+    };
+    let sftp = ssh.sftp().await?;
+    let (current, mode) = read_remote_editable_bytes(&sftp, &path).await?;
+    let current_fingerprint = content_fingerprint(&current);
+    if current_fingerprint != expected_fingerprint {
+        return Ok(crate::modules::fs::file::WriteResult::Conflict {
+            current_fingerprint,
+        });
+    }
+
+    let mut temporary = None;
+    for attempt in 0..16 {
+        let candidate = remote_sibling_temp_path(&path, attempt)?;
+        let attrs = FileAttributes {
+            permissions: Some(mode),
+            ..FileAttributes::empty()
+        };
+        match await_stage(
+            "create remote temporary file",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.open_with_flags_and_attributes(
+                &candidate,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                attrs,
+            ),
+        )
+        .await
+        {
+            Ok(file) => {
+                temporary = Some((candidate, file));
+                break;
+            }
+            Err(error) if error.contains("exist") => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    let (temporary_path, mut temporary_file) =
+        temporary.ok_or_else(|| "could not allocate remote temporary file".to_string())?;
+
+    let prepared = async {
+        await_stage(
+            "write remote temporary file",
+            SFTP_WRITE_TIMEOUT,
+            temporary_file.write_all(content.as_bytes()),
+        )
+        .await?;
+        await_stage(
+            "flush remote temporary file",
+            SFTP_WRITE_TIMEOUT,
+            temporary_file.flush(),
+        )
+        .await?;
+        await_stage(
+            "set remote temporary permissions",
+            SFTP_CONTROL_TIMEOUT,
+            temporary_file.set_metadata(FileAttributes {
+                permissions: Some(mode),
+                ..FileAttributes::empty()
+            }),
+        )
+        .await?;
+        await_stage(
+            "sync remote temporary file",
+            SFTP_CONTROL_TIMEOUT,
+            temporary_file.sync_all(),
+        )
+        .await?;
+        await_stage(
+            "close remote temporary file",
+            SFTP_CONTROL_TIMEOUT,
+            temporary_file.shutdown(),
+        )
+        .await?;
+        Ok::<(), String>(())
+    }
+    .await;
+    if let Err(error) = prepared {
+        let _ = sftp.remove_file(&temporary_path).await;
+        return Err(error);
+    }
+
+    let (latest, _) = match read_remote_editable_bytes(&sftp, &path).await {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = sftp.remove_file(&temporary_path).await;
+            return Err(error);
+        }
+    };
+    let latest_fingerprint = content_fingerprint(&latest);
+    if latest_fingerprint != expected_fingerprint {
+        let _ = sftp.remove_file(&temporary_path).await;
+        return Ok(crate::modules::fs::file::WriteResult::Conflict {
+            current_fingerprint: latest_fingerprint,
+        });
+    }
+
+    let command = format!(
+        "mv -f -- {} {}",
+        shell_quote(&temporary_path),
+        shell_quote(&path)
+    );
+    if let Err(error) = ssh.exec(&command, 16 * 1024).await {
+        let _ = sftp.remove_file(&temporary_path).await;
+        return Err(format!("atomic remote replace failed: {error}"));
+    }
+
+    let (saved, saved_mode) = read_remote_editable_bytes(&sftp, &path).await?;
+    if saved != content.as_bytes() || saved_mode != mode {
+        return Err("remote save verification failed".into());
+    }
+    Ok(crate::modules::fs::file::WriteResult::Saved {
+        fingerprint: content_fingerprint(&saved),
+        size: saved.len() as u64,
+    })
 }
 
 // Cap a single download so a malicious/compromised remote can't exhaust memory
@@ -479,9 +742,12 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 
 #[cfg(test)]
 mod tests {
-    use super::{choose_remote_home, validate_download_target};
+    use super::{
+        choose_remote_home, remote_sibling_temp_path, shell_quote, validate_download_target,
+        validate_fingerprint, validate_remote_edit_path,
+    };
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     // The validator confines downloads under the *real* home dir, so test
@@ -699,5 +965,47 @@ mod tests {
     fn returns_none_when_nothing_usable() {
         assert_eq!(choose_remote_home(None, None), None);
         assert_eq!(choose_remote_home(Some(""), None), None);
+    }
+
+    #[test]
+    fn remote_edit_paths_require_absolute_non_traversing_file_paths() {
+        assert!(validate_remote_edit_path("/srv/app/README.md").is_ok());
+        assert!(validate_remote_edit_path("/srv/可爱动物/说明 '一'.md").is_ok());
+        for invalid in [
+            "relative.md",
+            "/srv/app/../secret",
+            "/",
+            "/srv/app/bad\nname",
+            "/srv/app/bad\rname",
+        ] {
+            assert!(
+                validate_remote_edit_path(invalid).is_err(),
+                "accepted invalid path {invalid:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn remote_temp_is_a_hidden_sibling_and_never_the_target() {
+        let target = "/srv/app/可爱 animal.md";
+        let temporary = remote_sibling_temp_path(target, 3).expect("temp path");
+        assert!(temporary.starts_with("/srv/app/.可爱 animal.md.tunara-"));
+        assert!(temporary.ends_with("-3.tmp"));
+        assert_ne!(temporary, target);
+        assert_eq!(Path::new(&temporary).parent(), Path::new(target).parent());
+    }
+
+    #[test]
+    fn shell_quote_keeps_spaces_unicode_and_quotes_in_one_argument() {
+        assert_eq!(shell_quote("/a/可爱 animal.md"), "'/a/可爱 animal.md'");
+        assert_eq!(shell_quote("/a/o'brien.md"), "'/a/o'\"'\"'brien.md'");
+    }
+
+    #[test]
+    fn save_fingerprint_must_be_canonical_sha256_hex() {
+        assert!(validate_fingerprint(&"a".repeat(64)).is_ok());
+        for invalid in ["", "abc", &"A".repeat(64), &"g".repeat(64)] {
+            assert!(validate_fingerprint(invalid).is_err());
+        }
     }
 }
