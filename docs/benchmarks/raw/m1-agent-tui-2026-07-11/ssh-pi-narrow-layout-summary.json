@@ -22,17 +22,18 @@
   "terminalSnapshot": {
     "cols": 56,
     "rows": 39,
-    "truncated": false,
+    "serializationTruncated": false,
+    "truncationMeaning": "serialized-size-cap",
     "piVersionVisible": "0.79.4",
     "noModelsWarningVisible": true,
     "readyFooterVisible": true,
-    "reconnectedShellPromptVisible": true
+    "shellPromptAfterPiExitVisible": true
   },
   "visualEvidence": {
     "windowListedByScreenshotDaemon": true,
     "windowCaptureReturnedWallpaper": true,
     "suitableForVisualJudgement": false
   },
-  "status": "behavior-and-geometry-only",
+  "status": "runtime-and-snapshot-geometry-only",
   "remaining": "Capture a readable current-window image with both sidebar and Inspector visible before closing the visual gate."
 }
