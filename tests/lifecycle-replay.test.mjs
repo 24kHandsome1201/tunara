@@ -458,10 +458,17 @@ test("Pi resume preserves an exact identity, safe launcher, session directory, a
   assert.equal(
     buildAgentResumeCommand({
       ...direct,
-      command: "npx --yes @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --session=pi-session-2",
+      command: "PI_CODING_AGENT_DIR=/tmp/pi-agent npx --yes @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --provider tunara-loopback --model probe --session=pi-session-2",
       resumeId: "pi-session-2",
     }),
-    "npx -y @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --session pi-session-2",
+    "PI_CODING_AGENT_DIR=/tmp/pi-agent npx -y @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --provider tunara-loopback --model probe --session pi-session-2",
+  );
+  assert.equal(
+    buildAgentResumeCommand({
+      ...direct,
+      command: "PI_CODING_AGENT_DIR='bad dir' pi --session pi-session-1",
+    }),
+    "pi --session pi-session-1",
   );
 });
 

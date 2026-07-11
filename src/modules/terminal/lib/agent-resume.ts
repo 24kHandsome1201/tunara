@@ -96,15 +96,20 @@ function piCommandArgs(command: string): string[] | null {
 
 function piLauncher(command: string): string[] | null {
   const tokens = piInvocationWords(command) ?? [];
+  const codingAgentDir = tokens.find((token) => token.startsWith("PI_CODING_AGENT_DIR="));
+  const safeCodingAgentDir = codingAgentDir
+    && /^PI_CODING_AGENT_DIR=(?:\/|~\/)[A-Za-z0-9._/+@%=-]{1,1024}$/.test(codingAgentDir)
+    ? [codingAgentDir]
+    : [];
   const packageToken = tokens.find((token) => PI_PACKAGE.test(token));
   if (packageToken) return PI_PINNED_PACKAGE.test(packageToken)
-    ? ["npx", "-y", packageToken]
+    ? [...safeCodingAgentDir, "npx", "-y", packageToken]
     : null;
   const direct = tokens.find((token) => token.split("/").pop() === "pi");
   if (direct) {
     const executable = direct;
-    if (/^(?:[A-Za-z0-9._~+-]+\/)*pi$/.test(executable)) return [executable];
-    return ["pi"];
+    if (/^(?:[A-Za-z0-9._~+-]+\/)*pi$/.test(executable)) return [...safeCodingAgentDir, executable];
+    return [...safeCodingAgentDir, "pi"];
   }
   return null;
 }
@@ -365,6 +370,10 @@ function resumeSafetyFlags(intent: AgentResumeIntent): string[] {
       args.some((token) => unquoteToken(token) === flag));
     const sessionDir = boundedOptionValue(args, "--session-dir");
     if (sessionDir) flags.push("--session-dir", sessionDir);
+    for (const name of ["--provider", "--model"]) {
+      const value = boundedOptionValue(args, name);
+      if (value) flags.push(name, value);
+    }
     return flags;
   }
   if (intent.agent !== "CC" && intent.agent !== "CX") return [];
