@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-11T12:01:01Z",
+  "capturedAt": "2026-07-11T12:36:38Z",
   "installedApp": {
     "path": "/Applications/Tunara.app",
     "version": "1.14.0"
@@ -217,7 +217,7 @@
     }
   },
   "sshAiderRuntime": {
-    "capturedAt": "2026-07-11T08:53:46Z",
+    "capturedAt": "2026-07-11T12:36:38Z",
     "installedAppVersion": "1.14.0",
     "target": "de-netcup",
     "cwd": "/root",
@@ -253,6 +253,25 @@
       "exactRoundTrip": true,
       "submittedToProvider": false,
       "inputClearedWithCtrlC": true
+    },
+    "bracketedPaste": {
+      "sourceApp": "installed Tunara 1.14.0",
+      "cwd": "/tmp",
+      "startupCommand": "aider --model openai/gpt-4o-mini --no-git --no-auto-commits --no-show-model-warnings",
+      "controlledLines": 2,
+      "markers": [
+        "TUNARA_SSH_AIDER_LINE_ONE",
+        "TUNARA_SSH_AIDER_LINE_TWO"
+      ],
+      "nativeWarningObserved": true,
+      "warningLineCount": 2,
+      "warningAccepted": true,
+      "bothLinesVisibleInMainAgentInput": true,
+      "autoSubmittedToProvider": false,
+      "inputClearedWithCtrlC": true,
+      "remotePromptEmptyAfterClear": true,
+      "startupDocumentationPromptAttemptCancelled": true,
+      "startupDocumentationPromptAttemptCountedAsPass": false
     },
     "exit": {
       "command": "/exit",
