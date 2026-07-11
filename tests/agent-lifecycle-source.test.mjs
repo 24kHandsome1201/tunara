@@ -478,6 +478,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(source, /const agentResume = reconcileAgentResumeIntent\(/);
   assert.match(source, /const resumeChanged = agentResume !== session\?\.agentResume/);
   assert.match(source, /agentResume,/);
+  assert.match(source, /command: resolveAgentResumeSourceCommand\(/);
   assert.match(source, /agentReadyUpdate\(session, isActive\)/);
   assert.match(source, /agentBusyUpdate\(session\)/);
   assert.match(source, /agentExitedUpdate\(session, exitCode, isActive\)/);

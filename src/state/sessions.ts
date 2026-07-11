@@ -7,6 +7,7 @@ import {
   isResumableAgentInvocation,
   parseResumeId,
   reconcileAgentResumeIntent,
+  resolveAgentResumeSourceCommand,
 } from "@/modules/terminal/lib/agent-resume";
 import { t } from "@/modules/i18n/core.ts";
 import {
@@ -536,7 +537,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().updateSession(id, {
       agentResume: {
         agent,
-        command: existing?.command ?? session.lastCommand?.trim() ?? AGENT_NAMES[agent] ?? agent,
+        command: resolveAgentResumeSourceCommand(
+          agent,
+          existing,
+          session.lastCommand,
+          AGENT_NAMES[agent] ?? agent,
+        ),
         cwd: session.dir,
         resumeId: trimmed,
         lastSeenAt: Date.now(),

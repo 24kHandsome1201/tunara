@@ -1,5 +1,6 @@
 import type { AgentResumeIntent } from "@/ui/types";
 import type { AgentCode } from "@/ui/types";
+import { detectAgentCommand } from "./agent-lifecycle.ts";
 
 const NON_INTERACTIVE_FLAGS: Record<"CC" | "CX", ReadonlySet<string>> = {
   CC: new Set(["--help", "-h", "--version", "-v", "--print", "-p"]),
@@ -114,6 +115,22 @@ export function reconcileAgentResumeIntent(
 ): AgentResumeIntent | undefined {
   if (next) return next;
   return existing?.agent === detectedAgent ? existing : undefined;
+}
+
+export function resolveAgentResumeSourceCommand(
+  agent: AgentCode,
+  existing: AgentResumeIntent | undefined,
+  lastCommand: string | undefined,
+  fallback: string,
+): string {
+  const existingCommand = existing?.agent === agent ? existing.command.trim() : "";
+  if (existingCommand) return existingCommand;
+  const detectedCommand = lastCommand?.trim() ?? "";
+  return detectedCommand
+    && detectAgentCommand(detectedCommand) === agent
+    && isResumableAgentInvocation(agent, detectedCommand)
+    ? detectedCommand
+    : fallback;
 }
 
 function shellQuoteToken(token: string): string {

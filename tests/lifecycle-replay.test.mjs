@@ -93,6 +93,7 @@ import {
   isResumableAgentInvocation,
   parseResumeId,
   reconcileAgentResumeIntent,
+  resolveAgentResumeSourceCommand,
 } from "../src/modules/terminal/lib/agent-resume.ts";
 import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts";
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
@@ -417,6 +418,32 @@ test("a newly detected agent cannot inherit another agent's resume intent", () =
   assert.equal(reconcileAgentResumeIntent(claudeResume, "OC", undefined), undefined);
   assert.equal(reconcileAgentResumeIntent(claudeResume, "CC", undefined), claudeResume);
   assert.equal(reconcileAgentResumeIntent(claudeResume, "OC", openCodeResume), openCodeResume);
+});
+
+test("an exact agent session id cannot inherit another agent's source command", () => {
+  const claudeResume = {
+    agent: "CC",
+    command: "claude --permission-mode plan",
+    cwd: "/repo",
+    resumeId: "claude-session",
+    lastSeenAt: 1,
+    confidence: "exact",
+  };
+  const codexResume = {
+    agent: "CX",
+    command: "codex --sandbox read-only",
+    cwd: "/repo",
+    resumeId: "codex-session",
+    lastSeenAt: 2,
+    confidence: "exact",
+  };
+
+  assert.equal(
+    resolveAgentResumeSourceCommand("CX", claudeResume, "codex --sandbox read-only", "Codex"),
+    "codex --sandbox read-only",
+  );
+  assert.equal(resolveAgentResumeSourceCommand("CX", claudeResume, "ls", "Codex"), "Codex");
+  assert.equal(resolveAgentResumeSourceCommand("CX", codexResume, "ls", "Codex"), codexResume.command);
 });
 
 test("keybinding parser accepts plus as a literal key", () => {
