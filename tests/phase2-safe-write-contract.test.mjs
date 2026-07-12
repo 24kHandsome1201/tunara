@@ -41,10 +41,15 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(transaction, /latest_fingerprint != request\.expected_fingerprint/);
   assert.match(transaction, /enum TransactionOutcome/);
   assert.match(transaction, /OutcomeUnknown/);
+  assert.match(transaction, /acquire_replace_lock/);
+  assert.match(transaction, /release_replace_lock/);
   assert.match(transaction, /async fn cleanup/);
   assert.match(backend, /mv -f --/);
   assert.match(backend, /remote_write_lock\(id, &path\)/);
   assert.match(backend, /outcomeUnknown:/);
+  assert.match(backend, /remote_replace_lock_path/);
+  assert.match(backend, /create_dir\(lock\.clone\(\)\)/);
+  assert.match(backend, /REPLACE_LOCK_STALE_AFTER/);
   assert.match(backend, /ssh_fs_reconcile_text_write/);
   assert.match(backend, /observed_mode == expected_mode/);
   assert.doesNotMatch(backend, /remove_file\(&path\)/);

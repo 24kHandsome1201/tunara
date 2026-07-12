@@ -36,9 +36,11 @@ pub(crate) enum TransactionStage {
     SetMode,
     Sync,
     Close,
+    AcquireReplaceLock,
     PreReplaceRead,
     Replace,
     Verify,
+    ReleaseReplaceLock,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -94,6 +96,8 @@ pub(crate) trait RemoteWriteIo: Sync {
     async fn set_mode(&self, temporary: &mut Self::Temp, mode: u32) -> Result<(), IoError>;
     async fn sync(&self, temporary: &mut Self::Temp) -> Result<(), IoError>;
     async fn close(&self, temporary: Self::Temp) -> Result<(), IoError>;
+    async fn acquire_replace_lock(&self, target: &str) -> Result<(), IoError>;
+    async fn release_replace_lock(&self, target: &str) -> Result<(), IoError>;
     async fn atomic_replace(&self, temporary: &str, target: &str) -> Result<(), ReplaceError>;
     async fn remove_temp(&self, path: &str) -> Result<(), IoError>;
 }
@@ -211,6 +215,59 @@ pub(crate) async fn write_text_transaction<IO: RemoteWriteIo>(
         return Err(error(TransactionStage::Close, source, cleanup_pending));
     }
 
+    if let Err(source) = io.acquire_replace_lock(request.target).await {
+        let cleanup_pending = cleanup(io, request.temporary).await;
+        return Err(error(
+            TransactionStage::AcquireReplaceLock,
+            source,
+            cleanup_pending,
+        ));
+    }
+
+    let result = replace_while_locked(io, &request, &original_fingerprint, original.mode).await;
+    match io.release_replace_lock(request.target).await {
+        Ok(()) => result,
+        Err(release_error) => match result {
+            Ok(TransactionOutcome::Saved { .. }) => Ok(TransactionOutcome::OutcomeUnknown {
+                attempted_fingerprint: fingerprint(request.content),
+                expected_mode: original.mode,
+                cleanup_pending: true,
+            }),
+            Ok(TransactionOutcome::Conflict {
+                current_fingerprint,
+                ..
+            }) => Ok(TransactionOutcome::Conflict {
+                current_fingerprint,
+                cleanup_pending: true,
+            }),
+            Ok(TransactionOutcome::OutcomeUnknown {
+                attempted_fingerprint,
+                expected_mode,
+                ..
+            }) => Ok(TransactionOutcome::OutcomeUnknown {
+                attempted_fingerprint,
+                expected_mode,
+                cleanup_pending: true,
+            }),
+            Err(mut transaction_error) => {
+                transaction_error.stage = TransactionStage::ReleaseReplaceLock;
+                transaction_error.source = format!(
+                    "{}; release replace lock: {}",
+                    transaction_error.source, release_error.0
+                );
+                transaction_error.cleanup_pending = true;
+                Err(transaction_error)
+            }
+        },
+    }
+}
+
+async fn replace_while_locked<IO: RemoteWriteIo>(
+    io: &IO,
+    request: &WriteRequest<'_>,
+    original_fingerprint: &str,
+    original_mode: u32,
+) -> Result<TransactionOutcome, TransactionError> {
     let latest = match io.read_regular(request.target).await.and_then(regular) {
         Ok(file) => file,
         Err(source) => {
@@ -235,9 +292,9 @@ pub(crate) async fn write_text_transaction<IO: RemoteWriteIo>(
         Ok(()) => {
             reconcile(
                 io,
-                &request,
-                &original_fingerprint,
-                original.mode,
+                request,
+                original_fingerprint,
+                original_mode,
                 TransactionStage::Verify,
             )
             .await
@@ -245,9 +302,9 @@ pub(crate) async fn write_text_transaction<IO: RemoteWriteIo>(
         Err(ReplaceError::StatusLost(_)) => {
             reconcile(
                 io,
-                &request,
-                &original_fingerprint,
-                original.mode,
+                request,
+                original_fingerprint,
+                original_mode,
                 TransactionStage::Replace,
             )
             .await

@@ -37,6 +37,7 @@ const SFTP_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(30);
 const SFTP_PREVIEW_TIMEOUT: Duration = Duration::from_secs(60);
 const SFTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
 const SFTP_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
+const REPLACE_LOCK_STALE_AFTER: Duration = Duration::from_secs(10 * 60);
 static REMOTE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 type RemoteWriteLock = Arc<tokio::sync::Mutex<()>>;
 type RemoteWriteLockKey = (u32, String);
@@ -142,6 +143,18 @@ fn remote_sibling_temp_path(path: &str, attempt: u32) -> Result<String, String> 
     let nonce = REMOTE_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     Ok(parent
         .join(format!(".{name}.tunara-{nonce}-{attempt}.tmp"))
+        .to_string_lossy()
+        .into_owned())
+}
+
+fn remote_replace_lock_path(path: &str) -> Result<String, String> {
+    let (parsed, _) = validate_remote_edit_path(path)?;
+    let parent = parsed
+        .parent()
+        .ok_or_else(|| "editable path has no parent".to_string())?;
+    let target_hash = content_fingerprint(path.as_bytes());
+    Ok(parent
+        .join(format!(".tunara-write-{target_hash}.lock"))
         .to_string_lossy()
         .into_owned())
 }
@@ -511,6 +524,65 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
         .await
         .map_err(IoError)
     }
+    async fn acquire_replace_lock(&self, target: &str) -> Result<(), IoError> {
+        let lock = remote_replace_lock_path(target).map_err(IoError)?;
+        let deadline = tokio::time::Instant::now() + SFTP_CONTROL_TIMEOUT;
+        let mut stale_checked = false;
+        loop {
+            match self.sftp.create_dir(lock.clone()).await {
+                Ok(()) => return Ok(()),
+                Err(source) => {
+                    let message = source.to_string();
+                    let lower = message.to_ascii_lowercase();
+                    if lower.contains("permission")
+                        || lower.contains("denied")
+                        || lower.contains("no such")
+                    {
+                        return Err(IoError(format!(
+                            "acquire remote replace lock failed: {message}"
+                        )));
+                    }
+                    if !stale_checked {
+                        stale_checked = true;
+                        let stale = self
+                            .sftp
+                            .metadata(lock.clone())
+                            .await
+                            .ok()
+                            .and_then(|metadata| metadata.mtime)
+                            .and_then(|mtime| {
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .ok()
+                                    .map(|now| now.as_secs().saturating_sub(u64::from(mtime)))
+                            })
+                            .is_some_and(|age| age >= REPLACE_LOCK_STALE_AFTER.as_secs());
+                        if stale {
+                            let _ = self.sftp.remove_dir(lock.clone()).await;
+                            continue;
+                        }
+                    }
+                    if tokio::time::Instant::now() >= deadline {
+                        return Err(IoError(format!(
+                            "remote replace lock stayed busy for {}s: {message}",
+                            SFTP_CONTROL_TIMEOUT.as_secs()
+                        )));
+                    }
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                }
+            }
+        }
+    }
+    async fn release_replace_lock(&self, target: &str) -> Result<(), IoError> {
+        let lock = remote_replace_lock_path(target).map_err(IoError)?;
+        await_stage(
+            "release remote replace lock",
+            SFTP_CONTROL_TIMEOUT,
+            self.sftp.remove_dir(lock),
+        )
+        .await
+        .map_err(IoError)
+    }
     async fn atomic_replace(&self, temporary: &str, target: &str) -> Result<(), ReplaceError> {
         let command = format!(
             "mv -f -- {} {}",
@@ -844,8 +916,8 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::{
-        choose_remote_home, remote_sibling_temp_path, remote_write_lock, shell_quote,
-        validate_download_target, validate_fingerprint, validate_remote_edit_path,
+        choose_remote_home, remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock,
+        shell_quote, validate_download_target, validate_fingerprint, validate_remote_edit_path,
         write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome, WriteRequest,
         REMOTE_WRITE_LOCKS,
     };
@@ -870,9 +942,7 @@ mod tests {
         home.join(format!(".tunara-sftp-test-{tag}-{unique}"))
     }
 
-    #[tokio::test]
-    #[ignore = "requires TUNARA_SSH_SMOKE_HOST and an authorized SSH key"]
-    async fn real_ssh_safe_write_adapter_preserves_content_mode_and_conflicts() {
+    async fn open_real_ssh_session(label: &str) -> SshSession {
         let host = std::env::var("TUNARA_SSH_SMOKE_HOST")
             .expect("set TUNARA_SSH_SMOKE_HOST to an authorized test host");
         let user = std::env::var("TUNARA_SSH_SMOKE_USER").unwrap_or_else(|_| "root".into());
@@ -880,8 +950,7 @@ mod tests {
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(22);
-        let on_event = Channel::<PtyEvent>::new(|_| Ok(()));
-        let session = tokio::time::timeout(
+        tokio::time::timeout(
             std::time::Duration::from_secs(30),
             SshSession::open(
                 ConnectParams {
@@ -898,14 +967,20 @@ mod tests {
                     rows: 24,
                     initial_cwd: None,
                     inject_shell_integration: false,
-                    session_id: "m2-safe-write-live".into(),
+                    session_id: label.into(),
                 },
-                on_event,
+                Channel::<PtyEvent>::new(|_| Ok(())),
             ),
         )
         .await
         .expect("SSH open timeout")
-        .expect("SSH open");
+        .expect("SSH open")
+    }
+
+    #[tokio::test]
+    #[ignore = "requires TUNARA_SSH_SMOKE_HOST and an authorized SSH key"]
+    async fn real_ssh_safe_write_adapter_preserves_content_mode_and_conflicts() {
+        let session = open_real_ssh_session("m2-safe-write-live").await;
 
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -989,7 +1064,7 @@ mod tests {
         let residue = session
             .exec(
                 &format!(
-                    "find {} -maxdepth 1 -name '*.tunara-*.tmp' -print; rm -rf -- {}",
+                    "find {} -maxdepth 1 \\( -name '*.tunara-*.tmp' -o -name '.tunara-write-*.lock' \\) -print; rm -rf -- {}",
                     shell_quote(&directory),
                     shell_quote(&directory),
                 ),
@@ -999,6 +1074,102 @@ mod tests {
             .expect("inspect residue and clean fixture");
         assert!(residue.trim().is_empty(), "temporary residue: {residue:?}");
         session.close().expect("close SSH session");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires TUNARA_SSH_SMOKE_HOST and an authorized SSH key"]
+    async fn real_ssh_independent_clients_allow_at_most_one_stale_fingerprint_save() {
+        let (session_a, session_b) = tokio::join!(
+            open_real_ssh_session("m2-race-a"),
+            open_real_ssh_session("m2-race-b"),
+        );
+        let sftp_a = session_a.sftp().await.expect("open first SFTP");
+        let sftp_b = session_b.sftp().await.expect("open second SFTP");
+        let adapter_a = SftpWriteAdapter {
+            sftp: &sftp_a,
+            ssh: &session_a,
+        };
+        let adapter_b = SftpWriteAdapter {
+            sftp: &sftp_b,
+            ssh: &session_b,
+        };
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = format!("/tmp/tunara-m2-race-{unique}");
+        session_a
+            .exec(
+                &format!("install -d -m 700 {}", shell_quote(&directory)),
+                4096,
+            )
+            .await
+            .expect("create race directory");
+
+        for round in 0..12 {
+            let target = format!("{directory}/race-{round}.md");
+            session_a
+                .exec(
+                    &format!(
+                        "printf 'base\\n' > {} && chmod 640 {}",
+                        shell_quote(&target),
+                        shell_quote(&target)
+                    ),
+                    4096,
+                )
+                .await
+                .expect("create race target");
+            let fingerprint = super::content_fingerprint(b"base\n");
+            let temporary_a = format!("{directory}/.race-{round}.a.tmp");
+            let temporary_b = format!("{directory}/.race-{round}.b.tmp");
+            let lock_a = tokio::sync::Mutex::new(());
+            let lock_b = tokio::sync::Mutex::new(());
+            let request_a = WriteRequest {
+                target: &target,
+                temporary: &temporary_a,
+                content: b"from-a\n",
+                expected_fingerprint: &fingerprint,
+            };
+            let request_b = WriteRequest {
+                target: &target,
+                temporary: &temporary_b,
+                content: b"from-b\n",
+                expected_fingerprint: &fingerprint,
+            };
+            let (outcome_a, outcome_b) = tokio::join!(
+                write_text_transaction(&adapter_a, &lock_a, request_a),
+                write_text_transaction(&adapter_b, &lock_b, request_b),
+            );
+            let outcomes = [
+                outcome_a.expect("first transaction"),
+                outcome_b.expect("second transaction"),
+            ];
+            let saved = outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, TransactionOutcome::Saved { .. }))
+                .count();
+            let conflicts = outcomes
+                .iter()
+                .filter(|outcome| matches!(outcome, TransactionOutcome::Conflict { .. }))
+                .count();
+            assert_eq!(saved, 1, "round {round} outcomes: {outcomes:?}");
+            assert_eq!(conflicts, 1, "round {round} outcomes: {outcomes:?}");
+        }
+
+        let residue = session_a
+            .exec(
+                &format!(
+                    "find {} -maxdepth 1 \\( -name '*.tmp' -o -name '.tunara-write-*.lock' \\) -print; rm -rf -- {}",
+                    shell_quote(&directory),
+                    shell_quote(&directory),
+                ),
+                16 * 1024,
+            )
+            .await
+            .expect("inspect race residue and clean fixture");
+        assert!(residue.trim().is_empty(), "temporary residue: {residue:?}");
+        session_a.close().expect("close first SSH session");
+        session_b.close().expect("close second SSH session");
     }
 
     #[test]
@@ -1232,6 +1403,20 @@ mod tests {
         assert!(temporary.ends_with("-3.tmp"));
         assert_ne!(temporary, target);
         assert_eq!(Path::new(&temporary).parent(), Path::new(target).parent());
+    }
+
+    #[test]
+    fn replace_lock_is_a_fixed_length_hidden_sibling_scoped_to_the_full_target() {
+        let first = remote_replace_lock_path("/srv/app/可爱 animal.md").expect("first lock");
+        let same = remote_replace_lock_path("/srv/app/可爱 animal.md").expect("same lock");
+        let other = remote_replace_lock_path("/srv/app/other.md").expect("other lock");
+        assert_eq!(first, same);
+        assert_ne!(first, other);
+        assert_eq!(Path::new(&first).parent(), Some(Path::new("/srv/app")));
+        assert!(Path::new(&first)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(".tunara-write-") && name.ends_with(".lock")));
     }
 
     #[test]

@@ -12,6 +12,8 @@ enum FailAt {
     SetMode,
     Sync,
     Close,
+    AcquireLock,
+    ReleaseLock,
     PreRead,
     ReplaceNotSent,
     Unsupported,
@@ -151,6 +153,20 @@ impl RemoteWriteIo for FakeIo {
         );
         Ok(())
     }
+    async fn acquire_replace_lock(&self, _: &str) -> Result<(), IoError> {
+        if self.fail == Some(FailAt::AcquireLock) {
+            Err(IoError("acquire-lock".into()))
+        } else {
+            Ok(())
+        }
+    }
+    async fn release_replace_lock(&self, _: &str) -> Result<(), IoError> {
+        if self.fail == Some(FailAt::ReleaseLock) {
+            Err(IoError("release-lock".into()))
+        } else {
+            Ok(())
+        }
+    }
     async fn atomic_replace(&self, temp: &str, _: &str) -> Result<(), ReplaceError> {
         match self.fail {
             Some(FailAt::ReplaceNotSent) => return Err(ReplaceError::NotSent("not sent".into())),
@@ -254,6 +270,41 @@ async fn create_failure_never_allocates_or_cleans_temp() {
     assert_eq!(s.bytes, b"before");
     assert_eq!(temps, 0);
     assert_eq!(removed, 0);
+}
+
+#[tokio::test]
+async fn replace_lock_failures_never_invite_a_blind_retry() {
+    let acquire = FakeIo::new(b"before", 0o640, Some(FailAt::AcquireLock));
+    let error = write_text_transaction(
+        &acquire,
+        &Mutex::new(()),
+        request(b"after", &fingerprint(b"before")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.stage, TransactionStage::AcquireReplaceLock);
+    let (target, temps, removed) = acquire.snapshot();
+    assert_eq!(target.bytes, b"before");
+    assert_eq!(temps, 0);
+    assert_eq!(removed, 1);
+
+    let release = FakeIo::new(b"before", 0o640, Some(FailAt::ReleaseLock));
+    let outcome = write_text_transaction(
+        &release,
+        &Mutex::new(()),
+        request(b"after", &fingerprint(b"before")),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        outcome,
+        TransactionOutcome::OutcomeUnknown {
+            expected_mode: 0o640,
+            cleanup_pending: true,
+            ..
+        }
+    ));
+    assert_eq!(release.snapshot().0.bytes, b"after");
 }
 
 #[tokio::test]
