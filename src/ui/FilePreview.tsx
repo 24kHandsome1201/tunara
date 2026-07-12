@@ -3,7 +3,7 @@ import { fsReadFile, fsWriteTextFile, type ReadResult } from "@/modules/fs/fs-br
 import { sshReadFile, sshWriteTextFile } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { CloseIcon } from "./shared";
-import { useT } from "@/modules/i18n";
+import { useT, t as staticT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useSessionsStore } from "@/state/sessions";
@@ -14,6 +14,7 @@ import {
   registerDirtyDraft,
   updateDirtyDraft,
 } from "@/modules/editor/dirty-draft-guard";
+import { parseMarkdownDocument, safeMarkdownLanguage, type MarkdownBlock as MarkdownReaderBlock } from "@/modules/editor/markdown-reader";
 
 interface FilePreviewProps {
   filePath: string;
@@ -26,151 +27,56 @@ interface FilePreviewProps {
 }
 
 function MarkdownPreview({ content, fill = false }: { content: string; fill?: boolean }) {
-  const blocks = useMemo(() => parseMarkdown(content), [content]);
-  const keys = new UniqueKeyBuilder();
+  const t = useT();
+  const document = useMemo(() => parseMarkdownDocument(content), [content]);
   return (
     <div
-      style={{ padding: "12px 14px 24px", overflow: "auto", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
+      style={{ padding: "12px 14px 24px", overflow: "auto", overflowWrap: "anywhere", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
       className="no-scrollbar scroll-fade-y"
     >
-      {blocks.map((block) => (
-        <MarkdownBlock key={blockKey(block, keys)} block={block} />
+      {document.toc.length > 0 && (
+        <details open={document.toc.length <= 4} style={{ borderLeft: "2px solid var(--c-border-2)", padding: "2px 0 2px 10px", marginBottom: 16 }}>
+          <summary style={{ color: "var(--c-text-4)", cursor: "pointer", fontSize: "var(--fs-secondary)", fontWeight: 650, lineHeight: 1.5 }}>
+            {t("preview.markdown.toc_count", { count: document.toc.length })}
+          </summary>
+          <nav aria-label={t("preview.markdown.toc")} style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 7 }}>
+            {document.toc.map((entry) => (
+              <a key={entry.id} href={`#${entry.id}`} onClick={(event) => { event.preventDefault(); focusMarkdownAnchor(entry.id); }} style={{ color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", lineHeight: 1.45, paddingLeft: (entry.level - 1) * 12, textDecoration: "none", whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                {entry.text}
+              </a>
+            ))}
+          </nav>
+        </details>
+      )}
+      {document.blocks.map((block) => (
+        <MarkdownBlock key={block.key} block={block} />
       ))}
     </div>
   );
 }
 
-type Block =
-  | { type: "h1" | "h2" | "h3"; text: string }
-  | { type: "p"; text: string }
-  | { type: "code"; lang?: string; text: string }
-  | { type: "quote"; text: string }
-  | { type: "ul"; items: string[] }
-  | { type: "ol"; items: string[] }
-  | { type: "hr" };
-
-class UniqueKeyBuilder {
-  private counts = new Map<string, number>();
-
-  make(base: string): string {
-    const count = this.counts.get(base) ?? 0;
-    this.counts.set(base, count + 1);
-    return count === 0 ? base : `${base}:${count}`;
-  }
+function focusMarkdownAnchor(id: string) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  target.focus({ preventScroll: true });
 }
 
-function compactKeyText(text: string): string {
-  return text.replace(/\s+/g, " ").trim().slice(0, 96);
-}
-
-function blockKey(block: Block, keys: UniqueKeyBuilder): string {
-  if (block.type === "ul" || block.type === "ol") {
-    return keys.make(`${block.type}:${block.items.map(compactKeyText).join("|")}`);
+function focusMarkdownHref(href: string) {
+  try {
+    focusMarkdownAnchor(decodeURIComponent(href.slice(1)));
+  } catch {
+    // A malformed percent escape is untrusted document text, not an app error.
   }
-  if (block.type === "hr") return keys.make("hr");
-  return keys.make(`${block.type}:${compactKeyText(block.text)}`);
-}
-
-function parseMarkdown(src: string): Block[] {
-  const lines = src.split("\n");
-  const blocks: Block[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (line.startsWith("```")) {
-      const lang = line.slice(3).trim() || undefined;
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      blocks.push({ type: "code", lang, text: codeLines.join("\n") });
-      i++;
-      continue;
-    }
-
-    if (line.startsWith("### ")) {
-      blocks.push({ type: "h3", text: line.slice(4) });
-      i++;
-      continue;
-    }
-    if (line.startsWith("## ")) {
-      blocks.push({ type: "h2", text: line.slice(3) });
-      i++;
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      blocks.push({ type: "h1", text: line.slice(2) });
-      i++;
-      continue;
-    }
-
-    if (/^---+$/.test(line.trim()) || /^\*\*\*+$/.test(line.trim())) {
-      blocks.push({ type: "hr" });
-      i++;
-      continue;
-    }
-
-    if (line.startsWith("> ")) {
-      const quoteLines: string[] = [line.slice(2)];
-      i++;
-      while (i < lines.length && lines[i].startsWith("> ")) {
-        quoteLines.push(lines[i].slice(2));
-        i++;
-      }
-      blocks.push({ type: "quote", text: quoteLines.join("\n") });
-      continue;
-    }
-
-    if (/^\s*[-*]\s/.test(line)) {
-      const items: string[] = [line.replace(/^\s*[-*]\s/, "")];
-      i++;
-      while (i < lines.length && /^\s*[-*]\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*[-*]\s/, ""));
-        i++;
-      }
-      blocks.push({ type: "ul", items });
-      continue;
-    }
-
-    if (/^\s*\d+\.\s/.test(line)) {
-      const items: string[] = [line.replace(/^\s*\d+\.\s/, "")];
-      i++;
-      while (i < lines.length && /^\s*\d+\.\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*\d+\.\s/, ""));
-        i++;
-      }
-      blocks.push({ type: "ol", items });
-      continue;
-    }
-
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
-
-    const paraLines: string[] = [line];
-    i++;
-    while (i < lines.length && lines[i].trim() !== "" && !lines[i].startsWith("#") && !lines[i].startsWith("```") && !lines[i].startsWith("> ") && !/^\s*[-*]\s/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i]) && !/^---+$/.test(lines[i].trim())) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-    blocks.push({ type: "p", text: paraLines.join(" ") });
-  }
-
-  return blocks;
 }
 
 function InlineText({ text }: { text: string }) {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/);
-  const keys = new UniqueKeyBuilder();
   return (
     <>
-      {parts.map((part) => {
-        const key = keys.make(`part:${compactKeyText(part)}`);
+      {parts.map((part, index) => {
+        const key = `${index}:${part.slice(0, 48)}`;
         if (part.startsWith("`") && part.endsWith("`")) {
           return (
             <code key={key} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent)" }}>
@@ -186,7 +92,14 @@ function InlineText({ text }: { text: string }) {
         }
         const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (linkMatch) {
-          return <span key={key} style={{ color: "var(--c-accent)" }}>{linkMatch[1]}</span>;
+          const href = linkMatch[2].trim();
+          if (href.startsWith("#")) {
+            return <a key={key} href={href} onClick={(event) => { event.preventDefault(); focusMarkdownHref(href); }} style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}>{linkMatch[1]}</a>;
+          }
+          if (/^https?:\/\//i.test(href)) {
+            return <a key={key} href={href} target="_blank" rel="noreferrer noopener" style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}>{linkMatch[1]}</a>;
+          }
+          return <span key={key}>{linkMatch[1]}</span>;
         }
         return <span key={key}>{part}</span>;
       })}
@@ -194,41 +107,56 @@ function InlineText({ text }: { text: string }) {
   );
 }
 
-function MarkdownBlock({ block }: { block: Block }) {
+function MarkdownBlock({ block }: { block: MarkdownReaderBlock }) {
   switch (block.type) {
-    case "h1":
-      return <div style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--c-text-primary)", margin: "0 0 6px", paddingBottom: 4, borderBottom: "1px solid var(--c-border-2)" }}><InlineText text={block.text} /></div>;
-    case "h2":
-      return <div style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-2)", margin: "6px 0 4px" }}><InlineText text={block.text} /></div>;
-    case "h3":
-      return <div style={{ fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-4)", margin: "4px 0 2px" }}><InlineText text={block.text} /></div>;
-    case "p":
-      return <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6, margin: "0 0 6px" }}><InlineText text={block.text} /></div>;
-    case "code":
+    case "heading": {
+      const style = block.level === 1
+        ? { fontSize: "var(--fs-reader-h1)", color: "var(--c-text-primary)", margin: "0 0 8px", paddingBottom: 5, borderBottom: "1px solid var(--c-border-2)" }
+        : block.level === 2
+          ? { fontSize: "var(--fs-reader-h2)", color: "var(--c-text-2)", margin: "14px 0 5px" }
+          : { fontSize: "var(--fs-reader-h3)", color: "var(--c-text-4)", margin: "10px 0 3px" };
+      const children = <InlineText text={block.text} />;
+      if (block.level === 1) return <h1 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 700, scrollMarginTop: 12 }}>{children}</h1>;
+      if (block.level === 2) return <h2 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 650, scrollMarginTop: 12 }}>{children}</h2>;
+      return <h3 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 600, scrollMarginTop: 12 }}>{children}</h3>;
+    }
+    case "paragraph":
+      return <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65, margin: "0 0 7px" }}><InlineText text={block.text} /></div>;
+    case "code": {
+      const language = safeMarkdownLanguage(block.language);
       return (
-        <pre style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: "8px 10px", overflowX: "auto", margin: "4px 0" }}>
-          <code style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", color: "var(--c-text-2)" }}>{block.text}</code>
-        </pre>
+        <figure aria-label={staticT("preview.markdown.code")} style={{ background: "var(--c-bg-3)", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", overflow: "hidden", margin: "7px 0 10px" }}>
+          {language && <figcaption style={{ borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta-sm)", padding: "4px 9px", letterSpacing: "0.03em", overflowWrap: "anywhere" }}>{language.label}</figcaption>}
+          <pre tabIndex={0} aria-label={staticT("preview.markdown.code")} style={{ padding: "9px 10px", overflowX: "auto", margin: 0 }}><code className={language?.className} style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-2)" }}>{block.text}</code></pre>
+        </figure>
       );
+    }
     case "quote":
-      return <div style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-meta)", lineHeight: 1.65 }}><InlineText text={block.text} /></div>;
-    case "ul": {
-      const ulKeys = new UniqueKeyBuilder();
+      return <div style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-secondary)", lineHeight: 1.65 }}><InlineText text={block.text} /></div>;
+    case "unordered-list": {
       return (
         <ul style={{ paddingLeft: 16, margin: "4px 0", listStyle: "disc" }}>
-          {block.items.map((item) => <li key={ulKeys.make(`ul:${compactKeyText(item)}`)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
+          {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} /></li>)}
         </ul>
       );
     }
-    case "ol": {
-      const olKeys = new UniqueKeyBuilder();
+    case "ordered-list": {
       return (
         <ol style={{ paddingLeft: 16, margin: "4px 0" }}>
-          {block.items.map((item) => <li key={olKeys.make(`ol:${compactKeyText(item)}`)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6 }}><InlineText text={item} /></li>)}
+          {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} /></li>)}
         </ol>
       );
     }
-    case "hr":
+    case "table":
+      return (
+        <div role="region" tabIndex={0} aria-label={staticT("preview.markdown.table")} style={{ overflowX: "auto", margin: "8px 0 12px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-secondary)", color: "var(--c-text-3)" }}>
+            <thead><tr>{block.header.map((cell, column) => <th key={column} style={{ background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-2)", padding: "6px 8px", textAlign: block.alignments[column] ?? "left", fontWeight: 650 }}><InlineText text={cell} /></th>)}</tr></thead>
+            <tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, column) => <td key={column} style={{ borderTop: rowIndex === 0 ? "none" : "1px solid var(--c-border-1)", padding: "6px 8px", textAlign: block.alignments[column] ?? "left" }}><InlineText text={cell} /></td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      );
+    case "rule":
       return <div style={{ borderTop: "1px solid var(--c-border-2)", margin: "8px 0" }} />;
   }
 }

@@ -1122,6 +1122,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   const diff = read("src/ui/DiffPanel.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
   const filePreview = read("src/ui/FilePreview.tsx");
+  const markdownReader = read("src/modules/editor/markdown-reader.ts");
   const inspector = read("src/ui/InspectorPanel.tsx");
   const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
   const toast = read("src/ui/Toast.tsx");
@@ -1253,7 +1254,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(contextMenu, /ctxMenuIn var\(--duration-fast\) ease/);
   assert.doesNotMatch(contextMenu, /key=\{`\$\{item\.label\}-\$\{i\}`\}/);
   assert.doesNotMatch(contextMenu, /key=\{`sep-\$\{i\}`\}/);
-  assert.match(filePreview, /class UniqueKeyBuilder/);
+  assert.match(markdownReader, /class UniqueValueBuilder/);
+  assert.match(filePreview, /block\.key/);
   assert.doesNotMatch(filePreview, /key=\{i\}/);
 });
 

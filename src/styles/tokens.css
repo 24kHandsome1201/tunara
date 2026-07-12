@@ -104,6 +104,9 @@
   --fs-secondary: 12px;
   --fs-meta: 11px;
   --fs-meta-sm: 10.5px;
+  --fs-reader-h1: 17px;
+  --fs-reader-h2: 14px;
+  --fs-reader-h3: 12px;
   --fs-badge: 9px;
 
   /* ── 圆角 ── */
