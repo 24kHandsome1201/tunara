@@ -33,6 +33,7 @@ pub mod known_hosts;
 pub mod remote_git;
 #[cfg(test)]
 mod rtt_benchmark;
+mod safe_write;
 pub mod sftp;
 
 use auth::AuthOptions;

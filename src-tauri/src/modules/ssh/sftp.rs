@@ -20,6 +20,10 @@ use russh_sftp::protocol::{FileAttributes, OpenFlags};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::connection::await_stage;
+use super::safe_write::{
+    write_text_transaction, IoError, RemoteFile, RemoteFileKind, RemoteWriteIo, ReplaceError,
+    TransactionOutcome, TransactionStage, WriteRequest,
+};
 use crate::modules::pty::{PtyState, Session};
 
 // 256 KiB preview cap, matching the local fs_read_file UI preview budget.
@@ -35,9 +39,9 @@ const SFTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
 const SFTP_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 static REMOTE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 type RemoteWriteLock = Arc<tokio::sync::Mutex<()>>;
-static REMOTE_WRITE_LOCKS: OnceLock<
-    std::sync::Mutex<HashMap<(u32, String), Weak<tokio::sync::Mutex<()>>>>,
-> = OnceLock::new();
+type RemoteWriteLockKey = (u32, String);
+type RemoteWriteLockTable = HashMap<RemoteWriteLockKey, Weak<tokio::sync::Mutex<()>>>;
+static REMOTE_WRITE_LOCKS: OnceLock<std::sync::Mutex<RemoteWriteLockTable>> = OnceLock::new();
 
 fn remote_write_lock(id: u32, path: &str) -> RemoteWriteLock {
     let locks = REMOTE_WRITE_LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
@@ -144,42 +148,6 @@ fn remote_sibling_temp_path(path: &str, attempt: u32) -> Result<String, String> 
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum ReplaceReconciliation {
-    Saved,
-    Unchanged,
-    Conflict(String),
-}
-
-fn reconcile_replace_observation(
-    observed: &[u8],
-    observed_mode: u32,
-    attempted: &[u8],
-    expected_fingerprint: &str,
-    expected_mode: u32,
-) -> ReplaceReconciliation {
-    if observed == attempted && observed_mode == expected_mode {
-        return ReplaceReconciliation::Saved;
-    }
-    let fingerprint = content_fingerprint(observed);
-    if fingerprint == expected_fingerprint {
-        ReplaceReconciliation::Unchanged
-    } else {
-        ReplaceReconciliation::Conflict(fingerprint)
-    }
-}
-
-fn outcome_unknown_error(
-    attempted_fingerprint: &str,
-    expected_mode: u32,
-    replace: &str,
-    reconcile: &str,
-) -> String {
-    format!(
-        "outcomeUnknown:{attempted_fingerprint}:{expected_mode:o}: atomic remote replace status was lost ({replace}); reconciliation failed ({reconcile})"
-    )
 }
 
 /// Resolve the SshSession behind a session id, or a descriptive error.
@@ -405,165 +373,165 @@ pub async fn ssh_fs_write_text_file(
     // caller must re-read after the first commits and report a conflict instead
     // of letting two equal fingerprints both pass the pre-rename check.
     let write_lock = remote_write_lock(id, &path);
-    let _write_guard = write_lock.lock().await;
     let session = state.get(id).ok_or_else(|| "no session".to_string())?;
     let ssh = match session.as_ref() {
         Session::Ssh(ssh) => ssh,
         Session::Local(_) => return Err("not a remote session".into()),
     };
     let sftp = ssh.sftp().await?;
-    let (current, mode) = read_remote_editable_bytes(&sftp, &path).await?;
-    let current_fingerprint = content_fingerprint(&current);
-    let attempted_fingerprint = content_fingerprint(content.as_bytes());
-    if current_fingerprint != expected_fingerprint {
-        return Ok(crate::modules::fs::file::WriteResult::Conflict {
-            current_fingerprint,
-        });
-    }
-
-    let mut temporary = None;
+    let adapter = SftpWriteAdapter { sftp: &sftp, ssh };
+    let mut outcome = None;
     for attempt in 0..16 {
-        let candidate = remote_sibling_temp_path(&path, attempt)?;
-        let attrs = FileAttributes {
-            permissions: Some(mode),
-            ..FileAttributes::empty()
-        };
-        match await_stage(
-            "create remote temporary file",
-            SFTP_CONTROL_TIMEOUT,
-            sftp.open_with_flags_and_attributes(
-                &candidate,
-                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
-                attrs,
-            ),
+        let temporary = remote_sibling_temp_path(&path, attempt)?;
+        match write_text_transaction(
+            &adapter,
+            write_lock.as_ref(),
+            WriteRequest {
+                target: &path,
+                temporary: &temporary,
+                content: content.as_bytes(),
+                expected_fingerprint: &expected_fingerprint,
+            },
         )
         .await
         {
-            Ok(file) => {
-                temporary = Some((candidate, file));
+            Err(error)
+                if error.stage == TransactionStage::Create
+                    && error.source.to_ascii_lowercase().contains("exist") =>
+            {
+                continue;
+            }
+            result => {
+                outcome = Some(result);
                 break;
             }
-            Err(error) if error.contains("exist") => continue,
-            Err(error) => return Err(error),
         }
     }
-    let (temporary_path, mut temporary_file) =
-        temporary.ok_or_else(|| "could not allocate remote temporary file".to_string())?;
+    let outcome = outcome
+        .ok_or_else(|| "could not allocate remote temporary file after 16 attempts".to_string())?
+        .map_err(|error| error.to_string())?;
+    match outcome {
+        TransactionOutcome::Saved { fingerprint, size } => {
+            Ok(crate::modules::fs::file::WriteResult::Saved { fingerprint, size })
+        }
+        TransactionOutcome::Conflict { current_fingerprint, .. } => {
+            Ok(crate::modules::fs::file::WriteResult::Conflict { current_fingerprint })
+        }
+        TransactionOutcome::OutcomeUnknown {
+            attempted_fingerprint,
+            expected_mode,
+            cleanup_pending,
+        } => Err(format!(
+            "outcomeUnknown:{attempted_fingerprint}:{expected_mode:o}:cleanupPending={cleanup_pending}"
+        )),
+    }
+}
 
-    let prepared = async {
+struct SftpWriteAdapter<'a> {
+    sftp: &'a russh_sftp::client::SftpSession,
+    ssh: &'a super::connection::SshSession,
+}
+
+impl RemoteWriteIo for SftpWriteAdapter<'_> {
+    type Temp = russh_sftp::client::fs::File;
+
+    async fn read_regular(&self, path: &str) -> Result<RemoteFile, IoError> {
+        read_remote_editable_bytes(self.sftp, path)
+            .await
+            .map(|(bytes, mode)| RemoteFile {
+                bytes,
+                mode,
+                kind: RemoteFileKind::Regular,
+            })
+            .map_err(IoError)
+    }
+
+    async fn create_exclusive(&self, path: &str, mode: u32) -> Result<Self::Temp, IoError> {
+        await_stage(
+            "create remote temporary file",
+            SFTP_CONTROL_TIMEOUT,
+            self.sftp.open_with_flags_and_attributes(
+                path,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                FileAttributes {
+                    permissions: Some(mode),
+                    ..FileAttributes::empty()
+                },
+            ),
+        )
+        .await
+        .map_err(IoError)
+    }
+
+    async fn write_all(&self, temporary: &mut Self::Temp, bytes: &[u8]) -> Result<(), IoError> {
         await_stage(
             "write remote temporary file",
             SFTP_WRITE_TIMEOUT,
-            temporary_file.write_all(content.as_bytes()),
+            temporary.write_all(bytes),
         )
-        .await?;
+        .await
+        .map_err(IoError)
+    }
+    async fn flush(&self, temporary: &mut Self::Temp) -> Result<(), IoError> {
         await_stage(
             "flush remote temporary file",
             SFTP_WRITE_TIMEOUT,
-            temporary_file.flush(),
+            temporary.flush(),
         )
-        .await?;
+        .await
+        .map_err(IoError)
+    }
+    async fn set_mode(&self, temporary: &mut Self::Temp, mode: u32) -> Result<(), IoError> {
         await_stage(
             "set remote temporary permissions",
             SFTP_CONTROL_TIMEOUT,
-            temporary_file.set_metadata(FileAttributes {
+            temporary.set_metadata(FileAttributes {
                 permissions: Some(mode),
                 ..FileAttributes::empty()
             }),
         )
-        .await?;
+        .await
+        .map_err(IoError)
+    }
+    async fn sync(&self, temporary: &mut Self::Temp) -> Result<(), IoError> {
         await_stage(
             "sync remote temporary file",
             SFTP_CONTROL_TIMEOUT,
-            temporary_file.sync_all(),
+            temporary.sync_all(),
         )
-        .await?;
+        .await
+        .map_err(IoError)
+    }
+    async fn close(&self, mut temporary: Self::Temp) -> Result<(), IoError> {
         await_stage(
             "close remote temporary file",
             SFTP_CONTROL_TIMEOUT,
-            temporary_file.shutdown(),
+            temporary.shutdown(),
         )
-        .await?;
-        Ok::<(), String>(())
+        .await
+        .map_err(IoError)
     }
-    .await;
-    if let Err(error) = prepared {
-        let _ = sftp.remove_file(&temporary_path).await;
-        return Err(error);
+    async fn atomic_replace(&self, temporary: &str, target: &str) -> Result<(), ReplaceError> {
+        let command = format!(
+            "mv -f -- {} {}",
+            shell_quote(temporary),
+            shell_quote(target)
+        );
+        self.ssh
+            .exec(&command, 16 * 1024)
+            .await
+            .map(|_| ())
+            .map_err(ReplaceError::StatusLost)
     }
-
-    let (latest, _) = match read_remote_editable_bytes(&sftp, &path).await {
-        Ok(value) => value,
-        Err(error) => {
-            let _ = sftp.remove_file(&temporary_path).await;
-            return Err(error);
-        }
-    };
-    let latest_fingerprint = content_fingerprint(&latest);
-    if latest_fingerprint != expected_fingerprint {
-        let _ = sftp.remove_file(&temporary_path).await;
-        return Ok(crate::modules::fs::file::WriteResult::Conflict {
-            current_fingerprint: latest_fingerprint,
-        });
+    async fn remove_temp(&self, path: &str) -> Result<(), IoError> {
+        await_stage(
+            "remove remote temporary file",
+            SFTP_CONTROL_TIMEOUT,
+            self.sftp.remove_file(path),
+        )
+        .await
+        .map_err(IoError)
     }
-
-    let command = format!(
-        "mv -f -- {} {}",
-        shell_quote(&temporary_path),
-        shell_quote(&path)
-    );
-    if let Err(error) = ssh.exec(&command, 16 * 1024).await {
-        // Once the replace request was sent, a transport error cannot tell us
-        // whether rename happened. Re-read before reporting. If the connection
-        // is gone too, surface an explicit outcomeUnknown token; a retry with
-        // the same expected fingerprint/content performs the reconciliation
-        // above. Cleanup remains best effort because the temp may already have
-        // become the target.
-        match read_remote_editable_bytes(&sftp, &path).await {
-            Ok((observed, observed_mode)) => match reconcile_replace_observation(
-                &observed,
-                observed_mode,
-                content.as_bytes(),
-                &expected_fingerprint,
-                mode,
-            ) {
-                ReplaceReconciliation::Saved => {
-                    return Ok(crate::modules::fs::file::WriteResult::Saved {
-                        fingerprint: attempted_fingerprint,
-                        size: observed.len() as u64,
-                    });
-                }
-                ReplaceReconciliation::Conflict(current_fingerprint) => {
-                    let _ = sftp.remove_file(&temporary_path).await;
-                    return Ok(crate::modules::fs::file::WriteResult::Conflict {
-                        current_fingerprint,
-                    });
-                }
-                ReplaceReconciliation::Unchanged => {
-                    let _ = sftp.remove_file(&temporary_path).await;
-                    return Err(format!("atomic remote replace failed: {error}"));
-                }
-            },
-            Err(reconcile_error) => {
-                let _ = sftp.remove_file(&temporary_path).await;
-                return Err(outcome_unknown_error(
-                    &attempted_fingerprint,
-                    mode,
-                    &error,
-                    &reconcile_error,
-                ));
-            }
-        }
-    }
-
-    let (saved, saved_mode) = read_remote_editable_bytes(&sftp, &path).await?;
-    if saved != content.as_bytes() || saved_mode != mode {
-        return Err("remote save verification failed".into());
-    }
-    Ok(crate::modules::fs::file::WriteResult::Saved {
-        fingerprint: content_fingerprint(&saved),
-        size: saved.len() as u64,
-    })
 }
 
 /// Reconcile an indeterminate replace after reconnect. Bytes alone are not
@@ -876,10 +844,9 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::{
-        choose_remote_home, content_fingerprint, outcome_unknown_error,
-        reconcile_replace_observation, remote_sibling_temp_path, remote_write_lock, shell_quote,
+        choose_remote_home, remote_sibling_temp_path, remote_write_lock, shell_quote,
         validate_download_target, validate_fingerprint, validate_remote_edit_path,
-        ReplaceReconciliation, REMOTE_WRITE_LOCKS,
+        REMOTE_WRITE_LOCKS,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1143,47 +1110,6 @@ mod tests {
         for invalid in ["", "abc", &"A".repeat(64), &"g".repeat(64)] {
             assert!(validate_fingerprint(invalid).is_err());
         }
-    }
-
-    #[test]
-    fn replace_error_reconciliation_distinguishes_saved_unchanged_and_conflict() {
-        let before = b"AAAA\n";
-        let attempted = b"CCCC\n";
-        let expected = content_fingerprint(before);
-
-        assert_eq!(
-            reconcile_replace_observation(attempted, 0o640, attempted, &expected, 0o640),
-            ReplaceReconciliation::Saved
-        );
-        assert_eq!(
-            reconcile_replace_observation(before, 0o640, attempted, &expected, 0o640),
-            ReplaceReconciliation::Unchanged
-        );
-
-        // Same byte length (and potentially the same mtime) must still be a
-        // conflict. Only the content fingerprint is authoritative.
-        let external = b"BBBB\n";
-        assert_eq!(before.len(), external.len());
-        assert_eq!(
-            reconcile_replace_observation(external, 0o640, attempted, &expected, 0o640),
-            ReplaceReconciliation::Conflict(content_fingerprint(external))
-        );
-
-        // Matching bytes with the wrong mode are not a verified successful
-        // save: permission preservation is part of the transaction contract.
-        assert_eq!(
-            reconcile_replace_observation(attempted, 0o600, attempted, &expected, 0o640),
-            ReplaceReconciliation::Conflict(content_fingerprint(attempted))
-        );
-    }
-
-    #[test]
-    fn lost_replace_status_has_a_machine_recognizable_outcome_unknown_error() {
-        let attempted = content_fingerprint(b"after\n");
-        let error = outcome_unknown_error(&attempted, 0o640, "channel closed", "no session");
-        assert!(error.starts_with(&format!("outcomeUnknown:{attempted}:640:")));
-        assert!(error.contains("channel closed"));
-        assert!(error.contains("reconciliation failed"));
     }
 
     #[tokio::test]
