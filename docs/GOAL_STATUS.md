@@ -4,12 +4,12 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收` 与 `M1 Terminal + SSH 性能与乱码稳定性` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md) 与 [M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)。当前唯一 Active Milestone 是 `Phase 2 Markdown / 单文件轻编辑`；Preview、Timeline、Worktree 生命周期、Companion 与 Recipe 仍不抢跑。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。本批只关闭 Phase 2，不自动启动 Phase 3；Preview、Timeline、Worktree 生命周期、Companion 与 Recipe 仍不抢跑。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
-| Phase 2 Markdown / 单文件轻编辑 | 进行中 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑与基础源码高亮均已落地；SSH outcomeUnknown GUI 重连对账、编辑器窄窗/中英文/键盘门、Linux/ext4 本地文件内核、macOS Tauri WebView 本地跨文件/会话保存重开及原生窗口关闭草稿门均已关闭 | 首 PTY 冷启动性能闭环 |
+| Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归；Phase 3 仍未开始 |
 | Phase 3 Workspace Preview | 未开始 | 终端已有 URL 检测基础能力待盘点 | workspace 绑定、安全 WebView、来源/截图/错误摘要闭环 |
 | Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
@@ -83,7 +83,7 @@
 - [x] Linux/ext4 本地文件内核真实保存重开、同尺寸外部修改冲突、非 root 权限失败不破坏原文件、原子可见性与临时残留闭环；证据只覆盖生产 Rust 读写函数和真实文件系统，不冒充 Tauri WebView 产品交互。
 - [x] macOS optimized release Tauri WebView 中本地跨文件/会话保存重开与草稿生命周期：真实 Save 后重开内容/fingerprint 正确，同尺寸外部修改进入 Conflict 且草稿保留，dirty 会话切换被阻止并可取消，clean registry 释放，权限失败不破坏原文件；应用外独立检查最终内容正确且临时残留为 0。证据见 [报告](./benchmarks/m2-local-safe-write-macos-2026-07-13.md)。
 - [x] macOS optimized release Tauri app 原生窗口关闭草稿门：真实红色关闭按钮 `AXPress` 在 dirty 时显示警告并阻止隐藏；取消后窗口、编辑器和草稿保持，确认前 snapshot SHA-256 不变；明确丢弃后 snapshot 才推进并隐藏；Reopen 后无残留警告，clean 原生关闭直接隐藏且再次持久化。证据见 [报告](./benchmarks/m2-native-close-macos-2026-07-13.md)。
-- [ ] 首 PTY 冷启动性能；本批未验证，也未关闭。
+- [x] 首 PTY 冷启动性能：5 次进程完全退出后的 optimized macOS app 独立启动均创建 12 个真实 PTY、输入探针 0 failure；窗口可见中位数 532ms、首 PTY 可输入中位数 1,619ms，低于 M1 1,639ms × 1.1 的 1,802.9ms 预算。输入 p95 中位数 24ms、frame p95 每轮 18–19ms、RSS peak 中位数 405,696KiB、bundle 14,396KiB；FilePreview/Markdown parser/editor draft 保持动态 chunk，不进入首屏静态模块图。见 [报告](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 2 至此正式完成，Phase 3 未自动启动。
 
 ## Phase 1 验收账本
 

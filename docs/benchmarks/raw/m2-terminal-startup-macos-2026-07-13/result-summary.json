@@ -1,0 +1,61 @@
+{
+  "sampleCount": 5,
+  "commit": "041ac4581864568d5e0e0389f8ac81bd5968b2c2",
+  "buildMode": "optimized release benchmark bundle",
+  "fixture": {
+    "terminalCount": 12,
+    "processFullyStoppedBetweenRuns": true,
+    "realPtyInputProbeRequired": true
+  },
+  "baseline": {
+    "source": "docs/benchmarks/m1-terminal-startup-2026-07-11.md",
+    "firstInputReadyMedianMs": 1639,
+    "m2Multiplier": 1.1
+  },
+  "budgets": {
+    "firstInputReadyMedianMs": 1802.9,
+    "inputP95MedianMs": 29.9,
+    "frameP95PerRunMs": 33.4,
+    "totalIncrementalRssPeakMedianKiB": 467654
+  },
+  "median": {
+    "windowVisibleMs": 532,
+    "firstInputReadyMs": 1619,
+    "allInputsReadyMs": 1622,
+    "inputP95Ms": 24,
+    "frameP95Ms": 18,
+    "totalIncrementalRssPeakKiB": 405696,
+    "bundleKiB": 14396
+  },
+  "worst": {
+    "windowVisibleMs": 2247,
+    "firstInputReadyMs": 3885,
+    "allInputsReadyMs": 3930,
+    "inputP95Ms": 73,
+    "frameP95Ms": 19,
+    "totalIncrementalRssPeakKiB": 409184
+  },
+  "runs": [
+    { "timestamp": "2026-07-12T17:13:51.661Z", "pid": 53170, "windowVisibleMs": 2247, "firstInputReadyMs": 3885, "allInputsReadyMs": 3930, "readyTerminals": 12, "inputProbeFailures": 0, "inputP95Ms": 73, "frameP95Ms": 19, "rssPeakKiB": 409184, "bundleKiB": 14396 },
+    { "timestamp": "2026-07-12T17:14:16.344Z", "pid": 54034, "windowVisibleMs": 695, "firstInputReadyMs": 1831, "allInputsReadyMs": 1839, "readyTerminals": 12, "inputProbeFailures": 0, "inputP95Ms": 24, "frameP95Ms": 18, "rssPeakKiB": 405696, "bundleKiB": 14396 },
+    { "timestamp": "2026-07-12T17:14:41.558Z", "pid": 55756, "windowVisibleMs": 532, "firstInputReadyMs": 1619, "allInputsReadyMs": 1622, "readyTerminals": 12, "inputProbeFailures": 0, "inputP95Ms": 22, "frameP95Ms": 18, "rssPeakKiB": 407024, "bundleKiB": 14396 },
+    { "timestamp": "2026-07-12T17:15:07.086Z", "pid": 56571, "windowVisibleMs": 496, "firstInputReadyMs": 1591, "allInputsReadyMs": 1594, "readyTerminals": 12, "inputProbeFailures": 0, "inputP95Ms": 24, "frameP95Ms": 19, "rssPeakKiB": 404592, "bundleKiB": 14396 },
+    { "timestamp": "2026-07-12T17:15:32.820Z", "pid": 57363, "windowVisibleMs": 468, "firstInputReadyMs": 1564, "allInputsReadyMs": 1569, "readyTerminals": 12, "inputProbeFailures": 0, "inputP95Ms": 22, "frameP95Ms": 18, "rssPeakKiB": 402592, "bundleKiB": 14396 }
+  ],
+  "initialStaticModuleGraph": {
+    "entry": "assets/main-C-mw283s.js",
+    "appChunk": "assets/App-CZi7lqN3.js",
+    "filePreviewChunk": "assets/FilePreview-CJKRvzfr.js",
+    "filePreviewChunkBytes": 28129,
+    "entryFilePreviewReferences": 0,
+    "indexFilePreviewReferences": 0,
+    "appDynamicFilePreviewImports": 1,
+    "filePreviewSha256": "2165cf212b739873895821118422d573ead11aedd59350d35fd417aafdce6671",
+    "conclusion": "FilePreview, Markdown parser and editor draft implementation remain behind the FilePreview dynamic import and are absent from the initial static entry graph."
+  },
+  "comparison": {
+    "firstInputReadyMedianBudgetMarginMs": 183.9,
+    "firstInputReadyMedianVsM1Ratio": 0.9878
+  },
+  "passed": true
+}
