@@ -37,7 +37,12 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(backend, /temporary_file\.shutdown/);
   assert.match(backend, /latest_fingerprint != expected_fingerprint/);
   assert.match(backend, /mv -f --/);
+  assert.match(backend, /remote_write_lock\(id, &path\)/);
+  assert.match(backend, /outcomeUnknown:/);
+  assert.match(backend, /ssh_fs_reconcile_text_write/);
+  assert.match(backend, /observed_mode == expected_mode/);
   assert.doesNotMatch(backend, /remove_file\(&path\)/);
   assert.match(bridge, /invoke<WriteTextResult>\("ssh_fs_write_text_file"/);
   assert.match(runtime, /ssh::sftp::ssh_fs_write_text_file/);
+  assert.match(runtime, /ssh::sftp::ssh_fs_reconcile_text_write/);
 });

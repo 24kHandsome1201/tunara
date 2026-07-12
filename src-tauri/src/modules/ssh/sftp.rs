@@ -10,8 +10,10 @@
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::{Component, Path};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 
 use russh_sftp::protocol::{FileAttributes, OpenFlags};
@@ -32,6 +34,28 @@ const SFTP_PREVIEW_TIMEOUT: Duration = Duration::from_secs(60);
 const SFTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
 const SFTP_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 static REMOTE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
+type RemoteWriteLock = Arc<tokio::sync::Mutex<()>>;
+static REMOTE_WRITE_LOCKS: OnceLock<
+    std::sync::Mutex<HashMap<(u32, String), Weak<tokio::sync::Mutex<()>>>>,
+> = OnceLock::new();
+
+fn remote_write_lock(id: u32, path: &str) -> RemoteWriteLock {
+    let locks = REMOTE_WRITE_LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut locks = locks
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Weak entries avoid retaining one mutex forever for every remote path a
+    // user has ever edited. Opportunistic pruning keeps the table bounded by
+    // currently active paths (plus at most the most recently released entry).
+    locks.retain(|_, lock| lock.strong_count() > 0);
+    let key = (id, path.to_string());
+    if let Some(lock) = locks.get(&key).and_then(Weak::upgrade) {
+        return lock;
+    }
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    locks.insert(key, Arc::downgrade(&lock));
+    lock
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -120,6 +144,42 @@ fn remote_sibling_temp_path(path: &str, attempt: u32) -> Result<String, String> 
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ReplaceReconciliation {
+    Saved,
+    Unchanged,
+    Conflict(String),
+}
+
+fn reconcile_replace_observation(
+    observed: &[u8],
+    observed_mode: u32,
+    attempted: &[u8],
+    expected_fingerprint: &str,
+    expected_mode: u32,
+) -> ReplaceReconciliation {
+    if observed == attempted && observed_mode == expected_mode {
+        return ReplaceReconciliation::Saved;
+    }
+    let fingerprint = content_fingerprint(observed);
+    if fingerprint == expected_fingerprint {
+        ReplaceReconciliation::Unchanged
+    } else {
+        ReplaceReconciliation::Conflict(fingerprint)
+    }
+}
+
+fn outcome_unknown_error(
+    attempted_fingerprint: &str,
+    expected_mode: u32,
+    replace: &str,
+    reconcile: &str,
+) -> String {
+    format!(
+        "outcomeUnknown:{attempted_fingerprint}:{expected_mode:o}: atomic remote replace status was lost ({replace}); reconciliation failed ({reconcile})"
+    )
 }
 
 /// Resolve the SshSession behind a session id, or a descriptive error.
@@ -341,6 +401,11 @@ pub async fn ssh_fs_write_text_file(
     }
     validate_fingerprint(&expected_fingerprint)?;
     validate_remote_edit_path(&path)?;
+    // Serialize saves issued by this app for the same remote path. The second
+    // caller must re-read after the first commits and report a conflict instead
+    // of letting two equal fingerprints both pass the pre-rename check.
+    let write_lock = remote_write_lock(id, &path);
+    let _write_guard = write_lock.lock().await;
     let session = state.get(id).ok_or_else(|| "no session".to_string())?;
     let ssh = match session.as_ref() {
         Session::Ssh(ssh) => ssh,
@@ -349,6 +414,7 @@ pub async fn ssh_fs_write_text_file(
     let sftp = ssh.sftp().await?;
     let (current, mode) = read_remote_editable_bytes(&sftp, &path).await?;
     let current_fingerprint = content_fingerprint(&current);
+    let attempted_fingerprint = content_fingerprint(content.as_bytes());
     if current_fingerprint != expected_fingerprint {
         return Ok(crate::modules::fs::file::WriteResult::Conflict {
             current_fingerprint,
@@ -447,8 +513,47 @@ pub async fn ssh_fs_write_text_file(
         shell_quote(&path)
     );
     if let Err(error) = ssh.exec(&command, 16 * 1024).await {
-        let _ = sftp.remove_file(&temporary_path).await;
-        return Err(format!("atomic remote replace failed: {error}"));
+        // Once the replace request was sent, a transport error cannot tell us
+        // whether rename happened. Re-read before reporting. If the connection
+        // is gone too, surface an explicit outcomeUnknown token; a retry with
+        // the same expected fingerprint/content performs the reconciliation
+        // above. Cleanup remains best effort because the temp may already have
+        // become the target.
+        match read_remote_editable_bytes(&sftp, &path).await {
+            Ok((observed, observed_mode)) => match reconcile_replace_observation(
+                &observed,
+                observed_mode,
+                content.as_bytes(),
+                &expected_fingerprint,
+                mode,
+            ) {
+                ReplaceReconciliation::Saved => {
+                    return Ok(crate::modules::fs::file::WriteResult::Saved {
+                        fingerprint: attempted_fingerprint,
+                        size: observed.len() as u64,
+                    });
+                }
+                ReplaceReconciliation::Conflict(current_fingerprint) => {
+                    let _ = sftp.remove_file(&temporary_path).await;
+                    return Ok(crate::modules::fs::file::WriteResult::Conflict {
+                        current_fingerprint,
+                    });
+                }
+                ReplaceReconciliation::Unchanged => {
+                    let _ = sftp.remove_file(&temporary_path).await;
+                    return Err(format!("atomic remote replace failed: {error}"));
+                }
+            },
+            Err(reconcile_error) => {
+                let _ = sftp.remove_file(&temporary_path).await;
+                return Err(outcome_unknown_error(
+                    &attempted_fingerprint,
+                    mode,
+                    &error,
+                    &reconcile_error,
+                ));
+            }
+        }
     }
 
     let (saved, saved_mode) = read_remote_editable_bytes(&sftp, &path).await?;
@@ -459,6 +564,34 @@ pub async fn ssh_fs_write_text_file(
         fingerprint: content_fingerprint(&saved),
         size: saved.len() as u64,
     })
+}
+
+/// Reconcile an indeterminate replace after reconnect. Bytes alone are not
+/// sufficient: permission preservation is part of the save contract, so the
+/// caller must return the mode encoded in the outcomeUnknown token.
+#[tauri::command]
+pub async fn ssh_fs_reconcile_text_write(
+    state: tauri::State<'_, PtyState>,
+    id: u32,
+    path: String,
+    attempted_fingerprint: String,
+    expected_mode: u32,
+) -> Result<crate::modules::fs::file::WriteResult, String> {
+    validate_fingerprint(&attempted_fingerprint)?;
+    validate_remote_edit_path(&path)?;
+    let sftp = sftp_for(&state, id).await?;
+    let (observed, observed_mode) = read_remote_editable_bytes(&sftp, &path).await?;
+    let current_fingerprint = content_fingerprint(&observed);
+    if current_fingerprint == attempted_fingerprint && observed_mode == expected_mode {
+        Ok(crate::modules::fs::file::WriteResult::Saved {
+            fingerprint: current_fingerprint,
+            size: observed.len() as u64,
+        })
+    } else {
+        Ok(crate::modules::fs::file::WriteResult::Conflict {
+            current_fingerprint,
+        })
+    }
 }
 
 // Cap a single download so a malicious/compromised remote can't exhaust memory
@@ -743,11 +876,14 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::{
-        choose_remote_home, remote_sibling_temp_path, shell_quote, validate_download_target,
-        validate_fingerprint, validate_remote_edit_path,
+        choose_remote_home, content_fingerprint, outcome_unknown_error,
+        reconcile_replace_observation, remote_sibling_temp_path, remote_write_lock, shell_quote,
+        validate_download_target, validate_fingerprint, validate_remote_edit_path,
+        ReplaceReconciliation, REMOTE_WRITE_LOCKS,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     // The validator confines downloads under the *real* home dir, so test
@@ -1007,5 +1143,94 @@ mod tests {
         for invalid in ["", "abc", &"A".repeat(64), &"g".repeat(64)] {
             assert!(validate_fingerprint(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn replace_error_reconciliation_distinguishes_saved_unchanged_and_conflict() {
+        let before = b"AAAA\n";
+        let attempted = b"CCCC\n";
+        let expected = content_fingerprint(before);
+
+        assert_eq!(
+            reconcile_replace_observation(attempted, 0o640, attempted, &expected, 0o640),
+            ReplaceReconciliation::Saved
+        );
+        assert_eq!(
+            reconcile_replace_observation(before, 0o640, attempted, &expected, 0o640),
+            ReplaceReconciliation::Unchanged
+        );
+
+        // Same byte length (and potentially the same mtime) must still be a
+        // conflict. Only the content fingerprint is authoritative.
+        let external = b"BBBB\n";
+        assert_eq!(before.len(), external.len());
+        assert_eq!(
+            reconcile_replace_observation(external, 0o640, attempted, &expected, 0o640),
+            ReplaceReconciliation::Conflict(content_fingerprint(external))
+        );
+
+        // Matching bytes with the wrong mode are not a verified successful
+        // save: permission preservation is part of the transaction contract.
+        assert_eq!(
+            reconcile_replace_observation(attempted, 0o600, attempted, &expected, 0o640),
+            ReplaceReconciliation::Conflict(content_fingerprint(attempted))
+        );
+    }
+
+    #[test]
+    fn lost_replace_status_has_a_machine_recognizable_outcome_unknown_error() {
+        let attempted = content_fingerprint(b"after\n");
+        let error = outcome_unknown_error(&attempted, 0o640, "channel closed", "no session");
+        assert!(error.starts_with(&format!("outcomeUnknown:{attempted}:640:")));
+        assert!(error.contains("channel closed"));
+        assert!(error.contains("reconciliation failed"));
+    }
+
+    #[tokio::test]
+    async fn concurrent_saves_for_one_remote_path_are_serialized() {
+        use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+        let lock = remote_write_lock(9_001, "/tmp/concurrent.txt");
+        assert!(Arc::ptr_eq(
+            &lock,
+            &remote_write_lock(9_001, "/tmp/concurrent.txt")
+        ));
+        assert!(!Arc::ptr_eq(
+            &lock,
+            &remote_write_lock(9_002, "/tmp/concurrent.txt")
+        ));
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let mut tasks = Vec::new();
+        for _ in 0..8 {
+            let lock = lock.clone();
+            let active = active.clone();
+            let peak = peak.clone();
+            tasks.push(tokio::spawn(async move {
+                let _guard = lock.lock().await;
+                let now = active.fetch_add(1, AtomicOrdering::SeqCst) + 1;
+                peak.fetch_max(now, AtomicOrdering::SeqCst);
+                tokio::task::yield_now().await;
+                active.fetch_sub(1, AtomicOrdering::SeqCst);
+            }));
+        }
+        for task in tasks {
+            task.await.expect("save task");
+        }
+        assert_eq!(peak.load(AtomicOrdering::SeqCst), 1);
+    }
+
+    #[test]
+    fn released_remote_write_locks_are_pruned_on_the_next_lookup() {
+        let first = remote_write_lock(9_101, "/tmp/released-a.txt");
+        drop(first);
+        let _second = remote_write_lock(9_101, "/tmp/released-b.txt");
+        let locks = REMOTE_WRITE_LOCKS
+            .get()
+            .expect("lock table")
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert!(!locks.contains_key(&(9_101, "/tmp/released-a.txt".to_string())));
     }
 }
