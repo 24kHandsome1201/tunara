@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { fsReadFile, type ReadResult } from "@/modules/fs/fs-bridge";
-import { sshReadFile } from "@/modules/ssh/remote-fs-bridge";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fsReadFile, fsWriteTextFile, type ReadResult } from "@/modules/fs/fs-bridge";
+import { sshReadFile, sshWriteTextFile } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { CloseIcon } from "./shared";
 import { useT } from "@/modules/i18n";
+import { useUIStore } from "@/state/ui";
+import { openInEditorWithToast } from "./lib/open-in-editor";
 
 interface FilePreviewProps {
   filePath: string;
@@ -245,6 +247,238 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   );
 }
 
+type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
+
+function EditorSurface({
+  filePath,
+  fileName,
+  initialContent,
+  initialFingerprint,
+  remotePtyId,
+  isMarkdown,
+  onClose,
+}: {
+  filePath: string;
+  fileName: string;
+  initialContent: string;
+  initialFingerprint: string;
+  remotePtyId?: number;
+  isMarkdown: boolean;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const externalEditor = useUIStore((state) => state.externalEditor);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const [content, setContent] = useState(initialContent);
+  const [fingerprint, setFingerprint] = useState(initialFingerprint);
+  const [savedContent, setSavedContent] = useState(initialContent);
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findIndex, setFindIndex] = useState(-1);
+  const [closeConfirm, setCloseConfirm] = useState(false);
+  const dirty = content !== savedContent;
+  const lines = useMemo(() => content.split("\n"), [content]);
+  const matches = useMemo(() => {
+    if (!findQuery) return [] as number[];
+    const found: number[] = [];
+    const haystack = content.toLocaleLowerCase();
+    const needle = findQuery.toLocaleLowerCase();
+    let offset = 0;
+    while (offset <= haystack.length - needle.length) {
+      const index = haystack.indexOf(needle, offset);
+      if (index < 0) break;
+      found.push(index);
+      offset = index + Math.max(needle.length, 1);
+    }
+    return found;
+  }, [content, findQuery]);
+
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const selectMatch = (direction: 1 | -1) => {
+    if (matches.length === 0) return;
+    const next = direction === 1
+      ? (findIndex + 1 + matches.length) % matches.length
+      : (findIndex - 1 + matches.length) % matches.length;
+    setFindIndex(next);
+    setMode("edit");
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const start = matches[next];
+      textarea.focus();
+      textarea.setSelectionRange(start, start + findQuery.length);
+    });
+  };
+
+  const save = async () => {
+    if (!dirty || saveState === "saving") return;
+    setSaveState("saving");
+    try {
+      const result = remotePtyId === undefined
+        ? await fsWriteTextFile(filePath, content, fingerprint)
+        : await sshWriteTextFile(remotePtyId, filePath, content, fingerprint);
+      if (result.status === "conflict") {
+        setSaveState("conflict");
+        return;
+      }
+      setFingerprint(result.fingerprint);
+      setSavedContent(content);
+      setSaveState("saved");
+      window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  const reload = async () => {
+    const result = remotePtyId === undefined
+      ? await fsReadFile(filePath)
+      : await sshReadFile(remotePtyId, filePath);
+    if (result.kind !== "text" || !result.fingerprint) {
+      setSaveState("error");
+      return;
+    }
+    setContent(result.content);
+    setSavedContent(result.content);
+    setFingerprint(result.fingerprint);
+    setSaveState("idle");
+    setCloseConfirm(false);
+  };
+
+  const requestClose = () => {
+    if (dirty) {
+      setCloseConfirm(true);
+      return;
+    }
+    onClose();
+  };
+
+  const statusLabel = saveState === "saving"
+    ? t("preview.editor.saving")
+    : saveState === "saved"
+      ? t("preview.editor.saved")
+      : dirty
+        ? t("preview.editor.unsaved")
+        : t("preview.editor.clean");
+
+  return (
+    <div className="file-editor-surface" onKeyDown={(event) => {
+      if (event.key === "Escape" && dirty) {
+        event.stopPropagation();
+        setCloseConfirm(true);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "s") {
+        event.preventDefault();
+        void save();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "f") {
+        event.preventDefault();
+        setFindOpen(true);
+      }
+    }}>
+      <div className="file-editor-header">
+        <div className="file-editor-identity">
+          <span className="file-editor-kicker">{remotePtyId === undefined ? t("preview.editor.local") : t("preview.editor.ssh")}</span>
+          <span className="file-editor-name" title={filePath}>{fileName}</span>
+          {dirty && <span className="file-editor-dirty" aria-label={t("preview.editor.unsaved")} />}
+        </div>
+        <div className="file-editor-actions">
+          <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
+            <button role="tab" aria-selected={mode === "edit"} data-active={mode === "edit"} onClick={() => setMode("edit")}>{t("preview.editor.edit")}</button>
+            {isMarkdown && <button role="tab" aria-selected={mode === "preview"} data-active={mode === "preview"} onClick={() => setMode("preview")}>{t("preview.editor.preview")}</button>}
+          </div>
+          <button className="file-editor-icon-button" onClick={requestClose} title={t("common.close")} aria-label={t("common.close")}>
+            <CloseIcon size={11} strokeWidth={2.5} />
+          </button>
+        </div>
+      </div>
+
+      {(saveState === "conflict" || saveState === "error") && (
+        <div className="file-editor-alert" role="alert">
+          <div>
+            <strong>{saveState === "conflict" ? t("preview.editor.conflict_title") : t("preview.editor.save_failed")}</strong>
+            <span>{saveState === "conflict" ? t("preview.editor.conflict_body") : t("preview.editor.save_failed_body")}</span>
+          </div>
+          <button onClick={() => void reload()}>{t("preview.editor.reload")}</button>
+        </div>
+      )}
+
+      {closeConfirm && (
+        <div className="file-editor-close-confirm" role="alert">
+          <span>{t("preview.editor.close_warning")}</span>
+          <div>
+            <button onClick={() => setCloseConfirm(false)}>{t("common.cancel")}</button>
+            <button data-danger="true" onClick={onClose}>{t("preview.editor.discard")}</button>
+          </div>
+        </div>
+      )}
+
+      {findOpen && (
+        <div className="file-editor-find">
+          <input
+            autoFocus
+            value={findQuery}
+            onChange={(event) => { setFindQuery(event.target.value); setFindIndex(-1); }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") { event.preventDefault(); selectMatch(event.shiftKey ? -1 : 1); }
+              if (event.key === "Escape") { event.preventDefault(); setFindOpen(false); textareaRef.current?.focus(); }
+            }}
+            placeholder={t("preview.editor.find_placeholder")}
+            aria-label={t("preview.editor.find_placeholder")}
+          />
+          <span>{matches.length === 0 ? "0/0" : `${Math.max(findIndex + 1, 1)}/${matches.length}`}</span>
+          <button onClick={() => selectMatch(-1)} aria-label={t("preview.editor.previous_match")}>↑</button>
+          <button onClick={() => selectMatch(1)} aria-label={t("preview.editor.next_match")}>↓</button>
+          <button onClick={() => setFindOpen(false)} aria-label={t("common.close")}><CloseIcon size={10} /></button>
+        </div>
+      )}
+
+      <div className="file-editor-paper">
+        {mode === "preview" && isMarkdown ? (
+          <MarkdownPreview content={content} fill />
+        ) : (
+          <div className="file-editor-code">
+            <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
+              {lines.map((_, index) => <span key={index}>{index + 1}</span>)}
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(event) => { setContent(event.target.value); setSaveState("idle"); }}
+              onScroll={(event) => { if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop; }}
+              spellCheck={false}
+              aria-label={t("preview.editor.content", { file: fileName })}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="file-editor-footer">
+        <span className="file-editor-status" data-state={saveState}>{statusLabel}</span>
+        <span>{t("preview.editor.lines", { count: lines.length })}</span>
+        <span>{formatSize(new TextEncoder().encode(content).length)}</span>
+        <div className="file-editor-footer-actions">
+          {remotePtyId === undefined && (
+            <button onClick={() => void openInEditorWithToast(externalEditor, filePath)}>{t("preview.editor.external")}</button>
+          )}
+          <button className="file-editor-save" disabled={!dirty || saveState === "saving"} onClick={() => void save()}>{t("preview.editor.save")}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FilePreview({ filePath, fileName, onClose, fill = false, remotePtyId }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
@@ -266,6 +500,21 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
   const textContent = result?.kind === "text"
     ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
     : "";
+
+  if (fill && result?.kind === "text" && result.fingerprint) {
+    return (
+      <EditorSurface
+        key={`${filePath}:${result.fingerprint}`}
+        filePath={filePath}
+        fileName={fileName}
+        initialContent={result.content}
+        initialFingerprint={result.fingerprint}
+        remotePtyId={remotePtyId}
+        isMarkdown={isMarkdown}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <div
