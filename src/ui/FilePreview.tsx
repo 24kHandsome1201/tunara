@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { fsReadFile, fsWriteTextFile, type ReadResult } from "@/modules/fs/fs-bridge";
 import {
   sshReadFile,
@@ -32,6 +32,7 @@ import {
   retainEditorDraft,
   type EditorDraftSaveState,
 } from "@/modules/editor/editor-draft-registry";
+import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor/scroll-position";
 
 interface FilePreviewProps {
   filePath: string;
@@ -45,6 +46,7 @@ interface FilePreviewProps {
 
 interface MarkdownFindCursor {
   current: number;
+  active: number;
 }
 
 function HighlightedText({ text, query, cursor }: { text: string; query: string; cursor: MarkdownFindCursor }) {
@@ -58,8 +60,9 @@ function HighlightedText({ text, query, cursor }: { text: string; query: string;
     if (index < 0) break;
     if (index > offset) parts.push(text.slice(offset, index));
     const matchIndex = cursor.current++;
+    const active = matchIndex === cursor.active;
     parts.push(
-      <mark key={`${matchIndex}:${index}`} data-markdown-find-index={matchIndex} style={{ background: "var(--c-warning-bg)", color: "inherit", borderRadius: 2 }}>
+      <mark key={`${matchIndex}:${index}`} className="markdown-find-match" data-markdown-find-index={matchIndex} data-active={active} aria-current={active ? "true" : undefined}>
         {text.slice(index, index + query.length)}
       </mark>,
     );
@@ -69,11 +72,16 @@ function HighlightedText({ text, query, cursor }: { text: string; query: string;
   return parts.length > 0 ? parts : text;
 }
 
-function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, onMatchCountChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; onMatchCountChange?: (count: number) => void }) {
+function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {
   const t = useT();
   const document = useMemo(() => parseMarkdownDocument(content), [content]);
   const previewRef = useRef<HTMLDivElement>(null);
-  const matchCursor: MarkdownFindCursor = { current: 0 };
+  const matchCursor: MarkdownFindCursor = { current: 0, active: activeFindIndex };
+  useLayoutEffect(() => {
+    const root = previewRef.current;
+    if (!root) return;
+    root.scrollTop = scrollTopForPosition(initialScrollRatio, root.scrollHeight, root.clientHeight);
+  }, [initialScrollRatio]);
   useEffect(() => {
     const root = previewRef.current;
     if (!root) return;
@@ -85,6 +93,7 @@ function MarkdownPreview({ content, fill = false, findQuery = "", activeFindInde
   return (
     <div
       ref={previewRef}
+      onScroll={(event) => onScrollRatioChange?.(normalizedScrollPosition(event.currentTarget.scrollTop, event.currentTarget.scrollHeight, event.currentTarget.clientHeight))}
       style={{ padding: "12px 14px 24px", overflow: "auto", overflowWrap: "anywhere", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
       className="no-scrollbar scroll-fade-y"
     >
@@ -127,7 +136,7 @@ function focusMarkdownHref(href: string) {
 
 function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQuery?: string; matchCursor?: MarkdownFindCursor }) {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/);
-  const cursor = matchCursor ?? { current: 0 };
+  const cursor = matchCursor ?? { current: 0, active: -1 };
   return (
     <>
       {parts.map((part, index) => {
@@ -270,6 +279,11 @@ function EditorSurface({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const syntaxRef = useRef<HTMLPreElement>(null);
+  const editTabRef = useRef<HTMLButtonElement>(null);
+  const previewTabRef = useRef<HTMLButtonElement>(null);
+  const sourceScrollRatioRef = useRef(0);
+  const previewScrollRatioRef = useRef(0);
+  const viewId = useId();
   const [content, setContent] = useState(restoredDraft?.content ?? initialContent);
   const [fingerprint, setFingerprint] = useState(restoredDraft?.fingerprint ?? initialFingerprint);
   const [savedContent, setSavedContent] = useState(restoredDraft?.savedContent ?? initialContent);
@@ -325,6 +339,19 @@ function EditorSurface({
   useEffect(() => {
     updateDirtyDraft(draftOwnerRef.current, dirty);
   }, [dirty]);
+
+  useLayoutEffect(() => {
+    if (mode !== "edit") return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.scrollTop = scrollTopForPosition(
+      sourceScrollRatioRef.current,
+      textarea.scrollHeight,
+      textarea.clientHeight,
+    );
+    if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = textarea.scrollTop;
+    if (syntaxRef.current) syntaxRef.current.scrollTop = textarea.scrollTop;
+  }, [mode]);
 
   useEffect(() => {
     retainEditorDraft(draftKey, { content, savedContent, fingerprint, saveState, unknownOutcome });
@@ -431,6 +458,34 @@ function EditorSurface({
     if (copied) window.setTimeout(() => setDraftCopyState("idle"), 1600);
   };
 
+  const switchMode = (nextMode: "edit" | "preview", focusTab = false) => {
+    if (nextMode === mode || (nextMode === "preview" && !isMarkdown)) return;
+    if (mode === "edit") {
+      const textarea = textareaRef.current;
+      if (textarea) {
+        const ratio = normalizedScrollPosition(textarea.scrollTop, textarea.scrollHeight, textarea.clientHeight);
+        sourceScrollRatioRef.current = ratio;
+        previewScrollRatioRef.current = ratio;
+      }
+    } else {
+      sourceScrollRatioRef.current = previewScrollRatioRef.current;
+    }
+    setMode(nextMode);
+    if (focusTab) {
+      window.requestAnimationFrame(() => (nextMode === "edit" ? editTabRef : previewTabRef).current?.focus());
+    }
+  };
+
+  const handleModeTabKey = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!isMarkdown) return;
+    let nextMode: "edit" | "preview" | null = null;
+    if (event.key === "ArrowLeft" || event.key === "Home") nextMode = "edit";
+    if (event.key === "ArrowRight" || event.key === "End") nextMode = "preview";
+    if (!nextMode) return;
+    event.preventDefault();
+    switchMode(nextMode, true);
+  };
+
   const requestClose = () => {
     if (dirty) {
       setCloseConfirm(true);
@@ -495,8 +550,8 @@ function EditorSurface({
         </div>
         <div className="file-editor-actions">
           <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
-            <button role="tab" aria-selected={mode === "edit"} data-active={mode === "edit"} onClick={() => setMode("edit")}>{t("preview.editor.edit")}</button>
-            {isMarkdown && <button role="tab" aria-selected={mode === "preview"} data-active={mode === "preview"} onClick={() => setMode("preview")}>{t("preview.editor.preview")}</button>}
+            <button ref={editTabRef} id={`${viewId}-edit-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "edit"} tabIndex={mode === "edit" ? 0 : -1} data-active={mode === "edit"} onKeyDown={handleModeTabKey} onClick={() => switchMode("edit")}>{t("preview.editor.edit")}</button>
+            {isMarkdown && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
           </div>
           <button className="file-editor-icon-button" onClick={requestClose} title={t("common.close")} aria-label={t("common.close")}>
             <CloseIcon size={11} strokeWidth={2.5} />
@@ -556,16 +611,16 @@ function EditorSurface({
             placeholder={t("preview.editor.find_placeholder")}
             aria-label={t("preview.editor.find_placeholder")}
           />
-          <span>{(mode === "preview" && isMarkdown ? previewMatchCount : matches.length) === 0 ? "0/0" : `${Math.max(findIndex + 1, 1)}/${mode === "preview" && isMarkdown ? previewMatchCount : matches.length}`}</span>
+          <span aria-live="polite" aria-atomic="true">{(mode === "preview" && isMarkdown ? previewMatchCount : matches.length) === 0 ? "0/0" : `${Math.max(findIndex + 1, 1)}/${mode === "preview" && isMarkdown ? previewMatchCount : matches.length}`}</span>
           <button onClick={() => selectMatch(-1)} aria-label={t("preview.editor.previous_match")}>↑</button>
           <button onClick={() => selectMatch(1)} aria-label={t("preview.editor.next_match")}>↓</button>
           <button onClick={() => setFindOpen(false)} aria-label={t("common.close")}><CloseIcon size={10} /></button>
         </div>
       )}
 
-      <div className="file-editor-paper">
+      <div id={`${viewId}-panel`} className="file-editor-paper" role="tabpanel" aria-labelledby={`${viewId}-${mode}-tab`}>
         {mode === "preview" && isMarkdown ? (
-          <MarkdownPreview content={content} fill findQuery={findQuery} activeFindIndex={findIndex} onMatchCountChange={setPreviewMatchCount} />
+          <MarkdownPreview content={content} fill findQuery={findQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
         ) : (
           <div className="file-editor-code">
             <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
@@ -589,6 +644,7 @@ function EditorSurface({
                 value={content}
                 onChange={(event) => { setContent(event.target.value); setSaveState("idle"); }}
                 onScroll={(event) => {
+                  sourceScrollRatioRef.current = normalizedScrollPosition(event.currentTarget.scrollTop, event.currentTarget.scrollHeight, event.currentTarget.clientHeight);
                   if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
                   if (syntaxRef.current) {
                     syntaxRef.current.scrollTop = event.currentTarget.scrollTop;

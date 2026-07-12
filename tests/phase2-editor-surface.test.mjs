@@ -36,3 +36,19 @@ test("the editor ships a line-numbered paper surface with narrow and reduced-mot
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(styles, /transition:\s*all/);
 });
+
+test("Markdown mode switching preserves context and follows the tab keyboard model", () => {
+  const preview = read("src/ui/FilePreview.tsx");
+  const styles = read("src/styles/globals.css");
+
+  assert.match(preview, /normalizedScrollPosition\(textarea\.scrollTop, textarea\.scrollHeight, textarea\.clientHeight\)/);
+  assert.match(preview, /initialScrollRatio=\{previewScrollRatioRef\.current\}/);
+  assert.match(preview, /role="tab" aria-controls=/);
+  assert.match(preview, /tabIndex=\{mode === "edit" \? 0 : -1\}/);
+  assert.match(preview, /event\.key === "ArrowLeft" \|\| event\.key === "Home"/);
+  assert.match(preview, /event\.key === "ArrowRight" \|\| event\.key === "End"/);
+  assert.match(preview, /role="tabpanel" aria-labelledby=/);
+  assert.match(preview, /aria-live="polite" aria-atomic="true"/);
+  assert.match(preview, /aria-current=\{active \? "true" : undefined\}/);
+  assert.match(styles, /\.markdown-find-match\[data-active="true"\]/);
+});
