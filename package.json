@@ -20,7 +20,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:node": "node --experimental-strip-types --test tests/*.test.mjs",
-    "test": "pnpm test:node && cargo test --manifest-path src-tauri/Cargo.toml",
+    "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
+    "test:ui": "pnpm typecheck:ui && vitest run --config vitest.config.ts",
+    "test": "pnpm test:node && pnpm test:ui && cargo test --manifest-path src-tauri/Cargo.toml",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json"
@@ -52,14 +54,17 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^26.1.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "happy-dom": "^20.10.6",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.62.1",
-    "vite": "^7.3.6"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
   }
 }
