@@ -1,11 +1,12 @@
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const CANONICAL_OCTAL_MODE = /^(?:0|[1-7][0-7]{0,3})$/;
-const OUTCOME_UNKNOWN = /^outcomeUnknown:([0-9a-f]{64}):(0|[1-7][0-7]{0,3}):cleanupPending=(true|false)$/;
+const OUTCOME_UNKNOWN = /^outcomeUnknown:([0-9a-f]{64}):(0|[1-7][0-7]{0,3}):lockOwner=([0-9a-f]{64}):cleanupPending=(true|false)$/;
 
 export interface SshWriteOutcomeUnknown {
   token: string;
   attemptedFingerprint: string;
   expectedMode: number;
+  replaceLockOwner: string;
   cleanupPending: boolean;
 }
 
@@ -27,18 +28,23 @@ export function parseSshWriteOutcomeUnknown(value: unknown): SshWriteOutcomeUnkn
     token: value,
     attemptedFingerprint: match[1],
     expectedMode,
-    cleanupPending: match[3] === "true",
+    replaceLockOwner: match[3],
+    cleanupPending: match[4] === "true",
   };
 }
 
 export function requireSshWriteReconcileFields(
   attemptedFingerprint: string,
   expectedMode: number,
+  replaceLockOwner: string,
 ): void {
   if (!isCanonicalSshWriteFingerprint(attemptedFingerprint)) {
     throw new Error("invalid SSH write reconcile fingerprint");
   }
   if (!isCanonicalSshWriteMode(expectedMode)) {
     throw new Error("invalid SSH write reconcile mode");
+  }
+  if (!isCanonicalSshWriteFingerprint(replaceLockOwner)) {
+    throw new Error("invalid SSH write reconcile lock owner");
   }
 }

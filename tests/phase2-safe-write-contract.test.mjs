@@ -47,6 +47,8 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(backend, /mv -f --/);
   assert.match(backend, /remote_write_lock\(id, &path\)/);
   assert.match(backend, /outcomeUnknown:/);
+  assert.match(backend, /lockOwner=\{replace_lock_owner\}/);
+  assert.match(backend, /cleanup_owned_write_residue/);
   assert.match(backend, /remote_replace_lock_path/);
   assert.match(backend, /create_dir\(lock\.clone\(\)\)/);
   assert.match(backend, /REPLACE_LOCK_STALE_AFTER/);
@@ -62,6 +64,7 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(bridge, /invoke<WriteTextResult>\("ssh_fs_reconcile_text_write"/);
   assert.match(bridge, /parseSshWriteOutcomeUnknown\(error\)/);
   assert.match(reconcile, /cleanupPending: boolean/);
+  assert.match(reconcile, /replaceLockOwner: string/);
   assert.match(reconcile, /cleanupPending=\(true\|false\)/);
   const editor = read("src/ui/FilePreview.tsx");
   assert.match(editor, /parseSshWriteOutcomeUnknown\(error\)/);

@@ -159,6 +159,37 @@ fn remote_replace_lock_path(path: &str) -> Result<String, String> {
         .into_owned())
 }
 
+fn remote_replace_lock_owner_path(path: &str) -> Result<String, String> {
+    Ok(Path::new(&remote_replace_lock_path(path)?)
+        .join("owner")
+        .to_string_lossy()
+        .into_owned())
+}
+
+async fn read_remote_replace_lock_owner(
+    sftp: &russh_sftp::client::SftpSession,
+    target: &str,
+) -> Result<String, IoError> {
+    let owner_path = remote_replace_lock_owner_path(target).map_err(IoError)?;
+    let mut file = sftp
+        .open(&owner_path)
+        .await
+        .map_err(|error| IoError(error.to_string()))?;
+    let mut bytes = Vec::with_capacity(64);
+    (&mut file)
+        .take(65)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|error| IoError(error.to_string()))?;
+    if bytes.len() != 64 {
+        return Err(IoError("remote replace lock owner is malformed".into()));
+    }
+    let owner = String::from_utf8(bytes)
+        .map_err(|_| IoError("remote replace lock owner is not UTF-8".into()))?;
+    validate_fingerprint(&owner).map_err(IoError)?;
+    Ok(owner)
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
@@ -433,9 +464,10 @@ pub async fn ssh_fs_write_text_file(
         TransactionOutcome::OutcomeUnknown {
             attempted_fingerprint,
             expected_mode,
+            replace_lock_owner,
             cleanup_pending,
         } => Err(format!(
-            "outcomeUnknown:{attempted_fingerprint}:{expected_mode:o}:cleanupPending={cleanup_pending}"
+            "outcomeUnknown:{attempted_fingerprint}:{expected_mode:o}:lockOwner={replace_lock_owner}:cleanupPending={cleanup_pending}"
         )),
     }
 }
@@ -555,13 +587,45 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
         .await
         .map_err(IoError)
     }
-    async fn acquire_replace_lock(&self, target: &str) -> Result<(), IoError> {
+    async fn acquire_replace_lock(&self, target: &str, owner: &str) -> Result<(), IoError> {
+        validate_fingerprint(owner).map_err(IoError)?;
         let lock = remote_replace_lock_path(target).map_err(IoError)?;
+        let owner_path = remote_replace_lock_owner_path(target).map_err(IoError)?;
         let deadline = tokio::time::Instant::now() + SFTP_CONTROL_TIMEOUT;
         let mut stale_checked = false;
         loop {
             match self.sftp.create_dir(lock.clone()).await {
-                Ok(()) => return Ok(()),
+                Ok(()) => {
+                    let result = async {
+                        let mut marker = self
+                            .sftp
+                            .open_with_flags_and_attributes(
+                                owner_path.clone(),
+                                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                                FileAttributes {
+                                    permissions: Some(0o600),
+                                    ..FileAttributes::empty()
+                                },
+                            )
+                            .await
+                            .map_err(|error| IoError(error.to_string()))?;
+                        marker
+                            .write_all(owner.as_bytes())
+                            .await
+                            .map_err(|error| IoError(error.to_string()))?;
+                        marker
+                            .shutdown()
+                            .await
+                            .map_err(|error| IoError(error.to_string()))
+                    }
+                    .await;
+                    if let Err(error) = result {
+                        let _ = self.sftp.remove_file(owner_path.clone()).await;
+                        let _ = self.sftp.remove_dir(lock.clone()).await;
+                        return Err(error);
+                    }
+                    return Ok(());
+                }
                 Err(source) => {
                     let message = source.to_string();
                     let lower = message.to_ascii_lowercase();
@@ -589,6 +653,7 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
                             })
                             .is_some_and(|age| age >= REPLACE_LOCK_STALE_AFTER.as_secs());
                         if stale {
+                            let _ = self.sftp.remove_file(owner_path.clone()).await;
                             let _ = self.sftp.remove_dir(lock.clone()).await;
                             continue;
                         }
@@ -604,8 +669,21 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
             }
         }
     }
-    async fn release_replace_lock(&self, target: &str) -> Result<(), IoError> {
+    async fn release_replace_lock(&self, target: &str, owner: &str) -> Result<(), IoError> {
+        validate_fingerprint(owner).map_err(IoError)?;
         let lock = remote_replace_lock_path(target).map_err(IoError)?;
+        let owner_path = remote_replace_lock_owner_path(target).map_err(IoError)?;
+        let observed = read_remote_replace_lock_owner(self.sftp, target).await?;
+        if observed != owner {
+            return Err(IoError("remote replace lock owner changed".into()));
+        }
+        await_stage(
+            "remove remote replace lock owner",
+            SFTP_CONTROL_TIMEOUT,
+            self.sftp.remove_file(owner_path),
+        )
+        .await
+        .map_err(IoError)?;
         await_stage(
             "release remote replace lock",
             SFTP_CONTROL_TIMEOUT,
@@ -651,6 +729,63 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
     }
 }
 
+async fn cleanup_owned_write_residue(
+    sftp: &russh_sftp::client::SftpSession,
+    target: &str,
+    owner: &str,
+) -> Result<(), String> {
+    validate_fingerprint(owner)?;
+    let (parsed, name) = validate_remote_edit_path(target)?;
+    let parent = parsed
+        .parent()
+        .ok_or_else(|| "editable path has no parent".to_string())?;
+    let prefix = format!(".{name}.tunara-");
+    let entries = await_stage(
+        "list remote write residue",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.read_dir(parent.to_string_lossy().into_owned()),
+    )
+    .await?;
+    for entry in entries {
+        let file_name = entry.file_name();
+        if file_name.starts_with(&prefix)
+            && file_name.ends_with(".tmp")
+            && content_fingerprint(entry.path().as_bytes()) == owner
+        {
+            await_stage(
+                "remove owned remote temporary file",
+                SFTP_CONTROL_TIMEOUT,
+                sftp.remove_file(entry.path()),
+            )
+            .await?;
+        }
+    }
+
+    let lock = remote_replace_lock_path(target)?;
+    if sftp.metadata(lock.clone()).await.is_ok() {
+        let observed_owner = read_remote_replace_lock_owner(sftp, target)
+            .await
+            .map_err(|error| error.0)?;
+        if observed_owner != owner {
+            return Err("remote replace lock belongs to another transaction".into());
+        }
+        let owner_path = remote_replace_lock_owner_path(target)?;
+        await_stage(
+            "remove owned remote replace lock marker",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.remove_file(owner_path),
+        )
+        .await?;
+        await_stage(
+            "remove owned remote replace lock",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.remove_dir(lock),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 /// Reconcile an indeterminate replace after reconnect. Bytes alone are not
 /// sufficient: permission preservation is part of the save contract, so the
 /// caller must return the mode encoded in the outcomeUnknown token.
@@ -661,9 +796,17 @@ pub async fn ssh_fs_reconcile_text_write(
     path: String,
     attempted_fingerprint: String,
     expected_mode: u32,
+    replace_lock_owner: String,
 ) -> Result<crate::modules::fs::file::WriteResult, String> {
     let sftp = sftp_for(&state, id).await?;
-    reconcile_text_write_with_sftp(&sftp, &path, &attempted_fingerprint, expected_mode).await
+    reconcile_text_write_with_sftp(
+        &sftp,
+        &path,
+        &attempted_fingerprint,
+        expected_mode,
+        &replace_lock_owner,
+    )
+    .await
 }
 
 async fn reconcile_text_write_with_sftp(
@@ -671,15 +814,17 @@ async fn reconcile_text_write_with_sftp(
     path: &str,
     attempted_fingerprint: &str,
     expected_mode: u32,
+    replace_lock_owner: &str,
 ) -> Result<crate::modules::fs::file::WriteResult, String> {
     validate_fingerprint(attempted_fingerprint)?;
+    validate_fingerprint(replace_lock_owner)?;
     validate_remote_edit_path(path)?;
     if expected_mode > 0o7777 {
         return Err("reconcile mode must fit Unix permission bits".into());
     }
     let (observed, observed_mode) = read_remote_editable_bytes(sftp, path).await?;
     let current_fingerprint = content_fingerprint(&observed);
-    if current_fingerprint == attempted_fingerprint && observed_mode == expected_mode {
+    let result = if current_fingerprint == attempted_fingerprint && observed_mode == expected_mode {
         Ok(crate::modules::fs::file::WriteResult::Saved {
             fingerprint: current_fingerprint,
             size: observed.len() as u64,
@@ -688,7 +833,9 @@ async fn reconcile_text_write_with_sftp(
         Ok(crate::modules::fs::file::WriteResult::Conflict {
             current_fingerprint,
         })
-    }
+    };
+    cleanup_owned_write_residue(sftp, path, replace_lock_owner).await?;
+    result
 }
 
 // Cap a single download so a malicious/compromised remote can't exhaust memory
@@ -974,10 +1121,10 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 mod tests {
     use super::{
         choose_remote_home, read_remote_editable_bytes, reconcile_text_write_with_sftp,
-        remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock, shell_quote,
-        validate_download_target, validate_fingerprint, validate_remote_edit_path,
-        write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome, WriteRequest,
-        REMOTE_WRITE_LOCKS,
+        remote_replace_lock_owner_path, remote_replace_lock_path, remote_sibling_temp_path,
+        remote_write_lock, shell_quote, validate_download_target, validate_fingerprint,
+        validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
+        TransactionOutcome, WriteRequest, REMOTE_WRITE_LOCKS,
     };
     use crate::modules::pty::PtyEvent;
     use crate::modules::ssh::auth::AuthOptions;
@@ -1264,6 +1411,7 @@ mod tests {
         let temporary = format!("{directory}/.配置 file.md.tunara-status-loss.tmp");
         let expected = super::content_fingerprint(b"before\n");
         let attempted = super::content_fingerprint(b"after\n");
+        let replace_lock_owner = super::content_fingerprint(temporary.as_bytes());
         let lock = tokio::sync::Mutex::new(());
         let transaction = write_text_transaction(
             &adapter,
@@ -1305,28 +1453,77 @@ mod tests {
             }
         ));
 
-        let reconciled = reconcile_text_write_with_sftp(&control_sftp, &target, &attempted, 0o640)
+        let residue_command = format!(
+            "find {} -maxdepth 1 \\( -name '*.tmp' -o -name '.tunara-write-*.lock' \\) -print",
+            shell_quote(&directory),
+        );
+        let before_cleanup = control
+            .exec(&residue_command, 16 * 1024)
             .await
-            .expect("reconcile over fresh connection");
+            .expect("inspect residue before reconcile");
+        assert!(
+            !before_cleanup.trim().is_empty(),
+            "a severed connection should leave owner-scoped cleanup work"
+        );
+        let reconciled = reconcile_text_write_with_sftp(
+            &control_sftp,
+            &target,
+            &attempted,
+            0o640,
+            &replace_lock_owner,
+        )
+        .await
+        .expect("reconcile over fresh connection");
         assert!(matches!(
             reconciled,
             crate::modules::fs::file::WriteResult::Saved { .. }
         ));
         let residue = control
+            .exec(&residue_command, 16 * 1024)
+            .await
+            .expect("inspect status-loss residue after reconcile");
+        assert!(
+            residue.trim().is_empty(),
+            "reconcile left owned residue: {residue:?}"
+        );
+        let alien_owner = "c".repeat(64);
+        let lock_path = remote_replace_lock_path(&target).expect("lock path");
+        let owner_path = remote_replace_lock_owner_path(&target).expect("owner path");
+        control
             .exec(
                 &format!(
-                    "find {} -maxdepth 1 \\( -name '*.tmp' -o -name '.tunara-write-*.lock' \\) -print; rm -rf -- {}",
-                    shell_quote(&directory),
+                    "mkdir -- {} && printf '%s' {} > {}",
+                    shell_quote(&lock_path),
+                    shell_quote(&alien_owner),
+                    shell_quote(&owner_path),
+                ),
+                16 * 1024,
+            )
+            .await
+            .expect("create another transaction's lock");
+        let mismatch = reconcile_text_write_with_sftp(
+            &control_sftp,
+            &target,
+            &attempted,
+            0o640,
+            &replace_lock_owner,
+        )
+        .await
+        .expect_err("must not clean another transaction's lock");
+        assert!(mismatch.contains("belongs to another transaction"));
+        let alien_still_present = control
+            .exec(
+                &format!(
+                    "test -f {} && cat {}; rm -rf -- {}",
+                    shell_quote(&owner_path),
+                    shell_quote(&owner_path),
                     shell_quote(&directory),
                 ),
                 16 * 1024,
             )
             .await
-            .expect("inspect status-loss residue and clean fixture");
-        assert!(
-            !residue.trim().is_empty(),
-            "a severed connection should report the cleanup it could not finish"
-        );
+            .expect("verify alien lock and clean fixture");
+        assert_eq!(alien_still_present, alien_owner);
         control.close().expect("close control SSH session");
     }
 

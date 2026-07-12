@@ -41,13 +41,15 @@ export function sshReconcileTextWrite(
   path: string,
   attemptedFingerprint: string,
   expectedMode: number,
+  replaceLockOwner: string,
 ): Promise<WriteTextResult> {
-  requireSshWriteReconcileFields(attemptedFingerprint, expectedMode);
+  requireSshWriteReconcileFields(attemptedFingerprint, expectedMode, replaceLockOwner);
   return invoke<WriteTextResult>("ssh_fs_reconcile_text_write", {
     id,
     path,
     attemptedFingerprint,
     expectedMode,
+    replaceLockOwner,
   });
 }
 
@@ -73,6 +75,7 @@ export async function sshReconcileOutcomeUnknownTextWrite(
     path,
     outcome.attemptedFingerprint,
     outcome.expectedMode,
+    outcome.replaceLockOwner,
   );
   return { outcome, result };
 }

@@ -153,14 +153,14 @@ impl RemoteWriteIo for FakeIo {
         );
         Ok(())
     }
-    async fn acquire_replace_lock(&self, _: &str) -> Result<(), IoError> {
+    async fn acquire_replace_lock(&self, _: &str, _: &str) -> Result<(), IoError> {
         if self.fail == Some(FailAt::AcquireLock) {
             Err(IoError("acquire-lock".into()))
         } else {
             Ok(())
         }
     }
-    async fn release_replace_lock(&self, _: &str) -> Result<(), IoError> {
+    async fn release_replace_lock(&self, _: &str, _: &str) -> Result<(), IoError> {
         if self.fail == Some(FailAt::ReleaseLock) {
             Err(IoError("release-lock".into()))
         } else {

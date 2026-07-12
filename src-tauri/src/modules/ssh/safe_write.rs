@@ -75,6 +75,7 @@ pub(crate) enum TransactionOutcome {
     OutcomeUnknown {
         attempted_fingerprint: String,
         expected_mode: u32,
+        replace_lock_owner: String,
         cleanup_pending: bool,
     },
 }
@@ -96,8 +97,8 @@ pub(crate) trait RemoteWriteIo: Sync {
     async fn set_mode(&self, temporary: &mut Self::Temp, mode: u32) -> Result<(), IoError>;
     async fn sync(&self, temporary: &mut Self::Temp) -> Result<(), IoError>;
     async fn close(&self, temporary: Self::Temp) -> Result<(), IoError>;
-    async fn acquire_replace_lock(&self, target: &str) -> Result<(), IoError>;
-    async fn release_replace_lock(&self, target: &str) -> Result<(), IoError>;
+    async fn acquire_replace_lock(&self, target: &str, owner: &str) -> Result<(), IoError>;
+    async fn release_replace_lock(&self, target: &str, owner: &str) -> Result<(), IoError>;
     async fn atomic_replace(&self, temporary: &str, target: &str) -> Result<(), ReplaceError>;
     async fn remove_temp(&self, path: &str) -> Result<(), IoError>;
 }
@@ -134,6 +135,7 @@ async fn reconcile<IO: RemoteWriteIo>(
     stage: TransactionStage,
 ) -> Result<TransactionOutcome, TransactionError> {
     let attempted = fingerprint(request.content);
+    let replace_lock_owner = fingerprint(request.temporary.as_bytes());
     match io.read_regular(request.target).await.and_then(regular) {
         Ok(observed) if observed.bytes == request.content && observed.mode == mode => {
             Ok(TransactionOutcome::Saved {
@@ -162,6 +164,7 @@ async fn reconcile<IO: RemoteWriteIo>(
             Ok(TransactionOutcome::OutcomeUnknown {
                 attempted_fingerprint: attempted,
                 expected_mode: mode,
+                replace_lock_owner,
                 cleanup_pending,
             })
         }
@@ -215,7 +218,11 @@ pub(crate) async fn write_text_transaction<IO: RemoteWriteIo>(
         return Err(error(TransactionStage::Close, source, cleanup_pending));
     }
 
-    if let Err(source) = io.acquire_replace_lock(request.target).await {
+    let replace_lock_owner = fingerprint(request.temporary.as_bytes());
+    if let Err(source) = io
+        .acquire_replace_lock(request.target, &replace_lock_owner)
+        .await
+    {
         let cleanup_pending = cleanup(io, request.temporary).await;
         return Err(error(
             TransactionStage::AcquireReplaceLock,
@@ -225,12 +232,16 @@ pub(crate) async fn write_text_transaction<IO: RemoteWriteIo>(
     }
 
     let result = replace_while_locked(io, &request, &original_fingerprint, original.mode).await;
-    match io.release_replace_lock(request.target).await {
+    match io
+        .release_replace_lock(request.target, &replace_lock_owner)
+        .await
+    {
         Ok(()) => result,
         Err(release_error) => match result {
             Ok(TransactionOutcome::Saved { .. }) => Ok(TransactionOutcome::OutcomeUnknown {
                 attempted_fingerprint: fingerprint(request.content),
                 expected_mode: original.mode,
+                replace_lock_owner,
                 cleanup_pending: true,
             }),
             Ok(TransactionOutcome::Conflict {
@@ -243,10 +254,12 @@ pub(crate) async fn write_text_transaction<IO: RemoteWriteIo>(
             Ok(TransactionOutcome::OutcomeUnknown {
                 attempted_fingerprint,
                 expected_mode,
+                replace_lock_owner: outcome_owner,
                 ..
             }) => Ok(TransactionOutcome::OutcomeUnknown {
                 attempted_fingerprint,
                 expected_mode,
+                replace_lock_owner: outcome_owner,
                 cleanup_pending: true,
             }),
             Err(mut transaction_error) => {
