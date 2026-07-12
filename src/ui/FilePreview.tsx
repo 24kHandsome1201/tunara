@@ -33,6 +33,7 @@ import {
   type EditorDraftSaveState,
 } from "@/modules/editor/editor-draft-registry";
 import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor/scroll-position";
+import { classifyFileOperationError, type FileOperationErrorKind } from "@/modules/editor/file-operation-error";
 
 interface FilePreviewProps {
   filePath: string;
@@ -261,6 +262,7 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
 }
 
 type SaveState = EditorDraftSaveState;
+type OperationError = { operation: "save" | "reload"; kind: FileOperationErrorKind };
 
 function EditorSurface({
   filePath,
@@ -315,6 +317,8 @@ function EditorSurface({
   const [previewMatchCount, setPreviewMatchCount] = useState(0);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const [draftCopyState, setDraftCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [operationError, setOperationError] = useState<OperationError | null>(null);
+  const [reloadPending, setReloadPending] = useState(false);
   const dirty = content !== savedContent;
   const lines = useMemo(() => content.split("\n"), [content]);
   const highlightedLines = useMemo(
@@ -400,25 +404,30 @@ function EditorSurface({
     if (!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown") return;
     setSaveState("saving");
     setUnknownOutcome(null);
+    setOperationError(null);
     try {
       const result = remotePtyId === undefined
         ? await fsWriteTextFile(filePath, content, fingerprint)
         : await sshWriteTextFile(remotePtyId, filePath, content, fingerprint);
       if (result.status === "conflict") {
+        setOperationError(null);
         setSaveState("conflict");
         return;
       }
       setFingerprint(result.fingerprint);
       setSavedContent(content);
+      setOperationError(null);
       setSaveState("saved");
       window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
     } catch (error) {
       const outcome = remotePtyId === undefined ? null : parseSshWriteOutcomeUnknown(error);
       if (outcome) {
         setUnknownOutcome(outcome);
+        setOperationError(null);
         setSaveState("unknown");
         return;
       }
+      setOperationError({ operation: "save", kind: classifyFileOperationError(error) });
       setSaveState("error");
     }
   };
@@ -450,20 +459,42 @@ function EditorSurface({
   };
 
   const reload = async () => {
-    const result = remotePtyId === undefined
-      ? await fsReadFile(filePath)
-      : await sshReadFile(remotePtyId, filePath);
-    if (result.kind !== "text" || !result.fingerprint) {
+    if (reloadPending) return;
+    setReloadPending(true);
+    setOperationError(null);
+    try {
+      const result = remotePtyId === undefined
+        ? await fsReadFile(filePath)
+        : await sshReadFile(remotePtyId, filePath);
+      if (result.kind !== "text" || !result.fingerprint) {
+        setOperationError({ operation: "reload", kind: "unsupported" });
+        setSaveState("error");
+        return;
+      }
+      setContent(result.content);
+      setSavedContent(result.content);
+      setFingerprint(result.fingerprint);
+      setUnknownOutcome(null);
+      setOperationError(null);
+      setSaveState("idle");
+      setCloseConfirm(false);
+    } catch (error) {
+      setOperationError({ operation: "reload", kind: classifyFileOperationError(error) });
       setSaveState("error");
-      return;
+    } finally {
+      setReloadPending(false);
     }
-    setContent(result.content);
-    setSavedContent(result.content);
-    setFingerprint(result.fingerprint);
-    setUnknownOutcome(null);
-    setSaveState("idle");
-    setCloseConfirm(false);
   };
+
+  const operationErrorBody = operationError?.kind === "permission"
+    ? t("preview.editor.error_permission")
+    : operationError?.kind === "disconnected"
+      ? t("preview.editor.error_disconnected")
+      : operationError?.kind === "unsupported"
+        ? t("preview.editor.error_unsupported")
+        : operationError?.operation === "reload"
+          ? t("preview.editor.reload_failed_body")
+          : t("preview.editor.save_failed_body");
 
   const copyDraft = async () => {
     const copied = await copyText(content);
@@ -579,14 +610,16 @@ function EditorSurface({
               ? t("preview.editor.conflict_title")
               : saveState === "unknown" || saveState === "reconciling"
                 ? t("preview.editor.outcome_unknown_title")
-                : t("preview.editor.save_failed")}</strong>
+                : t(operationError?.operation === "reload"
+                  ? "preview.editor.reload_failed"
+                  : "preview.editor.save_failed")}</strong>
             <span>{saveState === "conflict"
               ? t("preview.editor.conflict_body")
               : saveState === "unknown" || saveState === "reconciling"
                 ? t(unknownOutcome?.cleanupPending
                   ? "preview.editor.outcome_unknown_cleanup_body"
                   : "preview.editor.outcome_unknown_body")
-                : t("preview.editor.save_failed_body")}</span>
+                : operationErrorBody}</span>
           </div>
           <div className="file-editor-alert-actions">
             <button onClick={() => void copyDraft()}>{t(draftCopyState === "copied"
@@ -596,7 +629,9 @@ function EditorSurface({
                 : "preview.editor.copy_draft")}</button>
             {saveState === "unknown" || saveState === "reconciling"
               ? <button disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
-              : <button onClick={() => void reload()}>{t("preview.editor.reload")}</button>}
+              : <button disabled={reloadPending} onClick={() => void reload()}>{t(reloadPending
+                ? "preview.editor.reloading"
+                : "preview.editor.reload")}</button>}
           </div>
         </div>
       )}

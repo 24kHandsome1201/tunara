@@ -21,8 +21,20 @@ test("dirty drafts keep explicit close, conflict, reload, find, and external esc
   assert.match(preview, /if \(dirty\) \{\s*setCloseConfirm\(true\)/);
   assert.match(preview, /role="alert"/);
   assert.match(preview, /void reload\(\)/);
+  assert.match(preview, /catch \(error\) \{\s*setOperationError\(\{ operation: "reload", kind: classifyFileOperationError\(error\) \}\)/);
+  assert.match(preview, /operationError\?\.operation === "reload"/);
+  assert.match(preview, /disabled=\{reloadPending\}/);
   assert.match(preview, /event\.key\.toLocaleLowerCase\(\) === "f"/);
   assert.match(preview, /openInEditorWithToast\(externalEditor, filePath\)/);
+});
+
+test("file operation errors are classified without exposing backend text", async () => {
+  const { classifyFileOperationError } = await import("../src/modules/editor/file-operation-error.ts");
+
+  assert.equal(classifyFileOperationError("Permission denied (os error 13)"), "permission");
+  assert.equal(classifyFileOperationError("SSH connection closed"), "disconnected");
+  assert.equal(classifyFileOperationError("editable content exceeds safe limit"), "unsupported");
+  assert.equal(classifyFileOperationError(new Error("unclassified backend detail")), "failed");
 });
 
 test("the editor ships a line-numbered paper surface with narrow and reduced-motion states", () => {
