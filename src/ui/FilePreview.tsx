@@ -6,6 +6,14 @@ import { CloseIcon } from "./shared";
 import { useT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
+import { useSessionsStore } from "@/state/sessions";
+import {
+  cancelDirtyDraftAction,
+  confirmDirtyDraftDiscard,
+  hasPendingDirtyDraftAction,
+  registerDirtyDraft,
+  updateDirtyDraft,
+} from "@/modules/editor/dirty-draft-guard";
 
 interface FilePreviewProps {
   filePath: string;
@@ -268,6 +276,8 @@ function EditorSurface({
 }) {
   const t = useT();
   const externalEditor = useUIStore((state) => state.externalEditor);
+  const sessionId = useSessionsStore((state) => state.activeSessionId);
+  const draftOwnerRef = useRef(Symbol("file-editor-draft"));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const [content, setContent] = useState(initialContent);
@@ -295,6 +305,23 @@ function EditorSurface({
     }
     return found;
   }, [content, findQuery]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    return registerDirtyDraft({
+      owner: draftOwnerRef.current,
+      sessionId,
+      filePath,
+      // The following effect publishes the current value after registration;
+      // starting clean keeps this effect independent from every keystroke.
+      dirty: false,
+      requestConfirmation: () => setCloseConfirm(true),
+    });
+  }, [filePath, sessionId]);
+
+  useEffect(() => {
+    updateDirtyDraft(draftOwnerRef.current, dirty);
+  }, [dirty]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -364,6 +391,24 @@ function EditorSurface({
     onClose();
   };
 
+  const cancelClose = () => {
+    cancelDirtyDraftAction(draftOwnerRef.current);
+    setCloseConfirm(false);
+  };
+
+  const discardAndContinue = () => {
+    if (hasPendingDirtyDraftAction(draftOwnerRef.current)) {
+      // The deferred action may itself require a second safety confirmation
+      // (for example, closing a running terminal). Make the user's discard
+      // decision real before resuming it so a still-mounted editor cannot keep
+      // showing content that the central guard now considers clean.
+      setContent(savedContent);
+      confirmDirtyDraftDiscard(draftOwnerRef.current);
+      return;
+    }
+    onClose();
+  };
+
   const statusLabel = saveState === "saving"
     ? t("preview.editor.saving")
     : saveState === "saved"
@@ -418,8 +463,8 @@ function EditorSurface({
         <div className="file-editor-close-confirm" role="alert">
           <span>{t("preview.editor.close_warning")}</span>
           <div>
-            <button onClick={() => setCloseConfirm(false)}>{t("common.cancel")}</button>
-            <button data-danger="true" onClick={onClose}>{t("preview.editor.discard")}</button>
+            <button onClick={cancelClose}>{t("common.cancel")}</button>
+            <button data-danger="true" onClick={discardAndContinue}>{t("preview.editor.discard")}</button>
           </div>
         </div>
       )}

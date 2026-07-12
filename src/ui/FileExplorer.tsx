@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   fsCancelActiveNameSearch,
@@ -21,6 +21,8 @@ import {
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { FilePreview } from "./FilePreview";
+import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
+import { filePreviewWillChange, nextFilePreview } from "@/modules/editor/file-preview-navigation";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
@@ -191,6 +193,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     position: { x: number; y: number };
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
+  const activeSessionId = useSessionsStore((s) => s.activeSessionId);
+  const previousSessionIdRef = useRef(activeSessionId);
   const searchGenerationRef = useRef(new FileSearchGeneration());
 
   const openEditor = (path: string, line?: number) => {
@@ -199,8 +203,14 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
   // Resolve the starting directory. Local: rootDir. Remote: SFTP-resolved home.
   useEffect(() => {
+    const sessionChanged = previousSessionIdRef.current !== activeSessionId;
+    previousSessionIdRef.current = activeSessionId;
     setNavDir(null);
-    setExpandedFile(null);
+    // An OSC cwd update changes rootDir inside the same session. Keep the
+    // absolute-path editor mounted in that case; switching sessions has already
+    // passed through the central dirty-draft guard and should clear the old
+    // session's preview.
+    if (sessionChanged) setExpandedFile(null);
     setSearchQuery("");
     // Keep the user's remembered mode preference across the root change.
     // Content search works for remote sessions too (ssh_fs_grep).
@@ -242,14 +252,13 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     }
     setBaseDir(rootDir);
     setCurrentPath(rootDir);
-  }, [rootDir, isRemote, remotePtyId]);
+  }, [rootDir, isRemote, remotePtyId, activeSessionId]);
 
   useEffect(() => {
     if (baseDir === null) return; // remote home not resolved yet
     let cancelled = false;
     setLoading(true);
     setError(false);
-    setExpandedFile(null);
     const read =
       isRemote && remotePtyId !== undefined
         ? sshReadDir(remotePtyId, currentPath, includeHidden)
@@ -361,6 +370,19 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     };
   }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId]);
 
+  const runPreviewReplacingAction = useCallback((action: () => void) => {
+    if (!expandedFile || !activeSessionId) {
+      action();
+      return;
+    }
+    if (requestDirtyDraftAction([activeSessionId], action)) action();
+  }, [activeSessionId, expandedFile]);
+
+  const closePreviewFromExplorer = useCallback(() => {
+    if (!filePreviewWillChange(expandedFile, null)) return;
+    runPreviewReplacingAction(() => setExpandedFile(null));
+  }, [expandedFile, runPreviewReplacingAction]);
+
   useEffect(() => {
     if (!expandedFile) return;
     const closePreview = (event: KeyboardEvent) => {
@@ -369,11 +391,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       // state and should only close once no dialog is covering it.
       if (document.querySelector('[role="dialog"]')) return;
       event.preventDefault();
-      setExpandedFile(null);
+      closePreviewFromExplorer();
     };
     window.addEventListener("keydown", closePreview);
     return () => window.removeEventListener("keydown", closePreview);
-  }, [expandedFile]);
+  }, [closePreviewFromExplorer, expandedFile]);
 
   const canGoUp = currentPath !== "/" && currentPath !== baseDir;
   const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
@@ -396,28 +418,41 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   }
 
   function goUp() {
-    setNavDir("out");
-    setCurrentPath(parentPath(currentPath));
+    runPreviewReplacingAction(() => {
+      setExpandedFile(null);
+      setNavDir("out");
+      setCurrentPath(parentPath(currentPath));
+    });
   }
 
   function enterDir(name: string) {
-    setNavDir("in");
-    setCurrentPath(joinPath(currentPath, name));
+    runPreviewReplacingAction(() => {
+      setExpandedFile(null);
+      setNavDir("in");
+      setCurrentPath(joinPath(currentPath, name));
+    });
   }
 
   function openSearchDir(path: string) {
-    setSearchQuery("");
-    setNavDir("in");
-    setCurrentPath(path);
+    runPreviewReplacingAction(() => {
+      setExpandedFile(null);
+      setSearchQuery("");
+      setNavDir("in");
+      setCurrentPath(path);
+    });
   }
 
   function toggleFile(name: string) {
     const fullPath = joinPath(currentPath, name);
-    setExpandedFile((prev) => (prev === fullPath ? null : fullPath));
+    const next = nextFilePreview(expandedFile, fullPath);
+    if (!filePreviewWillChange(expandedFile, next)) return;
+    runPreviewReplacingAction(() => setExpandedFile(next));
   }
 
   function toggleSearchFile(path: string) {
-    setExpandedFile((prev) => (prev === path ? null : path));
+    const next = nextFilePreview(expandedFile, path);
+    if (!filePreviewWillChange(expandedFile, next)) return;
+    runPreviewReplacingAction(() => setExpandedFile(next));
   }
 
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
@@ -431,7 +466,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
       onKeyDown={(event) => {
         if (event.key === "Escape" && expandedFile) {
           event.stopPropagation();
-          setExpandedFile(null);
+          closePreviewFromExplorer();
         }
       }}
     >
@@ -464,8 +499,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                 <button
                   onClick={() => {
                     if (isCurrent) return;
-                    setNavDir("out");
-                    setCurrentPath(seg.targetPath);
+                    runPreviewReplacingAction(() => {
+                      setExpandedFile(null);
+                      setNavDir("out");
+                      setCurrentPath(seg.targetPath);
+                    });
                   }}
                   disabled={isCurrent}
                   aria-current={isCurrent ? "page" : undefined}

@@ -26,6 +26,7 @@ import { pushRecentDir } from "./recent-dirs";
 import { pushRecentCommand } from "./recent-commands";
 import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
+import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 import { removeTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { getNumberRecordValue } from "@/state/record-keys";
 import {
@@ -232,6 +233,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   removeSession: (id) => {
+    if (!requestDirtyDraftAction([id], () => get().removeSession(id))) return;
     cancelCloseConfirmationTimer(id);
     cancelPendingGitRefresh(id);
     // A bump queued in this same tick would otherwise re-create the session's
@@ -265,6 +267,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   setActive: (id) => {
+    if (!get().sessions.some((session) => session.id === id)) return;
+    const currentId = get().activeSessionId;
+    if (currentId && currentId !== id) {
+      if (!requestDirtyDraftAction([currentId], () => get().setActive(id))) return;
+    }
     let accepted = false;
     set((state) => {
       if (!state.sessions.some((s) => s.id === id)) return {};
@@ -382,6 +389,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const uniqueIds = new Set(ids);
     const orderedTargets = get().sessions.filter((s) => uniqueIds.has(s.id));
     if (orderedTargets.length === 0) return true;
+    if (!requestDirtyDraftAction(
+      orderedTargets.map((session) => session.id),
+      () => { get().closeSessions(ids, opts); },
+    )) return false;
 
     const now = Date.now();
     const unconfirmedBusy = orderedTargets.filter((s) =>
@@ -742,6 +753,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   closeSession: (id) => {
+    if (!requestDirtyDraftAction([id], () => get().closeSession(id))) return;
     const session = get().sessions.find((s) => s.id === id);
     if (session && isSessionBusy(session)) {
       const lastConfirm = getNumberRecordValue(get().closeConfirmations, id);
