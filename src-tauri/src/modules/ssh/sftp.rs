@@ -113,7 +113,7 @@ fn validate_fingerprint(fingerprint: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_remote_edit_path(path: &str) -> Result<(&Path, &str), String> {
+pub(super) fn validate_remote_edit_path(path: &str) -> Result<(&Path, &str), String> {
     if path.contains(['\0', '\n', '\r']) {
         return Err("editable path contains unsupported control characters".into());
     }
@@ -423,7 +423,7 @@ pub async fn ssh_fs_write_text_file(
         Session::Local(_) => return Err("not a remote session".into()),
     };
     let sftp = ssh.sftp().await?;
-    let adapter = SftpWriteAdapter::new(&sftp, ssh);
+    let adapter = SftpWriteAdapter::new(&sftp, ssh, id);
     let mut outcome = None;
     for attempt in 0..16 {
         let temporary = remote_sibling_temp_path(&path, attempt)?;
@@ -475,6 +475,8 @@ pub async fn ssh_fs_write_text_file(
 struct SftpWriteAdapter<'a> {
     sftp: &'a russh_sftp::client::SftpSession,
     ssh: &'a super::connection::SshSession,
+    #[cfg(feature = "m2-safe-write-benchmark")]
+    session_id: u32,
     #[cfg(test)]
     replace_request_hook: Option<Arc<dyn Fn() + Send + Sync>>,
     #[cfg(test)]
@@ -485,10 +487,14 @@ impl<'a> SftpWriteAdapter<'a> {
     fn new(
         sftp: &'a russh_sftp::client::SftpSession,
         ssh: &'a super::connection::SshSession,
+        #[cfg_attr(not(feature = "m2-safe-write-benchmark"), allow(unused_variables))]
+        session_id: u32,
     ) -> Self {
         Self {
             sftp,
             ssh,
+            #[cfg(feature = "m2-safe-write-benchmark")]
+            session_id,
             #[cfg(test)]
             replace_request_hook: None,
             #[cfg(test)]
@@ -671,6 +677,12 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
     }
     async fn release_replace_lock(&self, target: &str, owner: &str) -> Result<(), IoError> {
         validate_fingerprint(owner).map_err(IoError)?;
+        #[cfg(feature = "m2-safe-write-benchmark")]
+        if super::m2_safe_write_benchmark::take_release_failure(self.session_id, target) {
+            return Err(IoError(
+                "isolated M2 benchmark injected a one-shot release failure".into(),
+            ));
+        }
         let lock = remote_replace_lock_path(target).map_err(IoError)?;
         let owner_path = remote_replace_lock_owner_path(target).map_err(IoError)?;
         let observed = read_remote_replace_lock_owner(self.sftp, target).await?;
@@ -1286,7 +1298,7 @@ mod tests {
             .expect("create isolated remote fixture");
 
         let sftp = session.sftp().await.expect("open SFTP");
-        let adapter = SftpWriteAdapter::new(&sftp, &session);
+        let adapter = SftpWriteAdapter::new(&sftp, &session, 0);
         let initial = adapter.read_regular(&target).await.expect("read initial");
         assert_eq!(initial.bytes, b"before\n");
         assert_eq!(initial.mode, 0o640);
@@ -1406,7 +1418,7 @@ mod tests {
             hold.store(true, Ordering::Release);
             request_signal.store(true, Ordering::Release);
         });
-        let adapter = SftpWriteAdapter::new(&proxied_sftp, &proxied)
+        let adapter = SftpWriteAdapter::new(&proxied_sftp, &proxied, 0)
             .with_replace_test_probe(hook, std::time::Duration::from_secs(3));
         let temporary = format!("{directory}/.配置 file.md.tunara-status-loss.tmp");
         let expected = super::content_fingerprint(b"before\n");
@@ -1536,8 +1548,8 @@ mod tests {
         );
         let sftp_a = session_a.sftp().await.expect("open first SFTP");
         let sftp_b = session_b.sftp().await.expect("open second SFTP");
-        let adapter_a = SftpWriteAdapter::new(&sftp_a, &session_a);
-        let adapter_b = SftpWriteAdapter::new(&sftp_b, &session_b);
+        let adapter_a = SftpWriteAdapter::new(&sftp_a, &session_a, 0);
+        let adapter_b = SftpWriteAdapter::new(&sftp_b, &session_b, 0);
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")

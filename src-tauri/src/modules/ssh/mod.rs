@@ -30,6 +30,8 @@ pub mod connection;
 mod flow_control;
 pub mod hosts;
 pub mod known_hosts;
+#[cfg(feature = "m2-safe-write-benchmark")]
+pub(crate) mod m2_safe_write_benchmark;
 pub mod remote_git;
 #[cfg(test)]
 mod rtt_benchmark;

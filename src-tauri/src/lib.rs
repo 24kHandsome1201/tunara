@@ -34,7 +34,7 @@ fn show_main_window(app: &AppHandle, reason: &str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Must be first: a second process must exit before it can start hook
         // listeners, restore PTYs, or open the shared workspace store.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -62,7 +62,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // window.confirm/alert are silent no-ops inside wry's WKWebView (no JS
         // dialog UI delegate) — native confirms must go through this plugin.
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+    #[cfg(feature = "m2-safe-write-benchmark")]
+    let builder = builder.plugin(modules::ssh::m2_safe_write_benchmark::init());
+    builder
         .manage(pty::PtyState::default())
         .manage(fs::grep::FsSearchCancellationState::default())
         .manage(ResolverState::default())

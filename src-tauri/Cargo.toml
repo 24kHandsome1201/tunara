@@ -17,6 +17,12 @@ edition = "2021"
 name = "tunara_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+# Deterministic, one-shot SSH safe-write failure injection for the isolated M2
+# product benchmark. Ordinary dev/release binaries do not compile this module.
+m2-safe-write-benchmark = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

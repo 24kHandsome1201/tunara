@@ -149,4 +149,49 @@ describe("FilePreview editor behavior", () => {
     finishReload?.(original);
     await waitFor(() => expect(screen.queryByText("Reloading…")).toBeNull());
   });
+
+  test("retains an unknown SSH save across a new PTY and reconciles with the replacement handle", async () => {
+    const attemptedFingerprint = "f".repeat(64);
+    const replaceLockOwner = "e".repeat(64);
+    const token = `outcomeUnknown:${attemptedFingerprint}:640:lockOwner=${replaceLockOwner}:cleanupPending=true`;
+    const calls: Array<{ command: string; payload: unknown }> = [];
+    mockIPC((command, payload) => {
+      calls.push({ command, payload });
+      if (command === "ssh_fs_read_file") return original;
+      if (command === "ssh_fs_write_text_file") throw token;
+      if (command === "ssh_fs_reconcile_text_write") {
+        return { status: "saved", fingerprint: attemptedFingerprint, size: 13 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const first = render(
+      <FilePreview filePath="/tmp/notes.txt" fileName="notes.txt" fill remotePtyId={41} onClose={() => {}} />,
+    );
+    const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
+    fireEvent.change(editor, { target: { value: "remote draft\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Save result not confirmed");
+    expect(screen.getByText(/temporary file may still need cleanup/i)).toBeTruthy();
+    first.unmount();
+
+    render(<FilePreview filePath="/tmp/notes.txt" fileName="notes.txt" fill remotePtyId={84} onClose={() => {}} />);
+    const restored = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
+    expect(restored.value).toBe("remote draft\n");
+    await screen.findByText("Save result not confirmed");
+    fireEvent.click(screen.getByRole("button", { name: "Check remote result" }));
+
+    await screen.findByText("Saved");
+    expect(calls).toContainEqual({
+      command: "ssh_fs_reconcile_text_write",
+      payload: {
+        id: 84,
+        path: "/tmp/notes.txt",
+        attemptedFingerprint,
+        expectedMode: 0o640,
+        replaceLockOwner,
+      },
+    });
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });
