@@ -21,6 +21,7 @@ import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
 import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
 import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
+import { useM2NativeCloseBenchmark } from "./useM2NativeCloseBenchmark";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
@@ -241,6 +242,7 @@ export default function App() {
   useTerminalBenchmark(ready);
   useM2SafeWriteBenchmark(ready);
   useM2LocalSafeWriteBenchmark(ready);
+  useM2NativeCloseBenchmark(ready);
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);

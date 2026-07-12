@@ -65,3 +65,19 @@ test("the local M2 runner drives real cross-file, cross-session, conflict, and f
   assert.match(script, /fixture_b="\$\(cd "\$fixture_b" && pwd -P\)"/);
   assert.match(script, /jq -e '\.passed == true'/);
 });
+
+test("the macOS native-close runner uses the red close button and checks persistence ordering", () => {
+  const hook = read("src/app/useM2NativeCloseBenchmark.ts");
+  const script = read("scripts/benchmark-m2-native-close.sh");
+
+  assert.match(hook, /replaceTextareaValue\(textarea, "unsaved native close draft\\n"\)/);
+  assert.match(hook, /first native-close warning/);
+  assert.match(hook, /cancel\.click\(\)/);
+  assert.match(hook, /discard\.click\(\)/);
+  assert.match(script, /perform action "AXPress" of button 1 of window 1/);
+  assert.match(script, /baseline_hash="\$\(wait_store_stable_hash\)"/);
+  assert.match(script, /unchangedBeforeConfirmation:\(\$baselineHash==\$cancelHash\)/);
+  assert.match(script, /advancedAfterDiscard:\(\$discardHash!=\$cancelHash\)/);
+  assert.match(script, /visibleAfterCancel/);
+  assert.match(script, /visibleAfterClean/);
+});

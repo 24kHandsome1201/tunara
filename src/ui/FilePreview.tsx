@@ -550,6 +550,7 @@ function EditorSurface({
       // (for example, closing a running terminal). Make the user's discard
       // decision real before resuming it so a still-mounted editor cannot keep
       // showing content that the central guard now considers clean.
+      setCloseConfirm(false);
       setContent(savedContent);
       discardEditorDraft(draftKey);
       confirmDirtyDraftDiscard(draftOwnerRef.current);

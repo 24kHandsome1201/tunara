@@ -113,7 +113,7 @@ test("editor registers dirty state and resolves pending navigation through its d
   assert.match(source, /updateDirtyDraft\(draftOwnerRef\.current, dirty\)/);
   assert.match(source, /confirmDirtyDraftDiscard\(draftOwnerRef\.current\)/);
   assert.match(source, /cancelDirtyDraftAction\(draftOwnerRef\.current\)/);
-  assert.match(source, /setContent\(savedContent\);[\s\S]*discardEditorDraft\(draftKey\);\s*confirmDirtyDraftDiscard/);
+  assert.match(source, /setCloseConfirm\(false\);\s*setContent\(savedContent\);[\s\S]*discardEditorDraft\(draftKey\);\s*confirmDirtyDraftDiscard/);
 });
 
 test("native window close is guarded before persistence and hide", async () => {

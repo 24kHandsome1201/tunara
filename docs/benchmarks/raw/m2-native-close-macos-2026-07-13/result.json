@@ -1,0 +1,33 @@
+{
+  "benchmark": "m2-native-close",
+  "nativeTrigger": "AXPress red close button",
+  "cancel": {
+    "stage": "cancel-complete",
+    "timestamp": "2026-07-12T17:03:53.753Z",
+    "firstWarningVisible": true,
+    "draftPreserved": true,
+    "editorPreserved": true
+  },
+  "discard": {
+    "stage": "discard-complete",
+    "timestamp": "2026-07-12T17:03:54.224Z",
+    "secondWarningVisible": true
+  },
+  "persistence": {
+    "baselineHash": "0c14dba99d748dda7f598633533972c96fde6f4805c5af5dc6cce6060dd9bb2b",
+    "cancelHash": "0c14dba99d748dda7f598633533972c96fde6f4805c5af5dc6cce6060dd9bb2b",
+    "discardHash": "717582d59bc986bb3e21204057ae6876658f115116046e2d57dff635f5c64766",
+    "cleanHash": "5153f2c5995eecf301b3c16dda85f73996108329fee19da19b005a133fc471ec",
+    "unchangedBeforeConfirmation": true,
+    "advancedAfterDiscard": true,
+    "advancedOnCleanClose": true
+  },
+  "window": {
+    "visibleAfterCancel": true,
+    "visibleAfterDiscard": false,
+    "visibleAfterReopen": true,
+    "visibleAfterClean": false
+  },
+  "fileContent": "saved baseline",
+  "passed": true
+}
