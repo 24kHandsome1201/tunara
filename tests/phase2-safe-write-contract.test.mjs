@@ -21,6 +21,22 @@ test("Phase 2 local writes require a fingerprint and expose structured conflicts
   assert.match(runtime, /fs::file::fs_write_text_file/);
 });
 
+test("Phase 2 local safe-write Linux gate uses real fixtures, unprivileged failure, and atomic stress", () => {
+  const backend = read("src-tauri/src/modules/fs/file.rs");
+  const runner = read("scripts/benchmark-m2-local-safe-write-linux.sh");
+
+  assert.match(backend, /local_save_reopen_same_size_conflict_and_residue_closure/);
+  assert.match(backend, /unwritable_parent_failure_preserves_original_and_leaves_no_residue/);
+  assert.match(backend, /atomic_replace_stress_never_exposes_partial_content/);
+  assert.match(backend, /assert_eq!\(fs::read\(&path\)\.unwrap\(\), b"other!\\n"\)/);
+  assert.match(backend, /assert_eq!\(fs::read\(&path\)\.unwrap\(\), b"original\\n"\)/);
+  assert.match(backend, /partialObservations/);
+  assert.match(backend, /temporaryResidue/);
+  assert.match(runner, /runuser -u nobody/);
+  assert.match(runner, /TUNARA_LOCAL_SAFE_WRITE_ROUNDS/);
+  assert.match(runner, /m2-local-safe-write-linux/);
+});
+
 test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   const backend = read("src-tauri/src/modules/ssh/sftp.rs");
   const transaction = read("src-tauri/src/modules/ssh/safe_write.rs");

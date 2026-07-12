@@ -253,9 +253,38 @@ pub fn fs_write_text_file(
 mod write_tests {
     use super::{content_fingerprint, fs_read_file, fs_write_text_file, ReadResult, WriteResult};
     use std::fs;
+    use std::path::{Path, PathBuf};
 
     fn fixture(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("tunara-file-write-{}-{name}", std::process::id()))
+    }
+
+    fn fixture_directory(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "tunara-local-safe-write-{}-{name}",
+            std::process::id()
+        ))
+    }
+
+    fn temporary_residue(target: &Path) -> Vec<PathBuf> {
+        let Some(parent) = target.parent() else {
+            return Vec::new();
+        };
+        let Some(name) = target.file_name().and_then(|name| name.to_str()) else {
+            return Vec::new();
+        };
+        let prefix = format!(".{name}.tunara-");
+        fs::read_dir(parent)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let entry_name = entry.file_name();
+                let entry_name = entry_name.to_str()?;
+                (entry_name.starts_with(&prefix) && entry_name.ends_with(".tmp"))
+                    .then(|| entry.path())
+            })
+            .collect()
     }
 
     #[test]
@@ -341,6 +370,247 @@ mod write_tests {
         );
         assert_eq!(fs::read_to_string(&path).unwrap(), "external\n");
         fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_save_reopen_same_size_conflict_and_residue_closure() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = fixture_directory("closure");
+        let path = directory.join("配置 file.md");
+        fs::create_dir(&directory).unwrap();
+        fs::write(&path, "before\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+
+        let initial = fs_read_file(path.to_string_lossy().into_owned()).unwrap();
+        let initial_fingerprint = match initial {
+            ReadResult::Text {
+                content,
+                fingerprint: Some(fingerprint),
+                truncated: false,
+                ..
+            } => {
+                assert_eq!(content, "before\n");
+                fingerprint
+            }
+            _ => panic!("fixture must reopen as complete editable text"),
+        };
+
+        let saved = fs_write_text_file(
+            path.to_string_lossy().into_owned(),
+            "after!\n".into(),
+            initial_fingerprint,
+        )
+        .unwrap();
+        let saved_fingerprint = match saved {
+            WriteResult::Saved { fingerprint, size } => {
+                assert_eq!(size, 7);
+                fingerprint
+            }
+            result => panic!("expected saved result, got {result:?}"),
+        };
+
+        let reopened = fs_read_file(path.to_string_lossy().into_owned()).unwrap();
+        match reopened {
+            ReadResult::Text {
+                content,
+                fingerprint: Some(fingerprint),
+                truncated: false,
+                ..
+            } => {
+                assert_eq!(content, "after!\n");
+                assert_eq!(fingerprint, saved_fingerprint);
+            }
+            _ => panic!("saved fixture must reopen with its new fingerprint"),
+        }
+
+        fs::write(&path, "other!\n").unwrap();
+        let conflict = fs_write_text_file(
+            path.to_string_lossy().into_owned(),
+            "mine!!\n".into(),
+            saved_fingerprint,
+        )
+        .unwrap();
+        assert_eq!(
+            conflict,
+            WriteResult::Conflict {
+                current_fingerprint: content_fingerprint(b"other!\n")
+            }
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"other!\n");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+        assert!(temporary_residue(&path).is_empty());
+
+        println!(
+            "[benchmark:m2-local-safe-write] {}",
+            serde_json::json!({
+                "kind": "closure",
+                "saveReopen": true,
+                "sameSizeConflict": true,
+                "originalAfterConflict": "other!\\n",
+                "mode": "0640",
+                "temporaryResidue": 0
+            })
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_parent_failure_preserves_original_and_leaves_no_residue() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        let effective_uid = Command::new("id")
+            .arg("-u")
+            .output()
+            .expect("read effective uid");
+        if effective_uid.stdout == b"0\n" {
+            eprintln!("permission fixture requires an unprivileged verifier");
+            return;
+        }
+
+        let directory = fixture_directory("permission");
+        let path = directory.join("protected.md");
+        fs::create_dir(&directory).unwrap();
+        fs::write(&path, "original\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o500)).unwrap();
+
+        let result = fs_write_text_file(
+            path.to_string_lossy().into_owned(),
+            "changed!\n".into(),
+            content_fingerprint(b"original\n"),
+        );
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let error = result.expect_err("an unwritable parent must reject temp creation");
+        assert!(error.contains("create temporary file failed"), "{error}");
+        assert_eq!(fs::read(&path).unwrap(), b"original\n");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+        assert!(temporary_residue(&path).is_empty());
+
+        println!(
+            "[benchmark:m2-local-safe-write] {}",
+            serde_json::json!({
+                "kind": "permissionFailure",
+                "errorReported": true,
+                "originalPreserved": true,
+                "mode": "0640",
+                "temporaryResidue": 0
+            })
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "run explicitly for the Linux local safe-write stress gate"]
+    fn atomic_replace_stress_never_exposes_partial_content() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::{Arc, Barrier, Mutex};
+        use std::thread;
+
+        let rounds = std::env::var("TUNARA_LOCAL_SAFE_WRITE_ROUNDS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(500);
+        let directory = fixture_directory("stress");
+        let path = directory.join("atomic.md");
+        fs::create_dir(&directory).unwrap();
+        let payload_a = [vec![b'A'; 64 * 1024 - 2], b"A\n".to_vec()].concat();
+        let payload_b = [vec![b'B'; 64 * 1024 - 2], b"B\n".to_vec()].concat();
+        fs::write(&path, &payload_a).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let reads = Arc::new(AtomicUsize::new(0));
+        let invalid = Arc::new(Mutex::new(None::<String>));
+        let barrier = Arc::new(Barrier::new(2));
+        let reader_path = path.clone();
+        let reader_stop = Arc::clone(&stop);
+        let reader_reads = Arc::clone(&reads);
+        let reader_invalid = Arc::clone(&invalid);
+        let reader_barrier = Arc::clone(&barrier);
+        let expected_a = payload_a.clone();
+        let expected_b = payload_b.clone();
+        let reader = thread::spawn(move || {
+            reader_barrier.wait();
+            while !reader_stop.load(Ordering::Acquire) {
+                match fs::read(&reader_path) {
+                    Ok(bytes) if bytes == expected_a || bytes == expected_b => {
+                        reader_reads.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Ok(bytes) => {
+                        *reader_invalid.lock().unwrap() = Some(format!(
+                            "observed {} bytes outside either complete payload",
+                            bytes.len()
+                        ));
+                        reader_stop.store(true, Ordering::Release);
+                    }
+                    Err(error) => {
+                        *reader_invalid.lock().unwrap() = Some(format!("read failed: {error}"));
+                        reader_stop.store(true, Ordering::Release);
+                    }
+                }
+            }
+        });
+
+        barrier.wait();
+        let mut fingerprint = content_fingerprint(&payload_a);
+        for round in 0..rounds {
+            let next = if round % 2 == 0 {
+                &payload_b
+            } else {
+                &payload_a
+            };
+            let result = fs_write_text_file(
+                path.to_string_lossy().into_owned(),
+                String::from_utf8(next.clone()).unwrap(),
+                fingerprint,
+            )
+            .unwrap();
+            fingerprint = match result {
+                WriteResult::Saved { fingerprint, .. } => fingerprint,
+                result => panic!("stress save must not conflict: {result:?}"),
+            };
+            if round % 16 == 0 {
+                thread::yield_now();
+            }
+        }
+        stop.store(true, Ordering::Release);
+        reader.join().unwrap();
+
+        let invalid = invalid.lock().unwrap().take();
+        assert!(invalid.is_none(), "{}", invalid.unwrap_or_default());
+        let observed_reads = reads.load(Ordering::Relaxed);
+        assert!(observed_reads > 0);
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+        assert!(temporary_residue(&path).is_empty());
+
+        println!(
+            "[benchmark:m2-local-safe-write] {}",
+            serde_json::json!({
+                "kind": "atomicStress",
+                "rounds": rounds,
+                "concurrentReads": observed_reads,
+                "partialObservations": 0,
+                "mode": "0640",
+                "temporaryResidue": 0
+            })
+        );
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[cfg(unix)]

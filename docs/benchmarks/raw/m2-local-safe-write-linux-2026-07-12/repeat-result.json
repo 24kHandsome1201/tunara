@@ -1,0 +1,39 @@
+{
+  "benchmark": "m2-local-safe-write-linux",
+  "baselineCommit": "f7fb1d157a02b74eed148fca3177daaf77a6e921",
+  "host": "de-netcup",
+  "os": "Debian GNU/Linux 12 (bookworm)",
+  "kernel": "Linux 6.1.0-42-amd64 x86_64 GNU/Linux",
+  "filesystem": "ext4",
+  "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+  "pnpm": "9.15.4",
+  "startedAt": "2026-07-12T08:07:21Z",
+  "finishedAt": "2026-07-12T08:07:26Z",
+  "durationMs": 4185,
+  "result": "pass",
+  "evidence": {
+    "closure": {
+      "kind": "closure",
+      "mode": "0640",
+      "originalAfterConflict": "other!\\n",
+      "sameSizeConflict": true,
+      "saveReopen": true,
+      "temporaryResidue": 0
+    },
+    "permissionFailure": {
+      "errorReported": true,
+      "kind": "permissionFailure",
+      "mode": "0640",
+      "originalPreserved": true,
+      "temporaryResidue": 0
+    },
+    "atomicStress": {
+      "concurrentReads": 727551,
+      "kind": "atomicStress",
+      "mode": "0640",
+      "partialObservations": 0,
+      "rounds": 500,
+      "temporaryResidue": 0
+    }
+  }
+}
