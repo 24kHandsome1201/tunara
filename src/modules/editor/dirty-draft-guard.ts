@@ -47,6 +47,19 @@ export function requestDirtyDraftAction(
   return false;
 }
 
+/**
+ * Guards an application-wide action such as hiding the native window. Unlike
+ * session navigation, this always affects the active editor regardless of the
+ * session that owns it.
+ */
+export function requestActiveDirtyDraftAction(run: () => void): boolean {
+  const draft = activeDraft;
+  if (!draft?.dirty) return true;
+  pendingAction = { owner: draft.owner, run };
+  draft.requestConfirmation();
+  return false;
+}
+
 export function confirmDirtyDraftDiscard(owner: symbol): boolean {
   if (activeDraft?.owner !== owner || pendingAction?.owner !== owner) return false;
   const action = pendingAction;

@@ -6,6 +6,7 @@ import {
   cancelDirtyDraftAction,
   confirmDirtyDraftDiscard,
   registerDirtyDraft,
+  requestActiveDirtyDraftAction,
   requestDirtyDraftAction,
   resetDirtyDraftGuardForTests,
   updateDirtyDraft,
@@ -37,6 +38,26 @@ test("dirty owning-session action waits for explicit discard", () => {
   assert.equal(runs, 1);
   assert.equal(confirmDirtyDraftDiscard(owner), false);
   assert.equal(runs, 1);
+});
+
+test("application-wide close waits for explicit discard", () => {
+  const owner = Symbol("draft");
+  let confirmations = 0;
+  let closes = 0;
+  registerDirtyDraft({ owner, sessionId: "a", filePath: "/a.txt", dirty: true, requestConfirmation: () => confirmations++ });
+
+  assert.equal(requestActiveDirtyDraftAction(() => closes++), false);
+  assert.equal(confirmations, 1);
+  assert.equal(closes, 0);
+  assert.equal(confirmDirtyDraftDiscard(owner), true);
+  assert.equal(closes, 1);
+});
+
+test("application-wide close allows a clean editor without retaining an action", () => {
+  const owner = Symbol("draft");
+  registerDirtyDraft({ owner, sessionId: "a", filePath: "/a.txt", dirty: false, requestConfirmation: () => {} });
+  assert.equal(requestActiveDirtyDraftAction(() => {}), true);
+  assert.equal(confirmDirtyDraftDiscard(owner), false);
 });
 
 test("cancel keeps the dirty draft and drops pending navigation", () => {
@@ -92,5 +113,11 @@ test("editor registers dirty state and resolves pending navigation through its d
   assert.match(source, /updateDirtyDraft\(draftOwnerRef\.current, dirty\)/);
   assert.match(source, /confirmDirtyDraftDiscard\(draftOwnerRef\.current\)/);
   assert.match(source, /cancelDirtyDraftAction\(draftOwnerRef\.current\)/);
-  assert.match(source, /setContent\(savedContent\);\s*confirmDirtyDraftDiscard/);
+  assert.match(source, /setContent\(savedContent\);[\s\S]*discardEditorDraft\(draftKey\);\s*confirmDirtyDraftDiscard/);
+});
+
+test("native window close is guarded before persistence and hide", async () => {
+  const source = await readFile(new URL("../src/app/useInit.ts", import.meta.url), "utf8");
+  assert.match(source, /requestActiveDirtyDraftAction\(\(\) => \{ void finishClose\(\); \}\)/);
+  assert.match(source, /if \(!requestActiveDirtyDraftAction[\s\S]*return;\s*await finishClose\(\)/);
 });

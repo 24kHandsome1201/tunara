@@ -17,6 +17,7 @@ import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/mod
 import { toPersistedSession } from "@/state/persist-snapshot";
 import { diffWatchedDirs, gitWatchDirsForSessions } from "./lib/sync-watches";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
+import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
@@ -229,16 +230,20 @@ export function useInit() {
       registerUnlisten("window close", () =>
         win.onCloseRequested(async (event) => {
           event.preventDefault();
-          if (saveTimer) {
-            clearTimeout(saveTimer);
-            saveTimer = null;
-          }
-          const result = await persistNow();
-          // A corrupt/unreadable store blocks writes to preserve the original,
-          // but hiding is safe because the process and in-memory state stay
-          // alive. A transient write error keeps the window visible.
-          if (result === "error") return;
-          await win.hide();
+          const finishClose = async () => {
+            if (saveTimer) {
+              clearTimeout(saveTimer);
+              saveTimer = null;
+            }
+            const result = await persistNow();
+            // A corrupt/unreadable store blocks writes to preserve the original,
+            // but hiding is safe because the process and in-memory state stay
+            // alive. A transient write error keeps the window visible.
+            if (result === "error") return;
+            await win.hide();
+          };
+          if (!requestActiveDirtyDraftAction(() => { void finishClose(); })) return;
+          await finishClose();
         }),
       );
     }

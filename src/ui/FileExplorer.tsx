@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   fsCancelActiveNameSearch,
@@ -20,7 +20,6 @@ import {
   sshSearch,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
-import { FilePreview } from "./FilePreview";
 import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 import { filePreviewWillChange, nextFilePreview } from "@/modules/editor/file-preview-navigation";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -40,6 +39,8 @@ import {
   nextFileSearchLimit,
 } from "./lib/file-search-pagination";
 let nextLocalGrepRequest = 0;
+
+const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 
 function createLocalGrepRequestId(): string {
   nextLocalGrepRequest += 1;
@@ -589,13 +590,15 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             animation: "slideInRight var(--duration-normal) var(--ease-out-expo)",
           }}
         >
-          <FilePreview
-            filePath={expandedFile}
-            fileName={previewFileName}
-            remotePtyId={remotePtyId}
-            onClose={() => setExpandedFile(null)}
-            fill
-          />
+          <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
+            <FilePreview
+              filePath={expandedFile}
+              fileName={previewFileName}
+              remotePtyId={remotePtyId}
+              onClose={() => setExpandedFile(null)}
+              fill
+            />
+          </Suspense>
         </div>
       )}
 

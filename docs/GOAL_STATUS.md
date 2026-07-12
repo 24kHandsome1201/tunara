@@ -9,7 +9,7 @@
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
-| Phase 2 Markdown / 单文件轻编辑 | 进行中 | 已有只读文件预览与外部编辑器逃生口；M1 关闭后正式进入安全写主线 | 阅读器、冲突检测、本地安全写、SSH 临时文件+原子替换完整闭环 |
+| Phase 2 Markdown / 单文件轻编辑 | 进行中 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑与基础源码高亮均已落地 | 真实 GUI 保存重开、SSH 重连确认、窄窗/键盘与冷启动性能闭环 |
 | Phase 3 Workspace Preview | 未开始 | 终端已有 URL 检测基础能力待盘点 | workspace 绑定、安全 WebView、来源/截图/错误摘要闭环 |
 | Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
@@ -18,7 +18,7 @@
 | Herdr spike | 暂不进入关键路径 | GOAL 已记录实验边界 | 只有主线阶段验证后再单独决策 |
 | Surface / Action / Dogfood | 未系统化 | Terminal、Review、Files 已有事实源边界，破坏性确认有局部实现 | 建立统一 SurfaceRef/ActionRef、feature flag、数据生命周期与本地可查看/关闭/清空的 dogfood 指标 |
 
-## M1 执行账本，当前 Active Milestone
+## M1 已关闭回归账本
 
 - [x] 固化进程冷启动、首个 PTY 可输入、输入回显、12 session 与 bundle 大小基线。5-run optimized bundle 中位数为窗口可见 502ms、首 PTY 可输入 1.639s、输入 p95 27ms、frame p95 18ms、RSS peak 413,088KiB、bundle 14,300KiB，见 [启动报告](./benchmarks/m1-terminal-startup-2026-07-11.md)。
 - [x] 建立 50/200MiB Unicode/ANSI/OSC/alternate-screen 高输出 fixture 与 reference capture；本地 optimized bundle 顺序完整、溢出 0、frame p95 18/19ms，见 [报告](./benchmarks/m1-terminal-high-output-2026-07-11.md)。
@@ -75,11 +75,11 @@
 
 ## Phase 2 执行账本，当前 Active Milestone
 
-- [x] 完成 [M2 实施规格](./M2_MARKDOWN_SAFE_EDITING.md)：固定 256 KiB/UTF-8/普通文件编辑边界、fingerprint 冲突合同、本地与 SSH 同目录临时文件+原子替换、未保存缓冲生命周期、动态加载与真实验收门。
+- [x] 完成并批准 [M2 实施规格定义](./M2_MARKDOWN_SAFE_EDITING.md)：固定 256 KiB/UTF-8/普通文件编辑边界、fingerprint 冲突合同、本地与 SSH 同目录临时文件+原子替换、未保存缓冲生命周期、动态加载与真实验收门。
 - [x] 本地安全写内核：完整、非截断、UTF-8、≤256 KiB 的普通文件读取返回 SHA-256 fingerprint，symlink 只读不发放 fingerprint；保存复查原内容，同目录 `create_new` 临时文件保留权限并 `sync_all` 后原子 rename，冲突返回结构化结果并不覆盖。定向 Rust 覆盖原子保存、同尺寸外部改写冲突、symlink 拒绝与 Unix `0640` 权限保留；最终 Node 全套、Rust 151 通过（2 ignored）、typecheck、lint、production build 与 `git diff --check` 全部通过。
 - [ ] SSH 安全写内核与断线/权限/冲突故障注入。typed transaction、跨进程原子 replace lock、10 分钟 stale 回收、unknown 前端禁止盲目重试及 fault matrix 均已落地。真实 `de-netcup` adapter、两条独立连接 12 轮竞争和替换后状态丢失均通过。unknown token 现携带临时路径 SHA-256 形式的 lock owner；前端严格验证且不暴露路径。真实断线测试在 reconcile 前证明 temp/lock 存在，新连接生产 reconcile 得到 Saved 后只删除 owner hash 匹配的 temp 与 owner marker 匹配的 lock，残留归零；再放入异主 lock 时旧 token 对账明确失败且不会误删。仍需 GUI 重连实际点击“确认远端结果”并展示最终状态，故本项保持未完成。
-- [ ] 单文件编辑 surface，包含未保存、保存、冲突、重新读取和外部编辑器逃生口。既有 fingerprint 保存、dirty guard、行号、原生撤销/重做、查找、Markdown 切换、冲突/失败栏、重新载入和本地外部编辑器入口继续成立；本轮新增 SSH 不确定替换的独立状态与重连确认动作，unknown 时不会重复写入或丢弃草稿。当前源码 Debug app 已真实启动并恢复 `de-netcup`，生产 adapter live test 证明远端保存/权限/冲突/清理，但 ScreenshotDaemon 仍只返回壁纸且 Computer Use 无法识别开发 bundle id，因此不冒充 SSH 文件行点击证据。完整 Node 520 通过（3 skipped）、Rust 166 通过（3 ignored）、真实 adapter 1/1、typecheck、lint、clippy 与 production build 通过。仍需跨文件/会话真实交互、基础语法高亮和 SSH surface 点击闭环。
-- [ ] Markdown/MDX 目录、锚点、查找、代码块、表格与源码/预览切换。`.mdx` 现与 `.md` 共用安全惰性阅读路径；预览态 Cmd/Ctrl+F 复用既有查找条，在可见语义文本中高亮、循环前后跳转并滚到当前匹配，不再强制切回编辑。长目录限制在 `min(35vh, 240px)` 内局部滚动；表格使用 intrinsic width、100% 最小宽度及 96–280px cell bounds，20 列内容只在可聚焦 region 内横滚。新增 97 行可复用 MDX fixture，覆盖 20 标题、重复中英文/emoji、长链接、20 列表格、代码 fence 和惰性 JSX/ESM 边界。Markdown/editor/reconcile 定向 15/15、完整 Node 520 通过（3 skipped）、typecheck、lint 与 production build 通过。仍需真实窄窗像素与键盘验收、MDX 混合边界运行复核和基础语法高亮，故本项保持未完成。
+- [ ] 单文件编辑 surface，包含未保存、保存、冲突、重新读取和外部编辑器逃生口。既有 fingerprint 保存、dirty guard、行号、原生撤销/重做、查找、Markdown 切换、冲突/失败栏、重新载入和本地外部编辑器入口继续成立；本轮新增基础 Markdown/MDX 源码高亮、原生窗口关闭草稿门、冲突/失败/unknown 的复制草稿动作，以及仅驻留内存的 `session + filePath` draft registry。SSH 重连更换 PTY 句柄后可恢复草稿与 unknown token，且 token 不进入 workspace snapshot。FilePreview 与 Markdown parser 已改为打开文件时动态加载，不进入首屏静态模块图；窄 Inspector 现按 editor container 而非主窗口宽度重排安全栏，unknown footer 不再误称“尚未保存”。仍需真实跨文件/会话、原生关闭与 SSH 重连点击闭环及冷启动量化复验。
+- [ ] Markdown/MDX 目录、锚点、查找、代码块、表格与源码/预览切换。`.mdx` 现与 `.md` 共用安全惰性阅读路径；预览态 Cmd/Ctrl+F 复用既有查找条，在可见语义文本中高亮、循环前后跳转并滚到当前匹配。长目录限制在 `min(35vh, 240px)` 内局部滚动；表格使用 intrinsic width、100% 最小宽度及 96–280px cell bounds，20 列内容只在可聚焦 region 内横滚。源码层以不接管输入、IME、选择与原生撤销历史的只读 overlay 高亮标题、标记、链接、代码、MDX tag/value；字节保真、围栏状态和空行对齐有自动测试。仍需真实窄窗像素与键盘验收、MDX 混合边界运行复核和源码/预览滚动上下文保持，故本项保持未完成。
 - [ ] 本地/SSH 真实保存重开、外部修改冲突、失败不破坏原文件、窄窗/中英文/键盘与首 PTY 性能验收。
 
 ## Phase 1 验收账本

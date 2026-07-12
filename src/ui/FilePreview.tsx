@@ -14,6 +14,7 @@ import { CloseIcon } from "./shared";
 import { useT, t as staticT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
+import { copyText } from "./lib/clipboard";
 import { useSessionsStore } from "@/state/sessions";
 import {
   cancelDirtyDraftAction,
@@ -23,6 +24,14 @@ import {
   updateDirtyDraft,
 } from "@/modules/editor/dirty-draft-guard";
 import { parseMarkdownDocument, safeMarkdownLanguage, type MarkdownBlock as MarkdownReaderBlock } from "@/modules/editor/markdown-reader";
+import { highlightMarkdownSource } from "@/modules/editor/markdown-syntax";
+import {
+  discardEditorDraft,
+  editorDraftKey,
+  readEditorDraft,
+  retainEditorDraft,
+  type EditorDraftSaveState,
+} from "@/modules/editor/editor-draft-registry";
 
 interface FilePreviewProps {
   filePath: string;
@@ -229,7 +238,7 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-type SaveState = "idle" | "saving" | "reconciling" | "saved" | "conflict" | "unknown" | "error";
+type SaveState = EditorDraftSaveState;
 
 function EditorSurface({
   filePath,
@@ -250,23 +259,41 @@ function EditorSurface({
 }) {
   const t = useT();
   const externalEditor = useUIStore((state) => state.externalEditor);
-  const sessionId = useSessionsStore((state) => state.activeSessionId);
+  // Capture the owning session once. A session switch can render the old tree
+  // once before unmount; deriving this key reactively would migrate its draft
+  // into the newly active session during that frame.
+  const sessionId = useRef(useSessionsStore.getState().activeSessionId).current;
+  const draftKey = editorDraftKey(sessionId, filePath);
+  const restoredDraftRef = useRef(readEditorDraft(draftKey));
+  const restoredDraft = restoredDraftRef.current;
   const draftOwnerRef = useRef(Symbol("file-editor-draft"));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
-  const [content, setContent] = useState(initialContent);
-  const [fingerprint, setFingerprint] = useState(initialFingerprint);
-  const [savedContent, setSavedContent] = useState(initialContent);
+  const syntaxRef = useRef<HTMLPreElement>(null);
+  const [content, setContent] = useState(restoredDraft?.content ?? initialContent);
+  const [fingerprint, setFingerprint] = useState(restoredDraft?.fingerprint ?? initialFingerprint);
+  const [savedContent, setSavedContent] = useState(restoredDraft?.savedContent ?? initialContent);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [unknownOutcome, setUnknownOutcome] = useState<SshWriteOutcomeUnknown | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>(() => {
+    if (!restoredDraft) return "idle";
+    if (restoredDraft.saveState === "saving" || restoredDraft.saveState === "reconciling") {
+      return restoredDraft.unknownOutcome ? "unknown" : "error";
+    }
+    return restoredDraft.saveState;
+  });
+  const [unknownOutcome, setUnknownOutcome] = useState<SshWriteOutcomeUnknown | null>(restoredDraft?.unknownOutcome ?? null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findIndex, setFindIndex] = useState(-1);
   const [previewMatchCount, setPreviewMatchCount] = useState(0);
   const [closeConfirm, setCloseConfirm] = useState(false);
+  const [draftCopyState, setDraftCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const dirty = content !== savedContent;
   const lines = useMemo(() => content.split("\n"), [content]);
+  const highlightedLines = useMemo(
+    () => isMarkdown ? highlightMarkdownSource(content) : null,
+    [content, isMarkdown],
+  );
   const matches = useMemo(() => {
     if (!findQuery) return [] as number[];
     const found: number[] = [];
@@ -298,6 +325,10 @@ function EditorSurface({
   useEffect(() => {
     updateDirtyDraft(draftOwnerRef.current, dirty);
   }, [dirty]);
+
+  useEffect(() => {
+    retainEditorDraft(draftKey, { content, savedContent, fingerprint, saveState, unknownOutcome });
+  }, [content, draftKey, fingerprint, saveState, savedContent, unknownOutcome]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -394,11 +425,18 @@ function EditorSurface({
     setCloseConfirm(false);
   };
 
+  const copyDraft = async () => {
+    const copied = await copyText(content);
+    setDraftCopyState(copied ? "copied" : "failed");
+    if (copied) window.setTimeout(() => setDraftCopyState("idle"), 1600);
+  };
+
   const requestClose = () => {
     if (dirty) {
       setCloseConfirm(true);
       return;
     }
+    discardEditorDraft(draftKey);
     onClose();
   };
 
@@ -414,9 +452,11 @@ function EditorSurface({
       // decision real before resuming it so a still-mounted editor cannot keep
       // showing content that the central guard now considers clean.
       setContent(savedContent);
+      discardEditorDraft(draftKey);
       confirmDirtyDraftDiscard(draftOwnerRef.current);
       return;
     }
+    discardEditorDraft(draftKey);
     onClose();
   };
 
@@ -426,6 +466,8 @@ function EditorSurface({
       ? t("preview.editor.reconciling")
     : saveState === "saved"
       ? t("preview.editor.saved")
+      : saveState === "unknown"
+        ? t("preview.editor.outcome_pending")
       : dirty
         ? t("preview.editor.unsaved")
         : t("preview.editor.clean");
@@ -478,9 +520,16 @@ function EditorSurface({
                   : "preview.editor.outcome_unknown_body")
                 : t("preview.editor.save_failed_body")}</span>
           </div>
-          {saveState === "unknown" || saveState === "reconciling"
-            ? <button disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
-            : <button onClick={() => void reload()}>{t("preview.editor.reload")}</button>}
+          <div className="file-editor-alert-actions">
+            <button onClick={() => void copyDraft()}>{t(draftCopyState === "copied"
+              ? "preview.editor.draft_copied"
+              : draftCopyState === "failed"
+                ? "preview.editor.copy_failed"
+                : "preview.editor.copy_draft")}</button>
+            {saveState === "unknown" || saveState === "reconciling"
+              ? <button disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
+              : <button onClick={() => void reload()}>{t("preview.editor.reload")}</button>}
+          </div>
         </div>
       )}
 
@@ -502,7 +551,7 @@ function EditorSurface({
             onChange={(event) => { setFindQuery(event.target.value); setFindIndex(-1); }}
             onKeyDown={(event) => {
               if (event.key === "Enter") { event.preventDefault(); selectMatch(event.shiftKey ? -1 : 1); }
-              if (event.key === "Escape") { event.preventDefault(); setFindOpen(false); textareaRef.current?.focus(); }
+              if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setFindOpen(false); textareaRef.current?.focus(); }
             }}
             placeholder={t("preview.editor.find_placeholder")}
             aria-label={t("preview.editor.find_placeholder")}
@@ -522,14 +571,34 @@ function EditorSurface({
             <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
               {lines.map((_, index) => <span key={index}>{index + 1}</span>)}
             </div>
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(event) => { setContent(event.target.value); setSaveState("idle"); }}
-              onScroll={(event) => { if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop; }}
-              spellCheck={false}
-              aria-label={t("preview.editor.content", { file: fileName })}
-            />
+            <div className="file-editor-input" data-highlighted={highlightedLines !== null}>
+              {highlightedLines && (
+                <pre ref={syntaxRef} className="file-editor-syntax" aria-hidden="true">
+                  {highlightedLines.map((line, lineIndex) => (
+                    <span className="file-editor-syntax-line" key={lineIndex}>
+                      {line.map((segment, segmentIndex) => (
+                        <span data-syntax={segment.kind} key={`${segmentIndex}:${segment.text}`}>{segment.text}</span>
+                      ))}
+                      {lineIndex < highlightedLines.length - 1 ? "\n" : null}
+                    </span>
+                  ))}
+                </pre>
+              )}
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={(event) => { setContent(event.target.value); setSaveState("idle"); }}
+                onScroll={(event) => {
+                  if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
+                  if (syntaxRef.current) {
+                    syntaxRef.current.scrollTop = event.currentTarget.scrollTop;
+                    syntaxRef.current.scrollLeft = event.currentTarget.scrollLeft;
+                  }
+                }}
+                spellCheck={false}
+                aria-label={t("preview.editor.content", { file: fileName })}
+              />
+            </div>
           </div>
         )}
       </div>
