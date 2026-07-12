@@ -2,15 +2,15 @@ const configuredBenchmark = typeof import.meta.env !== "undefined"
   ? import.meta.env.VITE_TUNARA_BENCHMARK
   : undefined;
 
-export type TerminalBenchmarkVariant = "m0" | "m1-output";
+export type TerminalBenchmarkVariant = "m0" | "m1-output" | "m2-safe-write";
 export const TERMINAL_BENCHMARK_VARIANT: TerminalBenchmarkVariant | null =
-  configuredBenchmark === "m0" || configuredBenchmark === "m1-output"
+  configuredBenchmark === "m0" || configuredBenchmark === "m1-output" || configuredBenchmark === "m2-safe-write"
     ? configuredBenchmark
     : null;
 export const TERMINAL_BENCHMARK_MODE = TERMINAL_BENCHMARK_VARIANT !== null;
 export type TerminalBenchmarkTransport = "local" | "ssh";
 export const TERMINAL_BENCHMARK_TRANSPORT: TerminalBenchmarkTransport =
-  configuredBenchmark === "m1-output"
+  (configuredBenchmark === "m1-output" || configuredBenchmark === "m2-safe-write")
     && import.meta.env.VITE_TUNARA_BENCHMARK_TRANSPORT === "ssh"
     ? "ssh"
     : "local";

@@ -1,0 +1,63 @@
+{
+  "benchmark": "m2-ssh-safe-write-gui",
+  "transport": "ssh",
+  "timestamp": "2026-07-12T06:07:41.994Z",
+  "sessionId": "m2-safe-write-0",
+  "fixture": {
+    "path": "/tmp/tunara-m2-safe-write-benchmark-20260712T060452Z-98393/fixture.md",
+    "expectedFingerprint": "7b9a72466d3960eb2aacccfc848939453490db0678bd4725def3f789b891c919",
+    "expectedMode": 416,
+    "modeOctal": "640"
+  },
+  "editor": {
+    "opened": true,
+    "dirtyBeforeSave": true,
+    "saveClicked": true,
+    "unknownSeen": true,
+    "cleanupPendingCopySeen": true,
+    "saveDisabledWhileUnknown": true,
+    "draftPreservedBeforeDisconnect": true,
+    "draftRestoredAfterReconnect": true,
+    "reconcileClicked": true,
+    "finalState": "saved",
+    "finalClean": true
+  },
+  "recovery": {
+    "exitCode": -2,
+    "exitCountBefore": 0,
+    "exitCountAfter": 1,
+    "disconnectMs": 379,
+    "disconnectedPhase": "disconnected",
+    "disconnectedEvidenceExitCode": -2,
+    "writerGenerationBefore": 1,
+    "writerGenerationAfter": 2,
+    "reconnectMs": 3371,
+    "markerEchoMs": 432,
+    "markerVisible": true,
+    "cwd": "/tmp/tunara-m2-safe-write-benchmark-20260712T060452Z-98393",
+    "cwdReferenceVisible": true,
+    "recoveredPhase": "ready",
+    "passed": true
+  },
+  "remote": {
+    "markerVisible": true,
+    "fingerprintMatch": true,
+    "mode": 416,
+    "modeOctal": "640",
+    "residueCount": 0,
+    "markerEchoMs": 1340
+  },
+  "timings": {
+    "editorOpenMs": 4434,
+    "unknownMs": 6422,
+    "reconcileMs": 4442
+  },
+  "passed": true,
+  "independentRemote": {
+    "fingerprint": "7b9a72466d3960eb2aacccfc848939453490db0678bd4725def3f789b891c919",
+    "expectedFingerprint": "7b9a72466d3960eb2aacccfc848939453490db0678bd4725def3f789b891c919",
+    "modeOctal": "640",
+    "residueCount": 0,
+    "passed": true
+  }
+}

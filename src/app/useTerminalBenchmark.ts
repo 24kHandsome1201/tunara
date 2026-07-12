@@ -73,7 +73,7 @@ async function sampleControlInput(sessionId: string, nonce: string): Promise<num
   return latencies;
 }
 
-async function runM1SshRecovery(sessionId: string) {
+export async function disconnectAndReconnectSshBenchmarkSession(sessionId: string) {
   const store = useSessionsStore.getState();
   const sessionBefore = store.sessions.find((session) => session.id === sessionId);
   if (!sessionBefore?.remote) throw new Error("SSH recovery benchmark requires a remote session");
@@ -241,10 +241,10 @@ async function runM1OutputBenchmark(readyIds: string[]) {
     });
     await delay(500);
   }
-  let sshRecovery: Awaited<ReturnType<typeof runM1SshRecovery>> | { passed: false; error: string } | null = null;
+  let sshRecovery: Awaited<ReturnType<typeof disconnectAndReconnectSshBenchmarkSession>> | { passed: false; error: string } | null = null;
   if (TERMINAL_BENCHMARK_TRANSPORT === "ssh") {
     try {
-      sshRecovery = await runM1SshRecovery(floodSessionId);
+      sshRecovery = await disconnectAndReconnectSshBenchmarkSession(floodSessionId);
     } catch (error) {
       sshRecovery = { passed: false, error: String(error) };
     }
@@ -272,7 +272,7 @@ export function useTerminalBenchmark(ready: boolean): void {
   const startedRef = useRef(false);
 
   useEffect(() => {
-    if (!TERMINAL_BENCHMARK_MODE || !ready || startedRef.current) return;
+    if (!TERMINAL_BENCHMARK_MODE || TERMINAL_BENCHMARK_VARIANT === "m2-safe-write" || !ready || startedRef.current) return;
     startedRef.current = true;
     const appReadyMs = performance.now();
     let cancelled = false;

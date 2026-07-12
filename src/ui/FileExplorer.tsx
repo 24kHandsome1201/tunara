@@ -446,13 +446,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   function toggleFile(name: string) {
     const fullPath = joinPath(currentPath, name);
     const next = nextFilePreview(expandedFile, fullPath);
-    if (!filePreviewWillChange(expandedFile, next)) return;
     runPreviewReplacingAction(() => setExpandedFile(next));
   }
 
   function toggleSearchFile(path: string) {
     const next = nextFilePreview(expandedFile, path);
-    if (!filePreviewWillChange(expandedFile, next)) return;
     runPreviewReplacingAction(() => setExpandedFile(next));
   }
 
@@ -788,6 +786,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
               return (
                 <div key={"f-" + entry.name}>
                   <button
+                    data-file-path={fullPath}
                     onClick={() => toggleFile(entry.name)}
                     onContextMenu={(e) => {
                       e.preventDefault();

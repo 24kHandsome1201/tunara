@@ -19,6 +19,7 @@ import { useDockBadge } from "./useDockBadge";
 import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
+import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
@@ -237,6 +238,7 @@ export default function App() {
   useGlobalShortcut();
   useUpdateReminder(ready);
   useTerminalBenchmark(ready);
+  useM2SafeWriteBenchmark(ready);
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);

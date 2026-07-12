@@ -628,7 +628,7 @@ function EditorSurface({
                 ? "preview.editor.copy_failed"
                 : "preview.editor.copy_draft")}</button>
             {saveState === "unknown" || saveState === "reconciling"
-              ? <button disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
+              ? <button data-editor-action="reconcile" disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
               : <button disabled={reloadPending} onClick={() => void reload()}>{t(reloadPending
                 ? "preview.editor.reloading"
                 : "preview.editor.reload")}</button>}
@@ -715,7 +715,7 @@ function EditorSurface({
           {remotePtyId === undefined && (
             <button onClick={() => void openInEditorWithToast(externalEditor, filePath)}>{t("preview.editor.external")}</button>
           )}
-          <button className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>
+          <button data-editor-action="save" className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>
         </div>
       </div>
     </div>
