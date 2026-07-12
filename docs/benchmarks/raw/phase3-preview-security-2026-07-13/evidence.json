@@ -1,0 +1,45 @@
+{
+  "date": "2026-07-13",
+  "baseline": "a7b898f9befb0e0e3780b04c15417e727fe371b7",
+  "app": {
+    "profile": "release optimized",
+    "bundle": "Tunara Preview Security.app",
+    "configOverlay": "scripts/fixtures/phase3-preview-tauri.conf.json",
+    "reason": "独立 identifier 避免 single-instance 接管用户既有 Tunara/PTY"
+  },
+  "sources": [
+    {
+      "worktree": "<repository-root>",
+      "session": "<main-session>",
+      "terminal": "<main-session>:0",
+      "url": "http://127.0.0.1:41731/"
+    },
+    {
+      "worktree": "<temporary-linked-worktree>",
+      "session": "<linked-session>",
+      "terminal": "<linked-session>:0",
+      "url": "http://127.0.0.1:41732/"
+    }
+  ],
+  "checks": {
+    "eligibleLoad": "pass",
+    "tauriGlobal": "undefined",
+    "tauriInternals": "object but ACL denied",
+    "appInvokeFsReadFile": "Command fs_read_file not allowed by ACL",
+    "pluginInvokeStoreLoad": "Command plugin:store|load not allowed by ACL",
+    "sameOriginNavigation": "pass: /same-origin loaded",
+    "publicRedirect": "pass: request reached /redirect-public, top-level stayed 127.0.0.1:41732",
+    "crossPort": "pass: top-level stayed 41732 and fixture 41731 received no peer request",
+    "externalProtocol": "pass: top-level stayed 127.0.0.1:41732",
+    "popup": "pass: window.open returned opened=false",
+    "download": "pass: Rust logged blocked Preview download; no save dialog or page change",
+    "nativeCloseReopen": "pass: Destroyed cleanup followed by same-source recreation",
+    "refresh": "pass: same-origin reload and stopped-then-restored fixture retry produced a fresh / request",
+    "worktreeIsolation": "pass: 41731 and 41732 windows coexisted with distinct title source identities",
+    "ptyMainIsolation": "pass: PHASE3_PTY_AFTER_PREVIEW_OK echoed after blocked actions and native closes"
+  },
+  "rawEvidence": {
+    "committed": false,
+    "policy": "Fixture logs, app event logs, and acceptance screenshots are retained locally and ignored."
+  }
+}

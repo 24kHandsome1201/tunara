@@ -4,6 +4,7 @@ import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
 import { SessionOverviewPanel } from "./SessionOverviewPanel";
 import { SessionNotesPanel } from "./SessionNotesPanel";
+import { PreviewPanel } from "./PreviewPanel";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { CloseIcon, PanelEmptyState } from "./shared";
@@ -61,6 +62,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
           <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
           <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
           <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
+          <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>
           <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
         </div>
 
@@ -118,6 +120,9 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
         </div>
         <div key={`notes-${tab}`} style={{ flex: 1, display: tab === "notes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "notes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           <SessionNotesPanel session={session} />
+        </div>
+        <div key={`preview-${tab}`} style={{ flex: 1, display: tab === "preview" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "preview" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
+          <PreviewPanel session={session} />
         </div>
       </div>
     </div>

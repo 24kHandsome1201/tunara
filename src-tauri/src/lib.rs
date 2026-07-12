@@ -69,6 +69,7 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(fs::grep::FsSearchCancellationState::default())
         .manage(ResolverState::default())
+        .manage(modules::preview::PreviewWindowState::default())
         .manage(modules::git::GitWatcherState::default())
         .setup(|app| {
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_all_bins 用（§3.7.2）。
@@ -113,6 +114,9 @@ pub fn run() {
             modules::config::load_config,
             modules::config::save_config,
             modules::workspace_store::workspace_store_file_state,
+            modules::preview::preview_open,
+            modules::preview::preview_refresh,
+            modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,
             modules::ssh::ssh_cancel_open,

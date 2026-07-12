@@ -171,7 +171,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
   };
 }
 
-export type InspectorTab = "overview" | "changes" | "files" | "notes";
+export type InspectorTab = "overview" | "changes" | "files" | "preview" | "notes";
 
 export type SettingsTab = "appearance" | "workflows" | "cli" | "app";
 

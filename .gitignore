@@ -29,6 +29,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# 本地验收原始证据（结构化脱敏汇总可提交，日志/截图不进 main）
+docs/benchmarks/raw/**/*.jsonl
+docs/benchmarks/raw/**/app-events.txt
+docs/benchmarks/raw/**/*.png
+docs/benchmarks/raw/**/*.jpg
+docs/benchmarks/raw/**/*.jpeg
+
 # 编辑器
 .vscode/*
 !.vscode/extensions.json

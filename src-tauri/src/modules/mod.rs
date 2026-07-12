@@ -1,5 +1,6 @@
 pub mod config;
 pub mod fs;
+pub mod preview;
 pub mod pty;
 
 // Tunara 新增底座（实施文档 §3.7 / §3.4.3）

@@ -1,0 +1,11 @@
+{
+  "productName": "Tunara Preview Security",
+  "identifier": "dev.tunara.preview-security",
+  "app": {
+    "windows": [
+      {
+        "title": "Tunara Preview Security"
+      }
+    ]
+  }
+}

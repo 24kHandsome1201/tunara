@@ -1,6 +1,6 @@
-# Phase 3 Workspace-bound Preview：来源绑定与 URL 安全检测基础
+# Phase 3 Workspace-bound Preview：来源绑定、安全 WebView 与导航策略
 
-## 本批唯一目标
+## 来源检测切片
 
 在创建任何浏览器 surface 之前，先让终端输出中的本地开发 URL 成为可解释、不可跨 worktree 混淆的 Preview 候选。候选必须回答：属于哪个 repository、worktree、workspace、session 和 terminal，何时发现，当前来源是否仍存活，以及是否具备本地 Preview 资格。
 
@@ -58,6 +58,34 @@ PreviewSource = {
 - 不实现 URL 可达性探测、服务进程关联、SSH tunnel 或端口转发。
 - 不进入 Phase 4，不改变 Agent Timeline。
 
+## 安全 WebView surface 切片
+
+本切片把 `eligible` 变成可由用户显式打开的独立原生 Preview window，但不建设通用浏览器。入口位于当前 session 的 Inspector Preview tab；每张来源卡完整显示 repository、worktree、session、terminal generation 与 URL，并提供打开/聚焦、刷新、关闭和外部浏览器逃生口。runtime state 的键继续包含完整来源身份，因此相同 URL、不同 worktree/session/terminal 不共享窗口。
+
+### 双层准入
+
+前端只启用 `transport=local + permission=eligible + state=active + workspaceResolution=resolved` 的内置打开按钮；Rust command boundary 再独立验证完全相同的条件、`workspaceId=repositoryId::worktreeId`、terminal generation 属于 session、URL 无凭据且为精确 loopback。SSH `remote-manual`、stale、fallback 和任意公网 URL 即使绕过 UI 构造 payload 也会被 Rust 拒绝。
+
+### 独立 WebView 与 capability
+
+- Preview 使用 `preview-<完整来源 SHA-256 前缀>` 的独立 `WebviewWindow`，不复用 `main` 窗口。
+- `preview-untrusted-loopback` capability 只匹配明确 loopback remote URL，并设置 `local=false / permissions=[]`；主窗口的 opener、store、dialog、updater、window-state 等 capability 只匹配 `main`。
+- 远程页面仍必须用真实 fixture 主动探测 `window.__TAURI_INTERNALS__ / window.__TAURI__` 并尝试代表性 app command 与 plugin command；空 permissions 只是结构证明，不能替代运行时拒绝证据。
+- 用户用原生关闭按钮销毁 Preview 时，`WindowEvent::Destroyed` 清除 Rust 注册状态；之后同一来源可重新创建。页面加载失败或 Preview 关闭不关闭 PTY，不隐藏或销毁主窗口。
+
+### 集中导航策略
+
+Rust `allowed_origin / navigation_allowed` 是唯一 top-level policy：初始 URL 必须为无凭据的 HTTP(S) 精确 loopback；后续 top-level navigation 与 redirect 必须保持与初始来源完全相同的 scheme、host 和 effective port。路径、query、fragment 可变化；跨端口 loopback、公网 redirect、外部协议、凭据 URL全部 fail closed。
+
+`window.open` / popup 固定返回 `Deny`；download handler 固定返回 `false`；不向页面提供地址栏、前进后退、缩放、viewport、DevTools、书签、账号或标签页。外部浏览器动作只存在于可信的 main Inspector 控制面，不由不可信页面静默触发。
+
+## 本批真实验收门
+
+- optimized macOS Tauri app 加载受控 eligible fixture；主动 IPC/app/plugin 探针只能得到桥接缺失或 capability 拒绝。
+- 同 origin navigation 与刷新成立；公网 redirect、跨端口 loopback、外部协议、popup、download 均不离开/不落盘/不生成新页面。
+- 两个 linked worktree、不同 session/terminal/端口的来源标签与窗口保持独立。
+- 用户原生关闭后可再次打开；页面失败、关闭与刷新不影响 PTY 输入回显及 main window。
+
 ## 下一门
 
-下一独立批次是“安全 WebView surface 与 navigation policy”：必须先定义独立 capability、默认拒绝 Tauri 高权限桥接、允许的 top-level navigation/redirect/window-open/download 策略、外部浏览器逃生口、崩溃隔离和明确的 SSH remote-source UI。该门完成前，`eligible` 不能被解释为已经安全打开，Phase 3 保持进行中。
+下一独立批次才是最小导航/页面失败与服务生命周期闭环；前进后退、地址栏、缩放、viewport、截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。安全 WebView surface 完成也不得解释为 Phase 3 已完成，更不得进入 Phase 4。
