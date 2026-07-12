@@ -18,7 +18,7 @@ dist-ssr/
 .vite/
 
 # Rust / Tauri
-target/
+target
 **/*.rs.bk
 Cargo.lock.orig
 

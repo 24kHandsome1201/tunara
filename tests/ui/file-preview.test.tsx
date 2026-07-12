@@ -47,6 +47,38 @@ describe("FilePreview editor behavior", () => {
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  test("keeps the Markdown mode switch and save flow keyboard-complete", async () => {
+    let writes = 0;
+    mockIPC((command) => {
+      if (command === "fs_read_file") return original;
+      if (command === "fs_write_text_file") {
+        writes += 1;
+        return { status: "saved", fingerprint: "b".repeat(64), size: 14 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("notes.md");
+    await screen.findByRole("textbox", { name: "Edit notes.md" });
+    const editTab = screen.getByRole("tab", { name: "Edit" });
+    const previewTab = screen.getByRole("tab", { name: "Preview" });
+
+    editTab.focus();
+    fireEvent.keyDown(editTab, { key: "ArrowRight" });
+    await waitFor(() => expect(previewTab.getAttribute("aria-selected")).toBe("true"));
+    expect(document.activeElement).toBe(previewTab);
+
+    fireEvent.keyDown(previewTab, { key: "Home" });
+    await waitFor(() => expect(editTab.getAttribute("aria-selected")).toBe("true"));
+    expect(document.activeElement).toBe(editTab);
+
+    const restoredEditor = await screen.findByRole("textbox", { name: "Edit notes.md" });
+    fireEvent.change(restoredEditor, { target: { value: "keyboard save\n" } });
+    fireEvent.keyDown(restoredEditor, { key: "s", ctrlKey: true });
+    await screen.findByText("Saved");
+    expect(writes).toBe(1);
+  });
+
   test("keeps the draft on conflict and replaces it only after a successful reload", async () => {
     let reads = 0;
     mockIPC((command) => {

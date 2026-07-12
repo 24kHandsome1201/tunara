@@ -520,17 +520,28 @@ html[data-chrome="borderless"] {
 }
 
 @container file-editor (max-width: 460px) {
-  .file-editor-header { align-items: flex-start; padding-top: 7px; padding-bottom: 7px; }
+  .file-editor-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+  .file-editor-identity { width: 100%; }
+  .file-editor-actions { width: 100%; justify-content: space-between; }
   .file-editor-kicker { display: none; }
   .file-editor-actions { gap: 4px; }
   .file-editor-mode button { padding: 0 7px; }
   .file-editor-footer > span:nth-of-type(n+2) { display: none; }
   .file-editor-alert { align-items: stretch; flex-direction: column; gap: 7px; }
-  .file-editor-alert span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
   .file-editor-alert > .file-editor-alert-actions { justify-content: flex-end; }
 }
 
 @container file-editor (max-width: 420px) {
+  .file-editor-code { grid-template-columns: 38px minmax(0, 1fr); }
+  .file-editor-lines { padding-right: 8px; }
+  .file-editor-code textarea,
+  .file-editor-syntax { padding-inline: 12px; }
   .file-editor-footer > span:nth-of-type(n+2) { display: none; }
   .file-editor-footer { gap: 4px; }
   .file-editor-footer-actions { gap: 2px; }
