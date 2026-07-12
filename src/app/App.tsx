@@ -20,6 +20,7 @@ import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
 import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
+import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
 import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
@@ -239,6 +240,7 @@ export default function App() {
   useUpdateReminder(ready);
   useTerminalBenchmark(ready);
   useM2SafeWriteBenchmark(ready);
+  useM2LocalSafeWriteBenchmark(ready);
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);

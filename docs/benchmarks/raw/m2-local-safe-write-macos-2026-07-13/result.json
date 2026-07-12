@@ -1,0 +1,36 @@
+{
+  "benchmark": "m2-local-safe-write-gui",
+  "transport": "local",
+  "timestamp": "2026-07-12T16:38:38.902Z",
+  "saveReopen": {
+    "savedFingerprint": true,
+    "crossFileContentCorrect": true,
+    "crossSessionContentCorrect": true,
+    "reopenedSavedContent": true,
+    "reopenedClean": true
+  },
+  "conflict": {
+    "conflictSeen": true,
+    "conflictDraftPreserved": true,
+    "externalMutationMs": 18
+  },
+  "draftLifecycle": {
+    "switchBlockedWithDirtyDraft": true,
+    "draftStillPresentAfterCancel": true,
+    "cleanRegistryReleased": true
+  },
+  "failure": {
+    "errorSeen": true,
+    "failureDraftPreserved": true,
+    "originalFilePreserved": true
+  },
+  "timings": {
+    "firstOpenMs": 107
+  },
+  "passed": true,
+  "independentLocal": {
+    "content": "third",
+    "residueCount": 0,
+    "passed": true
+  }
+}

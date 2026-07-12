@@ -48,3 +48,20 @@ test("the M2 runner drives real file, save, reconnect, and reconcile surfaces", 
   assert.doesNotMatch(script, /VITE_TUNARA_M2_FIXTURE_PATH/);
   assert.match(script, /jq -e '\.passed == true'/);
 });
+
+test("the local M2 runner drives real cross-file, cross-session, conflict, and failure surfaces", () => {
+  const hook = read("src/app/useM2LocalSafeWriteBenchmark.ts");
+  const script = read("scripts/benchmark-m2-local-safe-write.sh");
+
+  assert.match(hook, /sessionTab\(second\.title\)\)\)\.click\(\)/);
+  assert.match(hook, /openFile\(secondPath\)/);
+  assert.match(hook, /openFile\(otherSessionPath\)/);
+  assert.match(hook, /editorStatus\("conflict"\)/);
+  assert.match(hook, /editorStatus\("error"\)/);
+  assert.match(hook, /switchBlockedWithDirtyDraft/);
+  assert.match(hook, /cleanRegistryReleased/);
+  assert.match(script, /VITE_TUNARA_BENCHMARK=m2-local-safe-write/);
+  assert.match(script, /fixture_a="\$\(cd "\$fixture_a" && pwd -P\)"/);
+  assert.match(script, /fixture_b="\$\(cd "\$fixture_b" && pwd -P\)"/);
+  assert.match(script, /jq -e '\.passed == true'/);
+});
