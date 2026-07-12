@@ -1,4 +1,5 @@
 export type MarkdownAlignment = "left" | "center" | "right" | null;
+export type MdxSourceKind = "module" | "component" | "expression";
 
 export type MarkdownBlock =
   | { type: "heading"; level: 1 | 2 | 3; text: string; id: string; key: string }
@@ -8,6 +9,7 @@ export type MarkdownBlock =
   | { type: "unordered-list"; items: string[]; key: string }
   | { type: "ordered-list"; items: string[]; key: string }
   | { type: "table"; header: string[]; rows: string[][]; alignments: MarkdownAlignment[]; key: string }
+  | { type: "mdx-source"; kind: MdxSourceKind; text: string; key: string }
   | { type: "rule"; key: string };
 
 export interface MarkdownTocEntry {
@@ -53,6 +55,15 @@ function headingPlainText(text: string): string {
     .replace(/!??\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(/[`*_~]/g, "")
     .trim();
+}
+
+export function mdxSourceKind(line: string): MdxSourceKind | null {
+  const trimmed = line.trim();
+  if (/^import\s+(?:[\w*{]|["'])/.test(trimmed)) return "module";
+  if (/^export\s+(?:default\b|const\b|let\b|var\b|function\b|class\b|type\b|interface\b|\{)/.test(trimmed)) return "module";
+  if (/^<\/?[A-Za-z][A-Za-z0-9_.:-]*(?:\s|\/?>|$)/.test(trimmed)) return "component";
+  if (/^\{/.test(trimmed)) return "expression";
+  return null;
 }
 
 export function markdownHeadingSlug(text: string): string {
@@ -131,6 +142,18 @@ export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
       continue;
     }
 
+    const mdxKind = mdxSourceKind(line);
+    if (mdxKind) {
+      const sourceLines = [line];
+      index++;
+      while (index < lines.length && lines[index].trim() !== "" && !mdxSourceKind(lines[index])) {
+        sourceLines.push(lines[index++]);
+      }
+      const text = sourceLines.join("\n");
+      blocks.push({ type: "mdx-source", kind: mdxKind, text, key: keys.make(`mdx-${mdxKind}-${compact(text)}`) });
+      continue;
+    }
+
     const heading = line.match(/^(#{1,3})\s+(.+?)\s*#*\s*$/);
     if (heading) {
       const level = heading[1].length as 1 | 2 | 3;
@@ -196,7 +219,7 @@ export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
 
     const paragraph = [line];
     index++;
-    while (index < lines.length && lines[index].trim() !== "" && !/^(#{1,3})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
+    while (index < lines.length && lines[index].trim() !== "" && !mdxSourceKind(lines[index]) && !/^(#{1,3})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
       if (index + 1 < lines.length && lines[index].includes("|") && tableAlignments(lines[index + 1])) break;
       paragraph.push(lines[index++]);
     }

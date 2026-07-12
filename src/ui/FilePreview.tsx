@@ -220,6 +220,19 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
           </table>
         </div>
       );
+    case "mdx-source": {
+      const label = block.kind === "module"
+        ? staticT("preview.markdown.mdx_module")
+        : block.kind === "component"
+          ? staticT("preview.markdown.mdx_component")
+          : staticT("preview.markdown.mdx_expression");
+      return (
+        <figure aria-label={label} className="markdown-mdx-source">
+          <figcaption>{label}</figcaption>
+          <pre tabIndex={0} aria-label={label}><code><HighlightedText text={block.text} query={findQuery} cursor={matchCursor} /></code></pre>
+        </figure>
+      );
+    }
     case "rule":
       return <div style={{ borderTop: "1px solid var(--c-border-2)", margin: "8px 0" }} />;
   }

@@ -417,6 +417,10 @@ html[data-chrome="borderless"] {
 .file-editor-find button { width: 28px; height: 28px; padding: 0; border-radius: var(--r-btn); background: transparent; color: var(--c-text-4); }
 .markdown-find-match { background: var(--c-warning-bg); color: inherit; border-radius: 2px; }
 .markdown-find-match[data-active="true"] { background: var(--c-accent-bg-light); box-shadow: inset 0 0 0 1px var(--c-accent); }
+.markdown-mdx-source { margin: 7px 0 10px; overflow: hidden; border: 1px solid var(--c-border-1); border-radius: var(--r-card); background: var(--c-bg-1); }
+.markdown-mdx-source figcaption { padding: 4px 9px; border-bottom: 1px solid var(--c-border-1); color: var(--c-text-5); font: var(--fs-meta-sm) var(--font-mono); letter-spacing: .03em; }
+.markdown-mdx-source pre { margin: 0; padding: 9px 10px; overflow-x: auto; color: var(--c-text-3); font: var(--fs-secondary)/1.65 var(--font-mono); }
+.markdown-mdx-source code { font: inherit; }
 
 .file-editor-paper {
   position: relative;

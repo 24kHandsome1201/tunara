@@ -49,7 +49,11 @@ stat -c '%a' '/tmp/tunara-m2-visual/Phase 2 中文 长标题.mdx'
 
 import Demo from "./Demo";
 
+export const mdxMeta = { safe: true };
+
 <Demo label="MDX is rendered as inert document text, never executed" />
+
+{["静态", "表达式"].join(" · ")}
 
 ## Keyboard acceptance
 

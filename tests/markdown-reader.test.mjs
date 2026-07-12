@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   markdownHeadingSlug,
+  mdxSourceKind,
   parseMarkdownDocument,
   safeMarkdownLanguage,
   splitGfmTableRow,
@@ -69,6 +70,27 @@ test("language metadata is short and safe before entering labels or CSS classes"
   assert.deepEqual(safeMarkdownLanguage("中文"), { label: "中文" });
 });
 
+test("MDX module, component, and expression boundaries remain inert source islands", async () => {
+  assert.equal(mdxSourceKind('import Demo from "./Demo";'), "module");
+  assert.equal(mdxSourceKind("export const meta = { title: 'Safe' };"), "module");
+  assert.equal(mdxSourceKind('<Demo label="never executed" />'), "component");
+  assert.equal(mdxSourceKind("{items.map(renderItem)}"), "expression");
+  assert.equal(mdxSourceKind("importantly, this is ordinary prose"), null);
+  assert.equal(mdxSourceKind("<https://example.com>"), null);
+
+  const fixture = await readFile(new URL("../scripts/fixtures/phase2-markdown-visual.mdx", import.meta.url), "utf8");
+  const parsed = parseMarkdownDocument(fixture);
+  assert.deepEqual(
+    parsed.blocks.filter((block) => block.type === "mdx-source").map((block) => [block.kind, block.text]),
+    [
+      ["module", 'import Demo from "./Demo";'],
+      ["module", "export const mdxMeta = { safe: true };"],
+      ["component", '<Demo label="MDX is rendered as inert document text, never executed" />'],
+      ["expression", '{["静态", "表达式"].join(" · ")}'],
+    ],
+  );
+});
+
 test("FilePreview renders semantic headings, toc navigation, tables, and language labels", async () => {
   const source = await readFile(new URL("../src/ui/FilePreview.tsx", import.meta.url), "utf8");
   assert.match(source, /<nav aria-label=/);
@@ -85,6 +107,8 @@ test("FilePreview renders semantic headings, toc navigation, tables, and languag
   assert.match(source, /prefers-reduced-motion: reduce/);
   assert.match(source, /target="_blank" rel="noreferrer noopener"/);
   assert.match(source, /safeMarkdownLanguage\(block\.language\)/);
+  assert.match(source, /case "mdx-source"/);
+  assert.match(source, /preview\.markdown\.mdx_component/);
   assert.match(source, /\/\\\.mdx\?\$\/i\.test\(fileName\)/);
   assert.match(source, /data-markdown-find-index/);
   assert.match(source, /if \(mode === "preview" && isMarkdown\) return;/);
