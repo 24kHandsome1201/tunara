@@ -173,22 +173,24 @@ test("commandFinishedUpdate on agent session only records exit code", () => {
 
 test("terminalExitedUpdate clears agent and sets terminal done/failed", () => {
   // With agent active
-  let s = apply(baseSession(), agentDetectedUpdate(baseSession(), "CC", NOW));
+  let s = apply(baseSession({ ptyId: 41 }), agentDetectedUpdate(baseSession({ ptyId: 41 }), "CC", NOW));
   s = apply(s, agentBusyUpdate(s, NOW + 10));
   const exited = terminalExitedUpdate(s, 0, false, NOW + 100);
   assert.ok(exited);
   s = apply(s, exited);
   assert.equal(s.agent, undefined);
   assert.equal(s.agentActivity, undefined);
+  assert.equal(s.ptyId, undefined, "an exited PTY cannot remain a routable backend handle");
   assert.equal(s.runState, "done");
   assert.equal(s.lastCommand, undefined, "agent session exit clears lastCommand");
 
   // Without agent
-  let s2 = apply(baseSession(), commandDetectedUpdate(baseSession(), "echo hi", NOW));
+  let s2 = apply(baseSession({ ptyId: 42 }), commandDetectedUpdate(baseSession({ ptyId: 42 }), "echo hi", NOW));
   const exited2 = terminalExitedUpdate(s2, 1, true, NOW + 100);
   s2 = apply(s2, exited2);
   assert.equal(s2.runState, "failed");
   assert.equal(s2.lastExitCode, 1);
+  assert.equal(s2.ptyId, undefined);
   // Non-agent session keeps lastCommand for display.
   assert.equal(s2.lastCommand, "echo hi");
 });

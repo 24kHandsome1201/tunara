@@ -11,7 +11,6 @@ export type SshFailureReason = "auth" | "hostKey" | "connect" | "generic";
 
 export function classifySshFailure(error: string): SshFailureReason {
   const e = error.toLowerCase();
-  if (e.includes("authentication failed") || e.includes("auth")) return "auth";
   if (
     e.includes("mismatch") ||
     e.includes("host key") ||
@@ -27,6 +26,15 @@ export function classifySshFailure(error: string): SshFailureReason {
     e.includes("timeout")
   ) {
     return "connect";
+  }
+  if (
+    e.includes("authentication failed") ||
+    e.includes("unable to authenticate") ||
+    e.includes("no authentication methods") ||
+    e.includes("auth method") ||
+    e.includes("permission denied (publickey")
+  ) {
+    return "auth";
   }
   return "generic";
 }

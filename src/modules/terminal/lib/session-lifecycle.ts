@@ -155,6 +155,10 @@ export function terminalExitedUpdate(
   const wasAgent = Boolean(session.agent);
   return {
     patch: {
+      // A PTY id is a live backend handle, not durable session identity. Once
+      // the process exits, every Files/Git/SFTP consumer must stop routing
+      // requests through it, even if the logical session remains visible.
+      ptyId: undefined,
       agent: undefined,
       agentActivity: undefined,
       ...(wasAgent ? { title: t("session.default_title"), lastCommand: undefined } : {}),

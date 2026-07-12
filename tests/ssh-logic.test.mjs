@@ -35,6 +35,7 @@ import {
 test("classifySshFailure buckets auth errors", () => {
   assert.equal(classifySshFailure("authentication failed: bad password"), "auth");
   assert.equal(classifySshFailure("Auth method rejected"), "auth");
+  assert.equal(classifySshFailure("Permission denied (publickey,password)"), "auth");
 });
 
 test("classifySshFailure buckets host-key errors including the kebab form", () => {
@@ -49,6 +50,12 @@ test("classifySshFailure buckets connection errors", () => {
   assert.equal(classifySshFailure("connect 10.0.0.1:22 failed: connection refused"), "connect");
   assert.equal(classifySshFailure("operation timed out"), "connect");
   assert.equal(classifySshFailure("Connection refused"), "connect");
+  assert.equal(classifySshFailure("connect auth.example.com:22 failed: timed out"), "connect");
+});
+
+test("classifySshFailure does not treat unrelated auth substrings as credentials", () => {
+  assert.equal(classifySshFailure("authorization service returned an invalid response"), "generic");
+  assert.equal(classifySshFailure("failed to read /srv/auth/cache"), "generic");
 });
 
 test("classifySshFailure falls back to generic for unknown errors", () => {
