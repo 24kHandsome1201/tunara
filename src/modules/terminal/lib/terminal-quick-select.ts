@@ -16,7 +16,7 @@ export interface TerminalQuickSelectItem {
 }
 
 const QUICK_SELECT_ALPHABET = "asdfghjklqwertyuiopzxcvbnm";
-const URL_RE = /\bhttps?:\/\/[^\s<>"'`)\]}]+/gi;
+const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
 const GIT_HASH_RE = /\b[0-9a-f]{7,40}\b/gi;
 const IPV4_RE = /\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b/g;
 const NUMBER_RE = /\b\d+(?:\.\d+)?\b/g;
@@ -46,6 +46,20 @@ export function quickSelectHint(index: number, alphabet = QUICK_SELECT_ALPHABET)
 function trimUrlToken(token: string): string {
   let text = token;
   while (/[.,;:!?]$/.test(text)) text = text.slice(0, -1);
+  const pairs = [["(", ")"], ["[", "]"], ["{", "}"]] as const;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [open, close] of pairs) {
+      if (!text.endsWith(close)) continue;
+      const opens = [...text].filter((char) => char === open).length;
+      const closes = [...text].filter((char) => char === close).length;
+      if (closes > opens) {
+        text = text.slice(0, -1);
+        changed = true;
+      }
+    }
+  }
   return text;
 }
 

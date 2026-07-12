@@ -46,6 +46,12 @@ import {
   reduceConnectionEvidence,
   type ConnectionEvent,
 } from "@/modules/terminal/lib/connection-state";
+import {
+  detectPreviewSources,
+  markPreviewSourcesStale,
+  mergePreviewSources,
+  previewSourceContext,
+} from "@/modules/preview/preview-source";
 
 interface SessionsState {
   sessions: Session[];
@@ -88,6 +94,7 @@ interface SessionsState {
   handleCommandDetected: (id: string, command: string) => void;
   handleCommandFinished: (id: string, exitCode: number) => void;
   handleTerminalExited: (id: string, exitCode: number) => void;
+  handleTerminalOutput: (id: string, output: string, discoveredAt?: number) => void;
   handleCwdChange: (id: string, cwd: string) => void;
   suggestSshConnect: (id: string, target: SshConnectSuggestion) => void;
   clearSshSuggestion: (id: string) => void;
@@ -632,8 +639,24 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     const update = terminalExitedUpdate(session, exitCode, isSessionObserved(get().activeSessionId, id));
     if (!update) return;
-    get().updateSession(id, update.patch);
+    const terminalId = session ? previewSourceContext(session).terminalId : undefined;
+    get().updateSession(id, {
+      ...update.patch,
+      ...(terminalId && session?.previewSources
+        ? { previewSources: markPreviewSourcesStale(session.previewSources, terminalId) }
+        : {}),
+    });
     if (update.refreshGit) get().refreshGit(id);
+  },
+
+  handleTerminalOutput: (id, output, discoveredAt = Date.now()) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session) return;
+    const detected = detectPreviewSources(output, previewSourceContext(session), discoveredAt);
+    if (detected.length === 0) return;
+    get().updateSession(id, {
+      previewSources: mergePreviewSources(session.previewSources ?? [], detected),
+    });
   },
 
   handleCwdChange: (id, cwd) => {

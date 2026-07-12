@@ -4,13 +4,13 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。本批只关闭 Phase 2，不自动启动 Phase 3；Preview、Timeline、Worktree 生命周期、Companion 与 Recipe 仍不抢跑。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 3 已进入进行中状态；当前唯一 Active Milestone 只完成 Workspace-bound Preview 的[来源绑定与 URL 安全检测基础](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)，没有创建浏览器 surface。Timeline、Worktree 生命周期、Companion 与 Recipe 仍不抢跑。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
-| Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归；Phase 3 仍未开始 |
-| Phase 3 Workspace Preview | 未开始 | 终端已有 URL 检测基础能力待盘点 | workspace 绑定、安全 WebView、来源/截图/错误摘要闭环 |
+| Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归 |
+| Phase 3 Workspace Preview | 进行中 | 已复用 terminal quick-select URL tokenizer 与 PTY 输出流，建立 repository/worktree/workspace/session/terminal/source URL/发现时间绑定、完整来源去重、本地 loopback allowlist、SSH remote-manual 与 terminal-exited stale 合同；未创建 WebView | 安全 WebView surface 与 navigation policy；之后才是导航、截图、console/network 与服务生命周期闭环 |
 | Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
 | Phase 6 Mobile Companion | 未开始 | Phase 1 稳定 identity 已完成；桌面仍是唯一事实源 | 等 Phase 4 事件模型稳定后，先做默认关闭、只读、局域网/Tailscale 的 Gateway + PWA 配对实验 |
@@ -84,6 +84,17 @@
 - [x] macOS optimized release Tauri WebView 中本地跨文件/会话保存重开与草稿生命周期：真实 Save 后重开内容/fingerprint 正确，同尺寸外部修改进入 Conflict 且草稿保留，dirty 会话切换被阻止并可取消，clean registry 释放，权限失败不破坏原文件；应用外独立检查最终内容正确且临时残留为 0。证据见 [报告](./benchmarks/m2-local-safe-write-macos-2026-07-13.md)。
 - [x] macOS optimized release Tauri app 原生窗口关闭草稿门：真实红色关闭按钮 `AXPress` 在 dirty 时显示警告并阻止隐藏；取消后窗口、编辑器和草稿保持，确认前 snapshot SHA-256 不变；明确丢弃后 snapshot 才推进并隐藏；Reopen 后无残留警告，clean 原生关闭直接隐藏且再次持久化。证据见 [报告](./benchmarks/m2-native-close-macos-2026-07-13.md)。
 - [x] 首 PTY 冷启动性能：5 次进程完全退出后的 optimized macOS app 独立启动均创建 12 个真实 PTY、输入探针 0 failure；窗口可见中位数 532ms、首 PTY 可输入中位数 1,619ms，低于 M1 1,639ms × 1.1 的 1,802.9ms 预算。输入 p95 中位数 24ms、frame p95 每轮 18–19ms、RSS peak 中位数 405,696KiB、bundle 14,396KiB；FilePreview/Markdown parser/editor draft 保持动态 chunk，不进入首屏静态模块图。见 [报告](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 2 至此正式完成，Phase 3 未自动启动。
+
+## Phase 3 执行账本，当前 Active Milestone
+
+- [x] 来源绑定：每个候选携带 repository、worktree、workspace、session、terminal generation、可选 physical PTY、source URL 与发现时间；workspace 尚未 hydration 时使用明确 fallback identity，不以空来源归并。
+- [x] 安全检测：只接受 HTTP(S) 的 `localhost`、`127.0.0.1`、`[::1]` 与合法端口，保留 query/fragment，处理尾随标点和分块 UTF-8 输出；公网 URL、凭据、非法协议/端口不获得 Preview 资格。
+- [x] 来源去重与生命周期：相同 URL 的不同 worktree/session/terminal 保持独立；同一来源重复输出保留首次发现时间；terminal exit 后保留 `stale / terminal-exited` 与原来源。
+- [x] SSH 边界：远端 loopback 只记录为 `remote-manual`，本批没有自动直连、端口转发、远端修改或 tunnel。
+- [x] 数据保持 runtime-only，不进入 workspace snapshot；本批没有 WebView，因此未向网页新增任何 Tauri 高权限桥接。
+- [ ] 安全 WebView surface 与 navigation policy。必须在下一独立批次定义 capability、redirect/window-open/download/外部浏览器策略和崩溃隔离；本项完成前不得开始地址栏、截图、console/network 或 SSH tunnel。
+
+Phase 3 仍为进行中；以上勾选只代表[来源与检测基础](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)，不得解释为 Workspace-bound Browser Preview 已完成。
 
 ## Phase 1 验收账本
 
