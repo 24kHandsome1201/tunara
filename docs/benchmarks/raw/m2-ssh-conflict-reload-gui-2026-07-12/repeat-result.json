@@ -1,0 +1,78 @@
+{
+  "benchmark": "m2-ssh-safe-write-gui",
+  "transport": "ssh",
+  "timestamp": "2026-07-12T06:35:22.491Z",
+  "sessionId": "m2-safe-write-0",
+  "fixture": {
+    "path": "/tmp/tunara-m2-safe-write-benchmark-20260712T063450Z-9154/fixture.md",
+    "expectedFingerprint": "7b9a72466d3960eb2aacccfc848939453490db0678bd4725def3f789b891c919",
+    "externalFingerprint": "7e4fa2eb8c7ac089739d5defc4489fad68a100d92082ca35c6b40a4524821f87",
+    "expectedMode": 416,
+    "modeOctal": "640"
+  },
+  "editor": {
+    "opened": true,
+    "dirtyBeforeSave": true,
+    "saveClicked": true,
+    "unknownSeen": true,
+    "cleanupPendingCopySeen": true,
+    "saveDisabledWhileUnknown": true,
+    "draftPreservedBeforeDisconnect": true,
+    "draftRestoredAfterReconnect": true,
+    "reconcileClicked": true,
+    "finalState": "saved",
+    "finalClean": true
+  },
+  "recovery": {
+    "exitCode": -2,
+    "exitCountBefore": 0,
+    "exitCountAfter": 1,
+    "disconnectMs": 290,
+    "disconnectedPhase": "disconnected",
+    "disconnectedEvidenceExitCode": -2,
+    "writerGenerationBefore": 1,
+    "writerGenerationAfter": 2,
+    "reconnectMs": 2891,
+    "markerEchoMs": 433,
+    "markerVisible": true,
+    "cwd": "/tmp/tunara-m2-safe-write-benchmark-20260712T063450Z-9154",
+    "cwdReferenceVisible": true,
+    "recoveredPhase": "ready",
+    "passed": true
+  },
+  "remote": {
+    "markerVisible": true,
+    "fingerprintMatch": true,
+    "mode": 416,
+    "modeOctal": "640",
+    "residueCount": 0,
+    "markerEchoMs": 360
+  },
+  "conflict": {
+    "externalMutationVisible": true,
+    "externalFingerprintMatch": true,
+    "externalModeOctal": "640",
+    "externalMutationMs": 292,
+    "saveClicked": true,
+    "conflictSeen": true,
+    "draftPreservedOnConflict": true,
+    "reloadClicked": true,
+    "reloadedExternalContent": true,
+    "cleanAfterReload": true
+  },
+  "timings": {
+    "editorOpenMs": 4228,
+    "unknownMs": 5912,
+    "reconcileMs": 3678,
+    "conflictMs": 1906,
+    "reloadMs": 1611
+  },
+  "passed": true,
+  "independentRemote": {
+    "fingerprint": "7e4fa2eb8c7ac089739d5defc4489fad68a100d92082ca35c6b40a4524821f87",
+    "expectedFingerprint": "7e4fa2eb8c7ac089739d5defc4489fad68a100d92082ca35c6b40a4524821f87",
+    "modeOctal": "640",
+    "residueCount": 0,
+    "passed": true
+  }
+}

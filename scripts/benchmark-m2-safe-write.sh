@@ -45,7 +45,8 @@ remote="$user@$host"
 nonce="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 fixture_dir="/tmp/tunara-m2-safe-write-benchmark-$nonce"
 fixture_path="$fixture_dir/fixture.md"
-expected_sha="$(printf 'after\n' | shasum -a 256 | awk '{ print $1 }')"
+unknown_expected_sha="$(printf 'after\n' | shasum -a 256 | awk '{ print $1 }')"
+final_expected_sha="$(printf 'other\n' | shasum -a 256 | awk '{ print $1 }')"
 
 stop_bundle() {
   pkill -f "$APP_BIN" 2>/dev/null || true
@@ -59,7 +60,8 @@ build_bundle() {
   cd "$ROOT"
   VITE_TUNARA_BENCHMARK=m2-safe-write \
   VITE_TUNARA_BENCHMARK_TRANSPORT=ssh \
-  VITE_TUNARA_M2_EXPECTED_SHA256="$expected_sha" \
+  VITE_TUNARA_M2_EXPECTED_SHA256="$unknown_expected_sha" \
+  VITE_TUNARA_M2_EXTERNAL_SHA256="$final_expected_sha" \
     pnpm tauri build --features m2-safe-write-benchmark --bundles app --config \
       "{\"identifier\":\"$IDENTIFIER\",\"productName\":\"$PRODUCT_NAME\",\"app\":{\"security\":{\"capabilities\":[\"default\",\"desktop-capability\",{\"identifier\":\"m2-safe-write-benchmark\",\"windows\":[\"main\"],\"permissions\":[\"m2-safe-write-benchmark:allow-arm-release-failure\"]}]}}}"
 }
@@ -159,7 +161,7 @@ run_benchmark() {
   residue_count="$(ssh "${ssh_args[@]}" "$remote" "find '$fixture_dir' -maxdepth 1 \\( -name '*.tunara-*.tmp' -o -name '.tunara-write-*.lock' \\) -print | wc -l" | tr -d '[:space:]')"
   jq -n \
     --arg fingerprint "$observed_sha" \
-    --arg expectedFingerprint "$expected_sha" \
+    --arg expectedFingerprint "$final_expected_sha" \
     --arg mode "$observed_mode" \
     --argjson residueCount "$residue_count" '
       {

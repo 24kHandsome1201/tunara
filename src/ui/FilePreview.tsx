@@ -629,7 +629,7 @@ function EditorSurface({
                 : "preview.editor.copy_draft")}</button>
             {saveState === "unknown" || saveState === "reconciling"
               ? <button data-editor-action="reconcile" disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
-              : <button disabled={reloadPending} onClick={() => void reload()}>{t(reloadPending
+              : <button data-editor-action="reload" disabled={reloadPending} onClick={() => void reload()}>{t(reloadPending
                 ? "preview.editor.reloading"
                 : "preview.editor.reload")}</button>}
           </div>

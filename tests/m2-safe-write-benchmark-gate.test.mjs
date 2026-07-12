@@ -41,6 +41,9 @@ test("the M2 runner drives real file, save, reconnect, and reconcile surfaces", 
   assert.match(hook, /save\.click\(\)/);
   assert.match(hook, /disconnectAndReconnectSshBenchmarkSession\(session\.id\)/);
   assert.match(hook, /reconcile\.click\(\)/);
+  assert.match(hook, /conflictSave\.click\(\)/);
+  assert.match(hook, /reload\.click\(\)/);
+  assert.match(hook, /textarea\.value === "other\\n"/);
   assert.match(hook, /session\.dir\.replace/);
   assert.doesNotMatch(script, /VITE_TUNARA_M2_FIXTURE_PATH/);
   assert.match(script, /jq -e '\.passed == true'/);

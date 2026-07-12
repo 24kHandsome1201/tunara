@@ -70,8 +70,9 @@ export function useM2SafeWriteBenchmark(ready: boolean): void {
 
     void (async () => {
       const expectedFingerprint = import.meta.env.VITE_TUNARA_M2_EXPECTED_SHA256 as string | undefined;
-      if (!expectedFingerprint) {
-        throw new Error("M2 benchmark build is missing the expected fingerprint");
+      const externalFingerprint = import.meta.env.VITE_TUNARA_M2_EXTERNAL_SHA256 as string | undefined;
+      if (!expectedFingerprint || !externalFingerprint) {
+        throw new Error("M2 benchmark build is missing an expected fingerprint");
       }
       const initial = useSessionsStore.getState();
       const session = initial.sessions.find((candidate) => candidate.remote);
@@ -141,6 +142,39 @@ export function useM2SafeWriteBenchmark(ready: boolean): void {
         verifyCommand,
         expectedReference,
       );
+
+      replaceTextareaValue(textarea, "mine!\n");
+      await waitFor("conflicting local draft", () => textarea.value === "mine!\n" ? textarea : null);
+      const conflictSave = await waitFor("enabled conflict Save button", () => {
+        const button = document.querySelector<HTMLButtonElement>('button[data-editor-action="save"]');
+        return button && !button.disabled ? button : null;
+      });
+      const externalMarker = `__TUNARA_M2_EXTERNAL_${Date.now().toString(36)}__`;
+      const externalReference = `${externalMarker}:${externalFingerprint}:640`;
+      const externalCommand = [
+        `printf 'other\\n' > ${shellQuote(fixturePath)}`,
+        `chmod 640 ${shellQuote(fixturePath)}`,
+        `fingerprint=$(sha256sum ${shellQuote(fixturePath)} | awk '{print $1}')`,
+        `mode=$(stat -c %a ${shellQuote(fixturePath)})`,
+        `printf '%s:%s:%s\\n' ${shellQuote(externalMarker)} "$fingerprint" "$mode"`,
+      ].join("; ") + "\n";
+      const externalMutationMs = await probeTerminalCommandMarker(
+        session.id,
+        externalCommand,
+        externalReference,
+      );
+      const conflictStartedAt = performance.now();
+      conflictSave.click();
+      await waitFor("conflict editor state", () => editorStatus("conflict"));
+      const conflictMs = Math.round((performance.now() - conflictStartedAt) * 100) / 100;
+      const draftPreservedOnConflict = textarea.value === "mine!\n";
+      const reload = await waitFor("Reload button", () => document.querySelector<HTMLButtonElement>('button[data-editor-action="reload"]'));
+      const reloadStartedAt = performance.now();
+      reload.click();
+      await waitFor("reloaded external content", () => textarea.value === "other\n" ? textarea : null);
+      await waitFor("clean editor state after reload", () => editorStatus("idle"));
+      const reloadMs = Math.round((performance.now() - reloadStartedAt) * 100) / 100;
+      const cleanAfterReload = Boolean(document.querySelector<HTMLButtonElement>('button[data-editor-action="save"]')?.disabled);
       const editor = {
         ...editorBeforeDisconnect,
         draftRestoredAfterReconnect,
@@ -156,21 +190,35 @@ export function useM2SafeWriteBenchmark(ready: boolean): void {
         residueCount: 0,
         markerEchoMs: Math.round(markerEchoMs * 100) / 100,
       };
+      const conflict = {
+        externalMutationVisible: true,
+        externalFingerprintMatch: true,
+        externalModeOctal: "640",
+        externalMutationMs: Math.round(externalMutationMs * 100) / 100,
+        saveClicked: true,
+        conflictSeen: true,
+        draftPreservedOnConflict,
+        reloadClicked: true,
+        reloadedExternalContent: textarea.value === "other\n",
+        cleanAfterReload,
+      };
       const report = {
         benchmark: "m2-ssh-safe-write-gui",
         transport: "ssh",
         timestamp: new Date().toISOString(),
         sessionId: session.id,
-        fixture: { path: fixturePath, expectedFingerprint, expectedMode: 0o640, modeOctal: "640" },
+        fixture: { path: fixturePath, expectedFingerprint, externalFingerprint, expectedMode: 0o640, modeOctal: "640" },
         editor,
         recovery,
         remote,
-        timings: { editorOpenMs, unknownMs, reconcileMs },
+        conflict,
+        timings: { editorOpenMs, unknownMs, reconcileMs, conflictMs, reloadMs },
         passed: Object.values(editor).every((value) => value === true || value === "saved")
           && recovery.passed
           && remote.fingerprintMatch
           && remote.mode === 0o640
-          && remote.residueCount === 0,
+          && remote.residueCount === 0
+          && Object.values(conflict).every((value) => value === true || typeof value === "number" || value === "640"),
       };
       await info(`[benchmark:m2-safe-write] ${JSON.stringify(report)}`);
     })().catch(async (reason) => {
