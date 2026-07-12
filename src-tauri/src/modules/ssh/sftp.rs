@@ -392,7 +392,7 @@ pub async fn ssh_fs_write_text_file(
         Session::Local(_) => return Err("not a remote session".into()),
     };
     let sftp = ssh.sftp().await?;
-    let adapter = SftpWriteAdapter { sftp: &sftp, ssh };
+    let adapter = SftpWriteAdapter::new(&sftp, ssh);
     let mut outcome = None;
     for attempt in 0..16 {
         let temporary = remote_sibling_temp_path(&path, attempt)?;
@@ -443,6 +443,37 @@ pub async fn ssh_fs_write_text_file(
 struct SftpWriteAdapter<'a> {
     sftp: &'a russh_sftp::client::SftpSession,
     ssh: &'a super::connection::SshSession,
+    #[cfg(test)]
+    replace_request_hook: Option<Arc<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    replace_response_delay: Option<Duration>,
+}
+
+impl<'a> SftpWriteAdapter<'a> {
+    fn new(
+        sftp: &'a russh_sftp::client::SftpSession,
+        ssh: &'a super::connection::SshSession,
+    ) -> Self {
+        Self {
+            sftp,
+            ssh,
+            #[cfg(test)]
+            replace_request_hook: None,
+            #[cfg(test)]
+            replace_response_delay: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_replace_test_probe(
+        mut self,
+        hook: Arc<dyn Fn() + Send + Sync>,
+        response_delay: Duration,
+    ) -> Self {
+        self.replace_request_hook = Some(hook);
+        self.replace_response_delay = Some(response_delay);
+        self
+    }
 }
 
 impl RemoteWriteIo for SftpWriteAdapter<'_> {
@@ -589,6 +620,20 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
             shell_quote(temporary),
             shell_quote(target)
         );
+        #[cfg(test)]
+        let command = self
+            .replace_response_delay
+            .map(|delay| format!("{command} && sleep {}", delay.as_secs()))
+            .unwrap_or(command);
+        #[cfg(test)]
+        if let Some(hook) = self.replace_request_hook.as_deref() {
+            return self
+                .ssh
+                .exec_with_test_request_hook(&command, 16 * 1024, hook)
+                .await
+                .map(|_| ())
+                .map_err(ReplaceError::StatusLost);
+        }
         self.ssh
             .exec(&command, 16 * 1024)
             .await
@@ -617,10 +662,22 @@ pub async fn ssh_fs_reconcile_text_write(
     attempted_fingerprint: String,
     expected_mode: u32,
 ) -> Result<crate::modules::fs::file::WriteResult, String> {
-    validate_fingerprint(&attempted_fingerprint)?;
-    validate_remote_edit_path(&path)?;
     let sftp = sftp_for(&state, id).await?;
-    let (observed, observed_mode) = read_remote_editable_bytes(&sftp, &path).await?;
+    reconcile_text_write_with_sftp(&sftp, &path, &attempted_fingerprint, expected_mode).await
+}
+
+async fn reconcile_text_write_with_sftp(
+    sftp: &russh_sftp::client::SftpSession,
+    path: &str,
+    attempted_fingerprint: &str,
+    expected_mode: u32,
+) -> Result<crate::modules::fs::file::WriteResult, String> {
+    validate_fingerprint(attempted_fingerprint)?;
+    validate_remote_edit_path(path)?;
+    if expected_mode > 0o7777 {
+        return Err("reconcile mode must fit Unix permission bits".into());
+    }
+    let (observed, observed_mode) = read_remote_editable_bytes(sftp, path).await?;
     let current_fingerprint = content_fingerprint(&observed);
     if current_fingerprint == attempted_fingerprint && observed_mode == expected_mode {
         Ok(crate::modules::fs::file::WriteResult::Saved {
@@ -916,8 +973,9 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::{
-        choose_remote_home, remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock,
-        shell_quote, validate_download_target, validate_fingerprint, validate_remote_edit_path,
+        choose_remote_home, read_remote_editable_bytes, reconcile_text_write_with_sftp,
+        remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock, shell_quote,
+        validate_download_target, validate_fingerprint, validate_remote_edit_path,
         write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome, WriteRequest,
         REMOTE_WRITE_LOCKS,
     };
@@ -945,11 +1003,20 @@ mod tests {
     async fn open_real_ssh_session(label: &str) -> SshSession {
         let host = std::env::var("TUNARA_SSH_SMOKE_HOST")
             .expect("set TUNARA_SSH_SMOKE_HOST to an authorized test host");
-        let user = std::env::var("TUNARA_SSH_SMOKE_USER").unwrap_or_else(|_| "root".into());
         let port = std::env::var("TUNARA_SSH_SMOKE_PORT")
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(22);
+        open_ssh_session_at(host, port, HostKeyPolicy::AcceptUnknown, label).await
+    }
+
+    async fn open_ssh_session_at(
+        host: String,
+        port: u16,
+        policy: HostKeyPolicy,
+        label: &str,
+    ) -> SshSession {
+        let user = std::env::var("TUNARA_SSH_SMOKE_USER").unwrap_or_else(|_| "root".into());
         tokio::time::timeout(
             std::time::Duration::from_secs(30),
             SshSession::open(
@@ -962,7 +1029,7 @@ mod tests {
                         key_passphrase: None,
                         password: None,
                     },
-                    policy: HostKeyPolicy::AcceptUnknown,
+                    policy,
                     cols: 80,
                     rows: 24,
                     initial_cwd: None,
@@ -975,6 +1042,76 @@ mod tests {
         .await
         .expect("SSH open timeout")
         .expect("SSH open")
+    }
+
+    struct ProxyControl {
+        hold_server_output: Arc<std::sync::atomic::AtomicBool>,
+        cut: std::sync::mpsc::Sender<()>,
+    }
+
+    fn spawn_controlled_tcp_proxy(target_host: String, target_port: u16) -> (u16, ProxyControl) {
+        use std::io::{Read, Write};
+        use std::net::{Shutdown, TcpListener, TcpStream};
+        use std::sync::atomic::Ordering;
+
+        fn relay(
+            mut reader: TcpStream,
+            mut writer: TcpStream,
+            hold: Option<Arc<std::sync::atomic::AtomicBool>>,
+        ) {
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                let count = match reader.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(count) => count,
+                };
+                while hold
+                    .as_ref()
+                    .is_some_and(|flag| flag.load(Ordering::Acquire))
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                if writer.write_all(&buffer[..count]).is_err() {
+                    break;
+                }
+            }
+            let _ = writer.shutdown(Shutdown::Write);
+        }
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind controlled SSH proxy");
+        let port = listener.local_addr().expect("proxy address").port();
+        let hold_server_output = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let relay_hold = hold_server_output.clone();
+        let (cut_tx, cut_rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("tunara-ssh-cut-proxy".into())
+            .spawn(move || {
+                let (client, _) = listener.accept().expect("accept controlled SSH client");
+                let upstream = TcpStream::connect((target_host.as_str(), target_port))
+                    .expect("connect controlled SSH upstream");
+                client.set_nodelay(true).ok();
+                upstream.set_nodelay(true).ok();
+                let cut_client = client.try_clone().expect("clone cut client");
+                let cut_upstream = upstream.try_clone().expect("clone cut upstream");
+                std::thread::spawn(move || {
+                    let _ = cut_rx.recv();
+                    let _ = cut_client.shutdown(Shutdown::Both);
+                    let _ = cut_upstream.shutdown(Shutdown::Both);
+                });
+                let client_read = client.try_clone().expect("clone proxy client");
+                let upstream_read = upstream.try_clone().expect("clone proxy upstream");
+                let forward = std::thread::spawn(move || relay(client_read, upstream, None));
+                relay(upstream_read, client, Some(relay_hold));
+                forward.join().ok();
+            })
+            .expect("spawn controlled SSH proxy");
+        (
+            port,
+            ProxyControl {
+                hold_server_output,
+                cut: cut_tx,
+            },
+        )
     }
 
     #[tokio::test]
@@ -1002,10 +1139,7 @@ mod tests {
             .expect("create isolated remote fixture");
 
         let sftp = session.sftp().await.expect("open SFTP");
-        let adapter = SftpWriteAdapter {
-            sftp: &sftp,
-            ssh: &session,
-        };
+        let adapter = SftpWriteAdapter::new(&sftp, &session);
         let initial = adapter.read_regular(&target).await.expect("read initial");
         assert_eq!(initial.bytes, b"before\n");
         assert_eq!(initial.mode, 0o640);
@@ -1078,6 +1212,126 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires TUNARA_SSH_SMOKE_HOST and an authorized SSH key"]
+    async fn real_ssh_replace_status_loss_reconciles_saved_on_a_fresh_connection() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let target_host = std::env::var("TUNARA_SSH_SMOKE_HOST")
+            .expect("set TUNARA_SSH_SMOKE_HOST to an authorized test host");
+        let target_port = std::env::var("TUNARA_SSH_SMOKE_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(22);
+        let (proxy_port, proxy) = spawn_controlled_tcp_proxy(target_host, target_port);
+        let (proxied, control) = tokio::join!(
+            open_ssh_session_at(
+                "127.0.0.1".into(),
+                proxy_port,
+                HostKeyPolicy::AcceptForTest,
+                "m2-status-loss-proxied",
+            ),
+            open_real_ssh_session("m2-status-loss-control"),
+        );
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = format!("/tmp/tunara-m2-status-loss-{unique}");
+        let target = format!("{directory}/配置 file.md");
+        control
+            .exec(
+                &format!(
+                    "install -d -m 700 {} && printf 'before\\n' > {} && chmod 640 {}",
+                    shell_quote(&directory),
+                    shell_quote(&target),
+                    shell_quote(&target),
+                ),
+                16 * 1024,
+            )
+            .await
+            .expect("create status-loss fixture");
+
+        let proxied_sftp = proxied.sftp().await.expect("open proxied SFTP");
+        let control_sftp = control.sftp().await.expect("open control SFTP");
+        let request_accepted = Arc::new(AtomicBool::new(false));
+        let request_signal = request_accepted.clone();
+        let hold = proxy.hold_server_output.clone();
+        let hook: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            hold.store(true, Ordering::Release);
+            request_signal.store(true, Ordering::Release);
+        });
+        let adapter = SftpWriteAdapter::new(&proxied_sftp, &proxied)
+            .with_replace_test_probe(hook, std::time::Duration::from_secs(3));
+        let temporary = format!("{directory}/.配置 file.md.tunara-status-loss.tmp");
+        let expected = super::content_fingerprint(b"before\n");
+        let attempted = super::content_fingerprint(b"after\n");
+        let lock = tokio::sync::Mutex::new(());
+        let transaction = write_text_transaction(
+            &adapter,
+            &lock,
+            WriteRequest {
+                target: &target,
+                temporary: &temporary,
+                content: b"after\n",
+                expected_fingerprint: &expected,
+            },
+        );
+        let observe_and_cut = async {
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                while !request_accepted.load(Ordering::Acquire) {
+                    tokio::task::yield_now().await;
+                }
+                loop {
+                    if let Ok((bytes, mode)) =
+                        read_remote_editable_bytes(&control_sftp, &target).await
+                    {
+                        if bytes == b"after\n" && mode == 0o640 {
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("remote replace became visible before cut");
+            proxy.cut.send(()).expect("cut proxied TCP connection");
+        };
+        let (outcome, ()) = tokio::join!(transaction, observe_and_cut);
+        assert!(matches!(
+            outcome.expect("status-loss transaction"),
+            TransactionOutcome::OutcomeUnknown {
+                expected_mode: 0o640,
+                cleanup_pending: true,
+                ..
+            }
+        ));
+
+        let reconciled = reconcile_text_write_with_sftp(&control_sftp, &target, &attempted, 0o640)
+            .await
+            .expect("reconcile over fresh connection");
+        assert!(matches!(
+            reconciled,
+            crate::modules::fs::file::WriteResult::Saved { .. }
+        ));
+        let residue = control
+            .exec(
+                &format!(
+                    "find {} -maxdepth 1 \\( -name '*.tmp' -o -name '.tunara-write-*.lock' \\) -print; rm -rf -- {}",
+                    shell_quote(&directory),
+                    shell_quote(&directory),
+                ),
+                16 * 1024,
+            )
+            .await
+            .expect("inspect status-loss residue and clean fixture");
+        assert!(
+            !residue.trim().is_empty(),
+            "a severed connection should report the cleanup it could not finish"
+        );
+        control.close().expect("close control SSH session");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires TUNARA_SSH_SMOKE_HOST and an authorized SSH key"]
     async fn real_ssh_independent_clients_allow_at_most_one_stale_fingerprint_save() {
         let (session_a, session_b) = tokio::join!(
             open_real_ssh_session("m2-race-a"),
@@ -1085,14 +1339,8 @@ mod tests {
         );
         let sftp_a = session_a.sftp().await.expect("open first SFTP");
         let sftp_b = session_b.sftp().await.expect("open second SFTP");
-        let adapter_a = SftpWriteAdapter {
-            sftp: &sftp_a,
-            ssh: &session_a,
-        };
-        let adapter_b = SftpWriteAdapter {
-            sftp: &sftp_b,
-            ssh: &session_b,
-        };
+        let adapter_a = SftpWriteAdapter::new(&sftp_a, &session_a);
+        let adapter_b = SftpWriteAdapter::new(&sftp_b, &session_b);
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")

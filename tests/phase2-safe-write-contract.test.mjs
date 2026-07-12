@@ -51,6 +51,8 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(backend, /create_dir\(lock\.clone\(\)\)/);
   assert.match(backend, /REPLACE_LOCK_STALE_AFTER/);
   assert.match(backend, /ssh_fs_reconcile_text_write/);
+  assert.match(backend, /reconcile_text_write_with_sftp/);
+  assert.match(backend, /real_ssh_replace_status_loss_reconciles_saved_on_a_fresh_connection/);
   assert.match(backend, /observed_mode == expected_mode/);
   assert.doesNotMatch(backend, /remove_file\(&path\)/);
   assert.doesNotMatch(transaction, /remove.*target/);

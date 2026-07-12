@@ -747,6 +747,7 @@ impl SshSession {
             Duration::from_secs(15),
             false,
             None,
+            None,
         )
         .await
     }
@@ -768,6 +769,7 @@ impl SshSession {
             Duration::from_secs(15),
             false,
             Some(cancelled.as_ref()),
+            None,
         )
         .await
     }
@@ -787,6 +789,26 @@ impl SshSession {
             Duration::from_secs(15),
             true,
             None,
+            None,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(super) async fn exec_with_test_request_hook(
+        &self,
+        command: &str,
+        max_bytes: usize,
+        request_accepted: &(dyn Fn() + Sync),
+    ) -> Result<String, String> {
+        exec_on(
+            &self.handle,
+            command,
+            max_bytes,
+            Duration::from_secs(15),
+            false,
+            None,
+            Some(request_accepted),
         )
         .await
     }
@@ -828,6 +850,7 @@ async fn exec_on(
     timeout: Duration,
     allow_nonzero: bool,
     cancelled: Option<&AtomicBool>,
+    request_accepted: Option<&(dyn Fn() + Sync)>,
 ) -> Result<String, String> {
     if cancelled.is_some_and(|token| token.load(Ordering::Acquire)) {
         return Err("remote command cancelled".into());
@@ -851,6 +874,9 @@ async fn exec_on(
     {
         let _ = channel.close().await;
         return Err(error);
+    }
+    if let Some(notify) = request_accepted {
+        notify();
     }
 
     let cancellation = wait_for_exec_cancel(cancelled);
@@ -1001,7 +1027,16 @@ async fn stage_remote_bootstrap(
     let script = render_remote_bootstrap(session_id, inject_shell_integration, initial_cwd);
     let encoded = B64.encode(script.as_bytes());
     let command = integration_stage_command(&encoded);
-    let out = exec_on(handle, &command, 4096, Duration::from_secs(5), false, None).await?;
+    let out = exec_on(
+        handle,
+        &command,
+        4096,
+        Duration::from_secs(5),
+        false,
+        None,
+        None,
+    )
+    .await?;
     // Some servers print a banner/MOTD even on exec channels; take the last
     // line that looks like our mktemp path instead of requiring clean output.
     let path = out
