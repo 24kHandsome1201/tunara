@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fsReadFile, fsWriteTextFile, type ReadResult } from "@/modules/fs/fs-bridge";
-import { sshReadFile, sshWriteTextFile } from "@/modules/ssh/remote-fs-bridge";
+import {
+  sshReadFile,
+  sshReconcileOutcomeUnknownTextWrite,
+  sshWriteTextFile,
+} from "@/modules/ssh/remote-fs-bridge";
+import {
+  parseSshWriteOutcomeUnknown,
+  type SshWriteOutcomeUnknown,
+} from "@/modules/ssh/ssh-write-reconcile";
 import { formatSize } from "./types";
 import { CloseIcon } from "./shared";
 import { useT, t as staticT } from "@/modules/i18n";
@@ -26,11 +34,48 @@ interface FilePreviewProps {
   remotePtyId?: number;
 }
 
-function MarkdownPreview({ content, fill = false }: { content: string; fill?: boolean }) {
+interface MarkdownFindCursor {
+  current: number;
+}
+
+function HighlightedText({ text, query, cursor }: { text: string; query: string; cursor: MarkdownFindCursor }) {
+  if (!query) return text;
+  const parts: React.ReactNode[] = [];
+  const haystack = text.toLocaleLowerCase();
+  const needle = query.toLocaleLowerCase();
+  let offset = 0;
+  while (offset <= haystack.length - needle.length) {
+    const index = haystack.indexOf(needle, offset);
+    if (index < 0) break;
+    if (index > offset) parts.push(text.slice(offset, index));
+    const matchIndex = cursor.current++;
+    parts.push(
+      <mark key={`${matchIndex}:${index}`} data-markdown-find-index={matchIndex} style={{ background: "var(--c-warning-bg)", color: "inherit", borderRadius: 2 }}>
+        {text.slice(index, index + query.length)}
+      </mark>,
+    );
+    offset = index + Math.max(query.length, 1);
+  }
+  if (offset < text.length) parts.push(text.slice(offset));
+  return parts.length > 0 ? parts : text;
+}
+
+function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, onMatchCountChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; onMatchCountChange?: (count: number) => void }) {
   const t = useT();
   const document = useMemo(() => parseMarkdownDocument(content), [content]);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const matchCursor: MarkdownFindCursor = { current: 0 };
+  useEffect(() => {
+    const root = previewRef.current;
+    if (!root) return;
+    const marks = root.querySelectorAll<HTMLElement>("[data-markdown-find-index]");
+    onMatchCountChange?.(marks.length);
+    if (activeFindIndex < 0) return;
+    marks.item(activeFindIndex)?.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [activeFindIndex, content, findQuery, onMatchCountChange]);
   return (
     <div
+      ref={previewRef}
       style={{ padding: "12px 14px 24px", overflow: "auto", overflowWrap: "anywhere", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
       className="no-scrollbar scroll-fade-y"
     >
@@ -39,7 +84,7 @@ function MarkdownPreview({ content, fill = false }: { content: string; fill?: bo
           <summary style={{ color: "var(--c-text-4)", cursor: "pointer", fontSize: "var(--fs-secondary)", fontWeight: 650, lineHeight: 1.5 }}>
             {t("preview.markdown.toc_count", { count: document.toc.length })}
           </summary>
-          <nav aria-label={t("preview.markdown.toc")} style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 7 }}>
+          <nav aria-label={t("preview.markdown.toc")} style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 7, maxHeight: "min(35vh, 240px)", overflowY: "auto" }}>
             {document.toc.map((entry) => (
               <a key={entry.id} href={`#${entry.id}`} onClick={(event) => { event.preventDefault(); focusMarkdownAnchor(entry.id); }} style={{ color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", lineHeight: 1.45, paddingLeft: (entry.level - 1) * 12, textDecoration: "none", whiteSpace: "normal", overflowWrap: "anywhere" }}>
                 {entry.text}
@@ -49,7 +94,7 @@ function MarkdownPreview({ content, fill = false }: { content: string; fill?: bo
         </details>
       )}
       {document.blocks.map((block) => (
-        <MarkdownBlock key={block.key} block={block} />
+        <MarkdownBlock key={block.key} block={block} findQuery={findQuery} matchCursor={matchCursor} />
       ))}
     </div>
   );
@@ -71,8 +116,9 @@ function focusMarkdownHref(href: string) {
   }
 }
 
-function InlineText({ text }: { text: string }) {
+function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQuery?: string; matchCursor?: MarkdownFindCursor }) {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/);
+  const cursor = matchCursor ?? { current: 0 };
   return (
     <>
       {parts.map((part, index) => {
@@ -80,34 +126,34 @@ function InlineText({ text }: { text: string }) {
         if (part.startsWith("`") && part.endsWith("`")) {
           return (
             <code key={key} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent)" }}>
-              {part.slice(1, -1)}
+              <HighlightedText text={part.slice(1, -1)} query={findQuery} cursor={cursor} />
             </code>
           );
         }
         if (part.startsWith("**") && part.endsWith("**")) {
-          return <strong key={key} style={{ fontWeight: 600, color: "var(--c-text-2)" }}>{part.slice(2, -2)}</strong>;
+          return <strong key={key} style={{ fontWeight: 600, color: "var(--c-text-2)" }}><HighlightedText text={part.slice(2, -2)} query={findQuery} cursor={cursor} /></strong>;
         }
         if (part.startsWith("*") && part.endsWith("*")) {
-          return <em key={key} style={{ color: "var(--c-text-4)" }}>{part.slice(1, -1)}</em>;
+          return <em key={key} style={{ color: "var(--c-text-4)" }}><HighlightedText text={part.slice(1, -1)} query={findQuery} cursor={cursor} /></em>;
         }
         const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (linkMatch) {
           const href = linkMatch[2].trim();
           if (href.startsWith("#")) {
-            return <a key={key} href={href} onClick={(event) => { event.preventDefault(); focusMarkdownHref(href); }} style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}>{linkMatch[1]}</a>;
+            return <a key={key} href={href} onClick={(event) => { event.preventDefault(); focusMarkdownHref(href); }} style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></a>;
           }
           if (/^https?:\/\//i.test(href)) {
-            return <a key={key} href={href} target="_blank" rel="noreferrer noopener" style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}>{linkMatch[1]}</a>;
+            return <a key={key} href={href} target="_blank" rel="noreferrer noopener" style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></a>;
           }
-          return <span key={key}>{linkMatch[1]}</span>;
+          return <span key={key}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></span>;
         }
-        return <span key={key}>{part}</span>;
+        return <span key={key}><HighlightedText text={part} query={findQuery} cursor={cursor} /></span>;
       })}
     </>
   );
 }
 
-function MarkdownBlock({ block }: { block: MarkdownReaderBlock }) {
+function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReaderBlock; findQuery: string; matchCursor: MarkdownFindCursor }) {
   switch (block.type) {
     case "heading": {
       const style = block.level === 1
@@ -115,44 +161,44 @@ function MarkdownBlock({ block }: { block: MarkdownReaderBlock }) {
         : block.level === 2
           ? { fontSize: "var(--fs-reader-h2)", color: "var(--c-text-2)", margin: "14px 0 5px" }
           : { fontSize: "var(--fs-reader-h3)", color: "var(--c-text-4)", margin: "10px 0 3px" };
-      const children = <InlineText text={block.text} />;
+      const children = <InlineText text={block.text} findQuery={findQuery} matchCursor={matchCursor} />;
       if (block.level === 1) return <h1 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 700, scrollMarginTop: 12 }}>{children}</h1>;
       if (block.level === 2) return <h2 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 650, scrollMarginTop: 12 }}>{children}</h2>;
       return <h3 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 600, scrollMarginTop: 12 }}>{children}</h3>;
     }
     case "paragraph":
-      return <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65, margin: "0 0 7px" }}><InlineText text={block.text} /></div>;
+      return <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65, margin: "0 0 7px" }}><InlineText text={block.text} findQuery={findQuery} matchCursor={matchCursor} /></div>;
     case "code": {
       const language = safeMarkdownLanguage(block.language);
       return (
         <figure aria-label={staticT("preview.markdown.code")} style={{ background: "var(--c-bg-3)", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", overflow: "hidden", margin: "7px 0 10px" }}>
           {language && <figcaption style={{ borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta-sm)", padding: "4px 9px", letterSpacing: "0.03em", overflowWrap: "anywhere" }}>{language.label}</figcaption>}
-          <pre tabIndex={0} aria-label={staticT("preview.markdown.code")} style={{ padding: "9px 10px", overflowX: "auto", margin: 0 }}><code className={language?.className} style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-2)" }}>{block.text}</code></pre>
+          <pre tabIndex={0} aria-label={staticT("preview.markdown.code")} style={{ padding: "9px 10px", overflowX: "auto", margin: 0 }}><code className={language?.className} style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-2)" }}><HighlightedText text={block.text} query={findQuery} cursor={matchCursor} /></code></pre>
         </figure>
       );
     }
     case "quote":
-      return <div style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-secondary)", lineHeight: 1.65 }}><InlineText text={block.text} /></div>;
+      return <div style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-secondary)", lineHeight: 1.65 }}><InlineText text={block.text} findQuery={findQuery} matchCursor={matchCursor} /></div>;
     case "unordered-list": {
       return (
         <ul style={{ paddingLeft: 16, margin: "4px 0", listStyle: "disc" }}>
-          {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} /></li>)}
+          {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} findQuery={findQuery} matchCursor={matchCursor} /></li>)}
         </ul>
       );
     }
     case "ordered-list": {
       return (
         <ol style={{ paddingLeft: 16, margin: "4px 0" }}>
-          {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} /></li>)}
+          {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} findQuery={findQuery} matchCursor={matchCursor} /></li>)}
         </ol>
       );
     }
     case "table":
       return (
         <div role="region" tabIndex={0} aria-label={staticT("preview.markdown.table")} style={{ overflowX: "auto", margin: "8px 0 12px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-secondary)", color: "var(--c-text-3)" }}>
-            <thead><tr>{block.header.map((cell, column) => <th key={column} style={{ background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-2)", padding: "6px 8px", textAlign: block.alignments[column] ?? "left", fontWeight: 650 }}><InlineText text={cell} /></th>)}</tr></thead>
-            <tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, column) => <td key={column} style={{ borderTop: rowIndex === 0 ? "none" : "1px solid var(--c-border-1)", padding: "6px 8px", textAlign: block.alignments[column] ?? "left" }}><InlineText text={cell} /></td>)}</tr>)}</tbody>
+          <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", fontSize: "var(--fs-secondary)", color: "var(--c-text-3)" }}>
+            <thead><tr>{block.header.map((cell, column) => <th key={column} style={{ minWidth: 96, maxWidth: 280, background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-2)", padding: "6px 8px", textAlign: block.alignments[column] ?? "left", fontWeight: 650 }}><InlineText text={cell} findQuery={findQuery} matchCursor={matchCursor} /></th>)}</tr></thead>
+            <tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, column) => <td key={column} style={{ minWidth: 96, maxWidth: 280, borderTop: rowIndex === 0 ? "none" : "1px solid var(--c-border-1)", padding: "6px 8px", textAlign: block.alignments[column] ?? "left" }}><InlineText text={cell} findQuery={findQuery} matchCursor={matchCursor} /></td>)}</tr>)}</tbody>
           </table>
         </div>
       );
@@ -183,7 +229,7 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
+type SaveState = "idle" | "saving" | "reconciling" | "saved" | "conflict" | "unknown" | "error";
 
 function EditorSurface({
   filePath,
@@ -213,9 +259,11 @@ function EditorSurface({
   const [savedContent, setSavedContent] = useState(initialContent);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [unknownOutcome, setUnknownOutcome] = useState<SshWriteOutcomeUnknown | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findIndex, setFindIndex] = useState(-1);
+  const [previewMatchCount, setPreviewMatchCount] = useState(0);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const dirty = content !== savedContent;
   const lines = useMemo(() => content.split("\n"), [content]);
@@ -261,12 +309,13 @@ function EditorSurface({
   }, [dirty]);
 
   const selectMatch = (direction: 1 | -1) => {
-    if (matches.length === 0) return;
+    const matchCount = mode === "preview" && isMarkdown ? previewMatchCount : matches.length;
+    if (matchCount === 0) return;
     const next = direction === 1
-      ? (findIndex + 1 + matches.length) % matches.length
-      : (findIndex - 1 + matches.length) % matches.length;
+      ? (findIndex + 1 + matchCount) % matchCount
+      : (findIndex - 1 + matchCount) % matchCount;
     setFindIndex(next);
-    setMode("edit");
+    if (mode === "preview" && isMarkdown) return;
     window.requestAnimationFrame(() => {
       const textarea = textareaRef.current;
       if (!textarea) return;
@@ -277,8 +326,9 @@ function EditorSurface({
   };
 
   const save = async () => {
-    if (!dirty || saveState === "saving") return;
+    if (!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown") return;
     setSaveState("saving");
+    setUnknownOutcome(null);
     try {
       const result = remotePtyId === undefined
         ? await fsWriteTextFile(filePath, content, fingerprint)
@@ -291,8 +341,40 @@ function EditorSurface({
       setSavedContent(content);
       setSaveState("saved");
       window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
-    } catch {
+    } catch (error) {
+      const outcome = remotePtyId === undefined ? null : parseSshWriteOutcomeUnknown(error);
+      if (outcome) {
+        setUnknownOutcome(outcome);
+        setSaveState("unknown");
+        return;
+      }
       setSaveState("error");
+    }
+  };
+
+  const reconcileUnknownSave = async () => {
+    if (remotePtyId === undefined || !unknownOutcome || saveState === "reconciling") return;
+    setSaveState("reconciling");
+    try {
+      const { result } = await sshReconcileOutcomeUnknownTextWrite(
+        remotePtyId,
+        filePath,
+        unknownOutcome.token,
+      );
+      if (result.status === "conflict") {
+        setUnknownOutcome(null);
+        setSaveState("conflict");
+        return;
+      }
+      setFingerprint(result.fingerprint);
+      setSavedContent(content);
+      setUnknownOutcome(null);
+      setSaveState("saved");
+      window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
+    } catch {
+      // The connection may still be down. Keep the signed outcome token and
+      // draft mounted so the user can reconnect and retry the same check.
+      setSaveState("unknown");
     }
   };
 
@@ -307,6 +389,7 @@ function EditorSurface({
     setContent(result.content);
     setSavedContent(result.content);
     setFingerprint(result.fingerprint);
+    setUnknownOutcome(null);
     setSaveState("idle");
     setCloseConfirm(false);
   };
@@ -339,6 +422,8 @@ function EditorSurface({
 
   const statusLabel = saveState === "saving"
     ? t("preview.editor.saving")
+    : saveState === "reconciling"
+      ? t("preview.editor.reconciling")
     : saveState === "saved"
       ? t("preview.editor.saved")
       : dirty
@@ -377,13 +462,25 @@ function EditorSurface({
         </div>
       </div>
 
-      {(saveState === "conflict" || saveState === "error") && (
+      {(saveState === "conflict" || saveState === "unknown" || saveState === "reconciling" || saveState === "error") && (
         <div className="file-editor-alert" role="alert">
           <div>
-            <strong>{saveState === "conflict" ? t("preview.editor.conflict_title") : t("preview.editor.save_failed")}</strong>
-            <span>{saveState === "conflict" ? t("preview.editor.conflict_body") : t("preview.editor.save_failed_body")}</span>
+            <strong>{saveState === "conflict"
+              ? t("preview.editor.conflict_title")
+              : saveState === "unknown" || saveState === "reconciling"
+                ? t("preview.editor.outcome_unknown_title")
+                : t("preview.editor.save_failed")}</strong>
+            <span>{saveState === "conflict"
+              ? t("preview.editor.conflict_body")
+              : saveState === "unknown" || saveState === "reconciling"
+                ? t(unknownOutcome?.cleanupPending
+                  ? "preview.editor.outcome_unknown_cleanup_body"
+                  : "preview.editor.outcome_unknown_body")
+                : t("preview.editor.save_failed_body")}</span>
           </div>
-          <button onClick={() => void reload()}>{t("preview.editor.reload")}</button>
+          {saveState === "unknown" || saveState === "reconciling"
+            ? <button disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
+            : <button onClick={() => void reload()}>{t("preview.editor.reload")}</button>}
         </div>
       )}
 
@@ -410,7 +507,7 @@ function EditorSurface({
             placeholder={t("preview.editor.find_placeholder")}
             aria-label={t("preview.editor.find_placeholder")}
           />
-          <span>{matches.length === 0 ? "0/0" : `${Math.max(findIndex + 1, 1)}/${matches.length}`}</span>
+          <span>{(mode === "preview" && isMarkdown ? previewMatchCount : matches.length) === 0 ? "0/0" : `${Math.max(findIndex + 1, 1)}/${mode === "preview" && isMarkdown ? previewMatchCount : matches.length}`}</span>
           <button onClick={() => selectMatch(-1)} aria-label={t("preview.editor.previous_match")}>↑</button>
           <button onClick={() => selectMatch(1)} aria-label={t("preview.editor.next_match")}>↓</button>
           <button onClick={() => setFindOpen(false)} aria-label={t("common.close")}><CloseIcon size={10} /></button>
@@ -419,7 +516,7 @@ function EditorSurface({
 
       <div className="file-editor-paper">
         {mode === "preview" && isMarkdown ? (
-          <MarkdownPreview content={content} fill />
+          <MarkdownPreview content={content} fill findQuery={findQuery} activeFindIndex={findIndex} onMatchCountChange={setPreviewMatchCount} />
         ) : (
           <div className="file-editor-code">
             <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
@@ -445,7 +542,7 @@ function EditorSurface({
           {remotePtyId === undefined && (
             <button onClick={() => void openInEditorWithToast(externalEditor, filePath)}>{t("preview.editor.external")}</button>
           )}
-          <button className="file-editor-save" disabled={!dirty || saveState === "saving"} onClick={() => void save()}>{t("preview.editor.save")}</button>
+          <button className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>
         </div>
       </div>
     </div>
@@ -469,7 +566,7 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
     return () => { cancelled = true; };
   }, [filePath, remotePtyId]);
 
-  const isMarkdown = /\.md$/i.test(fileName);
+  const isMarkdown = /\.mdx?$/i.test(fileName);
   const textContent = result?.kind === "text"
     ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
     : "";

@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DirEntry, GrepResponse, ReadResult, SearchHit, WriteTextResult } from "@/modules/fs/fs-bridge";
 import { RemoteOperationCache, remoteOperationCacheKey } from "./remote-operation-cache.ts";
+import {
+  parseSshWriteOutcomeUnknown,
+  requireSshWriteReconcileFields,
+  type SshWriteOutcomeUnknown,
+} from "./ssh-write-reconcile.ts";
 
 /**
  * 远程 SFTP 文件操作。返回类型与本地 fs-bridge 完全一致，
@@ -29,6 +34,47 @@ export function sshWriteTextFile(
     content,
     expectedFingerprint,
   });
+}
+
+export function sshReconcileTextWrite(
+  id: number,
+  path: string,
+  attemptedFingerprint: string,
+  expectedMode: number,
+): Promise<WriteTextResult> {
+  requireSshWriteReconcileFields(attemptedFingerprint, expectedMode);
+  return invoke<WriteTextResult>("ssh_fs_reconcile_text_write", {
+    id,
+    path,
+    attemptedFingerprint,
+    expectedMode,
+  });
+}
+
+export interface SshWriteReconcileResult {
+  outcome: SshWriteOutcomeUnknown;
+  result: WriteTextResult;
+}
+
+/**
+ * One-step UI helper for a rejected save. It accepts the raw Tauri error,
+ * refuses non-canonical values before IPC, and preserves cleanupPending for
+ * honest recovery messaging after the backend has reconciled bytes + mode.
+ */
+export async function sshReconcileOutcomeUnknownTextWrite(
+  id: number,
+  path: string,
+  error: unknown,
+): Promise<SshWriteReconcileResult> {
+  const outcome = parseSshWriteOutcomeUnknown(error);
+  if (!outcome) throw new Error("invalid SSH outcomeUnknown token");
+  const result = await sshReconcileTextWrite(
+    id,
+    path,
+    outcome.attemptedFingerprint,
+    outcome.expectedMode,
+  );
+  return { outcome, result };
 }
 
 /** 解析远程 home 目录，作为文件面板初始路径。 */

@@ -1,0 +1,97 @@
+# Tunara Phase 2 阅读与编辑验收
+
+这是一份可重复使用的本地与 SSH 视觉夹具。它同时覆盖中文、English、emoji、长链接、重复标题、宽表格、代码块与 MDX 边界。
+
+[跳到重复标题](#重复标题-2) · [Tunara repository documentation](https://example.com/a/very/long/path/that/keeps/going/without/hiding/the-link-destination-or-breaking-the-reader-layout)
+
+## 快速开始
+
+用 `Cmd/Ctrl+F` 查找 **Tunara**，再用目录和页内链接移动焦点。编辑模式保存后，预览模式应保持相同内容。
+
+### 重复标题
+
+第一处重复标题。
+
+### 重复标题
+
+第二处重复标题，目录 id 应稳定且唯一。
+
+## 宽表格
+
+| 项目 | 状态 | 所有者 | 路径 | 模式 | 指纹 | 更新时间 | 备注一 | 备注二 | 备注三 | 备注四 | 备注五 | 备注六 | 备注七 | 备注八 | 备注九 | 备注十 | 数值 A | 数值 B | 最终结论 |
+| :--- | :---: | ---: | --- | :---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |
+| SSH safe write | 进行中 | Tunara | `/tmp/tunara-m2-visual/Phase 2 中文 长标题.mdx` | `0640` | `0123456789abcdef` | 2026-07-12 | 中文长单元格用于验证合理换行 | inline `a\|b` 不应拆列 | 外部修改冲突 | 重连对账 | 临时文件清理 | symlink 只读 | UTF-8 | 256 KiB 上限 | 键盘可达 | 局部横滚 | 123456.78 | 0.001 | 原文件不得被不确定结果破坏 |
+
+## TypeScript code
+
+```ts
+type SaveResult =
+  | { status: "saved"; fingerprint: string }
+  | { status: "conflict"; currentFingerprint: string };
+
+export const preserveOriginal = (result: SaveResult) => result.status !== "conflict";
+```
+
+## C++ 与长语言标签
+
+```c++ extra-info-that-must-not-overflow-the-reader-caption
+std::string marker = "TUNARA_PHASE2_VISUAL_OK";
+```
+
+## 无语言代码块
+
+~~~
+ssh de-netcup
+stat -c '%a' '/tmp/tunara-m2-visual/Phase 2 中文 长标题.mdx'
+~~~
+
+## MDX boundary
+
+import Demo from "./Demo";
+
+<Demo label="MDX is rendered as inert document text, never executed" />
+
+## Keyboard acceptance
+
+> Tab 可以进入目录、链接、表格与代码区域。Shift+Tab 可以原路返回，Escape 不应意外丢弃草稿。
+
+### Heading 01
+内容 01，Tunara。
+### Heading 02
+内容 02。
+### Heading 03
+内容 03。
+### Heading 04
+内容 04。
+### Heading 05
+内容 05。
+### Heading 06
+内容 06。
+### Heading 07
+内容 07。
+### Heading 08
+内容 08。
+### Heading 09
+内容 09。
+### Heading 10
+内容 10。
+### Heading 11
+内容 11。
+### Heading 12
+内容 12。
+### Heading 13
+内容 13。
+### Heading 14
+内容 14。
+### Heading 15
+内容 15。
+### Heading 16
+内容 16。
+### Heading 17
+内容 17。
+### Heading 18
+内容 18。
+### Heading 19
+内容 19。
+### Heading 20
+内容 20，结束。

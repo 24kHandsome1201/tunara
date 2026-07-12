@@ -846,12 +846,17 @@ mod tests {
     use super::{
         choose_remote_home, remote_sibling_temp_path, remote_write_lock, shell_quote,
         validate_download_target, validate_fingerprint, validate_remote_edit_path,
+        write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome, WriteRequest,
         REMOTE_WRITE_LOCKS,
     };
+    use crate::modules::pty::PtyEvent;
+    use crate::modules::ssh::auth::AuthOptions;
+    use crate::modules::ssh::connection::{ConnectParams, HostKeyPolicy, SshSession};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tauri::ipc::Channel;
 
     // The validator confines downloads under the *real* home dir, so test
     // fixtures must be created inside home (temp_dir() lives outside home on
@@ -863,6 +868,137 @@ mod tests {
             .as_nanos();
         let home = dirs::home_dir().expect("home dir in test env");
         home.join(format!(".tunara-sftp-test-{tag}-{unique}"))
+    }
+
+    #[tokio::test]
+    #[ignore = "requires TUNARA_SSH_SMOKE_HOST and an authorized SSH key"]
+    async fn real_ssh_safe_write_adapter_preserves_content_mode_and_conflicts() {
+        let host = std::env::var("TUNARA_SSH_SMOKE_HOST")
+            .expect("set TUNARA_SSH_SMOKE_HOST to an authorized test host");
+        let user = std::env::var("TUNARA_SSH_SMOKE_USER").unwrap_or_else(|_| "root".into());
+        let port = std::env::var("TUNARA_SSH_SMOKE_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(22);
+        let on_event = Channel::<PtyEvent>::new(|_| Ok(()));
+        let session = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            SshSession::open(
+                ConnectParams {
+                    host,
+                    port,
+                    auth: AuthOptions {
+                        user,
+                        identity_file: None,
+                        key_passphrase: None,
+                        password: None,
+                    },
+                    policy: HostKeyPolicy::AcceptUnknown,
+                    cols: 80,
+                    rows: 24,
+                    initial_cwd: None,
+                    inject_shell_integration: false,
+                    session_id: "m2-safe-write-live".into(),
+                },
+                on_event,
+            ),
+        )
+        .await
+        .expect("SSH open timeout")
+        .expect("SSH open");
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = format!("/tmp/tunara-m2-safe-write-{unique}");
+        let target = format!("{directory}/配置 file.md");
+        session
+            .exec(
+                &format!(
+                    "install -d -m 700 {} && printf 'before\\n' > {} && chmod 640 {}",
+                    shell_quote(&directory),
+                    shell_quote(&target),
+                    shell_quote(&target),
+                ),
+                16 * 1024,
+            )
+            .await
+            .expect("create isolated remote fixture");
+
+        let sftp = session.sftp().await.expect("open SFTP");
+        let adapter = SftpWriteAdapter {
+            sftp: &sftp,
+            ssh: &session,
+        };
+        let initial = adapter.read_regular(&target).await.expect("read initial");
+        assert_eq!(initial.bytes, b"before\n");
+        assert_eq!(initial.mode, 0o640);
+        let initial_fingerprint = super::content_fingerprint(&initial.bytes);
+        let temporary = format!("{directory}/.配置 file.md.tunara-live.tmp");
+        let lock = tokio::sync::Mutex::new(());
+        let saved = write_text_transaction(
+            &adapter,
+            &lock,
+            WriteRequest {
+                target: &target,
+                temporary: &temporary,
+                content: b"after\n",
+                expected_fingerprint: &initial_fingerprint,
+            },
+        )
+        .await
+        .expect("save transaction");
+        assert!(matches!(saved, TransactionOutcome::Saved { .. }));
+        let observed = adapter.read_regular(&target).await.expect("read saved");
+        assert_eq!(observed.bytes, b"after\n");
+        assert_eq!(observed.mode, 0o640);
+
+        session
+            .exec(
+                &format!(
+                    "printf 'other\\n' > {} && chmod 640 {}",
+                    shell_quote(&target),
+                    shell_quote(&target)
+                ),
+                16 * 1024,
+            )
+            .await
+            .expect("external same-size rewrite");
+        let conflict_temp = format!("{directory}/.配置 file.md.tunara-conflict.tmp");
+        let conflict = write_text_transaction(
+            &adapter,
+            &lock,
+            WriteRequest {
+                target: &target,
+                temporary: &conflict_temp,
+                content: b"draft\n",
+                expected_fingerprint: &super::content_fingerprint(b"after\n"),
+            },
+        )
+        .await
+        .expect("conflict transaction");
+        assert!(matches!(conflict, TransactionOutcome::Conflict { .. }));
+        let after_conflict = adapter
+            .read_regular(&target)
+            .await
+            .expect("read conflict target");
+        assert_eq!(after_conflict.bytes, b"other\n");
+        assert_eq!(after_conflict.mode, 0o640);
+
+        let residue = session
+            .exec(
+                &format!(
+                    "find {} -maxdepth 1 -name '*.tunara-*.tmp' -print; rm -rf -- {}",
+                    shell_quote(&directory),
+                    shell_quote(&directory),
+                ),
+                16 * 1024,
+            )
+            .await
+            .expect("inspect residue and clean fixture");
+        assert!(residue.trim().is_empty(), "temporary residue: {residue:?}");
+        session.close().expect("close SSH session");
     }
 
     #[test]

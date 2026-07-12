@@ -25,6 +25,7 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   const backend = read("src-tauri/src/modules/ssh/sftp.rs");
   const transaction = read("src-tauri/src/modules/ssh/safe_write.rs");
   const bridge = read("src/modules/ssh/remote-fs-bridge.ts");
+  const reconcile = read("src/modules/ssh/ssh-write-reconcile.ts");
   const runtime = read("src-tauri/src/lib.rs");
 
   assert.match(backend, /ssh_fs_write_text_file/);
@@ -51,4 +52,14 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(bridge, /invoke<WriteTextResult>\("ssh_fs_write_text_file"/);
   assert.match(runtime, /ssh::sftp::ssh_fs_write_text_file/);
   assert.match(runtime, /ssh::sftp::ssh_fs_reconcile_text_write/);
+  assert.match(bridge, /invoke<WriteTextResult>\("ssh_fs_reconcile_text_write"/);
+  assert.match(bridge, /parseSshWriteOutcomeUnknown\(error\)/);
+  assert.match(reconcile, /cleanupPending: boolean/);
+  assert.match(reconcile, /cleanupPending=\(true\|false\)/);
+  const editor = read("src/ui/FilePreview.tsx");
+  assert.match(editor, /parseSshWriteOutcomeUnknown\(error\)/);
+  assert.match(editor, /sshReconcileOutcomeUnknownTextWrite\(/);
+  assert.match(editor, /saveState === "unknown"/);
+  assert.match(editor, /unknownOutcome\?\.cleanupPending/);
+  assert.match(editor, /disabled=\{!dirty \|\| saveState === "saving" \|\| saveState === "reconciling" \|\| saveState === "unknown"\}/);
 });
