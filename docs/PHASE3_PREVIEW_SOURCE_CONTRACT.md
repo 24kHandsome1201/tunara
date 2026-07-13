@@ -123,6 +123,21 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 - 原生关闭后状态回 closed；同一来源重开回 ready，旧 Destroyed/timeout 不留下残留。
 - fixture 再次确认页面 app/plugin ACL 拒绝；原始 JSONL、应用日志与截图仅本机保留并由 `.gitignore` 排除。
 
+## 可信地址导航与原生历史切片
+
+本切片只在可信 `main` Inspector 控制面增加地址输入、Back 与 Forward；不可信 Preview 页面仍没有地址控制、应用命令或 plugin capability。用户可输入相对 path/query/fragment 或完整 URL，Rust command boundary 以当前 Preview URL 解析后，再与该来源最初批准的 scheme、host、effective port 做严格相等校验。空输入、非法 URL、凭据、跨 scheme/host/port、公网、外部协议均 fail closed；redirect、页面 history、popup 与 download 仍必须经过既有集中 navigation policy，不能扩大来源。
+
+`preview_status` 返回当前 Preview window 的真实 URL 与 macOS `WKWebView` 原生 `canGoBack / canGoForward`。Back/Forward 命令在 Rust 侧再次读取同一原生 back-forward list 后才执行，不接受 React 维护的历史索引。runtime entry 仍使用 repository/worktree/workspace/session/terminal/source URL 完整键，并由 window generation 约束 page-load、timeout 与 Destroyed；关闭重开创建新的 WKWebView，不继承旧窗口历史。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用完成来源 A → 同源 B → Back → Forward，地址与两个按钮状态分别回到真实当前项。
+- 相对地址和完整同源地址成立；跨端口 loopback 与公网完整 URL 在可信控制面明确拒绝，Preview 当前页不变。
+- 两个 linked worktree、不同 terminal generation 与端口的窗口同时存在；一端有 Back 历史时另一端仍无历史。
+- 服务停止后 Refresh 仍进入 failed，恢复后手动 Refresh 回 ready；失败期间 main 与 PTY 保持。
+- 带历史窗口原生关闭后回 closed；重开从批准来源 URL 开始，Back/Forward 均 disabled，无旧 generation 残留。
+- 既有精确 origin redirect、popup、download、ACL、stale、初始不可达与生命周期自动门继续回归。
+
 ## 后置项
 
-前进后退、地址栏、缩放、viewport、截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
+缩放、viewport、截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。

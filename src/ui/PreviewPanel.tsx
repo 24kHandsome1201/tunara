@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
-import { previewBlockReason, previewClose, previewOpen, previewRefresh, previewStatus } from "@/modules/preview/preview-window";
-import type { PreviewRuntimeStatus } from "@/modules/preview/preview-window";
+import { previewBlockReason, previewClose, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewStatus } from "@/modules/preview/preview-window";
+import type { PreviewRuntimeState, PreviewRuntimeStatus } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 
 function SourceCard({ source }: { source: PreviewSource }) {
   const t = useT();
   const blocked = previewBlockReason(source);
-  const [runtimeStatus, setRuntimeStatus] = useState<PreviewRuntimeStatus | null>(null);
+  const [runtimeState, setRuntimeState] = useState<PreviewRuntimeState | null>(null);
+  const [address, setAddress] = useState(source.sourceUrl);
+  const addressEditingRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const statusRequestRef = useRef(0);
@@ -23,7 +25,10 @@ function SourceCard({ source }: { source: PreviewSource }) {
       const sequence = ++statusRequestRef.current;
       try {
         const status = await previewStatus(source);
-        if (!cancelled && sequence === statusRequestRef.current) setRuntimeStatus(status);
+        if (!cancelled && sequence === statusRequestRef.current) {
+          setRuntimeState(status);
+          if (status && !addressEditingRef.current) setAddress(status.currentUrl);
+        }
       } catch {
         // A transient status read must not replace an actionable open/refresh error.
       } finally {
@@ -42,12 +47,15 @@ function SourceCard({ source }: { source: PreviewSource }) {
     setBusy(true);
     setError(undefined);
     statusRequestRef.current += 1;
-    if (pendingStatus) setRuntimeStatus(pendingStatus);
+    if (pendingStatus) setRuntimeState((current) => current ? { ...current, status: pendingStatus } : null);
     try {
       await action();
       const sequence = ++statusRequestRef.current;
       const status = await previewStatus(source);
-      if (sequence === statusRequestRef.current) setRuntimeStatus(status);
+      if (sequence === statusRequestRef.current) {
+        setRuntimeState(status);
+        if (status) setAddress(status.currentUrl);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -55,8 +63,9 @@ function SourceCard({ source }: { source: PreviewSource }) {
     }
   };
 
+  const runtimeStatus = runtimeState?.status ?? null;
   const displayStatus = source.state === "stale" ? "stale" : runtimeStatus ?? "closed";
-  const isOpen = runtimeStatus !== null;
+  const isOpen = runtimeState !== null;
 
   const row = (label: string, value: string) => (
     <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
@@ -73,6 +82,12 @@ function SourceCard({ source }: { source: PreviewSource }) {
           {t(`inspector.preview.status.${displayStatus}`)}
         </span>
       </div>
+      {isOpen && <form aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run(() => previewNavigate(source, address), "loading"); }} style={{ display: "flex", gap: 6 }}>
+        <button type="button" aria-label={t("inspector.preview.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoBack(source), "loading")}>←</button>
+        <button type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoForward(source), "loading")}>→</button>
+        <input aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: 1, fontFamily: "var(--font-mono)" }} />
+        <button type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
+      </form>}
       <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "var(--fs-meta)", color: "var(--c-text-3)", minWidth: 0 }}>
         {row(t("inspector.preview.repository"), source.repositoryId)}
         {row(t("inspector.preview.worktree"), source.worktreeId)}

@@ -1,0 +1,25 @@
+{
+  "date": "2026-07-13",
+  "platform": "macOS optimized Tauri isolated identifier",
+  "milestone": "trusted same-origin address navigation and native back-forward history",
+  "results": {
+    "a_to_b_to_back_to_forward": "passed",
+    "relative_and_full_same_origin_normalization": "passed",
+    "cross_origin_and_invalid_rejection": "passed",
+    "native_history_state": "passed",
+    "two_worktree_port_isolation": "passed",
+    "service_stop_recover": "passed",
+    "native_close_reopen_no_history_residue": "passed",
+    "pty_and_main_isolation": "passed",
+    "navigation_popup_download_acl_lifecycle_regression": "passed"
+  },
+  "automated": {
+    "node": "556 passed",
+    "ui": "13 passed",
+    "rust": "177 passed, 6 environment-gated ignored",
+    "preview_rust": "7 passed",
+    "typecheck_lint_clippy_build": "passed",
+    "optimized_macos_app": "passed"
+  },
+  "privacy": "raw JSONL, app logs and screenshots remain local and ignored"
+}

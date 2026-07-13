@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[cfg(target_os = "macos")]
+use std::sync::mpsc;
 use std::{
     collections::HashMap,
     net::{TcpStream, ToSocketAddrs},
@@ -44,6 +46,15 @@ pub enum PreviewRuntimeStatus {
     Loading,
     Ready,
     Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewRuntimeState {
+    status: PreviewRuntimeStatus,
+    current_url: String,
+    can_go_back: bool,
+    can_go_forward: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +109,82 @@ fn allowed_origin(url: &tauri::Url) -> Result<AllowedOrigin, String> {
 
 fn navigation_allowed(origin: &AllowedOrigin, target: &tauri::Url) -> bool {
     allowed_origin(target).is_ok_and(|candidate| candidate == *origin)
+}
+
+fn normalize_address(
+    source_url: &tauri::Url,
+    current_url: &tauri::Url,
+    address: &str,
+) -> Result<tauri::Url, String> {
+    let address = address.trim();
+    if address.is_empty() {
+        return Err("Preview address is empty".into());
+    }
+    let origin = allowed_origin(source_url)?;
+    let target = current_url
+        .join(address)
+        .map_err(|_| "Preview address is invalid".to_string())?;
+    if !navigation_allowed(&origin, &target) {
+        return Err("Preview address must keep the approved source origin".into());
+    }
+    Ok(target)
+}
+
+#[cfg(target_os = "macos")]
+fn native_history(window: &tauri::WebviewWindow) -> Result<(bool, bool), String> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    window
+        .with_webview(move |webview| unsafe {
+            let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+            let _ = sender.send((view.canGoBack(), view.canGoForward()));
+        })
+        .map_err(|error| error.to_string())?;
+    receiver
+        .recv_timeout(Duration::from_secs(1))
+        .map_err(|_| "Preview history query timed out".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_history(_window: &tauri::WebviewWindow) -> Result<(bool, bool), String> {
+    Ok((false, false))
+}
+
+#[cfg(target_os = "macos")]
+fn native_history_move(window: &tauri::WebviewWindow, back: bool) -> Result<(), String> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    window
+        .with_webview(move |webview| unsafe {
+            let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+            let allowed = if back {
+                view.canGoBack()
+            } else {
+                view.canGoForward()
+            };
+            if allowed {
+                if back {
+                    view.goBack();
+                } else {
+                    view.goForward();
+                }
+            }
+            let _ = sender.send(allowed);
+        })
+        .map_err(|error| error.to_string())?;
+    match receiver.recv_timeout(Duration::from_secs(1)) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(if back {
+            "Preview has no back history"
+        } else {
+            "Preview has no forward history"
+        }
+        .into()),
+        Err(_) => Err("Preview history action timed out".into()),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_history_move(_window: &tauri::WebviewWindow, _back: bool) -> Result<(), String> {
+    Err("Native Preview history is unavailable on this platform".into())
 }
 
 fn source_reachable(url: &tauri::Url) -> bool {
@@ -420,15 +507,99 @@ pub fn preview_refresh(app: AppHandle, source: PreviewSource) -> Result<(), Stri
 pub fn preview_status(
     app: AppHandle,
     source: PreviewSource,
-) -> Result<Option<PreviewRuntimeStatus>, String> {
+) -> Result<Option<PreviewRuntimeState>, String> {
     validate_source_identity(&source)?;
     let label = source_label(&source);
     let state = app.state::<PreviewWindowState>();
-    let entries = state
+    let status = {
+        let entries = state
+            .entries
+            .lock()
+            .map_err(|_| "Preview state lock poisoned".to_string())?;
+        entries.get(&label).map(|entry| entry.status)
+    };
+    let Some(status) = status else {
+        return Ok(None);
+    };
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "Preview window is unavailable".to_string())?;
+    let current_url = window.url().map_err(|error| error.to_string())?;
+    let (can_go_back, can_go_forward) = native_history(&window)?;
+    Ok(Some(PreviewRuntimeState {
+        status,
+        current_url: current_url.to_string(),
+        can_go_back,
+        can_go_forward,
+    }))
+}
+
+fn begin_history_load(app: &AppHandle, label: &str) -> Result<u64, String> {
+    let state = app.state::<PreviewWindowState>();
+    let mut entries = state
         .entries
         .lock()
         .map_err(|_| "Preview state lock poisoned".to_string())?;
-    Ok(entries.get(&label).map(|entry| entry.status))
+    let entry = entries
+        .get_mut(label)
+        .ok_or_else(|| "Preview source is not open".to_string())?;
+    if entry.status != PreviewRuntimeStatus::Ready {
+        return Err("Preview is not ready for navigation".into());
+    }
+    entry.status = PreviewRuntimeStatus::Loading;
+    Ok(entry.window_generation)
+}
+
+fn fail_history_load(app: &AppHandle, label: &str, generation: u64) {
+    if let Ok(mut entries) = app.state::<PreviewWindowState>().entries.lock() {
+        if let Some(entry) = entries.get_mut(label) {
+            if entry.window_generation == generation {
+                entry.status = PreviewRuntimeStatus::Failed;
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub fn preview_navigate(
+    app: AppHandle,
+    source: PreviewSource,
+    address: String,
+) -> Result<(), String> {
+    let (source_url, _) = validate_source(&source)?;
+    let label = source_label(&source);
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "Preview window is unavailable".to_string())?;
+    let current_url = window.url().map_err(|error| error.to_string())?;
+    let target = normalize_address(&source_url, &current_url, &address)?;
+    let generation = begin_history_load(&app, &label)?;
+    window.navigate(target).map_err(|error| {
+        fail_history_load(&app, &label, generation);
+        error.to_string()
+    })
+}
+
+fn preview_history_move(app: AppHandle, source: PreviewSource, back: bool) -> Result<(), String> {
+    validate_source(&source)?;
+    let label = source_label(&source);
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "Preview window is unavailable".to_string())?;
+    let generation = begin_history_load(&app, &label)?;
+    native_history_move(&window, back).inspect_err(|_| {
+        fail_history_load(&app, &label, generation);
+    })
+}
+
+#[tauri::command]
+pub fn preview_go_back(app: AppHandle, source: PreviewSource) -> Result<(), String> {
+    preview_history_move(app, source, true)
+}
+
+#[tauri::command]
+pub fn preview_go_forward(app: AppHandle, source: PreviewSource) -> Result<(), String> {
+    preview_history_move(app, source, false)
 }
 
 #[tauri::command]
@@ -530,5 +701,56 @@ mod tests {
             .parse::<tauri::Url>()
             .unwrap();
         assert!(source_reachable(&url));
+    }
+
+    #[test]
+    fn normalizes_relative_and_full_same_origin_addresses() {
+        let source: tauri::Url = "http://127.0.0.1:4173/app/start?old=1".parse().unwrap();
+        let current: tauri::Url = "http://127.0.0.1:4173/app/a".parse().unwrap();
+        assert_eq!(
+            normalize_address(&source, &current, "../b?q=1#two")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:4173/b?q=1#two"
+        );
+        assert_eq!(
+            normalize_address(&source, &current, "http://127.0.0.1:4173/full")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:4173/full"
+        );
+        assert_eq!(
+            normalize_address(&source, &current, "?next=1")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:4173/app/a?next=1"
+        );
+        assert_eq!(
+            normalize_address(&source, &current, "#section")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:4173/app/a#section"
+        );
+    }
+
+    #[test]
+    fn address_navigation_rejects_every_origin_escape() {
+        let source: tauri::Url = "http://localhost:4173/".parse().unwrap();
+        for address in [
+            "https://localhost:4173/",
+            "http://127.0.0.1:4173/",
+            "http://localhost:4174/",
+            "https://example.com/",
+            "http://user:pass@localhost:4173/",
+            "file:///tmp/secret",
+            "javascript:alert(1)",
+            "//example.com/path",
+        ] {
+            assert!(
+                normalize_address(&source, &source, address).is_err(),
+                "accepted {address}"
+            );
+        }
+        assert!(normalize_address(&source, &source, "   ").is_err());
     }
 }

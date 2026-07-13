@@ -117,6 +117,9 @@ pub fn run() {
             modules::preview::preview_open,
             modules::preview::preview_refresh,
             modules::preview::preview_status,
+            modules::preview::preview_navigate,
+            modules::preview::preview_go_back,
+            modules::preview::preview_go_forward,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,

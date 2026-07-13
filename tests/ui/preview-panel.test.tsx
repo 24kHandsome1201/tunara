@@ -40,7 +40,7 @@ test("renders the full source identity and opens only an eligible source", async
     calls.push({ command, payload });
     if (command === "preview_open") return "preview-test";
     if (command === "preview_status") {
-      return calls.some((call) => call.command === "preview_open") ? "ready" : null;
+      return calls.some((call) => call.command === "preview_open") ? { status: "ready", currentUrl: eligible.sourceUrl, canGoBack: false, canGoForward: false } : null;
     }
     throw new Error(`unexpected command: ${command}`);
   });
@@ -74,7 +74,7 @@ test("keeps SSH, stale, and fallback sources visibly blocked", () => {
 
 test("shows a failed load with manual recovery and does not pretend it is ready", async () => {
   mockIPC((command) => {
-    if (command === "preview_status") return "failed";
+    if (command === "preview_status") return { status: "failed", currentUrl: source().sourceUrl, canGoBack: false, canGoForward: false };
     if (command === "preview_refresh") return undefined;
     throw new Error(`unexpected command: ${command}`);
   });
@@ -88,11 +88,34 @@ test("shows a failed load with manual recovery and does not pretend it is ready"
 });
 
 test("terminal exit keeps close available but blocks refresh and a new internal Preview", async () => {
-  mockIPC((command) => command === "preview_status" ? "ready" : undefined);
+  mockIPC((command) => command === "preview_status" ? { status: "ready", currentUrl: source().sourceUrl, canGoBack: false, canGoForward: false } : undefined);
   render(<PreviewPanel session={session([source({ state: "stale", staleReason: "terminal-exited" })])} />);
 
   expect(await screen.findByText("Source stale / terminal exited")).toBeTruthy();
   expect((screen.getByRole("button", { name: "Focus Preview" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Refresh" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test("uses Rust-reported history state and submits addresses through the trusted control plane", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source();
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return { status: "ready", currentUrl: "http://127.0.0.1:41731/a", canGoBack: true, canGoForward: false };
+    if (["preview_go_back", "preview_navigate"].includes(command)) return undefined;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  const back = await screen.findByRole("button", { name: "Back" }) as HTMLButtonElement;
+  expect(back.disabled).toBe(false);
+  expect((screen.getByRole("button", { name: "Forward" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(back);
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_go_back", payload: { source: eligible } }));
+
+  const address = screen.getByRole("textbox", { name: "Preview address" });
+  fireEvent.change(address, { target: { value: "/b?q=1#two" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Trusted Preview navigation" }));
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_navigate", payload: { source: eligible, address: "/b?q=1#two" } }));
 });
