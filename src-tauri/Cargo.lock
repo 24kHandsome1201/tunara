@@ -6420,6 +6420,7 @@ version = "1.14.0"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
+ "getrandom 0.3.4",
  "git2",
  "globset",
  "grep-matcher",

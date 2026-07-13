@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     net::{TcpStream, ToSocketAddrs},
     sync::Mutex,
     thread,
@@ -19,6 +19,10 @@ const LOOPBACK_CONNECT_TIMEOUT: Duration = Duration::from_millis(350);
 const DEFAULT_VIEWPORT: (u32, u32) = (980, 720);
 const VIEWPORT_PRESETS: [(u32, u32); 3] = [(390, 844), (768, 1024), (1280, 720)];
 const ZOOM_PRESETS: [f64; 6] = [0.75, 0.9, 1.0, 1.1, 1.25, 1.5];
+const TELEMETRY_MAX_EVENTS: usize = 32;
+const TELEMETRY_MAX_TEXT: usize = 512;
+const TELEMETRY_RATE_WINDOW: Duration = Duration::from_secs(10);
+const TELEMETRY_MAX_PER_WINDOW: u32 = 40;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +32,7 @@ pub struct PreviewSource {
     workspace_id: String,
     session_id: String,
     terminal_id: String,
+    physical_pty_id: Option<u32>,
     source_url: String,
     transport: String,
     workspace_resolution: String,
@@ -60,6 +65,42 @@ pub struct PreviewRuntimeState {
     can_go_forward: bool,
     zoom_factor: f64,
     viewport: PreviewViewportState,
+    telemetry: PreviewTelemetrySummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewTelemetrySummary {
+    generation: u64,
+    events: Vec<PreviewTelemetrySummaryEvent>,
+    dropped: u32,
+    text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewTelemetrySummaryEvent {
+    kind: String,
+    message: String,
+    count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreviewTelemetryInput {
+    kind: String,
+    message: Option<String>,
+    url: Option<String>,
+    method: Option<String>,
+    status: Option<u16>,
+    phase: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PreviewTelemetryEvent {
+    kind: String,
+    message: String,
+    count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -84,6 +125,11 @@ struct PreviewRuntimeEntry {
     loading_url: Option<String>,
     viewport_mode: String,
     requested_viewport: (u32, u32),
+    telemetry_nonce: String,
+    telemetry: VecDeque<PreviewTelemetryEvent>,
+    telemetry_rate_started: Instant,
+    telemetry_rate_count: u32,
+    telemetry_dropped: u32,
 }
 
 #[derive(Default)]
@@ -377,6 +423,372 @@ fn validate_source_identity(source: &PreviewSource) -> Result<(), String> {
     Ok(())
 }
 
+fn safe_source_url(raw: &str) -> String {
+    let Ok(mut url) = raw.parse::<tauri::Url>() else {
+        return "<invalid-url>".into();
+    };
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    url.set_fragment(None);
+    url.to_string()
+}
+
+fn sanitize_text(raw: &str) -> String {
+    let mut value = raw
+        .chars()
+        .filter(|ch| !ch.is_control() || matches!(ch, ' ' | '\t' | '\n' | '\r'))
+        .collect::<String>()
+        .replace(['\r', '\n', '\t'], " ");
+    for marker in [
+        "authorization",
+        "cookie",
+        "set-cookie",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "username",
+        "user",
+    ] {
+        let mut search_from = 0;
+        loop {
+            let lower = value.to_ascii_lowercase();
+            let Some(relative) = lower[search_from..].find(marker) else {
+                break;
+            };
+            let start = search_from + relative;
+            let tail = &value[start + marker.len()..];
+            let Some(separator) = tail.find([':', '=']) else {
+                search_from = start + marker.len();
+                continue;
+            };
+            if separator > 3 {
+                search_from = start + marker.len();
+                continue;
+            }
+            let secret_start = start + marker.len() + separator + 1;
+            let secret_end = value[secret_start..]
+                .find(|ch: char| ch.is_whitespace() || matches!(ch, ',' | ';' | ')' | ']' | '}'))
+                .map_or(value.len(), |offset| secret_start + offset);
+            value.replace_range(secret_start..secret_end, "<redacted>");
+            search_from = secret_start + "<redacted>".len();
+        }
+    }
+    value = value
+        .split_whitespace()
+        .map(|token| {
+            if token.starts_with("http://") || token.starts_with("https://") {
+                safe_source_url(token)
+            } else if token.starts_with("/Users/")
+                || token.starts_with("/home/")
+                || token.starts_with("/root/")
+                || (token.len() > 3
+                    && token.as_bytes()[1] == b':'
+                    && matches!(token.as_bytes()[2], b'\\' | b'/'))
+            {
+                "<path>".into()
+            } else if token.len() >= 32
+                && token.chars().all(|ch| {
+                    ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | '+')
+                })
+            {
+                "<redacted>".into()
+            } else {
+                token.into()
+            }
+        })
+        .collect::<Vec<String>>()
+        .join(" ");
+    value.chars().take(TELEMETRY_MAX_TEXT).collect()
+}
+
+fn contains_base64_blob(raw: &str) -> bool {
+    raw.split_whitespace().any(|token| {
+        let token = token.trim_matches(|ch: char| matches!(ch, ',' | ';' | ':' | ')' | ']' | '}'));
+        token.len() >= 64
+            && token.len() % 4 == 0
+            && token
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '/' | '='))
+    })
+}
+
+fn sanitize_event_url(raw: &str, source: &PreviewSource) -> String {
+    let Ok(url) = raw.parse::<tauri::Url>() else {
+        return "<invalid-url>".into();
+    };
+    let Ok(source_url) = source.source_url.parse::<tauri::Url>() else {
+        return "<invalid-url>".into();
+    };
+    let path = sanitize_text(url.path());
+    if allowed_origin(&url).ok() == allowed_origin(&source_url).ok() {
+        if path.is_empty() {
+            "/".into()
+        } else {
+            path
+        }
+    } else {
+        "<external>".into()
+    }
+}
+
+fn normalize_telemetry_event(
+    input: PreviewTelemetryInput,
+    source: &PreviewSource,
+) -> Result<PreviewTelemetryEvent, String> {
+    let message = input.message.as_deref().unwrap_or("");
+    if input.kind.len() > 32
+        || input
+            .method
+            .as_ref()
+            .is_some_and(|method| method.len() > 16)
+        || input.phase.as_ref().is_some_and(|phase| phase.len() > 16)
+        || message.len() > TELEMETRY_MAX_TEXT * 2
+        || input
+            .url
+            .as_ref()
+            .is_some_and(|url| url.len() > TELEMETRY_MAX_TEXT * 2)
+    {
+        return Err("Preview telemetry field is too large".into());
+    }
+    let normalized = match input.kind.as_str() {
+        "console-error" | "unhandled-error" => {
+            if input.url.is_some()
+                || input.method.is_some()
+                || input.status.is_some()
+                || input.phase.is_some()
+            {
+                return Err("Preview error telemetry has unexpected fields".into());
+            }
+            let message = sanitize_text(message);
+            if message.is_empty() {
+                return Err("Preview error telemetry message is empty".into());
+            }
+            if contains_base64_blob(&message) {
+                return Err("Preview error telemetry contains an encoded blob".into());
+            }
+            PreviewTelemetryEvent {
+                kind: input.kind,
+                message,
+                count: 1,
+            }
+        }
+        "network-failure" => {
+            if input.message.is_some()
+                || input.url.as_deref().is_none_or(str::is_empty)
+                || input.method.as_deref().is_none_or(str::is_empty)
+                || input.phase.as_deref().is_none_or(str::is_empty)
+            {
+                return Err("Preview network telemetry schema is incomplete".into());
+            }
+            let method = input
+                .method
+                .as_deref()
+                .expect("network method was checked")
+                .to_ascii_uppercase();
+            if !matches!(
+                method.as_str(),
+                "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS"
+            ) {
+                return Err("Preview telemetry method is not allowed".into());
+            }
+            let phase = input.phase.as_deref().expect("network phase was checked");
+            if !matches!(phase, "fetch" | "xhr" | "resource" | "request") {
+                return Err("Preview telemetry phase is not allowed".into());
+            }
+            if input
+                .status
+                .is_some_and(|status| !(300..=599).contains(&status))
+            {
+                return Err("Preview telemetry status is not a failure status".into());
+            }
+            let url = sanitize_event_url(
+                input.url.as_deref().expect("network URL was checked"),
+                source,
+            );
+            let outcome = input
+                .status
+                .map_or_else(|| "failed".into(), |status| format!("HTTP {status}"));
+            PreviewTelemetryEvent {
+                kind: input.kind,
+                message: format!("{method} {url} · {outcome} · {phase}"),
+                count: 1,
+            }
+        }
+        _ => return Err("Preview telemetry kind is not allowed".into()),
+    };
+    Ok(normalized)
+}
+
+fn telemetry_nonce() -> Result<String, String> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes).map_err(|_| "Preview telemetry nonce unavailable".to_string())?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn telemetry_script(nonce: &str) -> String {
+    let nonce = serde_json::to_string(nonce).expect("nonce is JSON-safe");
+    format!(
+        r#"(() => {{
+  'use strict';
+  const invoke = (command, args) => {{
+    const internals = window.__TAURI_INTERNALS__;
+    if (!internals || typeof internals.invoke !== 'function') return Promise.reject(new Error('invoke unavailable'));
+    return internals.invoke(command, args);
+  }};
+  const nonce = {nonce};
+  let started = Date.now(), sent = 0;
+  const submit = (event) => {{
+    const now = Date.now();
+    if (now - started >= 1000) {{ started = now; sent = 0; }}
+    if (sent >= 12) return;
+    sent += 1;
+    try {{ void invoke('preview_telemetry_ingest', {{ event, nonce }}).catch(() => {{}}); }} catch (_) {{}}
+  }};
+  const text = (value) => {{
+    try {{
+      if (value instanceof Error) return String(value.name || 'Error') + ': ' + String(value.message || '');
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+      return '<non-text value>';
+    }} catch (_) {{ return '<unavailable>'; }}
+  }};
+  const originalError = console.error.bind(console);
+  console.error = (...args) => {{
+    submit({{ kind: 'console-error', message: args.slice(0, 4).map(text).join(' ') }});
+    return originalError(...args);
+  }};
+  addEventListener('error', (event) => {{
+    const target = event.target;
+    if (target && target !== window && (target.src || target.href)) {{
+      submit({{ kind: 'network-failure', url: String(target.src || target.href), method: 'GET', phase: 'resource' }});
+    }} else {{
+      submit({{ kind: 'unhandled-error', message: text(event.error || event.message || 'Unhandled error') }});
+    }}
+  }}, true);
+  addEventListener('unhandledrejection', (event) => submit({{ kind: 'unhandled-error', message: text(event.reason || 'Unhandled rejection') }}));
+  if (typeof fetch === 'function') {{
+    const originalFetch = fetch.bind(window);
+    window.fetch = async (...args) => {{
+      const request = args[0], init = args[1];
+      const rawUrl = request && request.url ? request.url : String(request);
+      let url;
+      try {{ url = new URL(rawUrl, location.href).href; }} catch (_) {{ url = rawUrl; }}
+      const method = String((init && init.method) || (request && request.method) || 'GET');
+      try {{
+        const response = await originalFetch(...args);
+        if (!response.ok) submit({{ kind: 'network-failure', url, method, status: response.status, phase: 'fetch' }});
+        return response;
+      }} catch (error) {{ submit({{ kind: 'network-failure', url, method, phase: 'fetch' }}); throw error; }}
+    }};
+  }}
+  if (typeof XMLHttpRequest === 'function') {{
+    const open = XMLHttpRequest.prototype.open;
+    const send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {{ this.__tunaraTelemetry = {{ method: String(method), url: String(url) }}; return open.call(this, method, url, ...rest); }};
+    XMLHttpRequest.prototype.send = function(...args) {{
+      const meta = this.__tunaraTelemetry || {{ method: 'GET', url: '' }};
+      const report = () => {{ if (!this.status || this.status >= 400) submit({{ kind: 'network-failure', url: meta.url, method: meta.method, status: this.status || undefined, phase: 'xhr' }}); }};
+      this.addEventListener('loadend', report, {{ once: true }});
+      return send.apply(this, args);
+    }};
+  }}
+}})();"#
+    )
+}
+
+fn telemetry_summary(entry: &PreviewRuntimeEntry) -> PreviewTelemetrySummary {
+    let events = entry
+        .telemetry
+        .iter()
+        .map(|event| PreviewTelemetrySummaryEvent {
+            kind: event.kind.clone(),
+            message: event.message.clone(),
+            count: event.count,
+        })
+        .collect::<Vec<_>>();
+    let mut lines = vec![format!(
+        "Preview failures (generation {})",
+        entry.window_generation
+    )];
+    for event in &events {
+        let count = if event.count > 1 {
+            format!(" ×{}", event.count)
+        } else {
+            String::new()
+        };
+        lines.push(format!("[{}] {}{}", event.kind, event.message, count));
+    }
+    if entry.telemetry_dropped > 0 {
+        lines.push(format!(
+            "[bounded] {} event(s) dropped",
+            entry.telemetry_dropped
+        ));
+    }
+    PreviewTelemetrySummary {
+        generation: entry.window_generation,
+        events,
+        dropped: entry.telemetry_dropped,
+        text: lines.join("\n"),
+    }
+}
+
+fn telemetry_send_text(entry: &PreviewRuntimeEntry) -> String {
+    telemetry_summary(entry).text.replace(['\r', '\n'], " | ")
+}
+
+fn record_telemetry(
+    entry: &mut PreviewRuntimeEntry,
+    event: PreviewTelemetryInput,
+) -> Result<(), String> {
+    if entry.telemetry_rate_started.elapsed() >= TELEMETRY_RATE_WINDOW {
+        entry.telemetry_rate_started = Instant::now();
+        entry.telemetry_rate_count = 0;
+    }
+    if entry.telemetry_rate_count >= TELEMETRY_MAX_PER_WINDOW {
+        entry.telemetry_dropped = entry.telemetry_dropped.saturating_add(1);
+        return Ok(());
+    }
+    entry.telemetry_rate_count += 1;
+    let normalized = normalize_telemetry_event(event, &entry.source)?;
+    if let Some(existing) = entry.telemetry.iter_mut().find(|candidate| {
+        candidate.kind == normalized.kind && candidate.message == normalized.message
+    }) {
+        existing.count = existing.count.saturating_add(1);
+        return Ok(());
+    }
+    if entry.telemetry.len() == TELEMETRY_MAX_EVENTS {
+        entry.telemetry.pop_front();
+        entry.telemetry_dropped = entry.telemetry_dropped.saturating_add(1);
+    }
+    entry.telemetry.push_back(normalized);
+    Ok(())
+}
+
+fn validate_telemetry_caller(
+    label: &str,
+    nonce: &str,
+    current_url: &tauri::Url,
+    entry: &PreviewRuntimeEntry,
+) -> Result<(), String> {
+    let source_url = entry
+        .source
+        .source_url
+        .parse::<tauri::Url>()
+        .map_err(|_| "Preview source URL is invalid".to_string())?;
+    if !label.starts_with("preview-")
+        || source_label(&entry.source) != label
+        || nonce.len() != 64
+        || entry.telemetry_nonce != nonce
+        || !navigation_allowed(&allowed_origin(&source_url)?, current_url)
+    {
+        return Err("Preview telemetry source or generation changed".into());
+    }
+    Ok(())
+}
+
 fn source_label(source: &PreviewSource) -> String {
     let mut hasher = Sha256::new();
     for value in [
@@ -390,6 +802,7 @@ fn source_label(source: &PreviewSource) -> String {
         hasher.update(value.as_bytes());
         hasher.update([0]);
     }
+    hasher.update(source.physical_pty_id.unwrap_or_default().to_le_bytes());
     format!("preview-{:x}", hasher.finalize())[..32].to_string()
 }
 
@@ -410,9 +823,11 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
         source.worktree_id,
         source.session_id,
         source.terminal_id,
-        source.source_url
+        safe_source_url(&source.source_url)
     );
     let window_generation = app.state::<PreviewWindowState>().next_generation()?;
+    let nonce = telemetry_nonce()?;
+    let telemetry_script = telemetry_script(&nonce);
     app.state::<PreviewWindowState>()
         .entries
         .lock()
@@ -427,6 +842,11 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
                 loading_url: None,
                 viewport_mode: "reset".into(),
                 requested_viewport: DEFAULT_VIEWPORT,
+                telemetry_nonce: nonce,
+                telemetry: VecDeque::with_capacity(TELEMETRY_MAX_EVENTS),
+                telemetry_rate_started: Instant::now(),
+                telemetry_rate_count: 0,
+                telemetry_dropped: 0,
             },
         );
     let app_for_open_timeout = app.clone();
@@ -459,7 +879,7 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
             }
             false
         })
-        .on_page_load(move |_, payload| match payload.event() {
+        .on_page_load(move |webview, payload| match payload.event() {
             PageLoadEvent::Started => {
                 let attempt = {
                     let state = app_for_load.state::<PreviewWindowState>();
@@ -498,6 +918,9 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
                 });
             }
             PageLoadEvent::Finished => {
+                if let Err(error) = webview.eval(&telemetry_script) {
+                    log::warn!("Preview failure telemetry injection failed: {error}");
+                }
                 let state = app_for_load.state::<PreviewWindowState>();
                 if let Ok(mut entries) = state.entries.lock() {
                     if let Some(entry) = entries.get_mut(&label_for_load) {
@@ -658,10 +1081,11 @@ pub fn preview_status(
                 entry.status,
                 entry.viewport_mode.clone(),
                 entry.requested_viewport,
+                telemetry_summary(entry),
             )
         })
     };
-    let Some((status, viewport_mode, requested_viewport)) = status else {
+    let Some((status, viewport_mode, requested_viewport, telemetry)) = status else {
         return Ok(None);
     };
     let window = app
@@ -691,6 +1115,7 @@ pub fn preview_status(
             outer_height: (outer.height as f64 / scale).round() as u32,
             exact: (actual_width, actual_height) == requested_viewport,
         },
+        telemetry,
     }))
 }
 
@@ -892,6 +1317,84 @@ pub fn preview_go_forward(app: AppHandle, source: PreviewSource) -> Result<(), S
 }
 
 #[tauri::command]
+pub fn preview_telemetry_ingest(
+    webview: tauri::WebviewWindow,
+    event: PreviewTelemetryInput,
+    nonce: String,
+    state: tauri::State<PreviewWindowState>,
+) -> Result<(), String> {
+    let label = webview.label();
+    let current_url = webview.url().map_err(|error| error.to_string())?;
+    let mut entries = state
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?;
+    let entry = entries
+        .get_mut(label)
+        .ok_or_else(|| "Preview telemetry source is closed".to_string())?;
+    validate_telemetry_caller(label, &nonce, &current_url, entry)?;
+    record_telemetry(entry, event)
+}
+
+#[tauri::command]
+pub fn preview_telemetry_clear(
+    source: PreviewSource,
+    state: tauri::State<PreviewWindowState>,
+) -> Result<(), String> {
+    validate_source(&source)?;
+    let label = source_label(&source);
+    let mut entries = state
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?;
+    let entry = entries
+        .get_mut(&label)
+        .ok_or_else(|| "Preview source is not open".to_string())?;
+    if source_label(&entry.source) != label {
+        return Err("Preview source identity changed".into());
+    }
+    entry.telemetry.clear();
+    entry.telemetry_dropped = 0;
+    entry.telemetry_rate_started = Instant::now();
+    entry.telemetry_rate_count = 0;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn preview_telemetry_send(
+    source: PreviewSource,
+    preview_state: tauri::State<PreviewWindowState>,
+    pty_state: tauri::State<crate::modules::pty::PtyState>,
+) -> Result<(), String> {
+    validate_source(&source)?;
+    let physical_pty_id = source
+        .physical_pty_id
+        .ok_or_else(|| "Preview source has no physical PTY".to_string())?;
+    let label = source_label(&source);
+    let entries = preview_state
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?;
+    let entry = entries
+        .get(&label)
+        .ok_or_else(|| "Preview source is not open".to_string())?;
+    if source_label(&entry.source) != label
+        || entry.source.physical_pty_id != Some(physical_pty_id)
+        || entry.telemetry.is_empty()
+    {
+        return Err("Preview telemetry has no active matching PTY source".into());
+    }
+    let summary = telemetry_send_text(entry);
+    if summary.contains(['\r', '\n']) {
+        return Err("Preview telemetry send must not contain an execute character".into());
+    }
+    let session = pty_state
+        .get(physical_pty_id)
+        .ok_or_else(|| "Preview source PTY has exited".to_string())?;
+    session.write(summary.as_bytes())
+}
+
+#[tauri::command]
 pub fn preview_close(app: AppHandle, source: PreviewSource) -> Result<(), String> {
     validate_source_identity(&source)?;
     let label = source_label(&source);
@@ -917,11 +1420,29 @@ mod tests {
             workspace_id: "repo-a::worktree-a".into(),
             session_id: "session-a".into(),
             terminal_id: "session-a:0".into(),
+            physical_pty_id: Some(7),
             source_url: url.into(),
             transport: "local".into(),
             workspace_resolution: "resolved".into(),
             permission: "eligible".into(),
             state: "active".into(),
+        }
+    }
+
+    fn runtime_entry(url: &str) -> PreviewRuntimeEntry {
+        PreviewRuntimeEntry {
+            source: source(url),
+            status: PreviewRuntimeStatus::Ready,
+            window_generation: 9,
+            load_attempt: 1,
+            loading_url: None,
+            viewport_mode: "reset".into(),
+            requested_viewport: DEFAULT_VIEWPORT,
+            telemetry_nonce: "a".repeat(64),
+            telemetry: VecDeque::new(),
+            telemetry_rate_started: Instant::now(),
+            telemetry_rate_count: 0,
+            telemetry_dropped: 0,
         }
     }
 
@@ -1061,5 +1582,200 @@ mod tests {
         for (width, height) in [(0, 0), (390, 843), (980, 720), (9999, 9999)] {
             assert!(validate_viewport(width, height).is_err());
         }
+    }
+
+    #[test]
+    fn telemetry_schema_accepts_only_failure_allowlist_and_size_budget() {
+        let console: PreviewTelemetryInput = serde_json::from_value(serde_json::json!({
+            "kind": "console-error", "message": "render failed"
+        }))
+        .unwrap();
+        assert_eq!(
+            normalize_telemetry_event(console, &source("http://localhost:4173/"))
+                .unwrap()
+                .kind,
+            "console-error"
+        );
+        let unhandled: PreviewTelemetryInput = serde_json::from_value(serde_json::json!({
+            "kind": "unhandled-error", "message": "rejected"
+        }))
+        .unwrap();
+        assert!(normalize_telemetry_event(unhandled, &source("http://localhost:4173/")).is_ok());
+        let network: PreviewTelemetryInput = serde_json::from_value(serde_json::json!({
+            "kind": "network-failure", "url": "http://localhost:4173/api?q=secret#fragment", "method": "GET", "status": 503, "phase": "fetch"
+        }))
+        .unwrap();
+        assert_eq!(
+            normalize_telemetry_event(network, &source("http://localhost:4173/"))
+                .unwrap()
+                .message,
+            "GET /api · HTTP 503 · fetch"
+        );
+        assert!(
+            serde_json::from_value::<PreviewTelemetryInput>(serde_json::json!({
+                "kind": "console-error", "message": "x", "body": "forbidden"
+            }))
+            .is_err()
+        );
+        let oversized: PreviewTelemetryInput = serde_json::from_value(serde_json::json!({
+            "kind": "console-error", "message": "x".repeat(TELEMETRY_MAX_TEXT * 2 + 1)
+        }))
+        .unwrap();
+        assert!(normalize_telemetry_event(oversized, &source("http://localhost:4173/")).is_err());
+        let encoded: PreviewTelemetryInput = serde_json::from_value(serde_json::json!({
+            "kind": "console-error", "message": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWg=="
+        }))
+        .unwrap();
+        assert!(normalize_telemetry_event(encoded, &source("http://localhost:4173/")).is_err());
+        for invalid in [
+            serde_json::json!({"kind": "network-failure", "url": "http://localhost:4173/a", "method": "GET"}),
+            serde_json::json!({"kind": "network-failure", "url": "http://localhost:4173/a", "method": "GET", "phase": "fetch", "status": 200}),
+            serde_json::json!({"kind": "network-failure", "message": "extra", "url": "http://localhost:4173/a", "method": "GET", "phase": "fetch"}),
+        ] {
+            let input: PreviewTelemetryInput = serde_json::from_value(invalid).unwrap();
+            assert!(normalize_telemetry_event(input, &source("http://localhost:4173/")).is_err());
+        }
+    }
+
+    #[test]
+    fn telemetry_redacts_credentials_queries_fragments_paths_and_secrets() {
+        let sanitized = sanitize_text(
+            "Authorization: Bearer_abcdefghijklmnopqrstuvwxyz012345 username=person /Users/person/project https://user:pass@example.test/a?token=secret#private token=abcdef1234567890abcdef1234567890",
+        );
+        for forbidden in [
+            "person",
+            "user:pass",
+            "token=secret",
+            "#private",
+            "abcdef1234567890",
+        ] {
+            assert!(
+                !sanitized.contains(forbidden),
+                "leaked {forbidden}: {sanitized}"
+            );
+        }
+        assert!(sanitized.contains("<path>"));
+        assert_eq!(
+            safe_source_url("http://user:pass@localhost:4173/a?q=secret#private"),
+            "http://localhost:4173/a"
+        );
+    }
+
+    #[test]
+    fn telemetry_deduplicates_and_uses_a_bounded_ring_and_rate_window() {
+        let mut entry = runtime_entry("http://localhost:4173/");
+        for _ in 0..3 {
+            record_telemetry(
+                &mut entry,
+                PreviewTelemetryInput {
+                    kind: "console-error".into(),
+                    message: Some("same".into()),
+                    url: None,
+                    method: None,
+                    status: None,
+                    phase: None,
+                },
+            )
+            .unwrap();
+        }
+        assert_eq!(entry.telemetry.len(), 1);
+        assert_eq!(entry.telemetry[0].count, 3);
+        for index in 0..TELEMETRY_MAX_EVENTS + 1 {
+            record_telemetry(
+                &mut entry,
+                PreviewTelemetryInput {
+                    kind: "console-error".into(),
+                    message: Some(format!("unique-{index}")),
+                    url: None,
+                    method: None,
+                    status: None,
+                    phase: None,
+                },
+            )
+            .unwrap();
+        }
+        assert_eq!(entry.telemetry.len(), TELEMETRY_MAX_EVENTS);
+        assert!(entry.telemetry_dropped >= 2);
+        while entry.telemetry_rate_count < TELEMETRY_MAX_PER_WINDOW {
+            let rate_count = entry.telemetry_rate_count;
+            record_telemetry(
+                &mut entry,
+                PreviewTelemetryInput {
+                    kind: "console-error".into(),
+                    message: Some(format!("rate-{rate_count}")),
+                    url: None,
+                    method: None,
+                    status: None,
+                    phase: None,
+                },
+            )
+            .unwrap();
+        }
+        let dropped = entry.telemetry_dropped;
+        record_telemetry(
+            &mut entry,
+            PreviewTelemetryInput {
+                kind: "console-error".into(),
+                message: Some("over-rate".into()),
+                url: None,
+                method: None,
+                status: None,
+                phase: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(entry.telemetry_dropped, dropped + 1);
+    }
+
+    #[test]
+    fn telemetry_send_is_single_line_and_generation_bound() {
+        let mut entry = runtime_entry("http://localhost:4173/");
+        record_telemetry(
+            &mut entry,
+            PreviewTelemetryInput {
+                kind: "unhandled-error".into(),
+                message: Some("line one\nline two".into()),
+                url: None,
+                method: None,
+                status: None,
+                phase: None,
+            },
+        )
+        .unwrap();
+        let text = telemetry_send_text(&entry);
+        assert!(text.contains("generation 9"));
+        assert!(!text.contains(['\r', '\n']));
+    }
+
+    #[test]
+    fn telemetry_caller_rejects_old_generation_and_cross_source_or_port() {
+        let entry = runtime_entry("http://localhost:4173/app?secret=value#fragment");
+        let label = source_label(&entry.source);
+        let current: tauri::Url = "http://localhost:4173/next".parse().unwrap();
+        assert!(
+            validate_telemetry_caller(&label, &entry.telemetry_nonce, &current, &entry).is_ok()
+        );
+        assert!(validate_telemetry_caller(&label, &"b".repeat(64), &current, &entry).is_err());
+        assert!(validate_telemetry_caller(
+            &source_label(&source("http://localhost:4174/")),
+            &entry.telemetry_nonce,
+            &current,
+            &entry,
+        )
+        .is_err());
+        let cross_port: tauri::Url = "http://localhost:4174/next".parse().unwrap();
+        assert!(
+            validate_telemetry_caller(&label, &entry.telemetry_nonce, &cross_port, &entry).is_err()
+        );
+    }
+
+    #[test]
+    fn telemetry_nonce_is_random_and_fixed_width() {
+        let first = telemetry_nonce().unwrap();
+        let second = telemetry_nonce().unwrap();
+        assert_eq!(first.len(), 64);
+        assert_eq!(second.len(), 64);
+        assert_ne!(first, second);
+        assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
     }
 }

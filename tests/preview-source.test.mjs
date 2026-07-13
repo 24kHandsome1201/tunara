@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -158,4 +159,32 @@ test("每个 session 的 runtime 候选集合有固定上限", () => {
   const merged = mergePreviewSources([], sources);
   assert.equal(merged.length, MAX_PREVIEW_SOURCES_PER_SESSION);
   assert.equal(merged[0].sourceUrl, "http://localhost:3010/");
+});
+
+test("不可信 Preview capability 只有严格 telemetry ingest，没有 core/plugin/app 高权限", () => {
+  const capability = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/preview.json", import.meta.url), "utf8"));
+  assert.deepEqual(capability.permissions, ["allow-preview-telemetry-ingest"]);
+  const permission = readFileSync(new URL("../src-tauri/permissions/preview.toml", import.meta.url), "utf8");
+  assert.match(permission, /commands\.allow = \["preview_telemetry_ingest"\]/);
+  for (const forbidden of ["pty_write", "fs_read_file", "shell", "store", "opener", "core:"]) {
+    assert.equal(permission.includes(forbidden), false, `unexpected Preview permission: ${forbidden}`);
+  }
+});
+
+test("可信 main ACL 明确覆盖全部既有 app command，且 ingest 只属于 Preview", () => {
+  const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+  const handler = lib.match(/generate_handler!\[([\s\S]*?)\]\)/)?.[1] ?? "";
+  const registered = [...handler.matchAll(/(?:\w+::)+(\w+),/g)].map((match) => match[1]);
+  assert.ok(registered.length > 50, "generate_handler command inventory unexpectedly small");
+
+  const permission = readFileSync(new URL("../src-tauri/permissions/main.toml", import.meta.url), "utf8");
+  const allowed = [...permission.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+  assert.deepEqual(
+    [...allowed].sort(),
+    registered.filter((command) => command !== "preview_telemetry_ingest").sort(),
+  );
+  assert.equal(allowed.includes("preview_telemetry_ingest"), false);
+
+  const mainCapability = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
+  assert.ok(mainCapability.permissions.includes("allow-main-commands"));
 });

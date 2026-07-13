@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
-import { previewBlockReason, previewClose, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewSetViewport, previewSetZoom, previewStatus } from "@/modules/preview/preview-window";
+import { previewBlockReason, previewClose, previewDisplayUrl, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewSetViewport, previewSetZoom, previewStatus, previewTelemetryClear, previewTelemetrySend } from "@/modules/preview/preview-window";
 import type { PreviewRuntimeState, PreviewRuntimeStatus } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
+import { copyText } from "./lib/clipboard";
 
 function SourceCard({ source }: { source: PreviewSource }) {
   const t = useT();
@@ -73,6 +74,8 @@ function SourceCard({ source }: { source: PreviewSource }) {
   const runtimeStatus = runtimeState?.status ?? null;
   const displayStatus = source.state === "stale" ? "stale" : runtimeStatus ?? "closed";
   const isOpen = runtimeState !== null;
+  const telemetry = runtimeState?.telemetry;
+  const hasTelemetry = !!telemetry?.events.length;
 
   const row = (label: string, value: string) => (
     <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
@@ -100,7 +103,7 @@ function SourceCard({ source }: { source: PreviewSource }) {
         {row(t("inspector.preview.worktree"), source.worktreeId)}
         {row(t("inspector.preview.session"), source.sessionId)}
         {row(t("inspector.preview.terminal"), source.terminalId)}
-        {row("URL", source.sourceUrl)}
+        {row("URL", previewDisplayUrl(source.sourceUrl))}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button disabled={busy || !!blocked} onClick={() => void run(() => previewOpen(source), "opening")}>{isOpen ? t("inspector.preview.focus") : t("inspector.preview.open")}</button>
@@ -122,6 +125,25 @@ function SourceCard({ source }: { source: PreviewSource }) {
           {runtimeState.viewport.actualWidth}×{runtimeState.viewport.actualHeight}{runtimeState.viewport.exact ? "" : ` · ${t("inspector.preview.viewport_unavailable")}`}
         </span>
       </div>}
+      {isOpen && <section aria-label={t("inspector.preview.telemetry")} style={{ borderTop: "1px solid var(--c-border-1)", paddingTop: 7, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontWeight: 650 }}>{t("inspector.preview.telemetry")}</span>
+          <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{telemetry?.events.length ?? 0}/{32}</span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            <button disabled={busy || !hasTelemetry} onClick={() => { if (telemetry) void copyText(telemetry.text); }}>{t("inspector.preview.telemetry.copy")}</button>
+            <button disabled={busy || !!blocked || !hasTelemetry || source.physicalPtyId === undefined} onClick={() => void run(() => previewTelemetrySend(source))}>{t("inspector.preview.telemetry.send")}</button>
+            <button disabled={busy || !hasTelemetry} onClick={() => void run(() => previewTelemetryClear(source))}>{t("inspector.preview.telemetry.clear")}</button>
+          </div>
+        </div>
+        {!hasTelemetry ? <div style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("inspector.preview.telemetry.empty")}</div> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {telemetry?.events.map((event, index) => <div key={`${event.kind}\0${event.message}\0${index}`} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflowWrap: "anywhere" }}>
+              <span style={{ color: event.kind === "network-failure" ? "var(--c-warning)" : "var(--c-danger)" }}>[{event.kind}]</span> {event.message}{event.count > 1 ? ` ×${event.count}` : ""}
+            </div>)}
+            {!!telemetry?.dropped && <div style={{ color: "var(--c-warning)", fontSize: "var(--fs-meta)" }}>{t("inspector.preview.telemetry.dropped")} {telemetry.dropped}</div>}
+          </div>
+        )}
+      </section>}
       {displayStatus === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{t("inspector.preview.failed_help")}</div>}
       {displayStatus === "stale" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning)" }}>{t("inspector.preview.stale_help")}</div>}
       {error && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{error}</div>}

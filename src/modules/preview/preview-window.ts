@@ -31,6 +31,12 @@ export interface PreviewRuntimeState {
     outerHeight: number;
     exact: boolean;
   };
+  telemetry: {
+    generation: number;
+    events: Array<{ kind: "console-error" | "unhandled-error" | "network-failure"; message: string; count: number }>;
+    dropped: number;
+    text: string;
+  };
 }
 
 export function previewStatus(source: PreviewSource): Promise<PreviewRuntimeState | null> {
@@ -67,6 +73,27 @@ export function previewResetViewport(source: PreviewSource): Promise<void> {
 
 export function previewFitViewport(source: PreviewSource): Promise<void> {
   return invoke<void>("preview_fit_viewport", { source });
+}
+
+export function previewTelemetryClear(source: PreviewSource): Promise<void> {
+  return invoke<void>("preview_telemetry_clear", { source });
+}
+
+export function previewTelemetrySend(source: PreviewSource): Promise<void> {
+  return invoke<void>("preview_telemetry_send", { source });
+}
+
+export function previewDisplayUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "<invalid-url>";
+  }
 }
 
 export function previewBlockReason(source: PreviewSource): "remote" | "stale" | "fallback" | null {

@@ -40,12 +40,19 @@ addEventListener('resize',reportViewport);
   if(!window.__TAURI_INTERNALS__?.invoke){report('ipc-bridge-absent');return}
   for(const [name,args] of [
     ['fs_read_file',{path:'/etc/hosts'}],
-    ['plugin:store|load',{path:'phase3-preview-security.json',options:{autoSave:false}}]
+    ['plugin:store|load',{path:'phase3-preview-security.json',options:{autoSave:false}}],
+    ['pty_write',{id:1,data:'FORBIDDEN'}],
+    ['preview_telemetry_ingest',{event:{kind:'console-error',message:'forged'},nonce:'0'.repeat(64)}]
   ]){
     try{await window.__TAURI_INTERNALS__.invoke(name,args);report('ipc-invoke-unexpected-success',{name})}
     catch(error){report('ipc-invoke-denied',{name,message:String(error)})}
   }
 })();
+setTimeout(()=>{
+  console.error('FIXTURE_CONSOLE_${port}', 'token=fixture-private-${port}');
+  Promise.reject(new Error('FIXTURE_UNHANDLED_${port} /Users/fixture/private'));
+  fetch('/status-failure?credential=fixture-private-${port}#hidden').catch(()=>{});
+},2000);
 document.querySelector('#same').onclick=()=>location.href='/same-origin';
 document.querySelector('#public').onclick=()=>location.href='/redirect-public';
 document.querySelector('#other-port').onclick=()=>location.href='http://127.0.0.1:${peerPort}/peer';
@@ -64,6 +71,8 @@ const server = http.createServer((request, response) => {
     response.writeHead(302, { Location: "https://example.com/phase3-blocked" }).end();
   } else if (url.pathname === "/download") {
     response.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": "attachment; filename=blocked.txt" }).end("blocked download");
+  } else if (url.pathname === "/status-failure") {
+    response.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" }).end("fixture failure");
   } else if (url.pathname === "/same-origin") {
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<h1>same-origin allowed ${port}</h1>`);
   } else if (url.pathname === "/peer") {

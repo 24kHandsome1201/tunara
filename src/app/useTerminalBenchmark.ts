@@ -272,7 +272,7 @@ export function useTerminalBenchmark(ready: boolean): void {
   const startedRef = useRef(false);
 
   useEffect(() => {
-    if (!TERMINAL_BENCHMARK_MODE || TERMINAL_BENCHMARK_VARIANT === "m2-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-local-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-native-close" || !ready || startedRef.current) return;
+    if (!TERMINAL_BENCHMARK_MODE || TERMINAL_BENCHMARK_VARIANT === "m2-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-local-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-native-close" || TERMINAL_BENCHMARK_VARIANT === "phase3-telemetry" || !ready || startedRef.current) return;
     startedRef.current = true;
     const appReadyMs = performance.now();
     let cancelled = false;

@@ -19,6 +19,7 @@ import { useDockBadge } from "./useDockBadge";
 import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
+import { usePhase3TelemetryBenchmark } from "./usePhase3TelemetryBenchmark";
 import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
 import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
 import { useM2NativeCloseBenchmark } from "./useM2NativeCloseBenchmark";
@@ -240,6 +241,7 @@ export default function App() {
   useGlobalShortcut();
   useUpdateReminder(ready);
   useTerminalBenchmark(ready);
+  usePhase3TelemetryBenchmark(ready);
   useM2SafeWriteBenchmark(ready);
   useM2LocalSafeWriteBenchmark(ready);
   useM2NativeCloseBenchmark(ready);

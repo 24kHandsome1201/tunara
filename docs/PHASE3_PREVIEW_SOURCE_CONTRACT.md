@@ -149,4 +149,23 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 
 ## 后置项
 
-截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
+截图、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
+
+## 基础失败 telemetry 与绑定 PTY 送回切片
+
+本切片只收集用户已显式打开、仍 active/resolved/local/eligible 的 Preview runtime 中三类失败：`console-error`、`unhandled-error`、`network-failure`。它不是 Console 面板或 Network waterfall，不记录成功请求、body、headers、cookies、storage、完整 stack、性能 trace 或任意对象/二进制数据。
+
+- macOS 在每次同源页面 `Finished` 后向该 `preview-*` WebView 注入闭包式最小包装器；包装器只提交上述严格 schema，页面 capability 只允许 `preview_telemetry_ingest`。页面仍不能调用 PTY、文件、shell、store、opener、core 或其他 app/plugin 命令。
+- ingest 同时核对真实调用 WebView label、当前 URL origin、完整 repository/worktree/workspace/session/terminal/source URL 来源键、系统随机 32 字节（64 hex 字符）generation nonce 与当前 window generation。关闭、重开、跨端口、跨来源、旧 generation、stale 或 terminal exit 均 fail closed；handler 与 nonce 随 WebView/runtime entry 销毁。
+- console/unhandled 只接受有界文字；network 只接受 allowlist method、status 与 `fetch/xhr/resource/request` phase。相对 URL 先按当前页面解析，再只保留同源脱敏 path；凭据、query、fragment、secret marker、用户名、绝对路径和长高熵 token 被移除或替换。外部 origin 只显示 `<external>`。
+- 单 generation 最多保留 32 条不同事件；相同 kind/message 去重并累加 count；Rust 每 10 秒最多接收 40 条，页面每秒最多提交 12 条，超限只增加 bounded dropped count。telemetry 只存在 Rust runtime，不进入 workspace snapshot、Journal 或远程同步。
+- 可信 main Inspector 显示 bounded failure summary，并提供 Copy、Clear 与显式 Send。Send 在 Rust 侧重新生成单行脱敏摘要，重新核对来源绑定的 `physicalPtyId` 仍存在，只写入该真实 PTY 输入区；不接受当前选中但来源不同的 PTY，也不附加 CR/LF 或执行。
+- main capability 通过显式 `allow-main-commands` 保留既有可信应用命令；不可信 Preview capability 仍只有 ingest。release 构建必须检查 ACL pruning 输出，确保既有 PTY/Preview 主窗口命令未被意外裁掉。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用连接两个 linked worktree、两个 loopback 端口与两条真实 PTY；A/B 分别产生可区分的 console、unhandled 与 HTTP 503 fetch 失败，Inspector 只显示对应脱敏摘要。
+- A/B Send 分别只填入各自物理 PTY，未附加回车、未执行；Clear 清空当前 generation 的 bounded buffer。
+- A 原生关闭/重开后 generation 变化，旧窗口事件不污染新 entry，B 事件不进入 A。
+- 页面对 `fs_read_file`、store、`pty_write` 均得到 ACL 拒绝；伪造 telemetry nonce 到达窄 ingest 后仍被 generation 校验拒绝，没有任意高权限桥。
+- 原始 fixture JSONL、应用日志、截图和完整命令输出只保留本机 ignored/temp，Git 只收录本脱敏合同、报告和结构化代码/测试。

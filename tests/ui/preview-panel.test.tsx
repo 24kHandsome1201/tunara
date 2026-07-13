@@ -14,6 +14,7 @@ function runtime(overrides: Partial<PreviewRuntimeState> = {}): PreviewRuntimeSt
     canGoForward: false,
     zoomFactor: 1,
     viewport: { mode: "reset", requestedWidth: 980, requestedHeight: 720, actualWidth: 980, actualHeight: 720, outerWidth: 980, outerHeight: 748, exact: true },
+    telemetry: { generation: 1, events: [], dropped: 0, text: "Preview failures (generation 1)" },
     ...overrides,
   };
 }
@@ -25,6 +26,7 @@ function source(overrides: Partial<PreviewSource> = {}): PreviewSource {
     workspaceId: "repo-a::worktree-a",
     sessionId: "session-a",
     terminalId: "session-a:0",
+    physicalPtyId: 7,
     sourceUrl: "http://127.0.0.1:41731/",
     discoveredAt: 1,
     transport: "local",
@@ -160,4 +162,40 @@ test("changes zoom and viewport only after Rust reports native state", async () 
   await screen.findByText("390×844");
   expect(calls).toContainEqual({ command: "preview_set_zoom", payload: { source: eligible, factor: 1.25 } });
   expect(calls).toContainEqual({ command: "preview_set_viewport", payload: { source: eligible, width: 390, height: 844 } });
+});
+
+test("shows bounded failures and explicitly copies, clears, or fills only the source PTY", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source({ sourceUrl: "http://127.0.0.1:41731/app?token=secret#private" });
+  let state = runtime({
+    currentUrl: eligible.sourceUrl,
+    telemetry: {
+      generation: 4,
+      events: [
+        { kind: "console-error", message: "Render failed", count: 2 },
+        { kind: "network-failure", message: "GET /api · HTTP 503 · fetch", count: 1 },
+      ],
+      dropped: 3,
+      text: "Preview failures (generation 4)\n[console-error] Render failed ×2\n[network-failure] GET /api · HTTP 503 · fetch",
+    },
+  });
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return state;
+    if (command === "preview_telemetry_send") return undefined;
+    if (command === "preview_telemetry_clear") {
+      state = runtime({ telemetry: { generation: 4, events: [], dropped: 0, text: "Preview failures (generation 4)" } });
+      return undefined;
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  expect(await screen.findByText("Render failed ×2")).toBeTruthy();
+  expect(screen.getByText("GET /api · HTTP 503 · fetch")).toBeTruthy();
+  expect(screen.queryByText(/token=secret/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Send to source PTY" }));
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_telemetry_send", payload: { source: eligible } }));
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  await screen.findByText("No bounded console or network failures for this Preview generation.");
 });
