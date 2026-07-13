@@ -148,6 +148,8 @@ pub fn run() {
             modules::preview::preview_tunnel_status,
             modules::preview::preview_tunnel_close,
             modules::preview::preview_restart_prepare,
+            modules::preview::preview_capture,
+            modules::preview::preview_send_capture_to_source_terminal,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,

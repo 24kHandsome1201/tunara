@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
-import { previewActionNonce, previewBlockReason, previewClose, previewDisplayUrl, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewRestartPrepare, previewSetViewport, previewSetZoom, previewStatus, previewTelemetryClear, previewTelemetrySend, previewTunnelClose, previewTunnelOpen, previewTunnelStatus } from "@/modules/preview/preview-window";
-import type { PreviewRuntimeState, PreviewRuntimeStatus, PreviewTunnelState } from "@/modules/preview/preview-window";
+import { previewActionNonce, previewBlockReason, previewCapture, previewClose, previewDisplayUrl, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewRestartPrepare, previewSendCaptureToSourceTerminal, previewSetViewport, previewSetZoom, previewStatus, previewTelemetryClear, previewTelemetrySend, previewTunnelClose, previewTunnelOpen, previewTunnelStatus } from "@/modules/preview/preview-window";
+import type { PreviewCaptureResult, PreviewRuntimeState, PreviewRuntimeStatus, PreviewTunnelState } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 import { copyText } from "./lib/clipboard";
 import { useSessionsStore } from "@/state/sessions";
@@ -20,6 +20,8 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   const addressEditingRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [capture, setCapture] = useState<PreviewCaptureResult>();
+  const [captureNotice, setCaptureNotice] = useState<string>();
   const statusRequestRef = useRef(0);
 
   useEffect(() => {
@@ -136,6 +138,42 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
     }, 0);
   };
 
+  const capturePreview = async () => {
+    setBusy(true);
+    setError(undefined);
+    setCaptureNotice(undefined);
+    try {
+      const result = await previewCapture(effectiveSource);
+      setCapture(result);
+      setCaptureNotice(t("inspector.preview.capture_saved"));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyCapture = async () => {
+    if (!capture) return;
+    const copied = await copyText(capture.preparedText);
+    setCaptureNotice(copied ? t("inspector.preview.capture_copied") : t("inspector.preview.capture_copy_failed"));
+  };
+
+  const sendCapture = async () => {
+    if (!capture) return;
+    setBusy(true);
+    setError(undefined);
+    setCaptureNotice(undefined);
+    try {
+      const receipt = await previewSendCaptureToSourceTerminal(effectiveSource, capture.captureId);
+      setCaptureNotice(t("inspector.preview.capture_sent", { bytes: receipt.bytesWritten }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const row = (label: string, value: string) => (
     <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
       <span style={{ color: "var(--c-text-5)" }}>{label}</span>
@@ -204,13 +242,23 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
           {runtimeState.viewport.actualWidth}×{runtimeState.viewport.actualHeight}{runtimeState.viewport.exact ? "" : ` · ${t("inspector.preview.viewport_unavailable")}`}
         </span>
       </div>}
+      {isOpen && <div aria-label={t("inspector.preview.capture_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
+        <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.capture")}</span>
+        <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void capturePreview()}>{t("inspector.preview.capture_now")}</button>
+        <button disabled={busy || !capture} onClick={() => void copyCapture()}>{t("inspector.preview.capture_copy")}</button>
+        <button data-preview-action="send-capture" disabled={busy || !!blocked || !capture || effectiveSource.physicalPtyId === undefined || runtimeStatus !== "ready"} onClick={() => void sendCapture()}>{t("inspector.preview.capture_send")}</button>
+        {capture && <span title={capture.localRef} style={{ fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+          {capture.viewportCssWidth}×{capture.viewportCssHeight} CSS · {capture.imageWidth}×{capture.imageHeight} PNG · {capture.localRef}
+        </span>}
+      </div>}
+      {captureNotice && <div role="status" style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)" }}>{captureNotice}</div>}
       {isOpen && <section aria-label={t("inspector.preview.telemetry")} style={{ borderTop: "1px solid var(--c-border-1)", paddingTop: 7, display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontWeight: 650 }}>{t("inspector.preview.telemetry")}</span>
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{telemetry?.events.length ?? 0}/{32}</span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             <button disabled={busy || !hasTelemetry} onClick={() => { if (telemetry) void copyText(telemetry.text); }}>{t("inspector.preview.telemetry.copy")}</button>
-            <button disabled={busy || !!blocked || !hasTelemetry || source.physicalPtyId === undefined} onClick={() => void run(() => previewTelemetrySend(effectiveSource))}>{t("inspector.preview.telemetry.send")}</button>
+            <button data-preview-action="send-telemetry" disabled={busy || !!blocked || !hasTelemetry || effectiveSource.physicalPtyId === undefined} onClick={() => void run(() => previewTelemetrySend(effectiveSource))}>{t("inspector.preview.telemetry.send")}</button>
             <button disabled={busy || !hasTelemetry} onClick={() => void run(() => previewTelemetryClear(effectiveSource))}>{t("inspector.preview.telemetry.clear")}</button>
           </div>
         </div>

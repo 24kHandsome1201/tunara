@@ -4,15 +4,20 @@ use sha2::{Digest, Sha256};
 use std::sync::mpsc;
 use std::{
     collections::{HashMap, VecDeque},
+    fs::{self, OpenOptions},
+    io::Write,
     net::{Ipv4Addr, TcpStream, ToSocketAddrs},
+    path::{Path, PathBuf},
     sync::Mutex,
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     webview::{DownloadEvent, NewWindowResponse, PageLoadEvent},
     AppHandle, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
 };
+
+use crate::modules::pty::PtyState;
 
 const LOAD_FAILURE_TIMEOUT: Duration = Duration::from_secs(8);
 const LOOPBACK_CONNECT_TIMEOUT: Duration = Duration::from_millis(350);
@@ -24,6 +29,10 @@ const TELEMETRY_MAX_TEXT: usize = 512;
 const TELEMETRY_RATE_WINDOW: Duration = Duration::from_secs(10);
 const TELEMETRY_MAX_PER_WINDOW: u32 = 40;
 const RESTART_COMMAND_MAX_BYTES: usize = 384;
+const MAX_CAPTURE_PIXELS: u64 = 16_777_216;
+const MAX_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
+const MAX_RUNTIME_CAPTURES: usize = 64;
+const CAPTURE_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -70,6 +79,82 @@ pub struct PreviewSourceContext {
     ssh_host: Option<String>,
     ssh_port: Option<u16>,
     ssh_user: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCaptureOptions {
+    format: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCaptureResult {
+    capture_id: String,
+    local_ref: String,
+    source_origin: String,
+    source_summary: String,
+    prepared_text: String,
+    captured_at_ms: u64,
+    viewport_css_width: u32,
+    viewport_css_height: u32,
+    zoom_factor: f64,
+    window_generation: u64,
+    image_format: String,
+    image_width: u32,
+    image_height: u32,
+    image_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSendReceipt {
+    terminal_ref: String,
+    bytes_written: usize,
+    executed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewCaptureMetadata {
+    schema_version: u8,
+    capture_id: String,
+    local_ref: String,
+    source: PreviewCaptureSourceMetadata,
+    captured_at_ms: u64,
+    viewport_css: PreviewCaptureViewportMetadata,
+    zoom_factor: f64,
+    window_generation: u64,
+    image: PreviewCaptureImageMetadata,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewCaptureSourceMetadata {
+    repository_ref: String,
+    worktree_ref: String,
+    workspace_ref: String,
+    session_ref: String,
+    terminal_ref: String,
+    source_url_ref: String,
+    source_origin: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewCaptureViewportMetadata {
+    width: u32,
+    height: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewCaptureImageMetadata {
+    format: String,
+    width: u32,
+    height: u32,
+    byte_size: usize,
+    sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,6 +299,17 @@ struct PreviewTerminalCommandRuntime {
     prepared: bool,
 }
 
+#[derive(Debug, Clone)]
+struct PreviewCaptureRecord {
+    source_label: String,
+    window_generation: u64,
+    captured_at_ms: u64,
+    local_ref: String,
+    source_origin: String,
+    source_summary: String,
+    terminal_ref: String,
+}
+
 #[derive(Default)]
 pub struct PreviewWindowState {
     entries: Mutex<HashMap<String, PreviewRuntimeEntry>>,
@@ -223,6 +319,8 @@ pub struct PreviewWindowState {
     used_tunnel_nonces: Mutex<VecDeque<String>>,
     next_tunnel_generation: Mutex<u64>,
     remote_sources: Mutex<HashMap<String, PreviewSource>>,
+    captures: Mutex<HashMap<String, PreviewCaptureRecord>>,
+    next_capture_sequence: Mutex<u64>,
 }
 
 impl PreviewWindowState {
@@ -277,6 +375,15 @@ impl PreviewWindowState {
             .filter_map(|id| tunnels.remove(&id))
             .collect()
     }
+
+    fn next_capture_sequence(&self) -> Result<u64, String> {
+        let mut sequence = self
+            .next_capture_sequence
+            .lock()
+            .map_err(|_| "Preview capture sequence lock poisoned".to_string())?;
+        *sequence = sequence.saturating_add(1);
+        Ok(*sequence)
+    }
 }
 
 fn close_removed_tunnels(app: &AppHandle, removed: Vec<PreviewTunnelRuntime>) {
@@ -294,6 +401,135 @@ fn close_removed_tunnels(app: &AppHandle, removed: Vec<PreviewTunnelRuntime>) {
             }
         }
     }
+}
+
+fn sha256_hex(value: impl AsRef<[u8]>) -> String {
+    format!("{:x}", Sha256::digest(value.as_ref()))
+}
+
+fn safe_ref(kind: &str, value: &str) -> String {
+    format!("{kind}-sha256:{}", &sha256_hex(value)[..16])
+}
+
+fn safe_source_origin(url: &tauri::Url) -> Result<String, String> {
+    let origin = allowed_origin(url)?;
+    let host = if origin.host == "::1" {
+        "[::1]".to_string()
+    } else {
+        origin.host
+    };
+    Ok(format!("{}://{}:{}", origin.scheme, host, origin.port))
+}
+
+fn safe_local_ref(path: &Path, capture_id: &str) -> String {
+    if let Some(home) = dirs::home_dir() {
+        if let Ok(relative) = path.strip_prefix(home) {
+            return format!("$HOME/{}", relative.to_string_lossy());
+        }
+    }
+    format!("preview-evidence://{capture_id}")
+}
+
+fn validate_capture_format(format: &str) -> Result<&'static str, String> {
+    if format.eq_ignore_ascii_case("png") {
+        Ok("png")
+    } else {
+        Err("Preview capture only supports PNG".into())
+    }
+}
+
+fn validate_capture_size(width: u32, height: u32, bytes: usize) -> Result<(), String> {
+    if width == 0 || height == 0 {
+        return Err("Preview capture returned an empty image".into());
+    }
+    if u64::from(width).saturating_mul(u64::from(height)) > MAX_CAPTURE_PIXELS {
+        return Err("Preview capture exceeds the pixel safety limit".into());
+    }
+    if bytes == 0 || bytes > MAX_CAPTURE_BYTES {
+        return Err("Preview capture exceeds the encoded size safety limit".into());
+    }
+    Ok(())
+}
+
+fn capture_source_metadata(
+    source: &PreviewSource,
+    url: &tauri::Url,
+) -> Result<PreviewCaptureSourceMetadata, String> {
+    Ok(PreviewCaptureSourceMetadata {
+        repository_ref: safe_ref("repository", &source.repository_id),
+        worktree_ref: safe_ref("worktree", &source.worktree_id),
+        workspace_ref: safe_ref("workspace", &source.workspace_id),
+        session_ref: safe_ref("session", &source.session_id),
+        terminal_ref: safe_ref("terminal", &source.terminal_id),
+        source_url_ref: safe_ref("url", url.as_str()),
+        source_origin: safe_source_origin(url)?,
+    })
+}
+
+fn capture_source_summary(source: &PreviewCaptureSourceMetadata) -> String {
+    format!(
+        "repo={} worktree={} workspace={} session={} terminal={}",
+        source.repository_ref,
+        source.worktree_ref,
+        source.workspace_ref,
+        source.session_ref,
+        source.terminal_ref
+    )
+}
+
+fn capture_prepared_text(record: &PreviewCaptureRecord) -> String {
+    format!(
+        "Preview screenshot: ref={} origin={} source={} generation={}",
+        record.local_ref, record.source_origin, record.source_summary, record.window_generation
+    )
+}
+
+fn capture_directory(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_cache_dir()
+        .map(|path| path.join("preview-evidence"))
+        .map_err(|error| error.to_string())
+}
+
+fn write_capture_artifacts(
+    directory: &Path,
+    capture_id: &str,
+    png: &[u8],
+    metadata: &PreviewCaptureMetadata,
+) -> Result<(PathBuf, PathBuf), String> {
+    fs::create_dir_all(directory).map_err(|error| error.to_string())?;
+    let image_path = directory.join(format!("{capture_id}.png"));
+    let metadata_path = directory.join(format!("{capture_id}.json"));
+    let mut image = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&image_path)
+        .map_err(|error| error.to_string())?;
+    if let Err(error) = image.write_all(png).and_then(|_| image.sync_all()) {
+        let _ = fs::remove_file(&image_path);
+        return Err(error.to_string());
+    }
+    let metadata_bytes = serde_json::to_vec_pretty(metadata).map_err(|error| error.to_string())?;
+    let mut metadata_file = match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&metadata_path)
+    {
+        Ok(file) => file,
+        Err(error) => {
+            let _ = fs::remove_file(&image_path);
+            return Err(error.to_string());
+        }
+    };
+    if let Err(error) = metadata_file
+        .write_all(&metadata_bytes)
+        .and_then(|_| metadata_file.sync_all())
+    {
+        let _ = fs::remove_file(&image_path);
+        let _ = fs::remove_file(&metadata_path);
+        return Err(error.to_string());
+    }
+    Ok((image_path, metadata_path))
 }
 
 fn allowed_origin(url: &tauri::Url) -> Result<AllowedOrigin, String> {
@@ -2084,6 +2320,315 @@ fn preview_window(
     Ok((label, generation, window))
 }
 
+#[cfg(target_os = "macos")]
+async fn native_css_viewport(window: &tauri::WebviewWindow) -> Result<(u32, u32), String> {
+    use block2::RcBlock;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSError, NSString};
+
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let sender = std::sync::Arc::new(Mutex::new(Some(sender)));
+    window
+        .with_webview(move |webview| unsafe {
+            let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+            let sender = sender.clone();
+            let completion = RcBlock::new(move |value: *mut AnyObject, error: *mut NSError| {
+                let result = if !error.is_null() || value.is_null() {
+                    Err("Preview CSS viewport query failed".to_string())
+                } else {
+                    let encoded = (&*value.cast::<NSString>()).to_string();
+                    encoded
+                        .split_once('x')
+                        .and_then(|(width, height)| {
+                            Some((width.parse::<u32>().ok()?, height.parse::<u32>().ok()?))
+                        })
+                        .filter(|(width, height)| *width > 0 && *height > 0)
+                        .ok_or_else(|| {
+                            "Preview CSS viewport query returned invalid data".to_string()
+                        })
+                };
+                if let Ok(mut sender) = sender.lock() {
+                    if let Some(sender) = sender.take() {
+                        let _ = sender.send(result);
+                    }
+                }
+            });
+            let script = NSString::from_str("`${window.innerWidth}x${window.innerHeight}`");
+            view.evaluateJavaScript_completionHandler(&script, Some(&completion));
+        })
+        .map_err(|error| error.to_string())?;
+    tokio::time::timeout(CAPTURE_TIMEOUT, receiver)
+        .await
+        .map_err(|_| "Preview CSS viewport query timed out".to_string())?
+        .map_err(|_| "Preview CSS viewport query callback closed".to_string())?
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn native_css_viewport(window: &tauri::WebviewWindow) -> Result<(u32, u32), String> {
+    logical_webview_size(window)
+}
+
+#[cfg(target_os = "macos")]
+async fn native_capture_png(window: &tauri::WebviewWindow) -> Result<(Vec<u8>, u32, u32), String> {
+    use block2::RcBlock;
+    use objc2::MainThreadOnly;
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
+    use objc2_foundation::{NSDictionary, NSError};
+    use objc2_web_kit::WKSnapshotConfiguration;
+
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let sender = std::sync::Arc::new(Mutex::new(Some(sender)));
+    window
+        .with_webview(move |webview| unsafe {
+            let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+            let safe = view.safeAreaInsets();
+            let mut rect = view.bounds();
+            rect.origin.x += safe.left;
+            rect.origin.y += safe.top;
+            rect.size.width = (rect.size.width - safe.left - safe.right).max(0.0);
+            rect.size.height = (rect.size.height - safe.top - safe.bottom).max(0.0);
+            let configuration = WKSnapshotConfiguration::new(view.mtm());
+            configuration.setRect(rect);
+            let sender = sender.clone();
+            let completion = RcBlock::new(move |image: *mut NSImage, _error: *mut NSError| {
+                let result = if image.is_null() {
+                    Err("Preview WKWebView snapshot failed".to_string())
+                } else {
+                    let image = &*image;
+                    image
+                        .TIFFRepresentation()
+                        .ok_or_else(|| "Preview snapshot has no image representation".to_string())
+                        .and_then(|tiff| {
+                            NSBitmapImageRep::imageRepWithData(&tiff).ok_or_else(|| {
+                                "Preview snapshot bitmap conversion failed".to_string()
+                            })
+                        })
+                        .and_then(|bitmap| {
+                            let properties = NSDictionary::new();
+                            bitmap
+                                .representationUsingType_properties(
+                                    NSBitmapImageFileType::PNG,
+                                    &properties,
+                                )
+                                .ok_or_else(|| "Preview snapshot PNG encoding failed".to_string())
+                                .map(|png| {
+                                    (
+                                        png.to_vec(),
+                                        bitmap.pixelsWide().max(0) as u32,
+                                        bitmap.pixelsHigh().max(0) as u32,
+                                    )
+                                })
+                        })
+                };
+                if let Ok(mut sender) = sender.lock() {
+                    if let Some(sender) = sender.take() {
+                        let _ = sender.send(result);
+                    }
+                }
+            });
+            view.takeSnapshotWithConfiguration_completionHandler(Some(&configuration), &completion);
+        })
+        .map_err(|error| error.to_string())?;
+    tokio::time::timeout(CAPTURE_TIMEOUT, receiver)
+        .await
+        .map_err(|_| "Preview WKWebView snapshot timed out".to_string())?
+        .map_err(|_| "Preview WKWebView snapshot callback closed".to_string())?
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn native_capture_png(_window: &tauri::WebviewWindow) -> Result<(Vec<u8>, u32, u32), String> {
+    Err("Native Preview capture is unavailable on this platform".into())
+}
+
+#[tauri::command]
+pub async fn preview_capture(
+    app: AppHandle,
+    source: PreviewSource,
+    options: PreviewCaptureOptions,
+) -> Result<PreviewCaptureResult, String> {
+    let format = validate_capture_format(&options.format)?;
+    let (label, generation, window) = preview_window(&app, &source)?;
+    let (status, requested_viewport) = {
+        let state = app.state::<PreviewWindowState>();
+        let entries = state
+            .entries
+            .lock()
+            .map_err(|_| "Preview state lock poisoned".to_string())?;
+        let entry = entries
+            .get(&label)
+            .ok_or_else(|| "Preview source is not open".to_string())?;
+        (entry.status, entry.requested_viewport)
+    };
+    if status != PreviewRuntimeStatus::Ready {
+        return Err("Preview must be ready before capture".into());
+    }
+    if u64::from(requested_viewport.0).saturating_mul(u64::from(requested_viewport.1))
+        > MAX_CAPTURE_PIXELS
+    {
+        return Err("Preview viewport exceeds the capture safety limit".into());
+    }
+
+    let current_url = window.url().map_err(|error| error.to_string())?;
+    let viewport = native_css_viewport(&window).await?;
+    let zoom_factor = native_zoom(&window)?;
+    let (png, image_width, image_height) = native_capture_png(&window).await?;
+    validate_capture_size(image_width, image_height, png.len())?;
+
+    let still_current = {
+        let state = app.state::<PreviewWindowState>();
+        let entries = state
+            .entries
+            .lock()
+            .map_err(|_| "Preview state lock poisoned".to_string())?;
+        entries.get(&label).is_some_and(|entry| {
+            entry.window_generation == generation && entry.status == PreviewRuntimeStatus::Ready
+        })
+    };
+    if !still_current
+        || app.get_webview_window(&label).is_none()
+        || window.url().map_err(|error| error.to_string())? != current_url
+        || native_css_viewport(&window).await? != viewport
+        || (native_zoom(&window)? - zoom_factor).abs() > 0.001
+    {
+        return Err("Preview source changed during capture".into());
+    }
+
+    let captured_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "System clock is before Unix epoch".to_string())?
+        .as_millis() as u64;
+    let sequence = app.state::<PreviewWindowState>().next_capture_sequence()?;
+    let capture_id = format!(
+        "capture-{}",
+        &sha256_hex(format!(
+            "{label}\0{generation}\0{sequence}\0{captured_at_ms}"
+        ))[..24]
+    );
+    let directory = capture_directory(&app)?;
+    let image_path = directory.join(format!("{capture_id}.png"));
+    let local_ref = safe_local_ref(&image_path, &capture_id);
+    let source_metadata = capture_source_metadata(&source, &current_url)?;
+    let source_summary = capture_source_summary(&source_metadata);
+    let image_sha256 = sha256_hex(&png);
+    let metadata = PreviewCaptureMetadata {
+        schema_version: 1,
+        capture_id: capture_id.clone(),
+        local_ref: local_ref.clone(),
+        source: source_metadata.clone(),
+        captured_at_ms,
+        viewport_css: PreviewCaptureViewportMetadata {
+            width: viewport.0,
+            height: viewport.1,
+        },
+        zoom_factor,
+        window_generation: generation,
+        image: PreviewCaptureImageMetadata {
+            format: format.into(),
+            width: image_width,
+            height: image_height,
+            byte_size: png.len(),
+            sha256: image_sha256.clone(),
+        },
+    };
+    let _ = write_capture_artifacts(&directory, &capture_id, &png, &metadata)?;
+
+    let record = PreviewCaptureRecord {
+        source_label: label,
+        window_generation: generation,
+        captured_at_ms,
+        local_ref: local_ref.clone(),
+        source_origin: source_metadata.source_origin.clone(),
+        source_summary: source_summary.clone(),
+        terminal_ref: source_metadata.terminal_ref.clone(),
+    };
+    let prepared_text = capture_prepared_text(&record);
+    let state = app.state::<PreviewWindowState>();
+    let mut captures = state
+        .captures
+        .lock()
+        .map_err(|_| "Preview capture state lock poisoned".to_string())?;
+    if captures.len() >= MAX_RUNTIME_CAPTURES {
+        if let Some(oldest) = captures
+            .iter()
+            .min_by_key(|(_, record)| record.captured_at_ms)
+            .map(|(id, _)| id.clone())
+        {
+            captures.remove(&oldest);
+        }
+    }
+    captures.insert(capture_id.clone(), record);
+
+    Ok(PreviewCaptureResult {
+        capture_id,
+        local_ref,
+        source_origin: source_metadata.source_origin,
+        source_summary,
+        prepared_text,
+        captured_at_ms,
+        viewport_css_width: viewport.0,
+        viewport_css_height: viewport.1,
+        zoom_factor,
+        window_generation: generation,
+        image_format: format.into(),
+        image_width,
+        image_height,
+        image_sha256,
+    })
+}
+
+#[tauri::command]
+pub fn preview_send_capture_to_source_terminal(
+    app: AppHandle,
+    pty_state: tauri::State<PtyState>,
+    source: PreviewSource,
+    capture_id: String,
+) -> Result<PreviewSendReceipt, String> {
+    validate_source(&source)?;
+    let expected_physical = source
+        .physical_pty_id
+        .ok_or_else(|| "Preview source has no live physical PTY".to_string())?;
+    if pty_state.physical_for_logical(&source.session_id) != Some(expected_physical) {
+        return Err("Preview source PTY generation is no longer current".into());
+    }
+    let label = source_label(&source);
+    let record = app
+        .state::<PreviewWindowState>()
+        .captures
+        .lock()
+        .map_err(|_| "Preview capture state lock poisoned".to_string())?
+        .get(&capture_id)
+        .cloned()
+        .ok_or_else(|| "Preview capture reference is unavailable".to_string())?;
+    if record.source_label != label {
+        return Err("Preview capture belongs to a different source".into());
+    }
+    let current_generation = app
+        .state::<PreviewWindowState>()
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?
+        .get(&label)
+        .and_then(|entry| {
+            (entry.status == PreviewRuntimeStatus::Ready).then_some(entry.window_generation)
+        });
+    if current_generation != Some(record.window_generation) {
+        return Err("Preview capture window generation is stale".into());
+    }
+    let text = capture_prepared_text(&record);
+    if text.contains(['\r', '\n']) {
+        return Err("Preview prepared text contains an execution boundary".into());
+    }
+    let session = pty_state
+        .get(expected_physical)
+        .ok_or_else(|| "Preview source PTY is no longer available".to_string())?;
+    session.write(text.as_bytes())?;
+    Ok(PreviewSendReceipt {
+        terminal_ref: record.terminal_ref,
+        bytes_written: text.len(),
+        executed: false,
+    })
+}
+
 #[tauri::command]
 pub fn preview_set_zoom(app: AppHandle, source: PreviewSource, factor: f64) -> Result<(), String> {
     let factor = validate_zoom_factor(factor)?;
@@ -2944,5 +3489,73 @@ mod tests {
         assert_eq!(second.len(), 64);
         assert_ne!(first, second);
         assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn capture_accepts_only_png_and_bounded_nonempty_images() {
+        assert_eq!(validate_capture_format("png").unwrap(), "png");
+        assert_eq!(validate_capture_format("PNG").unwrap(), "png");
+        for format in ["jpg", "jpeg", "webp", "pdf", "", "../png"] {
+            assert!(validate_capture_format(format).is_err());
+        }
+        assert!(validate_capture_size(980, 720, 1024).is_ok());
+        assert!(validate_capture_size(0, 720, 1024).is_err());
+        assert!(validate_capture_size(980, 0, 1024).is_err());
+        assert!(validate_capture_size(5000, 5000, 1024).is_err());
+        assert!(validate_capture_size(980, 720, 0).is_err());
+        assert!(validate_capture_size(980, 720, MAX_CAPTURE_BYTES + 1).is_err());
+    }
+
+    #[test]
+    fn capture_metadata_and_prepared_text_redact_raw_identity_and_url_secrets() {
+        let source = source("http://127.0.0.1:4173/private/path?token=secret#account");
+        let url = source.source_url.parse::<tauri::Url>().unwrap();
+        let safe = capture_source_metadata(&source, &url).unwrap();
+        let record = PreviewCaptureRecord {
+            source_label: source_label(&source),
+            window_generation: 9,
+            captured_at_ms: 10,
+            local_ref: "$HOME/Library/Caches/test/preview-evidence/capture-safe.png".into(),
+            source_origin: safe.source_origin.clone(),
+            source_summary: capture_source_summary(&safe),
+            terminal_ref: safe.terminal_ref.clone(),
+        };
+        let serialized = serde_json::to_string(&safe).unwrap();
+        let prepared = capture_prepared_text(&record);
+        for secret in [
+            "repo-a",
+            "worktree-a",
+            "session-a",
+            "private/path",
+            "token",
+            "secret",
+            "account",
+        ] {
+            assert!(!serialized.contains(secret), "metadata leaked {secret}");
+            assert!(!prepared.contains(secret), "prepared text leaked {secret}");
+        }
+        assert!(serialized.contains("http://127.0.0.1:4173"));
+        assert!(!prepared.contains('\n'));
+        assert!(!prepared.contains('\r'));
+    }
+
+    #[test]
+    fn capture_records_remain_bound_to_source_and_window_generation() {
+        let first = source("http://127.0.0.1:4173/");
+        let mut other_worktree = first.clone();
+        other_worktree.worktree_id = "worktree-b".into();
+        other_worktree.workspace_id = "repo-a::worktree-b".into();
+        let record = PreviewCaptureRecord {
+            source_label: source_label(&first),
+            window_generation: 3,
+            captured_at_ms: 1,
+            local_ref: "preview-evidence://capture-safe".into(),
+            source_origin: "http://127.0.0.1:4173".into(),
+            source_summary: "redacted".into(),
+            terminal_ref: "terminal-sha256:abc".into(),
+        };
+        assert_eq!(record.source_label, source_label(&first));
+        assert_ne!(record.source_label, source_label(&other_worktree));
+        assert_ne!(record.window_generation, 4);
     }
 }

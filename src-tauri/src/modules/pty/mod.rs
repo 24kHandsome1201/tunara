@@ -84,6 +84,9 @@ impl PtyState {
         self.sessions.read().get(&id).cloned()
     }
 
+    /// Resolve the physical PTY currently owned by a logical frontend session.
+    /// Preview evidence uses this to avoid writing to whichever terminal happens
+    /// to be selected when the user presses Send.
     pub fn physical_for_logical(&self, logical_id: &str) -> Option<u32> {
         self.logical_sessions.read().get(logical_id).copied()
     }

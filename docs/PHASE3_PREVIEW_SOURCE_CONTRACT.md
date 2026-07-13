@@ -147,9 +147,23 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 - 受控 loopback fixture 自行报告页面 `innerWidth/innerHeight/devicePixelRatio`，真实验收以该页面事实与 Rust 的 WKWebView frame/safe-area、outer 状态交叉核对，不向普通页面注入测量脚本。
 - viewport 动作只改变对应 `preview-*` 原生窗口，不调整 main window、Inspector 或 PTY rows/cols。
 
-## 后置项
+## 用户触发的来源绑定截图与安全送回切片
 
-截图和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
+截图只由可信 `main` Inspector 中的用户显式动作触发；不可信 Preview 页面不获得截图、PTY、文件、shell、store、opener 或其他 app/plugin bridge，也不能自行截图、持续录屏或后台定时抓取。Rust command boundary 以完整 repository/worktree/workspace/session/terminal/source URL 来源键定位当前 `preview-*` WKWebView，并再次核对 active/resolved/local/eligible、真实窗口 label、当前 URL、physical PTY 与单调 window generation。窗口关闭、来源 stale、terminal exit、generation/URL/viewport/zoom 在捕获期间变化、窗口缺失或原生捕获不可用时均 fail closed；不允许退化为主窗口、整屏或其他应用截图。
+
+- macOS 只使用 `WKWebView.takeSnapshot`，并以原生 safe-area 裁出页面内容；PNG 像素不包含 Preview titlebar、main、PTY、桌面或其他 worktree Preview。只接受 PNG，像素上限 16,777,216、编码上限 32 MiB；非法、过大或不支持格式在写盘前拒绝。
+- 原始 PNG 与原始 metadata 仅写入 app cache 的 `preview-evidence` 本机目录，使用不可覆盖的新文件；安全本地引用以 `$HOME` 别名表达，不暴露用户名或绝对路径。它们不进入 workspace snapshot、Git、Journal 或远程同步。
+- 每条 metadata 只含脱敏 repository/worktree 摘要、workspace/session/terminal/source URL 的 SHA-256 安全引用、去 query/fragment/credentials 的安全 origin、捕获时间、页面 CSS viewport、原生 zoom、window generation、PNG 格式/像素尺寸/字节数/SHA-256。文件名不使用用户名、路径、session id、token、Cookie、URL 凭据或页面内容。
+- Copy 只复制由 Rust 返回的安全单行引用。Send 在 Rust 侧再次核对 capture 的来源 label/generation 与当前 logical-to-physical PTY 映射，只把“安全本地引用 + 同源 origin + 脱敏来源摘要”写入该来源真实 physical PTY 输入区；不接受当前选中但来源不同的 PTY，不复制 PNG/base64，不附加 CR/LF，不执行。
+- 关闭重开创建新 window generation，旧 capture 引用不能送入新窗口对应 PTY；两 worktree 即使 URL 形状相似也不共享截图记录。运行时仅保留有界索引，原始 artifact 生命周期仍是本机 evidence/cache 管理责任，不扩展为通用截图管理器。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用连接两个 detached/linked worktree、两个 loopback fixture 与两条真实 PTY；分别以 390×844/125% 和 768×1024/90% 捕获，再关闭重开来源 A 于 980×720/100% 捕获。
+- fixture 的 `innerWidth/innerHeight/devicePixelRatio`、WKWebView zoom 与 PNG 像素交叉可解释；三张原图人工检查只含对应页面，不含 main、PTY、另一个 Preview、桌面或其他应用。
+- A/B Send 只填入各自 physical PTY，另一 PTY 不变且没有执行；跨来源、关闭、旧 generation、stale/terminal-exit 与无窗口动作拒绝。
+- 中英文可信控制面由真实组件与自动 UI 门覆盖；390px 窄 Preview、双 worktree、既有 navigation/history/zoom/viewport/lifecycle/ACL/popup/download 回归保持。
+- Git 只收录脱敏报告和结构化汇总；原始 PNG、metadata、fixture JSONL、应用日志与完整命令输出仅留 ignored/cache/temp，并在验收后清理。
 
 ## 基础失败 telemetry 与绑定 PTY 送回切片
 

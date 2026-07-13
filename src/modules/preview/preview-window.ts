@@ -162,6 +162,40 @@ export function previewDisplayUrl(raw: string): string {
   }
 }
 
+export interface PreviewCaptureResult {
+  captureId: string;
+  localRef: string;
+  sourceOrigin: string;
+  sourceSummary: string;
+  preparedText: string;
+  capturedAtMs: number;
+  viewportCssWidth: number;
+  viewportCssHeight: number;
+  zoomFactor: number;
+  windowGeneration: number;
+  imageFormat: "png";
+  imageWidth: number;
+  imageHeight: number;
+  imageSha256: string;
+}
+
+export interface PreviewSendReceipt {
+  terminalRef: string;
+  bytesWritten: number;
+  executed: false;
+}
+
+export function previewCapture(source: PreviewSource): Promise<PreviewCaptureResult> {
+  return invoke<PreviewCaptureResult>("preview_capture", { source, options: { format: "png" } });
+}
+
+export function previewSendCaptureToSourceTerminal(
+  source: PreviewSource,
+  captureId: string,
+): Promise<PreviewSendReceipt> {
+  return invoke<PreviewSendReceipt>("preview_send_capture_to_source_terminal", { source, captureId });
+}
+
 export function previewBlockReason(source: PreviewSource): "remote" | "stale" | "fallback" | null {
   if (!((source.transport === "local" && source.permission === "eligible")
     || (source.transport === "ssh" && source.permission === "forwarded"))) return "remote";

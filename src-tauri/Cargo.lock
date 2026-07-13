@@ -6419,6 +6419,7 @@ name = "tunara"
 version = "1.14.0"
 dependencies = [
  "base64 0.22.1",
+ "block2",
  "dirs 5.0.1",
  "getrandom 0.3.4",
  "git2",
@@ -6431,6 +6432,9 @@ dependencies = [
  "log",
  "notify",
  "notify-debouncer-mini",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "objc2-web-kit",
  "parking_lot",
  "portable-pty",

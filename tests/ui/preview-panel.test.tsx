@@ -277,8 +277,55 @@ test("shows bounded failures and explicitly copies, clears, or fills only the so
   expect(await screen.findByText("Render failed ×2")).toBeTruthy();
   expect(screen.getByText("GET /api · HTTP 503 · fetch")).toBeTruthy();
   expect(screen.queryByText(/token=secret/)).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Send to source PTY" }));
+  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-telemetry"]')!);
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_telemetry_send", payload: { source: eligible } }));
   fireEvent.click(screen.getByRole("button", { name: "Clear" }));
   await screen.findByText("No bounded console or network failures for this Preview generation.");
+});
+
+test("captures only on explicit action and sends the safe reference to the bound PTY without execution", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source();
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return runtime();
+    if (command === "preview_capture") {
+      return {
+        captureId: "capture-safe",
+        localRef: "$HOME/Library/Caches/test/preview-evidence/capture-safe.png",
+        sourceOrigin: "http://127.0.0.1:41731",
+        sourceSummary: "repo=repository-sha256:a worktree=worktree-sha256:b",
+        preparedText: "Preview screenshot: ref=$HOME/Library/Caches/test/preview-evidence/capture-safe.png origin=http://127.0.0.1:41731 source=redacted generation=4",
+        capturedAtMs: 10,
+        viewportCssWidth: 980,
+        viewportCssHeight: 720,
+        zoomFactor: 1,
+        windowGeneration: 4,
+        imageFormat: "png",
+        imageWidth: 1960,
+        imageHeight: 1440,
+        imageSha256: "abc",
+      };
+    }
+    if (command === "preview_send_capture_to_source_terminal") {
+      return { terminalRef: "terminal-sha256:c", bytesWritten: 142, executed: false };
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  expect(calls.some((call) => call.command === "preview_capture")).toBe(false);
+  fireEvent.click(await screen.findByRole("button", { name: "Capture PNG" }));
+  await waitFor(() => expect(calls).toContainEqual({
+    command: "preview_capture",
+    payload: { source: eligible, options: { format: "png" } },
+  }));
+  expect(await screen.findByText(/1960×1440 PNG/)).toBeTruthy();
+
+  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-capture"]')!);
+  await waitFor(() => expect(calls).toContainEqual({
+    command: "preview_send_capture_to_source_terminal",
+    payload: { source: eligible, captureId: "capture-safe" },
+  }));
+  expect(await screen.findByText("Filled 142 bytes into the bound PTY without executing.")).toBeTruthy();
 });

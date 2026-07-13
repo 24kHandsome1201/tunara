@@ -55,6 +55,8 @@ commands.allow = [
   "preview_tunnel_status",
   "preview_tunnel_close",
   "preview_restart_prepare",
+  "preview_capture",
+  "preview_send_capture_to_source_terminal",
   "preview_close",
   "ssh_open",
   "ssh_cancel_open",
