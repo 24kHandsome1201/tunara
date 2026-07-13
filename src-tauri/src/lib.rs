@@ -116,6 +116,7 @@ pub fn run() {
             modules::workspace_store::workspace_store_file_state,
             modules::preview::preview_open,
             modules::preview::preview_refresh,
+            modules::preview::preview_status,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,

@@ -1,6 +1,6 @@
 {
   "date": "2026-07-13",
-  "baseline": "a7b898f9befb0e0e3780b04c15417e727fe371b7",
+  "baseline": "eb5f904a9b037948e54b9e28cf50521636106eb8",
   "app": {
     "profile": "release optimized",
     "bundle": "Tunara Preview Security.app",
@@ -34,7 +34,14 @@
     "popup": "pass: window.open returned opened=false",
     "download": "pass: Rust logged blocked Preview download; no save dialog or page change",
     "nativeCloseReopen": "pass: Destroyed cleanup followed by same-source recreation",
-    "refresh": "pass: same-origin reload and stopped-then-restored fixture retry produced a fresh / request",
+    "runtimeStates": "pass: opening/loading/ready/failed/closed/stale-terminal-exited are explicit and runtime-only",
+    "initialUnreachable": "pass: exact unavailable loopback source showed failed with Refresh, Close, and external escape hatch",
+    "serviceStopRefresh": "pass: ready source became failed after manual Refresh; main window and PTY remained usable",
+    "serviceRecoveryRefresh": "pass: restored exact source returned to ready only after manual Refresh",
+    "terminalExitStale": "pass: source retained terminal-exited reason; internal Focus/Refresh/reopen blocked while Close/external remained available",
+    "nativeCloseReopenLifecycle": "pass: native close returned closed; same source reopened ready without stale callback pollution",
+    "runtimeWorktreeIsolation": "pass: main worktree source failed while detached linked-worktree source on another port remained ready",
+    "refresh": "pass: ready uses one reload; failed recovery uses one validated navigate",
     "worktreeIsolation": "pass: 41731 and 41732 windows coexisted with distinct title source identities",
     "ptyMainIsolation": "pass: PHASE3_PTY_AFTER_PREVIEW_OK echoed after blocked actions and native closes"
   },

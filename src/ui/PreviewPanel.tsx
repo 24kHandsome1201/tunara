@@ -1,29 +1,62 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
-import { previewBlockReason, previewClose, previewOpen, previewRefresh } from "@/modules/preview/preview-window";
+import { previewBlockReason, previewClose, previewOpen, previewRefresh, previewStatus } from "@/modules/preview/preview-window";
+import type { PreviewRuntimeStatus } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 
 function SourceCard({ source }: { source: PreviewSource }) {
   const t = useT();
   const blocked = previewBlockReason(source);
-  const [open, setOpen] = useState(false);
+  const [runtimeStatus, setRuntimeStatus] = useState<PreviewRuntimeStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const statusRequestRef = useRef(0);
 
-  const run = async (action: () => Promise<unknown>, nextOpen = open) => {
+  useEffect(() => {
+    let cancelled = false;
+    let syncing = false;
+    const sync = async () => {
+      if (syncing) return;
+      syncing = true;
+      const sequence = ++statusRequestRef.current;
+      try {
+        const status = await previewStatus(source);
+        if (!cancelled && sequence === statusRequestRef.current) setRuntimeStatus(status);
+      } catch {
+        // A transient status read must not replace an actionable open/refresh error.
+      } finally {
+        syncing = false;
+      }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 750);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [source]);
+
+  const run = async (action: () => Promise<unknown>, pendingStatus?: PreviewRuntimeStatus) => {
     setBusy(true);
     setError(undefined);
+    statusRequestRef.current += 1;
+    if (pendingStatus) setRuntimeStatus(pendingStatus);
     try {
       await action();
-      setOpen(nextOpen);
+      const sequence = ++statusRequestRef.current;
+      const status = await previewStatus(source);
+      if (sequence === statusRequestRef.current) setRuntimeStatus(status);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
     }
   };
+
+  const displayStatus = source.state === "stale" ? "stale" : runtimeStatus ?? "closed";
+  const isOpen = runtimeStatus !== null;
 
   const row = (label: string, value: string) => (
     <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
@@ -36,8 +69,8 @@ function SourceCard({ source }: { source: PreviewSource }) {
     <section style={{ padding: 10, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-1)", display: "flex", flexDirection: "column", gap: 7 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontWeight: 650, color: "var(--c-text-primary)" }}>{t("inspector.preview.source")}</span>
-        <span style={{ marginLeft: "auto", color: blocked ? "var(--c-warning)" : "var(--c-success)", fontSize: "var(--fs-meta)" }}>
-          {blocked ? t(`inspector.preview.blocked.${blocked}`) : t("inspector.preview.eligible")}
+        <span role="status" style={{ marginLeft: "auto", color: displayStatus === "failed" ? "var(--c-danger)" : blocked || displayStatus === "stale" ? "var(--c-warning)" : displayStatus === "ready" ? "var(--c-success)" : "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>
+          {t(`inspector.preview.status.${displayStatus}`)}
         </span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "var(--fs-meta)", color: "var(--c-text-3)", minWidth: 0 }}>
@@ -48,11 +81,13 @@ function SourceCard({ source }: { source: PreviewSource }) {
         {row("URL", source.sourceUrl)}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button disabled={busy || !!blocked} onClick={() => void run(() => previewOpen(source), true)}>{open ? t("inspector.preview.focus") : t("inspector.preview.open")}</button>
-        <button disabled={busy || !!blocked || !open} onClick={() => void run(() => previewRefresh(source))}>{t("inspector.preview.refresh")}</button>
-        <button disabled={busy || !!blocked || !open} onClick={() => void run(() => previewClose(source), false)}>{t("inspector.preview.close")}</button>
+        <button disabled={busy || !!blocked} onClick={() => void run(() => previewOpen(source), "opening")}>{isOpen ? t("inspector.preview.focus") : t("inspector.preview.open")}</button>
+        <button disabled={busy || !!blocked || !isOpen || runtimeStatus === "opening" || runtimeStatus === "loading"} onClick={() => void run(() => previewRefresh(source), "loading")}>{t("inspector.preview.refresh")}</button>
+        <button disabled={busy || !isOpen} onClick={() => void run(() => previewClose(source))}>{t("inspector.preview.close")}</button>
         <button disabled={busy} onClick={() => void run(() => openUrl(source.sourceUrl))}>{t("inspector.preview.external")}</button>
       </div>
+      {displayStatus === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{t("inspector.preview.failed_help")}</div>}
+      {displayStatus === "stale" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning)" }}>{t("inspector.preview.stale_help")}</div>}
       {error && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{error}</div>}
     </section>
   );

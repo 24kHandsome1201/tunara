@@ -51,7 +51,7 @@ PreviewSource = {
 - localhost、IPv4/IPv6 loopback、query/fragment、尾随标点；公网 URL、凭据、非法协议与非法端口拒绝。
 - SSH loopback 只获得 `remote-manual`；terminal exit 后保留 stale/source；hydration 前 local/SSH fallback identity 不混淆。
 
-## 明确 Non-scope
+## 来源检测切片当时的 Non-scope
 
 - 不创建 WebView、Preview tab 或 Inspector 页面。
 - 不实现地址栏、刷新、前进/后退、缩放、viewport、截图、console/network 摘要。
@@ -86,6 +86,43 @@ Rust `allowed_origin / navigation_allowed` 是唯一 top-level policy：初始 U
 - 两个 linked worktree、不同 session/terminal/端口的来源标签与窗口保持独立。
 - 用户原生关闭后可再次打开；页面失败、关闭与刷新不影响 PTY 输入回显及 main window。
 
-## 下一门
+## 最小运行时状态与服务生命周期切片
 
-下一独立批次才是最小导航/页面失败与服务生命周期闭环；前进后退、地址栏、缩放、viewport、截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。安全 WebView surface 完成也不得解释为 Phase 3 已完成，更不得进入 Phase 4。
+本切片只在可信 main Inspector 中补齐观察与手动恢复，不把 Preview 扩成通用浏览器。Rust 以完整来源身份的 SHA-256 label 作为状态键；键覆盖 repository、worktree、workspace、session、terminal generation 与 source URL。每次原生窗口创建另有单调 `windowGeneration`，所有 page-load、timeout 与 Destroyed 回调都必须同时匹配 label 和 generation，旧窗口不能删除或污染同来源重开的新窗口。
+
+### 状态合同
+
+```text
+closed -> opening -> loading -> ready
+                    |         |
+                    +-------> failed
+failed --manual Refresh--> loading -> ready | failed
+active source --terminal exit--> stale / terminal-exited
+```
+
+- `opening / loading`：窗口创建或当前页面加载尚未完成；Refresh 在此期间禁用，避免并发导航代次。
+- `ready`：精确来源端口可达，且 WKWebView 已完成当前 URL 的页面加载。失败时不得继续显示 ready。
+- `failed`：初始精确 loopback 端口不可达、Refresh 时端口已停止、窗口操作失败，或页面在 8 秒内未完成。Inspector 显示解释文字并保留 Refresh、Close 与外部浏览器逃生口。
+- `closed`：没有该完整来源键对应的原生窗口。原生关闭与控制面 Close 都清除 runtime entry。
+- `stale / terminal-exited`：来源终端 generation 已退出。已打开窗口仍可 Close，外部浏览器仍可用；Focus、Refresh 与新建内置 Preview 被拒绝。新 terminal generation 必须重新输出 URL 才能建立新的 active 来源。
+
+状态只存在 Rust runtime map 与前端轮询视图，不进入 workspace/session snapshot。前端轮询采用单飞与 request sequence，迟到响应不能覆盖用户刚触发的 opening/loading/failed 状态。
+
+### 精确可达性边界
+
+Open/Refresh 只对已经通过 active/resolved/local/eligible 与精确 loopback URL 校验的**当前 source host + effective port**做 350ms TCP connect。它不发送 HTTP 请求、不扫描相邻端口、不访问公网、不启动或重启服务、不杀进程。连接失败立即 fail closed；连接成功后仍由集中 navigation policy 与 page-load generation 决定 loading/ready。服务恢复只在用户再次点击 Refresh 后观察，不自动关联进程。
+
+Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/既有 failed 页面使用 validated source navigate；不再叠加 `reload + navigate`。页面 navigation、popup、download、外部协议、公网 redirect 与 capability ACL 继续沿用上一切片的安全边界。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用：正常 opening/loading 后 ready；初始不可达明确 failed。
+- ready 服务停止后，手动 Refresh 进入 failed，main 与 PTY 保持；服务恢复后再次 Refresh 回 ready。
+- terminal exit 后来源显示 stale/terminal-exited，不允许新建或刷新内置 Preview，但可 Close/外部打开。
+- 两个 linked worktree、不同 session/terminal/端口同时存在；一端失败不改变另一端 ready。
+- 原生关闭后状态回 closed；同一来源重开回 ready，旧 Destroyed/timeout 不留下残留。
+- fixture 再次确认页面 app/plugin ACL 拒绝；原始 JSONL、应用日志与截图仅本机保留并由 `.gitignore` 排除。
+
+## 后置项
+
+前进后退、地址栏、缩放、viewport、截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。

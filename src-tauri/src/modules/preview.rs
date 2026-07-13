@@ -1,10 +1,19 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    net::{TcpStream, ToSocketAddrs},
+    sync::Mutex,
+    thread,
+    time::Duration,
+};
 use tauri::{
-    webview::{DownloadEvent, NewWindowResponse},
+    webview::{DownloadEvent, NewWindowResponse, PageLoadEvent},
     AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
 };
+
+const LOAD_FAILURE_TIMEOUT: Duration = Duration::from_secs(8);
+const LOOPBACK_CONNECT_TIMEOUT: Duration = Duration::from_millis(350);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,8 +37,40 @@ struct AllowedOrigin {
     port: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PreviewRuntimeStatus {
+    Opening,
+    Loading,
+    Ready,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+struct PreviewRuntimeEntry {
+    source: PreviewSource,
+    status: PreviewRuntimeStatus,
+    window_generation: u64,
+    load_attempt: u64,
+    loading_url: Option<String>,
+}
+
 #[derive(Default)]
-pub struct PreviewWindowState(Mutex<HashMap<String, PreviewSource>>);
+pub struct PreviewWindowState {
+    entries: Mutex<HashMap<String, PreviewRuntimeEntry>>,
+    next_window_generation: Mutex<u64>,
+}
+
+impl PreviewWindowState {
+    fn next_generation(&self) -> Result<u64, String> {
+        let mut generation = self
+            .next_window_generation
+            .lock()
+            .map_err(|_| "Preview generation lock poisoned".to_string())?;
+        *generation = generation.saturating_add(1);
+        Ok(*generation)
+    }
+}
 
 fn allowed_origin(url: &tauri::Url) -> Result<AllowedOrigin, String> {
     if url.username() != "" || url.password().is_some() {
@@ -59,6 +100,21 @@ fn navigation_allowed(origin: &AllowedOrigin, target: &tauri::Url) -> bool {
     allowed_origin(target).is_ok_and(|candidate| candidate == *origin)
 }
 
+fn source_reachable(url: &tauri::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let Some(port) = url.port_or_known_default() else {
+        return false;
+    };
+    let Ok(addresses) = (host, port).to_socket_addrs() else {
+        return false;
+    };
+    addresses
+        .into_iter()
+        .any(|address| TcpStream::connect_timeout(&address, LOOPBACK_CONNECT_TIMEOUT).is_ok())
+}
+
 fn validate_source(source: &PreviewSource) -> Result<(tauri::Url, AllowedOrigin), String> {
     if source.transport != "local"
         || source.permission != "eligible"
@@ -86,6 +142,26 @@ fn validate_source(source: &PreviewSource) -> Result<(tauri::Url, AllowedOrigin)
     Ok((url, origin))
 }
 
+fn validate_source_identity(source: &PreviewSource) -> Result<(), String> {
+    if source.repository_id.is_empty()
+        || source.worktree_id.is_empty()
+        || source.session_id.is_empty()
+        || source.terminal_id.is_empty()
+        || source.workspace_id != format!("{}::{}", source.repository_id, source.worktree_id)
+        || !source
+            .terminal_id
+            .starts_with(&format!("{}:", source.session_id))
+    {
+        return Err("Preview source identity is incomplete or inconsistent".into());
+    }
+    let url = source
+        .source_url
+        .parse::<tauri::Url>()
+        .map_err(|_| "Preview URL is invalid".to_string())?;
+    allowed_origin(&url)?;
+    Ok(())
+}
+
 fn source_label(source: &PreviewSource) -> String {
     let mut hasher = Sha256::new();
     for value in [
@@ -105,6 +181,7 @@ fn source_label(source: &PreviewSource) -> String {
 #[tauri::command]
 pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, String> {
     let (url, origin) = validate_source(&source)?;
+    let initially_reachable = source_reachable(&url);
     let label = source_label(&source);
     if let Some(window) = app.get_webview_window(&label) {
         window.show().map_err(|error| error.to_string())?;
@@ -120,6 +197,39 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
         source.terminal_id,
         source.source_url
     );
+    let window_generation = app.state::<PreviewWindowState>().next_generation()?;
+    app.state::<PreviewWindowState>()
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?
+        .insert(
+            label.clone(),
+            PreviewRuntimeEntry {
+                source: source.clone(),
+                status: PreviewRuntimeStatus::Opening,
+                window_generation,
+                load_attempt: 0,
+                loading_url: None,
+            },
+        );
+    let app_for_open_timeout = app.clone();
+    let label_for_open_timeout = label.clone();
+    thread::spawn(move || {
+        thread::sleep(LOAD_FAILURE_TIMEOUT);
+        let state = app_for_open_timeout.state::<PreviewWindowState>();
+        if let Ok(mut entries) = state.entries.lock() {
+            if let Some(entry) = entries.get_mut(&label_for_open_timeout) {
+                if entry.window_generation == window_generation
+                    && entry.load_attempt == 0
+                    && entry.status == PreviewRuntimeStatus::Opening
+                {
+                    entry.status = PreviewRuntimeStatus::Failed;
+                }
+            }
+        };
+    });
+    let app_for_load = app.clone();
+    let label_for_load = label.clone();
     let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url))
         .title(title)
         .inner_size(980.0, 720.0)
@@ -132,19 +242,90 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
             }
             false
         })
+        .on_page_load(move |_, payload| match payload.event() {
+            PageLoadEvent::Started => {
+                let attempt = {
+                    let state = app_for_load.state::<PreviewWindowState>();
+                    let Ok(mut entries) = state.entries.lock() else {
+                        return;
+                    };
+                    let Some(entry) = entries.get_mut(&label_for_load) else {
+                        return;
+                    };
+                    if entry.window_generation != window_generation {
+                        return;
+                    }
+                    if entry.status == PreviewRuntimeStatus::Failed {
+                        return;
+                    }
+                    entry.load_attempt = entry.load_attempt.saturating_add(1);
+                    entry.status = PreviewRuntimeStatus::Loading;
+                    entry.loading_url = Some(payload.url().to_string());
+                    entry.load_attempt
+                };
+                let app_for_timeout = app_for_load.clone();
+                let label_for_timeout = label_for_load.clone();
+                thread::spawn(move || {
+                    thread::sleep(LOAD_FAILURE_TIMEOUT);
+                    let state = app_for_timeout.state::<PreviewWindowState>();
+                    if let Ok(mut entries) = state.entries.lock() {
+                        if let Some(entry) = entries.get_mut(&label_for_timeout) {
+                            if entry.window_generation == window_generation
+                                && entry.load_attempt == attempt
+                                && entry.status == PreviewRuntimeStatus::Loading
+                            {
+                                entry.status = PreviewRuntimeStatus::Failed;
+                            }
+                        }
+                    };
+                });
+            }
+            PageLoadEvent::Finished => {
+                let state = app_for_load.state::<PreviewWindowState>();
+                if let Ok(mut entries) = state.entries.lock() {
+                    if let Some(entry) = entries.get_mut(&label_for_load) {
+                        if entry.window_generation == window_generation
+                            && entry.status == PreviewRuntimeStatus::Loading
+                            && entry.loading_url.as_deref() == Some(payload.url().as_str())
+                        {
+                            entry.status = PreviewRuntimeStatus::Ready;
+                        }
+                    }
+                };
+            }
+        })
         .build()
-        .map_err(|error| error.to_string())?;
-    app.state::<PreviewWindowState>()
-        .0
-        .lock()
-        .map_err(|_| "Preview state lock poisoned".to_string())?
-        .insert(label.clone(), source);
+        .map_err(|error| {
+            if let Ok(mut entries) = app.state::<PreviewWindowState>().entries.lock() {
+                if entries
+                    .get(&label)
+                    .is_some_and(|entry| entry.window_generation == window_generation)
+                {
+                    entries.remove(&label);
+                }
+            }
+            error.to_string()
+        })?;
+    if !initially_reachable {
+        if let Ok(mut entries) = app.state::<PreviewWindowState>().entries.lock() {
+            if let Some(entry) = entries.get_mut(&label) {
+                if entry.window_generation == window_generation {
+                    entry.status = PreviewRuntimeStatus::Failed;
+                }
+            }
+        }
+    }
     let app_for_close = app.clone();
     let label_for_close = label.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
-            if let Ok(mut sources) = app_for_close.state::<PreviewWindowState>().0.lock() {
-                sources.remove(&label_for_close);
+            if let Ok(mut entries) = app_for_close.state::<PreviewWindowState>().entries.lock() {
+                if entries
+                    .get(&label_for_close)
+                    .is_some_and(|entry| entry.window_generation == window_generation)
+                {
+                    entries.remove(&label_for_close);
+                }
             }
         }
     });
@@ -157,33 +338,108 @@ pub fn preview_refresh(app: AppHandle, source: PreviewSource) -> Result<(), Stri
     let label = source_label(&source);
     let state = app.state::<PreviewWindowState>();
     let registered = state
-        .0
+        .entries
         .lock()
         .map_err(|_| "Preview state lock poisoned".to_string())?
         .get(&label)
-        .map(source_label);
+        .map(|entry| source_label(&entry.source));
     if registered.as_deref() != Some(label.as_str()) {
         return Err("Preview source is not open".into());
     }
     let window = app
         .get_webview_window(&label)
         .ok_or_else(|| "Preview window is unavailable".to_string())?;
-    // WKWebView reloads a committed document, while navigate retries an
-    // initial load that failed before committing. Calling both keeps Refresh
-    // correct in both states; on_navigation still enforces the exact origin.
-    window.reload().map_err(|error| error.to_string())?;
-    window.navigate(url).map_err(|error| error.to_string())
+    if !source_reachable(&url) {
+        if let Ok(mut entries) = state.entries.lock() {
+            if let Some(entry) = entries.get_mut(&label) {
+                entry.status = PreviewRuntimeStatus::Failed;
+            }
+        }
+        return Ok(());
+    }
+    let (status, window_generation, attempt) = {
+        let mut entries = state
+            .entries
+            .lock()
+            .map_err(|_| "Preview state lock poisoned".to_string())?;
+        let entry = entries
+            .get_mut(&label)
+            .ok_or_else(|| "Preview source is not open".to_string())?;
+        let status = entry.status;
+        if matches!(
+            status,
+            PreviewRuntimeStatus::Ready | PreviewRuntimeStatus::Failed
+        ) {
+            entry.load_attempt = entry.load_attempt.saturating_add(1);
+            entry.status = PreviewRuntimeStatus::Loading;
+            entry.loading_url = Some(url.to_string());
+        }
+        (status, entry.window_generation, entry.load_attempt)
+    };
+    if matches!(
+        status,
+        PreviewRuntimeStatus::Ready | PreviewRuntimeStatus::Failed
+    ) {
+        let app_for_timeout = app.clone();
+        let label_for_timeout = label.clone();
+        thread::spawn(move || {
+            thread::sleep(LOAD_FAILURE_TIMEOUT);
+            let state = app_for_timeout.state::<PreviewWindowState>();
+            if let Ok(mut entries) = state.entries.lock() {
+                if let Some(entry) = entries.get_mut(&label_for_timeout) {
+                    if entry.window_generation == window_generation
+                        && entry.load_attempt == attempt
+                        && entry.status == PreviewRuntimeStatus::Loading
+                    {
+                        entry.status = PreviewRuntimeStatus::Failed;
+                    }
+                }
+            };
+        });
+    }
+    let result = match status {
+        PreviewRuntimeStatus::Failed => window.navigate(url).map_err(|error| error.to_string()),
+        PreviewRuntimeStatus::Ready => window.reload().map_err(|error| error.to_string()),
+        PreviewRuntimeStatus::Opening | PreviewRuntimeStatus::Loading => {
+            Err("Preview is already loading".into())
+        }
+    };
+    if result.is_err() {
+        if let Ok(mut entries) = state.entries.lock() {
+            if let Some(entry) = entries.get_mut(&label) {
+                if entry.window_generation == window_generation {
+                    entry.status = PreviewRuntimeStatus::Failed;
+                }
+            }
+        }
+    }
+    result
+}
+
+#[tauri::command]
+pub fn preview_status(
+    app: AppHandle,
+    source: PreviewSource,
+) -> Result<Option<PreviewRuntimeStatus>, String> {
+    validate_source_identity(&source)?;
+    let label = source_label(&source);
+    let state = app.state::<PreviewWindowState>();
+    let entries = state
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?;
+    Ok(entries.get(&label).map(|entry| entry.status))
 }
 
 #[tauri::command]
 pub fn preview_close(app: AppHandle, source: PreviewSource) -> Result<(), String> {
-    validate_source(&source)?;
+    validate_source_identity(&source)?;
     let label = source_label(&source);
     if let Some(window) = app.get_webview_window(&label) {
         window.close().map_err(|error| error.to_string())?;
     }
     app.state::<PreviewWindowState>()
-        .0
+        .entries
         .lock()
         .map_err(|_| "Preview state lock poisoned".to_string())?
         .remove(&label);
@@ -255,5 +511,24 @@ mod tests {
         second = first.clone();
         second.terminal_id = "session-a:1".into();
         assert_ne!(source_label(&first), source_label(&second));
+    }
+
+    #[test]
+    fn stale_identity_can_be_closed_but_never_expands_beyond_loopback() {
+        let mut stale = source("http://127.0.0.1:4173/");
+        stale.state = "stale".into();
+        assert!(validate_source_identity(&stale).is_ok());
+        stale.source_url = "https://example.com/".into();
+        assert!(validate_source_identity(&stale).is_err());
+    }
+
+    #[test]
+    fn reachability_checks_only_the_validated_exact_listener() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let url = format!("http://127.0.0.1:{}/", address.port())
+            .parse::<tauri::Url>()
+            .unwrap();
+        assert!(source_reachable(&url));
     }
 }
