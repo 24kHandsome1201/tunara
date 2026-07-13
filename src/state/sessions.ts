@@ -52,6 +52,7 @@ import {
   mergePreviewSources,
   previewSourceContext,
 } from "@/modules/preview/preview-source";
+import { previewRemoteSourceObserved } from "@/modules/preview/preview-window";
 import type { PreviewCommandProvenance } from "@/modules/preview/preview-source";
 import {
   previewTerminalCommandFinished,
@@ -700,6 +701,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       discoveredAt,
       session.runState === "running" ? session.previewCommandProvenance : undefined,
     );
+    for (const source of detected) {
+      if (source.transport === "ssh" && source.workspaceResolution === "resolved" && source.physicalPtyId !== undefined) {
+        void previewRemoteSourceObserved(source).catch(() => {});
+      }
+    }
     if (detected.length === 0) return;
     get().updateSession(id, {
       previewSources: mergePreviewSources(session.previewSources ?? [], detected),

@@ -84,6 +84,10 @@ impl PtyState {
         self.sessions.read().get(&id).cloned()
     }
 
+    pub fn physical_for_logical(&self, logical_id: &str) -> Option<u32> {
+        self.logical_sessions.read().get(logical_id).copied()
+    }
+
     /// Register an already-built session under a fresh id, optionally bound to a
     /// logical id, replacing (and killing) any session already bound to that
     /// logical id. Returns the physical id. Used by both pty_open and ssh_open.
@@ -120,8 +124,11 @@ impl PtyState {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn pty_open(
+    app: tauri::AppHandle,
     state: tauri::State<PtyState>,
+    preview_state: tauri::State<crate::modules::preview::PreviewWindowState>,
     hooks_state: tauri::State<HookListenerState>,
     logical_session_id: Option<String>,
     cols: u16,
@@ -130,6 +137,9 @@ pub fn pty_open(
     on_event: Channel<PtyEvent>,
 ) -> Result<u32, String> {
     if let Some(logical_id) = logical_session_id.as_deref() {
+        if let Some(old_id) = state.physical_for_logical(logical_id) {
+            preview_state.close_tunnels_for_pty(&app, old_id);
+        }
         state.remove_logical(logical_id);
         wrapper::cleanup_hooks_settings(logical_id, hooks_state.agent_config_dir());
     }
@@ -201,10 +211,13 @@ pub fn pty_resize(
 
 #[tauri::command]
 pub fn pty_close(
+    app: tauri::AppHandle,
     state: tauri::State<PtyState>,
+    preview_state: tauri::State<crate::modules::preview::PreviewWindowState>,
     hooks_state: tauri::State<HookListenerState>,
     id: u32,
 ) -> Result<(), String> {
+    preview_state.close_tunnels_for_pty(&app, id);
     let session = state.sessions.write().remove(&id);
     let removed_logical: Option<String> = {
         let mut ls = state.logical_sessions.write();

@@ -17,6 +17,38 @@ export function previewOpen(source: PreviewSource): Promise<string> {
   return invoke<string>("preview_open", { source });
 }
 
+export type PreviewTunnelStatus = "opening" | "ready" | "failed";
+
+export interface PreviewTunnelState {
+  status: PreviewTunnelStatus;
+  remotePort: number;
+  localEndpoint?: string;
+  previewSource?: PreviewSource;
+  reason?: string;
+}
+
+export function previewRemoteSourceObserved(source: PreviewSource): Promise<void> {
+  return invoke<void>("preview_remote_source_observed", { source });
+}
+
+export function previewTunnelOpen(source: PreviewSource, actionNonce: string): Promise<PreviewTunnelState> {
+  return invoke<PreviewTunnelState>("preview_tunnel_open", { source, actionNonce });
+}
+
+export function previewTunnelStatus(source: PreviewSource): Promise<PreviewTunnelState | null> {
+  return invoke<PreviewTunnelState | null>("preview_tunnel_status", { source });
+}
+
+export function previewTunnelClose(source: PreviewSource): Promise<void> {
+  return invoke<void>("preview_tunnel_close", { source });
+}
+
+export function previewActionNonce(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export function previewRefresh(source: PreviewSource): Promise<void> {
   return invoke<void>("preview_refresh", { source });
 }
@@ -131,7 +163,8 @@ export function previewDisplayUrl(raw: string): string {
 }
 
 export function previewBlockReason(source: PreviewSource): "remote" | "stale" | "fallback" | null {
-  if (source.transport !== "local" || source.permission !== "eligible") return "remote";
+  if (!((source.transport === "local" && source.permission === "eligible")
+    || (source.transport === "ssh" && source.permission === "forwarded"))) return "remote";
   if (source.state !== "active") return "stale";
   if (source.workspaceResolution !== "resolved") return "fallback";
   return null;

@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 import { PreviewPanel } from "@/ui/PreviewPanel";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 import type { Session } from "@/ui/types";
-import type { PreviewRuntimeState } from "@/modules/preview/preview-window";
+import type { PreviewRuntimeState, PreviewTunnelState } from "@/modules/preview/preview-window";
 
 function runtime(overrides: Partial<PreviewRuntimeState> = {}): PreviewRuntimeState {
   return {
@@ -78,16 +78,57 @@ test("renders the full source identity and opens only an eligible source", async
 test("keeps SSH, stale, and fallback sources visibly blocked", () => {
   mockIPC((command) => command === "preview_status" ? null : undefined);
   render(<PreviewPanel session={session([
-    source({ terminalId: "session-a:1", transport: "ssh", permission: "remote-manual" }),
+    source({ terminalId: "session-a:1", transport: "ssh", permission: "remote-manual", sshHost: "dev.example", sshPort: 22, sshUser: "mawei" }),
     source({ terminalId: "session-a:2", state: "stale", staleReason: "terminal-exited" }),
     source({ terminalId: "session-a:3", workspaceResolution: "fallback" }),
   ])} />);
 
-  expect(screen.getAllByText("Closed").length).toBe(2);
+  expect(screen.getAllByText("Closed").length).toBe(3);
   expect(screen.getByText("Source stale / terminal exited")).toBeTruthy();
   for (const button of screen.getAllByRole("button", { name: "Open Preview" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   }
+});
+
+test("opens an SSH Preview only after an explicit source-bound tunnel action", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const remote = source({
+    transport: "ssh",
+    permission: "remote-manual",
+    sourceUrl: "http://127.0.0.1:41731/app",
+    sshHost: "dev.example",
+    sshPort: 22,
+    sshUser: "mawei",
+  });
+  const forwarded: PreviewSource = {
+    ...remote,
+    permission: "forwarded" as const,
+    sourceUrl: "http://127.0.0.1:53124/app",
+    remoteSourceUrl: remote.sourceUrl,
+    tunnelId: "a".repeat(64),
+  };
+  let tunnel: PreviewTunnelState | null = null;
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_tunnel_status") return tunnel;
+    if (command === "preview_tunnel_open") {
+      tunnel = { status: "ready", remotePort: 41731, localEndpoint: "http://127.0.0.1:53124/app", previewSource: forwarded };
+      return tunnel;
+    }
+    if (command === "preview_open") return "preview-forwarded";
+    if (command === "preview_status") return (payload as { source: PreviewSource }).source.permission === "forwarded" ? runtime({ currentUrl: forwarded.sourceUrl }) : null;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([remote])} />);
+
+  const external = screen.getByRole("button", { name: "Open externally" }) as HTMLButtonElement;
+  expect(external.disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Forward and open" }));
+  await waitFor(() => expect(calls.some((call) => call.command === "preview_tunnel_open" && /^[0-9a-f]{64}$/.test((call.payload as { actionNonce: string }).actionNonce))).toBe(true));
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_open", payload: { source: forwarded } }));
+  expect(await screen.findByText("http://127.0.0.1:53124/app")).toBeTruthy();
+  expect(screen.getByText("Tunnel ready")).toBeTruthy();
+  expect(calls.some((call) => call.command === "pty_write")).toBe(false);
 });
 
 test("shows a failed load with manual recovery and does not pretend it is ready", async () => {

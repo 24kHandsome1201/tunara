@@ -137,6 +137,10 @@ impl SshControl {
             self.close_ready.notified().await;
         }
     }
+
+    pub(super) fn is_closed(&self) -> bool {
+        self.close_requested.load(Ordering::Acquire)
+    }
 }
 
 pub(super) struct SshOutputBatch {

@@ -131,6 +131,10 @@ pub fn run() {
             modules::preview::preview_terminal_command_started,
             modules::preview::preview_terminal_command_finished,
             modules::preview::preview_terminal_exited,
+            modules::preview::preview_remote_source_observed,
+            modules::preview::preview_tunnel_open,
+            modules::preview::preview_tunnel_status,
+            modules::preview::preview_tunnel_close,
             modules::preview::preview_restart_prepare,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
@@ -173,6 +177,8 @@ pub fn run() {
                 show_main_window(app, "reopen");
             }
             tauri::RunEvent::Exit => {
+                app.state::<modules::preview::PreviewWindowState>()
+                    .close_all_tunnels(app);
                 app.state::<pty::PtyState>().close_all();
                 app.state::<HookListenerState>().shutdown();
             }

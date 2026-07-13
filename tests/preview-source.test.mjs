@@ -99,6 +99,19 @@ test("SSH localhost 只记录 remote source，不自动获得直连权限", () =
   assert.equal(source.transport, "ssh");
   assert.equal(source.permission, "remote-manual");
   assert.match(source.repositoryId, /^repo-1$/);
+  assert.deepEqual(
+    { host: source.sshHost, port: source.sshPort, user: source.sshUser, physicalPtyId: source.physicalPtyId },
+    { host: "dev.example", port: 22, user: "mawei", physicalPtyId: 9 },
+  );
+});
+
+test("相同 remote URL/端口在不同 SSH transport incarnation 中不会串线", () => {
+  const remote = { host: "dev.example", port: 22, user: "mawei" };
+  const first = detectPreviewSources("http://localhost:4173 ", previewSourceContext(session("s-ssh", "wt-ssh", 9, remote)), 10);
+  const second = detectPreviewSources("http://localhost:4173 ", previewSourceContext(session("s-ssh", "wt-ssh", 10, remote)), 20);
+  const merged = mergePreviewSources(first, second);
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged.map((source) => source.physicalPtyId), [9, 10]);
 });
 
 test("终端关闭后保留可解释 stale/source 状态", () => {
@@ -190,7 +203,7 @@ test("不可信 Preview capability 只有严格 telemetry ingest，没有 core/p
   assert.deepEqual(capability.permissions, ["allow-preview-telemetry-ingest"]);
   const permission = readFileSync(new URL("../src-tauri/permissions/preview.toml", import.meta.url), "utf8");
   assert.match(permission, /commands\.allow = \["preview_telemetry_ingest"\]/);
-  for (const forbidden of ["pty_write", "fs_read_file", "shell", "store", "opener", "core:"]) {
+  for (const forbidden of ["pty_write", "fs_read_file", "preview_tunnel_open", "preview_tunnel_close", "ssh_", "shell", "store", "opener", "core:"]) {
     assert.equal(permission.includes(forbidden), false, `unexpected Preview permission: ${forbidden}`);
   }
 });

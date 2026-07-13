@@ -194,3 +194,24 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 - 跨来源、旧 generation、关闭重开残留、不可信后续命令与 terminal exit 全部拒绝；恢复后的新 URL 只绑定新 generation。
 - Preview 页面主动尝试文件、store、PTY 与 app command，0 次意外成功；main 与另一 PTY 正常。验收不依赖 Accessibility。
 - 原始终端尾部、应用日志、fixture 与 bundle 只留本机临时路径并在交付前清理；Git 只收录脱敏结论、代码与测试。
+
+## SSH remote loopback 显式转发闭环
+
+### 来源与用户动作
+
+- SSH terminal 输出中的合法 `localhost`、`127.0.0.1`、`[::1]` URL 仍先记录为 `remote-manual`，不会自动建立 tunnel。只有可信 main Inspector 对当前 active/resolved 来源执行“建立转发并打开”，并提供一次性 256-bit action nonce，才进入 opening。
+- 来源键除既有 repository/worktree/workspace/session/terminal generation/physical PTY/remote URL 外，还固定 SSH host、port、user 与逻辑 session。Rust 在监听前后都重新核对注册来源、同一 `Arc<Session>`、连接存活及完整来源；nonce 全局有界去重。
+- 原始 remote URL 永久保留在派生来源的 `remoteSourceUrl`；OS 通过 `127.0.0.1:0` 分配本地端口，实际 `localEndpoint` 明确标记为 `forwarded`。相同远端 URL/端口的不同 session/worktree 不共享 tunnel 或 Preview identity。
+
+### 窄 transport 与生命周期
+
+- tunnel 只复用来源绑定的既有 authenticated russh handle，并仅调用 `channel_open_direct_tcpip` 到已验证 remote loopback 的精确 effective port；不拼 shell，不读取或复制凭据，不扫描端口，不支持公网目标、`0.0.0.0`、reverse、dynamic 或 SOCKS。
+- 本地 listener 只绑定 `127.0.0.1` 的 OS 分配端口；每个 tunnel 最多同时处理 32 个本机 loopback 连接。建立 probe、relay channel 或 listener 失败都会进入带原因的 failed，不会改远端服务或项目。
+- 显式关闭 Preview/tunnel、physical PTY replacement、terminal/SSH exit 与 app exit 都取消 listener 和 relay tasks。remote service 停止后的下一次原生 Preview 请求使对应 tunnel/Preview failed，其他来源保持 ready；恢复必须重新显式建立，不从 snapshot、Journal 或重开窗口恢复。
+- Preview capability 仍只有 telemetry ingest；页面不能观察、建立、重配或关闭 tunnel，也不能获得 SSH、PTY、file、store、shell 或 app command。
+
+### 真实验收门
+
+- optimized macOS 隔离 identifier 应用使用真实 codex-netcup transport、两个独立 SSH Git workspace/session/physical PTY，以及同一 remote port 上可区分的 IPv4/IPv6 loopback 服务。A/B 显式建立后获得不同本地端点，两个 WKWebView 分别完成页面与 ACL telemetry。
+- 停止 A 后以 A 的原生 Preview Refresh 触发 relay failure：只有 A 为 failed，B 保持 ready；显式关闭 B 后 runtime/listener 消失，新 nonce 显式重建才恢复。B terminal/SSH exit 后 listener 回收，旧来源动作拒绝。
+- 并发建立只能有一个 winner；nonce replay、跨 worktree、stale 与旧 physical generation 全部拒绝。页面对 file/store/PTY/SSH/tunnel/app 六类高权限探针 0 次意外成功。详见[脱敏报告](./benchmarks/phase3-preview-ssh-tunnel-macos-2026-07-13.md)。

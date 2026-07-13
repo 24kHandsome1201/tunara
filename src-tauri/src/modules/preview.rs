@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::sync::mpsc;
 use std::{
     collections::{HashMap, VecDeque},
-    net::{TcpStream, ToSocketAddrs},
+    net::{Ipv4Addr, TcpStream, ToSocketAddrs},
     sync::Mutex,
     thread,
     time::{Duration, Instant},
@@ -25,7 +25,7 @@ const TELEMETRY_RATE_WINDOW: Duration = Duration::from_secs(10);
 const TELEMETRY_MAX_PER_WINDOW: u32 = 40;
 const RESTART_COMMAND_MAX_BYTES: usize = 384;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewSource {
     repository_id: String,
@@ -39,10 +39,15 @@ pub struct PreviewSource {
     workspace_resolution: String,
     permission: String,
     state: String,
+    ssh_host: Option<String>,
+    ssh_port: Option<u16>,
+    ssh_user: Option<String>,
+    remote_source_url: Option<String>,
+    tunnel_id: Option<String>,
     restart_provenance: Option<PreviewCommandProvenance>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PreviewCommandProvenance {
     generation: String,
@@ -62,6 +67,9 @@ pub struct PreviewSourceContext {
     physical_pty_id: Option<u32>,
     transport: String,
     workspace_resolution: String,
+    ssh_host: Option<String>,
+    ssh_port: Option<u16>,
+    ssh_user: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +173,35 @@ struct PreviewRuntimeEntry {
     telemetry_dropped: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PreviewTunnelStatus {
+    Opening,
+    Ready,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewTunnelView {
+    status: PreviewTunnelStatus,
+    remote_port: u16,
+    local_endpoint: Option<String>,
+    preview_source: Option<PreviewSource>,
+    reason: Option<String>,
+}
+
+#[derive(Debug)]
+struct PreviewTunnelRuntime {
+    original_source: PreviewSource,
+    preview_source: Option<PreviewSource>,
+    status: PreviewTunnelStatus,
+    remote_port: u16,
+    generation: u64,
+    cancel: Option<tokio::sync::watch::Sender<bool>>,
+    reason: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 struct PreviewTerminalCommandRuntime {
     context: PreviewSourceContext,
@@ -182,6 +219,10 @@ pub struct PreviewWindowState {
     entries: Mutex<HashMap<String, PreviewRuntimeEntry>>,
     terminal_commands: Mutex<HashMap<String, PreviewTerminalCommandRuntime>>,
     next_window_generation: Mutex<u64>,
+    tunnels: Mutex<HashMap<String, PreviewTunnelRuntime>>,
+    used_tunnel_nonces: Mutex<VecDeque<String>>,
+    next_tunnel_generation: Mutex<u64>,
+    remote_sources: Mutex<HashMap<String, PreviewSource>>,
 }
 
 impl PreviewWindowState {
@@ -192,6 +233,66 @@ impl PreviewWindowState {
             .map_err(|_| "Preview generation lock poisoned".to_string())?;
         *generation = generation.saturating_add(1);
         Ok(*generation)
+    }
+
+    fn next_tunnel_generation(&self) -> Result<u64, String> {
+        let mut generation = self
+            .next_tunnel_generation
+            .lock()
+            .map_err(|_| "Preview tunnel generation lock poisoned".to_string())?;
+        *generation = generation.saturating_add(1);
+        Ok(*generation)
+    }
+
+    pub fn close_tunnels_for_pty(&self, app: &AppHandle, physical_pty_id: u32) {
+        let removed = self.remove_tunnels(|runtime| {
+            runtime.original_source.physical_pty_id == Some(physical_pty_id)
+        });
+        close_removed_tunnels(app, removed);
+        if let Ok(mut sources) = self.remote_sources.lock() {
+            sources.retain(|_, source| source.physical_pty_id != Some(physical_pty_id));
+        }
+    }
+
+    pub fn close_all_tunnels(&self, app: &AppHandle) {
+        let removed = self.remove_tunnels(|_| true);
+        close_removed_tunnels(app, removed);
+        if let Ok(mut sources) = self.remote_sources.lock() {
+            sources.clear();
+        }
+    }
+
+    fn remove_tunnels(
+        &self,
+        predicate: impl Fn(&PreviewTunnelRuntime) -> bool,
+    ) -> Vec<PreviewTunnelRuntime> {
+        let Ok(mut tunnels) = self.tunnels.lock() else {
+            return Vec::new();
+        };
+        let ids = tunnels
+            .iter()
+            .filter_map(|(id, runtime)| predicate(runtime).then_some(id.clone()))
+            .collect::<Vec<_>>();
+        ids.into_iter()
+            .filter_map(|id| tunnels.remove(&id))
+            .collect()
+    }
+}
+
+fn close_removed_tunnels(app: &AppHandle, removed: Vec<PreviewTunnelRuntime>) {
+    for runtime in removed {
+        if let Some(cancel) = runtime.cancel {
+            let _ = cancel.send(true);
+        }
+        if let Some(preview_source) = runtime.preview_source {
+            let label = source_label(&preview_source);
+            if let Some(window) = app.get_webview_window(&label) {
+                let _ = window.close();
+            }
+            if let Ok(mut entries) = app.state::<PreviewWindowState>().entries.lock() {
+                entries.remove(&label);
+            }
+        }
     }
 }
 
@@ -204,7 +305,7 @@ fn allowed_origin(url: &tauri::Url) -> Result<AllowedOrigin, String> {
     }
     let host = url
         .host_str()
-        .map(str::to_ascii_lowercase)
+        .map(|host| host.trim_matches(['[', ']']).to_ascii_lowercase())
         .ok_or_else(|| "Preview URL has no host".to_string())?;
     if !matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1") {
         return Err("Preview only accepts exact loopback hosts".into());
@@ -212,6 +313,9 @@ fn allowed_origin(url: &tauri::Url) -> Result<AllowedOrigin, String> {
     let port = url
         .port_or_known_default()
         .ok_or_else(|| "Preview URL has no valid port".to_string())?;
+    if port == 0 {
+        return Err("Preview URL port must be in 1..65535".into());
+    }
     Ok(AllowedOrigin {
         scheme: url.scheme().into(),
         host,
@@ -449,6 +553,65 @@ fn validate_source(source: &PreviewSource) -> Result<(tauri::Url, AllowedOrigin)
     Ok((url, origin))
 }
 
+fn validate_source_with_state(
+    source: &PreviewSource,
+    state: &PreviewWindowState,
+) -> Result<(tauri::Url, AllowedOrigin), String> {
+    if source.transport == "local" && source.permission == "eligible" {
+        return validate_source(source);
+    }
+    if source.transport != "ssh"
+        || source.permission != "forwarded"
+        || source.state != "active"
+        || source.workspace_resolution != "resolved"
+    {
+        return Err("Preview requires an active eligible local or ready forwarded source".into());
+    }
+    validate_source_identity(source)?;
+    let tunnel_id = source
+        .tunnel_id
+        .as_deref()
+        .ok_or_else(|| "Forwarded Preview has no tunnel identity".to_string())?;
+    let tunnels = state
+        .tunnels
+        .lock()
+        .map_err(|_| "Preview tunnel state lock poisoned".to_string())?;
+    let tunnel = tunnels
+        .get(tunnel_id)
+        .ok_or_else(|| "Forwarded Preview tunnel is closed".to_string())?;
+    if tunnel.status != PreviewTunnelStatus::Ready || tunnel.preview_source.as_ref() != Some(source)
+    {
+        return Err("Forwarded Preview source or tunnel generation changed".into());
+    }
+    let url = source
+        .source_url
+        .parse::<tauri::Url>()
+        .map_err(|_| "Forwarded Preview URL is invalid".to_string())?;
+    let origin = allowed_origin(&url)?;
+    Ok((url, origin))
+}
+
+fn validate_remote_tunnel_source(
+    source: &PreviewSource,
+) -> Result<(tauri::Url, String, u16), String> {
+    if source.transport != "ssh"
+        || source.permission != "remote-manual"
+        || source.state != "active"
+        || source.workspace_resolution != "resolved"
+        || source.remote_source_url.is_some()
+        || source.tunnel_id.is_some()
+    {
+        return Err("SSH Preview tunnel requires an active resolved remote-manual source".into());
+    }
+    validate_source_identity(source)?;
+    let url = source
+        .source_url
+        .parse::<tauri::Url>()
+        .map_err(|_| "SSH Preview source URL is invalid".to_string())?;
+    let origin = allowed_origin(&url)?;
+    Ok((url, origin.host, origin.port))
+}
+
 fn validate_source_identity(source: &PreviewSource) -> Result<(), String> {
     if source.repository_id.is_empty()
         || source.worktree_id.is_empty()
@@ -461,6 +624,13 @@ fn validate_source_identity(source: &PreviewSource) -> Result<(), String> {
     {
         return Err("Preview source identity is incomplete or inconsistent".into());
     }
+    if source.transport == "ssh"
+        && (source.ssh_host.as_deref().is_none_or(str::is_empty)
+            || source.ssh_port.is_none()
+            || source.ssh_user.as_deref().is_none_or(str::is_empty))
+    {
+        return Err("Preview SSH source identity is incomplete".into());
+    }
     let url = source
         .source_url
         .parse::<tauri::Url>()
@@ -470,8 +640,10 @@ fn validate_source_identity(source: &PreviewSource) -> Result<(), String> {
 }
 
 fn validate_terminal_context(context: &PreviewSourceContext) -> Result<u32, String> {
-    if context.transport != "local" || context.workspace_resolution != "resolved" {
-        return Err("Preview restart provenance requires a resolved local terminal".into());
+    if !matches!(context.transport.as_str(), "local" | "ssh")
+        || context.workspace_resolution != "resolved"
+    {
+        return Err("Preview terminal context must be resolved".into());
     }
     if context.repository_id.is_empty()
         || context.worktree_id.is_empty()
@@ -483,6 +655,13 @@ fn validate_terminal_context(context: &PreviewSourceContext) -> Result<u32, Stri
             .starts_with(&format!("{}:", context.session_id))
     {
         return Err("Preview terminal identity is incomplete or inconsistent".into());
+    }
+    if context.transport == "ssh"
+        && (context.ssh_host.as_deref().is_none_or(str::is_empty)
+            || context.ssh_port.is_none()
+            || context.ssh_user.as_deref().is_none_or(str::is_empty))
+    {
+        return Err("Preview SSH terminal identity is incomplete".into());
     }
     context
         .physical_pty_id
@@ -571,6 +750,9 @@ fn source_context(source: &PreviewSource) -> PreviewSourceContext {
         physical_pty_id: source.physical_pty_id,
         transport: source.transport.clone(),
         workspace_resolution: source.workspace_resolution.clone(),
+        ssh_host: source.ssh_host.clone(),
+        ssh_port: source.ssh_port,
+        ssh_user: source.ssh_user.clone(),
     }
 }
 
@@ -977,7 +1159,98 @@ fn source_label(source: &PreviewSource) -> String {
         hasher.update([0]);
     }
     hasher.update(source.physical_pty_id.unwrap_or_default().to_le_bytes());
+    for value in [
+        source.ssh_host.as_deref().unwrap_or_default(),
+        source.ssh_user.as_deref().unwrap_or_default(),
+        source.remote_source_url.as_deref().unwrap_or_default(),
+        source.tunnel_id.as_deref().unwrap_or_default(),
+    ] {
+        hasher.update(value.as_bytes());
+        hasher.update([0]);
+    }
+    hasher.update(source.ssh_port.unwrap_or_default().to_le_bytes());
     format!("preview-{:x}", hasher.finalize())[..32].to_string()
+}
+
+fn tunnel_nonce_is_valid(nonce: &str) -> bool {
+    nonce.len() == 64 && nonce.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+fn tunnel_view(runtime: &PreviewTunnelRuntime) -> PreviewTunnelView {
+    PreviewTunnelView {
+        status: runtime.status,
+        remote_port: runtime.remote_port,
+        local_endpoint: runtime
+            .preview_source
+            .as_ref()
+            .map(|source| safe_source_url(&source.source_url)),
+        preview_source: runtime.preview_source.clone(),
+        reason: runtime.reason.clone(),
+    }
+}
+
+fn ssh_session_for_source(
+    source: &PreviewSource,
+    pty_state: &crate::modules::pty::PtyState,
+) -> Result<std::sync::Arc<crate::modules::pty::Session>, String> {
+    let physical_pty_id = source
+        .physical_pty_id
+        .ok_or_else(|| "SSH Preview source has no physical PTY".to_string())?;
+    let session = pty_state
+        .get(physical_pty_id)
+        .ok_or_else(|| "SSH Preview source PTY has exited".to_string())?;
+    let crate::modules::pty::Session::Ssh(ssh) = session.as_ref() else {
+        return Err("SSH Preview source is not an SSH session".into());
+    };
+    let (host, port, user, logical_session_id) = ssh.identity();
+    if ssh.is_closed()
+        || source.ssh_host.as_deref() != Some(host)
+        || source.ssh_port != Some(port)
+        || source.ssh_user.as_deref() != Some(user)
+        || logical_session_id != source.session_id
+        || !source
+            .terminal_id
+            .starts_with(&format!("{}:", logical_session_id))
+    {
+        return Err("SSH Preview transport identity or generation changed".into());
+    }
+    Ok(session)
+}
+
+fn derived_forwarded_source(
+    source: &PreviewSource,
+    tunnel_id: &str,
+    local_port: u16,
+) -> Result<PreviewSource, String> {
+    let mut url = source
+        .source_url
+        .parse::<tauri::Url>()
+        .map_err(|_| "SSH Preview source URL is invalid".to_string())?;
+    url.set_host(Some("127.0.0.1"))
+        .map_err(|_| "Cannot derive local Preview host".to_string())?;
+    url.set_port(Some(local_port))
+        .map_err(|_| "Cannot derive local Preview port".to_string())?;
+    let mut derived = source.clone();
+    derived.remote_source_url = Some(source.source_url.clone());
+    derived.source_url = url.to_string();
+    derived.permission = "forwarded".into();
+    derived.tunnel_id = Some(tunnel_id.into());
+    derived.restart_provenance = None;
+    Ok(derived)
+}
+
+fn matching_tunnel_id(
+    state: &PreviewWindowState,
+    source: &PreviewSource,
+) -> Result<Option<String>, String> {
+    let tunnels = state
+        .tunnels
+        .lock()
+        .map_err(|_| "Preview tunnel state lock poisoned".to_string())?;
+    Ok(tunnels.iter().find_map(|(id, runtime)| {
+        (runtime.original_source == *source || runtime.preview_source.as_ref() == Some(source))
+            .then_some(id.clone())
+    }))
 }
 
 fn restart_summary(
@@ -1057,12 +1330,274 @@ fn command_proves_source_generation(
 }
 
 #[tauri::command]
+pub fn preview_remote_source_observed(
+    source: PreviewSource,
+    preview_state: tauri::State<PreviewWindowState>,
+    pty_state: tauri::State<crate::modules::pty::PtyState>,
+) -> Result<(), String> {
+    validate_remote_tunnel_source(&source)?;
+    ssh_session_for_source(&source, &pty_state)?;
+    preview_state
+        .remote_sources
+        .lock()
+        .map_err(|_| "Preview remote source lock poisoned".to_string())?
+        .insert(source_label(&source), source);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn preview_tunnel_open(
+    app: AppHandle,
+    source: PreviewSource,
+    action_nonce: String,
+    preview_state: tauri::State<'_, PreviewWindowState>,
+    pty_state: tauri::State<'_, crate::modules::pty::PtyState>,
+) -> Result<PreviewTunnelView, String> {
+    let (_, remote_host, remote_port) = validate_remote_tunnel_source(&source)?;
+    if !tunnel_nonce_is_valid(&action_nonce) {
+        return Err("SSH Preview action nonce is invalid".into());
+    }
+    let source_key = source_label(&source);
+    let registered = preview_state
+        .remote_sources
+        .lock()
+        .map_err(|_| "Preview remote source lock poisoned".to_string())?
+        .get(&source_key)
+        .cloned();
+    if registered.as_ref() != Some(&source) {
+        return Err("SSH Preview source is not the current observed source".into());
+    }
+    let session_before = ssh_session_for_source(&source, &pty_state)?;
+    {
+        let mut used = preview_state
+            .used_tunnel_nonces
+            .lock()
+            .map_err(|_| "Preview tunnel nonce lock poisoned".to_string())?;
+        if used.iter().any(|nonce| nonce == &action_nonce) {
+            return Err("SSH Preview action nonce was already used".into());
+        }
+        if used.len() >= 256 {
+            used.pop_front();
+        }
+        used.push_back(action_nonce.clone());
+    }
+    let generation = preview_state.next_tunnel_generation()?;
+    let tunnel_id = telemetry_nonce()?;
+    {
+        let mut tunnels = preview_state
+            .tunnels
+            .lock()
+            .map_err(|_| "Preview tunnel state lock poisoned".to_string())?;
+        let existing = tunnels
+            .values()
+            .find(|runtime| runtime.original_source == source);
+        if existing.is_some_and(|runtime| runtime.status != PreviewTunnelStatus::Failed) {
+            return Err("SSH Preview tunnel is already opening or ready".into());
+        }
+        tunnels.retain(|_, runtime| runtime.original_source != source);
+        tunnels.insert(
+            tunnel_id.clone(),
+            PreviewTunnelRuntime {
+                original_source: source.clone(),
+                preview_source: None,
+                status: PreviewTunnelStatus::Opening,
+                remote_port,
+                generation,
+                cancel: None,
+                reason: None,
+            },
+        );
+    }
+
+    let opening = async {
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .map_err(|error| format!("Cannot bind local loopback Preview port: {error}"))?;
+        let local_addr = listener
+            .local_addr()
+            .map_err(|error| format!("Cannot read local Preview endpoint: {error}"))?;
+        let crate::modules::pty::Session::Ssh(ssh_before) = session_before.as_ref() else {
+            return Err("SSH Preview source is not an SSH session".into());
+        };
+        ssh_before.probe_direct_tcpip(&remote_host, remote_port).await?;
+
+        let registered_after = preview_state
+            .remote_sources
+            .lock()
+            .map_err(|_| "Preview remote source lock poisoned".to_string())?
+            .get(&source_key)
+            .cloned();
+        if registered_after.as_ref() != Some(&source) {
+            return Err("SSH Preview source changed while opening tunnel".into());
+        }
+        let session_after = ssh_session_for_source(&source, &pty_state)?;
+        if !std::sync::Arc::ptr_eq(&session_before, &session_after) {
+            return Err("SSH Preview session reconnected while opening tunnel".into());
+        }
+        let preview_source = derived_forwarded_source(&source, &tunnel_id, local_addr.port())?;
+        let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
+        {
+            let mut tunnels = preview_state
+                .tunnels
+                .lock()
+                .map_err(|_| "Preview tunnel state lock poisoned".to_string())?;
+            let runtime = tunnels
+                .get_mut(&tunnel_id)
+                .ok_or_else(|| "SSH Preview tunnel was closed while opening".to_string())?;
+            if runtime.generation != generation
+                || runtime.status != PreviewTunnelStatus::Opening
+                || runtime.original_source != source
+            {
+                return Err("SSH Preview tunnel generation changed while opening".into());
+            }
+            runtime.preview_source = Some(preview_source.clone());
+            runtime.status = PreviewTunnelStatus::Ready;
+            runtime.cancel = Some(cancel_tx);
+        }
+
+        let app_for_task = app.clone();
+        let tunnel_id_for_task = tunnel_id.clone();
+        let session_for_task = session_after.clone();
+        let remote_host_for_task = remote_host.clone();
+        tokio::spawn(async move {
+            let mut connections = tokio::task::JoinSet::new();
+            let reason = loop {
+                let crate::modules::pty::Session::Ssh(ssh) = session_for_task.as_ref() else {
+                    break "SSH session identity changed".to_string();
+                };
+                tokio::select! {
+                    biased;
+                    changed = cancel_rx.changed() => {
+                        if changed.is_err() || *cancel_rx.borrow() {
+                            break "closed by user".to_string();
+                        }
+                    }
+                    _ = ssh.wait_closed() => break "SSH session disconnected".to_string(),
+                    accepted = listener.accept(), if connections.len() < 32 => match accepted {
+                        Ok((stream, address)) if address.ip().is_loopback() => {
+                            let session = session_for_task.clone();
+                            let host = remote_host_for_task.clone();
+                            connections.spawn(async move {
+                                let crate::modules::pty::Session::Ssh(ssh) = session.as_ref() else {
+                                    return Err("SSH session identity changed".to_string());
+                                };
+                                ssh.forward_loopback_stream(stream, &host, remote_port)
+                                    .await
+                            });
+                        }
+                        Ok(_) => {}
+                        Err(error) => break format!("local Preview listener failed: {error}"),
+                    },
+                    completed = connections.join_next(), if !connections.is_empty() => match completed {
+                        Some(Ok(Ok(()))) | None => {}
+                        Some(Ok(Err(error))) => break format!("remote Preview relay failed: {error}"),
+                        Some(Err(error)) => break format!("local Preview relay task failed: {error}"),
+                    }
+                }
+            };
+            connections.abort_all();
+            let state = app_for_task.state::<PreviewWindowState>();
+            let preview_source = if let Ok(mut tunnels) = state.tunnels.lock() {
+                tunnels.get_mut(&tunnel_id_for_task).and_then(|runtime| {
+                    if runtime.generation == generation && runtime.status == PreviewTunnelStatus::Ready {
+                        runtime.status = PreviewTunnelStatus::Failed;
+                        runtime.reason = Some(reason);
+                        runtime.cancel = None;
+                        runtime.preview_source.clone()
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            };
+            if let Some(source) = preview_source {
+                let label = source_label(&source);
+                if let Ok(mut entries) = state.entries.lock() {
+                    if let Some(entry) = entries.get_mut(&label) {
+                        entry.status = PreviewRuntimeStatus::Failed;
+                    }
+                }
+            }
+        });
+        Ok::<PreviewSource, String>(preview_source)
+    }
+    .await;
+
+    match opening {
+        Ok(_) => {
+            let tunnels = preview_state
+                .tunnels
+                .lock()
+                .map_err(|_| "Preview tunnel state lock poisoned".to_string())?;
+            tunnels
+                .get(&tunnel_id)
+                .map(tunnel_view)
+                .ok_or_else(|| "SSH Preview tunnel disappeared after opening".to_string())
+        }
+        Err(error) => {
+            if let Ok(mut tunnels) = preview_state.tunnels.lock() {
+                if let Some(runtime) = tunnels.get_mut(&tunnel_id) {
+                    if runtime.generation == generation {
+                        runtime.status = PreviewTunnelStatus::Failed;
+                        runtime.reason = Some(error.clone());
+                        runtime.cancel = None;
+                        runtime.preview_source = None;
+                    }
+                }
+            }
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
+pub fn preview_tunnel_status(
+    source: PreviewSource,
+    state: tauri::State<PreviewWindowState>,
+) -> Result<Option<PreviewTunnelView>, String> {
+    validate_source_identity(&source)?;
+    let Some(id) = matching_tunnel_id(&state, &source)? else {
+        return Ok(None);
+    };
+    let tunnels = state
+        .tunnels
+        .lock()
+        .map_err(|_| "Preview tunnel state lock poisoned".to_string())?;
+    Ok(tunnels.get(&id).map(tunnel_view))
+}
+
+#[tauri::command]
+pub fn preview_tunnel_close(
+    app: AppHandle,
+    source: PreviewSource,
+    state: tauri::State<PreviewWindowState>,
+) -> Result<(), String> {
+    validate_source_identity(&source)?;
+    let Some(id) = matching_tunnel_id(&state, &source)? else {
+        return Ok(());
+    };
+    let removed = state
+        .tunnels
+        .lock()
+        .map_err(|_| "Preview tunnel state lock poisoned".to_string())?
+        .remove(&id)
+        .into_iter()
+        .collect();
+    close_removed_tunnels(&app, removed);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn preview_terminal_command_started(
     context: PreviewSourceContext,
     provenance: PreviewCommandProvenance,
     preview_state: tauri::State<PreviewWindowState>,
     pty_state: tauri::State<crate::modules::pty::PtyState>,
 ) -> Result<(), String> {
+    if context.transport != "local" {
+        return Err("Preview restart provenance requires a local terminal".into());
+    }
     let physical_pty_id = validate_terminal_context(&context)?;
     if provenance.generation.is_empty() || provenance.generation.len() > 256 {
         if let Ok(mut commands) = preview_state.terminal_commands.lock() {
@@ -1111,6 +1646,9 @@ pub fn preview_terminal_command_finished(
     preview_state: tauri::State<PreviewWindowState>,
     pty_state: tauri::State<crate::modules::pty::PtyState>,
 ) -> Result<(), String> {
+    if context.transport != "local" {
+        return Err("Preview restart provenance requires a local terminal".into());
+    }
     let physical_pty_id = validate_terminal_context(&context)?;
     if pty_state.get(physical_pty_id).is_none() {
         return Err("Preview source PTY has exited".into());
@@ -1151,10 +1689,11 @@ pub fn preview_terminal_command_finished(
 
 #[tauri::command]
 pub fn preview_terminal_exited(
+    app: AppHandle,
     context: PreviewSourceContext,
     preview_state: tauri::State<PreviewWindowState>,
 ) -> Result<(), String> {
-    validate_terminal_context(&context)?;
+    let physical_pty_id = validate_terminal_context(&context)?;
     let mut commands = preview_state
         .terminal_commands
         .lock()
@@ -1165,12 +1704,14 @@ pub fn preview_terminal_exited(
     {
         commands.remove(&context.terminal_id);
     }
+    drop(commands);
+    preview_state.close_tunnels_for_pty(&app, physical_pty_id);
     Ok(())
 }
 
 #[tauri::command]
 pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, String> {
-    let (url, origin) = validate_source(&source)?;
+    let (url, origin) = validate_source_with_state(&source, &app.state::<PreviewWindowState>())?;
     let initially_reachable = source_reachable(&url);
     let label = source_label(&source);
     if let Some(window) = app.get_webview_window(&label) {
@@ -1180,11 +1721,16 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
     }
 
     let title = format!(
-        "Preview · repo={} · worktree={} · session={} · terminal={} · {}",
+        "Preview · repo={} · worktree={} · session={} · terminal={} · remote={} · local={}",
         source.repository_id,
         source.worktree_id,
         source.session_id,
         source.terminal_id,
+        source
+            .remote_source_url
+            .as_deref()
+            .map(safe_source_url)
+            .unwrap_or_else(|| "local".into()),
         safe_source_url(&source.source_url)
     );
     let window_generation = app.state::<PreviewWindowState>().next_generation()?;
@@ -1327,14 +1873,25 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
     }
     let app_for_close = app.clone();
     let label_for_close = label.clone();
+    let tunnel_id_for_close = source.tunnel_id.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
-            if let Ok(mut entries) = app_for_close.state::<PreviewWindowState>().entries.lock() {
+            let state = app_for_close.state::<PreviewWindowState>();
+            if let Ok(mut entries) = state.entries.lock() {
                 if entries
                     .get(&label_for_close)
                     .is_some_and(|entry| entry.window_generation == window_generation)
                 {
                     entries.remove(&label_for_close);
+                }
+            }
+            if let Some(tunnel_id) = tunnel_id_for_close.as_deref() {
+                if let Ok(mut tunnels) = state.tunnels.lock() {
+                    if let Some(runtime) = tunnels.remove(tunnel_id) {
+                        if let Some(cancel) = runtime.cancel {
+                            let _ = cancel.send(true);
+                        }
+                    }
                 }
             }
         }
@@ -1351,7 +1908,7 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
 
 #[tauri::command]
 pub fn preview_refresh(app: AppHandle, source: PreviewSource) -> Result<(), String> {
-    let (url, _) = validate_source(&source)?;
+    let (url, _) = validate_source_with_state(&source, &app.state::<PreviewWindowState>())?;
     let label = source_label(&source);
     let state = app.state::<PreviewWindowState>();
     let registered = state
@@ -1455,7 +2012,7 @@ pub fn preview_status(
             .lock()
             .map_err(|_| "Preview terminal command lock poisoned".to_string())?;
         if entry.source.restart_provenance != source.restart_provenance
-            && validate_source(&source).is_ok()
+            && validate_source_with_state(&source, &state).is_ok()
             && command_proves_source_generation(&source, &commands)
         {
             entry.source.restart_provenance = source.restart_provenance.clone();
@@ -1507,7 +2064,7 @@ fn preview_window(
     app: &AppHandle,
     source: &PreviewSource,
 ) -> Result<(String, u64, tauri::WebviewWindow), String> {
-    validate_source(source)?;
+    validate_source_with_state(source, &app.state::<PreviewWindowState>())?;
     let label = source_label(source);
     let state = app.state::<PreviewWindowState>();
     let generation = state
@@ -1664,7 +2221,7 @@ pub fn preview_navigate(
     source: PreviewSource,
     address: String,
 ) -> Result<(), String> {
-    let (source_url, _) = validate_source(&source)?;
+    let (source_url, _) = validate_source_with_state(&source, &app.state::<PreviewWindowState>())?;
     let label = source_label(&source);
     let window = app
         .get_webview_window(&label)
@@ -1679,7 +2236,7 @@ pub fn preview_navigate(
 }
 
 fn preview_history_move(app: AppHandle, source: PreviewSource, back: bool) -> Result<(), String> {
-    validate_source(&source)?;
+    validate_source_with_state(&source, &app.state::<PreviewWindowState>())?;
     let label = source_label(&source);
     let window = app
         .get_webview_window(&label)
@@ -1725,7 +2282,7 @@ pub fn preview_telemetry_clear(
     source: PreviewSource,
     state: tauri::State<PreviewWindowState>,
 ) -> Result<(), String> {
-    validate_source(&source)?;
+    validate_source_with_state(&source, &state)?;
     let label = source_label(&source);
     let mut entries = state
         .entries
@@ -1750,7 +2307,7 @@ pub fn preview_telemetry_send(
     preview_state: tauri::State<PreviewWindowState>,
     pty_state: tauri::State<crate::modules::pty::PtyState>,
 ) -> Result<(), String> {
-    validate_source(&source)?;
+    validate_source_with_state(&source, &preview_state)?;
     let physical_pty_id = source
         .physical_pty_id
         .ok_or_else(|| "Preview source has no physical PTY".to_string())?;
@@ -1784,7 +2341,10 @@ pub fn preview_restart_prepare(
     preview_state: tauri::State<PreviewWindowState>,
     pty_state: tauri::State<crate::modules::pty::PtyState>,
 ) -> Result<(), String> {
-    validate_source(&source)?;
+    validate_source_with_state(&source, &preview_state)?;
+    if source.transport != "local" {
+        return Err("Preview restart preparation is unavailable for SSH forwarded sources".into());
+    }
     let physical_pty_id = source
         .physical_pty_id
         .ok_or_else(|| "Preview source has no physical PTY".to_string())?;
@@ -1828,11 +2388,24 @@ pub fn preview_close(app: AppHandle, source: PreviewSource) -> Result<(), String
     if let Some(window) = app.get_webview_window(&label) {
         window.close().map_err(|error| error.to_string())?;
     }
-    app.state::<PreviewWindowState>()
+    let state = app.state::<PreviewWindowState>();
+    state
         .entries
         .lock()
         .map_err(|_| "Preview state lock poisoned".to_string())?
         .remove(&label);
+    if let Some(tunnel_id) = source.tunnel_id.as_deref() {
+        if let Some(runtime) = state
+            .tunnels
+            .lock()
+            .map_err(|_| "Preview tunnel state lock poisoned".to_string())?
+            .remove(tunnel_id)
+        {
+            if let Some(cancel) = runtime.cancel {
+                let _ = cancel.send(true);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1853,6 +2426,11 @@ mod tests {
             workspace_resolution: "resolved".into(),
             permission: "eligible".into(),
             state: "active".into(),
+            ssh_host: None,
+            ssh_port: None,
+            ssh_user: None,
+            remote_source_url: None,
+            tunnel_id: None,
             restart_provenance: None,
         }
     }
@@ -1884,6 +2462,9 @@ mod tests {
             physical_pty_id: Some(physical_pty_id),
             transport: "local".into(),
             workspace_resolution: "resolved".into(),
+            ssh_host: None,
+            ssh_port: None,
+            ssh_user: None,
         }
     }
 
@@ -1894,6 +2475,61 @@ mod tests {
             command: command.into(),
             submitted_at: 100 + sequence,
         }
+    }
+
+    fn remote_source(url: &str) -> PreviewSource {
+        PreviewSource {
+            source_url: url.into(),
+            transport: "ssh".into(),
+            permission: "remote-manual".into(),
+            ssh_host: Some("dev.example".into()),
+            ssh_port: Some(22),
+            ssh_user: Some("mawei".into()),
+            ..source("http://localhost:4173/")
+        }
+    }
+
+    #[test]
+    fn tunnel_accepts_only_exact_remote_loopback_sources_and_effective_ports() {
+        for (url, host, port) in [
+            ("http://localhost/", "localhost", 80),
+            ("https://127.0.0.1/", "127.0.0.1", 443),
+            ("http://[::1]:4173/app", "::1", 4173),
+        ] {
+            let (_, actual_host, actual_port) =
+                validate_remote_tunnel_source(&remote_source(url)).unwrap();
+            assert_eq!((actual_host.as_str(), actual_port), (host, port));
+        }
+        for url in [
+            "http://user:pass@localhost:4173/",
+            "http://0.0.0.0:4173/",
+            "https://example.com/",
+            "file:///tmp/secret",
+            "http://localhost:0/",
+            "http://localhost:65536/",
+        ] {
+            assert!(
+                validate_remote_tunnel_source(&remote_source(url)).is_err(),
+                "accepted {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn tunnel_nonce_is_single_shape_and_derived_endpoint_preserves_remote_identity() {
+        assert!(tunnel_nonce_is_valid(&"a1".repeat(32)));
+        assert!(!tunnel_nonce_is_valid("old-generation"));
+        assert!(!tunnel_nonce_is_valid(&"g".repeat(64)));
+        let original = remote_source("http://[::1]:4173/app?q=1#two");
+        let derived = derived_forwarded_source(&original, &"b".repeat(64), 53124).unwrap();
+        assert_eq!(derived.source_url, "http://127.0.0.1:53124/app?q=1#two");
+        assert_eq!(
+            derived.remote_source_url.as_deref(),
+            Some(original.source_url.as_str())
+        );
+        assert_eq!(derived.permission, "forwarded");
+        assert_eq!(derived.ssh_host, original.ssh_host);
+        assert_eq!(derived.physical_pty_id, original.physical_pty_id);
     }
 
     #[test]

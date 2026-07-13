@@ -21,6 +21,7 @@ import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
 import { usePhase3TelemetryBenchmark } from "./usePhase3TelemetryBenchmark";
 import { usePhase3RestartBenchmark } from "./usePhase3RestartBenchmark";
+import { usePhase3TunnelBenchmark } from "./usePhase3TunnelBenchmark";
 import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
 import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
 import { useM2NativeCloseBenchmark } from "./useM2NativeCloseBenchmark";
@@ -244,6 +245,7 @@ export default function App() {
   useTerminalBenchmark(ready);
   usePhase3TelemetryBenchmark(ready);
   usePhase3RestartBenchmark(ready);
+  usePhase3TunnelBenchmark(ready);
   useM2SafeWriteBenchmark(ready);
   useM2LocalSafeWriteBenchmark(ready);
   useM2NativeCloseBenchmark(ready);

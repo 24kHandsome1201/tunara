@@ -171,7 +171,9 @@ fn validate_open_input(
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn ssh_open(
+    app: tauri::AppHandle,
     state: tauri::State<'_, PtyState>,
+    preview_state: tauri::State<'_, crate::modules::preview::PreviewWindowState>,
     hooks_state: tauri::State<'_, HookListenerState>,
     logical_session_id: Option<String>,
     open_attempt_id: String,
@@ -250,6 +252,11 @@ pub async fn ssh_open(
     // failed reconnect into destructive data loss. PtyState::insert performs
     // the actual swap atomically and closes the old session only after `ssh`
     // is ready.
+    if let Some(logical_id) = logical_session_id.as_deref() {
+        if let Some(old_id) = state.physical_for_logical(logical_id) {
+            preview_state.close_tunnels_for_pty(&app, old_id);
+        }
+    }
     let id = state.insert(
         std::sync::Arc::new(Session::Ssh(ssh)),
         logical_session_id.as_deref(),
