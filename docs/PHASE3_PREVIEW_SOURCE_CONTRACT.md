@@ -138,6 +138,15 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 - 带历史窗口原生关闭后回 closed；重开从批准来源 URL 开始，Back/Forward 均 disabled，无旧 generation 残留。
 - 既有精确 origin redirect、popup、download、ACL、stale、初始不可达与生命周期自动门继续回归。
 
+## 可信缩放与常用 viewport 切片
+
+- 控件只存在于可信 main Inspector；不可信页面仍无 Tauri/app/plugin capability，也没有页面内 bridge。
+- Zoom 直接使用 macOS `WKWebView.pageZoom`，仅接受 75/90/100/110/125/150%；Rust 在执行前拒绝 NaN、无限值、越界和非预设值，并在返回成功前读取原生值确认。Reset 为 100%。
+- Viewport 仅接受 phone 390×844、tablet 768×1024、desktop 1280×720，另有 Fit 与 Reset（980×720）。macOS Rust 边界从 `WKWebView.frame` 扣除原生 `safeAreaInsets` 得到真实 CSS 内容尺寸，异步等待窗口 resize 提交后再回读；另行报告 outer logical size。只有实际 CSS 内容尺寸命中目标才标记 exact，屏幕约束导致不一致时明确返回 unavailable，不把 Tauri window inner、outer 或请求值伪装成页面 viewport。
+- zoom/viewport 状态只存在于完整来源键对应的 Rust runtime entry，并受 window generation 保护；不进入 workspace snapshot。原生关闭销毁 entry，重开默认恢复 100% 与 980×720。
+- 受控 loopback fixture 自行报告页面 `innerWidth/innerHeight/devicePixelRatio`，真实验收以该页面事实与 Rust 的 WKWebView frame/safe-area、outer 状态交叉核对，不向普通页面注入测量脚本。
+- viewport 动作只改变对应 `preview-*` 原生窗口，不调整 main window、Inspector 或 PTY rows/cols。
+
 ## 后置项
 
-缩放、viewport、截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
+截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。

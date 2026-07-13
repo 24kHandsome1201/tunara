@@ -20,6 +20,17 @@ export interface PreviewRuntimeState {
   currentUrl: string;
   canGoBack: boolean;
   canGoForward: boolean;
+  zoomFactor: number;
+  viewport: {
+    mode: "preset" | "fit" | "reset";
+    requestedWidth: number;
+    requestedHeight: number;
+    actualWidth: number;
+    actualHeight: number;
+    outerWidth: number;
+    outerHeight: number;
+    exact: boolean;
+  };
 }
 
 export function previewStatus(source: PreviewSource): Promise<PreviewRuntimeState | null> {
@@ -36,6 +47,26 @@ export function previewGoBack(source: PreviewSource): Promise<void> {
 
 export function previewGoForward(source: PreviewSource): Promise<void> {
   return invoke<void>("preview_go_forward", { source });
+}
+
+export function previewSetZoom(source: PreviewSource, factor: number): Promise<void> {
+  return invoke<void>("preview_set_zoom", { source, factor });
+}
+
+export function previewResetZoom(source: PreviewSource): Promise<void> {
+  return invoke<void>("preview_reset_zoom", { source });
+}
+
+export function previewSetViewport(source: PreviewSource, width: number, height: number): Promise<void> {
+  return invoke<void>("preview_set_viewport", { source, width, height });
+}
+
+export function previewResetViewport(source: PreviewSource): Promise<void> {
+  return invoke<void>("preview_reset_viewport", { source });
+}
+
+export function previewFitViewport(source: PreviewSource): Promise<void> {
+  return invoke<void>("preview_fit_viewport", { source });
 }
 
 export function previewBlockReason(source: PreviewSource): "remote" | "stale" | "fallback" | null {

@@ -7,15 +7,18 @@ use std::{
     net::{TcpStream, ToSocketAddrs},
     sync::Mutex,
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{
     webview::{DownloadEvent, NewWindowResponse, PageLoadEvent},
-    AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
 const LOAD_FAILURE_TIMEOUT: Duration = Duration::from_secs(8);
 const LOOPBACK_CONNECT_TIMEOUT: Duration = Duration::from_millis(350);
+const DEFAULT_VIEWPORT: (u32, u32) = (980, 720);
+const VIEWPORT_PRESETS: [(u32, u32); 3] = [(390, 844), (768, 1024), (1280, 720)];
+const ZOOM_PRESETS: [f64; 6] = [0.75, 0.9, 1.0, 1.1, 1.25, 1.5];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,13 +51,28 @@ pub enum PreviewRuntimeStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewRuntimeState {
     status: PreviewRuntimeStatus,
     current_url: String,
     can_go_back: bool,
     can_go_forward: bool,
+    zoom_factor: f64,
+    viewport: PreviewViewportState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewViewportState {
+    mode: String,
+    requested_width: u32,
+    requested_height: u32,
+    actual_width: u32,
+    actual_height: u32,
+    outer_width: u32,
+    outer_height: u32,
+    exact: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +82,8 @@ struct PreviewRuntimeEntry {
     window_generation: u64,
     load_attempt: u64,
     loading_url: Option<String>,
+    viewport_mode: String,
+    requested_viewport: (u32, u32),
 }
 
 #[derive(Default)]
@@ -182,6 +202,114 @@ fn native_history_move(window: &tauri::WebviewWindow, back: bool) -> Result<(), 
     }
 }
 
+fn validate_zoom_factor(factor: f64) -> Result<f64, String> {
+    if !factor.is_finite() {
+        return Err("Preview zoom must be finite".into());
+    }
+    if !(0.5..=2.0).contains(&factor) {
+        return Err("Preview zoom is outside the safe range".into());
+    }
+    ZOOM_PRESETS
+        .iter()
+        .copied()
+        .find(|preset| (factor - preset).abs() < f64::EPSILON)
+        .ok_or_else(|| "Preview zoom must use an approved preset".into())
+}
+
+fn validate_viewport(width: u32, height: u32) -> Result<(u32, u32), String> {
+    VIEWPORT_PRESETS
+        .iter()
+        .copied()
+        .find(|preset| *preset == (width, height))
+        .ok_or_else(|| "Preview viewport must use an approved preset".into())
+}
+
+#[cfg(target_os = "macos")]
+fn logical_webview_size(window: &tauri::WebviewWindow) -> Result<(u32, u32), String> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    window
+        .with_webview(move |webview| unsafe {
+            let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+            let frame = view.frame();
+            let safe = view.safeAreaInsets();
+            let _ = sender.send((
+                (frame.size.width - safe.left - safe.right).round() as u32,
+                (frame.size.height - safe.top - safe.bottom).round() as u32,
+            ));
+        })
+        .map_err(|error| error.to_string())?;
+    receiver
+        .recv_timeout(Duration::from_secs(1))
+        .map_err(|_| "Preview viewport query timed out".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn logical_webview_size(window: &tauri::WebviewWindow) -> Result<(u32, u32), String> {
+    let physical = window.as_ref().size().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    Ok((
+        (physical.width as f64 / scale).round() as u32,
+        (physical.height as f64 / scale).round() as u32,
+    ))
+}
+
+fn window_chrome_inset(window: &tauri::WebviewWindow) -> Result<(u32, u32), String> {
+    let physical = window.inner_size().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let window_size = (
+        (physical.width as f64 / scale).round() as u32,
+        (physical.height as f64 / scale).round() as u32,
+    );
+    let webview_size = logical_webview_size(window)?;
+    Ok((
+        window_size.0.saturating_sub(webview_size.0),
+        window_size.1.saturating_sub(webview_size.1),
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn native_zoom(window: &tauri::WebviewWindow) -> Result<f64, String> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    window
+        .with_webview(move |webview| unsafe {
+            let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+            let _ = sender.send(view.pageZoom());
+        })
+        .map_err(|error| error.to_string())?;
+    receiver
+        .recv_timeout(Duration::from_secs(1))
+        .map_err(|_| "Preview zoom query timed out".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_zoom(_window: &tauri::WebviewWindow) -> Result<f64, String> {
+    Ok(1.0)
+}
+
+#[cfg(target_os = "macos")]
+fn set_native_zoom(window: &tauri::WebviewWindow, factor: f64) -> Result<(), String> {
+    let (sender, receiver) = mpsc::sync_channel(1);
+    window
+        .with_webview(move |webview| unsafe {
+            let view: &objc2_web_kit::WKWebView = &*webview.inner().cast();
+            view.setPageZoom(factor);
+            let _ = sender.send(view.pageZoom());
+        })
+        .map_err(|error| error.to_string())?;
+    let actual = receiver
+        .recv_timeout(Duration::from_secs(1))
+        .map_err(|_| "Preview zoom action timed out".to_string())?;
+    if (actual - factor).abs() > 0.001 {
+        return Err("Preview zoom did not reach the requested value".into());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_native_zoom(_window: &tauri::WebviewWindow, _factor: f64) -> Result<(), String> {
+    Err("Native Preview zoom is unavailable on this platform".into())
+}
+
 #[cfg(not(target_os = "macos"))]
 fn native_history_move(_window: &tauri::WebviewWindow, _back: bool) -> Result<(), String> {
     Err("Native Preview history is unavailable on this platform".into())
@@ -297,6 +425,8 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
                 window_generation,
                 load_attempt: 0,
                 loading_url: None,
+                viewport_mode: "reset".into(),
+                requested_viewport: DEFAULT_VIEWPORT,
             },
         );
     let app_for_open_timeout = app.clone();
@@ -319,8 +449,8 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
     let label_for_load = label.clone();
     let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url))
         .title(title)
-        .inner_size(980.0, 720.0)
-        .min_inner_size(480.0, 320.0)
+        .inner_size(DEFAULT_VIEWPORT.0 as f64, DEFAULT_VIEWPORT.1 as f64)
+        .min_inner_size(320.0, 240.0)
         .on_navigation(move |target| navigation_allowed(&origin, target))
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_download(|_, event| {
@@ -416,6 +546,13 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
             }
         }
     });
+    let chrome = window_chrome_inset(&window)?;
+    window
+        .set_size(LogicalSize::new(
+            (DEFAULT_VIEWPORT.0 + chrome.0) as f64,
+            (DEFAULT_VIEWPORT.1 + chrome.1) as f64,
+        ))
+        .map_err(|error| error.to_string())?;
     Ok(label)
 }
 
@@ -516,9 +653,15 @@ pub fn preview_status(
             .entries
             .lock()
             .map_err(|_| "Preview state lock poisoned".to_string())?;
-        entries.get(&label).map(|entry| entry.status)
+        entries.get(&label).map(|entry| {
+            (
+                entry.status,
+                entry.viewport_mode.clone(),
+                entry.requested_viewport,
+            )
+        })
     };
-    let Some(status) = status else {
+    let Some((status, viewport_mode, requested_viewport)) = status else {
         return Ok(None);
     };
     let window = app
@@ -526,12 +669,158 @@ pub fn preview_status(
         .ok_or_else(|| "Preview window is unavailable".to_string())?;
     let current_url = window.url().map_err(|error| error.to_string())?;
     let (can_go_back, can_go_forward) = native_history(&window)?;
+    let zoom_factor = native_zoom(&window)?;
+    let actual = logical_webview_size(&window)?;
+    let outer = window.outer_size().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let actual_width = actual.0;
+    let actual_height = actual.1;
     Ok(Some(PreviewRuntimeState {
         status,
         current_url: current_url.to_string(),
         can_go_back,
         can_go_forward,
+        zoom_factor,
+        viewport: PreviewViewportState {
+            mode: viewport_mode,
+            requested_width: requested_viewport.0,
+            requested_height: requested_viewport.1,
+            actual_width,
+            actual_height,
+            outer_width: (outer.width as f64 / scale).round() as u32,
+            outer_height: (outer.height as f64 / scale).round() as u32,
+            exact: (actual_width, actual_height) == requested_viewport,
+        },
     }))
+}
+
+fn preview_window(
+    app: &AppHandle,
+    source: &PreviewSource,
+) -> Result<(String, u64, tauri::WebviewWindow), String> {
+    validate_source(source)?;
+    let label = source_label(source);
+    let state = app.state::<PreviewWindowState>();
+    let generation = state
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?
+        .get(&label)
+        .and_then(|entry| {
+            (source_label(&entry.source) == label).then_some(entry.window_generation)
+        });
+    let Some(generation) = generation else {
+        return Err("Preview source is not open".into());
+    };
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "Preview window is unavailable".to_string())?;
+    Ok((label, generation, window))
+}
+
+#[tauri::command]
+pub fn preview_set_zoom(app: AppHandle, source: PreviewSource, factor: f64) -> Result<(), String> {
+    let factor = validate_zoom_factor(factor)?;
+    let (label, generation, window) = preview_window(&app, &source)?;
+    set_native_zoom(&window, factor)?;
+    let current = app
+        .state::<PreviewWindowState>()
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?
+        .get(&label)
+        .map(|entry| entry.window_generation);
+    if current != Some(generation) {
+        return Err("Preview window generation changed during zoom".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn preview_reset_zoom(app: AppHandle, source: PreviewSource) -> Result<(), String> {
+    preview_set_zoom(app, source, 1.0)
+}
+
+async fn set_preview_viewport(
+    app: &AppHandle,
+    source: &PreviewSource,
+    mode: &str,
+    size: (u32, u32),
+) -> Result<(), String> {
+    let (label, generation, window) = preview_window(app, source)?;
+    if (native_zoom(&window)? - 1.0).abs() > 0.001 {
+        return Err("Reset Preview zoom to 100% before applying a CSS viewport".into());
+    }
+    let chrome = window_chrome_inset(&window)?;
+    window
+        .set_size(LogicalSize::new(
+            (size.0 + chrome.0) as f64,
+            (size.1 + chrome.1) as f64,
+        ))
+        .map_err(|error| error.to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let actual_logical = loop {
+        let logical = logical_webview_size(&window)?;
+        if logical == size || Instant::now() >= deadline {
+            break logical;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    };
+    let state = app.state::<PreviewWindowState>();
+    let mut entries = state
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?;
+    let entry = entries
+        .get_mut(&label)
+        .ok_or_else(|| "Preview source is not open".to_string())?;
+    if entry.window_generation != generation {
+        return Err("Preview window generation changed during viewport action".into());
+    }
+    entry.viewport_mode = mode.into();
+    entry.requested_viewport = size;
+    if actual_logical != size {
+        return Err(format!(
+            "Preview viewport unavailable: requested {}x{}, actual {}x{}",
+            size.0, size.1, actual_logical.0, actual_logical.1
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn preview_set_viewport(
+    app: AppHandle,
+    source: PreviewSource,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let size = validate_viewport(width, height)?;
+    set_preview_viewport(&app, &source, "preset", size).await
+}
+
+#[tauri::command]
+pub async fn preview_reset_viewport(app: AppHandle, source: PreviewSource) -> Result<(), String> {
+    set_preview_viewport(&app, &source, "reset", DEFAULT_VIEWPORT).await
+}
+
+#[tauri::command]
+pub async fn preview_fit_viewport(app: AppHandle, source: PreviewSource) -> Result<(), String> {
+    let (_, _, window) = preview_window(&app, &source)?;
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Preview monitor is unavailable".to_string())?;
+    let scale = monitor.scale_factor();
+    let size = monitor.size();
+    let chrome = window_chrome_inset(&window)?;
+    let fitted = (
+        ((size.width as f64 / scale) - 80.0).max(320.0).round() as u32,
+        ((size.height as f64 / scale) - 120.0 - chrome.1 as f64)
+            .max(240.0)
+            .round() as u32,
+    );
+    set_preview_viewport(&app, &source, "fit", fitted).await
 }
 
 fn begin_history_load(app: &AppHandle, label: &str) -> Result<u64, String> {
@@ -752,5 +1041,25 @@ mod tests {
             );
         }
         assert!(normalize_address(&source, &source, "   ").is_err());
+    }
+
+    #[test]
+    fn zoom_accepts_only_finite_approved_presets() {
+        for factor in ZOOM_PRESETS {
+            assert_eq!(validate_zoom_factor(factor).unwrap(), factor);
+        }
+        for factor in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.49, 0.8, 2.01] {
+            assert!(validate_zoom_factor(factor).is_err(), "accepted {factor}");
+        }
+    }
+
+    #[test]
+    fn viewport_accepts_only_approved_css_pixel_sizes() {
+        for (width, height) in VIEWPORT_PRESETS {
+            assert_eq!(validate_viewport(width, height).unwrap(), (width, height));
+        }
+        for (width, height) in [(0, 0), (390, 843), (980, 720), (9999, 9999)] {
+            assert!(validate_viewport(width, height).is_err());
+        }
     }
 }

@@ -33,6 +33,9 @@ const internals=typeof window.__TAURI_INTERNALS__;
 const globalApi=typeof window.__TAURI__;
 document.querySelector('#ipc').textContent=JSON.stringify({internals,globalApi});
 report('loaded',{href:location.href,internals,globalApi});
+const reportViewport=()=>report('viewport',{innerWidth,innerHeight,outerWidth,outerHeight,devicePixelRatio});
+reportViewport();
+addEventListener('resize',reportViewport);
 (async()=>{
   if(!window.__TAURI_INTERNALS__?.invoke){report('ipc-bridge-absent');return}
   for(const [name,args] of [

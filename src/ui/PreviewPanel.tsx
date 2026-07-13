@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
-import { previewBlockReason, previewClose, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewStatus } from "@/modules/preview/preview-window";
+import { previewBlockReason, previewClose, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewSetViewport, previewSetZoom, previewStatus } from "@/modules/preview/preview-window";
 import type { PreviewRuntimeState, PreviewRuntimeStatus } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 
@@ -58,6 +58,13 @@ function SourceCard({ source }: { source: PreviewSource }) {
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+      try {
+        const sequence = ++statusRequestRef.current;
+        const status = await previewStatus(source);
+        if (sequence === statusRequestRef.current) setRuntimeState(status);
+      } catch {
+        // Keep the last confirmed state when native status is also unavailable.
+      }
     } finally {
       setBusy(false);
     }
@@ -101,6 +108,20 @@ function SourceCard({ source }: { source: PreviewSource }) {
         <button disabled={busy || !isOpen} onClick={() => void run(() => previewClose(source))}>{t("inspector.preview.close")}</button>
         <button disabled={busy} onClick={() => void run(() => openUrl(source.sourceUrl))}>{t("inspector.preview.external")}</button>
       </div>
+      {isOpen && <div aria-label={t("inspector.preview.zoom_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
+        <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.zoom")}</span>
+        {[0.75, 0.9, 1, 1.1, 1.25, 1.5].map((factor) => <button key={factor} disabled={busy || !!blocked || runtimeStatus !== "ready"} aria-pressed={Math.abs(runtimeState.zoomFactor - factor) < 0.001} onClick={() => void run(() => previewSetZoom(source, factor))}>{Math.round(factor * 100)}%</button>)}
+        <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewResetZoom(source))}>{t("inspector.preview.reset")}</button>
+      </div>}
+      {isOpen && <div aria-label={t("inspector.preview.viewport_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
+        <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.viewport")}</span>
+        {[[390, 844, "Phone"], [768, 1024, "Tablet"], [1280, 720, "Desktop"]].map(([width, height, label]) => <button key={label} disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewSetViewport(source, Number(width), Number(height)))}>{label} {width}×{height}</button>)}
+        <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewFitViewport(source))}>{t("inspector.preview.fit")}</button>
+        <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewResetViewport(source))}>{t("inspector.preview.reset")}</button>
+        <span role="status" style={{ color: runtimeState.viewport.exact ? "var(--c-text-4)" : "var(--c-warning)" }}>
+          {runtimeState.viewport.actualWidth}×{runtimeState.viewport.actualHeight}{runtimeState.viewport.exact ? "" : ` · ${t("inspector.preview.viewport_unavailable")}`}
+        </span>
+      </div>}
       {displayStatus === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{t("inspector.preview.failed_help")}</div>}
       {displayStatus === "stale" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning)" }}>{t("inspector.preview.stale_help")}</div>}
       {error && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{error}</div>}

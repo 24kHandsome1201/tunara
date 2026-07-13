@@ -1020,7 +1020,7 @@ Herdr、Workflow Recipe、原生 iOS、系统推送、公网 Relay 和手机 PTY
 
 ### 当前 Active Milestone
 
-M0 Phase 1 Workspace/Worktree、M1 Terminal + SSH 稳定性与 Phase 2 Markdown/单文件轻编辑均已完成。Phase 3 已按[Preview 安全规格](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)建立来源身份、检测 allowlist、去重/stale 合同、隔离的 localhost WebView/navigation policy、opening/loading/ready/failed/closed/stale 的最小运行时状态与手动服务恢复闭环，以及可信 main Inspector 中的同源地址导航和原生前进/后退历史。缩放、viewport、截图、console/network、服务重启关联和 SSH tunnel 仍是未满足的 Phase 3 required gates；保持后置，不自动进入 Phase 4。
+M0 Phase 1 Workspace/Worktree、M1 Terminal + SSH 稳定性与 Phase 2 Markdown/单文件轻编辑均已完成。Phase 3 已按[Preview 安全规格](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)建立来源身份、检测 allowlist、去重/stale 合同、隔离的 localhost WebView/navigation policy、opening/loading/ready/failed/closed/stale 的最小运行时状态与手动服务恢复闭环，以及可信 main Inspector 中的同源地址导航、原生前进/后退历史、有限原生缩放与常用 viewport。截图、console/network、服务重启关联和 SSH tunnel 仍是未满足的 Phase 3 required gates；保持后置，不自动进入 Phase 4。
 
 ## 17. 推荐起点
 

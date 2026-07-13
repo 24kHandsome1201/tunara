@@ -4,13 +4,13 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 3 已完成来源绑定、隔离的 eligible localhost WebView/navigation policy、最小页面失败提示与手动服务生命周期闭环，以及可信 main 控制面的同源地址导航和原生前进/后退历史。Phase 3 required gates 中缩放/viewport、截图、console/network 摘要、服务重启关联与 SSH tunnel 仍按明确后置保持未完成，因此 Phase 3 继续进行中且不进入 Phase 4。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 3 已完成来源绑定、隔离的 eligible localhost WebView/navigation policy、最小页面失败提示与手动服务生命周期闭环，以及可信 main 控制面的同源地址导航、原生前进/后退历史、有限原生缩放与常用 viewport。截图、console/network 摘要、服务重启关联与 SSH tunnel 仍按明确后置保持未完成，因此 Phase 3 继续进行中且不进入 Phase 4。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
 | Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归 |
-| Phase 3 Workspace Preview | 进行中 | 完整来源键隔离的 runtime 状态合同已覆盖 opening/loading/ready/failed/closed/stale；可信 main 同源地址导航与 WKWebView 原生 Back/Forward 状态已通过 optimized macOS fixture；初始不可达、服务停止/恢复、terminal exit、原生关闭/重开、双 worktree 隔离与安全 ACL 保持 | required gates 尚缺缩放/viewport、截图、console/network 摘要、服务重启关联与 SSH tunnel；继续后置且不进入 Phase 4 |
+| Phase 3 Workspace Preview | 进行中 | 完整来源键隔离的 runtime 状态合同已覆盖 opening/loading/ready/failed/closed/stale；可信 main 同源地址导航、WKWebView 原生 Back/Forward、有限 zoom 与常用 viewport 已通过 optimized macOS fixture；初始不可达、服务停止/恢复、terminal exit、原生关闭/重开、双 worktree 隔离与安全 ACL 保持 | required gates 尚缺截图、console/network 摘要、服务重启关联与 SSH tunnel；继续后置且不进入 Phase 4 |
 | Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
 | Phase 6 Mobile Companion | 未开始 | Phase 1 稳定 identity 已完成；桌面仍是唯一事实源 | 等 Phase 4 事件模型稳定后，先做默认关闭、只读、局域网/Tailscale 的 Gateway + PWA 配对实验 |
@@ -95,8 +95,9 @@
 - [x] 安全 WebView surface 与 navigation policy：Inspector 显示 repository/worktree/session/terminal/URL，并提供关闭、刷新和外部浏览器逃生口；Rust command boundary 只接受 active/resolved/local/eligible 来源。独立 `preview-*` WebView 只匹配 loopback remote URL 且 permissions 为空，主窗口 capability 不外溢；精确 scheme/host/effective-port navigation policy 拒绝跨端口、公网 redirect、外部协议、popup 与 download。optimized macOS fixture 主动探测得到 `window.__TAURI__=undefined`，`fs_read_file` 与 `plugin:store|load` 均为明确 ACL 拒绝；两个 linked worktree/端口窗口同时独立存在，原生关闭后可重开，正常/失败恢复刷新与 PTY/main 隔离成立。见 [报告](./benchmarks/phase3-preview-security-macos-2026-07-13.md)。
 - [x] 最小导航/页面失败提示与服务生命周期闭环：Rust runtime map 以 repository/worktree/workspace/session/terminal/source URL 完整键隔离，并用 window generation 阻止旧 Destroyed、Finished 与 timeout 污染重开窗口；Inspector 明确显示 opening/loading/ready/unreachable-failed/closed/source stale-terminal exited。Open/Refresh 只对已验证的精确 loopback host:port 做 350ms TCP connect，不发 HTTP、不扫端口、不探公网；不自动启动/重启/杀服务。真实 optimized macOS 隔离应用覆盖正常 ready、初始不可达、运行中停止后 Refresh failed 且 PTY/main 保持、恢复后 Refresh ready、terminal exit 后禁止 Focus/Refresh/新建内置 Preview、双 linked worktree 一端 failed 另一端仍 ready、原生关闭/重开无残留；页面 app/plugin ACL 拒绝继续成立。见 [脱敏报告](./benchmarks/phase3-preview-lifecycle-macos-2026-07-13.md)。
 - [x] 可信同源地址导航与真实历史：地址输入、Back、Forward 只存在于 main Inspector；相对 path/query/fragment 与完整同源 URL 在 Rust command boundary 规范化，凭据、跨 scheme/host/effective-port、公网、外部协议和非法 URL fail closed。enabled/disabled 由当前 macOS WKWebView 的原生 back-forward list 返回，不由 React 猜测；状态继续按完整来源键与 window generation 隔离。真实 optimized 隔离应用完成 A→B→Back→Forward、跨端口/公网拒绝、两个 worktree/端口历史不串、停服/恢复、原生关闭重开无历史残留与 PTY/main 保持。见 [脱敏报告](./benchmarks/phase3-preview-navigation-macos-2026-07-13.md)。
+- [x] 可信 Preview zoom 与常用 viewport：main Inspector 提供 75/90/100/110/125/150% 原生缩放、Reset，以及 phone/tablet/desktop、Fit/Reset；Rust 拒绝非有限、越界、非预设 zoom 与非法尺寸，原生回读后才更新 UI。viewport 同时报告 requested、实际 inner、outer 与 exact/unavailable；runtime-only 状态按完整来源键和 generation 隔离，关闭重开回 100%/980×720。真实 optimized macOS fixture 以页面 innerWidth/innerHeight 交叉证明可用 preset，双 worktree、main/PTY 几何及既有 lifecycle/security 回归保持。见 [脱敏报告](./benchmarks/phase3-preview-zoom-viewport-macos-2026-07-13.md)。
 
-Phase 3 仍为进行中；以上勾选只代表[来源/检测、安全 WebView、最小运行时生命周期与可信同源历史](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。GOAL required gates 中缩放/viewport、截图、console/network 摘要、服务重启关联与 SSH tunnel 尚未满足，不得解释为 Workspace-bound Browser Preview 已完成，更不得进入 Phase 4。
+Phase 3 仍为进行中；以上勾选只代表[来源/检测、安全 WebView、最小运行时生命周期、可信同源历史、有限缩放与常用 viewport](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。GOAL required gates 中截图、console/network 摘要、服务重启关联与 SSH tunnel 尚未满足，不得解释为 Workspace-bound Browser Preview 已完成，更不得进入 Phase 4。
 
 ## Phase 1 验收账本
 
