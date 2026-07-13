@@ -1,5 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { PreviewSource } from "./preview-source.ts";
+import type { PreviewCommandProvenance, PreviewSource, PreviewSourceContext } from "./preview-source.ts";
+
+const terminalCommandSync = new Map<string, Promise<void>>();
+
+function queueTerminalCommandSync(context: PreviewSourceContext, action: () => Promise<void>): Promise<void> {
+  const previous = terminalCommandSync.get(context.terminalId) ?? Promise.resolve();
+  const current = previous.catch(() => {}).then(action);
+  terminalCommandSync.set(context.terminalId, current);
+  void current.finally(() => {
+    if (terminalCommandSync.get(context.terminalId) === current) terminalCommandSync.delete(context.terminalId);
+  }).catch(() => {});
+  return current;
+}
 
 export function previewOpen(source: PreviewSource): Promise<string> {
   return invoke<string>("preview_open", { source });
@@ -36,6 +48,11 @@ export interface PreviewRuntimeState {
     events: Array<{ kind: "console-error" | "unhandled-error" | "network-failure"; message: string; count: number }>;
     dropped: number;
     text: string;
+  };
+  restart: {
+    eligible: boolean;
+    command?: string;
+    reason: "not-failed" | "source-stale" | "pty-exited" | "command-unavailable" | "provenance-changed" | "terminal-busy" | "already-prepared" | "ready";
   };
 }
 
@@ -81,6 +98,23 @@ export function previewTelemetryClear(source: PreviewSource): Promise<void> {
 
 export function previewTelemetrySend(source: PreviewSource): Promise<void> {
   return invoke<void>("preview_telemetry_send", { source });
+}
+
+export function previewTerminalCommandStarted(context: PreviewSourceContext, provenance: PreviewCommandProvenance): Promise<void> {
+  return queueTerminalCommandSync(context, () => invoke<void>("preview_terminal_command_started", { context, provenance }));
+}
+
+export function previewTerminalCommandFinished(context: PreviewSourceContext, provenance: PreviewCommandProvenance): Promise<void> {
+  return queueTerminalCommandSync(context, () => invoke<void>("preview_terminal_command_finished", { context, provenance }));
+}
+
+export function previewTerminalExited(context: PreviewSourceContext): Promise<void> {
+  return queueTerminalCommandSync(context, () => invoke<void>("preview_terminal_exited", { context }));
+}
+
+export async function previewRestartPrepare(source: PreviewSource): Promise<void> {
+  await (terminalCommandSync.get(source.terminalId) ?? Promise.resolve()).catch(() => {});
+  return invoke<void>("preview_restart_prepare", { source });
 }
 
 export function previewDisplayUrl(raw: string): string {

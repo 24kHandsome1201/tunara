@@ -149,7 +149,7 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 
 ## 后置项
 
-截图、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
+截图和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
 
 ## 基础失败 telemetry 与绑定 PTY 送回切片
 
@@ -169,3 +169,28 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 - A 原生关闭/重开后 generation 变化，旧窗口事件不污染新 entry，B 事件不进入 A。
 - 页面对 `fs_read_file`、store、`pty_write` 均得到 ACL 拒绝；伪造 telemetry nonce 到达窄 ingest 后仍被 generation 校验拒绝，没有任意高权限桥。
 - 原始 fixture JSONL、应用日志、截图和完整命令输出只保留本机 ignored/temp，Git 只收录本脱敏合同、报告和结构化代码/测试。
+
+## 来源绑定的 fail-closed 服务重启准备切片
+
+本切片不建设进程管理器或服务编排。可信 main Inspector 在 Preview `failed` 时继续展示 repository、worktree、workspace、session、terminal generation、source URL 与 physical PTY 的完整来源键，并提供“查看来源终端”。重启入口只是一项显式准备动作：把同一 terminal generation 已经真实提交过、且由 Rust 再验证的安全服务启动命令填入该 physical PTY 输入区；不附加 CR/LF、不执行、不自动聚焦后提交。
+
+### 命令 provenance 与顺序
+
+- xterm 解析真实 OSC 133 `C/D` 后，main 才把 command、submitted timestamp、单调 sequence 与 terminal generation 送入 Rust runtime map。Preview URL 扫描在 xterm 完成同一输出批次解析后运行，因此服务极快输出 URL 时也不会错误绑定上一代命令。
+- 同一完整来源再次输出 URL 时，只允许用当前 Rust command record 可证明的新 generation 更新 runtime provenance；保留首次发现时间。旧来源对象、旧窗口 failure 或迟到输出不能获得新 generation 的资格。
+- provenance、Preview source、failure/restart eligibility 只驻留内存，不进入 workspace snapshot、Journal 或远程同步。关闭重开、terminal exit 与另一来源不继承旧状态。
+
+### Rust fail-closed 边界
+
+- `preview_restart_prepare` 仅属于可信 main capability；不可信 Preview capability 仍只有严格 telemetry ingest。
+- Rust 同时核对 active/resolved/local/eligible、完整来源键、source URL、physical PTY、terminal generation/sequence/timestamp、命令指纹、当前 command record 与 failed runtime。PTY 忙碌、已退出、来源 stale、generation 改变、跨 worktree/端口、重复 prepare 或任何竞争都拒绝并返回可解释原因。
+- 命令上限为 384 bytes，只接受窄服务启动形状；拒绝 CR/LF、控制字符、首尾空白、compound/subshell、重定向、pipe、引号/转义/通配等 shell 结构及任意危险命令。不从页面、URL、端口、进程列表或历史记录猜命令，不扫描端口，不修改项目文件、脚本或配置。
+- prepare 持有 runtime 与 command state 锁完成最后一次核对，再只写命令字节到绑定 PTY，并以 one-shot `prepared` 阻止重复填入。用户必须在真实终端中检查并显式提交。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用连接两个 linked worktree、两个 loopback 服务与两条真实 PTY；A/B 初始均 ready，停止 A 并 Refresh 后只有 A failed 且重启可准备，B 保持 ready。
+- Inspector 显示 A 的完整来源键；“查看来源终端”回到并聚焦 A 的真实 xterm。重启按钮只把命令填入 A，B snapshot 不变，A 服务仍未监听；用户显式回车后 A 恢复 ready。
+- 跨来源、旧 generation、关闭重开残留、不可信后续命令与 terminal exit 全部拒绝；恢复后的新 URL 只绑定新 generation。
+- Preview 页面主动尝试文件、store、PTY 与 app command，0 次意外成功；main 与另一 PTY 正常。验收不依赖 Accessibility。
+- 原始终端尾部、应用日志、fixture 与 bundle 只留本机临时路径并在交付前清理；Git 只收录脱敏结论、代码与测试。

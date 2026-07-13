@@ -23,8 +23,9 @@ const TELEMETRY_MAX_EVENTS: usize = 32;
 const TELEMETRY_MAX_TEXT: usize = 512;
 const TELEMETRY_RATE_WINDOW: Duration = Duration::from_secs(10);
 const TELEMETRY_MAX_PER_WINDOW: u32 = 40;
+const RESTART_COMMAND_MAX_BYTES: usize = 384;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewSource {
     repository_id: String,
@@ -38,6 +39,29 @@ pub struct PreviewSource {
     workspace_resolution: String,
     permission: String,
     state: String,
+    restart_provenance: Option<PreviewCommandProvenance>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreviewCommandProvenance {
+    generation: String,
+    sequence: u64,
+    command: String,
+    submitted_at: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreviewSourceContext {
+    repository_id: String,
+    worktree_id: String,
+    workspace_id: String,
+    session_id: String,
+    terminal_id: String,
+    physical_pty_id: Option<u32>,
+    transport: String,
+    workspace_resolution: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +90,15 @@ pub struct PreviewRuntimeState {
     zoom_factor: f64,
     viewport: PreviewViewportState,
     telemetry: PreviewTelemetrySummary,
+    restart: PreviewRestartSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewRestartSummary {
+    eligible: bool,
+    command: Option<String>,
+    reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -132,9 +165,22 @@ struct PreviewRuntimeEntry {
     telemetry_dropped: u32,
 }
 
+#[derive(Debug, Clone)]
+struct PreviewTerminalCommandRuntime {
+    context: PreviewSourceContext,
+    generation: String,
+    sequence: u64,
+    submitted_at: u64,
+    command_fingerprint: String,
+    restart_command: Option<String>,
+    busy: bool,
+    prepared: bool,
+}
+
 #[derive(Default)]
 pub struct PreviewWindowState {
     entries: Mutex<HashMap<String, PreviewRuntimeEntry>>,
+    terminal_commands: Mutex<HashMap<String, PreviewTerminalCommandRuntime>>,
     next_window_generation: Mutex<u64>,
 }
 
@@ -421,6 +467,134 @@ fn validate_source_identity(source: &PreviewSource) -> Result<(), String> {
         .map_err(|_| "Preview URL is invalid".to_string())?;
     allowed_origin(&url)?;
     Ok(())
+}
+
+fn validate_terminal_context(context: &PreviewSourceContext) -> Result<u32, String> {
+    if context.transport != "local" || context.workspace_resolution != "resolved" {
+        return Err("Preview restart provenance requires a resolved local terminal".into());
+    }
+    if context.repository_id.is_empty()
+        || context.worktree_id.is_empty()
+        || context.session_id.is_empty()
+        || context.terminal_id.is_empty()
+        || context.workspace_id != format!("{}::{}", context.repository_id, context.worktree_id)
+        || !context
+            .terminal_id
+            .starts_with(&format!("{}:", context.session_id))
+    {
+        return Err("Preview terminal identity is incomplete or inconsistent".into());
+    }
+    context
+        .physical_pty_id
+        .ok_or_else(|| "Preview terminal has no physical PTY".into())
+}
+
+fn restart_token_is_safe(token: &str) -> bool {
+    !token.is_empty()
+        && token
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_-./:=,@%+".contains(character))
+}
+
+fn restart_script_is_safe(script: &str) -> bool {
+    matches!(
+        script.split(':').next().unwrap_or_default(),
+        "dev" | "start" | "serve" | "preview" | "web"
+    ) && script
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || "_:-".contains(character))
+}
+
+fn validate_restart_command(command: &str) -> Result<String, String> {
+    if command.is_empty() || command.len() > RESTART_COMMAND_MAX_BYTES || command != command.trim()
+    {
+        return Err("Preview restart command is empty, padded, or too long".into());
+    }
+    if command
+        .chars()
+        .any(|character| character.is_control() || "\r\n;&|<>`$(){}[]\\\"'!?*~".contains(character))
+    {
+        return Err(
+            "Preview restart command contains shell structure or control characters".into(),
+        );
+    }
+    let tokens = command.split_whitespace().collect::<Vec<_>>();
+    if tokens.is_empty() || tokens.iter().any(|token| !restart_token_is_safe(token)) {
+        return Err("Preview restart command contains an unsupported token".into());
+    }
+    let executable = tokens[0].rsplit('/').next().unwrap_or(tokens[0]);
+    let safe = match executable {
+        "npm" => match tokens.as_slice() {
+            [_, "start", rest @ ..] => rest.iter().all(|token| restart_token_is_safe(token)),
+            [_, "run", script, rest @ ..] => {
+                restart_script_is_safe(script)
+                    && rest.iter().all(|token| restart_token_is_safe(token))
+            }
+            _ => false,
+        },
+        "pnpm" | "yarn" | "bun" => match tokens.as_slice() {
+            [_, "run", script, rest @ ..] => {
+                restart_script_is_safe(script)
+                    && rest.iter().all(|token| restart_token_is_safe(token))
+            }
+            [_, script, rest @ ..] => {
+                restart_script_is_safe(script)
+                    && rest.iter().all(|token| restart_token_is_safe(token))
+            }
+            _ => false,
+        },
+        "python" | "python3" => matches!(tokens.as_slice(), [_, "-m", "http.server", ..]),
+        "vite" => true,
+        "next" | "astro" => tokens.get(1) == Some(&"dev"),
+        "ng" => tokens.get(1) == Some(&"serve"),
+        "deno" => {
+            tokens.get(1) == Some(&"task")
+                && tokens
+                    .get(2)
+                    .is_some_and(|script| restart_script_is_safe(script))
+        }
+        _ => false,
+    };
+    if !safe {
+        return Err("Preview restart command is not an approved service-start shape".into());
+    }
+    Ok(command.to_string())
+}
+
+fn source_context(source: &PreviewSource) -> PreviewSourceContext {
+    PreviewSourceContext {
+        repository_id: source.repository_id.clone(),
+        worktree_id: source.worktree_id.clone(),
+        workspace_id: source.workspace_id.clone(),
+        session_id: source.session_id.clone(),
+        terminal_id: source.terminal_id.clone(),
+        physical_pty_id: source.physical_pty_id,
+        transport: source.transport.clone(),
+        workspace_resolution: source.workspace_resolution.clone(),
+    }
+}
+
+fn command_fingerprint(command: &str) -> String {
+    format!("{:x}", Sha256::digest(command.as_bytes()))
+}
+
+fn terminal_command_runtime(
+    context: PreviewSourceContext,
+    provenance: PreviewCommandProvenance,
+    busy: bool,
+) -> PreviewTerminalCommandRuntime {
+    let command_fingerprint = command_fingerprint(&provenance.command);
+    let restart_command = validate_restart_command(&provenance.command).ok();
+    PreviewTerminalCommandRuntime {
+        context,
+        generation: provenance.generation,
+        sequence: provenance.sequence,
+        submitted_at: provenance.submitted_at,
+        command_fingerprint,
+        restart_command,
+        busy,
+        prepared: false,
+    }
 }
 
 fn safe_source_url(raw: &str) -> String {
@@ -806,6 +980,194 @@ fn source_label(source: &PreviewSource) -> String {
     format!("preview-{:x}", hasher.finalize())[..32].to_string()
 }
 
+fn restart_summary(
+    entry: &PreviewRuntimeEntry,
+    requested_source: &PreviewSource,
+    commands: &HashMap<String, PreviewTerminalCommandRuntime>,
+    pty_state: &crate::modules::pty::PtyState,
+) -> PreviewRestartSummary {
+    let unavailable = |reason: &str| PreviewRestartSummary {
+        eligible: false,
+        command: None,
+        reason: reason.into(),
+    };
+    if requested_source.state != "active" {
+        return unavailable("source-stale");
+    }
+    if entry.status != PreviewRuntimeStatus::Failed {
+        return unavailable("not-failed");
+    }
+    let Some(physical_pty_id) = requested_source.physical_pty_id else {
+        return unavailable("pty-exited");
+    };
+    if pty_state.get(physical_pty_id).is_none() {
+        return unavailable("pty-exited");
+    }
+    let Some(provenance) = entry.source.restart_provenance.as_ref() else {
+        return unavailable("command-unavailable");
+    };
+    if requested_source.restart_provenance.as_ref() != Some(provenance) {
+        return unavailable("provenance-changed");
+    }
+    let Some(command) = commands.get(&requested_source.terminal_id) else {
+        return unavailable("command-unavailable");
+    };
+    if command.context != source_context(requested_source)
+        || command.generation != provenance.generation
+        || command.sequence != provenance.sequence
+        || command.submitted_at != provenance.submitted_at
+        || command.command_fingerprint != command_fingerprint(&provenance.command)
+        || command.restart_command.as_deref() != Some(provenance.command.as_str())
+        || command.context.physical_pty_id != Some(physical_pty_id)
+    {
+        return unavailable("provenance-changed");
+    }
+    if command.busy {
+        return unavailable("terminal-busy");
+    }
+    if command.prepared {
+        return unavailable("already-prepared");
+    }
+    let Ok(validated) = validate_restart_command(&provenance.command) else {
+        return unavailable("command-unavailable");
+    };
+    PreviewRestartSummary {
+        eligible: true,
+        command: Some(validated),
+        reason: "ready".into(),
+    }
+}
+
+fn command_proves_source_generation(
+    source: &PreviewSource,
+    commands: &HashMap<String, PreviewTerminalCommandRuntime>,
+) -> bool {
+    let Some(provenance) = source.restart_provenance.as_ref() else {
+        return false;
+    };
+    let Some(command) = commands.get(&source.terminal_id) else {
+        return false;
+    };
+    command.context == source_context(source)
+        && command.generation == provenance.generation
+        && command.sequence == provenance.sequence
+        && command.submitted_at == provenance.submitted_at
+        && command.command_fingerprint == command_fingerprint(&provenance.command)
+        && command.restart_command.as_deref() == Some(provenance.command.as_str())
+}
+
+#[tauri::command]
+pub fn preview_terminal_command_started(
+    context: PreviewSourceContext,
+    provenance: PreviewCommandProvenance,
+    preview_state: tauri::State<PreviewWindowState>,
+    pty_state: tauri::State<crate::modules::pty::PtyState>,
+) -> Result<(), String> {
+    let physical_pty_id = validate_terminal_context(&context)?;
+    if provenance.generation.is_empty() || provenance.generation.len() > 256 {
+        if let Ok(mut commands) = preview_state.terminal_commands.lock() {
+            commands.remove(&context.terminal_id);
+        }
+        return Err("Preview command generation is invalid".into());
+    }
+    if pty_state.get(physical_pty_id).is_none() {
+        return Err("Preview source PTY has exited".into());
+    }
+    let mut commands = preview_state
+        .terminal_commands
+        .lock()
+        .map_err(|_| "Preview terminal command lock poisoned".to_string())?;
+    let fingerprint = command_fingerprint(&provenance.command);
+    match commands.get(&context.terminal_id) {
+        Some(existing)
+            if existing.submitted_at > provenance.submitted_at
+                || (existing.submitted_at == provenance.submitted_at
+                    && existing.sequence > provenance.sequence) =>
+        {
+            return Ok(())
+        }
+        Some(existing)
+            if existing.generation == provenance.generation
+                && existing.sequence == provenance.sequence
+                && existing.submitted_at == provenance.submitted_at
+                && existing.command_fingerprint == fingerprint
+                && !existing.busy =>
+        {
+            return Ok(())
+        }
+        _ => {}
+    }
+    commands.insert(
+        context.terminal_id.clone(),
+        terminal_command_runtime(context, provenance, true),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn preview_terminal_command_finished(
+    context: PreviewSourceContext,
+    provenance: PreviewCommandProvenance,
+    preview_state: tauri::State<PreviewWindowState>,
+    pty_state: tauri::State<crate::modules::pty::PtyState>,
+) -> Result<(), String> {
+    let physical_pty_id = validate_terminal_context(&context)?;
+    if pty_state.get(physical_pty_id).is_none() {
+        return Err("Preview source PTY has exited".into());
+    }
+    let mut commands = preview_state
+        .terminal_commands
+        .lock()
+        .map_err(|_| "Preview terminal command lock poisoned".to_string())?;
+    let fingerprint = command_fingerprint(&provenance.command);
+    match commands.get_mut(&context.terminal_id) {
+        Some(existing)
+            if existing.context == context
+                && existing.generation == provenance.generation
+                && existing.sequence == provenance.sequence
+                && existing.submitted_at == provenance.submitted_at
+                && existing.command_fingerprint == fingerprint =>
+        {
+            existing.busy = false;
+            Ok(())
+        }
+        Some(existing)
+            if existing.submitted_at > provenance.submitted_at
+                || (existing.submitted_at == provenance.submitted_at
+                    && existing.sequence > provenance.sequence) =>
+        {
+            Ok(())
+        }
+        Some(_) => Err("Preview command provenance changed".into()),
+        None => {
+            commands.insert(
+                context.terminal_id.clone(),
+                terminal_command_runtime(context, provenance, false),
+            );
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn preview_terminal_exited(
+    context: PreviewSourceContext,
+    preview_state: tauri::State<PreviewWindowState>,
+) -> Result<(), String> {
+    validate_terminal_context(&context)?;
+    let mut commands = preview_state
+        .terminal_commands
+        .lock()
+        .map_err(|_| "Preview terminal command lock poisoned".to_string())?;
+    if commands
+        .get(&context.terminal_id)
+        .is_some_and(|existing| existing.context == context)
+    {
+        commands.remove(&context.terminal_id);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, String> {
     let (url, origin) = validate_source(&source)?;
@@ -826,6 +1188,14 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
         safe_source_url(&source.source_url)
     );
     let window_generation = app.state::<PreviewWindowState>().next_generation()?;
+    let mut runtime_source = source.clone();
+    if runtime_source
+        .restart_provenance
+        .as_ref()
+        .is_some_and(|provenance| validate_restart_command(&provenance.command).is_err())
+    {
+        runtime_source.restart_provenance = None;
+    }
     let nonce = telemetry_nonce()?;
     let telemetry_script = telemetry_script(&nonce);
     app.state::<PreviewWindowState>()
@@ -835,7 +1205,7 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
         .insert(
             label.clone(),
             PreviewRuntimeEntry {
-                source: source.clone(),
+                source: runtime_source,
                 status: PreviewRuntimeStatus::Opening,
                 window_generation,
                 load_attempt: 0,
@@ -1067,25 +1437,38 @@ pub fn preview_refresh(app: AppHandle, source: PreviewSource) -> Result<(), Stri
 pub fn preview_status(
     app: AppHandle,
     source: PreviewSource,
+    pty_state: tauri::State<crate::modules::pty::PtyState>,
 ) -> Result<Option<PreviewRuntimeState>, String> {
     validate_source_identity(&source)?;
     let label = source_label(&source);
     let state = app.state::<PreviewWindowState>();
     let status = {
-        let entries = state
+        let mut entries = state
             .entries
             .lock()
             .map_err(|_| "Preview state lock poisoned".to_string())?;
-        entries.get(&label).map(|entry| {
-            (
-                entry.status,
-                entry.viewport_mode.clone(),
-                entry.requested_viewport,
-                telemetry_summary(entry),
-            )
-        })
+        let Some(entry) = entries.get_mut(&label) else {
+            return Ok(None);
+        };
+        let commands = state
+            .terminal_commands
+            .lock()
+            .map_err(|_| "Preview terminal command lock poisoned".to_string())?;
+        if entry.source.restart_provenance != source.restart_provenance
+            && validate_source(&source).is_ok()
+            && command_proves_source_generation(&source, &commands)
+        {
+            entry.source.restart_provenance = source.restart_provenance.clone();
+        }
+        Some((
+            entry.status,
+            entry.viewport_mode.clone(),
+            entry.requested_viewport,
+            telemetry_summary(entry),
+            restart_summary(entry, &source, &commands, &pty_state),
+        ))
     };
-    let Some((status, viewport_mode, requested_viewport, telemetry)) = status else {
+    let Some((status, viewport_mode, requested_viewport, telemetry, restart)) = status else {
         return Ok(None);
     };
     let window = app
@@ -1116,6 +1499,7 @@ pub fn preview_status(
             exact: (actual_width, actual_height) == requested_viewport,
         },
         telemetry,
+        restart,
     }))
 }
 
@@ -1395,6 +1779,49 @@ pub fn preview_telemetry_send(
 }
 
 #[tauri::command]
+pub fn preview_restart_prepare(
+    source: PreviewSource,
+    preview_state: tauri::State<PreviewWindowState>,
+    pty_state: tauri::State<crate::modules::pty::PtyState>,
+) -> Result<(), String> {
+    validate_source(&source)?;
+    let physical_pty_id = source
+        .physical_pty_id
+        .ok_or_else(|| "Preview source has no physical PTY".to_string())?;
+    let label = source_label(&source);
+    let entries = preview_state
+        .entries
+        .lock()
+        .map_err(|_| "Preview state lock poisoned".to_string())?;
+    let entry = entries
+        .get(&label)
+        .ok_or_else(|| "Preview source is not open".to_string())?;
+    let mut commands = preview_state
+        .terminal_commands
+        .lock()
+        .map_err(|_| "Preview terminal command lock poisoned".to_string())?;
+    let eligibility = restart_summary(entry, &source, &commands, &pty_state);
+    if !eligibility.eligible {
+        return Err(format!(
+            "Preview restart is unavailable: {}",
+            eligibility.reason
+        ));
+    }
+    let command = eligibility
+        .command
+        .ok_or_else(|| "Preview restart command is unavailable".to_string())?;
+    let runtime = commands
+        .get_mut(&source.terminal_id)
+        .ok_or_else(|| "Preview restart provenance disappeared".to_string())?;
+    let session = pty_state
+        .get(physical_pty_id)
+        .ok_or_else(|| "Preview source PTY has exited".to_string())?;
+    session.write(command.as_bytes())?;
+    runtime.prepared = true;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn preview_close(app: AppHandle, source: PreviewSource) -> Result<(), String> {
     validate_source_identity(&source)?;
     let label = source_label(&source);
@@ -1426,6 +1853,7 @@ mod tests {
             workspace_resolution: "resolved".into(),
             permission: "eligible".into(),
             state: "active".into(),
+            restart_provenance: None,
         }
     }
 
@@ -1443,6 +1871,28 @@ mod tests {
             telemetry_rate_started: Instant::now(),
             telemetry_rate_count: 0,
             telemetry_dropped: 0,
+        }
+    }
+
+    fn context(terminal_id: &str, physical_pty_id: u32) -> PreviewSourceContext {
+        PreviewSourceContext {
+            repository_id: "repo-a".into(),
+            worktree_id: "worktree-a".into(),
+            workspace_id: "repo-a::worktree-a".into(),
+            session_id: "session-a".into(),
+            terminal_id: terminal_id.into(),
+            physical_pty_id: Some(physical_pty_id),
+            transport: "local".into(),
+            workspace_resolution: "resolved".into(),
+        }
+    }
+
+    fn provenance(sequence: u64, command: &str) -> PreviewCommandProvenance {
+        PreviewCommandProvenance {
+            generation: format!("session-a:0:{sequence}"),
+            sequence,
+            command: command.into(),
+            submitted_at: 100 + sequence,
         }
     }
 
@@ -1492,6 +1942,87 @@ mod tests {
         second = first.clone();
         second.terminal_id = "session-a:1".into();
         assert_ne!(source_label(&first), source_label(&second));
+        second = first.clone();
+        second.physical_pty_id = Some(8);
+        assert_ne!(source_label(&first), source_label(&second));
+    }
+
+    #[test]
+    fn restart_accepts_only_narrow_single_service_start_commands() {
+        for command in [
+            "npm run dev",
+            "npm start -- --port=4173",
+            "pnpm dev --host 127.0.0.1",
+            "yarn run preview",
+            "bun run serve",
+            "python3 -m http.server 4173 --bind 127.0.0.1",
+            "vite --port 4173",
+            "next dev",
+            "astro dev",
+            "ng serve",
+            "deno task dev",
+        ] {
+            assert_eq!(validate_restart_command(command).unwrap(), command);
+        }
+    }
+
+    #[test]
+    fn restart_rejects_controls_length_compound_subshell_redirection_pipe_and_dangerous_commands() {
+        let control = format!("pnpm dev{}", char::from(7));
+        let oversized = format!("pnpm dev {}", "x".repeat(RESTART_COMMAND_MAX_BYTES));
+        for command in [
+            "pnpm dev\r",
+            "pnpm dev\n",
+            control.as_str(),
+            oversized.as_str(),
+            "pnpm dev && echo owned",
+            "pnpm dev; echo owned",
+            "pnpm dev | tee output",
+            "pnpm dev > output.log",
+            "pnpm dev < input",
+            "pnpm $(echo dev)",
+            "pnpm `echo dev`",
+            "rm -rf /",
+            "sudo npm run dev",
+            "npx vite",
+            "node server.js",
+            "PORT=4173 pnpm dev",
+        ] {
+            assert!(
+                validate_restart_command(command).is_err(),
+                "accepted {command:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unsafe_or_newer_terminal_commands_invalidate_old_restart_provenance_without_storing_text() {
+        let safe =
+            terminal_command_runtime(context("session-a:0", 7), provenance(1, "pnpm dev"), false);
+        assert_eq!(safe.restart_command.as_deref(), Some("pnpm dev"));
+        assert!(!safe.busy);
+
+        let unsafe_command = "rm -rf /tmp/example";
+        let unsafe_runtime = terminal_command_runtime(
+            context("session-a:0", 7),
+            provenance(2, unsafe_command),
+            true,
+        );
+        assert_eq!(unsafe_runtime.restart_command, None);
+        assert!(unsafe_runtime.busy);
+        assert!(!unsafe_runtime.command_fingerprint.contains(unsafe_command));
+        assert!(unsafe_runtime.sequence > safe.sequence);
+
+        let other_worktree = terminal_command_runtime(
+            PreviewSourceContext {
+                worktree_id: "worktree-b".into(),
+                workspace_id: "repo-a::worktree-b".into(),
+                ..context("session-a:0", 8)
+            },
+            provenance(3, "pnpm dev"),
+            false,
+        );
+        assert_ne!(safe.context, other_worktree.context);
     }
 
     #[test]

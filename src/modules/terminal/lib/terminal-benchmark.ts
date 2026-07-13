@@ -2,9 +2,9 @@ const configuredBenchmark = typeof import.meta.env !== "undefined"
   ? import.meta.env.VITE_TUNARA_BENCHMARK
   : undefined;
 
-export type TerminalBenchmarkVariant = "m0" | "m1-output" | "m2-safe-write" | "m2-local-safe-write" | "m2-native-close" | "phase3-telemetry";
+export type TerminalBenchmarkVariant = "m0" | "m1-output" | "m2-safe-write" | "m2-local-safe-write" | "m2-native-close" | "phase3-telemetry" | "phase3-restart";
 export const TERMINAL_BENCHMARK_VARIANT: TerminalBenchmarkVariant | null =
-  configuredBenchmark === "m0" || configuredBenchmark === "m1-output" || configuredBenchmark === "m2-safe-write" || configuredBenchmark === "m2-local-safe-write" || configuredBenchmark === "m2-native-close" || configuredBenchmark === "phase3-telemetry"
+  configuredBenchmark === "m0" || configuredBenchmark === "m1-output" || configuredBenchmark === "m2-safe-write" || configuredBenchmark === "m2-local-safe-write" || configuredBenchmark === "m2-native-close" || configuredBenchmark === "phase3-telemetry" || configuredBenchmark === "phase3-restart"
     ? configuredBenchmark
     : null;
 export const TERMINAL_BENCHMARK_MODE = TERMINAL_BENCHMARK_VARIANT !== null;

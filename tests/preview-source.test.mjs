@@ -54,6 +54,29 @@ test("重复输出按完整来源身份和规范 URL 去重并保留首次发现
   assert.equal(merged[0].sourceUrl, "http://localhost:3000/x?q=1#ok");
 });
 
+test("服务 URL 只携带同一终端 generation 的显式提交 provenance", () => {
+  const context = previewSourceContext(session("s-a", "wt-a"));
+  const provenance = { generation: "s-a:0:10:1", sequence: 1, command: "pnpm dev", submittedAt: 10 };
+  const source = detectPreviewSources("ready http://localhost:3000 ", context, 11, provenance)[0];
+  assert.deepEqual(source.restartProvenance, provenance);
+  const unrelated = detectPreviewSources("ready http://localhost:4000 ", context, 12)[0];
+  assert.equal(unrelated.restartProvenance, undefined);
+});
+
+test("同一服务恢复后只用再次输出 URL 的新 generation 替换旧 provenance", () => {
+  const context = previewSourceContext(session("s-a", "wt-a"));
+  const oldProvenance = { generation: "s-a:0:10:1", sequence: 1, command: "pnpm dev", submittedAt: 10 };
+  const newProvenance = { generation: "s-a:0:20:2", sequence: 2, command: "pnpm dev", submittedAt: 20 };
+  const first = detectPreviewSources("http://localhost:3000 ", context, 11, oldProvenance);
+  const recovered = detectPreviewSources("http://localhost:3000 ", context, 21, newProvenance);
+  const unrelatedOutput = detectPreviewSources("http://localhost:3000 ", context, 22);
+  const merged = mergePreviewSources(first, recovered);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].discoveredAt, 11);
+  assert.deepEqual(merged[0].restartProvenance, newProvenance);
+  assert.deepEqual(mergePreviewSources(merged, unrelatedOutput)[0].restartProvenance, newProvenance);
+});
+
 test("只接受明确 loopback HTTP(S)，处理 IPv6、query/fragment 与尾随标点", () => {
   const context = previewSourceContext(session("s-a", "wt-a"));
   const sources = detectPreviewSources(
@@ -107,6 +130,7 @@ test("previewSources 明确保持 runtime-only，不进入 workspace session sna
       previewSourceContext(session("s-a", "wt-a")),
       10,
     ),
+    previewCommandProvenance: { generation: "s-a:0:10:1", sequence: 1, command: "pnpm dev", submittedAt: 10 },
   };
   const persisted = toPersistedSession(runtimeSession);
   assert.equal(Object.hasOwn(persisted, "previewSources"), false);

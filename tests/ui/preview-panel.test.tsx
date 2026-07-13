@@ -15,6 +15,7 @@ function runtime(overrides: Partial<PreviewRuntimeState> = {}): PreviewRuntimeSt
     zoomFactor: 1,
     viewport: { mode: "reset", requestedWidth: 980, requestedHeight: 720, actualWidth: 980, actualHeight: 720, outerWidth: 980, outerHeight: 748, exact: true },
     telemetry: { generation: 1, events: [], dropped: 0, text: "Preview failures (generation 1)" },
+    restart: { eligible: false, reason: "not-failed" },
     ...overrides,
   };
 }
@@ -44,6 +45,8 @@ function session(previewSources: PreviewSource[]): Session {
     dir: "/repo/a",
     branch: "main",
     runState: "idle",
+    ptyId: previewSources[0]?.physicalPtyId,
+    previewCommandProvenance: previewSources[0]?.restartProvenance,
     previewSources,
     updatedAt: 1,
   };
@@ -100,6 +103,45 @@ test("shows a failed load with manual recovery and does not pretend it is ready"
   expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Open externally" })).toBeTruthy();
+});
+
+test("offers only a proven failed-source command and delegates fill-without-execute to Rust", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source({
+    restartProvenance: { generation: "session-a:0:1", sequence: 1, command: "python3 -m http.server 41731", submittedAt: 10 },
+  });
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return runtime({
+      status: "failed",
+      currentUrl: eligible.sourceUrl,
+      restart: { eligible: true, command: "python3 -m http.server 41731", reason: "ready" },
+    });
+    if (command === "preview_restart_prepare") return undefined;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  expect(await screen.findByText("python3 -m http.server 41731")).toBeTruthy();
+  const prepare = screen.getByRole("button", { name: "Fill source PTY" }) as HTMLButtonElement;
+  expect(prepare.disabled).toBe(false);
+  fireEvent.click(prepare);
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_restart_prepare", payload: { source: eligible } }));
+  expect(calls.some((call) => call.command === "pty_write")).toBe(false);
+});
+
+test("keeps restart disabled for busy, stale, changed, exited, or unproven sources", async () => {
+  const reasons = ["terminal-busy", "source-stale", "provenance-changed", "pty-exited", "command-unavailable"] as const;
+  let index = 0;
+  mockIPC((command) => command === "preview_status"
+    ? runtime({ status: "failed", restart: { eligible: false, reason: reasons[index++] ?? "command-unavailable" } })
+    : undefined);
+  render(<PreviewPanel session={session(reasons.map((_, sourceIndex) => source({ terminalId: `session-a:${sourceIndex}` })))} />);
+
+  await screen.findAllByText("Unreachable / failed");
+  for (const button of screen.getAllByRole("button", { name: "Fill source PTY" })) {
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  }
 });
 
 test("terminal exit keeps close available but blocks refresh and a new internal Preview", async () => {

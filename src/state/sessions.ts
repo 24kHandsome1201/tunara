@@ -52,6 +52,24 @@ import {
   mergePreviewSources,
   previewSourceContext,
 } from "@/modules/preview/preview-source";
+import type { PreviewCommandProvenance } from "@/modules/preview/preview-source";
+import {
+  previewTerminalCommandFinished,
+  previewTerminalCommandStarted,
+  previewTerminalExited,
+} from "@/modules/preview/preview-window";
+
+let previewCommandSequence = 0;
+
+function createPreviewCommandProvenance(terminalId: string, command: string, submittedAt: number): PreviewCommandProvenance {
+  previewCommandSequence += 1;
+  return {
+    generation: `${terminalId}:${submittedAt}:${previewCommandSequence}`,
+    sequence: previewCommandSequence,
+    command,
+    submittedAt,
+  };
+}
 
 interface SessionsState {
   sessions: Session[];
@@ -91,6 +109,7 @@ interface SessionsState {
   handleAgentWaitingConfirmation: (id: string) => void;
   handleAgentBusy: (id: string) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
+  handlePreviewCommandDetected: (id: string, command: string) => void;
   handleCommandDetected: (id: string, command: string) => void;
   handleCommandFinished: (id: string, exitCode: number) => void;
   handleTerminalExited: (id: string, exitCode: number) => void;
@@ -604,6 +623,18 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
   },
 
+  handlePreviewCommandDetected: (id, command) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session) return;
+    const submittedAt = Date.now();
+    const context = previewSourceContext(session);
+    const provenance = createPreviewCommandProvenance(context.terminalId, command, submittedAt);
+    get().updateSession(id, { previewCommandProvenance: provenance });
+    void previewTerminalCommandStarted(context, provenance).catch(() => {
+      // Missing native provenance deliberately leaves restart unavailable.
+    });
+  },
+
   handleCommandDetected: (id, command) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = commandDetectedUpdate(session, command);
@@ -619,6 +650,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = isSessionObserved(get().activeSessionId, id);
     const update = commandFinishedUpdate(session, exitCode, isActive);
     if (!update) return;
+    if (session?.previewCommandProvenance) {
+      void previewTerminalCommandFinished(previewSourceContext(session), session.previewCommandProvenance).catch(() => {
+        // A missing native completion record keeps restart fail-closed.
+      });
+    }
     get().appendTimeline(id, "command_end", session?.lastCommand);
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
@@ -640,8 +676,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const update = terminalExitedUpdate(session, exitCode, isSessionObserved(get().activeSessionId, id));
     if (!update) return;
     const terminalId = session ? previewSourceContext(session).terminalId : undefined;
+    if (session) {
+      void previewTerminalExited(previewSourceContext(session)).catch(() => {
+        // The absent physical PTY independently keeps restart disabled.
+      });
+    }
     get().updateSession(id, {
       ...update.patch,
+      previewCommandProvenance: undefined,
       ...(terminalId && session?.previewSources
         ? { previewSources: markPreviewSourcesStale(session.previewSources, terminalId) }
         : {}),
@@ -652,7 +694,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleTerminalOutput: (id, output, discoveredAt = Date.now()) => {
     const session = get().sessions.find((s) => s.id === id);
     if (!session) return;
-    const detected = detectPreviewSources(output, previewSourceContext(session), discoveredAt);
+    const detected = detectPreviewSources(
+      output,
+      previewSourceContext(session),
+      discoveredAt,
+      session.runState === "running" ? session.previewCommandProvenance : undefined,
+    );
     if (detected.length === 0) return;
     get().updateSession(id, {
       previewSources: mergePreviewSources(session.previewSources ?? [], detected),

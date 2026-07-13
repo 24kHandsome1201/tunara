@@ -128,6 +128,10 @@ pub fn run() {
             modules::preview::preview_telemetry_ingest,
             modules::preview::preview_telemetry_clear,
             modules::preview::preview_telemetry_send,
+            modules::preview::preview_terminal_command_started,
+            modules::preview::preview_terminal_command_finished,
+            modules::preview::preview_terminal_exited,
+            modules::preview::preview_restart_prepare,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,

@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
-import { previewBlockReason, previewClose, previewDisplayUrl, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewSetViewport, previewSetZoom, previewStatus, previewTelemetryClear, previewTelemetrySend } from "@/modules/preview/preview-window";
+import { previewBlockReason, previewClose, previewDisplayUrl, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewRestartPrepare, previewSetViewport, previewSetZoom, previewStatus, previewTelemetryClear, previewTelemetrySend } from "@/modules/preview/preview-window";
 import type { PreviewRuntimeState, PreviewRuntimeStatus } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 import { copyText } from "./lib/clipboard";
+import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 
-function SourceCard({ source }: { source: PreviewSource }) {
+function SourceCard({ source, session }: { source: PreviewSource; session: Session }) {
   const t = useT();
   const blocked = previewBlockReason(source);
   const [runtimeState, setRuntimeState] = useState<PreviewRuntimeState | null>(null);
@@ -76,6 +78,31 @@ function SourceCard({ source }: { source: PreviewSource }) {
   const isOpen = runtimeState !== null;
   const telemetry = runtimeState?.telemetry;
   const hasTelemetry = !!telemetry?.events.length;
+  const currentProvenance = session.previewCommandProvenance;
+  const sourceProvenance = source.restartProvenance;
+  const provenanceMatches = !!currentProvenance && !!sourceProvenance
+    && currentProvenance.generation === sourceProvenance.generation
+    && currentProvenance.sequence === sourceProvenance.sequence
+    && currentProvenance.command === sourceProvenance.command
+    && currentProvenance.submittedAt === sourceProvenance.submittedAt;
+  const restartUiReason = session.ptyId === undefined
+    ? "pty-exited"
+    : session.agent || session.runState === "running"
+      ? "terminal-busy"
+      : !provenanceMatches
+        ? "provenance-changed"
+        : runtimeState?.restart.reason ?? "command-unavailable";
+  const restartUiEligible = !!runtimeState?.restart.eligible && restartUiReason === "ready";
+
+  const viewSourceTerminal = () => {
+    useSessionsStore.getState().setActive(source.sessionId);
+    useUIStore.getState().setPanelVisible(false);
+    window.setTimeout(() => {
+      const pane = [...document.querySelectorAll<HTMLElement>("[data-terminal-session-id]")]
+        .find((element) => element.dataset.terminalSessionId === source.sessionId);
+      pane?.querySelector<HTMLElement>(".xterm-helper-textarea")?.focus();
+    }, 0);
+  };
 
   const row = (label: string, value: string) => (
     <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
@@ -101,16 +128,30 @@ function SourceCard({ source }: { source: PreviewSource }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "var(--fs-meta)", color: "var(--c-text-3)", minWidth: 0 }}>
         {row(t("inspector.preview.repository"), source.repositoryId)}
         {row(t("inspector.preview.worktree"), source.worktreeId)}
+        {row(t("inspector.preview.workspace"), source.workspaceId)}
         {row(t("inspector.preview.session"), source.sessionId)}
         {row(t("inspector.preview.terminal"), source.terminalId)}
+        {row(t("inspector.preview.generation"), source.restartProvenance?.generation ?? t("inspector.preview.generation_missing"))}
+        {row(t("inspector.preview.physical_pty"), source.physicalPtyId === undefined ? t("inspector.preview.physical_pty_missing") : String(source.physicalPtyId))}
         {row("URL", previewDisplayUrl(source.sourceUrl))}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button data-preview-action="view-source-terminal" disabled={busy} onClick={viewSourceTerminal}>{t("inspector.preview.view_terminal")}</button>
         <button disabled={busy || !!blocked} onClick={() => void run(() => previewOpen(source), "opening")}>{isOpen ? t("inspector.preview.focus") : t("inspector.preview.open")}</button>
         <button disabled={busy || !!blocked || !isOpen || runtimeStatus === "opening" || runtimeStatus === "loading"} onClick={() => void run(() => previewRefresh(source), "loading")}>{t("inspector.preview.refresh")}</button>
         <button disabled={busy || !isOpen} onClick={() => void run(() => previewClose(source))}>{t("inspector.preview.close")}</button>
         <button disabled={busy} onClick={() => void run(() => openUrl(source.sourceUrl))}>{t("inspector.preview.external")}</button>
       </div>
+      {displayStatus === "failed" && runtimeState && <section aria-label={t("inspector.preview.restart.title")} style={{ borderTop: "1px solid var(--c-border-1)", paddingTop: 7, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 650 }}>{t("inspector.preview.restart.title")}</span>
+          <button data-preview-action="prepare-restart" disabled={busy || !restartUiEligible} title={t(`inspector.preview.restart.reason.${restartUiReason}`)} onClick={() => void run(() => previewRestartPrepare(source))}>{t("inspector.preview.restart.prepare")}</button>
+        </div>
+        {runtimeState.restart.command && <code style={{ fontSize: "var(--fs-meta)", overflowWrap: "anywhere" }}>{runtimeState.restart.command}</code>}
+        <div role="status" style={{ color: restartUiEligible ? "var(--c-text-4)" : "var(--c-warning)", fontSize: "var(--fs-meta)" }}>
+          {t(`inspector.preview.restart.reason.${restartUiReason}`)}
+        </div>
+      </section>}
       {isOpen && <div aria-label={t("inspector.preview.zoom_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
         <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.zoom")}</span>
         {[0.75, 0.9, 1, 1.1, 1.25, 1.5].map((factor) => <button key={factor} disabled={busy || !!blocked || runtimeStatus !== "ready"} aria-pressed={Math.abs(runtimeState.zoomFactor - factor) < 0.001} onClick={() => void run(() => previewSetZoom(source, factor))}>{Math.round(factor * 100)}%</button>)}
@@ -158,7 +199,7 @@ export function PreviewPanel({ session }: { session: Session }) {
     <div style={{ padding: 10, overflow: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
       {sources.length === 0 ? (
         <div style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", padding: 12 }}>{t("inspector.preview.empty")}</div>
-      ) : sources.map((source) => <SourceCard key={[source.workspaceId, source.sessionId, source.terminalId, source.sourceUrl].join("\0")} source={source} />)}
+      ) : sources.map((source) => <SourceCard key={[source.workspaceId, source.sessionId, source.terminalId, source.sourceUrl].join("\0")} source={source} session={session} />)}
     </div>
   );
 }

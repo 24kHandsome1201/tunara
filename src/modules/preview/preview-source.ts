@@ -19,12 +19,20 @@ export interface PreviewSourceContext {
   workspaceResolution: "resolved" | "fallback";
 }
 
+export interface PreviewCommandProvenance {
+  generation: string;
+  sequence: number;
+  command: string;
+  submittedAt: number;
+}
+
 export interface PreviewSource extends PreviewSourceContext {
   sourceUrl: string;
   discoveredAt: number;
   permission: PreviewPermission;
   state: PreviewSourceState;
   staleReason?: "terminal-exited" | "session-closed";
+  restartProvenance?: PreviewCommandProvenance;
 }
 
 export interface PreviewSourceSession {
@@ -93,6 +101,7 @@ export function detectPreviewSources(
   output: string,
   context: PreviewSourceContext,
   discoveredAt = Date.now(),
+  restartProvenance?: PreviewCommandProvenance,
 ): PreviewSource[] {
   const seen = new Set<string>();
   const detected: PreviewSource[] = [];
@@ -105,6 +114,7 @@ export function detectPreviewSources(
       discoveredAt,
       permission: context.transport === "local" ? "eligible" : "remote-manual",
       state: "active",
+      ...(restartProvenance ? { restartProvenance } : {}),
     };
     const key = previewSourceKey(source);
     if (seen.has(key)) continue;
@@ -121,7 +131,14 @@ export function mergePreviewSources(
 ): PreviewSource[] {
   const byKey = new Map(current.map((source) => [previewSourceKey(source), source]));
   for (const source of incoming) {
-    if (!byKey.has(previewSourceKey(source))) byKey.set(previewSourceKey(source), source);
+    const key = previewSourceKey(source);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, source);
+    } else if (source.restartProvenance
+      && source.restartProvenance.generation !== existing.restartProvenance?.generation) {
+      byKey.set(key, { ...source, discoveredAt: existing.discoveredAt });
+    }
   }
   return [...byKey.values()].slice(-Math.max(0, limit));
 }

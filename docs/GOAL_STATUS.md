@@ -4,13 +4,13 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 3 已完成来源绑定、隔离的 eligible localhost WebView/navigation policy、最小页面失败提示与手动服务生命周期闭环，以及可信 main 控制面的同源地址导航、原生前进/后退历史、有限原生缩放、常用 viewport 和基础 console/network 失败摘要与绑定 PTY 送回。截图、服务重启关联与 SSH tunnel 仍按明确后置保持未完成，因此 Phase 3 继续进行中且不进入 Phase 4。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 3 已完成来源绑定、隔离的 eligible localhost WebView/navigation policy、最小页面失败提示与手动服务生命周期闭环，以及可信 main 控制面的同源地址导航、原生前进/后退历史、有限原生缩放、常用 viewport、基础 console/network 失败摘要与绑定 PTY 送回，并关闭来源 terminal generation 绑定的 fail-closed 服务重启准备门。截图与 SSH tunnel 仍按明确后置保持未完成，因此 Phase 3 继续进行中且不进入 Phase 4。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
 | Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归 |
-| Phase 3 Workspace Preview | 进行中 | 完整来源键隔离的 runtime 状态合同已覆盖 opening/loading/ready/failed/closed/stale；可信 main 同源地址导航、WKWebView 原生 Back/Forward、有限 zoom、常用 viewport，以及 bounded console/network 失败摘要与绑定 PTY Send 已通过 optimized macOS fixture；初始不可达、服务停止/恢复、terminal exit、原生关闭/重开、双 worktree 隔离与安全 ACL 保持 | required gates 尚缺截图、服务重启关联与 SSH tunnel；继续后置且不进入 Phase 4 |
+| Phase 3 Workspace Preview | 进行中 | 完整来源键隔离的 runtime 状态合同已覆盖 opening/loading/ready/failed/closed/stale；可信 main 同源地址导航、WKWebView 原生 Back/Forward、有限 zoom、常用 viewport、bounded 失败摘要与绑定 PTY Send，以及来源 generation 绑定的安全重启准备已通过 optimized macOS fixture；初始不可达、服务停止/恢复、terminal exit、原生关闭/重开、双 worktree 隔离与安全 ACL 保持 | required gates 尚缺截图与 SSH tunnel；继续后置且不进入 Phase 4 |
 | Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
 | Phase 6 Mobile Companion | 未开始 | Phase 1 稳定 identity 已完成；桌面仍是唯一事实源 | 等 Phase 4 事件模型稳定后，先做默认关闭、只读、局域网/Tailscale 的 Gateway + PWA 配对实验 |
@@ -97,8 +97,9 @@
 - [x] 可信同源地址导航与真实历史：地址输入、Back、Forward 只存在于 main Inspector；相对 path/query/fragment 与完整同源 URL 在 Rust command boundary 规范化，凭据、跨 scheme/host/effective-port、公网、外部协议和非法 URL fail closed。enabled/disabled 由当前 macOS WKWebView 的原生 back-forward list 返回，不由 React 猜测；状态继续按完整来源键与 window generation 隔离。真实 optimized 隔离应用完成 A→B→Back→Forward、跨端口/公网拒绝、两个 worktree/端口历史不串、停服/恢复、原生关闭重开无历史残留与 PTY/main 保持。见 [脱敏报告](./benchmarks/phase3-preview-navigation-macos-2026-07-13.md)。
 - [x] 可信 Preview zoom 与常用 viewport：main Inspector 提供 75/90/100/110/125/150% 原生缩放、Reset，以及 phone/tablet/desktop、Fit/Reset；Rust 拒绝非有限、越界、非预设 zoom 与非法尺寸，原生回读后才更新 UI。viewport 同时报告 requested、实际 inner、outer 与 exact/unavailable；runtime-only 状态按完整来源键和 generation 隔离，关闭重开回 100%/980×720。真实 optimized macOS fixture 以页面 innerWidth/innerHeight 交叉证明可用 preset，双 worktree、main/PTY 几何及既有 lifecycle/security 回归保持。见 [脱敏报告](./benchmarks/phase3-preview-zoom-viewport-macos-2026-07-13.md)。
 - [x] 基础 console/network 失败摘要与绑定 PTY 送回：用户显式打开的 active/resolved/local/eligible Preview 只提交 console error、unhandled error 与 network failure/status/phase 的严格 schema；Rust 以完整来源键、真实 WebView label/current origin、window generation nonce 和 physical PTY 再校验。32 条 ring、双层频率上限、去重计数和 secret/URL/path 脱敏保持 runtime-only；可信 Inspector 提供 Copy/Clear/显式 Send，Send 只填入该来源物理 PTY且不附加回车。optimized macOS 双 linked worktree/双端口/双 PTY 证明三类失败隔离、清空、关闭重开 generation、A/B Send 不串且未执行；页面文件/store/PTY ACL 与伪造 nonce 全部拒绝。见 [脱敏报告](./benchmarks/phase3-preview-telemetry-macos-2026-07-13.md)。
+- [x] 服务失效关联与 fail-closed 重启准备：failed Preview 继续显示 repository/worktree/workspace/session/terminal generation/source URL/physical PTY 完整来源键，并可回到来源终端。只有同一 PTY 的 OSC 133 显式提交记录与 Rust runtime provenance、当前来源 generation 完全一致，且命令通过单命令、长度、控制字符与危险 shell 结构校验、PTY 存活且不忙时，Inspector 才允许把原命令填入绑定 PTY；不附加回车、不执行。跨来源/端口、旧 generation、stale、terminal exit、窗口重开、并发状态与不可信命令均 fail closed。optimized macOS 双 linked worktree/双端口/双 PTY 已证明 A 失效时 B 保持 ready、A 只填入后需用户显式回车才恢复，页面文件/store/PTY/app 高权限 0 次意外成功。见 [脱敏报告](./benchmarks/phase3-preview-restart-macos-2026-07-13.md)。
 
-Phase 3 仍为进行中；以上勾选只代表[来源/检测、安全 WebView、最小运行时生命周期、可信同源历史、有限缩放与常用 viewport、基础失败摘要与绑定 PTY 送回](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。GOAL required gates 中截图、服务重启关联与 SSH tunnel 尚未满足，不得解释为 Workspace-bound Browser Preview 已完成，更不得进入 Phase 4。
+Phase 3 仍为进行中；以上勾选只代表[来源/检测、安全 WebView、最小运行时生命周期、可信同源历史、有限缩放与常用 viewport、基础失败摘要与绑定 PTY 送回、来源绑定的安全重启准备](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。GOAL required gates 中截图与 SSH tunnel 尚未满足，不得解释为 Workspace-bound Browser Preview 已完成，更不得进入 Phase 4。
 
 ## Phase 1 验收账本
 

@@ -301,7 +301,7 @@ function TerminalViewImpl({
           if (osc133Active && (promptEnd.row >= 0 || submittedCommand || data.startsWith("C;"))) {
             const cmd = resolveTerminalCommandText(data, submittedCommand, extractCommandFromBuffer(term, promptEnd));
             if (cmd) {
-              if (isMeaningfulCommand(cmd)) {
+              useSessionsStore.getState().handlePreviewCommandDetected(sessionIdRef.current, cmd); if (isMeaningfulCommand(cmd)) {
                 useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, cmd);
                 blocks.beginBlock(cmd, promptEnd.row >= 0 ? promptEnd.row : currentBufferRow());
               }
@@ -347,14 +347,14 @@ function TerminalViewImpl({
         type: "openRequested",
         transport,
       });
-      const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined });
-      cleanups.push(() => outputBuffer.dispose()); const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); cleanups.push(previewScanner.dispose);
+      const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined, onWritten: (bytes) => previewScanner.push(bytes) });
+      cleanups.push(() => outputBuffer.dispose()); cleanups.push(previewScanner.dispose);
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkSnapshotReader(sessionIdRef.current, async () => { await outputBuffer.drain(); return serializeAddon.serialize(); }));
       // Declared before ptyHandlers so onExit can flip it even if exit races the
       // await openSessionPty() return.
       let inputToPtyEnabled = true;
       const ptyHandlers = {
-        onData: (bytes: Uint8Array, acknowledge: () => void) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes); previewScanner.push(bytes);
+        onData: (bytes: Uint8Array, acknowledge: () => void) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
           outputBuffer.push(bytes, acknowledge);
           blocks.updateActiveBlockEnd(currentBufferRow());
           snapshotScheduler.schedule();

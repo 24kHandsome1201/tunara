@@ -30,7 +30,7 @@ const TerminalPane = memo(function TerminalPane({
   isActive: boolean;
 }) {
   return (
-    <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div data-terminal-session-id={session.id} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <AgentStatusBar session={session} />
       <SshSuggestionBar session={session} />
       <TerminalView

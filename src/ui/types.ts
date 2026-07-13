@@ -4,7 +4,7 @@ import { t } from "../modules/i18n/core.ts";
 import type { ConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
 import type { SessionMascotId } from "../modules/session/session-mascot.ts";
 import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
-import type { PreviewSource } from "../modules/preview/preview-source.ts";
+import type { PreviewCommandProvenance, PreviewSource } from "../modules/preview/preview-source.ts";
 export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
@@ -99,6 +99,8 @@ export interface Session {
   workspaceState?: "unknown" | "loading" | "ready" | "notGit" | "unavailable";
   /** Runtime-only localhost candidates, bound to their exact terminal/worktree source. */
   previewSources?: PreviewSource[];
+  /** Runtime-only proof of the currently submitted OSC 133 shell command. */
+  previewCommandProvenance?: PreviewCommandProvenance;
 
   updatedAt: number;
 }
