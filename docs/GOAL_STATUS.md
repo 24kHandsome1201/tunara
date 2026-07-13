@@ -4,14 +4,14 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 3 已完成来源绑定、隔离的 eligible localhost WebView/navigation policy、最小页面失败提示与手动服务生命周期闭环，以及可信 main 控制面的同源地址导航、原生前进/后退历史、有限原生缩放、常用 viewport、基础 console/network 失败摘要与绑定 PTY 送回、来源 terminal generation 绑定的 fail-closed 服务重启准备，并关闭 SSH remote loopback 的用户显式、来源绑定、fail-closed 转发门。截图仍按明确后置保持未完成，因此 Phase 3 继续进行中且不进入 Phase 4。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性` 与 `Phase 2 Markdown / 单文件轻编辑` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)与 [Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)。Phase 3 已完成来源绑定、隔离的 eligible localhost WebView/navigation policy、最小页面失败提示与手动服务生命周期闭环，以及可信 main 控制面的同源地址导航、原生前进/后退历史、有限原生缩放、常用 viewport、基础 console/network 失败摘要与绑定 PTY 送回、来源 terminal generation 绑定的 fail-closed 服务重启准备，并关闭 SSH remote loopback 的用户显式、来源绑定、fail-closed 转发门。截图仍按明确后置保持未完成，因此 Phase 3 继续进行中；用户只例外授权先交付 Phase 4 / M3 当前单一后端底座切片，这不代表 Phase 3 完成或 Phase 4 整体开工/完成。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
 | Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归 |
-| Phase 3 Workspace Preview | 进行中 | 完整来源键隔离的 runtime 状态合同已覆盖 opening/loading/ready/failed/closed/stale；可信 main 同源地址导航、WKWebView 原生 Back/Forward、有限 zoom、常用 viewport、bounded 失败摘要与绑定 PTY Send、来源 generation 绑定的安全重启准备，以及显式 SSH remote loopback tunnel 已通过 optimized macOS fixture；初始不可达、服务停止/恢复、terminal/SSH exit、双 worktree 隔离与安全 ACL 保持 | required gate 尚缺截图；继续后置且不进入 Phase 4 |
-| Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口 | 事件 header/payload 分离、Rust append-only 持久层、游标分页、10,000 事件虚拟列表与性能证据 |
+| Phase 3 Workspace Preview | 进行中 | 完整来源键隔离的 runtime 状态合同已覆盖 opening/loading/ready/failed/closed/stale；可信 main 同源地址导航、WKWebView 原生 Back/Forward、有限 zoom、常用 viewport、bounded 失败摘要与绑定 PTY Send、来源 generation 绑定的安全重启准备，以及显式 SSH remote loopback tunnel 已通过 optimized macOS fixture；初始不可达、服务停止/恢复、terminal/SSH exit、双 worktree 隔离与安全 ACL 保持 | required gate 尚缺截图；仅对已授权的 M3 后端单切片例外，不视为 Phase 3 通过 |
+| Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口；M3 Rust Event Store 已完成稳定 header/private payload 分离、幂等 append、append-only 持久化、快照游标分页、重启/尾部恢复、精确删除/清空、capability 开关和损坏/未来 schema fail-safe，本机 release harness 的 10,000 headers 分页零 payload read、无漏重且真实 PTY p95 13µs | 富 Timeline React UI、动态高度虚拟列表、流式合并、Markdown/diff/图片惰性渲染、搜索和真实 bundle 帧时间仍未完成 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
 | Phase 6 Mobile Companion | 未开始 | Phase 1 稳定 identity 已完成；桌面仍是唯一事实源 | 等 Phase 4 事件模型稳定后，先做默认关闭、只读、局域网/Tailscale 的 Gateway + PWA 配对实验 |
 | Phase 7 Journal / Recipe | 部分基础 | 已有 session notes、timeline、changed files 与测试入口可作为引用源 | 先做 workspace 绑定的手动 goal 与可编辑 Markdown handoff；Recipe 必须等真实 Journal 复用证据 |
@@ -100,7 +100,18 @@
 - [x] 服务失效关联与 fail-closed 重启准备：failed Preview 继续显示 repository/worktree/workspace/session/terminal generation/source URL/physical PTY 完整来源键，并可回到来源终端。只有同一 PTY 的 OSC 133 显式提交记录与 Rust runtime provenance、当前来源 generation 完全一致，且命令通过单命令、长度、控制字符与危险 shell 结构校验、PTY 存活且不忙时，Inspector 才允许把原命令填入绑定 PTY；不附加回车、不执行。跨来源/端口、旧 generation、stale、terminal exit、窗口重开、并发状态与不可信命令均 fail closed。optimized macOS 双 linked worktree/双端口/双 PTY 已证明 A 失效时 B 保持 ready、A 只填入后需用户显式回车才恢复，页面文件/store/PTY/app 高权限 0 次意外成功。见 [脱敏报告](./benchmarks/phase3-preview-restart-macos-2026-07-13.md)。
 - [x] SSH remote loopback 显式 tunnel：`remote-manual` 来源只有在可信 main 对当前 active/resolved SSH session/worktree/terminal generation 执行显式动作并提供新 256-bit nonce 后，才复用既有 authenticated russh handle 建立精确 remote loopback `direct-tcpip`；本地端点由 OS 在 `127.0.0.1:0` 分配，不支持公网、任意目标、扫描、reverse/dynamic/SOCKS 或 shell。原始 remote URL 与派生 local endpoint 分离，状态只驻留内存；关闭 Preview/tunnel、PTY replacement、terminal/SSH/app exit 均回收。真实 optimized macOS 隔离应用以 codex-netcup 上两个 SSH Git workspace/session/physical PTY、同一 remote port 的 IPv4/IPv6 服务证明 A/B 不串、A 停服仅 A failed、B 显式关闭/重建、terminal exit 清理，以及并发、nonce replay、跨 worktree、stale、旧 generation 拒绝；页面 file/store/PTY/SSH/tunnel/app 六类高权限 0 次意外成功。见 [脱敏报告](./benchmarks/phase3-preview-ssh-tunnel-macos-2026-07-13.md)。
 
-Phase 3 仍为进行中；以上勾选只代表[来源/检测、安全 WebView、最小运行时生命周期、可信同源历史、有限缩放与常用 viewport、基础失败摘要与绑定 PTY 送回、来源绑定的安全重启准备、显式 SSH remote loopback tunnel](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。GOAL required gates 中截图尚未满足，不得解释为 Workspace-bound Browser Preview 已完成，更不得进入 Phase 4。
+Phase 3 仍为进行中；以上勾选只代表[来源/检测、安全 WebView、最小运行时生命周期、可信同源历史、有限缩放与常用 viewport、基础失败摘要与绑定 PTY 送回、来源绑定的安全重启准备、显式 SSH remote loopback tunnel](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。GOAL required gates 中截图尚未满足，不得解释为 Workspace-bound Browser Preview 已完成。用户对下方 M3 后端单切片的例外授权不扩张为 Phase 4 其他工作。
+
+## Phase 4 / M3 Agent Event Store 后端底座执行账本
+
+- [x] 先完成并批准 [M3 后端短规格](./M3_AGENT_EVENT_STORE_SPEC.md)：固定唯一目标、scope/non-scope、复用点、header/private payload 模型、typed IPC、数据位置、预算、隐私、错误/恢复、capability、迁移/回滚/删除以及继续/停止条件；明确超过 8 个文件但不新增服务。
+- [x] 稳定 `AgentEventHeaderV1` 与 private payload 分离：header 只保存 Rust 单调 sequence、幂等 client ID、workspace/task/session、枚举 kind/source、安全 summary 与 payload 元数据；正文只存独立 0600 payload 文件。列表/分页类型和实现均不含 body，只有单 event 显式 payload command 会打开并校验长度/SHA-256。
+- [x] Rust 本地 append-only store：app-local-data 下独立 `agent-events/v1` 目录，payload 原子写入后才 append+sync header；`workspaceId + clientEventId` 重试幂等且冲突 fail closed。游标绑定 scope、delete generation、首次查询 high-water mark 与 exclusive sequence，页间 append 不漂移，删除后旧游标失效。
+- [x] 重启恢复、删除与能力关闭：尾部半写恢复到最后完整 header；中段损坏、manifest 损坏和未来 schema 分别进入 `corrupt/migrationRequired`，不覆盖数据、不阻止 Tauri/PTY setup。workspace/task 精确删除与 all 清空带显式确认和 pending journal，物理删除 payload并可在重启后幂等续做。持久 capability marker 关闭时不创建/读取 store、不删历史，重开恢复兼容数据；不可用状态仍不进入 `PtyState` 锁域。
+- [x] 严格预算和权限边界：最多 100,000 headers、256 MiB private payload、单 payload 1 MiB、单 header 8 KiB、summary 512 bytes、page 最大 200；identifier/control/path-like 输入和未知 content type 拒绝。无自动 prune、无导出、无遥测；status 明确数据位置、保留/导出/隐私合同。六个 command 只进入 trusted main allowlist，Preview ACL 保持仅 telemetry ingest。
+- [x] 确定性与本机真实性能：Rust 定向 11 passed + 独立 release harness；10,000 headers 全分页 3ms、最近 100 条 45µs、payload read 0、sequence 10,000/10,000 无漏重、reopen 25ms、RSS 增量 7,264KiB、fixture 3,326,628 bytes；20 轮并发全分页下真实 `/bin/cat` PTY 50 次回显 0 failure、p95 13µs。Node/UI/Rust 全量、两套 typecheck、lint、fmt、严格 clippy、production build 与 optimized Tauri `.app` bundle 均通过；隔离 bundle ad-hoc 签名后 strict codesign 通过。见 [本机证据](./benchmarks/m3-agent-event-store-macos-2026-07-13.md)。
+
+M3 当前只完成 Event Store 后端底座，不把 Phase 4 标为完成。下一切片仍需单独规格和门禁，才可进入 10,000 条富 Timeline UI、虚拟列表、流式合并、搜索与富 payload 惰性渲染；Phase 3 截图 gate 同时保持未完成。
 
 ## Phase 1 验收账本
 
