@@ -5,6 +5,7 @@ import { FileExplorer } from "./FileExplorer";
 import { SessionOverviewPanel } from "./SessionOverviewPanel";
 import { SessionNotesPanel } from "./SessionNotesPanel";
 import { PreviewPanel } from "./PreviewPanel";
+import { AgentTimelinePanel } from "./AgentTimelinePanel";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { CloseIcon, PanelEmptyState } from "./shared";
@@ -49,7 +50,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   const setTab = useUIStore((s) => s.setInspectorTab);
   const isRemote = !!session.remote;
   const tab = storeTab;
-  const showSourceSummary = Boolean(
+  const showSourceSummary = tab !== "timeline" && Boolean(
     currentWorkspaceWorktree(session.workspace)
     || session.workspaceState === "unavailable"
     || (tab === "changes" && !session.workspace && session.branch),
@@ -60,6 +61,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
       <div style={{ minHeight: "var(--h-titlebar)", background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", paddingLeft: 8, gap: 0, flexShrink: 0 }}>
         <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden" }}>
           <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
+          <TabButton active={tab === "timeline"} onClick={() => setTab("timeline")}>{t("inspector.tab.timeline")}</TabButton>
           <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
           <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
           <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>
@@ -97,6 +99,9 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div key={`overview-${tab}`} style={{ flex: 1, display: tab === "overview" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "overview" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           <SessionOverviewPanel session={session} />
+        </div>
+        <div key={`timeline-${tab}`} style={{ flex: 1, display: tab === "timeline" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "timeline" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
+          <AgentTimelinePanel session={session} />
         </div>
         <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
           <DiffPanel session={session} embedded />

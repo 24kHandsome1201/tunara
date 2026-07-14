@@ -4,14 +4,14 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性`、`Phase 2 Markdown / 单文件轻编辑` 与 `Phase 3 Workspace-bound Preview` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)、[Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)及 [Phase 3 截图关闭报告](./benchmarks/phase3-preview-capture-macos-2026-07-13.md)。Phase 3 已完成来源绑定、隔离 localhost WebView/navigation policy、生命周期、同源历史、有限缩放与 viewport、基础失败摘要、来源 PTY 送回、安全重启准备、显式 SSH loopback tunnel，以及用户触发、来源/generation 绑定的 WKWebView 截图与安全送回。截图原始 artifact 保持本机 ignored/cache-only，Preview 页面仍无高权限 bridge。当前只保持回归，不自动进入 Phase 4/5。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性`、`Phase 2 Markdown / 单文件轻编辑` 与 `Phase 3 Workspace-bound Preview` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)、[Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)及 [Phase 3 截图关闭报告](./benchmarks/phase3-preview-capture-macos-2026-07-13.md)。Phase 4 已完成 M3 Event Store 后端和 Timeline 核心虚拟列表切片，但 private payload 富渲染与搜索仍未进入，因此整体保持部分完成。原始 fixture、日志和截图只留 ignored/cache/temp。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
 | Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归 |
 | Phase 3 Workspace Preview | 已完成 | 完整来源键与 window generation 隔离覆盖 WebView lifecycle、同源历史、zoom/viewport、失败摘要、安全重启、SSH tunnel，以及用户触发的 WKWebView PNG、最小脱敏 metadata 与绑定 physical PTY 的不执行 Send；optimized macOS 双 worktree/双 fixture/双 PTY 证明像素来源、关闭重开与 fail-closed | 保持回归；不自动进入 Phase 4/5 |
-| Phase 4 Agent Attention / Timeline | 部分基础 | 已有 PTY 内 Agent 探测、状态证据、恢复意图、轻量 session timeline、完成提醒与 diff 入口；M3 Rust Event Store 已完成稳定 header/private payload 分离、幂等 append、append-only 持久化、快照游标分页、重启/尾部恢复、精确删除/清空、capability 开关和损坏/未来 schema fail-safe，本机 release harness 的 10,000 headers 分页零 payload read、无漏重且真实 PTY p95 13µs | 富 Timeline React UI、动态高度虚拟列表、流式合并、Markdown/diff/图片惰性渲染、搜索和真实 bundle 帧时间仍未完成 |
+| Phase 4 Agent Attention / Timeline | 部分完成 | M3 Rust Event Store 后端已完成；Timeline 核心 UI 首屏只取 100 headers、前端最多保留 600、DOM 12–15 rows，支持动态高度、分页事件/像素锚点、底部跟随/未读、rAF streaming、task 恢复、来源可信度/真实 PTY 跳转、键盘/中英文/窄窗。optimized 双重启快速滚动 p95 19ms、PTY 13–22ms、RSS 125,360–128,864KiB，见 [本机 UI 证据](./benchmarks/m3-agent-timeline-ui-macos-2026-07-14.md) | private payload Markdown/code/diff/图片惰性渲染与全文搜索仍需后续独立切片 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
 | Phase 6 Mobile Companion | 未开始 | Phase 1 稳定 identity 已完成；桌面仍是唯一事实源 | 等 Phase 4 事件模型稳定后，先做默认关闭、只读、局域网/Tailscale 的 Gateway + PWA 配对实验 |
 | Phase 7 Journal / Recipe | 部分基础 | 已有 session notes、timeline、changed files 与测试入口可作为引用源 | 先做 workspace 绑定的手动 goal 与可编辑 Markdown handoff；Recipe 必须等真实 Journal 复用证据 |
@@ -112,7 +112,15 @@ Phase 3 required gates 已全部满足并正式关闭；[来源检测、安全 W
 - [x] 严格预算和权限边界：最多 100,000 headers、256 MiB private payload、单 payload 1 MiB、单 header 8 KiB、summary 512 bytes、page 最大 200；identifier/control/path-like 输入和未知 content type 拒绝。无自动 prune、无导出、无遥测；status 明确数据位置、保留/导出/隐私合同。六个 command 只进入 trusted main allowlist，Preview ACL 保持仅 telemetry ingest。
 - [x] 确定性与本机真实性能：Rust 定向 11 passed + 独立 release harness；10,000 headers 全分页 3ms、最近 100 条 45µs、payload read 0、sequence 10,000/10,000 无漏重、reopen 25ms、RSS 增量 7,264KiB、fixture 3,326,628 bytes；20 轮并发全分页下真实 `/bin/cat` PTY 50 次回显 0 failure、p95 13µs。Node/UI/Rust 全量、两套 typecheck、lint、fmt、严格 clippy、production build 与 optimized Tauri `.app` bundle 均通过；隔离 bundle ad-hoc 签名后 strict codesign 通过。见 [本机证据](./benchmarks/m3-agent-event-store-macos-2026-07-13.md)。
 
-M3 当前只完成 Event Store 后端底座，不把 Phase 4 标为完成。下一切片仍需单独规格、明确授权和门禁，才可进入 10,000 条富 Timeline UI、虚拟列表、流式合并、搜索与富 payload 惰性渲染；本批完成 Phase 3 后停止，不自动继续。
+## Phase 4 / M3 Agent Timeline 核心 UI 执行账本
+
+- [x] 按 [短规格](./specs/m3-agent-timeline-core.md) 在现有 Inspector 增加 Timeline；只读取 typed header page，不读取 private payload，不增加 composer/chat/card grid 或第二套 CSS/icon/font/radius 系统。
+- [x] 动态高度虚拟列表首屏 100、每页 100、单 task 最多保留 600，只渲染 viewport + 280px overscan；10,000 headers 不进入单个前端数组或 DOM。
+- [x] Older 分页保持事件和像素锚点；底部跟随新事件，上滚只累积未读；更远分页丢弃 newer 后提供 Latest。task/workspace 切换保存可解释的瞬时位置与未读，重启从 durable store 恢复最新页。
+- [x] streaming header 以 animation frame 合并，只更新当前 streaming row 并在短窗口后固化；来源、confidence、time、status 清楚。无法证明 session/workspace 来源时显示 unknown 并禁用跳转，可信来源可返回真实 PTY且不写入、不执行。
+- [x] optimized macOS 双重启与真实像素门：两轮分页锚点精确保持、快速滚动 p95 19ms、DOM 12 rows、RSS 125,360–128,864KiB、PTY 回显 13–22ms；576×433、640×480、1200×800 及中英文均无 overflow/遮挡。完整脱敏结果见 [报告](./benchmarks/m3-agent-timeline-ui-macos-2026-07-14.md)。
+
+M3 Timeline 核心切片完成，但 Phase 4 整体仍未完成；private payload 富渲染、搜索等范围必须继续单独规格和验收，不因本切片自动进入 Phase 5。
 
 ## Phase 1 验收账本
 

@@ -1,7 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export const AGENT_EVENT_PAGE_SIZE = 100;
 export const AGENT_EVENT_MAX_PAGE_SIZE = 200;
+export const AGENT_EVENT_APPENDED_EVENT = "agent-event://appended";
+
+export function isAgentTimelineFeatureEnabled(): boolean {
+  const configured = typeof import.meta.env !== "undefined" ? import.meta.env.VITE_TUNARA_AGENT_TIMELINE : undefined;
+  return configured !== "0" && configured !== "false";
+}
+
+/** Event Store identifiers are deliberately path-opaque. Repository identity
+ * may contain canonical paths, so callers must share this stable mapping. */
+export async function agentEventWorkspaceId(repositoryIdentity: string): Promise<string> {
+  const input = new TextEncoder().encode(repositoryIdentity);
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  const hex = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  return `ws-${hex}`;
+}
 
 export type AgentEventKind =
   | "user_input"
@@ -136,6 +152,10 @@ export function appendAgentEvent(request: AgentEventAppendRequest): Promise<Agen
 
 export function listAgentEvents(request: AgentEventListRequest): Promise<AgentEventPage> {
   return invoke("agent_event_list", { request });
+}
+
+export function listenForAgentEventHeaders(onHeader: (header: AgentEventHeaderV1) => void): Promise<UnlistenFn> {
+  return listen<AgentEventHeaderV1>(AGENT_EVENT_APPENDED_EVENT, (event) => onHeader(event.payload));
 }
 
 export function readAgentEventPayload(eventId: string): Promise<AgentEventPayload> {

@@ -60,7 +60,7 @@ export interface PersistedUILayoutV2 {
     paneB: string | null;
     ratio: number;
   };
-  inspectorTab: "overview" | "changes" | "files" | "preview" | "notes";
+  inspectorTab: "overview" | "timeline" | "changes" | "files" | "preview" | "notes";
 }
 
 export interface PersistedTerminalSnapshot {
@@ -217,8 +217,8 @@ function isValidSplitMode(v: unknown): v is "single" | "horizontal" | "vertical"
   return v === "single" || v === "horizontal" || v === "vertical";
 }
 
-function isValidInspectorTab(v: unknown): v is "overview" | "changes" | "files" | "preview" | "notes" {
-  return v === "overview" || v === "changes" || v === "files" || v === "preview" || v === "notes";
+function isValidInspectorTab(v: unknown): v is "overview" | "timeline" | "changes" | "files" | "preview" | "notes" {
+  return v === "overview" || v === "timeline" || v === "changes" || v === "files" || v === "preview" || v === "notes";
 }
 
 function sanitizeTrueRecord(raw: unknown): Record<string, true> {

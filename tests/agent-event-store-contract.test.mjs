@@ -41,10 +41,12 @@ test("typed bridge keeps headers lightweight and payload reads explicit", () => 
   assert.match(bridge, /confirmed: true/);
 });
 
-test("M3 slice does not wire a Timeline React UI", () => {
+test("M3 Event Store bridge stays framework-free and exposes bounded live headers", () => {
   const bridge = read("src/modules/agent-events/agent-event-bridge.ts");
-  assert.doesNotMatch(bridge, /react|zustand|virtual/i);
+  assert.doesNotMatch(bridge, /react|zustand/i);
   assert.equal(bridge.includes("AGENT_EVENT_MAX_PAGE_SIZE = 200"), true);
+  assert.match(bridge, /agent-event:\/\/appended/);
+  assert.match(bridge, /isAgentTimelineFeatureEnabled/);
   assert.match(bridge, /export: \{ supported: false; backgroundExport: false \}/);
   assert.match(bridge, /headerContainsPrivateBody: false/);
   assert.match(bridge, /payloadRequiresExplicitRead: true/);

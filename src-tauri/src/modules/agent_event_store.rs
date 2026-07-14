@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const SCHEMA_VERSION: u16 = 1;
 const DEFAULT_PAGE_SIZE: usize = 100;
@@ -28,6 +28,7 @@ const HEADERS_FILE: &str = "headers.jsonl";
 const PAYLOADS_DIR: &str = "payloads";
 const DELETE_PENDING_FILE: &str = "delete.pending.json";
 const DISABLED_FILE: &str = "disabled";
+const APPENDED_EVENT: &str = "agent-event://appended";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -127,10 +128,13 @@ pub struct AgentEventAppendResult {
 pub enum AgentEventQueryScope {
     All,
     Workspace {
+        #[serde(rename = "workspaceId")]
         workspace_id: String,
     },
     Task {
+        #[serde(rename = "workspaceId")]
         workspace_id: String,
+        #[serde(rename = "taskId")]
         task_id: String,
     },
 }
@@ -166,10 +170,13 @@ pub struct AgentEventPayload {
 pub enum AgentEventDeleteScope {
     All,
     Workspace {
+        #[serde(rename = "workspaceId")]
         workspace_id: String,
     },
     Task {
+        #[serde(rename = "workspaceId")]
         workspace_id: String,
+        #[serde(rename = "taskId")]
         task_id: String,
     },
 }
@@ -1303,11 +1310,12 @@ pub fn agent_event_store_status(state: State<'_, AgentEventStoreState>) -> Agent
 
 #[tauri::command]
 pub async fn agent_event_append(
+    app: AppHandle,
     state: State<'_, AgentEventStoreState>,
     request: AgentEventAppendRequest,
 ) -> Result<AgentEventAppendResult, String> {
     let inner = state.inner.clone();
-    run_blocking(move || {
+    let result = run_blocking(move || {
         let mut inner = inner.lock();
         let root = inner.root.clone();
         let result = match &mut inner.mode {
@@ -1325,7 +1333,11 @@ pub async fn agent_event_append(
         }
         result
     })
-    .await
+    .await?;
+    if result.status == AgentEventAppendStatus::Appended {
+        let _ = app.emit(APPENDED_EVENT, result.header.clone());
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1474,6 +1486,35 @@ mod tests {
             "tunara-agent-event-store-{name}-{}-{unique}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn typed_ipc_scopes_accept_camel_case_fields() {
+        let query: AgentEventQueryScope = serde_json::from_value(serde_json::json!({
+            "type": "task",
+            "workspaceId": "workspace-a",
+            "taskId": "task-a"
+        }))
+        .expect("camelCase query scope");
+        assert_eq!(
+            query,
+            AgentEventQueryScope::Task {
+                workspace_id: "workspace-a".to_string(),
+                task_id: "task-a".to_string(),
+            }
+        );
+
+        let delete: AgentEventDeleteScope = serde_json::from_value(serde_json::json!({
+            "type": "workspace",
+            "workspaceId": "workspace-a"
+        }))
+        .expect("camelCase delete scope");
+        assert_eq!(
+            delete,
+            AgentEventDeleteScope::Workspace {
+                workspace_id: "workspace-a".to_string(),
+            }
+        );
     }
 
     fn append_request(
