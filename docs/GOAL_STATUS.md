@@ -4,14 +4,14 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性`、`Phase 2 Markdown / 单文件轻编辑` 与 `Phase 3 Workspace-bound Preview` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)、[Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)及 [Phase 3 截图关闭报告](./benchmarks/phase3-preview-capture-macos-2026-07-13.md)。Phase 4 已完成 M3 Event Store 后端和 Timeline 核心虚拟列表切片，但 private payload 富渲染与搜索仍未进入，因此整体保持部分完成。原始 fixture、日志和截图只留 ignored/cache/temp。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性`、`Phase 2 Markdown / 单文件轻编辑` 与 `Phase 3 Workspace-bound Preview` 均已完成，证据见 [M0 基线](./benchmarks/m0-terminal-baseline-2026-07-11.md)、[M1 关闭审计](./benchmarks/m1-closure-audit-2026-07-12.md)、[Phase 2 首 PTY 性能闭环](./benchmarks/m2-terminal-startup-macos-2026-07-13.md)及 [Phase 3 截图关闭报告](./benchmarks/phase3-preview-capture-macos-2026-07-13.md)。Phase 4 已完成 M3 Event Store 后端、Timeline 核心虚拟列表和 private payload 惰性富渲染切片；全文搜索与持久层轻量索引仍未进入，因此整体保持部分完成。原始 fixture、日志和截图只留内置磁盘 ignored/cache/temp。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
 | Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
 | Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归 |
 | Phase 3 Workspace Preview | 已完成 | 完整来源键与 window generation 隔离覆盖 WebView lifecycle、同源历史、zoom/viewport、失败摘要、安全重启、SSH tunnel，以及用户触发的 WKWebView PNG、最小脱敏 metadata 与绑定 physical PTY 的不执行 Send；optimized macOS 双 worktree/双 fixture/双 PTY 证明像素来源、关闭重开与 fail-closed | 保持回归；不自动进入 Phase 4/5 |
-| Phase 4 Agent Attention / Timeline | 部分完成 | M3 Rust Event Store 后端已完成；Timeline 核心 UI 首屏只取 100 headers、前端最多保留 600、DOM 12–15 rows，支持动态高度、分页事件/像素锚点、底部跟随/未读、rAF streaming、task 恢复、来源可信度/真实 PTY 跳转、键盘/中英文/窄窗。optimized 双重启快速滚动 p95 19ms、PTY 13–22ms、RSS 125,360–128,864KiB，见 [本机 UI 证据](./benchmarks/m3-agent-timeline-ui-macos-2026-07-14.md) | private payload Markdown/code/diff/图片惰性渲染与全文搜索仍需后续独立切片 |
+| Phase 4 Agent Attention / Timeline | 部分完成 | M3 Rust Event Store 后端、Timeline 核心 UI 和 private payload 惰性富渲染已完成；首屏保持 header/payload 分离，Markdown/code/diff/工具输出/本地图片只在 viewport 或显式展开时读取和按预算渲染。optimized 双重启快速滚动 p95 18ms、富内容最多 600 DOM 行、缓存 24 条/76,882B、并发峰值 4、PTY 20–26ms、RSS 124,896–125,808KiB，见 [核心 UI 证据](./benchmarks/m3-agent-timeline-ui-macos-2026-07-14.md)与[富渲染证据](./benchmarks/m3-private-payload-rich-rendering-macos-2026-07-15.md) | 全文搜索与持久层轻量索引仍需后续独立切片 |
 | Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
 | Phase 6 Mobile Companion | 未开始 | Phase 1 稳定 identity 已完成；桌面仍是唯一事实源 | 等 Phase 4 事件模型稳定后，先做默认关闭、只读、局域网/Tailscale 的 Gateway + PWA 配对实验 |
 | Phase 7 Journal / Recipe | 部分基础 | 已有 session notes、timeline、changed files 与测试入口可作为引用源 | 先做 workspace 绑定的手动 goal 与可编辑 Markdown handoff；Recipe 必须等真实 Journal 复用证据 |
@@ -120,7 +120,19 @@ Phase 3 required gates 已全部满足并正式关闭；[来源检测、安全 W
 - [x] streaming header 以 animation frame 合并，只更新当前 streaming row 并在短窗口后固化；来源、confidence、time、status 清楚。无法证明 session/workspace 来源时显示 unknown 并禁用跳转，可信来源可返回真实 PTY且不写入、不执行。
 - [x] optimized macOS 双重启与真实像素门：两轮分页锚点精确保持、快速滚动 p95 19ms、DOM 12 rows、RSS 125,360–128,864KiB、PTY 回显 13–22ms；576×433、640×480、1200×800 及中英文均无 overflow/遮挡。完整脱敏结果见 [报告](./benchmarks/m3-agent-timeline-ui-macos-2026-07-14.md)。
 
-M3 Timeline 核心切片完成，但 Phase 4 整体仍未完成；private payload 富渲染、搜索等范围必须继续单独规格和验收，不因本切片自动进入 Phase 5。
+M3 Timeline 核心切片已完成；private payload 富渲染由下方独立切片继续关闭。Phase 4 是否完成仍以剩余搜索与索引门为准，不因核心 UI 自动进入 Phase 5。
+
+## Phase 4 / M3 private payload 惰性富渲染执行账本
+
+- [x] 按 [短规格](./specs/m3-private-payload-rich-rendering.md) 复用现有 header/private payload 分离、typed IPC、Timeline 虚拟列表和全局 tokens/CSS；没有新增聊天壳、composer、卡片墙、依赖或第二套视觉系统。
+- [x] 只有真实 viewport 内或用户显式展开的事件读取 payload；请求可取消、按 event/hash 去重，最多 4 并发、16 排队、24 条/6 MiB LRU。row 回收、task/workspace 切换和 scope 卸载会 abort 或丢弃 stale 结果。
+- [x] Markdown/MDX、代码、JSON、diff、大型工具输出和本地 PNG/JPEG/WebP 均受 MIME、来源、长度、SHA-256、字节、行数、DOM 与图片像素预算约束；不执行 active HTML/script，不加载富内容远程资源。损坏、缺失、旧数据迁移失败、unknown provenance 和类型不匹配均 fail closed，不影响真实 PTY。
+- [x] 富 renderer 保持 dynamic chunk；最终 gzip 2.89 kB。动态高度继续通知现有虚拟列表，并以显式展开事件的 viewport offset 保持测量锚点；Enter 展开/折叠，Escape 可回到真实 PTY。
+- [x] 确定性 fixture 覆盖 10,000 headers、1,000 个 Markdown 代码块、500 个工具输出、200 个 diff 和 100 张本地图片。首屏未读取 viewport 外 payload；富内容最多 600 DOM 行，缓存 24 条/76,882B，并发峰值 4，快速滚动 p95 18ms。
+- [x] optimized macOS WKWebView 双重启、真实 PTY、task 切换、后台/前台、本地图片解码、576×433、640×480、1200×800 和中英文像素门通过；RSS 124,896–125,808KiB，PTY 20–26ms。完整证据见 [报告](./benchmarks/m3-private-payload-rich-rendering-macos-2026-07-15.md)。
+- [x] 本批及后续持续只使用 Mac 内置磁盘：worktree 保持在 `~/.codex/worktrees`，target 使用 `/private/tmp/rail-phase4-target`，验收临时产物只进入内置 ignored/cache/temp；不复制外置缓存、不 `cargo clean`。
+
+M3 private payload 惰性富渲染切片完成，但 Phase 4 整体仍未完成；全文搜索与持久层轻量索引是剩余独立门，本批不进入 Phase 5。
 
 ## Phase 1 验收账本
 

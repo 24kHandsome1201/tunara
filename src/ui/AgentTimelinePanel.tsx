@@ -8,11 +8,13 @@ import {
   isAgentTimelineFeatureEnabled,
   listAgentEvents,
   listenForAgentEventHeaders,
+  readAgentEventPayload,
   type AgentEventHeaderV1,
   type AgentEventKind,
   type AgentEventQueryScope,
   type AgentEventStoreStatus,
 } from "@/modules/agent-events/agent-event-bridge";
+import { TimelinePayloadResourceManager } from "@/modules/agent-events/payload-resource";
 import {
   TIMELINE_PAGE_SIZE,
   captureTimelineAnchor,
@@ -29,6 +31,7 @@ import {
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import type { Session } from "./types";
+import { AgentTimelinePayload } from "./AgentTimelinePayload";
 
 interface TaskViewState { scrollTop: number; atBottom: boolean; unread: number; selectedId?: string }
 const taskViewStates = new Map<string, TaskViewState>();
@@ -77,11 +80,14 @@ interface TimelineRowProps {
   selected: boolean;
   streaming: boolean;
   sourceSession?: Session;
+  payloadManager: TimelinePayloadResourceManager;
+  expanded: boolean;
+  onExpandedChange: (eventId: string, expanded: boolean) => void;
   onSelect: (eventId: string) => void;
   onMeasure: (eventId: string, height: number) => void;
 }
 
-const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sourceSession, onSelect, onMeasure }: TimelineRowProps) {
+const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sourceSession, payloadManager, expanded, onExpandedChange, onSelect, onMeasure }: TimelineRowProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const confidence = timelineConfidence(header.source);
@@ -111,6 +117,7 @@ const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sou
         <span title={header.taskId}>{t("timeline.task_short")} {header.taskId}</span>
         <span title={header.sessionId ?? "unknown"}>{sourceSession?.title ?? t("timeline.source_unknown")}</span>
       </div>
+      {header.payload && <AgentTimelinePayload header={header} manager={payloadManager} provenanceKnown={Boolean(sourceSession) && confidence !== "unknown"} expanded={expanded} onExpandedChange={(next) => onExpandedChange(header.eventId, next)} />}
       {selected && (
         <div className="agent-timeline-row-actions">
           <span>{t("timeline.selected_hint")}</span>
@@ -121,7 +128,7 @@ const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sou
       )}
     </div>
   );
-}, (previous, next) => previous.header === next.header && previous.selected === next.selected && previous.streaming === next.streaming && previous.sourceSession === next.sourceSession);
+}, (previous, next) => previous.header === next.header && previous.selected === next.selected && previous.streaming === next.streaming && previous.sourceSession === next.sourceSession && previous.payloadManager === next.payloadManager && previous.expanded === next.expanded);
 
 export function AgentTimelinePanel({ session }: { session: Session }) {
   const t = useT();
@@ -141,7 +148,7 @@ export function AgentTimelinePanel({ session }: { session: Session }) {
 
   if (identityError) return <section className="agent-timeline"><div className="agent-timeline-state" role="alert"><strong>{t("timeline.error")}</strong><span>{t("timeline.identity_error")}</span></div></section>;
   if (!workspaceId) return <section className="agent-timeline"><div className="agent-timeline-state">{t("timeline.loading")}</div></section>;
-  return <AgentTimelineReady session={session} workspaceId={workspaceId} />;
+  return <AgentTimelineReady key={`${workspaceId}\u0000${session.id}`} session={session} workspaceId={workspaceId} />;
 }
 
 function AgentTimelineReady({ session, workspaceId }: { session: Session; workspaceId: string }) {
@@ -150,6 +157,7 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
   const taskId = session.id.slice(0, 256);
   const key = scopeKey(workspaceId, taskId);
   const queryScope = useMemo<AgentEventQueryScope>(() => ({ type: "task", workspaceId, taskId }), [workspaceId, taskId]);
+  const [payloadManager] = useState(() => new TimelinePayloadResourceManager(readAgentEventPayload));
   const [status, setStatus] = useState<AgentEventStoreStatus | null>(null);
   const [items, setItems] = useState<AgentEventHeaderV1[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -163,6 +171,7 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
   const [viewportHeight, setViewportHeight] = useState(0);
   const [heights, setHeights] = useState(new Map<string, number>());
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState(new Set<string>());
   const scrollRef = useRef<HTMLDivElement>(null);
   const itemsRef = useRef(items);
   const heightsRef = useRef(new Map<string, number>());
@@ -176,6 +185,8 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
   const solidifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const paginationAnchorRef = useRef<TimelineAnchor | null>(null);
   const paginationAnchorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resizeAnchorRef = useRef<TimelineAnchor | null>(null);
+  const resizeAnchorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const virtualWindow = useMemo(() => computeTimelineVirtualWindow(items.map((item) => item.eventId), heights, scrollTop, viewportHeight), [heights, items, scrollTop, viewportHeight]);
   const hasItems = items.length > 0;
@@ -184,6 +195,8 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
   selectedRef.current = selectedId;
   unreadRef.current = unread;
   droppedNewerRef.current = droppedNewer;
+
+  useEffect(() => () => payloadManager.dispose(), [payloadManager]);
 
   const persistViewState = useCallback((forKey: string) => {
     const node = scrollRef.current;
@@ -219,8 +232,11 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
     const saved = taskViewStates.get(key) ?? { scrollTop: 0, atBottom: true, unread: 0 };
     setStatus(null); setItems([]); setNextCursor(null); setLoading(true); setLoadingOlder(false); setError(null);
     setSelectedId(saved.selectedId ?? null); setUnread(saved.unread); setDroppedNewer(false); setScrollTop(saved.scrollTop);
+    setExpandedIds(new Set());
     paginationAnchorRef.current = null;
     if (paginationAnchorTimerRef.current) { clearTimeout(paginationAnchorTimerRef.current); paginationAnchorTimerRef.current = null; }
+    resizeAnchorRef.current = null;
+    if (resizeAnchorTimerRef.current) { clearTimeout(resizeAnchorTimerRef.current); resizeAnchorTimerRef.current = null; }
     heightsRef.current = new Map(); setHeights(heightsRef.current);
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -277,6 +293,7 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
     if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
     if (solidifyTimerRef.current) clearTimeout(solidifyTimerRef.current);
     if (paginationAnchorTimerRef.current) clearTimeout(paginationAnchorTimerRef.current);
+    if (resizeAnchorTimerRef.current) clearTimeout(resizeAnchorTimerRef.current);
   }, []);
 
   const onMeasure = useCallback((eventId: string, height: number) => {
@@ -284,6 +301,7 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
     const node = scrollRef.current;
     const atBottom = node ? isTimelineAtBottom(node.scrollTop, node.clientHeight, virtualRef.current.totalSize) : false;
     const anchor: TimelineAnchor | null = paginationAnchorRef.current
+      ?? resizeAnchorRef.current
       ?? (node ? captureTimelineAnchor(virtualRef.current, node.scrollTop) : null);
     heightsRef.current.set(eventId, height); setHeights(new Map(heightsRef.current));
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -353,6 +371,26 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
     if (target) focusSourceTerminal(target.id);
   }, [items, selectedId, session, sessions]);
 
+  const setEventExpanded = useCallback((eventId: string, expanded: boolean) => {
+    if (expanded) {
+      const node = scrollRef.current;
+      const row = node?.querySelector<HTMLElement>(`.agent-timeline-row[data-event-id="${eventId}"]`);
+      if (node && row) {
+        resizeAnchorRef.current = { eventId, viewportOffset: row.getBoundingClientRect().top - node.getBoundingClientRect().top };
+        if (resizeAnchorTimerRef.current) clearTimeout(resizeAnchorTimerRef.current);
+        resizeAnchorTimerRef.current = setTimeout(() => {
+          resizeAnchorRef.current = null;
+          resizeAnchorTimerRef.current = null;
+        }, 300);
+      }
+    }
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (expanded) next.add(eventId); else next.delete(eventId);
+      return next;
+    });
+  }, []);
+
   const worktree = currentWorkspaceWorktree(session.workspace);
   const sourceTitle = session.workspace && worktree ? `${session.workspace.repository.name}/${worktree.name}` : session.dir;
   const capability = isAgentTimelineFeatureEnabled() ? status?.capability : "featureDisabled";
@@ -370,9 +408,9 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
       {!loading && !error && capability === "enabled" && items.length > 0 && (
         <div ref={scrollRef} className="agent-timeline-scroll" role="listbox" aria-label={t("timeline.events")} tabIndex={0} data-retained-count={items.length} data-total-size={Math.round(virtualWindow.totalSize)} data-unread={unread}
           onScroll={(event) => { const node = event.currentTarget; if (scrollFrameRef.current !== null) return; scrollFrameRef.current = requestAnimationFrame(() => { scrollFrameRef.current = null; setScrollTop(node.scrollTop); const atBottom = isTimelineAtBottom(node.scrollTop, node.clientHeight, virtualRef.current.totalSize); taskViewStates.set(key, { scrollTop: node.scrollTop, atBottom, unread: atBottom ? 0 : unreadRef.current, selectedId: selectedRef.current ?? undefined }); if (atBottom && unreadRef.current > 0) setUnread(0); }); }}
-          onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); selectByOffset(event.key === "ArrowDown" ? 1 : -1); } else if (event.key === "PageUp") { event.preventDefault(); if (scrollRef.current) scrollRef.current.scrollTop -= Math.max(120, scrollRef.current.clientHeight - 60); if (nextCursor) void loadOlder(); } else if (event.key === "PageDown") { event.preventDefault(); if (scrollRef.current) scrollRef.current.scrollTop += Math.max(120, scrollRef.current.clientHeight - 60); } else if (event.key === "End") { event.preventDefault(); if (droppedNewer) void loadLatest(); else scrollToBottom(); } else if (event.key === "Enter") { event.preventDefault(); returnToSelected(); } else if (event.key === "Escape") { event.preventDefault(); focusSourceTerminal(session.id); } }}>
+          onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); selectByOffset(event.key === "ArrowDown" ? 1 : -1); } else if (event.key === "PageUp") { event.preventDefault(); if (scrollRef.current) scrollRef.current.scrollTop -= Math.max(120, scrollRef.current.clientHeight - 60); if (nextCursor) void loadOlder(); } else if (event.key === "PageDown") { event.preventDefault(); if (scrollRef.current) scrollRef.current.scrollTop += Math.max(120, scrollRef.current.clientHeight - 60); } else if (event.key === "End") { event.preventDefault(); if (droppedNewer) void loadLatest(); else scrollToBottom(); } else if (event.key === "Enter") { event.preventDefault(); const selected = items.find((item) => item.eventId === selectedId); if (selected?.payload) setEventExpanded(selected.eventId, !expandedIds.has(selected.eventId)); else returnToSelected(); } else if (event.key === "Escape") { event.preventDefault(); if (selectedId && expandedIds.has(selectedId)) setEventExpanded(selectedId, false); else focusSourceTerminal(session.id); } }}>
           <div className="agent-timeline-virtual-space" style={{ height: virtualWindow.totalSize }}>
-            {virtualWindow.rows.map((layout) => { const header = items[layout.index]; if (!header) return null; const sourceSession = provenSourceSession(header, sessions, session); return <div key={header.eventId} className="agent-timeline-virtual-row" style={{ transform: `translateY(${layout.start}px)` }}><TimelineRow header={header} selected={selectedId === header.eventId} streaming={streamingId === header.eventId} sourceSession={sourceSession} onSelect={setSelectedId} onMeasure={onMeasure} /></div>; })}
+            {virtualWindow.rows.map((layout) => { const header = items[layout.index]; if (!header) return null; const sourceSession = provenSourceSession(header, sessions, session); return <div key={header.eventId} className="agent-timeline-virtual-row" style={{ transform: `translateY(${layout.start}px)` }}><TimelineRow header={header} selected={selectedId === header.eventId} streaming={streamingId === header.eventId} sourceSession={sourceSession} payloadManager={payloadManager} expanded={expandedIds.has(header.eventId)} onExpandedChange={setEventExpanded} onSelect={setSelectedId} onMeasure={onMeasure} /></div>; })}
           </div>
         </div>
       )}

@@ -33,6 +33,77 @@ function visibleEventId(): string | null {
     .find((row) => row.getBoundingClientRect().bottom > top + 1)?.dataset.eventId ?? null;
 }
 
+function payloadMetrics(scroll: HTMLElement) {
+  return {
+    reads: Number(scroll.dataset.payloadReads ?? 0),
+    completed: Number(scroll.dataset.payloadCompleted ?? 0),
+    cacheEntries: Number(scroll.dataset.payloadCacheEntries ?? 0),
+    cacheBytes: Number(scroll.dataset.payloadCacheBytes ?? 0),
+    active: Number(scroll.dataset.payloadActive ?? 0),
+    peakActive: Number(scroll.dataset.payloadPeakActive ?? 0),
+    staleDiscarded: Number(scroll.dataset.payloadStaleDiscarded ?? 0),
+  };
+}
+
+async function expandPayloadEvent(scroll: HTMLElement, eventId: string, contentType: string) {
+  const findHost = () => document.querySelector<HTMLElement>(`.agent-timeline-row[data-event-id="${eventId}"] .agent-timeline-payload[data-payload-type="${contentType}"]`);
+  let host: HTMLElement | null = null;
+  for (let top = 0; top <= scroll.scrollHeight; top += Math.max(80, scroll.clientHeight - 40)) {
+    scroll.scrollTop = top;
+    scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    host = findHost();
+    if (host) break;
+  }
+  if (!host) throw new Error(`M3 Timeline could not render payload ${eventId} (${contentType})`);
+  host.scrollIntoView({ block: "center" });
+  scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  host = findHost();
+  const hostBounds = host?.getBoundingClientRect();
+  const scrollBounds = scroll.getBoundingClientRect();
+  if (!host || !hostBounds || hostBounds.bottom <= scrollBounds.top || hostBounds.top >= scrollBounds.bottom) {
+    throw new Error(`M3 Timeline could not place payload ${eventId} inside the viewport`);
+  }
+  const toggle = host.querySelector<HTMLButtonElement>(".agent-timeline-payload-toggle");
+  if (!toggle || toggle.disabled) throw new Error(`M3 Timeline payload toggle unavailable for ${eventId}`);
+  toggle.click();
+  try {
+    host = await waitFor(`expanded payload ${eventId}`, () => {
+      const current = findHost();
+      return current?.dataset.expanded === "true" && current.dataset.payloadState === "ready" && current.querySelector(".agent-timeline-rich") ? current : null;
+    });
+  } catch (reason) {
+    const current = findHost();
+    throw Object.assign(new Error(`${String(reason)}; state=${current?.dataset.payloadState ?? "unmounted"}; expanded=${current?.dataset.expanded ?? "unmounted"}; error=${current?.querySelector<HTMLElement>("[data-error-code]")?.dataset.errorCode ?? "none"}; metrics=${JSON.stringify(payloadMetrics(scroll))}`), { cause: reason });
+  }
+  if (contentType.startsWith("image/")) {
+    await waitFor(`decoded local image ${eventId}`, () => findHost()?.querySelector<HTMLImageElement>(".agent-timeline-rich-image"), 5_000);
+    host = findHost() ?? host;
+  }
+  await delay(80);
+  const result = {
+    eventId,
+    contentType,
+    richDomRows: Math.max(host.querySelectorAll(".agent-timeline-code-line").length, host.querySelectorAll(".agent-timeline-diff > span").length, host.querySelectorAll(".agent-timeline-markdown > div").length),
+    imageDecoded: Boolean(host.querySelector(".agent-timeline-rich-image")),
+    horizontalOverflow: [...host.querySelectorAll<HTMLElement>(".agent-timeline-rich, .agent-timeline-rich > *, .agent-timeline-rich-image")].some((node) => node.scrollWidth > node.clientWidth + 1 && getComputedStyle(node).overflowX !== "auto"),
+  };
+  host.querySelector<HTMLButtonElement>(".agent-timeline-payload-toggle")?.click();
+  await waitFor(`collapsed payload ${eventId}`, () => findHost()?.dataset.expanded === "false" ? true : null);
+  return result;
+}
+
+async function loadOlderPages(count: number) {
+  for (let index = 0; index < count; index += 1) {
+    const before = retainedCount();
+    const button = await waitFor("enabled Older button", () => { const candidate = document.querySelector<HTMLButtonElement>("[data-timeline-action='older']"); return candidate && !candidate.disabled ? candidate : null; });
+    button.click();
+    await waitFor("next rich payload page", () => retainedCount() > before || document.querySelector("[data-timeline-action='latest']") ? true : null);
+    await delay(40);
+  }
+}
+
 async function sampleRapidScroll(scroll: HTMLElement) {
   const framePromise = sampleAnimationFrames(2_000);
   for (let index = 0; index < 120; index += 1) {
@@ -72,7 +143,9 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
       await waitFor("initial virtual rows", () => document.querySelector(".agent-timeline-row"));
       await info("[benchmark:m3-timeline:stage] initial-rows");
       const firstOpenMs = Math.round((performance.now() - openStartedAt) * 100) / 100;
-      const initial = { retained: retainedCount(), domRows: document.querySelectorAll(".agent-timeline-row").length, privatePayloadVisible: document.body.innerText.includes("fixture-private") };
+      await delay(120);
+      const initialPayloadMetrics = payloadMetrics(scroll);
+      const initial = { retained: retainedCount(), domRows: document.querySelectorAll(".agent-timeline-row").length, privatePayloadVisible: Boolean(document.querySelector(".agent-timeline-rich")), payload: initialPayloadMetrics };
       const ptyBeforeMs = await probeTerminalInputEcho("m3-timeline-a", `__TUNARA_M3_BEFORE_${Date.now().toString(36)}__`);
       await info("[benchmark:m3-timeline:stage] pty-before");
 
@@ -88,6 +161,16 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
       await info("[benchmark:m3-timeline:stage] second-page");
       const anchorAfter = visibleEventId();
       const pagination = { anchorBefore, anchorAfter, anchorPreserved: anchorBefore === anchorAfter, scrollDeltaPx: Math.round(scroll.scrollTop - scrollBefore) };
+
+      const imagePayload = await expandPayloadEvent(scroll, "ae-00000000000000009000", "image/png");
+      await loadOlderPages(1);
+      const diffPayload = await expandPayloadEvent(scroll, "ae-00000000000000008900", "text/x-diff");
+      await loadOlderPages(2);
+      const toolPayload = await expandPayloadEvent(scroll, "ae-00000000000000008700", "text/plain");
+      await loadOlderPages(5);
+      const markdownPayload = await expandPayloadEvent(scroll, "ae-00000000000000008200", "text/markdown");
+      const richPayloads = { image: imagePayload, diff: diffPayload, tool: toolPayload, markdown: markdownPayload, metrics: payloadMetrics(scroll) };
+
       while (retainedCount() < 600) {
         const button = await waitFor("enabled Older button", () => { const candidate = document.querySelector<HTMLButtonElement>("[data-timeline-action='older']"); return candidate && !candidate.disabled ? candidate : null; });
         button.click();
@@ -181,6 +264,7 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
         firstOpenMs,
         initial,
         pagination,
+        richPayloads,
         rapidScroll,
         retainedHeaders: retainedCount(),
         domRows: { final: finalDomRows, streaming: streamingDomRows, bounded: finalDomRows < 40 && streamingDomRows < 40 },
@@ -191,7 +275,18 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
         foregroundMs,
         pty: { beforeMs: Math.round(ptyBeforeMs * 100) / 100, afterMs: Math.round(ptyAfterMs * 100) / 100, unaffected: ptyAfterMs < 250 },
       };
-      await info(`[benchmark:m3-timeline] ${JSON.stringify({ ...report, passed: initial.retained === 100 && !initial.privatePayloadVisible && pagination.anchorPreserved && rapidScroll.passed && report.domRows.bounded && streamingSolidified && appendDidNotSteal && taskBRetained > 0 && chineseVisible && englishVisible && viewports.every((viewport) => !viewport.overflow) && report.pty.unaffected })}`);
+      const richPassed = richPayloads.image.imageDecoded
+        && richPayloads.diff.richDomRows <= 600
+        && richPayloads.tool.richDomRows <= 600
+        && richPayloads.markdown.richDomRows <= 600
+        && !richPayloads.image.horizontalOverflow
+        && !richPayloads.diff.horizontalOverflow
+        && !richPayloads.tool.horizontalOverflow
+        && !richPayloads.markdown.horizontalOverflow
+        && richPayloads.metrics.cacheEntries <= 24
+        && richPayloads.metrics.cacheBytes <= 6 * 1024 * 1024
+        && richPayloads.metrics.peakActive <= 4;
+      await info(`[benchmark:m3-timeline] ${JSON.stringify({ ...report, passed: initial.retained === 100 && !initial.privatePayloadVisible && initial.payload.reads <= initial.domRows && pagination.anchorPreserved && richPassed && rapidScroll.passed && report.domRows.bounded && streamingSolidified && appendDidNotSteal && taskBRetained > 0 && chineseVisible && englishVisible && viewports.every((viewport) => !viewport.overflow) && report.pty.unaffected })}`);
     })().catch(async (reason) => { await logError(`[benchmark:m3-timeline] ${JSON.stringify({ benchmark: "m3-agent-timeline-ui", passed: false, error: String(reason) })}`); });
     return () => { cancelled = true; };
   }, [ready]);

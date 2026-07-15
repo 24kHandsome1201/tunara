@@ -692,5 +692,19 @@
   "timeline.kind.test_result": "测试结果",
   "timeline.kind.confirmation_request": "等待确认",
   "timeline.kind.preview_evidence": "Preview 证据",
-  "timeline.kind.journal_reference": "Journal 引用"
+  "timeline.kind.journal_reference": "Journal 引用",
+  "timeline.payload.expand": "展开正文",
+  "timeline.payload.collapse": "折叠正文",
+  "timeline.payload.loading": "正在读取私有正文…",
+  "timeline.payload.rendering": "正在准备受限预览…",
+  "timeline.payload.unknown_source": "无法证明来源会话，私有正文保持关闭。",
+  "timeline.payload.error.aborted": "正文读取已取消。",
+  "timeline.payload.error.metadataInvalid": "正文元数据无效。",
+  "timeline.payload.error.provenanceUnknown": "无法证明正文来源。",
+  "timeline.payload.error.requestBudgetExceeded": "读取预算正忙，滚回此处或明确展开即可重试。",
+  "timeline.payload.error.readFailed": "正文缺失、损坏或暂不可用。",
+  "timeline.payload.error.eventMismatch": "正文属于另一条事件。",
+  "timeline.payload.error.typeMismatch": "正文类型与事件标题不匹配。",
+  "timeline.payload.error.sizeMismatch": "正文大小与事件标题不匹配。",
+  "timeline.payload.error.hashMismatch": "正文完整性校验失败。"
 }

@@ -370,7 +370,13 @@ fn validate_content_type(value: &str) -> StoreResult<()> {
     validate_identifier(value, MAX_CONTENT_TYPE_BYTES, true)?;
     if !matches!(
         value,
-        "text/plain" | "text/markdown" | "application/json" | "text/x-diff"
+        "text/plain"
+            | "text/markdown"
+            | "application/json"
+            | "text/x-diff"
+            | "image/png"
+            | "image/jpeg"
+            | "image/webp"
     ) {
         return Err(StoreFault::new("unsupportedContentType"));
     }
@@ -1975,6 +1981,37 @@ mod tests {
         assert_eq!(
             store.append(unsafe_id).expect_err("oversized summary").code,
             "invalidSummary"
+        );
+        fs::remove_dir_all(base).expect("remove fixture");
+    }
+
+    #[test]
+    fn supported_local_image_payload_types_round_trip_and_active_content_is_rejected() {
+        let base = temp_base("image-content-types");
+        let mut store = AgentEventStore::open(base.join("v1")).expect("open store");
+        for (index, content_type) in ["image/png", "image/jpeg", "image/webp"].iter().enumerate() {
+            let mut request = append_request(index + 1, "workspace-a", "task-a", false);
+            request.private_payload = Some(AgentEventPrivatePayloadInput {
+                content_type: (*content_type).to_string(),
+                body: "strict-base64-fixture".to_string(),
+            });
+            let appended = store
+                .append(request)
+                .expect("append supported image payload");
+            let payload = store
+                .payload(&appended.header.event_id)
+                .expect("read image payload");
+            assert_eq!(payload.content_type, *content_type);
+            assert_eq!(payload.body, "strict-base64-fixture");
+        }
+        let mut active = append_request(4, "workspace-a", "task-a", false);
+        active.private_payload = Some(AgentEventPrivatePayloadInput {
+            content_type: "text/html".to_string(),
+            body: "<script>alert(1)</script>".to_string(),
+        });
+        assert_eq!(
+            store.append(active).expect_err("reject active HTML").code,
+            "unsupportedContentType"
         );
         fs::remove_dir_all(base).expect("remove fixture");
     }

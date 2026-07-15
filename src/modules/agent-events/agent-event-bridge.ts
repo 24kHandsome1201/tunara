@@ -66,7 +66,7 @@ export interface AgentEventHeaderV1 {
 }
 
 export interface AgentEventPrivatePayloadInput {
-  contentType: "text/plain" | "text/markdown" | "application/json" | "text/x-diff";
+  contentType: "text/plain" | "text/markdown" | "application/json" | "text/x-diff" | "image/png" | "image/jpeg" | "image/webp";
   body: string;
 }
 

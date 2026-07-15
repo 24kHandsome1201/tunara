@@ -56,6 +56,11 @@ function enabledStatus() {
   };
 }
 
+async function sha256(body: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 test("renders a bounded virtual header window and returns only to a proven PTY", async () => {
   const workspaceId = await agentEventWorkspaceId("workspace-fixture");
   expect(workspaceId).toMatch(/^ws-[0-9a-f]{64}$/);
@@ -64,7 +69,7 @@ test("renders a bounded virtual header window and returns only to a proven PTY",
     calls.push(command);
     if (command === "agent_event_store_status") return enabledStatus();
     if (command === "plugin:event|listen") return 7;
-    if (command === "agent_event_list") return { items: Array.from({ length: 100 }, (_, index) => header(10_000 - index, { workspaceId })), nextCursor: "older", snapshotUpperBound: 10_000 };
+    if (command === "agent_event_list") return { items: Array.from({ length: 100 }, (_, index) => header(10_000 - index, { workspaceId, payload: { state: "available", contentType: "text/markdown", byteLength: 7, sha256: "0".repeat(64) } })), nextCursor: "older", snapshotUpperBound: 10_000 };
     if (command === "plugin:event|unlisten") return undefined;
     throw new Error(`unexpected command: ${command}`);
   });
@@ -119,4 +124,36 @@ test("unproven source stays visible as unknown and disables PTY navigation", asy
   expect((await screen.findAllByText("unknown")).length).toBeGreaterThanOrEqual(2);
   fireEvent.click(container.querySelector(".agent-timeline-row") as HTMLElement);
   expect((await screen.findByRole("button", { name: "Return to PTY" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("keyboard expansion reads one proven payload on demand and Escape returns to PTY", async () => {
+  const workspaceId = await agentEventWorkspaceId("workspace-fixture");
+  const body = "# Evidence\n\n```ts\nconst safe = true\n```";
+  const hash = await sha256(body);
+  const calls: string[] = [];
+  mockIPC((command) => {
+    calls.push(command);
+    if (command === "agent_event_store_status") return enabledStatus();
+    if (command === "plugin:event|listen") return 9;
+    if (command === "agent_event_list") return { items: [header(1, { workspaceId, payload: { state: "available", contentType: "text/markdown", byteLength: new TextEncoder().encode(body).byteLength, sha256: hash } })], nextCursor: null, snapshotUpperBound: 1 };
+    if (command === "agent_event_payload") return { eventId: "event-1", contentType: "text/markdown", body, byteLength: new TextEncoder().encode(body).byteLength, sha256: hash };
+    if (command === "plugin:event|unlisten") return undefined;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  const active = session();
+  useSessionsStore.setState({ sessions: [active], activeSessionId: active.id, launchedSessionIds: { [active.id]: true } });
+  useUIStore.setState({ panelVisible: true });
+  const { container } = render(<AgentTimelinePanel session={active} />);
+
+  const listbox = await screen.findByRole("listbox", { name: "Agent event headers" });
+  await waitFor(() => expect(container.querySelector(".agent-timeline-row")).toBeTruthy());
+  expect(calls).not.toContain("agent_event_payload");
+  fireEvent.click(container.querySelector(".agent-timeline-row") as HTMLElement);
+  fireEvent.keyDown(listbox, { key: "Enter" });
+  expect(await screen.findByText("Evidence")).toBeTruthy();
+  expect(calls.filter((command) => command === "agent_event_payload")).toHaveLength(1);
+  fireEvent.keyDown(listbox, { key: "Escape" });
+  expect(screen.queryByText("Evidence")).toBeNull();
+  fireEvent.keyDown(listbox, { key: "Escape" });
+  expect(useUIStore.getState().panelVisible).toBe(false);
 });

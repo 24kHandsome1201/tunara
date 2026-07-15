@@ -692,5 +692,19 @@
   "timeline.kind.test_result": "Test result",
   "timeline.kind.confirmation_request": "Confirmation",
   "timeline.kind.preview_evidence": "Preview evidence",
-  "timeline.kind.journal_reference": "Journal reference"
+  "timeline.kind.journal_reference": "Journal reference",
+  "timeline.payload.expand": "Expand payload",
+  "timeline.payload.collapse": "Collapse payload",
+  "timeline.payload.loading": "Reading private payload…",
+  "timeline.payload.rendering": "Preparing bounded preview…",
+  "timeline.payload.unknown_source": "Private payload is unavailable because the source session cannot be proven.",
+  "timeline.payload.error.aborted": "Payload read was cancelled.",
+  "timeline.payload.error.metadataInvalid": "Payload metadata is invalid.",
+  "timeline.payload.error.provenanceUnknown": "Payload source cannot be proven.",
+  "timeline.payload.error.requestBudgetExceeded": "Payload preview paused because the read budget is busy. Scroll back or expand to retry.",
+  "timeline.payload.error.readFailed": "Payload is missing, damaged, or unavailable.",
+  "timeline.payload.error.eventMismatch": "Payload belongs to a different event.",
+  "timeline.payload.error.typeMismatch": "Payload type does not match its header.",
+  "timeline.payload.error.sizeMismatch": "Payload size does not match its header.",
+  "timeline.payload.error.hashMismatch": "Payload integrity check failed."
 }
