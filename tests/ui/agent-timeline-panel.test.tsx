@@ -56,6 +56,19 @@ function enabledStatus() {
   };
 }
 
+function readySearchStatus() {
+  return {
+    capability: "ready",
+    schemaVersion: 1,
+    documentCount: 10_000,
+    indexBytes: 1_048_576,
+    maxIndexBytes: 268_435_456,
+    payloadTextIsPrivate: true,
+    workspaceFilesScanned: false,
+    imageOcr: false,
+  };
+}
+
 async function sha256(body: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
@@ -68,6 +81,7 @@ test("renders a bounded virtual header window and returns only to a proven PTY",
   mockIPC((command) => {
     calls.push(command);
     if (command === "agent_event_store_status") return enabledStatus();
+    if (command === "agent_event_search_status") return readySearchStatus();
     if (command === "plugin:event|listen") return 7;
     if (command === "agent_event_list") return { items: Array.from({ length: 100 }, (_, index) => header(10_000 - index, { workspaceId, payload: { state: "available", contentType: "text/markdown", byteLength: 7, sha256: "0".repeat(64) } })), nextCursor: "older", snapshotUpperBound: 10_000 };
     if (command === "plugin:event|unlisten") return undefined;
@@ -97,6 +111,7 @@ test("disabled capability never reads an event page and leaves terminal state un
   mockIPC((command) => {
     calls.push(command);
     if (command === "agent_event_store_status") return { ...enabledStatus(), capability: "disabled" };
+    if (command === "agent_event_search_status") return { ...readySearchStatus(), capability: "disabled" };
     throw new Error(`unexpected command: ${command}`);
   });
   const active = session();
@@ -104,7 +119,7 @@ test("disabled capability never reads an event page and leaves terminal state un
   render(<AgentTimelinePanel session={active} />);
 
   expect(await screen.findByText("Event Store is disabled")).toBeTruthy();
-  expect(calls).toEqual(["agent_event_store_status"]);
+  expect(calls.sort()).toEqual(["agent_event_search_status", "agent_event_store_status"].sort());
   expect(useSessionsStore.getState().activeSessionId).toBe("session-a");
 });
 
@@ -112,6 +127,7 @@ test("unproven source stays visible as unknown and disables PTY navigation", asy
   const workspaceId = await agentEventWorkspaceId("workspace-fixture");
   mockIPC((command) => {
     if (command === "agent_event_store_status") return enabledStatus();
+    if (command === "agent_event_search_status") return readySearchStatus();
     if (command === "plugin:event|listen") return 8;
     if (command === "agent_event_list") return { items: [header(1, { workspaceId, sessionId: "missing-session", source: "heuristic" })], nextCursor: null, snapshotUpperBound: 1 };
     if (command === "plugin:event|unlisten") return undefined;
@@ -134,6 +150,7 @@ test("keyboard expansion reads one proven payload on demand and Escape returns t
   mockIPC((command) => {
     calls.push(command);
     if (command === "agent_event_store_status") return enabledStatus();
+    if (command === "agent_event_search_status") return readySearchStatus();
     if (command === "plugin:event|listen") return 9;
     if (command === "agent_event_list") return { items: [header(1, { workspaceId, payload: { state: "available", contentType: "text/markdown", byteLength: new TextEncoder().encode(body).byteLength, sha256: hash } })], nextCursor: null, snapshotUpperBound: 1 };
     if (command === "agent_event_payload") return { eventId: "event-1", contentType: "text/markdown", body, byteLength: new TextEncoder().encode(body).byteLength, sha256: hash };
@@ -156,4 +173,47 @@ test("keyboard expansion reads one proven payload on demand and Escape returns t
   expect(screen.queryByText("Evidence")).toBeNull();
   fireEvent.keyDown(listbox, { key: "Escape" });
   expect(useUIStore.getState().panelVisible).toBe(false);
+});
+
+test("search stays payload-lazy, discards stale typing, filters scope, and clears back to the header feed", async () => {
+  const workspaceId = await agentEventWorkspaceId("workspace-fixture");
+  const calls: Array<{ command: string; payload?: unknown }> = [];
+  let resolveFirst: ((value: unknown) => void) | undefined;
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "agent_event_store_status") return enabledStatus();
+    if (command === "agent_event_search_status") return readySearchStatus();
+    if (command === "plugin:event|listen") return 11;
+    if (command === "plugin:event|unlisten") return undefined;
+    if (command === "agent_event_list") return { items: [header(1, { workspaceId })], nextCursor: null, snapshotUpperBound: 1 };
+    if (command === "agent_event_search") {
+      const request = (payload as { request: { query: string } }).request;
+      if (request.query === "first query") return new Promise((resolve) => { resolveFirst = resolve; });
+      return {
+        items: [{
+          header: header(8, { workspaceId, payload: { state: "available", contentType: "text/markdown", byteLength: 20, sha256: "a".repeat(64) } }),
+          matchSummary: "中文 parse::Item matched",
+          matchField: "payload",
+          highlights: [{ startChar: 3, endChar: 14 }],
+        }],
+        nextCursor: null,
+        snapshotUpperBound: 8,
+      };
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  const active = session();
+  useSessionsStore.setState({ sessions: [active], activeSessionId: active.id, launchedSessionIds: { [active.id]: true } });
+  const { container } = render(<AgentTimelinePanel session={active} />);
+  const input = await screen.findByRole("searchbox", { name: "Search Agent Timeline" });
+  fireEvent.change(input, { target: { value: "first query" } });
+  await waitFor(() => expect(calls.some((call) => call.command === "agent_event_search")).toBe(true), { timeout: 1000 });
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Agent Timeline" }), { target: { value: "中文 parse::Item" } });
+  expect(await screen.findByRole("listbox", { name: "Agent Timeline search results" })).toBeTruthy();
+  resolveFirst?.({ items: [], nextCursor: null, snapshotUpperBound: 1 });
+  await waitFor(() => expect(container.textContent).toContain("matched"));
+  expect(container.querySelector("mark")?.textContent).toBe("parse::Item");
+  expect(calls.some((call) => call.command === "agent_event_payload")).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  expect(await screen.findByRole("listbox", { name: "Agent event headers" })).toBeTruthy();
 });

@@ -112,6 +112,9 @@ pub fn run() {
             modules::agent_event_store::agent_event_append,
             modules::agent_event_store::agent_event_list,
             modules::agent_event_store::agent_event_payload,
+            modules::agent_event_store::agent_event_search_status,
+            modules::agent_event_store::agent_event_search,
+            modules::agent_event_store::agent_event_search_rebuild,
             modules::agent_event_store::agent_event_delete,
             // Tunara 新增（§3.4 git 集成）
             modules::git::git_status,

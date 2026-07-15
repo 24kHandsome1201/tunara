@@ -15,6 +15,9 @@ test("agent event store is registered only for the trusted main window", () => {
     "agent_event_append",
     "agent_event_list",
     "agent_event_payload",
+    "agent_event_search_status",
+    "agent_event_search",
+    "agent_event_search_rebuild",
     "agent_event_delete",
   ];
   for (const command of commands) {
@@ -51,4 +54,22 @@ test("M3 Event Store bridge stays framework-free and exposes bounded live header
   assert.match(bridge, /headerContainsPrivateBody: false/);
   assert.match(bridge, /payloadRequiresExplicitRead: true/);
   assert.match(bridge, /telemetryUpload: false/);
+  assert.match(bridge, /searchAgentEvents\(request: AgentEventSearchRequest\)/);
+  assert.match(bridge, /rebuildAgentEventSearchIndex\(confirmed: true\)/);
+  assert.match(bridge, /workspaceFilesScanned: false/);
+  assert.match(bridge, /imageOcr: false/);
+});
+
+test("search index remains persistent-layer only and never scans workspaces", () => {
+  const search = read("src-tauri/src/modules/agent_event_store/search.rs");
+  const timeline = read("src/ui/AgentTimelinePanel.tsx");
+  assert.match(search, /search-v1/);
+  assert.match(search, /MAX_SEARCH_INDEX_BYTES/);
+  assert.match(search, /SEARCH_TIME_BUDGET/);
+  assert.match(search, /workspace_files_scanned: false/);
+  assert.match(search, /image_ocr: false/);
+  assert.doesNotMatch(search, /read_dir\([^)]*workspace|WalkDir|glob::/);
+  assert.match(timeline, /SEARCH_DEBOUNCE_MS = 180/);
+  assert.match(timeline, /requestGeneration\.current/);
+  assert.match(timeline, /SEARCH_MAX_RETAINED_RESULTS = 600/);
 });

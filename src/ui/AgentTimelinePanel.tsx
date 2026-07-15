@@ -1,17 +1,24 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { getResolvedLanguage, useT } from "@/modules/i18n";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import {
   getAgentEventStoreStatus,
+  getAgentEventSearchStatus,
   agentEventWorkspaceId,
   isAgentTimelineFeatureEnabled,
   listAgentEvents,
   listenForAgentEventHeaders,
   readAgentEventPayload,
+  rebuildAgentEventSearchIndex,
+  searchAgentEvents,
   type AgentEventHeaderV1,
   type AgentEventKind,
   type AgentEventQueryScope,
+  type AgentEventSearchFilters,
+  type AgentEventSearchHit,
+  type AgentEventSearchStatus,
+  type AgentEventSource,
   type AgentEventStoreStatus,
 } from "@/modules/agent-events/agent-event-bridge";
 import { TimelinePayloadResourceManager } from "@/modules/agent-events/payload-resource";
@@ -35,6 +42,10 @@ import { AgentTimelinePayload } from "./AgentTimelinePayload";
 
 interface TaskViewState { scrollTop: number; atBottom: boolean; unread: number; selectedId?: string }
 const taskViewStates = new Map<string, TaskViewState>();
+const SEARCH_DEBOUNCE_MS = 180;
+const SEARCH_MAX_RETAINED_RESULTS = 600;
+const SEARCH_KINDS: AgentEventKind[] = ["user_input", "agent_status", "output_summary", "tool_call", "file_change", "test_result", "confirmation_request", "preview_evidence", "journal_reference"];
+const SEARCH_SOURCES: AgentEventSource[] = ["hook", "process", "shell_integration", "heuristic", "user", "system"];
 
 export function timelineWorkspaceIdentity(session: Session): string {
   return session.workspace?.repository.id ?? (session.remote
@@ -85,9 +96,28 @@ interface TimelineRowProps {
   onExpandedChange: (eventId: string, expanded: boolean) => void;
   onSelect: (eventId: string) => void;
   onMeasure: (eventId: string, height: number) => void;
+  searchHit?: AgentEventSearchHit;
 }
 
-const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sourceSession, payloadManager, expanded, onExpandedChange, onSelect, onMeasure }: TimelineRowProps) {
+function HighlightedSearchSummary({ hit }: { hit: AgentEventSearchHit }) {
+  const characters = Array.from(hit.matchSummary);
+  const valid = hit.highlights
+    .filter((range) => Number.isInteger(range.startChar) && Number.isInteger(range.endChar) && range.startChar >= 0 && range.startChar < range.endChar && range.endChar <= characters.length)
+    .sort((left, right) => left.startChar - right.startChar || left.endChar - right.endChar);
+  if (valid.length === 0) return <>{hit.matchSummary}</>;
+  const parts: ReactNode[] = [];
+  let offset = 0;
+  valid.forEach((range, index) => {
+    if (range.startChar < offset) return;
+    if (range.startChar > offset) parts.push(characters.slice(offset, range.startChar).join(""));
+    parts.push(<mark key={`${range.startChar}-${range.endChar}-${index}`}>{characters.slice(range.startChar, range.endChar).join("")}</mark>);
+    offset = range.endChar;
+  });
+  if (offset < characters.length) parts.push(characters.slice(offset).join(""));
+  return <>{parts}</>;
+}
+
+const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sourceSession, payloadManager, expanded, onExpandedChange, onSelect, onMeasure, searchHit }: TimelineRowProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const confidence = timelineConfidence(header.source);
@@ -110,14 +140,16 @@ const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sou
         <span className="agent-timeline-kind">{eventKindLabel(header.kind, t)}</span>
         <time className="agent-timeline-time" dateTime={new Date(header.occurredAtMs).toISOString()}>{formatEventTime(header.occurredAtMs)}</time>
       </div>
-      <div className="agent-timeline-summary" title={summary}>{summary}</div>
+      <div className="agent-timeline-summary" title={searchHit?.matchSummary ?? summary}>
+        {searchHit ? <><span className="agent-timeline-match-field">{t(`timeline.search.field.${searchHit.matchField}`)}</span><HighlightedSearchSummary hit={searchHit} /></> : summary}
+      </div>
       <div className="agent-timeline-meta">
         <span className="agent-timeline-source" title={header.source}>{header.source}</span>
         <span>{t(`timeline.confidence.${confidence}`)}</span>
         <span title={header.taskId}>{t("timeline.task_short")} {header.taskId}</span>
         <span title={header.sessionId ?? "unknown"}>{sourceSession?.title ?? t("timeline.source_unknown")}</span>
       </div>
-      {header.payload && <AgentTimelinePayload header={header} manager={payloadManager} provenanceKnown={Boolean(sourceSession) && confidence !== "unknown"} expanded={expanded} onExpandedChange={(next) => onExpandedChange(header.eventId, next)} />}
+      {header.payload && <AgentTimelinePayload header={header} manager={payloadManager} provenanceKnown={Boolean(sourceSession) && confidence !== "unknown"} expanded={expanded} preloadVisible={!searchHit} onExpandedChange={(next) => onExpandedChange(header.eventId, next)} />}
       {selected && (
         <div className="agent-timeline-row-actions">
           <span>{t("timeline.selected_hint")}</span>
@@ -128,7 +160,7 @@ const TimelineRow = memo(function TimelineRow({ header, selected, streaming, sou
       )}
     </div>
   );
-}, (previous, next) => previous.header === next.header && previous.selected === next.selected && previous.streaming === next.streaming && previous.sourceSession === next.sourceSession && previous.payloadManager === next.payloadManager && previous.expanded === next.expanded);
+}, (previous, next) => previous.header === next.header && previous.selected === next.selected && previous.streaming === next.streaming && previous.sourceSession === next.sourceSession && previous.payloadManager === next.payloadManager && previous.expanded === next.expanded && previous.searchHit === next.searchHit);
 
 export function AgentTimelinePanel({ session }: { session: Session }) {
   const t = useT();
@@ -151,7 +183,227 @@ export function AgentTimelinePanel({ session }: { session: Session }) {
   return <AgentTimelineReady key={`${workspaceId}\u0000${session.id}`} session={session} workspaceId={workspaceId} />;
 }
 
+interface TimelineSearchControlsProps {
+  query: string;
+  active: boolean;
+  scope: "task" | "workspace";
+  kind: AgentEventKind | "";
+  source: AgentEventSource | "";
+  status: AgentEventSearchStatus | null;
+  rebuilding: boolean;
+  onQueryChange: (value: string) => void;
+  onScopeChange: (value: "task" | "workspace") => void;
+  onKindChange: (value: AgentEventKind | "") => void;
+  onSourceChange: (value: AgentEventSource | "") => void;
+  onRebuild: () => void;
+}
+
+function TimelineSearchControls(props: TimelineSearchControlsProps) {
+  const t = useT();
+  const ready = props.status?.capability === "ready";
+  return (
+    <div className="agent-timeline-searchbar" data-search-active={props.active}>
+      <div className="agent-timeline-search-input-wrap">
+        <span aria-hidden="true">⌕</span>
+        <input
+          type="search"
+          value={props.query}
+          disabled={!ready}
+          maxLength={128}
+          aria-label={t("timeline.search.label")}
+          placeholder={ready ? t("timeline.search.placeholder") : t(`timeline.search.capability.${props.status?.capability ?? "unavailable"}`)}
+          onChange={(event) => props.onQueryChange(event.currentTarget.value)}
+          onKeyDown={(event) => { if (event.key === "Escape" && props.query) { event.preventDefault(); props.onQueryChange(""); } }}
+        />
+      </div>
+      <select aria-label={t("timeline.search.scope_label")} value={props.scope} disabled={!ready} onChange={(event) => props.onScopeChange(event.currentTarget.value as "task" | "workspace")}>
+        <option value="task">{t("timeline.search.scope.task")}</option>
+        <option value="workspace">{t("timeline.search.scope.workspace")}</option>
+      </select>
+      <select aria-label={t("timeline.search.kind_label")} value={props.kind} disabled={!ready} onChange={(event) => props.onKindChange(event.currentTarget.value as AgentEventKind | "")}>
+        <option value="">{t("timeline.search.kind_all")}</option>
+        {SEARCH_KINDS.map((value) => <option key={value} value={value}>{eventKindLabel(value, t)}</option>)}
+      </select>
+      <select aria-label={t("timeline.search.source_label")} value={props.source} disabled={!ready} onChange={(event) => props.onSourceChange(event.currentTarget.value as AgentEventSource | "")}>
+        <option value="">{t("timeline.search.source_all")}</option>
+        {SEARCH_SOURCES.map((value) => <option key={value} value={value}>{value}</option>)}
+      </select>
+      {!ready && props.status && props.status.capability !== "disabled" && (
+        <button type="button" data-timeline-action="search-rebuild" disabled={props.rebuilding} onClick={props.onRebuild}>
+          {props.rebuilding ? t("timeline.search.rebuilding") : t("timeline.search.rebuild")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AgentTimelineReady({ session, workspaceId }: { session: Session; workspaceId: string }) {
+  const taskId = session.id.slice(0, 256);
+  const [query, setQuery] = useState("");
+  const [activeQuery, setActiveQuery] = useState("");
+  const [scope, setScope] = useState<"task" | "workspace">("task");
+  const [kind, setKind] = useState<AgentEventKind | "">("");
+  const [source, setSource] = useState<AgentEventSource | "">("");
+  const [searchStatus, setSearchStatus] = useState<AgentEventSearchStatus | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+
+  const refreshSearchStatus = useCallback(async () => {
+    try { setSearchStatus(await getAgentEventSearchStatus()); }
+    catch { setSearchStatus({ capability: "unavailable", schemaVersion: 1, maxIndexBytes: 256 * 1024 * 1024, payloadTextIsPrivate: true, workspaceFilesScanned: false, imageOcr: false }); }
+  }, []);
+
+  useEffect(() => { void refreshSearchStatus(); }, [refreshSearchStatus]);
+  useEffect(() => {
+    const value = query.trim();
+    if (value.length < 2) { setActiveQuery(""); return; }
+    const timer = setTimeout(() => setActiveQuery(value), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const rebuild = useCallback(async () => {
+    setRebuilding(true);
+    try { await rebuildAgentEventSearchIndex(true); }
+    finally { setRebuilding(false); await refreshSearchStatus(); }
+  }, [refreshSearchStatus]);
+
+  const controls = (
+    <TimelineSearchControls
+      query={query}
+      active={Boolean(activeQuery)}
+      scope={scope}
+      kind={kind}
+      source={source}
+      status={searchStatus}
+      rebuilding={rebuilding}
+      onQueryChange={setQuery}
+      onScopeChange={setScope}
+      onKindChange={setKind}
+      onSourceChange={setSource}
+      onRebuild={() => void rebuild()}
+    />
+  );
+  const queryScope = scope === "workspace"
+    ? { type: "workspace" as const, workspaceId }
+    : { type: "task" as const, workspaceId, taskId };
+  const filters = useMemo<AgentEventSearchFilters>(() => ({
+    kinds: kind ? [kind] : [],
+    sources: source ? [source] : [],
+  }), [kind, source]);
+
+  const searchActive = Boolean(activeQuery && searchStatus?.capability === "ready");
+  return <div className="agent-timeline-mode-stack">
+    <div className="agent-timeline-feed-layer" data-search-hidden={searchActive} aria-hidden={searchActive}><AgentTimelineFeed session={session} workspaceId={workspaceId} searchControls={controls} /></div>
+    {searchActive && <div className="agent-timeline-search-layer"><AgentTimelineSearchMode session={session} query={activeQuery} scope={queryScope} filters={filters} controls={controls} onClear={() => setQuery("")} /></div>}
+  </div>;
+}
+
+function AgentTimelineSearchMode({ session, query, scope, filters, controls, onClear }: { session: Session; query: string; scope: AgentEventQueryScope; filters: AgentEventSearchFilters; controls: ReactNode; onClear: () => void }) {
+  const t = useT();
+  const sessions = useSessionsStore((state) => state.sessions);
+  const [payloadManager] = useState(() => new TimelinePayloadResourceManager(readAgentEventPayload));
+  const [hits, setHits] = useState<AgentEventSearchHit[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState(new Set<string>());
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [heights, setHeights] = useState(new Map<string, number>());
+  const requestGeneration = useRef(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const heightsRef = useRef(new Map<string, number>());
+  const ids = useMemo(() => hits.map((hit) => hit.header.eventId), [hits]);
+  const virtualWindow = useMemo(() => computeTimelineVirtualWindow(ids, heights, scrollTop, viewportHeight), [heights, ids, scrollTop, viewportHeight]);
+
+  useEffect(() => () => payloadManager.dispose(), [payloadManager]);
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const update = () => setViewportHeight(node.clientHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hits.length, loading]);
+  useEffect(() => {
+    const generation = ++requestGeneration.current;
+    setLoading(true); setError(null); setHits([]); setNextCursor(null); setSelectedId(null); setExpandedIds(new Set());
+    heightsRef.current = new Map(); setHeights(heightsRef.current); setScrollTop(0);
+    void searchAgentEvents({ query, scope, filters, limit: 50 })
+      .then((page) => {
+        if (requestGeneration.current !== generation) return;
+        setHits(page.items); setNextCursor(page.nextCursor ?? null); setLoading(false);
+      })
+      .catch((reason) => { if (requestGeneration.current === generation) { setError(String(reason)); setLoading(false); } });
+    return () => { requestGeneration.current += 1; };
+  }, [filters, query, scope]);
+
+  const loadOlder = useCallback(async () => {
+    if (!nextCursor || loadingOlder) return;
+    const generation = requestGeneration.current;
+    setLoadingOlder(true);
+    try {
+      const page = await searchAgentEvents({ query, scope, filters, cursor: nextCursor, limit: 50 });
+      if (requestGeneration.current !== generation) return;
+      setHits((current) => [...current, ...page.items].slice(0, SEARCH_MAX_RETAINED_RESULTS));
+      setNextCursor(page.nextCursor ?? null);
+    } catch (reason) {
+      if (requestGeneration.current === generation) setError(String(reason));
+    } finally {
+      if (requestGeneration.current === generation) setLoadingOlder(false);
+    }
+  }, [filters, loadingOlder, nextCursor, query, scope]);
+
+  const onMeasure = useCallback((eventId: string, height: number) => {
+    if (heightsRef.current.get(eventId) === height) return;
+    heightsRef.current.set(eventId, height);
+    setHeights(new Map(heightsRef.current));
+  }, []);
+  const setEventExpanded = useCallback((eventId: string, expanded: boolean) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (expanded) next.add(eventId); else next.delete(eventId);
+      return next;
+    });
+  }, []);
+  const selectByOffset = useCallback((offset: number) => {
+    if (hits.length === 0) return;
+    const found = hits.findIndex((hit) => hit.header.eventId === selectedId);
+    const index = Math.max(0, Math.min(hits.length - 1, (found < 0 ? 0 : found) + offset));
+    const hit = hits[index]; setSelectedId(hit.header.eventId);
+    const node = scrollRef.current;
+    const top = restoreTimelineAnchor(ids, heightsRef.current, { eventId: hit.header.eventId, viewportOffset: 12 });
+    if (node && top !== null) node.scrollTop = top;
+  }, [hits, ids, selectedId]);
+  const selectedHit = hits.find((hit) => hit.header.eventId === selectedId);
+  const selectedSource = selectedHit ? provenSourceSession(selectedHit.header, sessions, session) : undefined;
+
+  return (
+    <section className="agent-timeline" aria-label={t("timeline.search.results")} data-search-mode="true">
+      <header className="agent-timeline-header">
+        <div className="agent-timeline-orientation"><span className="agent-timeline-kicker">{t("timeline.search.title")}</span><strong title={query}>{query}</strong><span>{t("timeline.search.result_count", { count: hits.length })}</span></div>
+        <div className="agent-timeline-header-actions"><button type="button" data-timeline-action="search-clear" onClick={onClear}>{t("timeline.search.clear")}</button>{nextCursor && <button type="button" data-timeline-action="search-older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? t("timeline.loading_older") : t("timeline.load_older")}</button>}</div>
+      </header>
+      {controls}
+      {loading && <div className="agent-timeline-state">{t("timeline.search.loading")}</div>}
+      {!loading && error && <div className="agent-timeline-state" role="alert"><strong>{t("timeline.search.error")}</strong><span>{error}</span></div>}
+      {!loading && !error && hits.length === 0 && <div className="agent-timeline-state"><strong>{t("timeline.search.empty")}</strong><span>{t("timeline.search.empty_hint")}</span></div>}
+      {!loading && !error && hits.length > 0 && (
+        <div ref={scrollRef} className="agent-timeline-scroll" role="listbox" aria-label={t("timeline.search.results")} tabIndex={0} data-retained-count={hits.length} data-rendered-count={virtualWindow.rows.length}
+          onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); selectByOffset(event.key === "ArrowDown" ? 1 : -1); } else if (event.key === "PageDown" || event.key === "PageUp") { event.preventDefault(); event.currentTarget.scrollTop += (event.key === "PageDown" ? 1 : -1) * Math.max(120, event.currentTarget.clientHeight - 60); if (event.key === "PageDown" && nextCursor) void loadOlder(); } else if (event.key === "Enter" && selectedHit) { event.preventDefault(); if (selectedHit.header.payload) setEventExpanded(selectedHit.header.eventId, !expandedIds.has(selectedHit.header.eventId)); else if (selectedSource) focusSourceTerminal(selectedSource.id); } else if (event.key === "Escape") { event.preventDefault(); if (selectedHit && expandedIds.has(selectedHit.header.eventId)) setEventExpanded(selectedHit.header.eventId, false); else onClear(); } }}>
+          <div className="agent-timeline-virtual-space" style={{ height: virtualWindow.totalSize }}>
+            {virtualWindow.rows.map((layout) => { const hit = hits[layout.index]; if (!hit) return null; const sourceSession = provenSourceSession(hit.header, sessions, session); return <div key={hit.header.eventId} className="agent-timeline-virtual-row" style={{ transform: `translateY(${layout.start}px)` }}><TimelineRow header={hit.header} searchHit={hit} selected={selectedId === hit.header.eventId} streaming={false} sourceSession={sourceSession} payloadManager={payloadManager} expanded={expandedIds.has(hit.header.eventId)} onExpandedChange={setEventExpanded} onSelect={setSelectedId} onMeasure={onMeasure} /></div>; })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AgentTimelineFeed({ session, workspaceId, searchControls }: { session: Session; workspaceId: string; searchControls: ReactNode }) {
   const t = useT();
   const sessions = useSessionsStore((state) => state.sessions);
   const taskId = session.id.slice(0, 256);
@@ -401,6 +653,7 @@ function AgentTimelineReady({ session, workspaceId }: { session: Session; worksp
         <div className="agent-timeline-orientation"><span className="agent-timeline-kicker">{t("timeline.title")}</span><strong title={sourceTitle}>{sourceTitle}</strong><span title={taskId}>{session.title}</span></div>
         <div className="agent-timeline-header-actions">{nextCursor && <button type="button" data-timeline-action="older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? t("timeline.loading_older") : t("timeline.load_older")}</button>}{unread > 0 && <button type="button" data-timeline-action="unread" onClick={() => scrollToBottom()}>{t("timeline.unread", { count: unread })}</button>}{droppedNewer && <button type="button" data-timeline-action="latest" onClick={() => void loadLatest()}>{t("timeline.latest")}</button>}</div>
       </header>
+      {searchControls}
       {loading && <div className="agent-timeline-state">{t("timeline.loading")}</div>}
       {!loading && capability !== "enabled" && <div className="agent-timeline-state" role="status"><strong>{t(`timeline.capability.${capability ?? "unavailable"}`)}</strong><span>{t("timeline.capability_hint")}</span></div>}
       {!loading && error && <div className="agent-timeline-state" role="alert"><strong>{t("timeline.error")}</strong><span>{error}</span></div>}

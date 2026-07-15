@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { error as logError, info } from "@tauri-apps/plugin-log";
-import { AGENT_EVENT_APPENDED_EVENT, appendAgentEvent, agentEventWorkspaceId, getAgentEventStoreStatus, listAgentEvents } from "@/modules/agent-events/agent-event-bridge";
+import { AGENT_EVENT_APPENDED_EVENT, appendAgentEvent, agentEventWorkspaceId, getAgentEventSearchStatus, getAgentEventStoreStatus, listAgentEvents, searchAgentEvents } from "@/modules/agent-events/agent-event-bridge";
 import { evaluateAnimationFrames, probeTerminalInputEcho, sampleAnimationFrames, TERMINAL_BENCHMARK_VARIANT, waitForTerminalBenchmarkWriters } from "@/modules/terminal/lib/terminal-benchmark";
 import { setLanguage } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
@@ -25,12 +25,16 @@ function retainedCount(): number {
   return Number(document.querySelector<HTMLElement>(".agent-timeline-scroll")?.dataset.retainedCount ?? 0);
 }
 
-function visibleEventId(): string | null {
-  const scroll = document.querySelector<HTMLElement>(".agent-timeline-scroll");
+function visibleEventIdIn(scroll: HTMLElement): string | null {
   if (!scroll) return null;
   const top = scroll.getBoundingClientRect().top;
-  return [...document.querySelectorAll<HTMLElement>(".agent-timeline-row")]
+  return [...scroll.querySelectorAll<HTMLElement>(".agent-timeline-row")]
     .find((row) => row.getBoundingClientRect().bottom > top + 1)?.dataset.eventId ?? null;
+}
+
+function visibleEventId(): string | null {
+  const scroll = document.querySelector<HTMLElement>(".agent-timeline-scroll");
+  return scroll ? visibleEventIdIn(scroll) : null;
 }
 
 function payloadMetrics(scroll: HTMLElement) {
@@ -45,6 +49,83 @@ function payloadMetrics(scroll: HTMLElement) {
   };
 }
 
+function setControlValue(control: HTMLInputElement | HTMLSelectElement, value: string): void {
+  const prototype = control instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLSelectElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(control, value);
+  control.dispatchEvent(new Event(control instanceof HTMLInputElement ? "input" : "change", { bubbles: true }));
+}
+
+async function runSearchUiBenchmark(workspaceId: string, feedScroll: HTMLElement) {
+  const before = await getAgentEventSearchStatus();
+  const rebuildStarted = performance.now();
+  let rebuilt = null;
+  if (before.capability !== "ready") {
+    const rebuildButton = await waitFor("search rebuild button", () => document.querySelector<HTMLButtonElement>("[data-timeline-action='search-rebuild']"));
+    rebuildButton.click();
+    await waitFor("search rebuild completion", () => { const node = document.querySelector<HTMLInputElement>('.agent-timeline-searchbar input[type="search"]'); return node && !node.disabled ? node : null; }, 60_000);
+    rebuilt = await getAgentEventSearchStatus();
+  }
+  const rebuildMs = Math.round((performance.now() - rebuildStarted) * 100) / 100;
+  const ready = await getAgentEventSearchStatus();
+  if (ready.capability !== "ready") throw new Error(`M3 search index not ready after rebuild: ${JSON.stringify(ready)}`);
+
+  const backendStarted = performance.now();
+  const english = await searchAgentEvents({ query: "Build transition", scope: { type: "task", workspaceId, taskId: "m3-timeline-a" }, limit: 50 });
+  const chinese = await searchAgentEvents({ query: "构建阶段", scope: { type: "workspace", workspaceId }, limit: 50 });
+  const markdown = await searchAgentEvents({ query: "Markdown evidence 8200", scope: { type: "task", workspaceId, taskId: "m3-timeline-a" }, limit: 50 });
+  const imageMetadata = await searchAgentEvents({ query: "image/png", scope: { type: "task", workspaceId, taskId: "m3-timeline-a" }, limit: 50 });
+  const taskB = await searchAgentEvents({ query: "Build transition", scope: { type: "task", workspaceId, taskId: "m3-timeline-b" }, limit: 50 });
+  const backendMs = Math.round((performance.now() - backendStarted) * 100) / 100;
+  if (!english.nextCursor || english.items.length !== 50 || !chinese.items.length || markdown.items[0]?.matchField !== "payload" || imageMetadata.items[0]?.matchField !== "imageMetadata" || !taskB.items.length) {
+    throw new Error(`M3 backend search contract failed: ${JSON.stringify({ english: english.items.length, englishCursor: Boolean(english.nextCursor), chinese: chinese.items.length, markdown: markdown.items[0]?.matchField, image: imageMetadata.items[0]?.matchField, taskB: taskB.items.length })}`);
+  }
+
+  await delay(350);
+  const feedAnchor = await waitFor("stable Timeline event anchor before search", () => visibleEventIdIn(feedScroll));
+  const currentInput = () => { const node = document.querySelector<HTMLInputElement>('.agent-timeline-search-layer .agent-timeline-searchbar input[type="search"]') ?? document.querySelector<HTMLInputElement>('.agent-timeline-feed-layer .agent-timeline-searchbar input[type="search"]'); return node && !node.disabled ? node : null; };
+  const input = await waitFor("enabled search input", currentInput);
+  setControlValue(input, "old query that must become stale");
+  setControlValue(input, "Build transition");
+  const searchPanel = await waitFor("search result mode", () => document.querySelector<HTMLElement>('.agent-timeline[data-search-mode="true"]'));
+  const searchScroll = await waitFor("search result viewport", () => searchPanel.querySelector<HTMLElement>('.agent-timeline-scroll'));
+  await waitFor("first search page", () => Number(searchScroll.dataset.retainedCount ?? 0) === 50 ? true : null);
+  const firstQuery = searchPanel.querySelector<HTMLElement>(".agent-timeline-orientation strong")?.title ?? null;
+  const firstDomRows = searchPanel.querySelectorAll(".agent-timeline-row").length;
+  const initialSearchPayloadReads = payloadMetrics(searchScroll).reads;
+  const older = await waitFor("search Older button", () => searchPanel.querySelector<HTMLButtonElement>("[data-timeline-action='search-older']"));
+  older.click();
+  await waitFor("second search page", () => Number(searchScroll.dataset.retainedCount ?? 0) === 100 ? true : null);
+
+  const kindSelect = await waitFor("search kind filter", () => [...searchPanel.querySelectorAll<HTMLSelectElement>(".agent-timeline-searchbar select")].find((node) => node.getAttribute("aria-label")?.toLowerCase().includes("kind")) ?? null);
+  setControlValue(kindSelect, "agent_status");
+  await waitFor("kind-filtered results", () => {
+    const rows = [...searchPanel.querySelectorAll<HTMLElement>(".agent-timeline-row")];
+    return rows.length > 0 && rows.every((row) => row.querySelector<HTMLElement>(".agent-timeline-status-dot")?.dataset.kind === "agent_status") ? true : null;
+  });
+  setControlValue(kindSelect, "");
+  await delay(80);
+  setControlValue(await waitFor("current search input", currentInput), "Markdown evidence 8200");
+  const markdownRow = await waitFor("Markdown search result", () => document.querySelector<HTMLElement>('[data-event-id="ae-00000000000000008200"]'));
+  const payloadHost = await waitFor("Markdown search payload host", () => markdownRow.querySelector<HTMLElement>('.agent-timeline-payload[data-payload-type="text/markdown"]'));
+  payloadHost.querySelector<HTMLButtonElement>(".agent-timeline-payload-toggle")?.click();
+  await waitFor("lazy Markdown search payload", () => payloadHost.dataset.payloadState === "ready" && payloadHost.querySelector(".agent-timeline-rich") ? true : null);
+  const readsAfterExpand = payloadMetrics(document.querySelector<HTMLElement>('.agent-timeline[data-search-mode="true"] .agent-timeline-scroll')!).reads;
+
+  setControlValue(await waitFor("current search input before clear", currentInput), "");
+  const restoredFeed = await waitFor("Timeline feed after clearing search", () => document.querySelector<HTMLElement>('.agent-timeline:not([data-search-mode="true"]) .agent-timeline-scroll'));
+  const restoredAnchor = await waitFor("restored Timeline event anchor", () => visibleEventIdIn(restoredFeed) === feedAnchor ? feedAnchor : null, 1_000);
+  return {
+    beforeCapability: before.capability,
+    readyCapability: ready.capability,
+    rebuildMs,
+    rebuilt,
+    backendMs,
+    backend: { english: english.items.length, chinese: chinese.items.length, markdown: markdown.items.length, imageMetadata: imageMetadata.items.length, taskB: taskB.items.length, paginated: Boolean(english.nextCursor) },
+    ui: { finalRapidQuery: firstQuery, firstDomRows, initialPayloadReads: initialSearchPayloadReads, retainedAfterPagination: 100, readsAfterExpand, feedAnchor, restoredAnchor, restoredRetained: Number(restoredFeed.dataset.retainedCount ?? 0) },
+    passed: firstQuery === "Build transition" && firstDomRows < 40 && initialSearchPayloadReads === 0 && readsAfterExpand === 1 && feedAnchor === restoredAnchor,
+  };
+}
+
 async function expandPayloadEvent(scroll: HTMLElement, eventId: string, contentType: string) {
   const findHost = () => document.querySelector<HTMLElement>(`.agent-timeline-row[data-event-id="${eventId}"] .agent-timeline-payload[data-payload-type="${contentType}"]`);
   let host: HTMLElement | null = null;
@@ -56,13 +137,20 @@ async function expandPayloadEvent(scroll: HTMLElement, eventId: string, contentT
     if (host) break;
   }
   if (!host) throw new Error(`M3 Timeline could not render payload ${eventId} (${contentType})`);
-  host.scrollIntoView({ block: "center" });
-  scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
-  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-  host = findHost();
-  const hostBounds = host?.getBoundingClientRect();
-  const scrollBounds = scroll.getBoundingClientRect();
-  if (!host || !hostBounds || hostBounds.bottom <= scrollBounds.top || hostBounds.top >= scrollBounds.bottom) {
+  let placed = false;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const current = host;
+    if (!current) break;
+    current.scrollIntoView({ block: "center" });
+    scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+    await delay(60);
+    host = findHost();
+    const hostBounds = host?.getBoundingClientRect();
+    const scrollBounds = scroll.getBoundingClientRect();
+    placed = Boolean(host && hostBounds && hostBounds.bottom > scrollBounds.top && hostBounds.top < scrollBounds.bottom);
+    if (placed) break;
+  }
+  if (!host || !placed) {
     throw new Error(`M3 Timeline could not place payload ${eventId} inside the viewport`);
   }
   const toggle = host.querySelector<HTMLButtonElement>(".agent-timeline-payload-toggle");
@@ -231,6 +319,12 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
       await info("[benchmark:m3-timeline:stage] task-switch");
       const taskSwitch = { taskBRetained, taskARestoredScroll: Math.round(document.querySelector<HTMLElement>(".agent-timeline-scroll")?.scrollTop ?? -1) };
 
+      const searchFeedScroll = await waitFor("stable Timeline feed before search", () => document.querySelector<HTMLElement>('.agent-timeline:not([data-search-mode="true"]) .agent-timeline-scroll'));
+      searchFeedScroll.scrollTop = Math.min(300, Math.max(0, searchFeedScroll.scrollHeight - searchFeedScroll.clientHeight));
+      searchFeedScroll.dispatchEvent(new Event("scroll", { bubbles: true }));
+      const search = await runSearchUiBenchmark(workspaceId, searchFeedScroll);
+      await info("[benchmark:m3-timeline:stage] search");
+
       setLanguage("zh-CN");
       const chineseVisible = await waitFor("Chinese Timeline title", () => document.querySelector<HTMLElement>(".agent-timeline-kicker")?.textContent === "Agent 时间线" ? true : null);
       setLanguage("en");
@@ -270,6 +364,7 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
         domRows: { final: finalDomRows, streaming: streamingDomRows, bounded: finalDomRows < 40 && streamingDomRows < 40 },
         streaming: { appendDidNotSteal, solidified: streamingSolidified },
         taskSwitch,
+        search,
         locale: { chineseVisible, englishVisible },
         viewports,
         foregroundMs,
@@ -286,7 +381,7 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
         && richPayloads.metrics.cacheEntries <= 24
         && richPayloads.metrics.cacheBytes <= 6 * 1024 * 1024
         && richPayloads.metrics.peakActive <= 4;
-      await info(`[benchmark:m3-timeline] ${JSON.stringify({ ...report, passed: initial.retained === 100 && !initial.privatePayloadVisible && initial.payload.reads <= initial.domRows && pagination.anchorPreserved && richPassed && rapidScroll.passed && report.domRows.bounded && streamingSolidified && appendDidNotSteal && taskBRetained > 0 && chineseVisible && englishVisible && viewports.every((viewport) => !viewport.overflow) && report.pty.unaffected })}`);
+      await info(`[benchmark:m3-timeline] ${JSON.stringify({ ...report, passed: initial.retained === 100 && !initial.privatePayloadVisible && initial.payload.reads <= initial.domRows && pagination.anchorPreserved && richPassed && rapidScroll.passed && report.domRows.bounded && streamingSolidified && appendDidNotSteal && taskBRetained > 0 && search.passed && chineseVisible && englishVisible && viewports.every((viewport) => !viewport.overflow) && report.pty.unaffected })}`);
     })().catch(async (reason) => { await logError(`[benchmark:m3-timeline] ${JSON.stringify({ benchmark: "m3-agent-timeline-ui", passed: false, error: String(reason) })}`); });
     return () => { cancelled = true; };
   }, [ready]);

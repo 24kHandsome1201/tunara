@@ -138,12 +138,84 @@ export interface AgentEventStoreStatus {
   };
 }
 
+export type AgentEventSearchCapability =
+  | "ready"
+  | "disabled"
+  | "missing"
+  | "corrupt"
+  | "migrationRequired"
+  | "quotaExceeded"
+  | "unavailable";
+
+export interface AgentEventSearchStatus {
+  capability: AgentEventSearchCapability;
+  schemaVersion: 1;
+  documentCount?: number | null;
+  indexBytes?: number | null;
+  maxIndexBytes: number;
+  errorCode?: string | null;
+  payloadTextIsPrivate: true;
+  workspaceFilesScanned: false;
+  imageOcr: false;
+}
+
+export interface AgentEventSearchFilters {
+  kinds?: AgentEventKind[];
+  sources?: AgentEventSource[];
+  occurredAfterMs?: number | null;
+  occurredBeforeMs?: number | null;
+}
+
+export interface AgentEventSearchRequest {
+  query: string;
+  scope: AgentEventQueryScope;
+  filters?: AgentEventSearchFilters;
+  cursor?: string | null;
+  limit?: number | null;
+}
+
+export interface AgentEventSearchHighlight {
+  startChar: number;
+  endChar: number;
+}
+
+export interface AgentEventSearchHit {
+  header: AgentEventHeaderV1;
+  matchSummary: string;
+  matchField: "summary" | "payload" | "imageMetadata";
+  highlights: AgentEventSearchHighlight[];
+}
+
+export interface AgentEventSearchPage {
+  items: AgentEventSearchHit[];
+  nextCursor?: string | null;
+  snapshotUpperBound: number;
+}
+
+export interface AgentEventSearchRebuildResult {
+  documentCount: number;
+  indexBytes: number;
+  indexGeneration: number;
+}
+
 export function getAgentEventStoreStatus(): Promise<AgentEventStoreStatus> {
   return invoke("agent_event_store_status");
 }
 
 export function setAgentEventStoreEnabled(enabled: boolean): Promise<AgentEventStoreStatus> {
   return invoke("agent_event_store_set_enabled", { enabled });
+}
+
+export function getAgentEventSearchStatus(): Promise<AgentEventSearchStatus> {
+  return invoke("agent_event_search_status");
+}
+
+export function searchAgentEvents(request: AgentEventSearchRequest): Promise<AgentEventSearchPage> {
+  return invoke("agent_event_search", { request });
+}
+
+export function rebuildAgentEventSearchIndex(confirmed: true): Promise<AgentEventSearchRebuildResult> {
+  return invoke("agent_event_search_rebuild", { confirmed });
 }
 
 export function appendAgentEvent(request: AgentEventAppendRequest): Promise<AgentEventAppendResult> {

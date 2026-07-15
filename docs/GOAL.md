@@ -1020,7 +1020,7 @@ Herdr、Workflow Recipe、原生 iOS、系统推送、公网 Relay 和手机 PTY
 
 ### 当前 Active Milestone
 
-M0 Phase 1 Workspace/Worktree、M1 Terminal + SSH 稳定性、Phase 2 Markdown/单文件轻编辑与 Phase 3 Workspace-bound Preview 均已完成。Phase 3 已按[Preview 安全规格](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)建立来源身份、检测 allowlist、去重/stale 合同、隔离 localhost WebView/navigation policy、opening/loading/ready/failed/closed/stale 生命周期、同源历史、有限缩放与 viewport、bounded console/network 失败摘要、安全重启准备、显式 SSH remote loopback tunnel，以及用户触发、来源/window generation 绑定的 WKWebView PNG、最小脱敏 metadata 和对应真实 physical PTY 的只填入不执行 Send。原始截图只在 ignored 本机 cache，页面仍无高权限 bridge；当前保持回归，不自动进入 Phase 4/5。
+M0 Phase 1 Workspace/Worktree、M1 Terminal + SSH 稳定性、Phase 2 Markdown/单文件轻编辑、Phase 3 Workspace-bound Preview 与 Phase 4 Agent Attention/Timeline 均已完成。Phase 4 已按 [Event Store](./M3_AGENT_EVENT_STORE_SPEC.md)、[Timeline 核心](./specs/m3-agent-timeline-core.md)、[private payload 富渲染](./specs/m3-private-payload-rich-rendering.md)及[搜索与轻量索引](./specs/m3-agent-timeline-search-index.md)合同关闭 required gates：10,000 headers 与富 payload 的持久化、分页、惰性读取、全文搜索、scope/筛选、删除/重建/损坏降级，以及 optimized/release macOS WKWebView、真实 PTY、三窗口和像素门均已有脱敏证据。原始 fixture、索引、日志和截图只在内置 ignored/cache/temp；当前保持回归，本批停止且不自动创建或进入 Phase 5。
 
 ## 17. 推荐起点
 

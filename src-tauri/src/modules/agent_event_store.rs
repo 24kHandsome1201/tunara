@@ -11,6 +11,13 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod search;
+use search::SearchIndexMode;
+pub use search::{
+    AgentEventSearchCapabilityState, AgentEventSearchPage, AgentEventSearchRebuildResult,
+    AgentEventSearchRequest, AgentEventSearchStatus,
+};
+
 const SCHEMA_VERSION: u16 = 1;
 const DEFAULT_PAGE_SIZE: usize = 100;
 const MAX_PAGE_SIZE: usize = 200;
@@ -308,6 +315,7 @@ struct AgentEventStore {
     client_index: HashMap<(String, String), usize>,
     payload_bytes: u64,
     recovered_partial_tail: bool,
+    search_index: SearchIndexMode,
     #[cfg(test)]
     payload_reads: u64,
 }
@@ -681,6 +689,7 @@ impl AgentEventStore {
             return Err(StoreFault::new("payloadQuotaCorrupt"));
         }
         let client_index = build_client_index(&headers);
+        let search_index = search::open_index(&root, &headers, manifest.delete_generation);
         let mut store = Self {
             root,
             manifest,
@@ -688,6 +697,7 @@ impl AgentEventStore {
             client_index,
             payload_bytes,
             recovered_partial_tail,
+            search_index,
             #[cfg(test)]
             payload_reads: 0,
         };
@@ -872,6 +882,11 @@ impl AgentEventStore {
             index,
         );
         self.headers.push(header.clone());
+        search::append_document(
+            &mut self.search_index,
+            &header,
+            request.private_payload.as_ref(),
+        );
         Ok(AgentEventAppendResult {
             status: AgentEventAppendStatus::Appended,
             header,
@@ -1071,6 +1086,12 @@ impl AgentEventStore {
             header_bytes.push(b'\n');
         }
         atomic_write(&self.root.join(HEADERS_FILE), &header_bytes)?;
+        search::apply_delete(
+            &mut self.search_index,
+            &self.root,
+            &remaining,
+            pending.next_generation,
+        )?;
 
         let mut deleted_payloads = 0_u64;
         for event in &pending.events {
@@ -1234,6 +1255,47 @@ impl AgentEventStoreState {
             },
         }
     }
+
+    fn search_status(&self) -> AgentEventSearchStatus {
+        let inner = self.inner.lock();
+        match &inner.mode {
+            StoreMode::Ready(store) => search::status(&store.search_index),
+            StoreMode::Disabled => search::disabled_status(),
+            StoreMode::Corrupt(code) => AgentEventSearchStatus {
+                capability: AgentEventSearchCapabilityState::Corrupt,
+                schema_version: search::SEARCH_SCHEMA_VERSION,
+                document_count: None,
+                index_bytes: None,
+                max_index_bytes: 256 * 1024 * 1024,
+                error_code: Some((*code).to_string()),
+                payload_text_is_private: true,
+                workspace_files_scanned: false,
+                image_ocr: false,
+            },
+            StoreMode::MigrationRequired(code) => AgentEventSearchStatus {
+                capability: AgentEventSearchCapabilityState::MigrationRequired,
+                schema_version: search::SEARCH_SCHEMA_VERSION,
+                document_count: None,
+                index_bytes: None,
+                max_index_bytes: 256 * 1024 * 1024,
+                error_code: Some((*code).to_string()),
+                payload_text_is_private: true,
+                workspace_files_scanned: false,
+                image_ocr: false,
+            },
+            StoreMode::Unavailable(code) => AgentEventSearchStatus {
+                capability: AgentEventSearchCapabilityState::Unavailable,
+                schema_version: search::SEARCH_SCHEMA_VERSION,
+                document_count: None,
+                index_bytes: None,
+                max_index_bytes: 256 * 1024 * 1024,
+                error_code: Some((*code).to_string()),
+                payload_text_is_private: true,
+                workspace_files_scanned: false,
+                image_ocr: false,
+            },
+        }
+    }
 }
 
 fn mode_error(mode: &StoreMode) -> StoreFault {
@@ -1315,6 +1377,11 @@ pub fn agent_event_store_status(state: State<'_, AgentEventStoreState>) -> Agent
 }
 
 #[tauri::command]
+pub fn agent_event_search_status(state: State<'_, AgentEventStoreState>) -> AgentEventSearchStatus {
+    state.search_status()
+}
+
+#[tauri::command]
 pub async fn agent_event_append(
     app: AppHandle,
     state: State<'_, AgentEventStoreState>,
@@ -1372,6 +1439,38 @@ pub async fn agent_event_payload(
         let mut inner = inner.lock();
         match &mut inner.mode {
             StoreMode::Ready(store) => store.payload(&event_id),
+            mode => Err(mode_error(mode)),
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn agent_event_search(
+    state: State<'_, AgentEventStoreState>,
+    request: AgentEventSearchRequest,
+) -> Result<AgentEventSearchPage, String> {
+    let inner = state.inner.clone();
+    run_blocking(move || {
+        let inner = inner.lock();
+        match &inner.mode {
+            StoreMode::Ready(store) => store.search(request),
+            mode => Err(mode_error(mode)),
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn agent_event_search_rebuild(
+    state: State<'_, AgentEventStoreState>,
+    confirmed: bool,
+) -> Result<AgentEventSearchRebuildResult, String> {
+    let inner = state.inner.clone();
+    run_blocking(move || {
+        let mut inner = inner.lock();
+        match &mut inner.mode {
+            StoreMode::Ready(store) => store.rebuild_search_index(confirmed),
             mode => Err(mode_error(mode)),
         }
     })
@@ -1628,6 +1727,21 @@ mod tests {
         sequences
     }
 
+    fn search_request(
+        query: &str,
+        scope: AgentEventQueryScope,
+        cursor: Option<String>,
+        limit: usize,
+    ) -> AgentEventSearchRequest {
+        AgentEventSearchRequest {
+            query: query.to_string(),
+            scope,
+            filters: search::AgentEventSearchFilters::default(),
+            cursor,
+            limit: Some(limit),
+        }
+    }
+
     #[test]
     fn append_is_durable_idempotent_and_payload_is_explicit() {
         let base = temp_base("append");
@@ -1650,6 +1764,251 @@ mod tests {
         let reopened = AgentEventStore::open(root).expect("reopen store");
         assert_eq!(reopened.headers.len(), 1);
         assert_eq!(reopened.headers[0].sequence, first.header.sequence);
+        fs::remove_dir_all(base).expect("remove fixture");
+    }
+
+    #[test]
+    fn search_is_durable_scoped_paginated_and_payload_lazy() {
+        let base = temp_base("search-durable");
+        let root = base.join("v1");
+        let mut store = AgentEventStore::open(root.clone()).expect("open store");
+        for index in 0..6 {
+            let mut request = append_request(
+                index,
+                "workspace-a",
+                if index == 0 { "task-b" } else { "task-a" },
+                true,
+            );
+            request.summary = format!("构建 release event {index}");
+            request.private_payload = Some(AgentEventPrivatePayloadInput {
+                content_type: "text/markdown".to_string(),
+                body: format!("中文 evidence {index}\n```rust\nparse::Item({index})\n```"),
+            });
+            store.append(request).expect("append searchable event");
+        }
+        let scope = AgentEventQueryScope::Task {
+            workspace_id: "workspace-a".to_string(),
+            task_id: "task-a".to_string(),
+        };
+        let first = store
+            .search(search_request("中文 parse::Item", scope.clone(), None, 2))
+            .expect("search first page");
+        assert_eq!(first.items.len(), 2);
+        assert_eq!(first.items[0].header.sequence, 6);
+        assert_eq!(first.items[1].header.sequence, 5);
+        assert!(first
+            .items
+            .iter()
+            .all(|hit| hit.match_field == search::AgentEventSearchMatchField::Payload));
+        assert!(first
+            .items
+            .iter()
+            .flat_map(|hit| &hit.highlights)
+            .all(|range| range.start_char < range.end_char && range.end_char <= 240));
+        assert_eq!(
+            store.payload_reads, 0,
+            "query must not touch Event Store payload files"
+        );
+        let cursor = first.next_cursor.clone().expect("search cursor");
+        let second = store
+            .search(search_request(
+                "中文 parse::Item",
+                scope.clone(),
+                Some(cursor.clone()),
+                2,
+            ))
+            .expect("search second page");
+        assert_eq!(
+            second
+                .items
+                .iter()
+                .map(|hit| hit.header.sequence)
+                .collect::<Vec<_>>(),
+            vec![4, 3]
+        );
+        let wrong_scope = AgentEventQueryScope::Workspace {
+            workspace_id: "workspace-a".to_string(),
+        };
+        assert_eq!(
+            store
+                .search(search_request(
+                    "中文 parse::Item",
+                    wrong_scope,
+                    Some(cursor.clone()),
+                    2
+                ))
+                .expect_err("cursor scope mismatch")
+                .code,
+            "invalidSearchCursor"
+        );
+        drop(store);
+        let mut reopened = AgentEventStore::open(root).expect("reopen searchable store");
+        let restarted = reopened
+            .search(search_request("中文 parse::Item", scope, None, 10))
+            .expect("search after restart");
+        assert_eq!(restarted.items.len(), 5);
+        reopened
+            .delete(AgentEventDeleteRequest {
+                scope: AgentEventDeleteScope::Task {
+                    workspace_id: "workspace-a".to_string(),
+                    task_id: "task-a".to_string(),
+                },
+                confirmed: true,
+            })
+            .expect("delete indexed task");
+        assert_eq!(
+            reopened
+                .search(search_request(
+                    "中文 parse::Item",
+                    AgentEventQueryScope::All,
+                    Some(cursor),
+                    2
+                ))
+                .expect_err("deleted cursor stale")
+                .code,
+            "invalidSearchCursor"
+        );
+        let empty = reopened
+            .search(search_request(
+                "中文 parse::Item",
+                AgentEventQueryScope::Task {
+                    workspace_id: "workspace-a".to_string(),
+                    task_id: "task-a".to_string(),
+                },
+                None,
+                10,
+            ))
+            .expect("search deleted scope");
+        assert!(empty.items.is_empty());
+        fs::remove_dir_all(base).expect("remove fixture");
+    }
+
+    #[test]
+    fn missing_corrupt_and_future_search_index_fail_closed_then_rebuild() {
+        let base = temp_base("search-rebuild");
+        let root = write_fixture(&base, 12, 2);
+        let mut store = AgentEventStore::open(root.clone()).expect("open old store without index");
+        assert!(matches!(store.search_index, SearchIndexMode::Missing));
+        assert_eq!(
+            store
+                .list(AgentEventListRequest {
+                    scope: AgentEventQueryScope::All,
+                    cursor: None,
+                    limit: Some(5)
+                })
+                .expect("ordinary timeline works")
+                .items
+                .len(),
+            5
+        );
+        assert_eq!(
+            store
+                .search(search_request(
+                    "fixture-private",
+                    AgentEventQueryScope::All,
+                    None,
+                    10
+                ))
+                .expect_err("missing index refuses query")
+                .code,
+            "searchUnavailable"
+        );
+        let rebuilt = store.rebuild_search_index(true).expect("explicit rebuild");
+        assert_eq!(rebuilt.document_count, 12);
+        assert_eq!(
+            store.payload_reads, 6,
+            "rebuild reads only indexed text payloads"
+        );
+        assert_eq!(
+            store
+                .search(search_request(
+                    "fixture-private",
+                    AgentEventQueryScope::All,
+                    None,
+                    20
+                ))
+                .expect("rebuilt search")
+                .items
+                .len(),
+            6
+        );
+        drop(store);
+
+        fs::write(root.join("search-v1/documents.jsonl"), b"{broken}\n")
+            .expect("corrupt search only");
+        let mut corrupt =
+            AgentEventStore::open(root.clone()).expect("Event Store survives corrupt search");
+        assert!(matches!(corrupt.search_index, SearchIndexMode::Corrupt(_)));
+        assert_eq!(
+            corrupt
+                .list(AgentEventListRequest {
+                    scope: AgentEventQueryScope::All,
+                    cursor: None,
+                    limit: Some(2)
+                })
+                .expect("timeline survives")
+                .items
+                .len(),
+            2
+        );
+        corrupt
+            .rebuild_search_index(true)
+            .expect("repair corrupt search");
+        drop(corrupt);
+
+        let manifest_path = root.join("search-v1/manifest.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).expect("read search manifest"))
+                .expect("parse search manifest");
+        manifest["schemaVersion"] = serde_json::json!(99);
+        atomic_write(
+            &manifest_path,
+            &serde_json::to_vec(&manifest).expect("serialize future manifest"),
+        )
+        .expect("write future manifest");
+        let future =
+            AgentEventStore::open(root).expect("Event Store survives future search schema");
+        assert!(matches!(
+            future.search_index,
+            SearchIndexMode::MigrationRequired(_)
+        ));
+        assert_eq!(future.headers.len(), 12);
+        fs::remove_dir_all(base).expect("remove fixture");
+    }
+
+    #[test]
+    fn image_indexing_uses_trusted_metadata_without_read_or_ocr() {
+        let base = temp_base("search-image");
+        let mut store = AgentEventStore::open(base.join("v1")).expect("open store");
+        let mut request = append_request(1, "workspace-image", "task-image", false);
+        request.private_payload = Some(AgentEventPrivatePayloadInput {
+            content_type: "image/png".to_string(),
+            body: "trusted-base64-placeholder".to_string(),
+        });
+        let appended = store.append(request).expect("append image metadata");
+        store
+            .rebuild_search_index(true)
+            .expect("rebuild image index");
+        assert_eq!(
+            store.payload_reads, 0,
+            "image body must not be read during rebuild"
+        );
+        let query = format!(
+            "image/png {}",
+            appended
+                .header
+                .payload
+                .expect("payload metadata")
+                .byte_length
+        );
+        let page = store
+            .search(search_request(&query, AgentEventQueryScope::All, None, 10))
+            .expect("search image metadata");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(
+            page.items[0].match_field,
+            search::AgentEventSearchMatchField::ImageMetadata
+        );
         fs::remove_dir_all(base).expect("remove fixture");
     }
 
@@ -2077,6 +2436,102 @@ mod tests {
         total
     }
 
+    fn write_search_benchmark_fixture(base: &Path) -> PathBuf {
+        let root = base.join("v1");
+        ensure_directory(&root).expect("create search benchmark root");
+        ensure_directory(&root.join(PAYLOADS_DIR)).expect("create search benchmark payloads");
+        write_manifest(
+            &root,
+            &ManifestV1 {
+                schema_version: SCHEMA_VERSION,
+                delete_generation: 0,
+            },
+        )
+        .expect("write search benchmark manifest");
+        let mut header_lines = Vec::new();
+        for index in 0..10_000usize {
+            let (kind, content_type, body) = if index < 1_000 {
+                (
+                    AgentEventKind::OutputSummary,
+                    Some("text/markdown"),
+                    Some(format!(
+                        "# 中文索引 markdown {index}\n```rust\nfn needle_{index:05}() {{ parse::Item({index}); }}\n```"
+                    )),
+                )
+            } else if index < 1_500 {
+                (
+                    AgentEventKind::ToolCall,
+                    Some("text/plain"),
+                    Some(format!(
+                        "中文索引 tool call {index} /private/tmp/fixture-{index} parse::Tool"
+                    )),
+                )
+            } else if index < 1_700 {
+                (
+                    AgentEventKind::FileChange,
+                    Some("text/x-diff"),
+                    Some(format!(
+                        "@@ -1 +1 @@\n-old-{index}\n+中文索引 diff-{index} parse::Diff"
+                    )),
+                )
+            } else if index < 1_800 {
+                (
+                    AgentEventKind::PreviewEvidence,
+                    Some("image/png"),
+                    Some(format!("aW1hZ2UtZml4dHVyZS0{index}")),
+                )
+            } else {
+                (AgentEventKind::AgentStatus, None, None)
+            };
+            let sequence = index as u64 + 1;
+            let payload = body.as_ref().zip(content_type).map(|(body, content_type)| {
+                AgentEventPayloadMetaV1 {
+                    state: AgentEventPayloadState::Available,
+                    content_type: content_type.to_string(),
+                    byte_length: body.len() as u64,
+                    sha256: sha256_hex(body.as_bytes()),
+                }
+            });
+            let header = AgentEventHeaderV1 {
+                schema_version: SCHEMA_VERSION,
+                sequence,
+                event_id: event_id(sequence),
+                client_event_id: format!("search-client-{index}"),
+                workspace_id: format!("workspace-{}", index % 2),
+                task_id: format!("task-{}", index % 4),
+                session_id: Some(format!("session-{}", index % 8)),
+                kind,
+                source: if index % 3 == 0 {
+                    AgentEventSource::Hook
+                } else {
+                    AgentEventSource::Process
+                },
+                occurred_at_ms: 1_700_000_000_000 + index as i64,
+                recorded_at_ms: 1_700_000_000_000 + index as i64,
+                summary: format!("header summary {index} source-bound"),
+                payload,
+            };
+            header_lines.extend_from_slice(&serialize_json(&header).expect("serialize header"));
+            header_lines.push(b'\n');
+            if let (Some(content_type), Some(body)) = (content_type, body) {
+                let stored = StoredPayloadV1 {
+                    schema_version: SCHEMA_VERSION,
+                    event_id: header.event_id.clone(),
+                    content_type: content_type.to_string(),
+                    body,
+                };
+                fs::write(
+                    root.join(PAYLOADS_DIR)
+                        .join(format!("{}.json", header.event_id)),
+                    serialize_json(&stored).expect("serialize search benchmark payload"),
+                )
+                .expect("write search benchmark payload");
+            }
+        }
+        fs::write(root.join(HEADERS_FILE), header_lines).expect("write search benchmark headers");
+        root
+    }
+
     #[cfg(target_os = "macos")]
     fn rss_kib() -> u64 {
         let output = std::process::Command::new("ps")
@@ -2087,6 +2542,110 @@ mod tests {
             .trim()
             .parse()
             .expect("parse rss")
+    }
+
+    #[test]
+    #[ignore = "run explicitly in the optimized macOS M3 harness"]
+    #[cfg(target_os = "macos")]
+    fn macos_optimized_search_harness_10000_headers_and_rich_payloads() {
+        let base = temp_base("macos-search-harness");
+        let fixture_started = Instant::now();
+        let root = write_search_benchmark_fixture(&base);
+        let fixture_ms = fixture_started.elapsed().as_millis();
+        let rss_before = rss_kib();
+        let open_started = Instant::now();
+        let mut store = AgentEventStore::open(root.clone()).expect("open rich search fixture");
+        let first_open_ms = open_started.elapsed().as_millis();
+        assert!(matches!(store.search_index, SearchIndexMode::Missing));
+        let first = store
+            .list(AgentEventListRequest {
+                scope: AgentEventQueryScope::All,
+                cursor: None,
+                limit: Some(100),
+            })
+            .expect("first header-only page");
+        assert_eq!(first.items.len(), 100);
+        assert_eq!(
+            store.payload_reads, 0,
+            "first open must not preload payloads"
+        );
+
+        let rebuild_started = Instant::now();
+        let rebuilt = store
+            .rebuild_search_index(true)
+            .expect("explicitly rebuild rich search index");
+        let rebuild_ms = rebuild_started.elapsed().as_millis();
+        assert_eq!(rebuilt.document_count, 10_000);
+        assert_eq!(
+            store.payload_reads, 1_700,
+            "images are metadata-only during rebuild"
+        );
+        let reads_after_rebuild = store.payload_reads;
+
+        let english_started = Instant::now();
+        let english = store
+            .search(search_request(
+                "needle_00999 parse::Item",
+                AgentEventQueryScope::All,
+                None,
+                100,
+            ))
+            .expect("English code-symbol query");
+        let english_query_us = english_started.elapsed().as_micros();
+        assert_eq!(english.items.len(), 1);
+        let chinese_started = Instant::now();
+        let chinese = store
+            .search(search_request(
+                "中文索引",
+                AgentEventQueryScope::All,
+                None,
+                100,
+            ))
+            .expect("Chinese broad query");
+        let chinese_query_us = chinese_started.elapsed().as_micros();
+        assert_eq!(chinese.items.len(), 100);
+        assert!(chinese.next_cursor.is_some());
+        let second = store
+            .search(search_request(
+                "中文索引",
+                AgentEventQueryScope::All,
+                chinese.next_cursor,
+                100,
+            ))
+            .expect("second search page");
+        assert_eq!(second.items.len(), 100);
+        assert_eq!(
+            store.payload_reads, reads_after_rebuild,
+            "queries read index only"
+        );
+
+        drop(store);
+        let restart_one_started = Instant::now();
+        let store = AgentEventStore::open(root.clone()).expect("first search restart");
+        let restart_one_ms = restart_one_started.elapsed().as_millis();
+        drop(store);
+        let restart_two_started = Instant::now();
+        let store = AgentEventStore::open(root.clone()).expect("second search restart");
+        let restart_two_ms = restart_two_started.elapsed().as_millis();
+        assert!(matches!(store.search_index, SearchIndexMode::Ready(_)));
+        let rss_after = rss_kib();
+        let rss_delta_kib = rss_after.saturating_sub(rss_before);
+        let disk_bytes = directory_bytes(&root);
+        println!(
+            "m3_search_harness fixture_ms={fixture_ms} first_open_ms={first_open_ms} rebuild_ms={rebuild_ms} restart_one_ms={restart_one_ms} restart_two_ms={restart_two_ms} english_query_us={english_query_us} chinese_query_us={chinese_query_us} documents={} markdown=1000 tools=500 diffs=200 images=100 first_open_payload_reads=0 query_payload_reads=0 rss_delta_kib={rss_delta_kib} disk_bytes={disk_bytes}",
+            rebuilt.document_count
+        );
+        assert!(first_open_ms < 500, "header-only open exceeded 500ms");
+        assert!(
+            restart_one_ms < 500 && restart_two_ms < 500,
+            "search restart exceeded 500ms"
+        );
+        assert!(
+            english_query_us < 75_000 && chinese_query_us < 75_000,
+            "search query exceeded 75ms"
+        );
+        assert!(rss_delta_kib < 64 * 1024, "search RSS delta exceeded 64MiB");
+        fs::remove_dir_all(base).expect("remove search benchmark fixture");
     }
 
     #[test]

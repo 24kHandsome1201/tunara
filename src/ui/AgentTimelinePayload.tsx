@@ -10,11 +10,12 @@ type PayloadState =
   | { status: "ready"; payload: ValidatedTimelinePayload }
   | { status: "error"; code: string };
 
-export function AgentTimelinePayload({ header, manager, provenanceKnown, expanded, onExpandedChange }: {
+export function AgentTimelinePayload({ header, manager, provenanceKnown, expanded, preloadVisible = true, onExpandedChange }: {
   header: AgentEventHeaderV1;
   manager: TimelinePayloadResourceManager;
   provenanceKnown: boolean;
   expanded: boolean;
+  preloadVisible?: boolean;
   onExpandedChange: (expanded: boolean) => void;
 }) {
   const t = useT();
@@ -34,7 +35,7 @@ export function AgentTimelinePayload({ header, manager, provenanceKnown, expande
     return () => observer.disconnect();
   }, [header.eventId]);
 
-  const shouldLoad = visible || expanded;
+  const shouldLoad = preloadVisible ? visible || expanded : expanded;
   useEffect(() => {
     if (!shouldLoad || !header.payload) {
       setState({ status: "idle" });
