@@ -14,6 +14,7 @@ import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 import { RUNBOOK_BLUEPRINTS, appendRunbookToNote } from "@/modules/runbook/blueprints";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
+import { canSplitLayout } from "@/modules/session/split-layout";
 
 interface Command {
   id: string;
@@ -426,7 +427,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-horizontal");
-        if (uiStore.getState().split.mode !== "single") { onClose(); return; }
+        if (!canSplitLayout(uiStore.getState().split)) { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("horizontal");
         onClose();
       },
@@ -442,7 +443,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-vertical");
-        if (uiStore.getState().split.mode !== "single") { onClose(); return; }
+        if (!canSplitLayout(uiStore.getState().split)) { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("vertical");
         onClose();
       },

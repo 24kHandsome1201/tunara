@@ -417,6 +417,8 @@
   "toast.copied": "已复制",
   "term.copy": "复制",
   "term.paste": "粘贴",
+  "term.new_terminal_right": "新建右侧终端",
+  "term.new_terminal_down": "新建下侧终端",
   "inspector.tab.notes": "笔记",
   "inspector.tab.overview": "概览",
   "notes.clear": "清空",

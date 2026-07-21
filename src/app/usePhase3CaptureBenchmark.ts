@@ -113,7 +113,7 @@ export function usePhase3CaptureBenchmark(ready: boolean): void {
         panelVisible: true,
         inspectorTab: "preview",
         overlay: null,
-        split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
+        split: { root: null },
       });
       await delay(0);
       useSessionsStore.getState().addSession(sessionA);

@@ -11,6 +11,7 @@ import { formatShortcut } from "./formatShortcut";
 import { getNumberRecordValue } from "@/state/record-keys";
 import { useSessionGitContext } from "./useSessionGitContext";
 import { useWorkspaceHydration } from "./useWorkspaceHydration";
+import { splitLayoutGeometry, splitLayoutSessionIds } from "@/modules/session/split-layout";
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -102,12 +103,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const split = useUIStore((s) => s.split);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
-  const paneASession =
-    split.mode !== "single" && split.paneA
-      ? sessions.find((s) => s.id === split.paneA)
-      : null;
-  const paneBSession = split.paneB ? sessions.find((s) => s.id === split.paneB) : null;
-
   // Captured as primitives so the git effect depends on exactly the fields it
   // reads. Depending on the whole `active` object would re-run the effect on
   // every session mutation (updatedAt bumps on each patch) — and since the
@@ -137,27 +132,33 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
     return `${parts[0]}/.../${parts.slice(-2).join("/")}`;
   }
 
-  const isSplit = split.mode !== "single" && paneASession && paneBSession && paneASession.id !== paneBSession.id;
-  const isHorizontal = split.mode === "horizontal";
+  const isSplit = split.root !== null;
+  const splitGeometry = splitLayoutGeometry(split);
 
   const mountedIdsForRender = new Set(Object.keys(launchedSessionIds));
   const mountedSessions = sessions.filter((s) => mountedIdsForRender.has(s.id));
 
   // Every mounted session keeps a stable, keyed wrapper across single<->split
   // transitions so React never unmounts its TerminalView (which would close the
-  // PTY and kill any running agent). Layout is driven entirely by CSS here.
+  // PTY and kill any running agent). The BSP tree only provides normalized
+  // rectangles; every terminal remains a stable root-level sibling.
   function paneWrapperStyle(s: Session): React.CSSProperties {
-    const isPaneA = isSplit && s.id === paneASession!.id;
-    const isPaneB = isSplit && s.id === paneBSession!.id;
+    const pane = splitGeometry.panes[s.id];
 
-    if (isPaneA || isPaneB) {
-      const ratioPct = isPaneA ? split.ratio : 1 - split.ratio;
-      const activeMarker = isHorizontal
+    if (isSplit && pane) {
+      const leftInset = pane.x > 0 ? 2.5 : 0;
+      const topInset = pane.y > 0 ? 2.5 : 0;
+      const rightInset = pane.x + pane.width < 1 ? 2.5 : 0;
+      const bottomInset = pane.y + pane.height < 1 ? 2.5 : 0;
+      const activeMarker = pane.parentDirection === "horizontal"
         ? "inset 2px 0 0 var(--c-accent)"
         : "inset 0 2px 0 var(--c-accent)";
       return {
-        [isHorizontal ? "width" : "height"]: `calc(${ratioPct * 100}% - 2.5px)`,
-        order: isPaneA ? 0 : 2,
+        position: "absolute",
+        left: `calc(${pane.x * 100}% + ${leftInset}px)`,
+        top: `calc(${pane.y * 100}% + ${topInset}px)`,
+        width: `calc(${pane.width * 100}% - ${leftInset + rightInset}px)`,
+        height: `calc(${pane.height * 100}% - ${topInset + bottomInset}px)`,
         display: "flex",
         flexDirection: "column",
         minWidth: 0,
@@ -185,7 +186,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}>
-      <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: isSplit ? (isHorizontal ? "row" : "column") : "row" }}>
+      <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {mountedSessions.map((s) => (
           <div
             key={s.id}
@@ -197,13 +198,16 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             <TerminalPane session={s} isActive={s.id === activeSessionId} />
           </div>
         ))}
-        {isSplit && (
+        {splitGeometry.handles.map((handle) => (
           <SplitHandle
-            mode={split.mode as "horizontal" | "vertical"}
+            key={handle.path}
+            direction={handle.direction}
+            path={handle.path}
+            ratio={handle.ratio}
+            nodeRect={handle.nodeRect}
             containerRef={splitContainerRef}
-            order={1}
           />
-        )}
+        ))}
       </div>
 
       <div
@@ -251,8 +255,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             <button
               onClick={() => {
                 const ui = useUIStore.getState();
-                const paneAId = ui.split.paneA;
-                if (paneAId) useSessionsStore.getState().setActive(paneAId);
+                const firstPaneId = splitLayoutSessionIds(ui.split)[0];
+                if (firstPaneId) useSessionsStore.getState().setActive(firstPaneId);
                 ui.closeSplit();
               }}
               title={t("split.close")}

@@ -417,6 +417,8 @@
   "toast.copied": "Copied",
   "term.copy": "Copy",
   "term.paste": "Paste",
+  "term.new_terminal_right": "New terminal to the right",
+  "term.new_terminal_down": "New terminal below",
   "inspector.tab.notes": "Notes",
   "inspector.tab.overview": "Overview",
   "notes.clear": "Clear",

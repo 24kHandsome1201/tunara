@@ -6,17 +6,19 @@ import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type
 import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
 import { persistBootAppearance } from "@/styles/shell-tint-boot";
+import {
+  emptySplitState,
+  insertSplitPane as insertSplitPaneLayout,
+  removeSplitPane as removeSplitPaneLayout,
+  replaceSplitPane as replaceSplitPaneLayout,
+  setSplitRatioAt,
+  type SplitDirection,
+  type SplitPath,
+  type SplitState,
+} from "@/modules/session/split-layout";
 
 export type CursorStyle = "bar" | "block" | "underline";
-
-export type SplitMode = "single" | "horizontal" | "vertical";
-
-export interface SplitState {
-  mode: SplitMode;
-  paneA: string | null;
-  paneB: string | null;
-  ratio: number;
-}
+export type { SplitState } from "@/modules/session/split-layout";
 
 export interface AppearanceSettings {
   theme: ThemeType;
@@ -281,12 +283,11 @@ interface UIState extends AppearanceSettings {
   setPanelWidth: (w: number) => void;
   setTrafficLightWidth: (w: number) => void;
   setViewportWidth: (w: number) => void;
-  splitHorizontal: (paneASessionId: string, paneBSessionId: string) => void;
-  splitVertical: (paneASessionId: string, paneBSessionId: string) => void;
+  splitPane: (targetSessionId: string, newSessionId: string, direction: SplitDirection) => boolean;
+  replaceSplitPane: (targetSessionId: string, newSessionId: string) => void;
+  removeSplitPane: (sessionId: string) => string | null;
   closeSplit: () => void;
-  setSplitRatio: (ratio: number) => void;
-  setSplitPaneB: (sessionId: string | null) => void;
-  setSplitPaneA: (sessionId: string | null) => void;
+  setSplitRatio: (path: SplitPath, ratio: number) => void;
   addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
   /** Append a host-key prompt to the queue (no-op if its promptId is already
@@ -321,7 +322,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     sshPrefill: null,
     trafficLightWidth: 0,
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
-    split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
+    split: emptySplitState(),
     inspectorTab: "overview" as InspectorTab,
     settingsTab: "appearance" as SettingsTab,
     toasts: [],
@@ -364,18 +365,31 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     },
     setTrafficLightWidth: (trafficLightWidth) => set({ trafficLightWidth }),
     setViewportWidth: (viewportWidth) => set({ viewportWidth }),
-    splitHorizontal: (paneASessionId, paneBSessionId) =>
-      set({ split: { mode: "horizontal", paneA: paneASessionId, paneB: paneBSessionId, ratio: 0.5 } }),
-    splitVertical: (paneASessionId, paneBSessionId) =>
-      set({ split: { mode: "vertical", paneA: paneASessionId, paneB: paneBSessionId, ratio: 0.5 } }),
-    closeSplit: () =>
-      set({ split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }),
-    setSplitRatio: (ratio) =>
-      set((s) => ({ split: { ...s.split, ratio: Math.max(0.2, Math.min(0.8, ratio)) } })),
-    setSplitPaneB: (sessionId) =>
-      set((s) => sessionId ? { split: { ...s.split, paneB: sessionId } } : { split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }),
-    setSplitPaneA: (sessionId) =>
-      set((s) => sessionId ? { split: { ...s.split, paneA: sessionId } } : { split: { ...s.split, paneA: null } }),
+    splitPane: (targetSessionId, newSessionId, direction) => {
+      let inserted = false;
+      set((state) => {
+        const split = insertSplitPaneLayout(state.split, targetSessionId, newSessionId, direction);
+        if (!split) return {};
+        inserted = true;
+        return { split };
+      });
+      return inserted;
+    },
+    replaceSplitPane: (targetSessionId, newSessionId) =>
+      set((state) => ({ split: replaceSplitPaneLayout(state.split, targetSessionId, newSessionId) })),
+    removeSplitPane: (sessionId) => {
+      let focusSessionId: string | null = null;
+      set((state) => {
+        const result = removeSplitPaneLayout(state.split, sessionId);
+        if (!result.removed) return {};
+        focusSessionId = result.focusSessionId;
+        return { split: result.split };
+      });
+      return focusSessionId;
+    },
+    closeSplit: () => set({ split: emptySplitState() }),
+    setSplitRatio: (path, ratio) =>
+      set((state) => ({ split: setSplitRatioAt(state.split, path, ratio) })),
     addToast: (toast) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       // I8: keep the last 6 toasts (was 3). Batch operations like "close all

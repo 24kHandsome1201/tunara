@@ -42,6 +42,11 @@ import {
 } from "./sessions-git";
 import { clearSshCredentials } from "@/modules/ssh/pending-credentials";
 import {
+  splitLayoutHasSession,
+  splitLayoutSessionIds,
+  type SplitDirection,
+} from "@/modules/session/split-layout";
+import {
   initialConnectionEvidence,
   reduceConnectionEvidence,
   type ConnectionEvent,
@@ -129,7 +134,7 @@ interface SessionsState {
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
   newTerminalWithInput: (input: string, dir?: string) => void;
-  splitWithNewSession: (direction: "horizontal" | "vertical") => void;
+  splitWithNewSession: (direction: SplitDirection, sourceSessionId?: string) => void;
   closeSession: (id: string) => void;
 }
 
@@ -195,11 +200,15 @@ function isSessionObserved(activeSessionId: string | null, sessionId: string): b
     && (typeof document === "undefined" || document.hasFocus());
 }
 
-function ensureSessionVisibleInSplit(sessionId: string) {
+function ensureSessionVisibleInSplit(sessionId: string, previousActiveSessionId: string | null) {
   const ui = useUIStore.getState();
   const { split } = ui;
-  if (split.mode === "single" || split.paneA === sessionId || split.paneB === sessionId) return;
-  ui.setSplitPaneB(sessionId);
+  if (!split.root || splitLayoutHasSession(split, sessionId)) return;
+  const splitSessionIds = splitLayoutSessionIds(split);
+  const targetSessionId = previousActiveSessionId && splitLayoutHasSession(split, previousActiveSessionId)
+    ? previousActiveSessionId
+    : splitSessionIds[splitSessionIds.length - 1];
+  if (targetSessionId) ui.replaceSplitPane(targetSessionId, sessionId);
 }
 
 function cancelCloseConfirmationTimer(id: string) {
@@ -248,6 +257,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessionTimelines: {},
 
   addSession: (s) => {
+    const previousActiveSessionId = get().activeSessionId;
     set((state) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
@@ -256,7 +266,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       // of the recent-dirs affordance.
       recentDirs: s.remote ? state.recentDirs : pushRecentDir(state.recentDirs, s.dir),
     }));
-    ensureSessionVisibleInSplit(s.id);
+    ensureSessionVisibleInSplit(s.id, previousActiveSessionId);
   },
 
   removeSession: (id) => {
@@ -268,6 +278,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     clearQueuedGitNonceBump(id);
     removeTerminalSnapshot(id);
     clearSshCredentials(id);
+    const wasActive = get().activeSessionId === id;
+    const splitFocusSessionId = useUIStore.getState().removeSplitPane(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
@@ -291,6 +303,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         recentSessionIds: state.recentSessionIds.filter((sid) => sid !== id),
       };
     });
+    if (wasActive && splitFocusSessionId && get().sessions.some((s) => s.id === splitFocusSessionId)) {
+      set((state) => ({
+        activeSessionId: splitFocusSessionId,
+        launchedSessionIds: { ...state.launchedSessionIds, [splitFocusSessionId]: true },
+      }));
+    }
   },
 
   setActive: (id) => {
@@ -312,7 +330,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         ),
       };
     });
-    if (accepted) ensureSessionVisibleInSplit(id);
+    if (accepted) ensureSessionVisibleInSplit(id, currentId);
   },
 
   // Cycle to the next/prev session by most-recent-active order (Mod+Tab). "next"
@@ -808,24 +826,19 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }));
   },
 
-  splitWithNewSession: (direction) => {
-    const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    const splitContext = splitTerminalContextFromSession(active);
+  splitWithNewSession: (direction, sourceSessionId) => {
+    const source = get().sessions.find((s) => s.id === (sourceSessionId ?? get().activeSessionId));
+    const splitContext = splitTerminalContextFromSession(source);
     const newSess = createSession(splitContext.dir, {
       title: t("session.default_title"),
       remote: splitContext.remote,
     });
-    if (!active) {
+    if (!source) {
       get().addSession(newSess);
       return;
     }
+    if (!useUIStore.getState().splitPane(source.id, newSess.id, direction)) return;
     get().addSession(newSess);
-    const ui = useUIStore.getState();
-    if (direction === "horizontal") {
-      ui.splitHorizontal(active.id, newSess.id);
-    } else {
-      ui.splitVertical(active.id, newSess.id);
-    }
   },
 
   closeSession: (id) => {
@@ -848,19 +861,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       }
     }
 
-    const ui = useUIStore.getState();
-    let survivor: string | null = null;
-    if (ui.split.mode !== "single") {
-      const split = ui.split;
-      if (split.paneA === id || split.paneB === id) {
-        survivor = split.paneA === id ? split.paneB : split.paneA;
-        ui.closeSplit();
-      }
-    }
     get().removeSession(id);
-    if (survivor && get().sessions.some((s) => s.id === survivor)) {
-      set({ activeSessionId: survivor });
-    }
     if (get().sessions.length === 0) get().addSession(createSession("~", { title: t("session.default_title") }));
   },
 }));

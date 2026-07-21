@@ -10,6 +10,7 @@ import {
   type PersistedUILayoutV2,
   type WorkspaceSnapshotV1,
 } from "./persist-snapshot.ts";
+import { emptySplitState } from "../modules/session/split-layout.ts";
 
 export { sanitizeSnapshot } from "./persist-snapshot.ts";
 export type {
@@ -130,7 +131,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotLoadResu
       panelVisible: layout?.panelVisible ?? true,
       collapsedDirs: {},
       collapsedDiffSections: {},
-      split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
+      split: emptySplitState(),
       inspectorTab: "overview",
     };
 

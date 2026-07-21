@@ -779,14 +779,17 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   const sessionsGit = read("src/state/sessions-git.ts");
   const init = read("src/app/useInit.ts");
 
-  assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string\)/);
-  assert.match(source, /ui\.setSplitPaneB\(sessionId\)/);
-  assert.match(source, /ensureSessionVisibleInSplit\(s\.id\)/);
-  assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
+  assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string, previousActiveSessionId: string \| null\)/);
+  assert.match(source, /previousActiveSessionId && splitLayoutHasSession\(split, previousActiveSessionId\)[\s\S]*ui\.replaceSplitPane\(targetSessionId, sessionId\)/);
+  assert.match(source, /ensureSessionVisibleInSplit\(s\.id, previousActiveSessionId\)/);
+  assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id, currentId\);/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
   assert.match(source, /scheduleGitRefresh\(id, set\)/);
-  assert.match(source, /const splitContext = splitTerminalContextFromSession\(active\);/);
+  assert.match(source, /const splitContext = splitTerminalContextFromSession\(source\);/);
   assert.match(source, /createSession\(splitContext\.dir,[\s\S]*remote: splitContext\.remote/);
+  // Install the new pane in the tree before addSession changes the active id;
+  // addSession's visibility guard must therefore see the pane already present.
+  assert.match(source, /splitPane\(source\.id, newSess\.id, direction\)[\s\S]*get\(\)\.addSession\(newSess\)/);
   assert.match(source, /from "\.\/sessions-git"/);
   // refreshGit coalesces per-session nonce bumps into one store write via
   // bumpGitNonce → flushGitNonceBumps; the increment itself is unchanged.
@@ -810,6 +813,7 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /recentDirs: snapshot\.recentDirs/);
   assert.match(init, /recentCommands: snapshot\.recentCommands/);
   assert.match(init, /agentResume: snapshot\.agentResume\[p\.id\]/);
+  assert.match(init, /for \(const sessionId of splitLayoutSessionIds\(split\)\)[\s\S]*launchedSessionIds\[sessionId\] = true/);
 });
 
 test("terminal panes keep stable keyed mounts across single/split so the agent PTY survives", () => {
@@ -823,12 +827,28 @@ test("terminal panes keep stable keyed mounts across single/split so the agent P
   // so MainArea re-renders on agent heartbeats don't re-render every terminal).
   assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{s\.id === activeSessionId\} \/>/);
   assert.match(main, /const TerminalPane = memo\(function TerminalPane/);
-  assert.match(main, /order: isPaneA \? 0 : 2/);
+  assert.match(main, /const pane = splitGeometry\.panes\[s\.id\]/);
+  assert.match(main, /position: "absolute"[\s\S]*left: `calc\(\$\{pane\.x \* 100\}%[\s\S]*width: `calc\(\$\{pane\.width \* 100\}%/);
   // Regression shape from the removed single-mode branch must be gone.
   assert.doesNotMatch(main, /display: isActive \? "flex" : "none"/);
-  // SplitHandle takes the middle flex slot via an order prop.
-  assert.match(handle, /order\?: number/);
-  assert.match(main, /containerRef=\{splitContainerRef\}\s*order=\{1\}/);
+  // Every nested BSP handle is absolutely positioned over its own normalized
+  // node rectangle instead of occupying a flex slot that would remount panes.
+  assert.match(handle, /position: "absolute"/);
+  assert.match(handle, /nodeRect\.x \+ nodeRect\.width \* ratio/);
+  assert.match(main, /splitGeometry\.handles\.map\(\(handle\) => \([\s\S]*key=\{handle\.path\}[\s\S]*nodeRect=\{handle\.nodeRect\}/);
+});
+
+test("terminal context menu splits the pane that was right-clicked and enforces the four-pane cap", () => {
+  const chrome = read("src/ui/TerminalViewChrome.tsx");
+  const layout = read("src/modules/session/split-layout.ts");
+
+  assert.match(chrome, /sessionId: string/);
+  assert.match(chrome, /canSplit: canSplitLayout\(useUIStore\.getState\(\)\.split\)/);
+  assert.match(chrome, /id: "split-right"[\s\S]*splitWithNewSession\("horizontal", sessionId\)/);
+  assert.match(chrome, /id: "split-down"[\s\S]*splitWithNewSession\("vertical", sessionId\)/);
+  assert.match(chrome, /disabled: !menu\.canSplit/g);
+  assert.match(layout, /export const MAX_SPLIT_PANES = 4/);
+  assert.match(layout, /splitLayoutPaneCount\(split\) < MAX_SPLIT_PANES/);
 });
 
 test("file previews and markdown rendering stay bounded", () => {

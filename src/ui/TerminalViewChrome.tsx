@@ -11,8 +11,12 @@ import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
 import type { TerminalCommandBlock } from "@/modules/terminal/lib/terminal-blocks";
 import { requestProtectedTerminalPaste } from "@/modules/terminal/lib/terminal-paste-protection";
+import { canSplitLayout } from "@/modules/session/split-layout";
+import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 
 interface TerminalViewChromeProps {
+  sessionId: string;
   containerRef: RefObject<HTMLDivElement | null>;
   /** Returns the live xterm instance for copy/paste actions, or null before init. */
   getTerminal: () => Terminal | null;
@@ -30,6 +34,7 @@ interface TerminalViewChromeProps {
 }
 
 export function TerminalViewChrome({
+  sessionId,
   containerRef,
   getTerminal,
   search,
@@ -46,7 +51,7 @@ export function TerminalViewChrome({
 }: TerminalViewChromeProps) {
   const t = useT();
   const [blockFilter, setBlockFilter] = useState<{ block: TerminalCommandBlock; output: string } | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean } | null>(null);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     const term = getTerminal();
@@ -54,7 +59,14 @@ export function TerminalViewChrome({
     e.preventDefault();
     // xterm's rightClickSelectsWord has already selected the word under the cursor
     // by the time this contextmenu event fires, so getSelection() reflects it.
-    setMenu({ x: e.clientX, y: e.clientY, hasSelection: !!term.getSelection() });
+    // Capture split capability together with this pane's session id. Like HerdR,
+    // the eventual action must not infer its target from whichever pane is active.
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      hasSelection: !!term.getSelection(),
+      canSplit: canSplitLayout(useUIStore.getState().split),
+    });
   };
 
   const copySelection = () => {
@@ -131,6 +143,21 @@ export function TerminalViewChrome({
           items={[
             { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: copySelection },
             { id: "paste", label: t("term.paste"), action: pasteClipboard },
+            null,
+            {
+              id: "split-right",
+              label: t("term.new_terminal_right"),
+              icon: "terminal",
+              disabled: !menu.canSplit,
+              action: () => useSessionsStore.getState().splitWithNewSession("horizontal", sessionId),
+            },
+            {
+              id: "split-down",
+              label: t("term.new_terminal_down"),
+              icon: "terminal",
+              disabled: !menu.canSplit,
+              action: () => useSessionsStore.getState().splitWithNewSession("vertical", sessionId),
+            },
           ]}
         />
       )}

@@ -31,6 +31,7 @@ import { useEffect } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
+import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -235,7 +236,7 @@ export default function App() {
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const panelWidth = useUIStore((s) => s.panelWidth);
   const viewportWidth = useUIStore((s) => s.viewportWidth);
-  const splitMode = useUIStore((s) => s.split.mode);
+  const terminalColumnCount = useUIStore((s) => splitHorizontalPaneCount(s.split));
   const setViewportWidth = useUIStore((s) => s.setViewportWidth);
 
   useInit();
@@ -277,10 +278,10 @@ export default function App() {
     panelVisible,
     sidebarWidth,
     panelWidth,
-    splitMode,
+    terminalColumnCount,
   });
 
-  const layoutInput = { viewportWidth, sidebarVisible, panelVisible, sidebarWidth, panelWidth, splitMode };
+  const layoutInput = { viewportWidth, sidebarVisible, panelVisible, sidebarWidth, panelWidth, terminalColumnCount };
   const toggleSidebarWithoutStacking = () => {
     if (!sidebarVisible && auxiliarySurfaceToCloseOnOpen(layoutInput, "sidebar") === "panel") {
       setPanelVisible(false);

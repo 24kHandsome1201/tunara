@@ -1,5 +1,3 @@
-import type { SplitMode } from "@/state/ui";
-
 export const MIN_TERMINAL_PANE_WIDTH = 280;
 export const MIN_SINGLE_TERMINAL_WIDTH = 480;
 export const SPLIT_HANDLE_WIDTH = 5;
@@ -13,7 +11,7 @@ export interface AppShellLayoutInput {
   panelVisible: boolean;
   sidebarWidth: number;
   panelWidth: number;
-  splitMode: SplitMode;
+  terminalColumnCount: number;
 }
 
 export interface AppShellLayout {
@@ -62,8 +60,11 @@ export function resolveAppShellLayout(input: AppShellLayoutInput): AppShellLayou
   const viewportWidth = finiteWidth(input.viewportWidth);
   const requestedSidebarWidth = input.sidebarVisible ? finiteWidth(input.sidebarWidth) : 0;
   const requestedPanelWidth = input.panelVisible ? finiteWidth(input.panelWidth) : 0;
-  const minimumTerminalWorkspaceWidth = input.splitMode === "horizontal"
-    ? MIN_TERMINAL_PANE_WIDTH * 2 + SPLIT_HANDLE_WIDTH
+  const terminalColumnCount = Number.isFinite(input.terminalColumnCount)
+    ? Math.max(1, Math.trunc(input.terminalColumnCount))
+    : 1;
+  const minimumTerminalWorkspaceWidth = terminalColumnCount > 1
+    ? MIN_TERMINAL_PANE_WIDTH * terminalColumnCount + SPLIT_HANDLE_WIDTH * (terminalColumnCount - 1)
     : MIN_SINGLE_TERMINAL_WIDTH;
 
   // Grow reserved shell space one pixel for every pixel the window gains.

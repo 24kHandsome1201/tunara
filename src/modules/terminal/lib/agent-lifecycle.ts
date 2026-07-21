@@ -4,7 +4,7 @@ import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 import { shellCommandName, splitShellCommandSegments, tokenizeShellWords } from "./shell-command.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
-export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI", "AM"]);
 
 export type AgentLifecycleEventName = "start" | "busy" | "wait" | "idle" | "stop" | "exit";
 
@@ -235,9 +235,27 @@ export function detectPiScreenState(text: string): AgentScreenState {
   return null;
 }
 
+// Amp removes its bordered composer while a turn is running and restores it
+// when input is available again. Match both borders so conversation dividers
+// or ordinary box-drawing output cannot complete a turn on their own.
+const AMP_COMPOSER_TOP_PATTERN = /^\s*╭─+/m;
+const AMP_COMPOSER_BOTTOM_PATTERN = /^\s*╰─+/m;
+
+export function detectAmpScreenState(text: string): AgentScreenState {
+  const recent = cleanTerminalLines(text)
+    .split("\n")
+    .slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT)
+    .join("\n");
+  if (AMP_COMPOSER_TOP_PATTERN.test(recent) && AMP_COMPOSER_BOTTOM_PATTERN.test(recent)) {
+    return "ready";
+  }
+  return null;
+}
+
 export function detectPromptAgentScreenState(agent: AgentCode, text: string): AgentScreenState {
   if (agent === "CX") return detectCodexScreenState(text);
   if (agent === "PI") return detectPiScreenState(text);
+  if (agent === "AM") return detectAmpScreenState(text);
   return null;
 }
 

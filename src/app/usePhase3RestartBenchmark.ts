@@ -103,7 +103,7 @@ export function usePhase3RestartBenchmark(ready: boolean): void {
       const sessionA = createSession(rootA, { title: "Phase 3 restart A" });
       const sessionB = createSession(rootB, { title: "Phase 3 restart B" });
       useSessionsStore.setState({ sessions: [], activeSessionId: null, launchedSessionIds: {} });
-      useUIStore.setState({ panelVisible: true, inspectorTab: "preview", overlay: null, split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } });
+      useUIStore.setState({ panelVisible: true, inspectorTab: "preview", overlay: null, split: { root: null } });
       await delay(0);
       useSessionsStore.getState().addSession(sessionA);
       useSessionsStore.getState().addSession(sessionB);

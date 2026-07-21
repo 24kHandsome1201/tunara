@@ -241,7 +241,15 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.deepEqual(snapshot.ui.collapsedDiffSections, { staged: true, untracked: true });
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.ui.collapsedDirs, "constructor"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.ui.collapsedDiffSections, "__proto__"), false);
-    assert.deepEqual(snapshot.ui.split, { mode: "vertical", paneA: "s-a", paneB: "s-b", ratio: 0.8 });
+    assert.deepEqual(snapshot.ui.split, {
+      root: {
+        type: "split",
+        direction: "vertical",
+        ratio: 0.8,
+        first: { type: "pane", sessionId: "s-a" },
+        second: { type: "pane", sessionId: "s-b" },
+      },
+    });
     assert.equal(snapshot.ui.inspectorTab, "overview");
     assert.deepEqual(Object.keys(snapshot.terminals), ["s-a"]);
     assert.deepEqual(Object.keys(snapshot.agentResume), ["s-a", "s-active", "s-b"]);
@@ -264,6 +272,52 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
   } finally {
     console.warn = originalWarn;
   }
+});
+
+test("snapshot sanitizer restores a four-pane BSP layout and keeps its nested ratios", () => {
+  const root = {
+    type: "split",
+    direction: "horizontal",
+    ratio: 0.6,
+    first: {
+      type: "split",
+      direction: "vertical",
+      ratio: 0.4,
+      first: { type: "pane", sessionId: "top-left" },
+      second: { type: "pane", sessionId: "bottom-left" },
+    },
+    second: {
+      type: "split",
+      direction: "vertical",
+      ratio: 0.7,
+      first: { type: "pane", sessionId: "top-right" },
+      second: { type: "pane", sessionId: "bottom-right" },
+    },
+  };
+  const snapshot = sanitizeSnapshot({
+    version: 1,
+    savedAt: 1,
+    activeSessionId: "outside",
+    sessions: [
+      persistedSession("top-left", "/repo/one"),
+      persistedSession("bottom-left", "/repo/two"),
+      persistedSession("top-right", "/repo/three"),
+      persistedSession("bottom-right", "/repo/four"),
+      persistedSession("outside", "/repo/outside"),
+    ],
+    ui: {
+      sidebarVisible: true,
+      panelVisible: false,
+      collapsedDirs: {},
+      collapsedDiffSections: {},
+      split: { root },
+      inspectorTab: "overview",
+    },
+  });
+
+  assert.ok(snapshot);
+  assert.deepEqual(snapshot.ui.split, { root });
+  assert.equal(snapshot.activeSessionId, "bottom-right");
 });
 
 test("snapshot sanitizer falls back to local session dirs when recents are absent", () => {

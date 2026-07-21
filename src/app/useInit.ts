@@ -18,6 +18,7 @@ import { toPersistedSession } from "@/state/persist-snapshot";
 import { diffWatchedDirs, gitWatchDirsForSessions } from "./lib/sync-watches";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
+import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
@@ -129,13 +130,8 @@ export function useInit() {
       if (activeSessionId) launchedSessionIds[activeSessionId] = true;
 
       const { split } = snapshot.ui;
-      if (split.mode !== "single") {
-        if (split.paneA && merged.some((s) => s.id === split.paneA)) {
-          launchedSessionIds[split.paneA] = true;
-        }
-        if (split.paneB && merged.some((s) => s.id === split.paneB)) {
-          launchedSessionIds[split.paneB] = true;
-        }
+      for (const sessionId of splitLayoutSessionIds(split)) {
+        if (merged.some((s) => s.id === sessionId)) launchedSessionIds[sessionId] = true;
       }
 
       useSessionsStore.setState({

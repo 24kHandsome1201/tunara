@@ -215,7 +215,7 @@ export function usePhase4TimelineBenchmark(ready: boolean): void {
       if (benchmarkWindow) { await benchmarkWindow.show(); await benchmarkWindow.setFocus(); }
       setLanguage("en");
       useSessionsStore.setState({ activeSessionId: "m3-timeline-a", launchedSessionIds: { "m3-timeline-a": true, "m3-timeline-b": true } });
-      useUIStore.setState({ sidebarVisible: false, panelVisible: true, inspectorTab: "timeline", overlay: null, split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } });
+      useUIStore.setState({ sidebarVisible: false, panelVisible: true, inspectorTab: "timeline", overlay: null, split: { root: null } });
       const openStartedAt = performance.now();
       const readyIds = await waitForTerminalBenchmarkWriters(["m3-timeline-a", "m3-timeline-b"]);
       if (readyIds.length !== 2) throw new Error(`M3 Timeline mounted ${readyIds.length}/2 PTYs`);

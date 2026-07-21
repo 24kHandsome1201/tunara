@@ -13,6 +13,12 @@ import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
 import { sanitizeRecentCommands } from "./recent-commands.ts";
 import { isSessionMascotId } from "../modules/session/session-mascot.ts";
+import {
+  emptySplitState,
+  sanitizeSplitLayout,
+  splitLayoutSessionIds,
+  type SplitState,
+} from "../modules/session/split-layout.ts";
 
 export type PersistedSession = Pick<
   Session,
@@ -54,12 +60,7 @@ export interface PersistedUILayoutV2 {
   panelVisible: boolean;
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
-  split: {
-    mode: "single" | "horizontal" | "vertical";
-    paneA: string | null;
-    paneB: string | null;
-    ratio: number;
-  };
+  split: SplitState;
   inspectorTab: "overview" | "timeline" | "changes" | "files" | "preview" | "notes";
 }
 
@@ -121,7 +122,7 @@ export const DEFAULT_UI_LAYOUT_V2: PersistedUILayoutV2 = {
   panelVisible: true,
   collapsedDirs: {},
   collapsedDiffSections: {},
-  split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
+  split: emptySplitState(),
   inspectorTab: "overview",
 };
 
@@ -215,6 +216,27 @@ export function dedupeById<T extends { id: string; updatedAt: number }>(items: T
 
 function isValidSplitMode(v: unknown): v is "single" | "horizontal" | "vertical" {
   return v === "single" || v === "horizontal" || v === "vertical";
+}
+
+function sanitizePersistedSplit(raw: unknown, sessionIds: ReadonlySet<string>): SplitState {
+  if (!raw || typeof raw !== "object") return emptySplitState();
+  const value = raw as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(value, "root")) {
+    return sanitizeSplitLayout(value.root, sessionIds);
+  }
+
+  // Backward compatibility for the original two-pane snapshot shape.
+  if (!isValidSplitMode(value.mode) || value.mode === "single") return emptySplitState();
+  const paneA = typeof value.paneA === "string" ? value.paneA : null;
+  const paneB = typeof value.paneB === "string" ? value.paneB : null;
+  if (!paneA || !paneB || paneA === paneB) return emptySplitState();
+  return sanitizeSplitLayout({
+    type: "split",
+    direction: value.mode,
+    ratio: value.ratio,
+    first: { type: "pane", sessionId: paneA },
+    second: { type: "pane", sessionId: paneB },
+  }, sessionIds);
 }
 
 function isValidInspectorTab(v: unknown): v is "overview" | "timeline" | "changes" | "files" | "preview" | "notes" {
@@ -320,21 +342,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     const collapsedDirs = sanitizeTrueRecord(uiRaw.collapsedDirs);
     const collapsedDiffSections = sanitizeTrueRecord(uiRaw.collapsedDiffSections);
 
-    let split = DEFAULT_UI_LAYOUT_V2.split;
-    const splitRaw = uiRaw.split as Record<string, unknown> | undefined;
-    if (splitRaw && typeof splitRaw === "object" && isValidSplitMode(splitRaw.mode)) {
-      const paneA = typeof splitRaw.paneA === "string" ? splitRaw.paneA : null;
-      const paneB = typeof splitRaw.paneB === "string" ? splitRaw.paneB : null;
-      const ratio = typeof splitRaw.ratio === "number" && Number.isFinite(splitRaw.ratio)
-        ? Math.max(0.2, Math.min(0.8, splitRaw.ratio))
-        : 0.5;
-
-      if (splitRaw.mode !== "single" && paneA && paneB && paneA !== paneB && sessionIds.has(paneA) && sessionIds.has(paneB)) {
-        split = { mode: splitRaw.mode, paneA, paneB, ratio };
-      } else {
-        split = { mode: "single", paneA: null, paneB: null, ratio: 0.5 };
-      }
-    }
+    const split = sanitizePersistedSplit(uiRaw.split, sessionIds);
 
     const inspectorTab = isValidInspectorTab(uiRaw.inspectorTab) ? uiRaw.inspectorTab : "overview";
 
@@ -343,8 +351,9 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     ui = { ...DEFAULT_UI_LAYOUT_V2 };
   }
 
-  if (ui.split.mode !== "single" && activeSessionId !== ui.split.paneA && activeSessionId !== ui.split.paneB) {
-    activeSessionId = ui.split.paneB ?? ui.split.paneA ?? activeSessionId;
+  const splitSessionIds = splitLayoutSessionIds(ui.split);
+  if (splitSessionIds.length > 0 && (!activeSessionId || !splitSessionIds.includes(activeSessionId))) {
+    activeSessionId = splitSessionIds[splitSessionIds.length - 1] ?? activeSessionId;
   }
 
   const terminals: Record<string, PersistedTerminalSnapshot> = {};
