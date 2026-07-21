@@ -282,6 +282,9 @@
 }
 .hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
 .hover-bg:active { transform: scale(var(--scale-press)); transition-duration: 60ms; }
+.presentation-mode-exit-hint { background: var(--c-bg-white); color: var(--c-text-primary); }
+.presentation-mode-exit-hint:hover { background: var(--c-bg-1); }
+.presentation-mode-exit-hint:active { transition-duration: 60ms; }
 .hover-close {
   background: transparent; color: var(--c-text-5);
   transition: background var(--duration-fast) var(--ease-smooth),

@@ -2,7 +2,28 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { useUIStore } from "@/state/ui";
 import { usePresentationModeContextMenuGuard } from "@/app/usePresentationModeContextMenuGuard";
+import { Titlebar } from "@/ui/Titlebar";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
+
+vi.mock("@/ui/lib/current-window", () => ({ tryGetCurrentWindow: () => null }));
+
+function renderTitlebar() {
+  return render(
+    <Titlebar
+      sessions={[]}
+      activeSessionId=""
+      panelVisible={false}
+      sidebarVisible
+      onToggleSidebar={() => {}}
+      onTogglePanel={() => {}}
+      onSelectSession={() => {}}
+      onCloseSession={() => {}}
+      onNewTerminal={() => {}}
+      onNewTerminalInDirectory={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
+}
 
 function ContextMenuGuardHarness({
   onContextMenu,
@@ -79,6 +100,47 @@ test("presentation mode is a reversible projection over workspace UI state", () 
     sidebarVisible: false,
     panelVisible: true,
   });
+});
+
+test("the titlebar makes entering and leaving windowed pure mode equally discoverable", () => {
+  useUIStore.setState({ configLoaded: false, presentationMode: "workspace", nativeFullscreen: false });
+  renderTitlebar();
+
+  const enter = screen.getByRole("button", { name: /Pure Mode.+P/ });
+  expect(screen.getByText("Pure Mode")).toBeTruthy();
+  fireEvent.click(enter);
+
+  expect(useUIStore.getState().presentationMode).toBe("pure");
+  const exit = screen.getByRole("button", { name: /Exit Pure Mode.+P/ });
+  expect(screen.getByText("Exit Pure Mode")).toBeTruthy();
+  fireEvent.click(exit);
+
+  expect(useUIStore.getState().presentationMode).toBe("workspace");
+  expect(screen.getByRole("button", { name: /Pure Mode.+P/ })).toBeTruthy();
+});
+
+test("native fullscreen teaches the exit shortcut, fades, and reveals again at the top edge", () => {
+  vi.useFakeTimers();
+  try {
+    useUIStore.setState({ configLoaded: false, presentationMode: "pure", nativeFullscreen: true });
+    const { container } = renderTitlebar();
+
+    expect(screen.getByRole("button", { name: /Exit Pure Mode.+P/ })).toBeTruthy();
+
+    act(() => vi.advanceTimersByTime(4000));
+    expect(screen.queryByRole("button", { name: /Exit Pure Mode.+P/ })).toBeNull();
+
+    const pointerMove = new PointerEvent("pointermove", { bubbles: true, cancelable: true, clientY: 2 });
+    act(() => window.dispatchEvent(pointerMove));
+    expect(pointerMove.defaultPrevented).toBe(false);
+    const revealedExit = screen.getByRole("button", { name: /Exit Pure Mode.+P/ });
+    expect(container.querySelector('[data-presentation-action="exit-fullscreen-pure"]')?.getAttribute("data-visible")).toBe("true");
+
+    fireEvent.click(revealedExit);
+    expect(useUIStore.getState().presentationMode).toBe("workspace");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("the pure-mode command palette is a focused exit path", () => {

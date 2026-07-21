@@ -248,6 +248,7 @@
   "terminal.directory_picker.title": "选择终端工作目录",
   "terminal.directory_picker.failed": "无法选择目录",
   "terminal.directory_picker.failed_detail": "系统目录选择器未能打开，请稍后重试。",
+  "titlebar.pure_mode": "纯净模式",
   "titlebar.settings": "设置",
   "titlebar.panel.hide": "隐藏审查面板",
   "titlebar.panel.show": "显示审查面板",
