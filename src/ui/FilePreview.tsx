@@ -262,7 +262,7 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
 }
 
 type SaveState = EditorDraftSaveState;
-type OperationError = { operation: "save" | "reload"; kind: FileOperationErrorKind };
+type OperationError = { operation: "save" | "reload"; kind: FileOperationErrorKind; detail: string };
 
 function EditorSurface({
   filePath,
@@ -427,7 +427,7 @@ function EditorSurface({
         setSaveState("unknown");
         return;
       }
-      setOperationError({ operation: "save", kind: classifyFileOperationError(error) });
+      setOperationError({ operation: "save", kind: classifyFileOperationError(error), detail: String(error) });
       setSaveState("error");
     }
   };
@@ -467,7 +467,7 @@ function EditorSurface({
         ? await fsReadFile(filePath)
         : await sshReadFile(remotePtyId, filePath);
       if (result.kind !== "text" || !result.fingerprint) {
-        setOperationError({ operation: "reload", kind: "unsupported" });
+        setOperationError({ operation: "reload", kind: "unsupported", detail: "" });
         setSaveState("error");
         return;
       }
@@ -479,7 +479,7 @@ function EditorSurface({
       setSaveState("idle");
       setCloseConfirm(false);
     } catch (error) {
-      setOperationError({ operation: "reload", kind: classifyFileOperationError(error) });
+      setOperationError({ operation: "reload", kind: classifyFileOperationError(error), detail: String(error) });
       setSaveState("error");
     } finally {
       setReloadPending(false);
@@ -621,6 +621,9 @@ function EditorSurface({
                   ? "preview.editor.outcome_unknown_cleanup_body"
                   : "preview.editor.outcome_unknown_body")
                 : operationErrorBody}</span>
+            {saveState === "error" && operationError?.detail ? (
+              <span title={operationError.detail} style={{ display: "block", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{operationError.detail}</span>
+            ) : null}
           </div>
           <div className="file-editor-alert-actions">
             <button onClick={() => void copyDraft()}>{t(draftCopyState === "copied"

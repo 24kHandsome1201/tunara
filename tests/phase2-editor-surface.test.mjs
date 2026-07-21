@@ -21,20 +21,23 @@ test("dirty drafts keep explicit close, conflict, reload, find, and external esc
   assert.match(preview, /if \(dirty\) \{\s*setCloseConfirm\(true\)/);
   assert.match(preview, /role="alert"/);
   assert.match(preview, /void reload\(\)/);
-  assert.match(preview, /catch \(error\) \{\s*setOperationError\(\{ operation: "reload", kind: classifyFileOperationError\(error\) \}\)/);
+  assert.match(preview, /catch \(error\) \{\s*setOperationError\(\{ operation: "reload", kind: classifyFileOperationError\(error\), detail: String\(error\) \}\)/);
   assert.match(preview, /operationError\?\.operation === "reload"/);
   assert.match(preview, /disabled=\{reloadPending\}/);
   assert.match(preview, /event\.key\.toLocaleLowerCase\(\) === "f"/);
   assert.match(preview, /openInEditorWithToast\(externalEditor, filePath\)/);
 });
 
-test("file operation errors are classified without exposing backend text", async () => {
+test("file operation errors keep a classified summary and diagnostic detail", async () => {
   const { classifyFileOperationError } = await import("../src/modules/editor/file-operation-error.ts");
+  const preview = read("src/ui/FilePreview.tsx");
 
   assert.equal(classifyFileOperationError("Permission denied (os error 13)"), "permission");
   assert.equal(classifyFileOperationError("SSH connection closed"), "disconnected");
   assert.equal(classifyFileOperationError("editable content exceeds safe limit"), "unsupported");
   assert.equal(classifyFileOperationError(new Error("unclassified backend detail")), "failed");
+  assert.equal((preview.match(/detail: String\(error\)/g) ?? []).length, 2);
+  assert.match(preview, /title=\{operationError\.detail\}/);
 });
 
 test("the editor ships a line-numbered paper surface with narrow and reduced-motion states", () => {

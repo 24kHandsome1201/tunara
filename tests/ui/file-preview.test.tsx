@@ -131,6 +131,7 @@ describe("FilePreview editor behavior", () => {
 
     await screen.findByText("We couldn't reload this file");
     expect(screen.getByText(/connection is unavailable/i)).toBeTruthy();
+    expect(screen.getByText("no session for id 41")).toBeTruthy();
     expect(editor.value).toBe("remote draft\n");
   });
 
@@ -148,6 +149,7 @@ describe("FilePreview editor behavior", () => {
 
     await screen.findByText("We couldn't save this file");
     expect(screen.getByText(/cannot access this file/i)).toBeTruthy();
+    expect(screen.getByText("Permission denied (os error 13)")).toBeTruthy();
     expect(editor.value).toBe("protected draft\n");
   });
 
