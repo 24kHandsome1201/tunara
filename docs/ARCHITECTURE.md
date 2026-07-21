@@ -68,7 +68,8 @@ The Rust side is a single library crate, [`src-tauri/src/lib.rs`](../src-tauri/s
 that wires up plugins, registers the IPC handlers, manages shared state, and runs
 the event loop. Backend logic is split into modules under
 [`src-tauri/src/modules/`](../src-tauri/src/modules/): `pty`, `ssh`, `fs`, `git`,
-`agent`, `resolver`, `editor`, `config`, `process`.
+`agent`, `agent_event_store`, `preview`, `resolver`, `editor`, `config`,
+`process`, `workspace_store`.
 
 ## IPC surface
 
@@ -166,6 +167,56 @@ Reads/writes `~/.config/tunara/config.toml`.
 |---|---|---|
 | `load_config` | Load appearance + keybindings config (with parse-error surfaced) | `loadTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
 | `save_config` | Write the config back to disk | `saveTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
+
+### `agent_event_store` — append-only local Agent event journal [`modules/agent_event_store`](../src-tauri/src/modules/agent_event_store.rs)
+
+Stores Agent lifecycle events (status, tool calls, output summaries, file
+changes, etc.) in a bounded on-disk journal with per-event private payloads
+and a search index. Capped at `MAX_EVENT_COUNT` (100k) / `MAX_PAYLOAD_TOTAL_BYTES`
+(256 MiB); older events are pruned.
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `agent_event_store_status` | Report enabled/disabled + capability state | `agentEventStoreStatus`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_store_set_enabled` | Enable/disable the store at runtime | `setAgentEventStoreEnabled`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_append` | Append an event + optional private payload to the journal | `appendAgentEvent`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_list` | List event headers with paging | `listAgentEvents`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_payload` | Read a single event's private payload (provenance-checked) | `readAgentEventPayload`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_search_status` | Report search index capability state | `agentEventSearchStatus`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_search` | Query the search index by scope/kind/kind/text | `searchAgentEvents`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_search_rebuild` | Rebuild the search index from the journal | `rebuildAgentEventSearch`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+| `agent_event_delete` | Delete events for a task/source | `deleteAgentEvents`, [`agent-event-bridge.ts`](../src/modules/agent-events/agent-event-bridge.ts) |
+
+### `preview` — tunneled preview webview windows [`modules/preview`](../src-tauri/src/modules/preview.rs)
+
+Owns the secondary webview windows used to preview local/remote web apps and
+static files. Manages lifecycle (open/close/refresh), viewport sizing, zoom,
+capture, telemetry ingestion, and SSH-tunneled source access. State is held in
+`PreviewWindowState` (managed in `.setup()`).
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `preview_open` | Open a preview window for a `PreviewSource` | `previewOpen`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_status` | Report the runtime state of a preview window | `previewStatus`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_navigate` | Navigate a preview window to a URL/path | `previewNavigate`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_go_back` / `preview_go_forward` | History navigation | `previewGoBack` / `previewGoForward`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_set_zoom` / `preview_reset_zoom` | Set or reset zoom factor | `previewSetZoom` / `previewResetZoom`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_set_viewport` / `preview_reset_viewport` / `preview_fit_viewport` | Set, reset, or auto-fit the viewport size | `previewSetViewport` / `previewResetViewport` / `previewFitViewport`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_capture` | Capture a screenshot of the preview window | `previewCapture`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_close` | Close a preview window | `previewClose`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_tunnel_open` / `preview_tunnel_status` / `preview_tunnel_close` | Open/status/close an SSH tunnel backing a remote preview | `previewTunnelOpen` / `previewTunnelStatus` / `previewTunnelClose`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+
+### `workspace_store` — session persistence store health [`modules/workspace_store`](../src-tauri/src/modules/workspace_store.rs)
+
+Reports whether the Tauri store plugin's session-persistence file
+(`tunara-sessions.json`, legacy `conduit-sessions.json`) is present on disk, so
+the frontend can distinguish a genuine first launch from a silently corrupted
+store (the store plugin's first `load` swallows read/parse errors and returns
+defaults).
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `workspace_store_file_state` | Report `missing` or `present` for a known store file | `loadWorkspaceStoreFileState`, [`persist.ts`](../src/state/persist.ts) |
 
 ## The three transports
 
