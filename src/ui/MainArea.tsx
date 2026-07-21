@@ -4,7 +4,6 @@ import type { Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
-import { AgentStatusBar } from "./AgentStatusBar";
 import { SshSuggestionBar } from "./SshSuggestionBar";
 import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
@@ -33,7 +32,6 @@ const TerminalPane = memo(function TerminalPane({
   const pure = useUIStore((s) => s.presentationMode === "pure");
   return (
     <div data-terminal-session-id={session.id} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {!pure && <AgentStatusBar session={session} />}
       {!pure && <SshSuggestionBar session={session} />}
       <TerminalView
         key={`${session.id}:${session.reconnectNonce ?? 0}`}

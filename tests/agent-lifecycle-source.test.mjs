@@ -594,6 +594,6 @@ test("UI renders sidebar progress only when an agent is busy", () => {
   assert.match(status, /session\.agent && session\.agentActivity === "idle" && !hasCompletedAgentTurn\(session\)/);
   assert.match(status, /agentResumePendingInput\(resumeCommand\)/);
   assert.match(globalBar, /agentResumePendingInput\(resumeCommand\)/);
-  assert.match(main, /<AgentStatusBar session=/);
+  assert.doesNotMatch(main, /AgentStatusBar/);
   assert.doesNotMatch(diff, /session\.runState !== "running"/);
 });

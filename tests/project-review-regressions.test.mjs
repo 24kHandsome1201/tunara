@@ -1385,14 +1385,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputState\.buffer, data, inputState\.bracketedPasteActive\)/);
   assert.match(terminalChrome, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
-  assert.match(terminalChrome, /import \{ TerminalBlockFilterPanel \} from "\.\/TerminalBlockFilterPanel"/);
-  assert.match(terminalChrome, /import \{ TerminalBlocksBar \} from "\.\/TerminalBlocksBar"/);
+  assert.doesNotMatch(terminalChrome, /TerminalBlockFilterPanel/);
+  assert.doesNotMatch(terminalChrome, /TerminalBlocksBar/);
   assert.match(terminalChrome, /quickSelectOverlay\?: ReactNode/);
-  assert.match(terminalChrome, /onReadBlockOutput: \(id: string\) => string \| null/);
-  assert.match(terminalChrome, /useState<\{ block: TerminalCommandBlock; output: string \} \| null>/);
-  assert.match(terminalChrome, /onFilterBlock=\{\(block\) => \{/);
-  assert.match(terminalChrome, /setBlockFilter\(\{ block, output \}\)/);
-  assert.match(terminalChrome, /<TerminalBlockFilterPanel/);
   assert.match(terminalChrome, /\{!pure && quickSelectOverlay\}/);
   assert.match(terminalChrome, /onContextMenu=\{handleContextMenu\}/);
   assert.match(terminalChrome, /requestProtectedTerminalPaste\(term, text/);
