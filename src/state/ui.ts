@@ -504,6 +504,7 @@ const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorSt
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();
+let configPersistFailing = false;
 
 function enqueueConfigSave(settings: RawTunaraConfig): Promise<void> {
   const operation = configPersistQueue.then(() => saveTunaraConfig(settings));
@@ -523,9 +524,11 @@ useUIStore.subscribe(
       persistTimer = null;
       enqueueConfigSave(settingsToRawConfig(useUIStore.getState()))
         .then(() => useUIStore.setState({ configError: null }))
+        .then(() => { configPersistFailing = false; })
         .catch((e) => {
           const message = e instanceof Error ? e.message : String(e);
-          const alreadyFailing = useUIStore.getState().configError !== null;
+          const alreadyFailing = configPersistFailing;
+          configPersistFailing = true;
           useUIStore.setState({ configError: message });
           if (!alreadyFailing) {
             useUIStore.getState().addToast({ title: t("settings.config_error"), subtitle: message, variant: "error" });
