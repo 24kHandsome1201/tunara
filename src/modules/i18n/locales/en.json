@@ -740,5 +740,8 @@
   "timeline.payload.error.eventMismatch": "Payload belongs to a different event.",
   "timeline.payload.error.typeMismatch": "Payload type does not match its header.",
   "timeline.payload.error.sizeMismatch": "Payload size does not match its header.",
-  "timeline.payload.error.hashMismatch": "Payload integrity check failed."
+  "timeline.payload.error.hashMismatch": "Payload integrity check failed.",
+  "timeline.rich.image_decoding": "Decoding local image…",
+  "timeline.rich.image_invalid": "Image payload is invalid or exceeds the safe render budget.",
+  "timeline.rich.image_alt": "Local Agent event payload"
 }

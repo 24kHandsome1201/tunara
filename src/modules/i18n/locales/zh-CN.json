@@ -740,5 +740,8 @@
   "timeline.payload.error.eventMismatch": "正文属于另一条事件。",
   "timeline.payload.error.typeMismatch": "正文类型与事件标题不匹配。",
   "timeline.payload.error.sizeMismatch": "正文大小与事件标题不匹配。",
-  "timeline.payload.error.hashMismatch": "正文完整性校验失败。"
+  "timeline.payload.error.hashMismatch": "正文完整性校验失败。",
+  "timeline.rich.image_decoding": "正在解码本地图片…",
+  "timeline.rich.image_invalid": "图片内容无效或超出安全渲染预算。",
+  "timeline.rich.image_alt": "本地 Agent 事件图片"
 }

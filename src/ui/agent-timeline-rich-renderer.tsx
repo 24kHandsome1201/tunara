@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { parseMarkdownDocument, safeMarkdownLanguage, type MarkdownBlock } from "@/modules/editor/markdown-reader";
 import type { ValidatedTimelinePayload } from "@/modules/agent-events/payload-resource";
+import { useT } from "@/modules/i18n";
 import { buildMiniDiffRows } from "./lib/diff-parse";
 
 export const TIMELINE_RICH_MAX_TEXT_BYTES = 256 * 1024;
@@ -145,6 +146,7 @@ function hasExpectedMagic(bytes: Uint8Array, type: string): boolean {
 }
 
 function ImagePayload({ payload }: { payload: ValidatedTimelinePayload }) {
+  const t = useT();
   const [state, setState] = useState<{ url: string; width: number; height: number } | { error: true } | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -171,9 +173,9 @@ function ImagePayload({ payload }: { payload: ValidatedTimelinePayload }) {
     })();
     return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [payload]);
-  if (!state) return <div className="agent-timeline-rich-placeholder">Decoding local image…</div>;
-  if ("error" in state) return <div className="agent-timeline-rich-placeholder" role="status">Image payload is invalid or exceeds the safe render budget.</div>;
-  return <img className="agent-timeline-rich-image" src={state.url} width={state.width} height={state.height} alt="Local Agent event payload" />;
+  if (!state) return <div className="agent-timeline-rich-placeholder">{t("timeline.rich.image_decoding")}</div>;
+  if ("error" in state) return <div className="agent-timeline-rich-placeholder" role="status">{t("timeline.rich.image_invalid")}</div>;
+  return <img className="agent-timeline-rich-image" src={state.url} width={state.width} height={state.height} alt={t("timeline.rich.image_alt")} />;
 }
 
 export function AgentTimelineRichRenderer({ payload }: { payload: ValidatedTimelinePayload }) {
