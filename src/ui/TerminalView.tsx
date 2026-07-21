@@ -29,7 +29,7 @@ import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/termina
 import { registerTerminalDeviceAttributesHandler } from "@/modules/terminal/lib/terminal-device-attributes";
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification"; import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
-import { createWebglAtlasRebuilder, registerTerminalAtlasRefresh } from "@/modules/terminal/lib/terminal-atlas-refresh";
+import { createWebglAtlasRebuilder, recordTerminalAtlasOutputPressure, registerTerminalAtlasRebuilder, registerTerminalAtlasRefresh, requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
 import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
@@ -153,7 +153,7 @@ function TerminalViewImpl({
       });
       cleanups.push(() => fileLinkDisposable.dispose());
       const rebuildWebglAtlas = createWebglAtlasRebuilder(webglRef);
-      cleanups.push(registerTerminalLigatureSync(term, rebuildWebglAtlas));
+      cleanups.push(registerTerminalAtlasRebuilder(rebuildWebglAtlas)); cleanups.push(registerTerminalLigatureSync(term, rebuildWebglAtlas));
       // Fit after WebGL addon loads — the addon replaces the renderer and
       // changes cell metrics; fitting before it loads would measure stale
       // dimensions, causing a cols/rows mismatch with the PTY that shows
@@ -347,7 +347,7 @@ function TerminalViewImpl({
         type: "openRequested",
         transport,
       });
-      const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined, onWritten: (bytes) => previewScanner.push(bytes) });
+      const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined, onWritten: (bytes) => { previewScanner.push(bytes); recordTerminalAtlasOutputPressure(bytes.byteLength); } });
       cleanups.push(() => outputBuffer.dispose()); cleanups.push(previewScanner.dispose);
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkSnapshotReader(sessionIdRef.current, async () => { await outputBuffer.drain(); return serializeAddon.serialize(); }));
       // Declared before ptyHandlers so onExit can flip it even if exit races the
@@ -499,7 +499,7 @@ function TerminalViewImpl({
         fit,
         resizePty,
         isDisposed: () => disposed,
-        rebuildAtlas: rebuildWebglAtlas,
+        rebuildAtlas: requestGlobalTerminalAtlasRebuild, // global: shared atlas across panes
       }));
       // Self-heal the idle-garble case: rebuild the WebGL atlas on focus /
       // visibility regain (see terminal-atlas-refresh for the root cause).
@@ -533,7 +533,7 @@ function TerminalViewImpl({
   }, []);
   return (
     <>
-      <TerminalViewChrome containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />
+      <TerminalViewChrome sessionId={sessionId} containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {
         void cancelSshOpen(sessionId);
         useSessionsStore.getState().closeSession(sessionId);
