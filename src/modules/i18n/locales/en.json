@@ -293,6 +293,7 @@
   "explorer.loading": "Loading",
   "explorer.searching": "Searching",
   "explorer.search_failed": "Search failed",
+  "explorer.search_retry": "Retry",
   "explorer.search_placeholder": "Search current project",
   "explorer.no_match": "No matching files",
   "explorer.results": "Results",

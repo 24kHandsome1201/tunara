@@ -293,6 +293,7 @@
   "explorer.loading": "加载中",
   "explorer.searching": "搜索中",
   "explorer.search_failed": "搜索失败",
+  "explorer.search_retry": "重试",
   "explorer.search_placeholder": "搜索当前项目",
   "explorer.no_match": "没有找到匹配文件",
   "explorer.results": "结果",
