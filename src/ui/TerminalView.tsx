@@ -533,7 +533,7 @@ function TerminalViewImpl({
   }, []);
   return (
     <>
-      <TerminalViewChrome sessionId={sessionId} containerRef={containerRef} getTerminal={() => termRef.current} search={search} blocks={blocks.blocks} collapsedBlockIds={blocks.collapsedBlockIds} stickyBlock={blocks.stickyBlock} onCopyBlockCommand={blocks.copyBlockCommand} onCopyBlockCommandAndOutput={blocks.copyBlockCommandAndOutput} onCopyBlockOutput={blocks.copyBlockOutput} onReadBlockOutput={blocks.readBlockOutput} onToggleBlock={blocks.toggleBlock} onRevealBlock={blocks.revealBlock} quickSelectOverlay={quickSelect.quickSelectOverlay} />
+      <TerminalViewChrome sessionId={sessionId} containerRef={containerRef} getTerminal={() => termRef.current} search={search} quickSelectOverlay={quickSelect.quickSelectOverlay} />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {
         void cancelSshOpen(sessionId);
         useSessionsStore.getState().closeSession(sessionId);
