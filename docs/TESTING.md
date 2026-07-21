@@ -167,44 +167,52 @@ frontend. Always verify the bundle that will actually be installed.
 
 ## Current test files
 
+The full set of frontend test files changes often; treat `ls tests/*.test.mjs`
+as the source of truth rather than a static list. The categories below cover
+the main themes by filename prefix.
+
 ### Frontend (`tests/`)
 
-Pure-logic suites (import `.ts` source and call it):
+- **Agent lifecycle and semantics** (`agent-*`, `*-semantics-source`): Agent
+  registry invariants, session summaries, timeline model, shell-integration
+  OSC emission, and per-agent (claude/codex/opencode/aider/pi) source-assertion
+  suites.
+- **Terminal** (`terminal-*`, `local-terminal-*`): control-sequence stripping,
+  command classification, theme math, buffer reads, blocks menu, paste
+  protection, output buffering, WebGL atlas, and local CWD discovery.
+- **Editor and file preview** (`editor-*`, `file-preview-*`, `markdown-*`,
+  `dirty-draft-*`, `phase2-*`): draft guard, scroll position, markdown
+  reader/syntax, safe-write contracts, and the Phase 2 editor surface.
+- **File explorer** (`file-explorer-*`): remote root resolution and search.
+- **SSH and remote** (`ssh-*`): failure classification, host profile
+  serialization, write reconciliation, command detection, and M2 safe-write
+  gating.
+- **Preview** (`preview-*`): capture contract and source modeling.
+- **Persistence** (`persist-*`, `lifecycle-*`, `session-lifecycle`): snapshot
+  persistence, session lifecycle replay, and workspace hydration.
+- **Design and accessibility regression** (`design-*`, `compact-*`,
+  `focus-trap-*`, `shell-tint-*`, `resize-handle`, `titlebar-tabs`): a11y
+  policy, compact feedback layout, focus traps, shell tint contrast, and
+  chrome structure.
+- **Project-level regression** (`project-review-regressions`): cross-file
+  release/config invariants (version alignment, identifier, capability
+  permissions, deleted-module guards).
+- **Misc pure logic** (`breadcrumbs`, `diff-parse`, `dock-badge-state`,
+  `git-watch-refcount`, `sync-watches`, `workflow-*`, `ui-types`,
+  `clipboard`, `elapsed`, `runbook`, `update-reminder`, `workspace-*`,
+  `timeline`, `session-*`, `app-shell-layout`, `split-layout`,
+  `presentation-mode`, `record-keys`, `destructive-confirm`,
+  `new-terminal-directory`, `grep-group`, `i18n-core`): small pure-logic suites
+  keyed to a single module.
 
-| File | Covers |
-|------|--------|
-| `terminal-utils.test.mjs` | `stripTerminalControlSequences`, `cleanTerminalText`, `cleanTerminalLines` (`src/modules/terminal/lib/terminal-utils.ts`) |
-| `terminal-command.test.mjs` | `isMeaningfulCommand` noise classification (`src/modules/terminal/lib/terminal-command.ts`) |
-| `terminal-theme.test.mjs` | `isTerminalThemeDark`, `getTerminalTheme`, accent blending (`src/styles/terminalTheme.ts`) |
-| `terminal-buffer-read.test.mjs` | `extractCommandFromOsc` OSC 133 decode (`src/modules/terminal/lib/terminal-buffer-read.ts`) |
-| `agent-registry.test.mjs` | `AGENT_REGISTRY` / `AGENT_NAMES` / `AGENT_COMMANDS` / `AGENT_CODES` invariants (`src/modules/agent/registry.ts`) |
-| `ui-types.test.mjs` | `formatSize`, `groupByDir` (`src/ui/types.ts`) |
-| `terminal-blocks-menu.test.mjs` | `buildBlockContextMenuItems` (`src/modules/terminal/lib/terminal-blocks-menu.ts`) |
-| `breadcrumbs.test.mjs` | `breadcrumbSegments` path collapsing (`src/ui/lib/breadcrumbs.ts`) |
-| `diff-parse.test.mjs` | `buildMiniDiffRows`, `collectHunkTexts`, `filterRowsByQuery` (`src/ui/lib/diff-parse.ts`) |
-| `dock-badge-state.test.mjs` | `decideBadge`, `createDockBadgeController`, `countUnread` |
-| `git-watch-refcount.test.mjs` | `createWatchRefCount`, `normalizeRepoPath`, `sameRepoPath` |
-| `sync-watches.test.mjs` | `diffWatchedDirs` (`src/app/lib/sync-watches.ts`) |
-| `workflow-template.test.mjs` | `extractParams`, `applyParams`, `hasParams`, `sanitizeWorkflow` (`src/modules/workflows/template.ts`) |
-| `ssh-logic.test.mjs` | `classifySshFailure`, `toProfile`/`toRaw`/`makeHostId`, one-shot `stashSshCredentials`/`takeSshCredentials` |
-| `lifecycle-replay.test.mjs` | Agent lifecycle OSC parsing, run-state, command-palette filtering, paste protection, recent-commands/dirs, and more (broad pure-logic suite) |
-
-Source-assertion suites (`readFileSync` + regex over text):
-
-| File | Covers |
-|------|--------|
-| `agent-lifecycle-source.test.mjs` | Shell integration scripts + Rust agent/hook files: OSC emission, agent wrapper functions, `chmod 600`, no predictable `/tmp` paths |
-| `project-review-regressions.test.mjs` | Cross-file release/config invariants: version alignment, `dev.tunara.app` identifier, capability permissions, deleted-module guards |
+The `tests/ui/` subdirectory holds Vitest + jsdom component tests (run by
+`pnpm test:ui`); `tests/visual/` holds visual/QA fixtures.
 
 ### Rust (`src-tauri/src/modules/`)
 
-`#[cfg(test)] mod tests` blocks live in:
+`#[cfg(test)] mod tests` blocks live alongside the code they cover. To list
+the modules that currently have tests:
 
-```
-agent/hooks.rs        agent/preflight.rs    agent/wrapper.rs
-config.rs             fs/grep.rs            fs/mod.rs
-git/commit.rs         git/mod.rs           git/watcher.rs
-process/error.rs      process/runner.rs     pty/shell_init.rs
-resolver/mod.rs       ssh/auth.rs          ssh/hosts.rs
-ssh/known_hosts.rs    ssh/sftp.rs          util.rs
+```bash
+rg -l '#\[cfg\(test\)\]' src-tauri/src/modules
 ```
