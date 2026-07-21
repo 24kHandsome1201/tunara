@@ -18,6 +18,7 @@ import {
 } from "@/modules/session/split-layout";
 
 export type CursorStyle = "bar" | "block" | "underline";
+export type PresentationMode = "workspace" | "pure";
 export type { SplitState } from "@/modules/session/split-layout";
 
 export interface AppearanceSettings {
@@ -238,6 +239,8 @@ interface UIState extends AppearanceSettings {
   configLoaded: boolean;
   configPath: string;
   configError: string | null;
+  presentationMode: PresentationMode;
+  nativeFullscreen: boolean;
   sidebarVisible: boolean;
   panelVisible: boolean;
   overlay: OverlayType;
@@ -260,6 +263,9 @@ interface UIState extends AppearanceSettings {
   collapsedDiffSections: Record<string, true>;
   commandUsage: Record<string, number>;
 
+  setPresentationMode: (mode: PresentationMode) => void;
+  togglePresentationMode: () => void;
+  setNativeFullscreen: (fullscreen: boolean) => void;
   setSidebarVisible: (visible: boolean) => void;
   setPanelVisible: (visible: boolean) => void;
   toggleSidebar: () => void;
@@ -316,6 +322,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     configLoaded: false,
     configPath: "",
     configError: null,
+    presentationMode: "workspace",
+    nativeFullscreen: false,
     sidebarVisible: true,
     panelVisible: true,
     overlay: null,
@@ -334,6 +342,23 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     commandUsage: {},
     ...DEFAULT_SETTINGS,
 
+    setPresentationMode: (presentationMode) => set(presentationMode === "pure"
+      ? {
+          presentationMode,
+          overlay: null,
+          sshPrefill: null,
+          pendingWorkflow: null,
+        }
+      : { presentationMode, overlay: null, sshPrefill: null }),
+    togglePresentationMode: () => set((state) => state.presentationMode === "workspace"
+      ? {
+          presentationMode: "pure",
+          overlay: null,
+          sshPrefill: null,
+          pendingWorkflow: null,
+        }
+      : { presentationMode: "workspace", overlay: null, sshPrefill: null }),
+    setNativeFullscreen: (nativeFullscreen) => set({ nativeFullscreen }),
     setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
     setPanelVisible: (panelVisible) => set({ panelVisible }),
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),

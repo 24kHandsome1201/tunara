@@ -55,8 +55,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const uiStore = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
-  const sidebarVisible = useUIStore((s) => s.sidebarVisible);
-  const panelVisible = useUIStore((s) => s.panelVisible);
+  const presentationMode = useUIStore((s) => s.presentationMode);
   const workflows = useWorkflowsStore((s) => s.workflows);
 
   // Stable identity so the commands useMemo below can list it as a dependency
@@ -65,6 +64,25 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
     let idx = 0;
+    const presentationCommand: Command = {
+      id: "toggle-presentation-mode",
+      label: presentationMode === "pure" ? t("palette.cmd.exit_pure") : t("palette.cmd.enter_pure"),
+      shortcut: formatShortcut(keybindings.togglePresentationMode),
+      icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        const ui = uiStore.getState();
+        ui.recordCommandUse("toggle-presentation-mode");
+        ui.togglePresentationMode();
+        onClose();
+      },
+    };
+
+    // In pure mode the palette is a deliberate escape hatch, not a second
+    // business surface layered over the terminal canvas.
+    if (presentationMode === "pure") return [presentationCommand];
 
     [...sessions]
       .filter((s: Session) => s.id !== activeSessionId)
@@ -396,26 +414,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       action: () => { uiStore.getState().recordCommandUse("toggle-panel"); uiStore.getState().togglePanel(); onClose(); },
     });
 
-    cmds.push({
-      id: "toggle-focus-mode",
-      label: sidebarVisible || panelVisible ? t("palette.cmd.enter_focus") : t("palette.cmd.exit_focus"),
-      icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
-      section: t("palette.section.action"),
-      scopes: ["action", "app"],
-      originalIndex: idx++,
-      action: () => {
-        const ui = uiStore.getState();
-        ui.recordCommandUse("toggle-focus-mode");
-        if (ui.sidebarVisible || ui.panelVisible) {
-          ui.setSidebarVisible(false);
-          ui.setPanelVisible(false);
-        } else {
-          ui.setSidebarVisible(true);
-          ui.setPanelVisible(true);
-        }
-        onClose();
-      },
-    });
+    cmds.push(presentationCommand);
 
     cmds.push({
       id: "split-horizontal",
@@ -514,7 +513,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, sidebarVisible, panelVisible, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, presentationMode, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

@@ -214,7 +214,9 @@ export function Titlebar({
   onOpenSettings,
 }: TitlebarProps) {
   const t = useT();
-  const showTabs = !sidebarVisible;
+  const presentationMode = useUIStore((s) => s.presentationMode);
+  const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
+  const showTabs = presentationMode === "workspace" && !sidebarVisible;
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
@@ -226,6 +228,10 @@ export function Titlebar({
     items: MenuEntry[];
     position: { x: number; y: number };
   } | null>(null);
+
+  useEffect(() => {
+    if (presentationMode === "pure") setNewTerminalMenu(null);
+  }, [presentationMode]);
 
   const openNewTerminalMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -299,6 +305,31 @@ export function Titlebar({
           ? "linear-gradient(to right, #000 calc(100% - 24px), transparent 100%)"
           : undefined;
   const titlebarControlTransform = _isMac ? `translateY(${MAC_TITLEBAR_CONTROL_Y_OFFSET}px)` : undefined;
+
+  if (presentationMode === "pure") {
+    if (nativeFullscreen) return null;
+    return (
+      <div
+        data-presentation-chrome="windowed"
+        data-tauri-drag-region
+        style={{
+          height: "var(--h-titlebar)",
+          background: "var(--terminal-canvas-bg, var(--c-bg-white))",
+          display: "flex",
+          alignItems: "center",
+          flexShrink: 0,
+          WebkitAppRegion: "drag",
+        } as DragStyle}
+      >
+        <div data-tauri-drag-region style={{ flex: 1 }} />
+        {!_isMac && (
+          <div style={{ paddingRight: 4, WebkitAppRegion: "no-drag" } as DragStyle}>
+            <WindowControls />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

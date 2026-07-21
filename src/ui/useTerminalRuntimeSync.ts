@@ -2,7 +2,7 @@ import { useEffect, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
-import type { CursorStyle } from "@/state/ui";
+import { useUIStore, type CursorStyle } from "@/state/ui";
 import type { TerminalThemeName, ThemeType } from "./types";
 import type { TerminalWebglRenderer } from "./useTerminalWebgl";
 import { getTerminalTheme } from "@/styles/terminalTheme";
@@ -44,6 +44,8 @@ export function useTerminalRuntimeSync({
   terminalTheme,
   accent,
 }: TerminalRuntimeSyncOptions) {
+  const presentationMode = useUIStore((s) => s.presentationMode);
+
   useEffect(() => {
     if (!active) return;
     const term = termRef.current;
@@ -60,7 +62,7 @@ export function useTerminalRuntimeSync({
       }
     }, 30);
     return () => clearTimeout(timer);
-  }, [active, fitRef, ptyRef, termRef]);
+  }, [active, fitRef, presentationMode, ptyRef, termRef]);
 
   useEffect(() => {
     const term = termRef.current;

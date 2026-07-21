@@ -1393,7 +1393,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalChrome, /onFilterBlock=\{\(block\) => \{/);
   assert.match(terminalChrome, /setBlockFilter\(\{ block, output \}\)/);
   assert.match(terminalChrome, /<TerminalBlockFilterPanel/);
-  assert.match(terminalChrome, /\{quickSelectOverlay\}/);
+  assert.match(terminalChrome, /\{!pure && quickSelectOverlay\}/);
   assert.match(terminalChrome, /onContextMenu=\{handleContextMenu\}/);
   assert.match(terminalChrome, /requestProtectedTerminalPaste\(term, text/);
   assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);

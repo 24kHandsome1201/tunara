@@ -30,10 +30,11 @@ const TerminalPane = memo(function TerminalPane({
   session: Session;
   isActive: boolean;
 }) {
+  const pure = useUIStore((s) => s.presentationMode === "pure");
   return (
     <div data-terminal-session-id={session.id} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <AgentStatusBar session={session} />
-      <SshSuggestionBar session={session} />
+      {!pure && <AgentStatusBar session={session} />}
+      {!pure && <SshSuggestionBar session={session} />}
       <TerminalView
         key={`${session.id}:${session.reconnectNonce ?? 0}`}
         sessionId={session.id}
@@ -101,6 +102,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const nonce = useSessionsStore((s) => active ? getNumberRecordValue(s.gitNonce, active.id) : 0);
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
   const split = useUIStore((s) => s.split);
+  const pure = useUIStore((s) => s.presentationMode === "pure");
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // Captured as primitives so the git effect depends on exactly the fields it
@@ -164,9 +166,9 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         minWidth: 0,
         minHeight: 0,
         overflow: "hidden",
-        borderRadius: "var(--r-btn)",
-        boxShadow: s.id === activeSessionId ? activeMarker : "none",
-        transition: "box-shadow var(--duration-normal) var(--ease-smooth)",
+        borderRadius: pure ? 0 : "var(--r-btn)",
+        boxShadow: !pure && s.id === activeSessionId ? activeMarker : "none",
+        transition: pure ? "none" : "box-shadow var(--duration-normal) var(--ease-smooth)",
       };
     }
 
@@ -185,7 +187,10 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}>
+    <div
+      data-terminal-canvas={pure ? "pure" : "workspace"}
+      style={{ flex: 1, display: "flex", flexDirection: "column", background: pure ? "var(--terminal-canvas-bg, var(--c-bg-white))" : "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}
+    >
       <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {mountedSessions.map((s) => (
           <div
@@ -210,7 +215,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         ))}
       </div>
 
-      <div
+      {!pure && <div
         style={{
           height: "var(--h-statusbar)",
           background: "var(--c-bg-1)",
@@ -319,7 +324,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             </>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

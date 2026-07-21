@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import type { ReactNode } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
@@ -52,8 +52,20 @@ export function TerminalViewChrome({
   const t = useT();
   const [blockFilter, setBlockFilter] = useState<{ block: TerminalCommandBlock; output: string } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean } | null>(null);
+  const pure = useUIStore((s) => s.presentationMode === "pure");
+
+  useEffect(() => {
+    if (!pure) return;
+    setBlockFilter(null);
+    setMenu(null);
+  }, [pure]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
+    if (pure) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const term = getTerminal();
     if (!term) return; // before init: let the browser's default menu through (dev only)
     e.preventDefault();
@@ -94,7 +106,7 @@ export function TerminalViewChrome({
       style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}
       onContextMenu={handleContextMenu}
     >
-      {search.searchOpen && (
+      {!pure && search.searchOpen && (
         <TerminalSearchBar
           inputRef={search.searchInputRef}
           query={search.searchQuery}
@@ -109,23 +121,25 @@ export function TerminalViewChrome({
           onToggleCaseSensitive={search.toggleCaseSensitive}
         />
       )}
-      <TerminalBlocksBar
-        blocks={blocks}
-        collapsedBlockIds={collapsedBlockIds}
-        stickyBlock={stickyBlock}
-        onCopyCommand={onCopyBlockCommand}
-        onCopyCommandAndOutput={onCopyBlockCommandAndOutput}
-        onCopyOutput={onCopyBlockOutput}
-        onFilterBlock={(block) => {
-          const output = onReadBlockOutput(block.id);
-          if (output === null) return;
-          setBlockFilter({ block, output });
-        }}
-        onToggle={onToggleBlock}
-        onReveal={onRevealBlock}
-      />
+      {!pure && (
+        <TerminalBlocksBar
+          blocks={blocks}
+          collapsedBlockIds={collapsedBlockIds}
+          stickyBlock={stickyBlock}
+          onCopyCommand={onCopyBlockCommand}
+          onCopyCommandAndOutput={onCopyBlockCommandAndOutput}
+          onCopyOutput={onCopyBlockOutput}
+          onFilterBlock={(block) => {
+            const output = onReadBlockOutput(block.id);
+            if (output === null) return;
+            setBlockFilter({ block, output });
+          }}
+          onToggle={onToggleBlock}
+          onReveal={onRevealBlock}
+        />
+      )}
       <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
-      {blockFilter && (
+      {!pure && blockFilter && (
         <TerminalBlockFilterPanel
           block={blockFilter.block}
           output={blockFilter.output}
@@ -135,8 +149,8 @@ export function TerminalViewChrome({
           }}
         />
       )}
-      {quickSelectOverlay}
-      {menu && (
+      {!pure && quickSelectOverlay}
+      {!pure && menu && (
         <ContextMenu
           position={{ x: menu.x, y: menu.y }}
           onClose={() => setMenu(null)}
