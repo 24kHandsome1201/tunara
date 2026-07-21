@@ -22,12 +22,14 @@ test("update reminders route directly to the App settings tab", () => {
   const ui = read("src/state/ui.ts");
   const toast = read("src/ui/Toast.tsx");
   const settings = read("src/ui/overlays/Settings.tsx");
+  const appUpdate = read("src/ui/overlays/useAppUpdate.ts");
   assert.match(hook, /kind: "open-settings"/);
   assert.match(hook, /tab: "app"/);
   assert.match(ui, /openSettings: \(tab\?: SettingsTab\)/);
   assert.match(toast, /openSettings\(toast\.action\.tab\)/);
-  assert.match(settings, /activeTab !== "app" \|\| appTabCheckStartedRef\.current/);
-  assert.match(settings, /void checkForUpdates\(\)/);
+  assert.match(settings, /useAppUpdate\(activeTab\)/);
+  assert.match(appUpdate, /activeTab !== "app" \|\| appTabCheckStartedRef\.current/);
+  assert.match(appUpdate, /void checkForUpdates\(\)/);
   assert.doesNotMatch(toast, /borderLeft: `3px solid/);
   assert.match(toast, /animationPlayState: paused \? "paused" : "running"/);
   assert.doesNotMatch(toast, /animation: paused \? "none"/);
