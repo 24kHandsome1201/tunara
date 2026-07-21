@@ -1,27 +1,35 @@
 # Testing
 
-Tunara has two test suites that run from one command:
+Tunara has three automated test suites that run from one command:
 
-- **Frontend** — Node's built-in test runner over `tests/*.test.mjs`, importing TypeScript sources directly.
+- **Frontend logic** — Node's built-in test runner over `tests/*.test.mjs`, importing TypeScript sources directly.
+- **UI components** — Vitest + Testing Library in `tests/ui/`, running in happy-dom.
 - **Rust** — in-module `#[cfg(test)]` blocks run by `cargo test`.
 
-There is no browser harness, no Vitest, no jsdom. The frontend suite is deliberately constrained to pure logic so it can import `.ts` source with zero build step.
+There is no end-to-end browser or Tauri webview harness. The Node suite is
+deliberately constrained to pure logic so it can import `.ts` source with zero
+build step; DOM-backed component behavior belongs in the separate Vitest suite.
 
 ## Running the tests
 
 ```bash
-pnpm test        # frontend + Rust (what CI and PRs run)
-pnpm test:node   # frontend only
+pnpm test        # Node frontend + UI components + Rust
+pnpm test:node   # pure logic and source assertions only
+pnpm test:ui     # UI typecheck + happy-dom component tests
 ```
 
 The scripts in `package.json` expand to:
 
 ```jsonc
 "test:node": "node --experimental-strip-types --test tests/*.test.mjs",
-"test":      "pnpm test:node && cargo test --manifest-path src-tauri/Cargo.toml"
+"test:ui":   "pnpm typecheck:ui && vitest run --config vitest.config.ts",
+"test":      "pnpm test:node && pnpm test:ui && cargo test --manifest-path src-tauri/Cargo.toml"
 ```
 
-`pnpm test` is `pnpm test:node && cargo test ...` — the Node suite gates the Rust suite, so a frontend failure short-circuits before `cargo test` runs. Node 22 is the development baseline (`--experimental-strip-types` is what lets the runner load `.ts` files without compiling them first).
+`pnpm test` runs the suites in that order, so a Node or UI failure short-circuits
+before `cargo test` runs. Node 22 is the development baseline
+(`--experimental-strip-types` is what lets the Node runner load `.ts` files
+without compiling them first).
 
 To run a single frontend file:
 
@@ -35,7 +43,7 @@ To run a single Rust module's tests:
 cargo test --manifest-path src-tauri/Cargo.toml --lib ssh::auth
 ```
 
-## Frontend convention
+## Node frontend convention
 
 `.mjs` tests import `.ts` source **directly** — no transpile, no bundler. `node --experimental-strip-types` erases the type annotations at load time and runs the result. The runner is `node:test` + `node:assert/strict`; nothing else is imported from outside the repo.
 
@@ -130,9 +138,10 @@ Before opening a PR, run the full gate from [`CONTRIBUTING.md`](../CONTRIBUTING.
 
 ## Future: visual smoke
 
-End-to-end browser automation (Playwright or similar) is intentionally **not**
-in scope today — the repo has no DOM harness and the meaningful surface is the
-Tauri webview inside a signed macOS bundle.
+End-to-end browser/Tauri automation (Playwright or similar) is intentionally
+**not** in scope today. The happy-dom suite covers component behavior, but the
+meaningful runtime surface is still the Tauri webview inside a signed macOS
+bundle.
 
 Until a lightweight visual runner exists, treat the release bundle as the manual
 smoke gate. See also [`VISUAL_QA.md`](./VISUAL_QA.md).
@@ -205,7 +214,7 @@ the main themes by filename prefix.
   `new-terminal-directory`, `grep-group`, `i18n-core`): small pure-logic suites
   keyed to a single module.
 
-The `tests/ui/` subdirectory holds Vitest + jsdom component tests (run by
+The `tests/ui/` subdirectory holds Vitest + happy-dom component tests (run by
 `pnpm test:ui`); `tests/visual/` holds visual/QA fixtures.
 
 ### Rust (`src-tauri/src/modules/`)
