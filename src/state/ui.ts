@@ -3,7 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectPrefill } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
-import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
+import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
 import { persistBootAppearance } from "@/styles/shell-tint-boot";
 import {
@@ -523,7 +523,14 @@ useUIStore.subscribe(
       persistTimer = null;
       enqueueConfigSave(settingsToRawConfig(useUIStore.getState()))
         .then(() => useUIStore.setState({ configError: null }))
-        .catch((e) => useUIStore.setState({ configError: e instanceof Error ? e.message : String(e) }));
+        .catch((e) => {
+          const message = e instanceof Error ? e.message : String(e);
+          const alreadyFailing = useUIStore.getState().configError !== null;
+          useUIStore.setState({ configError: message });
+          if (!alreadyFailing) {
+            useUIStore.getState().addToast({ title: t("settings.config_error"), subtitle: message, variant: "error" });
+          }
+        });
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
