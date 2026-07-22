@@ -3,17 +3,15 @@ import type { ThemeType, TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { getShellTint, isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
-import { getVersion } from "@tauri-apps/api/app";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { platform } from "@tauri-apps/plugin-os";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
 import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { CloseIcon, RefreshIcon } from "../shared";
 import { useT, LANGUAGES, type Language } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
+import { useAppUpdate } from "./useAppUpdate";
 import { WorkflowsSettings } from "./WorkflowsSettings";
 import { useWorkflowsStore } from "@/state/workflows";
 
@@ -33,8 +31,6 @@ interface Preflight {
   loggedIn: boolean;
   hint: string | null;
 }
-
-type UpdateStatus = "idle" | "checking" | "current" | "available" | "downloading" | "restarting" | "error";
 
 const TABS = ["appearance", "workflows", "cli", "app"] as const;
 
@@ -205,77 +201,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [editingOverride, setEditingOverride] = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState("");
   const cliLoadStartedRef = useRef(false);
-  const [appVersion, setAppVersion] = useState("");
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle");
-  const [updateVersion, setUpdateVersion] = useState("");
-  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
-  const updateRef = useRef<Update | null>(null);
-  const appTabCheckStartedRef = useRef(false);
-
-  useEffect(() => {
-    void getVersion().then(setAppVersion).catch(() => {});
-    return () => {
-      const update = updateRef.current;
-      updateRef.current = null;
-      if (update) void update.close();
-    };
-  }, []);
-
-  const checkForUpdates = useCallback(async () => {
-    if (updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting") return;
-    setUpdateStatus("checking");
-    setUpdateProgress(null);
-    const previous = updateRef.current;
-    updateRef.current = null;
-    if (previous) await previous.close().catch(() => {});
-    try {
-      const update = await check({ timeout: 15_000 });
-      updateRef.current = update;
-      if (!update) {
-        setUpdateVersion("");
-        setUpdateStatus("current");
-        return;
-      }
-      setUpdateVersion(update.version);
-      setUpdateStatus("available");
-    } catch (error) {
-      console.warn("[Settings] update check failed", error);
-      setUpdateStatus("error");
-    }
-  }, [updateStatus]);
-
-  const installUpdate = async () => {
-    const update = updateRef.current;
-    if (!update || updateStatus === "downloading" || updateStatus === "restarting") return;
-    setUpdateStatus("downloading");
-    setUpdateProgress(0);
-    let downloaded = 0;
-    let total: number | undefined;
-    try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-          total = event.data.contentLength;
-        } else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength;
-          setUpdateProgress(total ? Math.min(99, Math.round((downloaded / total) * 100)) : null);
-        } else {
-          setUpdateProgress(100);
-        }
-      });
-      setUpdateStatus("restarting");
-      await relaunch();
-    } catch (error) {
-      console.warn("[Settings] update installation failed", error);
-      setUpdateStatus("error");
-      setUpdateProgress(null);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab !== "app" || appTabCheckStartedRef.current) return;
-    appTabCheckStartedRef.current = true;
-    void checkForUpdates();
-  }, [activeTab, checkForUpdates]);
+  const { appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate } = useAppUpdate(activeTab);
 
   const loadPreflights = useCallback((items: ResolvedCommand[]) => {
     // Only check login state for CLIs that are actually installed — an auth
@@ -329,7 +255,6 @@ export function Settings({ onClose }: SettingsProps) {
   const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
   const installedCliCount = CLI_LIST.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
   const updateBusy = updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting";
-  const canInstallUpdate = updateStatus === "available" || (updateStatus === "error" && !!updateRef.current);
 
   return (
     <>

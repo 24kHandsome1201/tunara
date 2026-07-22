@@ -3,7 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectPrefill } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
-import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
+import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
 import { persistBootAppearance } from "@/styles/shell-tint-boot";
 import {
@@ -504,6 +504,7 @@ const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorSt
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();
+let configPersistFailing = false;
 
 function enqueueConfigSave(settings: RawTunaraConfig): Promise<void> {
   const operation = configPersistQueue.then(() => saveTunaraConfig(settings));
@@ -523,7 +524,16 @@ useUIStore.subscribe(
       persistTimer = null;
       enqueueConfigSave(settingsToRawConfig(useUIStore.getState()))
         .then(() => useUIStore.setState({ configError: null }))
-        .catch((e) => useUIStore.setState({ configError: e instanceof Error ? e.message : String(e) }));
+        .then(() => { configPersistFailing = false; })
+        .catch((e) => {
+          const message = e instanceof Error ? e.message : String(e);
+          const alreadyFailing = configPersistFailing;
+          configPersistFailing = true;
+          useUIStore.setState({ configError: message });
+          if (!alreadyFailing) {
+            useUIStore.getState().addToast({ title: t("settings.config_error"), subtitle: message, variant: "error" });
+          }
+        });
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },

@@ -47,6 +47,14 @@ function createLocalGrepRequestId(): string {
   return `grep-${Date.now().toString(36)}-${nextLocalGrepRequest.toString(36)}`;
 }
 
+function SearchRetryButton({ label, onRetry }: { label: string; onRetry: () => void }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", paddingTop: 6 }}>
+      <button className="hover-bg" onClick={onRetry} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "transparent", cursor: "pointer", padding: "2px 10px" }}>{label}</button>
+    </div>
+  );
+}
+
 // Remember the chosen search mode for this run so it survives directory/session
 // switches. The query itself is intentionally not remembered — it is scoped to a
 // specific repo and clearing it when the root changes avoids stale lookups.
@@ -184,6 +192,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const [searchRetryNonce, setSearchRetryNonce] = useState(0);
   const [searchTruncated, setSearchTruncated] = useState(false);
   const [searchMode, setSearchMode] = useState<"name" | "content">(lastFileSearchMode);
   const [searchLimit, setSearchLimit] = useState(() => initialFileSearchLimit(lastFileSearchMode));
@@ -369,7 +378,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         cancelRemoteSearch(remotePtyId);
       }
     };
-  }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId]);
+  }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId, searchRetryNonce]);
 
   const runPreviewReplacingAction = useCallback((action: () => void) => {
     if (!expandedFile || !activeSessionId) {
@@ -661,7 +670,10 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
             searchLoading && grepHits.length === 0 ? (
               <PanelLoadingState label={t("explorer.searching")} />
             ) : searchError ? (
-              <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
+              <>
+                <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
+                <SearchRetryButton label={t("explorer.search_retry")} onRetry={() => setSearchRetryNonce((n) => n + 1)} />
+              </>
             ) : grepHits.length === 0 ? (
               <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
             ) : (
@@ -704,7 +716,10 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           searchLoading && searchHits.length === 0 ? (
             <PanelLoadingState label={t("explorer.searching")} />
           ) : searchError ? (
-            <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
+            <>
+              <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
+              <SearchRetryButton label={t("explorer.search_retry")} onRetry={() => setSearchRetryNonce((n) => n + 1)} />
+            </>
           ) : searchHits.length === 0 ? (
             <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
           ) : (

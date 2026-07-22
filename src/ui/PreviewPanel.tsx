@@ -235,7 +235,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
       </div>}
       {isOpen && <div aria-label={t("inspector.preview.viewport_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
         <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.viewport")}</span>
-        {[[390, 844, "Phone"], [768, 1024, "Tablet"], [1280, 720, "Desktop"]].map(([width, height, label]) => <button key={label} disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewSetViewport(effectiveSource, Number(width), Number(height)))}>{label} {width}×{height}</button>)}
+        {[[390, 844, "phone"], [768, 1024, "tablet"], [1280, 720, "desktop"]].map(([width, height, key]) => <button key={key} disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewSetViewport(effectiveSource, Number(width), Number(height)))}>{t(`inspector.preview.viewport.${key}`)} {width}×{height}</button>)}
         <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewFitViewport(effectiveSource))}>{t("inspector.preview.fit")}</button>
         <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run(() => previewResetViewport(effectiveSource))}>{t("inspector.preview.reset")}</button>
         <span role="status" style={{ color: runtimeState.viewport.exact ? "var(--c-text-4)" : "var(--c-warning)" }}>

@@ -294,6 +294,7 @@
   "explorer.loading": "Loading",
   "explorer.searching": "Searching",
   "explorer.search_failed": "Search failed",
+  "explorer.search_retry": "Retry",
   "explorer.search_placeholder": "Search current project",
   "explorer.no_match": "No matching files",
   "explorer.results": "Results",
@@ -374,6 +375,9 @@
   "inspector.preview.zoom": "Zoom",
   "inspector.preview.viewport_controls": "Trusted Preview viewport",
   "inspector.preview.viewport": "Viewport",
+  "inspector.preview.viewport.phone": "Phone",
+  "inspector.preview.viewport.tablet": "Tablet",
+  "inspector.preview.viewport.desktop": "Desktop",
   "inspector.preview.fit": "Fit",
   "inspector.preview.reset": "Reset",
   "inspector.preview.viewport_unavailable": "requested size unavailable",
@@ -738,5 +742,8 @@
   "timeline.payload.error.eventMismatch": "Payload belongs to a different event.",
   "timeline.payload.error.typeMismatch": "Payload type does not match its header.",
   "timeline.payload.error.sizeMismatch": "Payload size does not match its header.",
-  "timeline.payload.error.hashMismatch": "Payload integrity check failed."
+  "timeline.payload.error.hashMismatch": "Payload integrity check failed.",
+  "timeline.rich.image_decoding": "Decoding local image…",
+  "timeline.rich.image_invalid": "Image payload is invalid or exceeds the safe render budget.",
+  "timeline.rich.image_alt": "Local Agent event payload"
 }
