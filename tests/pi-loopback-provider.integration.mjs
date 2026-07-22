@@ -7,6 +7,8 @@ import path from "node:path";
 import test from "node:test";
 
 const fixture = path.resolve("scripts/fixtures/pi-loopback-provider.py");
+// Run this real subprocess integration separately from the parallel Node suite
+// so constrained macOS CI runners can start Python deterministically.
 const PROVIDER_STARTUP_TIMEOUT_MS = 10_000;
 
 async function waitForFile(file, child, stderr) {
