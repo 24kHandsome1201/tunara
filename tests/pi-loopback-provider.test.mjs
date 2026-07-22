@@ -7,9 +7,11 @@ import path from "node:path";
 import test from "node:test";
 
 const fixture = path.resolve("scripts/fixtures/pi-loopback-provider.py");
+const PROVIDER_STARTUP_TIMEOUT_MS = 10_000;
 
 async function waitForFile(file, child, stderr) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  const deadline = Date.now() + PROVIDER_STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     try {
       return (await readFile(file, "utf8")).trim();
     } catch {
