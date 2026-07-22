@@ -36,8 +36,9 @@ test("file operation errors keep a classified summary and diagnostic detail", as
   assert.equal(classifyFileOperationError("SSH connection closed"), "disconnected");
   assert.equal(classifyFileOperationError("editable content exceeds safe limit"), "unsupported");
   assert.equal(classifyFileOperationError(new Error("unclassified backend detail")), "failed");
-  assert.equal((preview.match(/detail: String\(error\)/g) ?? []).length, 2);
+  assert.equal((preview.match(/detail: String\(error\)/g) ?? []).length, 3);
   assert.match(preview, /title=\{operationError\.detail\}/);
+  assert.match(preview, /title=\{readError\.detail\}/);
 });
 
 test("the editor ships a line-numbered paper surface with narrow and reduced-motion states", () => {

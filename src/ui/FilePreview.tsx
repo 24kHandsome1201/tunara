@@ -729,19 +729,58 @@ function EditorSurface({
 export function FilePreview({ filePath, fileName, onClose, fill = false, remotePtyId }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
-  const [error, setError] = useState(false);
+  const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const readingRef = useRef(false);
+  const remoteSession = useSessionsStore((state) => remotePtyId === undefined
+    ? undefined
+    : state.sessions.find((session) => session.ptyId === remotePtyId));
 
   useEffect(() => {
     let cancelled = false;
+    readingRef.current = true;
     setResult(null);
-    setError(false);
+    setReadError(null);
     const read =
       remotePtyId !== undefined ? sshReadFile(remotePtyId, filePath) : fsReadFile(filePath);
     read
       .then((r) => { if (!cancelled) setResult(r); })
-      .catch(() => { if (!cancelled) setError(true); });
+      .catch((error) => {
+        if (!cancelled) {
+          setReadError({ kind: classifyFileOperationError(error), detail: String(error) });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) readingRef.current = false;
+      });
     return () => { cancelled = true; };
-  }, [filePath, remotePtyId]);
+  }, [filePath, readAttempt, remotePtyId]);
+
+  const retryRead = () => {
+    if (readingRef.current) return;
+    readingRef.current = true;
+    setReadAttempt((attempt) => attempt + 1);
+  };
+
+  const reconnectRemote = () => {
+    if (!remoteSession?.remote) return;
+    useUIStore.getState().openSshConnect({
+      host: remoteSession.remote.host,
+      user: remoteSession.remote.user,
+      port: remoteSession.remote.port,
+      identityFile: remoteSession.remote.identityFile,
+      injectShellIntegration: remoteSession.remote.injectShellIntegration,
+      reconnectSessionId: remoteSession.id,
+    });
+  };
+
+  const readErrorBody = readError?.kind === "permission"
+    ? t("preview.read_failed_permission")
+    : readError?.kind === "disconnected"
+      ? t("preview.read_failed_disconnected")
+      : readError?.kind === "unsupported"
+        ? t("preview.read_failed_unsupported")
+        : t("preview.read_failed_body");
 
   const isMarkdown = /\.mdx?$/i.test(fileName);
   const textContent = result?.kind === "text"
@@ -796,8 +835,18 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
         </button>
       </div>
 
-      {error ? (
-        <PreviewMessage icon="⊘" text={t("preview.read_failed")} />
+      {readError ? (
+        <div role="alert" style={{ padding: 12, display: "flex", minHeight: 0, flex: fill ? 1 : undefined, flexDirection: "column", alignItems: "flex-start", justifyContent: fill ? "center" : undefined, gap: 7 }}>
+          <strong style={{ color: "var(--c-text-2)", fontSize: "var(--fs-secondary)" }}>{t("preview.read_failed")}</strong>
+          <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
+          <span title={readError.detail} style={{ display: "block", maxWidth: "100%", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{readError.detail}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={retryRead}>{t("preview.retry")}</button>
+            {readError.kind === "disconnected" && remoteSession?.remote ? (
+              <button onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+            ) : null}
+          </div>
+        </div>
       ) : !result ? (
         <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "loadPulse 1.2s var(--ease-in-out) infinite", flexShrink: 0 }} />
