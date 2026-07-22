@@ -54,6 +54,38 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
     || session.workspaceState === "unavailable"
     || (tab === "changes" && !session.workspace && session.branch),
   );
+  let activePanel: React.ReactNode;
+  switch (tab) {
+    case "changes":
+      activePanel = <DiffPanel session={session} embedded />;
+      break;
+    case "files":
+      activePanel = isRemote && session.ptyId === undefined ? (
+        <PanelEmptyState
+          icon={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          }
+          label={t("inspector.remote_hint")}
+          sublabel={session.dir}
+        />
+      ) : (
+        <FileExplorer rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
+      );
+      break;
+    case "preview":
+      activePanel = <PreviewPanel session={session} />;
+      break;
+    case "notes":
+      activePanel = <SessionNotesPanel session={session} />;
+      break;
+    case "overview":
+      activePanel = <SessionOverviewPanel session={session} />;
+      break;
+  }
 
   return (
     <div style={{ width: "100%", background: "var(--c-bg-2)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
@@ -95,34 +127,8 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
       )}
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div key={`overview-${tab}`} style={{ flex: 1, display: tab === "overview" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "overview" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-          <SessionOverviewPanel session={session} />
-        </div>
-        <div key={`changes-${tab}`} style={{ flex: 1, display: tab === "changes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "changes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-          <DiffPanel session={session} embedded />
-        </div>
-        <div key={`files-${tab}`} style={{ flex: 1, display: tab === "files" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "files" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-          {isRemote && session.ptyId === undefined ? (
-            <PanelEmptyState
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="3" width="20" height="14" rx="2" />
-                  <line x1="8" y1="21" x2="16" y2="21" />
-                  <line x1="12" y1="17" x2="12" y2="21" />
-                </svg>
-              }
-              label={t("inspector.remote_hint")}
-              sublabel={session.dir}
-            />
-          ) : (
-            <FileExplorer rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
-          )}
-        </div>
-        <div key={`notes-${tab}`} style={{ flex: 1, display: tab === "notes" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "notes" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-          <SessionNotesPanel session={session} />
-        </div>
-        <div key={`preview-${tab}`} style={{ flex: 1, display: tab === "preview" ? "flex" : "none", flexDirection: "column", minHeight: 0, animation: tab === "preview" ? "contentIn var(--duration-normal) var(--ease-out-expo)" : undefined }}>
-          <PreviewPanel session={session} />
+        <div key={tab} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
+          {activePanel}
         </div>
       </div>
     </div>
