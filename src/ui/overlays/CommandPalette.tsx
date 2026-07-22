@@ -144,7 +144,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     });
 
     if (activeSession) {
-      const openInspectorTab = (tab: "overview" | "timeline" | "notes", usageId: string) => {
+      const openInspectorTab = (tab: "overview" | "notes", usageId: string) => {
         uiStore.getState().recordCommandUse(usageId);
         uiStore.getState().setPanelVisible(true);
         uiStore.getState().setInspectorTab(tab);
@@ -311,16 +311,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         scopes: ["action", "app"],
         originalIndex: idx++,
         action: () => openInspectorTab("overview", "open-session-overview"),
-      });
-
-      cmds.push({
-        id: "open-agent-timeline",
-        label: t("palette.cmd.open_agent_timeline"),
-        icon: <CmdIcon d="M5 5h14M5 12h14M5 19h14M8 3v4M12 10v4M16 17v4" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "app", "terminal"],
-        originalIndex: idx++,
-        action: () => openInspectorTab("timeline", "open-agent-timeline"),
       });
 
       cmds.push({

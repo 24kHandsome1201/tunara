@@ -18,6 +18,25 @@ test("dead IPC commands are removed from the Tauri invoke handler", () => {
   assert.match(lib, /modules::resolver::set_bin_override/);
 });
 
+test("persistent Agent Timeline is absent while lightweight Agent lifecycle remains", () => {
+  const lib = read("src-tauri/src/lib.rs");
+  const modules = read("src-tauri/src/modules/mod.rs");
+  const permission = read("src-tauri/permissions/main.toml");
+  const inspector = read("src/ui/InspectorPanel.tsx");
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const sessions = read("src/state/sessions.ts");
+
+  assert.equal(existsSync(resolve(root, "src-tauri/src/modules/agent_event_store.rs")), false);
+  assert.equal(existsSync(resolve(root, "src/ui/AgentTimelinePanel.tsx")), false);
+  assert.doesNotMatch(`${lib}\n${modules}\n${permission}`, /agent_event_(?:store|append|list|payload|search|delete)/);
+  assert.doesNotMatch(`${inspector}\n${palette}`, /AgentTimeline|open-agent-timeline|inspector\.tab\.timeline/);
+  assert.match(modules, /pub mod agent;/);
+  assert.match(lib, /modules::agent::hooks::start_listener/);
+  assert.match(sessions, /sessionTimelines/);
+  assert.match(sessions, /appendTimelineEvent/);
+  assert.ok(existsSync(resolve(root, "src/state/timeline.ts")));
+});
+
 test("node test script can import TypeScript sources on Node 22", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.match(pkg.scripts["test:node"], /--experimental-strip-types/);
