@@ -21,7 +21,7 @@ vi.mock("@/ui/overlays/useAppUpdate", () => ({
 }));
 
 test("legacy Agent history is deleted only after explicit confirmation", async () => {
-  const calls: Array<{ command: string; args: Record<string, unknown> | undefined }> = [];
+  const calls: Array<{ command: string; args: unknown }> = [];
   mockIPC((command, args) => {
     calls.push({ command, args });
     if (command === "legacy_agent_data_status") return "present";
@@ -32,7 +32,7 @@ test("legacy Agent history is deleted only after explicit confirmation", async (
   useUIStore.setState({
     configLoaded: false,
     settingsTab: "app",
-    configPath: null,
+    configPath: undefined,
     configError: null,
   });
 
