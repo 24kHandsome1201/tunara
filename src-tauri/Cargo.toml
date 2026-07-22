@@ -58,7 +58,7 @@ notify-debouncer-mini = "0.4"
 russh = "=0.61.2"
 russh-sftp = "2.3"
 # ~/.ssh & known_hosts path resolution (XDG/home dirs).
-dirs = "5"
+dirs = "6"
 tauri-plugin-log = "2"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"
