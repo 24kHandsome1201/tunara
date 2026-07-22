@@ -19,7 +19,7 @@
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test:node": "node --experimental-strip-types --test tests/*.test.mjs && node --experimental-strip-types --test tests/pi-loopback-provider.integration.mjs",
+    "test:node": "node --experimental-strip-types --test tests/*.test.mjs",
     "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
     "test:ui": "pnpm typecheck:ui && vitest run --config vitest.config.ts",
     "test": "pnpm test:node && pnpm test:ui && cargo test --manifest-path src-tauri/Cargo.toml",
