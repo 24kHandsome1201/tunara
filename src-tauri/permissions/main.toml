@@ -28,6 +28,8 @@ commands.allow = [
   "load_config",
   "save_config",
   "workspace_store_file_state",
+  "legacy_agent_data_status",
+  "legacy_agent_data_delete",
   "preview_open",
   "preview_refresh",
   "preview_status",

@@ -114,6 +114,8 @@ pub fn run() {
             modules::config::load_config,
             modules::config::save_config,
             modules::workspace_store::workspace_store_file_state,
+            modules::workspace_store::legacy_agent_data_status,
+            modules::workspace_store::legacy_agent_data_delete,
             modules::preview::preview_open,
             modules::preview::preview_refresh,
             modules::preview::preview_status,
