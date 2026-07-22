@@ -37,6 +37,16 @@ test("persistent Agent Timeline is absent while lightweight Agent lifecycle rema
   assert.ok(existsSync(resolve(root, "src/state/timeline.ts")));
 });
 
+test("fixed runbooks stay removed while user-configurable workflows remain", () => {
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const paletteFilter = read("src/ui/overlays/command-palette-filter.ts");
+
+  assert.equal(existsSync(resolve(root, "src/modules/runbook/blueprints.ts")), false);
+  assert.doesNotMatch(`${palette}\n${paletteFilter}`, /runbook|git restore --staged/iu);
+  assert.match(palette, /useWorkflowsStore/);
+  assert.ok(existsSync(resolve(root, "src/modules/workflows/starters.ts")));
+});
+
 test("node test script can import TypeScript sources on Node 22", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.match(pkg.scripts["test:node"], /--experimental-strip-types/);
