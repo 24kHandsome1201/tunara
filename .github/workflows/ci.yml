@@ -71,11 +71,14 @@ jobs:
       - name: Run Rust clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
-      # Frontend and Rust tests run as independent steps so a frontend failure
-      # does not skip the Rust suite (pnpm test chains them with &&, which
-      # masks Rust regressions when Node tests fail first).
-      - name: Run frontend tests
+      # Node, UI, and Rust tests run as independent steps so one failure does
+      # not mask regressions in a later suite (pnpm test chains them with &&).
+      - name: Run Node frontend tests
         run: pnpm test:node
+
+      - name: Run UI frontend tests
+        if: always()
+        run: pnpm test:ui
 
       - name: Run Rust tests
         if: always()
