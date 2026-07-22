@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { deriveTitle, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { getNumberRecordValue } from "@/state/record-keys";
@@ -20,6 +20,7 @@ type DragStyle = React.CSSProperties & { WebkitAppRegion?: string };
 
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
 const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1;
+const FULLSCREEN_EXIT_HINT_DURATION_MS = 4000;
 
 interface TitlebarProps {
   sessions: Session[];
@@ -60,7 +61,7 @@ function GearIcon() {
   );
 }
 
-function PureModeIcon() {
+function PresentationModeIcon() {
   return (
     <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M5.5 2.5h-3v3" />
@@ -68,6 +69,89 @@ function PureModeIcon() {
       <path d="M13.5 10.5v3h-3" />
       <path d="M5.5 13.5h-3v-3" />
     </svg>
+  );
+}
+
+interface PresentationModeButtonProps {
+  label: string;
+  shortcut: string;
+  onClick: () => void;
+  showShortcut?: boolean;
+  surface?: boolean;
+  floating?: boolean;
+  visible?: boolean;
+  onKeepVisible?: () => void;
+  onReleaseVisible?: () => void;
+}
+
+function PresentationModeButton({
+  label,
+  shortcut,
+  onClick,
+  showShortcut = false,
+  surface = false,
+  floating = false,
+  visible = true,
+  onKeepVisible,
+  onReleaseVisible,
+}: PresentationModeButtonProps) {
+  const accessibleLabel = `${label} ${shortcut}`;
+  return (
+    <button
+      type="button"
+      data-presentation-action={floating ? "exit-fullscreen-pure" : undefined}
+      data-visible={floating ? String(visible) : undefined}
+      onClick={onClick}
+      onPointerEnter={onKeepVisible}
+      onPointerLeave={onReleaseVisible}
+      onFocus={onKeepVisible}
+      onBlur={onReleaseVisible}
+      title={accessibleLabel}
+      aria-label={accessibleLabel}
+      aria-hidden={floating && !visible ? true : undefined}
+      tabIndex={floating && !visible ? -1 : 0}
+      className={floating || surface ? "presentation-mode-exit-hint" : "hover-bg"}
+      style={{
+        height: floating ? 30 : "var(--h-titlebar-control)",
+        padding: floating ? "0 10px" : "0 8px",
+        borderRadius: "var(--r-btn)",
+        border: floating || surface ? "1px solid var(--c-border-1)" : "none",
+        background: floating || surface ? undefined : "transparent",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        whiteSpace: "nowrap",
+        ...(floating ? {
+          position: "fixed",
+          top: 8,
+          left: "50%",
+          zIndex: 900,
+          opacity: visible ? 1 : 0,
+          transform: `translate(-50%, ${visible ? "0" : "-8px"})`,
+          pointerEvents: visible ? "auto" : "none",
+          transition: "opacity var(--duration-normal) var(--ease-smooth), transform var(--duration-normal) var(--ease-out-expo)",
+          boxShadow: "var(--shadow-menu)",
+        } : {}),
+      }}
+    >
+      <PresentationModeIcon />
+      <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 500 }}>{label}</span>
+      {showShortcut && (
+        <kbd style={{
+          padding: "1px 4px",
+          borderRadius: "var(--r-badge-sm)",
+          background: "var(--c-bg-2)",
+          color: "var(--c-text-4)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--fs-meta-sm)",
+          lineHeight: 1.4,
+        }}>
+          {shortcut}
+        </kbd>
+      )}
+    </button>
   );
 }
 
@@ -233,9 +317,12 @@ export function Titlebar({
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
   const openSettingsShortcut = useUIStore((s) => s.keybindings.openSettings);
   const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
-  const presentationModeShortcut = useUIStore((s) => s.keybindings.togglePresentationMode);
+  const presentationModeBinding = useUIStore((s) => s.keybindings.togglePresentationMode);
+  const presentationModeShortcut = formatShortcut(presentationModeBinding);
   const setPresentationMode = useUIStore((s) => s.setPresentationMode);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const fullscreenHintTimerRef = useRef<number | null>(null);
+  const [fullscreenExitHintVisible, setFullscreenExitHintVisible] = useState(false);
   const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
   const [newTerminalMenu, setNewTerminalMenu] = useState<{
     items: MenuEntry[];
@@ -245,6 +332,45 @@ export function Titlebar({
   useEffect(() => {
     if (presentationMode === "pure") setNewTerminalMenu(null);
   }, [presentationMode]);
+
+  const clearFullscreenHintTimer = useCallback(() => {
+    if (fullscreenHintTimerRef.current !== null) {
+      window.clearTimeout(fullscreenHintTimerRef.current);
+      fullscreenHintTimerRef.current = null;
+    }
+  }, []);
+
+  const keepFullscreenExitHintVisible = useCallback(() => {
+    clearFullscreenHintTimer();
+    setFullscreenExitHintVisible(true);
+  }, [clearFullscreenHintTimer]);
+
+  const revealFullscreenExitHint = useCallback(() => {
+    keepFullscreenExitHintVisible();
+    fullscreenHintTimerRef.current = window.setTimeout(() => {
+      fullscreenHintTimerRef.current = null;
+      setFullscreenExitHintVisible(false);
+    }, FULLSCREEN_EXIT_HINT_DURATION_MS);
+  }, [keepFullscreenExitHintVisible]);
+
+  useEffect(() => {
+    if (presentationMode === "pure" && nativeFullscreen) {
+      revealFullscreenExitHint();
+    } else {
+      clearFullscreenHintTimer();
+      setFullscreenExitHintVisible(false);
+    }
+    return clearFullscreenHintTimer;
+  }, [clearFullscreenHintTimer, nativeFullscreen, presentationMode, revealFullscreenExitHint]);
+
+  useEffect(() => {
+    if (presentationMode !== "pure" || !nativeFullscreen) return;
+    const revealAtTopEdge = (event: PointerEvent) => {
+      if (event.clientY <= 10) revealFullscreenExitHint();
+    };
+    window.addEventListener("pointermove", revealAtTopEdge, { passive: true });
+    return () => window.removeEventListener("pointermove", revealAtTopEdge);
+  }, [nativeFullscreen, presentationMode, revealFullscreenExitHint]);
 
   const openNewTerminalMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -320,7 +446,20 @@ export function Titlebar({
   const titlebarControlTransform = _isMac ? `translateY(${MAC_TITLEBAR_CONTROL_Y_OFFSET}px)` : undefined;
 
   if (presentationMode === "pure") {
-    if (nativeFullscreen) return null;
+    if (nativeFullscreen) {
+      return (
+        <PresentationModeButton
+          label={t("palette.cmd.exit_pure")}
+          shortcut={presentationModeShortcut}
+          onClick={() => setPresentationMode("workspace")}
+          showShortcut
+          floating
+          visible={fullscreenExitHintVisible}
+          onKeepVisible={keepFullscreenExitHintVisible}
+          onReleaseVisible={revealFullscreenExitHint}
+        />
+      );
+    }
     return (
       <div
         data-presentation-chrome="windowed"
@@ -335,11 +474,16 @@ export function Titlebar({
         } as DragStyle}
       >
         <div data-tauri-drag-region style={{ flex: 1 }} />
-        {!_isMac && (
-          <div style={{ paddingRight: 4, WebkitAppRegion: "no-drag" } as DragStyle}>
-            <WindowControls />
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: _isMac ? 12 : 4, WebkitAppRegion: "no-drag" } as DragStyle}>
+          <PresentationModeButton
+            label={t("palette.cmd.exit_pure")}
+            shortcut={presentationModeShortcut}
+            onClick={() => setPresentationMode("workspace")}
+            showShortcut
+            surface
+          />
+          {!_isMac && <WindowControls />}
+        </div>
       </div>
     );
   }
@@ -493,32 +637,11 @@ export function Titlebar({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
-        <button
-          type="button"
-          data-presentation-action="enter-pure"
+        <PresentationModeButton
+          label={t("titlebar.pure_mode")}
+          shortcut={presentationModeShortcut}
           onClick={() => setPresentationMode("pure")}
-          title={`${t("palette.cmd.enter_pure")} ${formatShortcut(presentationModeShortcut)}`}
-          aria-label={`${t("palette.cmd.enter_pure")} ${formatShortcut(presentationModeShortcut)}`}
-          style={{
-            height: "var(--h-titlebar-control)",
-            padding: "0 8px",
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 5,
-            whiteSpace: "nowrap",
-          }}
-          className="hover-bg"
-        >
-          <PureModeIcon />
-          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 500 }}>
-            {t("titlebar.pure_mode")}
-          </span>
-        </button>
+        />
 
         <button
           onClick={onOpenSettings}

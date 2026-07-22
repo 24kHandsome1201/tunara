@@ -31,11 +31,18 @@ test("presentation mode stays runtime-only and preserves terminal mounts", () =>
   assert.match(main, /<TerminalPane session=\{s\} isActive=\{s\.id === activeSessionId\} \/>/);
 });
 
-test("pure mode distinguishes window chrome from native fullscreen", () => {
+test("pure mode keeps window controls discoverable and fullscreen chrome transient", () => {
   const titlebar = read("src/ui/Titlebar.tsx");
   const init = read("src/app/useInit.ts");
+  const topEdgeListener = titlebar.slice(
+    titlebar.indexOf("const revealAtTopEdge"),
+    titlebar.indexOf("window.addEventListener", titlebar.indexOf("const revealAtTopEdge")),
+  );
 
-  assert.match(titlebar, /if \(presentationMode === "pure"\)[\s\S]*if \(nativeFullscreen\) return null/);
+  assert.match(titlebar, /if \(presentationMode === "pure"\)[\s\S]*if \(nativeFullscreen\)/);
+  assert.match(titlebar, /data-presentation-action=\{floating \? "exit-fullscreen-pure" : undefined\}/);
+  assert.match(titlebar, /window\.addEventListener\("pointermove", revealAtTopEdge, \{ passive: true \}\)/);
+  assert.doesNotMatch(topEdgeListener, /preventDefault|stopPropagation/);
   assert.match(titlebar, /data-presentation-chrome="windowed"/);
   assert.match(titlebar, /<div data-tauri-drag-region style=\{\{ flex: 1 \}\} \/>/);
   assert.match(titlebar, /var\(--terminal-canvas-bg/);

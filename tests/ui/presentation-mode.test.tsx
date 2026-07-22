@@ -7,6 +7,24 @@ import { CommandPalette } from "@/ui/overlays/CommandPalette";
 
 vi.mock("@/ui/lib/current-window", () => ({ tryGetCurrentWindow: () => null }));
 
+function renderTitlebar() {
+  return render(
+    <Titlebar
+      sessions={[]}
+      activeSessionId=""
+      panelVisible={false}
+      sidebarVisible
+      onToggleSidebar={() => {}}
+      onTogglePanel={() => {}}
+      onSelectSession={() => {}}
+      onCloseSession={() => {}}
+      onNewTerminal={() => {}}
+      onNewTerminalInDirectory={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
+}
+
 function ContextMenuGuardHarness({
   onContextMenu,
   onMouseDown,
@@ -84,33 +102,45 @@ test("presentation mode is a reversible projection over workspace UI state", () 
   });
 });
 
-test("the workspace titlebar exposes a visible pure-mode entry that disappears after activation", () => {
+test("the titlebar makes entering and leaving windowed pure mode equally discoverable", () => {
   useUIStore.setState({ configLoaded: false, presentationMode: "workspace", nativeFullscreen: false });
-  const { container } = render(
-    <Titlebar
-      sessions={[]}
-      activeSessionId=""
-      panelVisible={false}
-      sidebarVisible
-      onToggleSidebar={() => {}}
-      onTogglePanel={() => {}}
-      onSelectSession={() => {}}
-      onCloseSession={() => {}}
-      onNewTerminal={() => {}}
-      onNewTerminalInDirectory={() => {}}
-      onOpenSettings={() => {}}
-    />,
-  );
+  renderTitlebar();
 
-  const entry = screen.getByRole("button", { name: /Enter Pure Mode/ });
+  const enter = screen.getByRole("button", { name: /Pure Mode.+P/ });
   expect(screen.getByText("Pure Mode")).toBeTruthy();
-  expect(entry.getAttribute("title")).toMatch(/Enter Pure Mode.+P/);
-
-  fireEvent.click(entry);
+  fireEvent.click(enter);
 
   expect(useUIStore.getState().presentationMode).toBe("pure");
-  expect(screen.queryByRole("button", { name: /Enter Pure Mode/ })).toBeNull();
-  expect(container.querySelector('[data-presentation-chrome="windowed"]')).toBeTruthy();
+  const exit = screen.getByRole("button", { name: /Exit Pure Mode.+P/ });
+  expect(screen.getByText("Exit Pure Mode")).toBeTruthy();
+  fireEvent.click(exit);
+
+  expect(useUIStore.getState().presentationMode).toBe("workspace");
+  expect(screen.getByRole("button", { name: /Pure Mode.+P/ })).toBeTruthy();
+});
+
+test("native fullscreen teaches the exit shortcut, fades, and reveals again at the top edge", () => {
+  vi.useFakeTimers();
+  try {
+    useUIStore.setState({ configLoaded: false, presentationMode: "pure", nativeFullscreen: true });
+    const { container } = renderTitlebar();
+
+    expect(screen.getByRole("button", { name: /Exit Pure Mode.+P/ })).toBeTruthy();
+
+    act(() => vi.advanceTimersByTime(4000));
+    expect(screen.queryByRole("button", { name: /Exit Pure Mode.+P/ })).toBeNull();
+
+    const pointerMove = new PointerEvent("pointermove", { bubbles: true, cancelable: true, clientY: 2 });
+    act(() => window.dispatchEvent(pointerMove));
+    expect(pointerMove.defaultPrevented).toBe(false);
+    const revealedExit = screen.getByRole("button", { name: /Exit Pure Mode.+P/ });
+    expect(container.querySelector('[data-presentation-action="exit-fullscreen-pure"]')?.getAttribute("data-visible")).toBe("true");
+
+    fireEvent.click(revealedExit);
+    expect(useUIStore.getState().presentationMode).toBe("workspace");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("the pure-mode command palette is a focused exit path", () => {
