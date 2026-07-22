@@ -2,7 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { useUIStore } from "@/state/ui";
 import { usePresentationModeContextMenuGuard } from "@/app/usePresentationModeContextMenuGuard";
+import { Titlebar } from "@/ui/Titlebar";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
+
+vi.mock("@/ui/lib/current-window", () => ({ tryGetCurrentWindow: () => null }));
 
 function ContextMenuGuardHarness({
   onContextMenu,
@@ -79,6 +82,35 @@ test("presentation mode is a reversible projection over workspace UI state", () 
     sidebarVisible: false,
     panelVisible: true,
   });
+});
+
+test("the workspace titlebar exposes a visible pure-mode entry that disappears after activation", () => {
+  useUIStore.setState({ configLoaded: false, presentationMode: "workspace", nativeFullscreen: false });
+  const { container } = render(
+    <Titlebar
+      sessions={[]}
+      activeSessionId=""
+      panelVisible={false}
+      sidebarVisible
+      onToggleSidebar={() => {}}
+      onTogglePanel={() => {}}
+      onSelectSession={() => {}}
+      onCloseSession={() => {}}
+      onNewTerminal={() => {}}
+      onNewTerminalInDirectory={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
+
+  const entry = screen.getByRole("button", { name: /Enter Pure Mode/ });
+  expect(screen.getByText("Pure Mode")).toBeTruthy();
+  expect(entry.getAttribute("title")).toMatch(/Enter Pure Mode.+P/);
+
+  fireEvent.click(entry);
+
+  expect(useUIStore.getState().presentationMode).toBe("pure");
+  expect(screen.queryByRole("button", { name: /Enter Pure Mode/ })).toBeNull();
+  expect(container.querySelector('[data-presentation-chrome="windowed"]')).toBeTruthy();
 });
 
 test("the pure-mode command palette is a focused exit path", () => {

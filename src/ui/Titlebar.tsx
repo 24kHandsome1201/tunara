@@ -60,6 +60,17 @@ function GearIcon() {
   );
 }
 
+function PureModeIcon() {
+  return (
+    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5.5 2.5h-3v3" />
+      <path d="M10.5 2.5h3v3" />
+      <path d="M13.5 10.5v3h-3" />
+      <path d="M5.5 13.5h-3v-3" />
+    </svg>
+  );
+}
+
 interface TabButtonProps {
   isActive: boolean;
   label: string;
@@ -222,6 +233,8 @@ export function Titlebar({
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
   const openSettingsShortcut = useUIStore((s) => s.keybindings.openSettings);
   const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
+  const presentationModeShortcut = useUIStore((s) => s.keybindings.togglePresentationMode);
+  const setPresentationMode = useUIStore((s) => s.setPresentationMode);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
   const [newTerminalMenu, setNewTerminalMenu] = useState<{
@@ -480,6 +493,32 @@ export function Titlebar({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
+        <button
+          type="button"
+          data-presentation-action="enter-pure"
+          onClick={() => setPresentationMode("pure")}
+          title={`${t("palette.cmd.enter_pure")} ${formatShortcut(presentationModeShortcut)}`}
+          aria-label={`${t("palette.cmd.enter_pure")} ${formatShortcut(presentationModeShortcut)}`}
+          style={{
+            height: "var(--h-titlebar-control)",
+            padding: "0 8px",
+            borderRadius: "var(--r-btn)",
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
+            whiteSpace: "nowrap",
+          }}
+          className="hover-bg"
+        >
+          <PureModeIcon />
+          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 500 }}>
+            {t("titlebar.pure_mode")}
+          </span>
+        </button>
 
         <button
           onClick={onOpenSettings}
