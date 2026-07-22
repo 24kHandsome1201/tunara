@@ -4,19 +4,15 @@
 
 ## 当前结论
 
-`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性`、`Phase 2 Markdown / 单文件轻编辑`、`Phase 3 Workspace-bound Preview` 与 `Phase 4 Agent Attention / Timeline` 均已完成。Phase 4 的 Event Store、Timeline 核心虚拟列表、private payload 惰性富渲染、全文搜索和持久层轻量索引 required gates 已在 optimized/release macOS WKWebView 与真实 PTY 中关闭，见 [搜索与索引关闭证据](./benchmarks/m3-agent-timeline-search-index-macos-2026-07-15.md)。原始 fixture、索引、日志和截图只留内置磁盘 ignored/cache/temp；本批停止，不创建或进入 Phase 5。
+`M0 Phase 1 真实验收`、`M1 Terminal + SSH 性能与乱码稳定性`、`Phase 2 Markdown / 单文件轻编辑` 与 `Phase 3 Workspace-bound Preview` 均已完成。Agent 产品范围保持轻量：检测、Attention、resume 与 Overview 最近活动；不提供持久事件存储、全文搜索或富 payload Timeline。已移除的完整原型保存在远端 `archive/agent-timeline-v1`，只作为历史参考。v1.16 曾写入的本地 Agent 历史不会自动删除；Settings > App 只在检测到旧数据时提供显式、不可恢复的清理入口。
 
 | 阶段 | 状态 | 当前证据 | 下一道完成门 |
 |---|---|---|---|
-| Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归；主线进入 Phase 2 安全轻编辑 |
+| Phase 1 Workspace / Worktree | 已完成 | common git dir 稳定身份、本地/SSH worktree、真实 bundle/窄窗/重启/中文路径、12 个已挂载终端资源与交互基线；M1 已关闭 | 保持回归 |
 | Phase 2 Markdown / 单文件轻编辑 | 已完成 | Markdown/MDX 阅读器、本地与 SSH 安全写、冲突/unknown 保护、单文件编辑、源码高亮、GUI/键盘/原生关闭与 Linux/macOS/SSH 真实完整性证据均已关闭；5-run optimized macOS 首 PTY 中位数 1,619ms，通过 1,802.9ms 硬门，且 FilePreview/Markdown/editor draft 不进入首屏静态模块图 | 保持回归 |
-| Phase 3 Workspace Preview | 已完成 | 完整来源键与 window generation 隔离覆盖 WebView lifecycle、同源历史、zoom/viewport、失败摘要、安全重启、SSH tunnel，以及用户触发的 WKWebView PNG、最小脱敏 metadata 与绑定 physical PTY 的不执行 Send；optimized macOS 双 worktree/双 fixture/双 PTY 证明像素来源、关闭重开与 fail-closed | 保持回归；不自动进入 Phase 4/5 |
-| Phase 4 Agent Attention / Timeline | 已完成 | Event Store、Timeline 核心 UI、private payload 惰性富渲染、全文搜索与 `search-v1` 轻量索引均完成；10,000 headers + 1,000 Markdown + 500 tool + 200 diff + 100 images 首开/查询 payload read 为 0，英文/中文查询 15.483/20.772ms。optimized WKWebView 双重启、搜索/筛选/分页/展开/精确锚点、三窗口、真实像素和 PTY 均通过，见 [搜索与索引关闭证据](./benchmarks/m3-agent-timeline-search-index-macos-2026-07-15.md) | 保持 Phase 4 回归；本批停止，不进入 Phase 5 |
-| Phase 5 Worktree 生命周期 | 未开始 | Phase 1 只读 identity 与本地/SSH worktree discovery 已完成验收 | 创建/删除安全检查、恢复扫描、本地与 SSH 一致语义 |
-| Phase 6 Mobile Companion | 未开始 | Phase 1 稳定 identity 已完成；桌面仍是唯一事实源 | 等 Phase 4 事件模型稳定后，先做默认关闭、只读、局域网/Tailscale 的 Gateway + PWA 配对实验 |
-| Phase 7 Journal / Recipe | 部分基础 | 已有 session notes、timeline、changed files 与测试入口可作为引用源 | 先做 workspace 绑定的手动 goal 与可编辑 Markdown handoff；Recipe 必须等真实 Journal 复用证据 |
-| Herdr spike | 暂不进入关键路径 | GOAL 已记录实验边界 | 只有主线阶段验证后再单独决策 |
-| Surface / Action / Dogfood | 未系统化 | Terminal、Review、Files 已有事实源边界，破坏性确认有局部实现 | 建立统一 SurfaceRef/ActionRef、feature flag、数据生命周期与本地可查看/关闭/清空的 dogfood 指标 |
+| Phase 3 Workspace Preview | 已完成 | 完整来源键与 window generation 隔离覆盖 WebView lifecycle、同源历史、zoom/viewport、失败摘要、安全重启、SSH tunnel，以及用户触发的 WKWebView PNG、最小脱敏 metadata 与绑定 physical PTY 的不执行 Send；optimized macOS 双 worktree/双 fixture/双 PTY 证明像素来源、关闭重开与 fail-closed | 保持回归；不自动进入新阶段 |
+| 轻量 Agent 辅助 | 当前范围 | hook/wrapper、命令检测、Attention、resume、Overview 内存最近活动；旧 snapshot 的 `timeline` 页签安全回退 Overview | 不引入持久历史、搜索、富 payload 或聊天壳 |
+| 平台 | macOS 正式支持 | Apple Silicon 签名发布与原生 Preview 实机证据 | Linux/Windows 只作为实验性源码构建，不冒充发布支持 |
 
 ## M1 已关闭回归账本
 
@@ -101,51 +97,7 @@
 - [x] SSH remote loopback 显式 tunnel：`remote-manual` 来源只有在可信 main 对当前 active/resolved SSH session/worktree/terminal generation 执行显式动作并提供新 256-bit nonce 后，才复用既有 authenticated russh handle 建立精确 remote loopback `direct-tcpip`；本地端点由 OS 在 `127.0.0.1:0` 分配，不支持公网、任意目标、扫描、reverse/dynamic/SOCKS 或 shell。原始 remote URL 与派生 local endpoint 分离，状态只驻留内存；关闭 Preview/tunnel、PTY replacement、terminal/SSH/app exit 均回收。真实 optimized macOS 隔离应用以 codex-netcup 上两个 SSH Git workspace/session/physical PTY、同一 remote port 的 IPv4/IPv6 服务证明 A/B 不串、A 停服仅 A failed、B 显式关闭/重建、terminal exit 清理，以及并发、nonce replay、跨 worktree、stale、旧 generation 拒绝；页面 file/store/PTY/SSH/tunnel/app 六类高权限 0 次意外成功。见 [脱敏报告](./benchmarks/phase3-preview-ssh-tunnel-macos-2026-07-13.md)。
 - [x] 用户触发的 WKWebView 截图、最小来源 metadata 与绑定 PTY 安全送回：只在可信 main Inspector 捕获完整来源键与当前 window generation 对应的 Preview 页面，使用 safe-area 裁切的原生 PNG；原始 artifact 仅在 app cache，安全引用、来源摘要、CSS viewport、zoom、generation、像素、格式、字节数与 SHA-256 均脱敏。Copy/Send 不含二进制/base64，Send 再核对 capture 来源和真实 physical PTY，只填入且不附加回车。optimized macOS 两 worktree/两 fixture/两 PTY 证明三张 PNG 与页面 viewport/zoom 可解释、只含对应 WKWebView、A/B 不串、关闭重开旧引用拒绝；非法/过大/格式、stale/terminal-exit、generation/来源错误均 fail closed。见 [脱敏报告](./benchmarks/phase3-preview-capture-macos-2026-07-13.md)。
 
-Phase 3 required gates 已全部满足并正式关闭；[来源检测、安全 WebView、运行时生命周期、同源历史、有限缩放与 viewport、失败摘要、安全重启、显式 SSH tunnel、截图与来源 PTY 送回合同](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)继续作为回归边界。下方 M3 后端底座仍只是此前已授权并完成的独立切片；本批不扩张或继续 Phase 4/5。
-
-## Phase 4 / M3 Agent Event Store 后端底座执行账本
-
-- [x] 先完成并批准 [M3 后端短规格](./M3_AGENT_EVENT_STORE_SPEC.md)：固定唯一目标、scope/non-scope、复用点、header/private payload 模型、typed IPC、数据位置、预算、隐私、错误/恢复、capability、迁移/回滚/删除以及继续/停止条件；明确超过 8 个文件但不新增服务。
-- [x] 稳定 `AgentEventHeaderV1` 与 private payload 分离：header 只保存 Rust 单调 sequence、幂等 client ID、workspace/task/session、枚举 kind/source、安全 summary 与 payload 元数据；正文只存独立 0600 payload 文件。列表/分页类型和实现均不含 body，只有单 event 显式 payload command 会打开并校验长度/SHA-256。
-- [x] Rust 本地 append-only store：app-local-data 下独立 `agent-events/v1` 目录，payload 原子写入后才 append+sync header；`workspaceId + clientEventId` 重试幂等且冲突 fail closed。游标绑定 scope、delete generation、首次查询 high-water mark 与 exclusive sequence，页间 append 不漂移，删除后旧游标失效。
-- [x] 重启恢复、删除与能力关闭：尾部半写恢复到最后完整 header；中段损坏、manifest 损坏和未来 schema 分别进入 `corrupt/migrationRequired`，不覆盖数据、不阻止 Tauri/PTY setup。workspace/task 精确删除与 all 清空带显式确认和 pending journal，物理删除 payload并可在重启后幂等续做。持久 capability marker 关闭时不创建/读取 store、不删历史，重开恢复兼容数据；不可用状态仍不进入 `PtyState` 锁域。
-- [x] 严格预算和权限边界：最多 100,000 headers、256 MiB private payload、单 payload 1 MiB、单 header 8 KiB、summary 512 bytes、page 最大 200；identifier/control/path-like 输入和未知 content type 拒绝。无自动 prune、无导出、无遥测；status 明确数据位置、保留/导出/隐私合同。六个 command 只进入 trusted main allowlist，Preview ACL 保持仅 telemetry ingest。
-- [x] 确定性与本机真实性能：Rust 定向 11 passed + 独立 release harness；10,000 headers 全分页 3ms、最近 100 条 45µs、payload read 0、sequence 10,000/10,000 无漏重、reopen 25ms、RSS 增量 7,264KiB、fixture 3,326,628 bytes；20 轮并发全分页下真实 `/bin/cat` PTY 50 次回显 0 failure、p95 13µs。Node/UI/Rust 全量、两套 typecheck、lint、fmt、严格 clippy、production build 与 optimized Tauri `.app` bundle 均通过；隔离 bundle ad-hoc 签名后 strict codesign 通过。见 [本机证据](./benchmarks/m3-agent-event-store-macos-2026-07-13.md)。
-
-## Phase 4 / M3 Agent Timeline 核心 UI 执行账本
-
-- [x] 按 [短规格](./specs/m3-agent-timeline-core.md) 在现有 Inspector 增加 Timeline；只读取 typed header page，不读取 private payload，不增加 composer/chat/card grid 或第二套 CSS/icon/font/radius 系统。
-- [x] 动态高度虚拟列表首屏 100、每页 100、单 task 最多保留 600，只渲染 viewport + 280px overscan；10,000 headers 不进入单个前端数组或 DOM。
-- [x] Older 分页保持事件和像素锚点；底部跟随新事件，上滚只累积未读；更远分页丢弃 newer 后提供 Latest。task/workspace 切换保存可解释的瞬时位置与未读，重启从 durable store 恢复最新页。
-- [x] streaming header 以 animation frame 合并，只更新当前 streaming row 并在短窗口后固化；来源、confidence、time、status 清楚。无法证明 session/workspace 来源时显示 unknown 并禁用跳转，可信来源可返回真实 PTY且不写入、不执行。
-- [x] optimized macOS 双重启与真实像素门：两轮分页锚点精确保持、快速滚动 p95 19ms、DOM 12 rows、RSS 125,360–128,864KiB、PTY 回显 13–22ms；576×433、640×480、1200×800 及中英文均无 overflow/遮挡。完整脱敏结果见 [报告](./benchmarks/m3-agent-timeline-ui-macos-2026-07-14.md)。
-
-M3 Timeline 核心切片已完成；private payload 富渲染由下方独立切片继续关闭。Phase 4 是否完成仍以剩余搜索与索引门为准，不因核心 UI 自动进入 Phase 5。
-
-## Phase 4 / M3 private payload 惰性富渲染执行账本
-
-- [x] 按 [短规格](./specs/m3-private-payload-rich-rendering.md) 复用现有 header/private payload 分离、typed IPC、Timeline 虚拟列表和全局 tokens/CSS；没有新增聊天壳、composer、卡片墙、依赖或第二套视觉系统。
-- [x] 只有真实 viewport 内或用户显式展开的事件读取 payload；请求可取消、按 event/hash 去重，最多 4 并发、16 排队、24 条/6 MiB LRU。row 回收、task/workspace 切换和 scope 卸载会 abort 或丢弃 stale 结果。
-- [x] Markdown/MDX、代码、JSON、diff、大型工具输出和本地 PNG/JPEG/WebP 均受 MIME、来源、长度、SHA-256、字节、行数、DOM 与图片像素预算约束；不执行 active HTML/script，不加载富内容远程资源。损坏、缺失、旧数据迁移失败、unknown provenance 和类型不匹配均 fail closed，不影响真实 PTY。
-- [x] 富 renderer 保持 dynamic chunk；最终 gzip 2.89 kB。动态高度继续通知现有虚拟列表，并以显式展开事件的 viewport offset 保持测量锚点；Enter 展开/折叠，Escape 可回到真实 PTY。
-- [x] 确定性 fixture 覆盖 10,000 headers、1,000 个 Markdown 代码块、500 个工具输出、200 个 diff 和 100 张本地图片。首屏未读取 viewport 外 payload；富内容最多 600 DOM 行，缓存 24 条/76,882B，并发峰值 4，快速滚动 p95 18ms。
-- [x] optimized macOS WKWebView 双重启、真实 PTY、task 切换、后台/前台、本地图片解码、576×433、640×480、1200×800 和中英文像素门通过；RSS 124,896–125,808KiB，PTY 20–26ms。完整证据见 [报告](./benchmarks/m3-private-payload-rich-rendering-macos-2026-07-15.md)。
-- [x] 本批及后续持续只使用 Mac 内置磁盘：worktree 保持在 `~/.codex/worktrees`，target 使用 `/private/tmp/rail-phase4-target`，验收临时产物只进入内置 ignored/cache/temp；不复制外置缓存、不 `cargo clean`。
-
-M3 private payload 惰性富渲染切片完成；下方搜索与轻量索引关闭账本记录 Phase 4 最后一道独立门，本批不进入 Phase 5。
-
-## Phase 4 / M3 Agent Timeline 搜索与轻量索引关闭账本
-
-- [x] 按 [搜索与索引短规格](./specs/m3-agent-timeline-search-index.md)固定 Unicode 查询、task/workspace scope、kind/source/time 筛选、newest-first 分页、opaque cursor、75ms/8 token/100 result 查询上限，以及索引版本、预算、隐私、删除、重建、损坏与 capability 合同。
-- [x] 搜索只在 Rust `search-v1` 轻量持久索引执行；前端不加载完整 Timeline/header/payload。结果只返回现有 header、受限摘要、安全高亮和游标；点开结果才复用既有 payload manager，搜索首屏 payload read 为 0。
-- [x] header summary 与 Markdown/code/diff/tool text 可索引；图片只索引可信 content type/byte length/SHA-256 metadata，不读正文、不解码、不 OCR。索引不扫描 workspace、PTY scrollback、网络或任意文件。
-- [x] append、幂等 duplicate、重启、显式删除/清空与 Event Store 顺序一致；missing/corrupt/future schema/generation/capability/quota 只让搜索 fail closed，Timeline 与真实 PTY 保持可用。显式重建只读取受信任 Event Store。
-- [x] UI 复用 Inspector、Timeline row、虚拟列表、来源/confidence、tokens/CSS、中英文和真实 PTY 跳转；搜索 overlay 保留原 feed DOM/scroll 几何，清除后精确恢复 event anchor、selection/unread/bottom-follow 语义。
-- [x] 10,000 headers + 1,000 Markdown + 500 tool + 200 diff + 100 images optimized harness：首次打开 13ms、显式重建 78ms、两次重启 20/20ms、英文/中文查询 15.483/20.772ms、RSS 增量 9,136KiB、索引 7,607,926B、首开/查询 payload read 均为 0。
-- [x] optimized/release macOS WKWebView 双重启与真实 PTY 全部通过：首次 UI 重建 131ms，重启直接恢复 ready；两轮搜索首屏 0 read、展开后 1 read、分页保留 100、DOM 8、锚点 8906→8906 / 8907→8907、PTY 17–30ms、RSS 128,192–132,912KiB。576×433、640×480、1200×800、中英文、前后台与 Computer Use 真实像素均通过。
-- [x] 本批继续只使用 Mac 内置磁盘；原始 fixture、索引、日志和像素截图仅在隔离 Application Support 与 `/tmp`，未合入仓库。完整脱敏证据见 [报告](./benchmarks/m3-agent-timeline-search-index-macos-2026-07-15.md)。
-
-Phase 4 required gates 已全部满足并正式关闭。本批在 Phase 4 停止，明确不创建、不实现也不进入 Phase 5。
+Phase 3 required gates 已全部满足并正式关闭；[Preview 来源合同](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)继续作为回归边界。当前没有已承诺的下一产品阶段。
 
 ## Phase 1 验收账本
 
@@ -171,7 +123,7 @@ Phase 4 required gates 已全部满足并正式关闭。本批在 Phase 4 停止
 
 ## 每阶段通用门禁
 
-- TypeScript typecheck、lint、Node 测试。
+- TypeScript typecheck、lint、Node 与 UI 组件测试；三套测试在 CI 中独立报告。
 - Rust fmt、clippy、单元测试。
 - Frontend production build、Tauri release bundle。
 - 旧持久化快照恢复与新增字段降级。
@@ -179,8 +131,7 @@ Phase 4 required gates 已全部满足并正式关闭。本批在 Phase 4 停止
 - 真实 macOS bundle，真实 shell 与 SSH，窄窗/分屏/后台/重启。
 - 大目录、大文件、长输出、断网重连、中文输入与快捷键。
 - 多 worktree、多 Agent、外部文件修改和端口冲突。
-- Agent Timeline 10,000 条事件、富内容懒加载、分页锚点、流式合并、内存和真实 bundle 帧时间。
-- Companion 配对/撤销/轮换/重放/乱序/断线/抢占/锁屏敏感信息安全门禁。
-- 每项新能力都有 feature flag、数据位置、导出/删除/保留策略以及关闭再开启恢复证据。
+- macOS 是正式支持目标；Linux/Windows 编译或测试结果只记为实验性源码构建证据。
+- 新增持久数据或高权限能力时，必须说明数据位置、导出/删除/保留策略与关闭再开启恢复证据。
 
 未满足的门禁保留为未完成，不因版本发布或单次 smoke 自动勾选。

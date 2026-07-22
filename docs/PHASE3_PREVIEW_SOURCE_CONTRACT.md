@@ -56,7 +56,7 @@ PreviewSource = {
 - 不创建 WebView、Preview tab 或 Inspector 页面。
 - 不实现地址栏、刷新、前进/后退、缩放、viewport、截图、console/network 摘要。
 - 不实现 URL 可达性探测、服务进程关联、SSH tunnel 或端口转发。
-- 不进入 Phase 4，不改变 Agent Timeline。
+- 不扩张 Agent 产品范围。
 
 ## 安全 WebView surface 切片
 
