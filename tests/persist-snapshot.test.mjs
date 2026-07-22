@@ -161,7 +161,9 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
           paneB: "s-b",
           ratio: 0.95,
         },
-        inspectorTab: "unknown",
+        // Snapshots written before persistent Agent Timeline was removed must
+        // still restore, but the retired tab falls back to Overview.
+        inspectorTab: "timeline",
       },
       terminals: {
         "s-a": terminalSnapshot("kept"),

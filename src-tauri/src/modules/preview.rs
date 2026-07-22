@@ -32,6 +32,7 @@ const RESTART_COMMAND_MAX_BYTES: usize = 384;
 const MAX_CAPTURE_PIXELS: u64 = 16_777_216;
 const MAX_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_RUNTIME_CAPTURES: usize = 64;
+#[cfg(target_os = "macos")]
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

@@ -27,7 +27,9 @@ The scripts in `package.json` expand to:
 ```
 
 `pnpm test` runs the suites in that order, so a Node or UI failure short-circuits
-before `cargo test` runs. Node 22 is the development baseline
+before `cargo test` runs. CI runs Node, UI, and Rust tests as independent steps
+(`if: always()` for the latter two), so an earlier suite cannot hide later
+failures. Node 24 is the development and CI baseline
 (`--experimental-strip-types` is what lets the Node runner load `.ts` files
 without compiling them first).
 
@@ -183,7 +185,7 @@ the main themes by filename prefix.
 ### Frontend (`tests/`)
 
 - **Agent lifecycle and semantics** (`agent-*`, `*-semantics-source`): Agent
-  registry invariants, session summaries, timeline model, shell-integration
+  registry invariants, session summaries, shell-integration
   OSC emission, and per-agent (claude/codex/opencode/aider/pi) source-assertion
   suites.
 - **Terminal** (`terminal-*`, `local-terminal-*`): control-sequence stripping,
@@ -208,7 +210,7 @@ the main themes by filename prefix.
   permissions, deleted-module guards).
 - **Misc pure logic** (`breadcrumbs`, `diff-parse`, `dock-badge-state`,
   `git-watch-refcount`, `sync-watches`, `workflow-*`, `ui-types`,
-  `clipboard`, `elapsed`, `runbook`, `update-reminder`, `workspace-*`,
+  `clipboard`, `elapsed`, `update-reminder`, `workspace-*`,
   `timeline`, `session-*`, `app-shell-layout`, `split-layout`,
   `presentation-mode`, `record-keys`, `destructive-confirm`,
   `new-terminal-directory`, `grep-group`, `i18n-core`): small pure-logic suites

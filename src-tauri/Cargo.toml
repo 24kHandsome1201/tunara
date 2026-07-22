@@ -47,7 +47,6 @@ git2 = { version = "0.19", features = ["vendored-openssl"] } # keep macOS releas
 ignore = "0.4"
 grep-regex = "0.1"
 grep-searcher = "0.1"
-grep-matcher = "0.1"
 globset = "0.4"
 notify = "6"
 notify-debouncer-mini = "0.4"

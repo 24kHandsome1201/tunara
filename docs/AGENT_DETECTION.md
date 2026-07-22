@@ -211,7 +211,7 @@ sidebar busy indicator and close-confirmation.
 `PROMPT_READY_AGENTS` is paired with the Codex screen-state heuristic in the same
 file (`detectCodexScreenState`, `CODEX_BUSY_INDICATORS`,
 `CODEX_PROMPT_PATTERN`), driven by
-[`terminal-codex-state.ts`](../src/modules/terminal/lib/terminal-codex-state.ts):
+[`terminal-prompt-agent-state.ts`](../src/modules/terminal/lib/terminal-prompt-agent-state.ts):
 because Codex doesn't emit hook events, Tunara scrapes the last few rendered
 lines to decide `ready` vs `busy`.
 

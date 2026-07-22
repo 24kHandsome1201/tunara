@@ -78,12 +78,6 @@ pub fn run() {
 
             let hook_listener = modules::agent::hooks::start_listener(app.handle().clone());
             app.manage(hook_listener);
-            // Event Store is deliberately initialized after the PTY/hook runtime and
-            // always manages a fail-safe state. Corrupt/disabled data must never make
-            // Tauri setup or ordinary terminals fail.
-            app.manage(modules::agent_event_store::AgentEventStoreState::from_app(
-                app.handle(),
-            ));
             show_main_window(app.handle(), "setup");
 
             Ok(())
@@ -107,15 +101,6 @@ pub fn run() {
             // Tunara 新增（agent CLI 检测）
             modules::agent::preflight::agent_preflight,
             modules::agent::preflight::agent_preflight_invalidate,
-            modules::agent_event_store::agent_event_store_status,
-            modules::agent_event_store::agent_event_store_set_enabled,
-            modules::agent_event_store::agent_event_append,
-            modules::agent_event_store::agent_event_list,
-            modules::agent_event_store::agent_event_payload,
-            modules::agent_event_store::agent_event_search_status,
-            modules::agent_event_store::agent_event_search,
-            modules::agent_event_store::agent_event_search_rebuild,
-            modules::agent_event_store::agent_event_delete,
             // Tunara 新增（§3.4 git 集成）
             modules::git::git_status,
             modules::git::git_diff,
@@ -129,6 +114,8 @@ pub fn run() {
             modules::config::load_config,
             modules::config::save_config,
             modules::workspace_store::workspace_store_file_state,
+            modules::workspace_store::legacy_agent_data_status,
+            modules::workspace_store::legacy_agent_data_delete,
             modules::preview::preview_open,
             modules::preview::preview_refresh,
             modules::preview::preview_status,

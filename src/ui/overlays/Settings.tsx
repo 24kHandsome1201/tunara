@@ -32,6 +32,8 @@ interface Preflight {
   hint: string | null;
 }
 
+type LegacyAgentDataState = "loading" | "missing" | "present" | "deleting" | "error";
+
 const TABS = ["appearance", "workflows", "cli", "app"] as const;
 
 function terminalThemePreviewColors(
@@ -202,6 +204,28 @@ export function Settings({ onClose }: SettingsProps) {
   const [overrideDraft, setOverrideDraft] = useState("");
   const cliLoadStartedRef = useRef(false);
   const { appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate } = useAppUpdate(activeTab);
+  const [legacyAgentDataState, setLegacyAgentDataState] = useState<LegacyAgentDataState>("loading");
+
+  const loadLegacyAgentDataStatus = useCallback(() => {
+    setLegacyAgentDataState("loading");
+    invoke<"missing" | "present">("legacy_agent_data_status")
+      .then(setLegacyAgentDataState)
+      .catch(() => setLegacyAgentDataState("error"));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "app") return;
+    loadLegacyAgentDataStatus();
+  }, [activeTab, loadLegacyAgentDataStatus]);
+
+  const deleteLegacyAgentData = useCallback(async () => {
+    const confirmed = await tauriConfirmDialog(t("settings.app.legacy_agent_data.confirm"), { kind: "warning" });
+    if (!confirmed) return;
+    setLegacyAgentDataState("deleting");
+    invoke<"missing">("legacy_agent_data_delete", { confirmed: true })
+      .then(() => setLegacyAgentDataState("missing"))
+      .catch(() => setLegacyAgentDataState("error"));
+  }, [t]);
 
   const loadPreflights = useCallback((items: ResolvedCommand[]) => {
     // Only check login state for CLIs that are actually installed — an auth
@@ -728,6 +752,41 @@ export function Settings({ onClose }: SettingsProps) {
                   </div>
                 </div>
               </div>
+              {(legacyAgentDataState === "present" || legacyAgentDataState === "deleting" || legacyAgentDataState === "error") && (
+                <div style={{ paddingTop: 20 }} aria-live="polite">
+                  <div style={SECTION_LABEL}>{t("settings.app.legacy_agent_data.title")}</div>
+                  {legacyAgentDataState === "error" ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                      <div style={{ ...SECTION_HINT, color: "var(--c-error)", marginBottom: 0 }}>
+                        {t("settings.app.legacy_agent_data.error")}
+                      </div>
+                      <button
+                        onClick={loadLegacyAgentDataStatus}
+                        className="hover-bg"
+                        style={{ padding: "7px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                      >
+                        {t("settings.app.legacy_agent_data.retry")}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                      <div style={{ ...SECTION_HINT, marginBottom: 0 }}>
+                        {t("settings.app.legacy_agent_data.hint")}
+                      </div>
+                      <button
+                        onClick={() => { void deleteLegacyAgentData(); }}
+                        disabled={legacyAgentDataState === "deleting"}
+                        className="hover-bg"
+                        style={{ padding: "7px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-error)", background: "transparent", color: "var(--c-error)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: legacyAgentDataState === "deleting" ? "wait" : "pointer", flexShrink: 0 }}
+                      >
+                        {legacyAgentDataState === "deleting"
+                          ? t("settings.app.legacy_agent_data.deleting")
+                          : t("settings.app.legacy_agent_data.delete")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

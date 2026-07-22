@@ -7,6 +7,7 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 
 
 FIRST_CONTEXT = "TUNARA_PI_CONTEXT_7412"
@@ -146,6 +147,16 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+class LoopbackHTTPServer(HTTPServer):
+    """Bind without the unnecessary reverse DNS lookup in HTTPServer."""
+
+    def server_bind(self) -> None:
+        TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
+
+
 def main() -> None:
     if len(sys.argv) != 4:
         raise SystemExit("usage: pi-loopback-provider.py STATE_PATH PORT_PATH AUTH_TOKEN")
@@ -165,7 +176,7 @@ def main() -> None:
     })
     # Pi's probe requests are tiny and sequential processing keeps the on-disk
     # evidence updates deterministic without a shared-state race.
-    server = HTTPServer(("127.0.0.1", 0), Handler)
+    server = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
     server.state_path = state_path  # type: ignore[attr-defined]
     server.auth_token = auth_token  # type: ignore[attr-defined]
     port_path.write_text(f"{server.server_address[1]}\n", encoding="utf-8")

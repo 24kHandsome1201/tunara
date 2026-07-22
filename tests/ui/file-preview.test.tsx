@@ -2,6 +2,8 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 import { FilePreview } from "@/ui/FilePreview";
+import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 
 const original = {
   kind: "text",
@@ -19,6 +21,70 @@ function renderSsh(fileName = "notes.txt") {
 }
 
 describe("FilePreview editor behavior", () => {
+  test("shows the initial local read error and retries exactly once", async () => {
+    let reads = 0;
+    let finishRetry: ((value: typeof original) => void) | undefined;
+    const retry = new Promise<typeof original>((resolve) => { finishRetry = resolve; });
+    mockIPC((command) => {
+      if (command !== "fs_read_file") throw new Error(`unexpected command: ${command}`);
+      reads += 1;
+      if (reads === 1) throw new Error("Permission denied (os error 13)");
+      return retry;
+    });
+
+    renderLocal();
+    await screen.findByText("Read failed");
+    expect(screen.getByText(/cannot access this file/i)).toBeTruthy();
+    expect(screen.getByText("Error: Permission denied (os error 13)")).toBeTruthy();
+
+    const retryButton = screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+    expect(reads).toBe(2);
+
+    finishRetry?.(original);
+    await screen.findByRole("textbox", { name: "Edit notes.txt" });
+    expect(screen.queryByText("Read failed")).toBeNull();
+  });
+
+  test("offers the owning SSH session as the recovery path after an initial disconnect", async () => {
+    useSessionsStore.setState({
+      activeSessionId: "remote-session",
+      sessions: [{
+        id: "remote-session",
+        title: "Remote",
+        dir: "/tmp",
+        branch: "main",
+        runState: "idle",
+        remote: { host: "dev.example", port: 2202, user: "mawei", identityFile: "~/.ssh/id_ed25519" },
+        ptyId: 41,
+        updatedAt: 1,
+      }],
+    });
+    useUIStore.setState({ overlay: null, sshPrefill: null });
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_file") throw "no session for id 41";
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderSsh();
+    await screen.findByText("Read failed");
+    expect(screen.getByText(/SSH connection is unavailable/i)).toBeTruthy();
+    expect(screen.getByText("no session for id 41")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    expect(useUIStore.getState()).toMatchObject({
+      overlay: "ssh",
+      sshPrefill: {
+        host: "dev.example",
+        port: 2202,
+        user: "mawei",
+        identityFile: "~/.ssh/id_ed25519",
+        reconnectSessionId: "remote-session",
+      },
+    });
+  });
+
   test("saves a local draft through the fingerprint-safe IPC contract", async () => {
     const calls: Array<{ command: string; payload: unknown }> = [];
     mockIPC((command, payload) => {

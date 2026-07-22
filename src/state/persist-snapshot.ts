@@ -61,7 +61,7 @@ export interface PersistedUILayoutV2 {
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   split: SplitState;
-  inspectorTab: "overview" | "timeline" | "changes" | "files" | "preview" | "notes";
+  inspectorTab: "overview" | "changes" | "files" | "preview" | "notes";
 }
 
 export interface PersistedTerminalSnapshot {
@@ -239,8 +239,8 @@ function sanitizePersistedSplit(raw: unknown, sessionIds: ReadonlySet<string>): 
   }, sessionIds);
 }
 
-function isValidInspectorTab(v: unknown): v is "overview" | "timeline" | "changes" | "files" | "preview" | "notes" {
-  return v === "overview" || v === "timeline" || v === "changes" || v === "files" || v === "preview" || v === "notes";
+function isValidInspectorTab(v: unknown): v is PersistedUILayoutV2["inspectorTab"] {
+  return v === "overview" || v === "changes" || v === "files" || v === "preview" || v === "notes";
 }
 
 function sanitizeTrueRecord(raw: unknown): Record<string, true> {
