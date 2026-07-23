@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import type { SplitDirection, SplitPath, SplitRect } from "@/modules/session/split-layout";
@@ -18,6 +18,9 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
   const t = useT();
   const setSplitRatio = useUIStore((s) => s.setSplitRatio);
   const dragging = useRef(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -48,10 +51,14 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
     (e: React.PointerEvent) => {
       e.preventDefault();
       const handle = e.currentTarget as HTMLElement;
-      handle.setPointerCapture(e.pointerId);
-      dragging.current = true;
       const container = containerRef.current;
       if (!container) return;
+      dragCleanupRef.current?.();
+      const pointerId = e.pointerId;
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      handle.setPointerCapture(pointerId);
+      dragging.current = true;
 
       const onPointerMove = (ev: PointerEvent) => {
         if (!dragging.current || !container) return;
@@ -67,18 +74,25 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
         setSplitRatio(path, ratio);
       };
 
-      const cleanup = (ev: PointerEvent) => {
+      const cleanup = () => {
+        if (dragCleanupRef.current !== cleanup) return;
+        dragCleanupRef.current = null;
         dragging.current = false;
-        if (handle.hasPointerCapture(ev.pointerId)) {
-          handle.releasePointerCapture(ev.pointerId);
+        try {
+          if (handle.hasPointerCapture(pointerId)) {
+            handle.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // A handle unmounted mid-drag may already have lost pointer capture.
         }
         document.removeEventListener("pointermove", onPointerMove);
         document.removeEventListener("pointerup", cleanup);
         document.removeEventListener("pointercancel", cleanup);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
       };
 
+      dragCleanupRef.current = cleanup;
       document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize";
       document.body.style.userSelect = "none";
       document.addEventListener("pointermove", onPointerMove);

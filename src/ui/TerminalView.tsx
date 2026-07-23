@@ -378,7 +378,7 @@ function TerminalViewImpl({
           setExitCode(code);
         },
         onConnectionStatus: (phase: PtyConnectionStatusPhase) => {
-          recordPtyConnectionStatus(sessionIdRef.current, phase);
+          if (!disposed) recordPtyConnectionStatus(sessionIdRef.current, phase);
         },
       };
       let pty;
