@@ -44,25 +44,25 @@ test("mounts only the active Inspector tab", () => {
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.queryByTestId("preview-panel")).toBeNull();
 
-  fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   expect(screen.queryByTestId("overview-panel")).toBeNull();
   expect(screen.getByTestId("changes-panel")).toBeTruthy();
 
-  fireEvent.click(screen.getByRole("button", { name: "Files" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Files" }));
   expect(screen.queryByTestId("changes-panel")).toBeNull();
   expect(screen.getByTestId("files-panel")).toBeTruthy();
 
-  fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
 });
 
 test("flushes a pending note when switching away before the debounce", () => {
   render(<InspectorPanel session={session} />);
-  fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
 
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "pending note" } });
-  fireEvent.click(screen.getByRole("button", { name: "Overview" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
 
   expect(useSessionsStore.getState().sessions.find((item) => item.id === session.id)?.note).toBe("pending note");
   expect(screen.getByTestId("overview-panel")).toBeTruthy();

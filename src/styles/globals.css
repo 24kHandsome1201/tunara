@@ -221,14 +221,17 @@ html[data-chrome="borderless"] {
 .dir-group-header .dir-group-add,
 .dir-group-header .dir-group-close { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); transform: scale(0.8); }
 .dir-group-header:hover .dir-group-add,
-.dir-group-header:hover .dir-group-close { opacity: 1; transform: scale(1); }
+.dir-group-header:hover .dir-group-close,
+.dir-group-header .dir-group-add:focus-visible,
+.dir-group-header .dir-group-close:focus-visible { opacity: 1; transform: scale(1); }
 .dir-group-header[role="button"] { transition: background var(--duration-fast) var(--ease-smooth); border-radius: var(--r-btn); }
 .dir-group-header[role="button"]:hover { background: var(--c-bg-hover); }
 .dir-group-header[role="button"]:active { transform: scale(0.99); }
 
-/* DiffPanel: external-editor button reveals on row hover */
+/* DiffPanel: external-editor button reveals on row hover / keyboard focus */
 .diff-file-row .diff-file-open { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); transform: translateX(4px); }
-.diff-file-row:hover .diff-file-open { opacity: 1; transform: translateX(0); }
+.diff-file-row:hover .diff-file-open,
+.diff-file-row:focus-within .diff-file-open { opacity: 1; transform: translateX(0); }
 .diff-file-row { transition: background var(--duration-fast) var(--ease-smooth); }
 .diff-file-row:hover { background: var(--c-bg-hover) !important; }
 
@@ -624,9 +627,12 @@ html[data-chrome="borderless"] {
   .file-editor-surface * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
-/* DiffPanel: hunk copy button reveals on hunk row hover */
+/* DiffPanel: hunk copy button reveals on hunk row hover / keyboard focus.
+   The button stays display:flex in the component so it remains in tab order;
+   only opacity gates visibility. */
 .diff-hunk-row .diff-hunk-copy { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth); }
-.diff-hunk-row:hover .diff-hunk-copy { opacity: 1; display: flex !important; }
+.diff-hunk-row:hover .diff-hunk-copy,
+.diff-hunk-row:focus-within .diff-hunk-copy { opacity: 1; }
 
 /* Focus-visible: uniform keyboard focus ring */
 :focus-visible {

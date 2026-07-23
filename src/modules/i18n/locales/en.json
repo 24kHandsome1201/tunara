@@ -478,6 +478,7 @@
   "term.new_terminal_down": "New terminal below",
   "inspector.tab.notes": "Notes",
   "inspector.tab.overview": "Overview",
+  "inspector.tab.aria_label": "Inspector panels",
   "notes.clear": "Clear",
   "notes.copy": "Copy",
   "notes.placeholder": "Keep a tiny project log here. Plans, gotchas, TODOs, commit notes, rubber-duck thoughts...",

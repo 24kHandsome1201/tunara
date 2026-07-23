@@ -478,6 +478,7 @@
   "term.new_terminal_down": "新建下侧终端",
   "inspector.tab.notes": "笔记",
   "inspector.tab.overview": "概览",
+  "inspector.tab.aria_label": "检查器面板",
   "notes.clear": "清空",
   "notes.copy": "复制",
   "notes.placeholder": "在这里记一点项目小日志。计划、坑点、TODO、提交说明、橡皮鸭碎碎念都可以。",

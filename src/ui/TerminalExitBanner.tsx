@@ -87,6 +87,9 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
 
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
       style={{
         position: "absolute",
         left: 8,
@@ -181,6 +184,8 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
 
   return (
     <div
+      role="alert"
+      aria-atomic="true"
       style={{
         position: "absolute",
         left: 8,
