@@ -73,6 +73,23 @@ describe("workspace file and terminal tabs", () => {
     expect(useUIStore.getState().activeFileTabId).toBe(fileTabId);
   });
 
+  test("runs arrow navigation only from tab controls, not their close buttons", () => {
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+    useUIStore.getState().openFileTab({
+      sessionId: session.id,
+      filePath: "/tmp/project/notes.txt",
+      fileName: "notes.txt",
+    });
+    const fileTabId = useUIStore.getState().activeFileTabId!;
+    renderTitlebar();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close notes.txt" }), { key: "ArrowLeft" });
+    expect(useUIStore.getState().activeFileTabId).toBe(fileTabId);
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "notes.txt" }), { key: "ArrowLeft" });
+    expect(useUIStore.getState().activeFileTabId).toBeNull();
+  });
+
   test("routes a dirty file close through its editor-owned confirmation", () => {
     useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
     useUIStore.getState().openFileTab({ sessionId: session.id, filePath: "/tmp/project/notes.txt", fileName: "notes.txt" });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deriveTitle, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { getNumberRecordValue } from "@/state/record-keys";
@@ -12,6 +12,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 import type { WorkspaceFileTab } from "@/state/ui";
 import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
+import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -167,6 +168,8 @@ interface TabButtonProps {
   closeLabel: string;
   confirmCloseLabel: string;
   confirmClose?: boolean;
+  /** Roving tabindex：仅当前 tab 为 0，其余 -1（APG tabs 模式） */
+  tabIndex?: number;
   onSelect: () => void;
   onClose: () => void;
 }
@@ -188,7 +191,7 @@ function WorkspaceTabIcon({ kind }: { kind: "terminal" | "file" }) {
   );
 }
 
-function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: TabButtonProps) {
+function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabel, confirmCloseLabel, confirmClose, tabIndex, onSelect, onClose }: TabButtonProps) {
   return (
     <div
       className="tab-btn"
@@ -208,6 +211,7 @@ function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabe
         type="button"
         role="tab"
         aria-selected={isActive}
+        tabIndex={tabIndex ?? 0}
         onClick={onSelect}
         className="tab-select"
         style={{
@@ -312,7 +316,7 @@ function WindowControls() {
   );
 }
 
-export function Titlebar({
+function TitlebarImpl({
   sessions,
   activeSessionId,
   panelVisible,
@@ -478,11 +482,46 @@ export function Titlebar({
     if (!el || !showTabs) return;
     const active = el.querySelector<HTMLElement>('[data-active-tab="true"]');
     if (!active) return;
-    const left = active.offsetLeft;
-    const right = left + active.offsetWidth;
+    // offsetLeft 是相对 offsetParent 的坐标，和 scrollLeft 的容器坐标系未必
+    // 一致（wrapper 有 transform 时会错位）；统一换算到容器坐标系再比较。
+    const elRect = el.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const left = activeRect.left - elRect.left + el.scrollLeft;
+    const right = left + activeRect.width;
     if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 16);
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 16;
   }, [activeFileTabId, activeSessionId, showTabs, sessions.length, fileTabs.length]);
+
+  // APG tabs 键盘漫游：方向键/Home/End 在 terminal 与 file tab 间循环（自动激活）
+  const orderedTabIds = useMemo(
+    () => [...sessions.map((s) => `terminal:${s.id}`), ...fileTabs.map((tab) => `file:${tab.id}`)],
+    [sessions, fileTabs],
+  );
+  const activeTabId = activeFileTabId !== null
+    ? `file:${activeFileTabId}`
+    : sessions.some((s) => s.id === activeSessionId)
+      ? `terminal:${activeSessionId}`
+      : orderedTabIds[0];
+  const selectTabById = useCallback((tabId: string) => {
+    if (tabId.startsWith("terminal:")) {
+      onSelectSession(tabId.slice("terminal:".length));
+      return;
+    }
+    const fileId = tabId.slice("file:".length);
+    const tab = useUIStore.getState().fileTabs.find((candidate) => candidate.id === fileId);
+    if (!tab) return;
+    useSessionsStore.getState().setActive(tab.sessionId);
+    useUIStore.getState().setActiveFileTab(tab.id);
+  }, [onSelectSession]);
+  const handleTabListKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const currentId = tabIdFromEventTarget(e.target);
+    if (!currentId) return;
+    const nextId = resolveRovingTabId(orderedTabIds, currentId, e.key);
+    if (!nextId || nextId === currentId) return;
+    e.preventDefault();
+    selectTabById(nextId);
+    focusTabById(tabsRef.current, nextId);
+  }, [orderedTabIds, selectTabById]);
 
   const tabsMask =
     overflowEdge === "both"
@@ -590,6 +629,7 @@ export function Titlebar({
           ref={tabsRef}
           role="tablist"
           aria-label={t("titlebar.tabs")}
+          onKeyDown={handleTabListKeyDown}
           className="no-scrollbar"
           style={{
             display: "flex",
@@ -618,6 +658,7 @@ export function Titlebar({
                 closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
                 confirmCloseLabel={t("destructive.confirm_again.close")}
                 confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
+                tabIndex={`terminal:${s.id}` === activeTabId ? 0 : -1}
                 onSelect={() => onSelectSession(s.id)}
                 onClose={() => onCloseSession(s.id)}
               />
@@ -633,6 +674,7 @@ export function Titlebar({
                 dirtyLabel={t("preview.editor.unsaved")}
                 closeLabel={t("titlebar.file_tab.close", { file: tab.fileName })}
                 confirmCloseLabel={t("preview.editor.close_warning")}
+                tabIndex={`file:${tab.id}` === activeTabId ? 0 : -1}
                 onSelect={() => selectFileTab(tab)}
                 onClose={() => requestCloseFileTab(tab)}
               />
@@ -767,3 +809,8 @@ export function Titlebar({
     </div>
   );
 }
+
+// Memoized: props are store primitives + module-level/useCallback-stable
+// callbacks from App, so dragging the sidebar width no longer re-renders
+// the titlebar (and its tabs) on every pointer frame.
+export const Titlebar = memo(TitlebarImpl);

@@ -89,7 +89,10 @@ export function Sidebar({
       const card = Array.from(document.querySelectorAll<HTMLElement>("[data-session-card-id]")).find(
         (el) => el.dataset.sessionCardId === sessionId,
       );
-      card?.focus();
+      // The outer card div has no tabIndex — focus() on it is a no-op. The
+      // keyboard-focusable element is the overlay select button inside it.
+      const target = card?.querySelector<HTMLElement>(".session-card-select") ?? card;
+      target?.focus();
       card?.scrollIntoView({ block: "nearest" });
     });
   }, []);

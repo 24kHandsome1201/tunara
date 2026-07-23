@@ -219,7 +219,9 @@ function MiniDiff({
                   cursor: "pointer",
                   padding: "2px 4px",
                   borderRadius: 3,
-                  display: "none",
+                  // 保持 display:flex 留在 tab 序里，可见性只由 CSS opacity 控制，
+                  // 否则键盘用户永远摸不到这个按钮
+                  display: "flex",
                   alignItems: "center",
                 }}
               >

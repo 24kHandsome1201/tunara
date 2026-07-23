@@ -7,6 +7,8 @@ import { ContextMenu } from "./ContextMenu";
 import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
+import type { useTerminalBlocks } from "./useTerminalBlocks";
+import { useTerminalBlocksChrome } from "./useTerminalBlocksChrome";
 import { requestProtectedTerminalPaste } from "@/modules/terminal/lib/terminal-paste-protection";
 import { canSplitLayout } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions";
@@ -18,6 +20,8 @@ interface TerminalViewChromeProps {
   /** Returns the live xterm instance for copy/paste actions, or null before init. */
   getTerminal: () => Terminal | null;
   search: ReturnType<typeof useTerminalSearch>;
+  /** Command-block pipeline from TerminalView; assembled by useTerminalBlocksChrome. */
+  blocks: ReturnType<typeof useTerminalBlocks>;
   quickSelectOverlay?: ReactNode;
 }
 
@@ -26,11 +30,14 @@ export function TerminalViewChrome({
   containerRef,
   getTerminal,
   search,
+  blocks,
   quickSelectOverlay,
 }: TerminalViewChromeProps) {
   const t = useT();
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean } | null>(null);
   const pure = useUIStore((s) => s.presentationMode === "pure");
+  const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId));
+  const blocksChrome = useTerminalBlocksChrome({ session, blocks, searchOpen: search.searchOpen });
 
   useEffect(() => {
     if (!pure) return;
@@ -83,23 +90,29 @@ export function TerminalViewChrome({
       style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}
       onContextMenu={handleContextMenu}
     >
-      {!pure && search.searchOpen && (
-        <TerminalSearchBar
-          inputRef={search.searchInputRef}
-          query={search.searchQuery}
-          count={search.searchCount}
-          useRegex={search.useRegex}
-          caseSensitive={search.caseSensitive}
-          onQueryChange={search.handleSearchChange}
-          onNext={search.handleSearchNext}
-          onPrev={search.handleSearchPrev}
-          onClose={search.closeSearch}
-          onToggleRegex={search.toggleRegex}
-          onToggleCaseSensitive={search.toggleCaseSensitive}
-        />
-      )}
-      <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
-      {!pure && quickSelectOverlay}
+      {!pure && blocksChrome.strips}
+      {/* Search bar / filter panel / quick select anchor to this wrapper so
+          they overlay the terminal itself, never the status strips above. */}
+      <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {!pure && search.searchOpen && (
+          <TerminalSearchBar
+            inputRef={search.searchInputRef}
+            query={search.searchQuery}
+            count={search.searchCount}
+            useRegex={search.useRegex}
+            caseSensitive={search.caseSensitive}
+            onQueryChange={search.handleSearchChange}
+            onNext={search.handleSearchNext}
+            onPrev={search.handleSearchPrev}
+            onClose={search.closeSearch}
+            onToggleRegex={search.toggleRegex}
+            onToggleCaseSensitive={search.toggleCaseSensitive}
+          />
+        )}
+        <div ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
+        {!pure && quickSelectOverlay}
+        {!pure && blocksChrome.overlay}
+      </div>
       {!pure && menu && (
         <ContextMenu
           position={{ x: menu.x, y: menu.y }}
