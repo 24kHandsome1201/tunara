@@ -48,7 +48,7 @@ ignore = "0.4"
 grep-regex = "0.1"
 grep-searcher = "0.1"
 globset = "0.4"
-notify = "6"
+notify = "8"
 notify-debouncer-mini = "0.4"
 # SSH client (§ssh-client): russh 0.61 carries key handling in russh::keys
 # (the standalone russh-keys crate is legacy). russh-sftp adds the SFTP
