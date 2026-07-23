@@ -15,10 +15,18 @@ export function resolveRovingTabId(tabIds: readonly string[], currentId: string,
   return null;
 }
 
-/** 从事件目标向上找所属 tab 的 data-tab-id；不在任何 tab 上时返回 null。 */
+/**
+ * 从事件目标向上找实际 tab 控件所属的 data-tab-id；不在 tab 上时返回 null。
+ * tab wrapper 里可能还有独立的关闭按钮，不能把它冒泡到 tablist 的方向键
+ * 事件误判成 tab 导航。
+ */
 export function tabIdFromEventTarget(target: EventTarget | null): string | null {
   if (!(target instanceof HTMLElement)) return null;
-  return target.closest("[data-tab-id]")?.getAttribute("data-tab-id") ?? null;
+  const tab = target.closest<HTMLElement>('[role="tab"]');
+  if (!tab) return null;
+  return tab.getAttribute("data-tab-id")
+    ?? tab.closest("[data-tab-id]")?.getAttribute("data-tab-id")
+    ?? null;
 }
 
 /**
