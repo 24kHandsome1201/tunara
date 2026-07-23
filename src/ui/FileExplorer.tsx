@@ -407,7 +407,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     return () => window.removeEventListener("keydown", closePreview);
   }, [closePreviewFromExplorer, expandedFile]);
 
-  const canGoUp = currentPath !== "/" && currentPath !== baseDir;
+  const canGoUp = currentPath !== "/" && (isRemote || currentPath !== baseDir);
+  const breadcrumbRoot = baseDir !== null
+    && (currentPath === baseDir || currentPath.startsWith(`${baseDir}/`))
+    ? baseDir
+    : "/";
   const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
   const files = useMemo(() => entries.filter((e) => e.kind !== "dir"), [entries]);
   const isSearching = searchQuery.trim().length > 0;
@@ -498,7 +502,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           </svg>
         </button>
         <div title={currentPath} style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, minWidth: 0, padding: "0 var(--sp-1)", overflow: "hidden", whiteSpace: "nowrap" }}>
-          {breadcrumbSegments(currentPath, baseDir ?? currentPath).map((seg, idx, arr) => {
+          {breadcrumbSegments(currentPath, breadcrumbRoot).map((seg, idx, arr) => {
             const isLast = idx === arr.length - 1;
             const isCurrent = seg.targetPath === currentPath;
             const showSeparator = idx < arr.length - 1;
