@@ -52,7 +52,9 @@ static PENDING_PROMPTS: OnceLock<Mutex<HashMap<String, oneshot::Sender<bool>>>> 
 const HOST_KEY_PROMPT_TIMEOUT: Duration = Duration::from_secs(120);
 const SSH_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const SSH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(135);
-const SSH_AUTH_TIMEOUT: Duration = Duration::from_secs(45);
+// Keyboard-interactive may wait up to 120s for a user response. Keep the outer
+// stage timeout slightly longer so it does not cancel a still-valid challenge.
+const SSH_AUTH_TIMEOUT: Duration = Duration::from_secs(135);
 const SSH_CHANNEL_SETUP_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(super) async fn await_stage<T, E, F>(
@@ -363,7 +365,7 @@ impl SshSession {
         await_stage(
             "SSH authentication",
             SSH_AUTH_TIMEOUT,
-            auth::authenticate(&mut handle, &params.auth),
+            auth::authenticate(&mut handle, &params.auth, on_event.clone()),
         )
         .await?;
 
@@ -1278,6 +1280,7 @@ mod tests {
                     port,
                     auth: AuthOptions {
                         user,
+                        method: super::super::auth::AuthMethod::Agent,
                         identity_file: None,
                         key_passphrase: None,
                         password: None,

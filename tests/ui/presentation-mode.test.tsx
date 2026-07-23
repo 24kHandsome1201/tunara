@@ -102,6 +102,39 @@ test("presentation mode is a reversible projection over workspace UI state", () 
   });
 });
 
+test("opening SSH leaves Pure Mode while blocking SSH challenges remain available", () => {
+  useUIStore.setState({
+    configLoaded: false,
+    presentationMode: "pure",
+    overlay: null,
+    hostKeyPrompts: [{
+      promptId: "host-key-1",
+      host: "example.com",
+      port: 22,
+      fingerprint: "SHA256:test",
+      keyType: "ssh-ed25519",
+      reason: "unknown",
+    }],
+    keyboardInteractivePrompts: [{
+      promptId: "interactive-1",
+      name: "Verification",
+      instructions: "Enter the current code",
+      prompts: [{ prompt: "Code: ", echo: false }],
+    }],
+  });
+
+  useUIStore.getState().openSshConnect({ host: "example.com", port: 22, user: "deploy" });
+
+  expect(useUIStore.getState()).toMatchObject({
+    presentationMode: "workspace",
+    overlay: "ssh",
+    sshPrefill: { host: "example.com", port: 22, user: "deploy" },
+  });
+  expect(useUIStore.getState().hostKeyPrompts).toHaveLength(1);
+  expect(useUIStore.getState().keyboardInteractivePrompts).toHaveLength(1);
+  useUIStore.setState({ hostKeyPrompts: [], keyboardInteractivePrompts: [] });
+});
+
 test("the titlebar makes entering and leaving windowed pure mode equally discoverable", () => {
   useUIStore.setState({ configLoaded: false, presentationMode: "workspace", nativeFullscreen: false });
   renderTitlebar();

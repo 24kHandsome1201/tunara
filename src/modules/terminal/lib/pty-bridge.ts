@@ -4,6 +4,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { t } from "@/modules/i18n";
 import type { RemoteInfo } from "@/ui/types";
 import { classifySshFailure } from "@/modules/ssh/failure-reason";
+import type { SshAuthMethod } from "@/modules/ssh/hosts-model";
 import type { BackendConnectionPhase } from "./connection-state";
 import { recordTerminalBenchmarkExit, TERMINAL_BENCHMARK_MODE } from "./terminal-benchmark";
 
@@ -21,6 +22,13 @@ export type PtyEvent =
       /** "unknown" = first contact (accepting persists); "unverifiable" = key
        *  couldn't be confirmed against a relevant known_hosts record (not persisted). */
       reason: string;
+    }
+  | {
+      type: "keyboardInteractivePrompt";
+      promptId: string;
+      name: string;
+      instructions: string;
+      prompts: Array<{ prompt: string; echo: boolean }>;
     };
 
 /** Backend sentinel for an SSH transport that ended without ExitStatus. */
@@ -29,6 +37,13 @@ export const SSH_DISCONNECTED_EXIT_CODE = -2;
 /** Reply to a pending SSH host-key prompt (backend ssh_open is parked on it). */
 export async function answerHostKeyPrompt(promptId: string, accept: boolean): Promise<void> {
   await invoke("ssh_host_key_decision", { promptId, accept });
+}
+
+export async function answerKeyboardInteractivePrompt(
+  promptId: string,
+  responses: string[] | null,
+): Promise<void> {
+  await invoke("ssh_keyboard_interactive_response", { promptId, responses });
 }
 
 const sshOpenAttempts = new Map<string, string>();
@@ -208,6 +223,7 @@ export type RemoteOpenInfo = {
   host: string;
   port: number;
   user: string;
+  authMethod?: SshAuthMethod;
   identityFile?: string;
   /** 加密私钥口令，仅本次连接，绝不持久化。 */
   keyPassphrase?: string;
@@ -233,6 +249,7 @@ export function openSessionPty(
       host: opts.remote.host,
       port: opts.remote.port,
       user: opts.remote.user,
+      authMethod: opts.remote.authMethod,
       cwd: opts.cwd?.startsWith("/") ? opts.cwd : undefined,
       identityFile: opts.remote.identityFile,
       keyPassphrase: opts.remote.keyPassphrase,
@@ -248,9 +265,12 @@ export type SshConnectOptions = {
   host: string;
   port?: number;
   user: string;
+  /** Explicit method. Missing survives only on legacy restores so the backend
+   * can reject it clearly and route the user through the reconnect sheet. */
+  authMethod?: SshAuthMethod;
   /** 恢复远程会话时的绝对 POSIX cwd；伪目录 user@host 不会传入。 */
   cwd?: string;
-  /** 私钥文件路径；缺省走 ssh-agent。 */
+  /** 私钥文件路径；仅在显式选择 key 时传给后端。 */
   identityFile?: string;
   /** 加密私钥的口令，仅本次连接使用。 */
   keyPassphrase?: string;
@@ -278,6 +298,7 @@ export async function openSshPty(
   const channel = new Channel<PtyEvent>();
   const acknowledger = createOutputAcknowledger();
   const pendingPromptIds = new Set<string>();
+  const pendingKeyboardPromptIds = new Set<string>();
   channel.onmessage = (event) => {
     switch (event.type) {
       case "data": {
@@ -314,11 +335,26 @@ export async function openSshPty(
           reason: event.reason,
         });
         break;
+      case "keyboardInteractivePrompt":
+        pendingKeyboardPromptIds.add(event.promptId);
+        useUIStore.getState().enqueueKeyboardInteractivePrompt({
+          promptId: event.promptId,
+          name: event.name,
+          instructions: event.instructions,
+          prompts: event.prompts,
+        });
+        break;
     }
   };
 
   let id: number;
   try {
+    // Strip every credential outside the explicitly selected strategy at the
+    // IPC boundary. In particular, Password never forwards an identity path,
+    // key passphrase, or any signal that could touch SSH Agent.
+    const identityFile = conn.authMethod === "key" ? conn.identityFile ?? null : null;
+    const keyPassphrase = conn.authMethod === "key" ? conn.keyPassphrase ?? null : null;
+    const password = conn.authMethod === "password" ? conn.password ?? null : null;
     id = await invoke<number>("ssh_open", {
       logicalSessionId,
       openAttemptId,
@@ -326,9 +362,10 @@ export async function openSshPty(
       port: conn.port ?? null,
       user: conn.user,
       cwd: conn.cwd ?? null,
-      identityFile: conn.identityFile ?? null,
-      keyPassphrase: conn.keyPassphrase ?? null,
-      password: conn.password ?? null,
+      identityFile,
+      keyPassphrase,
+      password,
+      authMethod: conn.authMethod ?? null,
       acceptUnknownHostKey: conn.acceptUnknownHostKey ?? null,
       injectShellIntegration: conn.injectShellIntegration ?? null,
       cols,
@@ -342,6 +379,9 @@ export async function openSshPty(
     // already gone.
     for (const promptId of pendingPromptIds) {
       useUIStore.getState().dismissHostKeyPrompt(promptId);
+    }
+    for (const promptId of pendingKeyboardPromptIds) {
+      useUIStore.getState().dismissKeyboardInteractivePrompt(promptId);
     }
     throw error;
   } finally {

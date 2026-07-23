@@ -1194,6 +1194,7 @@ mod tests {
                     port,
                     auth: AuthOptions {
                         user,
+                        method: crate::modules::ssh::auth::AuthMethod::Agent,
                         identity_file: None,
                         key_passphrase: None,
                         password: None,

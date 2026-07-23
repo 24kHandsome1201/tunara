@@ -62,6 +62,7 @@ test("persisted session helpers keep only durable fields and restore idle runtim
       host: " box ",
       port: 22,
       user: " me ",
+      authMethod: "key",
       identityFile: " ~/.ssh/id_ed25519 ",
       password: "secret",
       keyPassphrase: "secret",
@@ -80,7 +81,14 @@ test("persisted session helpers keep only durable fields and restore idle runtim
     mascot: "fox",
     pinned: true,
     note: "oknote",
-    remote: { host: "box", port: 22, user: "me", identityFile: "~/.ssh/id_ed25519", injectShellIntegration: true },
+    remote: {
+      host: "box",
+      port: 22,
+      user: "me",
+      authMethod: "key",
+      identityFile: "~/.ssh/id_ed25519",
+      injectShellIntegration: true,
+    },
   });
 
   const restored = fromPersistedSession(persisted);
@@ -334,6 +342,7 @@ test("snapshot sanitizer falls back to local session dirs when recents are absen
           host: "box",
           port: "22",
           user: "me",
+          authMethod: "password",
           password: "secret",
           keyPassphrase: "secret",
           acceptUnknownHostKey: true,
@@ -349,7 +358,12 @@ test("snapshot sanitizer falls back to local session dirs when recents are absen
   assert.deepEqual(snapshot.recentDirs, ["/repo"]);
   assert.deepEqual(snapshot.sessions.map((s) => s.id), ["local", "remote"]);
   assert.deepEqual(localSessionDirs(snapshot.sessions), ["/repo"]);
-  assert.deepEqual(snapshot.sessions[1].remote, { host: "box", port: 22, user: "me" });
+  assert.deepEqual(snapshot.sessions[1].remote, {
+    host: "box",
+    port: 22,
+    user: "me",
+    authMethod: "password",
+  });
 });
 
 test("snapshot sanitizer drops malformed optional session fields without dropping the session", () => {

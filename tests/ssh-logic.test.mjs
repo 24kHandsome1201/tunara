@@ -22,7 +22,6 @@ import {
   makeHostId,
   normalizeSshPort,
   parseSshPort,
-  filterNewHostsById,
 } from "../src/modules/ssh/hosts-model.ts";
 import {
   stashSshCredentials,
@@ -36,6 +35,16 @@ test("classifySshFailure buckets auth errors", () => {
   assert.equal(classifySshFailure("authentication failed: bad password"), "auth");
   assert.equal(classifySshFailure("Auth method rejected"), "auth");
   assert.equal(classifySshFailure("Permission denied (publickey,password)"), "auth");
+});
+
+test("classifySshFailure preserves the selected authentication method", () => {
+  assert.equal(classifySshFailure("password authentication failed: rejected"), "password");
+  assert.equal(classifySshFailure("key authentication failed: rejected"), "key");
+  assert.equal(classifySshFailure("agent authentication failed: rejected"), "agent");
+  assert.equal(
+    classifySshFailure("keyboard-interactive authentication failed: rejected"),
+    "keyboardInteractive",
+  );
 });
 
 test("classifySshFailure buckets host-key errors including the kebab form", () => {
@@ -70,15 +79,17 @@ test("classifySshFailure is case-insensitive", () => {
 
 // ── hosts-model: case boundary ───────────────────────────────────────────
 
-test("toProfile converts snake_case identity_file to camelCase identityFile", () => {
+test("toProfile converts snake_case profile fields to camelCase", () => {
   const profile = toProfile({
     id: "h1",
     label: "prod",
     host: "example.com",
     port: 2222,
     user: "deploy",
+    auth_method: "key",
     identity_file: "~/.ssh/id_ed25519",
   });
+  assert.equal(profile.authMethod, "key");
   assert.equal(profile.identityFile, "~/.ssh/id_ed25519");
   assert.equal(profile.host, "example.com");
   assert.equal(profile.port, 2222);
@@ -123,15 +134,17 @@ test("host profile conversion normalizes invalid persisted ports", () => {
   assert.equal(raw.port, 22);
 });
 
-test("toRaw converts camelCase identityFile back to snake_case identity_file", () => {
+test("toRaw converts camelCase profile fields back to snake_case", () => {
   const raw = toRaw({
     id: "h1",
     label: "prod",
     host: "example.com",
     port: 22,
     user: "deploy",
+    authMethod: "password",
     identityFile: "",
   });
+  assert.equal(raw.auth_method, "password");
   assert.equal(raw.identity_file, "");
   assert.equal(raw.user, "deploy");
 });
@@ -143,13 +156,14 @@ test("toProfile and toRaw are inverses (round-trip preserves all fields)", () =>
     host: "10.0.0.5",
     port: 22,
     user: "root",
+    authMethod: "key",
     identityFile: "~/.ssh/id_rsa",
   };
   const roundTripped = toProfile(toRaw(original));
   assert.deepEqual(roundTripped, original);
 });
 
-test("toProfile preserves an empty identity_file (agent-only auth)", () => {
+test("legacy profiles remain without an inferred authentication method", () => {
   const profile = toProfile({
     id: "h2",
     label: "",
@@ -160,6 +174,7 @@ test("toProfile preserves an empty identity_file (agent-only auth)", () => {
   });
   assert.equal(profile.identityFile, "");
   assert.equal(profile.label, "");
+  assert.equal(profile.authMethod, undefined);
 });
 
 test("makeHostId produces a host- prefixed unique-looking id", () => {
@@ -211,30 +226,6 @@ test("clearSshCredentials removes secrets for a cancelled pre-open session", () 
   stashSshCredentials("cancelled", { password: "never-opened" });
   clearSshCredentials("cancelled");
   assert.equal(takeSshCredentials("cancelled"), undefined);
-});
-
-// ── ~/.ssh/config import dedup ───────────────────────────────────────────
-// The backend assigns imported profiles a stable `ssh-config-<alias>` id, so
-// re-importing the same config must be idempotent: the second pass returns no
-// new profiles, preserving any manual identity_file edits the user made.
-
-test("filterNewHostsById returns only profiles not already present", () => {
-  const existing = [{ id: "ssh-config-prod", label: "prod", host: "p.example.com", port: 22, user: "deploy", identityFile: "~/.ssh/custom" }];
-  const incoming = [
-    { id: "ssh-config-prod", label: "prod", host: "p.example.com", port: 22, user: "deploy", identityFile: "~/.ssh/id_prod" },
-    { id: "ssh-config-dev", label: "dev", host: "10.0.0.5", port: 22, user: "root", identityFile: "" },
-  ];
-  const fresh = filterNewHostsById(existing, incoming);
-  assert.equal(fresh.length, 1);
-  assert.equal(fresh[0].id, "ssh-config-dev");
-});
-
-test("filterNewHostsById returns all when nothing exists", () => {
-  const incoming = [
-    { id: "ssh-config-a", label: "a", host: "a", port: 22, user: "u", identityFile: "" },
-    { id: "ssh-config-b", label: "b", host: "b", port: 22, user: "u", identityFile: "" },
-  ];
-  assert.equal(filterNewHostsById([], incoming).length, 2);
 });
 
 test("remote operation cache keys include kind, limit, and delimiter-safe values", () => {

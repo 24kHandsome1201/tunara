@@ -8,7 +8,7 @@ import {
 } from "../modules/terminal/lib/terminal-snapshot-limits.ts";
 import { trimTerminalSnapshotSerialized } from "../modules/terminal/lib/terminal-snapshot-trim.ts";
 import { initialConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
-import { parseSshPort } from "../modules/ssh/hosts-model.ts";
+import { isSshAuthMethod, parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
 import { sanitizeRecentCommands } from "./recent-commands.ts";
@@ -36,11 +36,15 @@ function sanitizeRemoteInfo(remote: unknown): Session["remote"] | undefined {
   if (!host || !user || port === null) return undefined;
 
   const identityFile = typeof r.identityFile === "string" ? r.identityFile.trim() : "";
+  const authMethod = isSshAuthMethod(r.authMethod) ? r.authMethod : undefined;
   return {
     host,
     port,
     user,
-    ...(identityFile ? { identityFile } : {}),
+    ...(authMethod ? { authMethod } : {}),
+    // Keep a legacy key path as a visible suggestion for the reconnect sheet,
+    // but never infer Key from it. The user must choose an auth method first.
+    ...((authMethod === "key" || !authMethod) && identityFile ? { identityFile } : {}),
     // Persist the explicit boolean both ways: the backend now defaults a
     // missing value to `true`, so an opt-OUT (`false`) must survive a reopen —
     // dropping it would silently re-enable injection. Only an undefined value

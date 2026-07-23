@@ -219,6 +219,15 @@ export interface HostKeyPrompt {
   reason: string;
 }
 
+/** One server-issued keyboard-interactive challenge round. Responses are kept
+ * in the dialog component only and are never added to this store. */
+export interface KeyboardInteractivePrompt {
+  promptId: string;
+  name: string;
+  instructions: string;
+  prompts: Array<{ prompt: string; echo: boolean }>;
+}
+
 /** A workflow chosen from the palette whose template has {{params}} still to
  * fill. An app-level prompt collects the values, then runs it. */
 export interface PendingWorkflow {
@@ -272,6 +281,7 @@ interface UIState extends AppearanceSettings {
    *  ssh_open needs its own prompt answered or it stays blocked. The dialog
    *  renders the head; answering it shifts to the next. */
   hostKeyPrompts: HostKeyPrompt[];
+  keyboardInteractivePrompts: KeyboardInteractivePrompt[];
   pendingWorkflow: PendingWorkflow | null;
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
@@ -321,6 +331,8 @@ interface UIState extends AppearanceSettings {
   enqueueHostKeyPrompt: (prompt: HostKeyPrompt) => void;
   /** Remove a resolved host-key prompt by promptId, advancing the queue head. */
   dismissHostKeyPrompt: (promptId: string) => void;
+  enqueueKeyboardInteractivePrompt: (prompt: KeyboardInteractivePrompt) => void;
+  dismissKeyboardInteractivePrompt: (promptId: string) => void;
   setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
   toggleDirCollapsed: (dir: string) => void;
   toggleDiffSectionCollapsed: (section: string) => void;
@@ -357,6 +369,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     activeFileTabId: null,
     toasts: [],
     hostKeyPrompts: [],
+    keyboardInteractivePrompts: [],
     pendingWorkflow: null,
     collapsedDirs: {},
     collapsedDiffSections: {},
@@ -386,7 +399,13 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
     togglePanel: () => set((s) => ({ panelVisible: !s.panelVisible })),
     setOverlay: (overlay) => set(overlay === "ssh" ? { overlay } : { overlay, sshPrefill: null }),
-    openSshConnect: (prefill) => set({ overlay: "ssh", sshPrefill: prefill ?? null }),
+    // Profile/config management stays out of Pure Mode. A user-triggered
+    // connect/reconnect first restores the workspace, then opens the sheet.
+    openSshConnect: (prefill) => set({
+      presentationMode: "workspace",
+      overlay: "ssh",
+      sshPrefill: prefill ?? null,
+    }),
     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
     setSettingsTab: (settingsTab) => set({ settingsTab }),
     openFileTab: (tab) => set((state) => {
@@ -488,6 +507,16 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       ),
     dismissHostKeyPrompt: (promptId) =>
       set((s) => ({ hostKeyPrompts: s.hostKeyPrompts.filter((p) => p.promptId !== promptId) })),
+    enqueueKeyboardInteractivePrompt: (prompt) =>
+      set((s) =>
+        s.keyboardInteractivePrompts.some((p) => p.promptId === prompt.promptId)
+          ? {}
+          : { keyboardInteractivePrompts: [...s.keyboardInteractivePrompts, prompt] },
+      ),
+    dismissKeyboardInteractivePrompt: (promptId) =>
+      set((s) => ({
+        keyboardInteractivePrompts: s.keyboardInteractivePrompts.filter((p) => p.promptId !== promptId),
+      })),
     setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
     toggleDirCollapsed: (dir) =>
       set((s) => ({ collapsedDirs: toggleTrueRecordKey(s.collapsedDirs, dir) })),

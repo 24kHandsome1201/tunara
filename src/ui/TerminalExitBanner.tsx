@@ -17,6 +17,7 @@ function ConnectionDiagnosticButton({ session }: { session: Session }) {
     const ok = await copyText(connectionDiagnostic({
       sessionId: session.id,
       endpoint,
+      authMethod: session.remote?.authMethod,
       evidence: session.connection,
     }));
     useUIStore.getState().addToast({
@@ -63,6 +64,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
         host: session.remote.host,
         user: session.remote.user,
         port: session.remote.port,
+        authMethod: session.remote.authMethod,
         identityFile: session.remote.identityFile,
         injectShellIntegration: session.remote.injectShellIntegration,
         reconnectSessionId: session.id,
@@ -165,6 +167,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
           host: session.remote.host,
           user: session.remote.user,
           port: session.remote.port,
+          authMethod: session.remote.authMethod,
           identityFile: session.remote.identityFile,
           injectShellIntegration: session.remote.injectShellIntegration,
           reconnectSessionId: session.id,

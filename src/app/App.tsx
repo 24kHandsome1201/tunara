@@ -6,6 +6,7 @@ import { Settings } from "@/ui/overlays/Settings";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
 import { SshConnect } from "@/ui/overlays/SshConnect";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
+import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { ToastContainer } from "@/ui/Toast";
 import { useT } from "@/modules/i18n";
@@ -416,6 +417,13 @@ export default function App() {
                 >
                   {t("sidebar.new_terminal_in_directory")}
                 </button>
+                <button
+                  onClick={() => useUIStore.getState().openSshConnect()}
+                  className="hover-bg"
+                  style={{ padding: "7px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}
+                >
+                  {t("sidebar.new_ssh_connection")}
+                </button>
               </div>
             </div>
           </div>
@@ -458,6 +466,7 @@ export default function App() {
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
       {workspaceMode && overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
       <HostKeyPromptDialog />
+      <KeyboardInteractivePromptDialog />
       {workspaceMode && <WorkflowParamPrompt />}
       <div
         aria-hidden={workspaceMode ? undefined : true}

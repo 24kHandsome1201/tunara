@@ -27,8 +27,8 @@ use parking_lot::RwLock;
 
 use tauri::ipc::Channel;
 
-pub use session::PtyEvent;
 pub use session::Session;
+pub use session::{KeyboardInteractivePrompt, PtyEvent};
 
 use super::agent::hooks::HookListenerState;
 use super::agent::wrapper;

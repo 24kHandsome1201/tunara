@@ -395,11 +395,16 @@ export function Titlebar({
 
   const openNewTerminalMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
     setNewTerminalMenu({
-      position: { x: event.clientX, y: event.clientY },
+      position: event.type === "contextmenu"
+        ? { x: event.clientX, y: event.clientY }
+        : { x: rect.left, y: rect.bottom },
       items: [
         { id: "new-terminal", label: t("titlebar.new_terminal"), icon: "terminal", action: onNewTerminal },
         { id: "new-terminal-directory", label: t("titlebar.new_terminal_in_directory"), icon: "folder", action: onNewTerminalInDirectory },
+        null,
+        { id: "new-ssh-session", label: t("titlebar.new_ssh_session"), icon: "ssh", action: () => useUIStore.getState().openSshConnect() },
       ],
     });
   };
@@ -634,10 +639,12 @@ export function Titlebar({
             </div>
           ))}
           <button
-            onClick={onNewTerminal}
+            onClick={openNewTerminalMenu}
             onContextMenu={openNewTerminalMenu}
-            title={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
-            aria-label={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
+            title={`${t("titlebar.new_menu")} · ${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
+            aria-label={t("titlebar.new_menu")}
+            aria-haspopup="menu"
+            aria-expanded={Boolean(newTerminalMenu)}
             style={{
               width: "var(--w-titlebar-control)",
               height: "var(--h-titlebar-control)",

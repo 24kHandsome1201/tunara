@@ -5,6 +5,7 @@ import type { ConnectionEvidence } from "../modules/terminal/lib/connection-stat
 import type { SessionMascotId } from "../modules/session/session-mascot.ts";
 import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
 import type { PreviewCommandProvenance, PreviewSource } from "../modules/preview/preview-source.ts";
+import type { SshAuthMethod } from "../modules/ssh/hosts-model.ts";
 export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
@@ -113,7 +114,9 @@ export interface RemoteInfo {
   host: string;
   port: number;
   user: string;
-  /** 私钥文件路径（如 ~/.ssh/id_ed25519），可选；缺省时走 agent。 */
+  /** Missing only on legacy snapshots; every new connection sets it explicitly. */
+  authMethod?: SshAuthMethod;
+  /** 私钥文件路径（如 ~/.ssh/id_ed25519），仅 key 模式使用。 */
   identityFile?: string;
   /**
    * Phase 4：连接时向远程 shell 注入集成脚本，启用远程 cwd / 命令边界 /
@@ -134,6 +137,7 @@ export interface SshConnectSuggestion {
 
 /** Transient form state for a new SSH connection or an in-place reconnect. */
 export interface SshConnectPrefill extends SshConnectSuggestion {
+  authMethod?: SshAuthMethod;
   identityFile?: string;
   injectShellIntegration?: boolean;
   reconnectSessionId?: string;

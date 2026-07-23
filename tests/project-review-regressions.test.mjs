@@ -130,13 +130,12 @@ test("SSH reconnect is transactional and host-key prompts fail closed", () => {
   assert.match(connection, /tokio::time::timeout\(timeout, receiver\)/);
   assert.doesNotMatch(connection, /tokio::select! \{\s*biased;[\s\S]{0,300}input_rx\.recv/);
 
-  const explicitKeyIndex = auth.indexOf("if let Some(path) = &opts.identity_file");
-  const passwordIndex = auth.indexOf("if let Some(pw) = &opts.password");
-  const agentIndex = auth.indexOf("match try_agent(handle, &opts.user).await");
   const noneIndex = auth.indexOf("handle.authenticate_none(&opts.user).await");
-  assert.ok(noneIndex >= 0 && explicitKeyIndex > noneIndex, "none authentication probe must run first");
-  assert.ok(explicitKeyIndex >= 0 && agentIndex > explicitKeyIndex, "explicit identity must precede agent enumeration");
-  assert.ok(passwordIndex > explicitKeyIndex && agentIndex > passwordIndex, "supplied password must precede agent enumeration");
+  const selectedIndex = auth.indexOf("match selected_auth(opts)?");
+  assert.ok(noneIndex >= 0 && selectedIndex > noneIndex, "none authentication probe must run first");
+  assert.match(auth, /match opts\.method \{[\s\S]*AuthMethod::Agent[\s\S]*AuthMethod::Key[\s\S]*AuthMethod::Password[\s\S]*AuthMethod::KeyboardInteractive/);
+  assert.match(auth, /SelectedAuth::Password\(password\)[\s\S]*authenticate_password\(&opts\.user, password\)/);
+  assert.doesNotMatch(auth, /let mut errors: Vec<String>/);
   assert.match(auth, /metadata\.is_file\(\)/);
   assert.match(auth, /MAX_IDENTITY_FILE_BYTES/);
   assert.match(auth, /spawn_blocking/);
@@ -1059,7 +1058,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /ArrowDown/);
   assert.match(contextMenu, /role="separator"/);
   assert.match(contextMenu, /boxShadow: "var\(--shadow-menu\)"/);
-  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "editor" \| "copy" \| "download" \| "rename" \| "search" \| "close"/);
+  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "ssh" \| "editor" \| "copy" \| "download" \| "rename" \| "search" \| "close"/);
   assert.match(contextMenu, /id\?: string/);
   assert.match(contextMenu, /function menuEntryKey/);
   assert.match(contextMenu, /function MenuIcon/);

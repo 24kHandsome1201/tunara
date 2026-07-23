@@ -108,7 +108,14 @@ export function usePhase3TunnelBenchmark(ready: boolean): void {
         || !Number.isInteger(sshPort) || !Number.isInteger(remotePort)) {
         throw new Error("Phase 3 tunnel benchmark build is missing SSH configuration");
       }
-      const remote = { host, user, port: sshPort, identityFile, injectShellIntegration: true };
+      const remote = {
+        host,
+        user,
+        port: sshPort,
+        authMethod: "key" as const,
+        identityFile,
+        injectShellIntegration: true,
+      };
       const sessionA = createSession(rootA, { title: "Phase 3 SSH tunnel A", remote });
       const sessionB = createSession(rootB, { title: "Phase 3 SSH tunnel B", remote });
       useSessionsStore.setState({ sessions: [], activeSessionId: null, launchedSessionIds: {} });

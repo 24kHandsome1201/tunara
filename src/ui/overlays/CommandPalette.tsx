@@ -138,7 +138,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("new-ssh-session");
-        uiStore.getState().setOverlay("ssh");
+        uiStore.getState().openSshConnect();
       },
     });
 

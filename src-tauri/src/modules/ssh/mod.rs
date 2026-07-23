@@ -9,8 +9,8 @@
 //! - [`connection`]: the live `SshSession` (one russh `Handle`), host-key policy.
 //! - [`known_hosts`]: TOFU verification against `~/.ssh/known_hosts` (hashed
 //!   entries detected, not silently trusted).
-//! - [`hosts`]: saved host profiles in `tunara/hosts.toml` — host/port/user and
-//!   an identity-file PATH only, never passwords or passphrases.
+//! - [`hosts`]: saved host profiles in `tunara/hosts.toml` — endpoint, auth
+//!   method, and an optional identity-file path, never passwords or passphrases.
 //! - [`sftp`]: read-only remote browse + home-confined download.
 //!
 //! An unverifiable host key parks `ssh_open` and emits `PtyEvent::HostKeyPrompt`;
@@ -38,7 +38,7 @@ mod rtt_benchmark;
 mod safe_write;
 pub mod sftp;
 
-use auth::AuthOptions;
+use auth::{AuthMethod, AuthOptions};
 use connection::{ConnectParams, HostKeyPolicy, SshSession};
 
 use crate::modules::agent::{hooks::HookListenerState, wrapper};
@@ -184,6 +184,7 @@ pub async fn ssh_open(
     identity_file: Option<String>,
     key_passphrase: Option<String>,
     password: Option<String>,
+    auth_method: Option<AuthMethod>,
     accept_unknown_host_key: Option<bool>,
     inject_shell_integration: Option<bool>,
     cols: u16,
@@ -212,6 +213,7 @@ pub async fn ssh_open(
         port,
         auth: AuthOptions {
             user,
+            method: auth_method.ok_or("SSH authentication method is required")?,
             identity_file,
             key_passphrase,
             password,
@@ -313,6 +315,18 @@ pub fn ssh_host_key_decision(prompt_id: String, accept: bool) -> Result<(), Stri
     } else {
         // Unknown id = already resolved or timed out; not fatal.
         Err("host-key prompt no longer pending".into())
+    }
+}
+
+#[tauri::command]
+pub fn ssh_keyboard_interactive_response(
+    prompt_id: String,
+    responses: Option<Vec<String>>,
+) -> Result<(), String> {
+    if auth::resolve_keyboard_interactive_prompt(&prompt_id, responses) {
+        Ok(())
+    } else {
+        Err("keyboard-interactive prompt no longer pending".into())
     }
 }
 

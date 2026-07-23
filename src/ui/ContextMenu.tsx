@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-export type MenuIconName = "terminal" | "editor" | "copy" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
+export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
 
 export interface MenuItem {
   id?: string;
@@ -37,6 +37,15 @@ function MenuIcon({ name }: { name: MenuIconName }) {
       <svg {...common}>
         <polyline points="4 7 10 12 4 17" />
         <line x1="12" y1="17" x2="20" y2="17" />
+      </svg>
+    );
+  }
+  if (name === "ssh") {
+    return (
+      <svg {...common}>
+        <rect x="2.5" y="4" width="19" height="16" rx="2" />
+        <path d="m6 9 3 3-3 3" />
+        <path d="M12 15h5" />
       </svg>
     );
   }

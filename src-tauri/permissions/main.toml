@@ -57,6 +57,7 @@ commands.allow = [
   "ssh_open",
   "ssh_cancel_open",
   "ssh_host_key_decision",
+  "ssh_keyboard_interactive_response",
   "ssh_hosts_load",
   "ssh_hosts_save",
   "ssh_hosts_remove",

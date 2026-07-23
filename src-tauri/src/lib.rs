@@ -146,6 +146,7 @@ pub fn run() {
             modules::ssh::ssh_cancel_open,
             // §ssh-client 未知主机密钥 TOFU 指纹确认回传
             modules::ssh::ssh_host_key_decision,
+            modules::ssh::ssh_keyboard_interactive_response,
             // §ssh-client Phase 2 主机 profile 管理(无凭证存储)
             modules::ssh::hosts::ssh_hosts_load,
             modules::ssh::hosts::ssh_hosts_save,

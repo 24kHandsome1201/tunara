@@ -13,6 +13,13 @@ use tauri::ipc::Channel;
 use super::output_flow::OutputFlow;
 use super::shell_init;
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyboardInteractivePrompt {
+    pub prompt: String,
+    pub echo: bool,
+}
+
 const FLUSH_INTERVAL: Duration = Duration::from_millis(16);
 const READ_BUF: usize = 8 * 1024;
 // Reader-to-flusher memory is bounded to about 1 MiB. When it fills, the
@@ -53,6 +60,13 @@ pub enum PtyEvent {
         /// entry — a possible key rotation or MITM, and accepting does NOT
         /// persist. Conflating these two trains reflexive trust.
         reason: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    KeyboardInteractivePrompt {
+        prompt_id: String,
+        name: String,
+        instructions: String,
+        prompts: Vec<KeyboardInteractivePrompt>,
     },
 }
 

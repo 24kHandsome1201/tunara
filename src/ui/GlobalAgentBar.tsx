@@ -116,6 +116,7 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
       host: session.remote.host,
       user: session.remote.user,
       port: session.remote.port,
+      authMethod: session.remote.authMethod,
       identityFile: session.remote.identityFile,
       injectShellIntegration: session.remote.injectShellIntegration,
       reconnectSessionId: session.id,

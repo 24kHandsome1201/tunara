@@ -872,6 +872,7 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
       host: remoteSession.remote.host,
       user: remoteSession.remote.user,
       port: remoteSession.remote.port,
+      authMethod: remoteSession.remote.authMethod,
       identityFile: remoteSession.remote.identityFile,
       injectShellIntegration: remoteSession.remote.injectShellIntegration,
       reconnectSessionId: remoteSession.id,
