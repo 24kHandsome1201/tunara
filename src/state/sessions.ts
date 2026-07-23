@@ -64,6 +64,7 @@ import {
   previewTerminalCommandStarted,
   previewTerminalExited,
 } from "@/modules/preview/preview-window";
+import { terminalFileViewerCommand } from "@/modules/terminal/lib/shell-command";
 
 let previewCommandSequence = 0;
 
@@ -134,6 +135,7 @@ interface SessionsState {
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
   newTerminalWithInput: (input: string, dir?: string) => void;
+  openFileInTerminal: (sourceSessionId: string, directory: string, fileName: string) => void;
   splitWithNewSession: (direction: SplitDirection, sourceSessionId?: string) => void;
   closeSession: (id: string) => void;
 }
@@ -258,6 +260,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   addSession: (s) => {
     const previousActiveSessionId = get().activeSessionId;
+    useUIStore.getState().activateTerminal();
     set((state) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
@@ -278,6 +281,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     clearQueuedGitNonceBump(id);
     removeTerminalSnapshot(id);
     clearSshCredentials(id);
+    useUIStore.getState().closeFileTabsForSession(id);
     const wasActive = get().activeSessionId === id;
     const splitFocusSessionId = useUIStore.getState().removeSplitPane(id);
     set((state) => {
@@ -314,9 +318,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   setActive: (id) => {
     if (!get().sessions.some((session) => session.id === id)) return;
     const currentId = get().activeSessionId;
-    if (currentId && currentId !== id) {
-      if (!requestDirtyDraftAction([currentId], () => get().setActive(id))) return;
-    }
     let accepted = false;
     set((state) => {
       if (!state.sessions.some((s) => s.id === id)) return {};
@@ -330,7 +331,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         ),
       };
     });
-    if (accepted) ensureSessionVisibleInSplit(id, currentId);
+    if (accepted) {
+      useUIStore.getState().activateTerminal();
+      ensureSessionVisibleInSplit(id, currentId);
+    }
   },
 
   // Cycle to the next/prev session by most-recent-active order (Mod+Tab). "next"
@@ -823,6 +827,49 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       title: t("session.default_title"),
       pendingInput: input,
       pendingInputSubmit: false,
+    }));
+  },
+
+  openFileInTerminal: (sourceSessionId, directory, fileName) => {
+    const source = get().sessions.find((session) => session.id === sourceSessionId);
+    if (!source) return;
+    const command = terminalFileViewerCommand(fileName);
+    if (!command) {
+      useUIStore.getState().addToast({
+        sessionId: sourceSessionId,
+        title: t("explorer.open_terminal.failed"),
+        subtitle: t("explorer.open_terminal.unsupported_name"),
+        variant: "error",
+      });
+      return;
+    }
+
+    // Reuse an idle source terminal, including its authenticated SSH channel.
+    // A running shell/TUI must never receive injected input, so busy sessions
+    // get a fresh sibling terminal rooted in the file's directory instead.
+    if (!isSessionBusy(source)) {
+      const reusableCommand = source.dir === directory
+        ? command
+        : terminalFileViewerCommand(fileName, directory);
+      if (reusableCommand) {
+        get().setActive(source.id);
+        get().updateSession(source.id, {
+          pendingInput: reusableCommand,
+          pendingInputSubmit: true,
+        });
+        return;
+      }
+    }
+
+    // Busy terminals must never receive injected input. Start a sibling with
+    // the same transport/profile and root it in the file's directory. A rare
+    // relative local directory also takes this path because quoting `~` would
+    // intentionally suppress shell expansion in an existing terminal.
+    get().addSession(createSession(directory, {
+      title: t("session.default_title"),
+      remote: source.remote,
+      pendingInput: command,
+      pendingInputSubmit: true,
     }));
   },
 

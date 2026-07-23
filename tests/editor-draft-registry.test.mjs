@@ -61,12 +61,12 @@ test("clean drafts are removed and explicit discard clears retained state", () =
   assert.equal(readEditorDraft(key), null);
 });
 
-test("draft registry stays out of workspace persistence and the first-screen module graph", async () => {
-  const [persist, explorer] = await Promise.all([
+test("draft registry stays out of workspace persistence and the editor remains lazy", async () => {
+  const [persist, main] = await Promise.all([
     readFile(new URL("../src/state/persist.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/ui/FileExplorer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/ui/MainArea.tsx", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(persist, /editor-draft-registry|EditorDraftSnapshot/);
-  assert.match(explorer, /lazy\(\(\) => import\("\.\/FilePreview"\)/);
-  assert.doesNotMatch(explorer, /import \{ FilePreview \} from "\.\/FilePreview"/);
+  assert.match(main, /lazy\(\(\) => import\("\.\/FilePreview"\)/);
+  assert.doesNotMatch(main, /import \{ FilePreview \} from "\.\/FilePreview"/);
 });

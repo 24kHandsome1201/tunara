@@ -234,6 +234,18 @@ export interface PendingWorkflow {
   targetSessionId?: string;
 }
 
+export interface WorkspaceFileTab {
+  id: string;
+  sessionId: string;
+  filePath: string;
+  fileName: string;
+  dirty: boolean;
+}
+
+function workspaceFileTabId(sessionId: string, filePath: string): string {
+  return `${sessionId}\0${filePath}`;
+}
+
 interface UIState extends AppearanceSettings {
   ready: boolean;
   configLoaded: boolean;
@@ -251,6 +263,8 @@ interface UIState extends AppearanceSettings {
   split: SplitState;
   inspectorTab: InspectorTab;
   settingsTab: SettingsTab;
+  fileTabs: WorkspaceFileTab[];
+  activeFileTabId: string | null;
   toasts: Toast[];
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
    *  so two SSH connections that both hit an unknown/unverifiable host key
@@ -274,6 +288,12 @@ interface UIState extends AppearanceSettings {
   openSshConnect: (prefill?: SshConnectPrefill | null) => void;
   setInspectorTab: (t: InspectorTab) => void;
   setSettingsTab: (t: SettingsTab) => void;
+  openFileTab: (tab: Omit<WorkspaceFileTab, "id" | "dirty">) => void;
+  setActiveFileTab: (id: string) => void;
+  activateTerminal: () => void;
+  closeFileTab: (id: string) => void;
+  closeFileTabsForSession: (sessionId: string) => void;
+  setFileTabDirty: (id: string, dirty: boolean) => void;
   openSettings: (tab?: SettingsTab) => void;
   setTheme: (t: ThemeType) => void;
   setAccent: (c: string) => void;
@@ -333,6 +353,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     split: emptySplitState(),
     inspectorTab: "overview" as InspectorTab,
     settingsTab: "appearance" as SettingsTab,
+    fileTabs: [],
+    activeFileTabId: null,
     toasts: [],
     hostKeyPrompts: [],
     pendingWorkflow: null,
@@ -367,6 +389,40 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     openSshConnect: (prefill) => set({ overlay: "ssh", sshPrefill: prefill ?? null }),
     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
     setSettingsTab: (settingsTab) => set({ settingsTab }),
+    openFileTab: (tab) => set((state) => {
+      const id = workspaceFileTabId(tab.sessionId, tab.filePath);
+      if (state.fileTabs.some((candidate) => candidate.id === id)) {
+        return { activeFileTabId: id };
+      }
+      return {
+        fileTabs: [...state.fileTabs, { ...tab, id, dirty: false }],
+        activeFileTabId: id,
+      };
+    }),
+    setActiveFileTab: (id) => set((state) =>
+      state.fileTabs.some((tab) => tab.id === id) ? { activeFileTabId: id } : {},
+    ),
+    activateTerminal: () => set({ activeFileTabId: null }),
+    closeFileTab: (id) => set((state) => {
+      const index = state.fileTabs.findIndex((tab) => tab.id === id);
+      if (index < 0) return {};
+      const fileTabs = state.fileTabs.filter((tab) => tab.id !== id);
+      if (state.activeFileTabId !== id) return { fileTabs };
+      const adjacent = fileTabs[Math.min(index, fileTabs.length - 1)];
+      return { fileTabs, activeFileTabId: adjacent?.id ?? null };
+    }),
+    closeFileTabsForSession: (sessionId) => set((state) => {
+      const fileTabs = state.fileTabs.filter((tab) => tab.sessionId !== sessionId);
+      const activeRemoved = state.fileTabs.some((tab) =>
+        tab.id === state.activeFileTabId && tab.sessionId === sessionId,
+      );
+      return activeRemoved ? { fileTabs, activeFileTabId: null } : { fileTabs };
+    }),
+    setFileTabDirty: (id, dirty) => set((state) => {
+      const tab = state.fileTabs.find((candidate) => candidate.id === id);
+      if (!tab || tab.dirty === dirty) return state;
+      return { fileTabs: state.fileTabs.map((candidate) => candidate.id === id ? { ...candidate, dirty } : candidate) };
+    }),
     openSettings: (settingsTab) => set((state) => ({
       overlay: "settings",
       settingsTab: settingsTab ?? state.settingsTab,

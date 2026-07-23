@@ -1,9 +1,10 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { FilePreview } from "@/ui/FilePreview";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 
 const original = {
   kind: "text",
@@ -21,6 +22,43 @@ function renderSsh(fileName = "notes.txt") {
 }
 
 describe("FilePreview editor behavior", () => {
+  test("renders notebooks as inert read-only previews", async () => {
+    const script = "<script>globalThis.PWNED = true</script>";
+    const notebook = JSON.stringify({
+      nbformat: 4,
+      metadata: { language_info: { name: "python" } },
+      cells: [
+        { cell_type: "markdown", source: "# Notebook heading" },
+        {
+          cell_type: "code",
+          execution_count: 2,
+          source: "print('safe')",
+          outputs: [
+            { output_type: "stream", text: "safe output\n" },
+            { output_type: "display_data", data: { "text/html": script } },
+          ],
+        },
+      ],
+    });
+    mockIPC((command) => {
+      if (command === "fs_read_file") {
+        return { kind: "text", content: notebook, size: notebook.length, fingerprint: "a".repeat(64) };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("analysis.ipynb");
+    await screen.findByText("Notebook heading");
+    expect(screen.getByText("Read-only notebook preview")).toBeTruthy();
+    expect(screen.getByText("print('safe')")).toBeTruthy();
+    expect(screen.getByText(/safe output/)).toBeTruthy();
+    expect(screen.getByText("Rich output omitted for safety")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Edit analysis.ipynb" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByText(script)).toBeNull();
+    expect((globalThis as { PWNED?: boolean }).PWNED).toBeUndefined();
+  });
+
   test("shows the initial local read error and retries exactly once", async () => {
     let reads = 0;
     let finishRetry: ((value: typeof original) => void) | undefined;
@@ -111,6 +149,28 @@ describe("FilePreview editor behavior", () => {
       },
     });
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("keeps a pending guarded action when parent callbacks change identity", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return original;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const firstAttention = vi.fn();
+    const secondAttention = vi.fn();
+    const run = vi.fn();
+    const view = render(
+      <FilePreview sessionId="local" filePath="/tmp/notes.txt" fileName="notes.txt" fill onClose={() => {}} onNeedsAttention={firstAttention} />,
+    );
+    fireEvent.change(await screen.findByRole("textbox", { name: "Edit notes.txt" }), { target: { value: "draft\n" } });
+
+    expect(requestActiveDirtyDraftAction(run)).toBe(false);
+    expect(firstAttention).toHaveBeenCalledTimes(1);
+    view.rerender(
+      <FilePreview sessionId="local" filePath="/tmp/notes.txt" fileName="notes.txt" fill onClose={() => {}} onNeedsAttention={secondAttention} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   test("keeps the Markdown mode switch and save flow keyboard-complete", async () => {

@@ -73,7 +73,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
           sublabel={session.dir}
         />
       ) : (
-        <FileExplorer rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
+        <FileExplorer sessionId={session.id} rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
       );
       break;
     case "preview":
