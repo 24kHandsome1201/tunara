@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   fsCancelActiveNameSearch,
@@ -20,8 +20,6 @@ import {
   sshSearch,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
-import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
-import { filePreviewWillChange, nextFilePreview } from "@/modules/editor/file-preview-navigation";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
@@ -39,8 +37,6 @@ import {
   nextFileSearchLimit,
 } from "./lib/file-search-pagination";
 let nextLocalGrepRequest = 0;
-
-const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 
 function createLocalGrepRequestId(): string {
   nextLocalGrepRequest += 1;
@@ -61,6 +57,7 @@ function SearchRetryButton({ label, onRetry }: { label: string; onRetry: () => v
 let lastFileSearchMode: "name" | "content" = "name";
 
 interface FileExplorerProps {
+  sessionId: string;
   rootDir: string;
   /**
    * 远程 SSH 会话的 PTY id。存在则文件操作走 SFTP；否则走本地 fs。
@@ -143,13 +140,45 @@ function compactRelativePath(path: string): string {
   return "…/" + parts.slice(-3).join("/");
 }
 
+type SortKey = "name" | "modified";
+type SortDirection = "asc" | "desc";
+
+function compareEntries(a: DirEntry, b: DirEntry, key: SortKey, direction: SortDirection): number {
+  const factor = direction === "asc" ? 1 : -1;
+  if (key === "modified" && a.mtime !== b.mtime) return (a.mtime - b.mtime) * factor;
+  const insensitive = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+  const nameOrder = insensitive !== 0 ? insensitive : a.name.localeCompare(b.name);
+  return key === "modified" ? nameOrder : nameOrder * factor;
+}
+
+export function sortExplorerEntries(
+  entries: readonly DirEntry[],
+  key: SortKey,
+  direction: SortDirection,
+): DirEntry[] {
+  return [...entries].sort((a, b) => compareEntries(a, b, key, direction));
+}
+
+export function formatModifiedTime(mtime: number, now = new Date()): string {
+  if (!Number.isFinite(mtime) || mtime <= 0) return "—";
+  const date = new Date(mtime);
+  if (Number.isNaN(date.getTime())) return "—";
+  if (date.toDateString() === now.toDateString()) {
+    return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  }
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(date);
+}
+
 const folderEmptyIcon = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
   </svg>
 );
 
-export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
+export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerProps) {
   const t = useT();
   const isRemote = remotePtyId !== undefined;
 
@@ -184,10 +213,10 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -203,8 +232,9 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     position: { x: number; y: number };
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
-  const activeSessionId = useSessionsStore((s) => s.activeSessionId);
-  const previousSessionIdRef = useRef(activeSessionId);
+  const activeFilePath = useUIStore((s) =>
+    s.fileTabs.find((tab) => tab.id === s.activeFileTabId && tab.sessionId === sessionId)?.filePath,
+  );
   const searchGenerationRef = useRef(new FileSearchGeneration());
 
   const openEditor = (path: string, line?: number) => {
@@ -213,14 +243,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
   // Resolve the starting directory. Local: rootDir. Remote: SFTP-resolved home.
   useEffect(() => {
-    const sessionChanged = previousSessionIdRef.current !== activeSessionId;
-    previousSessionIdRef.current = activeSessionId;
     setNavDir(null);
-    // An OSC cwd update changes rootDir inside the same session. Keep the
-    // absolute-path editor mounted in that case; switching sessions has already
-    // passed through the central dirty-draft guard and should clear the old
-    // session's preview.
-    if (sessionChanged) setExpandedFile(null);
     setSearchQuery("");
     // Keep the user's remembered mode preference across the root change.
     // Content search works for remote sessions too (ssh_fs_grep).
@@ -262,7 +285,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     }
     setBaseDir(rootDir);
     setCurrentPath(rootDir);
-  }, [rootDir, isRemote, remotePtyId, activeSessionId]);
+  }, [rootDir, isRemote, remotePtyId]);
 
   useEffect(() => {
     if (baseDir === null) return; // remote home not resolved yet
@@ -380,40 +403,19 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
     };
   }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId, searchRetryNonce]);
 
-  const runPreviewReplacingAction = useCallback((action: () => void) => {
-    if (!expandedFile || !activeSessionId) {
-      action();
-      return;
-    }
-    if (requestDirtyDraftAction([activeSessionId], action)) action();
-  }, [activeSessionId, expandedFile]);
-
-  const closePreviewFromExplorer = useCallback(() => {
-    if (!filePreviewWillChange(expandedFile, null)) return;
-    runPreviewReplacingAction(() => setExpandedFile(null));
-  }, [expandedFile, runPreviewReplacingAction]);
-
-  useEffect(() => {
-    if (!expandedFile) return;
-    const closePreview = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      // Let the top-most modal own Escape. The preview is background inspector
-      // state and should only close once no dialog is covering it.
-      if (document.querySelector('[role="dialog"]')) return;
-      event.preventDefault();
-      closePreviewFromExplorer();
-    };
-    window.addEventListener("keydown", closePreview);
-    return () => window.removeEventListener("keydown", closePreview);
-  }, [closePreviewFromExplorer, expandedFile]);
-
   const canGoUp = currentPath !== "/" && (isRemote || currentPath !== baseDir);
   const breadcrumbRoot = baseDir !== null
     && (currentPath === baseDir || currentPath.startsWith(`${baseDir}/`))
     ? baseDir
     : "/";
-  const dirs = useMemo(() => entries.filter((e) => e.kind === "dir"), [entries]);
-  const files = useMemo(() => entries.filter((e) => e.kind !== "dir"), [entries]);
+  const dirs = useMemo(
+    () => sortExplorerEntries(entries.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
+    [entries, sort],
+  );
+  const files = useMemo(
+    () => sortExplorerEntries(entries.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
+    [entries, sort],
+  );
   const isSearching = searchQuery.trim().length > 0;
   const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
 
@@ -432,55 +434,37 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
   }
 
   function goUp() {
-    runPreviewReplacingAction(() => {
-      setExpandedFile(null);
-      setNavDir("out");
-      setCurrentPath(parentPath(currentPath));
-    });
+    setNavDir("out");
+    setCurrentPath(parentPath(currentPath));
   }
 
   function enterDir(name: string) {
-    runPreviewReplacingAction(() => {
-      setExpandedFile(null);
-      setNavDir("in");
-      setCurrentPath(joinPath(currentPath, name));
-    });
+    setNavDir("in");
+    setCurrentPath(joinPath(currentPath, name));
   }
 
   function openSearchDir(path: string) {
-    runPreviewReplacingAction(() => {
-      setExpandedFile(null);
-      setSearchQuery("");
-      setNavDir("in");
-      setCurrentPath(path);
-    });
+    setSearchQuery("");
+    setNavDir("in");
+    setCurrentPath(path);
   }
 
-  function toggleFile(name: string) {
-    const fullPath = joinPath(currentPath, name);
-    const next = nextFilePreview(expandedFile, fullPath);
-    runPreviewReplacingAction(() => setExpandedFile(next));
+  function openFile(path: string) {
+    const fileName = path.split("/").filter(Boolean).pop() ?? path;
+    useUIStore.getState().openFileTab({ sessionId, filePath: path, fileName });
   }
 
-  function toggleSearchFile(path: string) {
-    const next = nextFilePreview(expandedFile, path);
-    runPreviewReplacingAction(() => setExpandedFile(next));
+  function changeSort(key: SortKey) {
+    setSort((current) => current.key === key
+      ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+      : { key, direction: key === "modified" ? "desc" : "asc" });
   }
 
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
-  const previewFileName = expandedFile
-    ? expandedFile.split("/").filter(Boolean).pop() ?? expandedFile
-    : "";
 
   return (
     <div
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && expandedFile) {
-          event.stopPropagation();
-          closePreviewFromExplorer();
-        }
-      }}
     >
       <div style={{ height: 36, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 var(--sp-2)", gap: 4, flexShrink: 0 }}>
         <button
@@ -511,11 +495,8 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                 <button
                   onClick={() => {
                     if (isCurrent) return;
-                    runPreviewReplacingAction(() => {
-                      setExpandedFile(null);
-                      setNavDir("out");
-                      setCurrentPath(seg.targetPath);
-                    });
+                    setNavDir("out");
+                    setCurrentPath(seg.targetPath);
                   }}
                   disabled={isCurrent}
                   aria-current={isCurrent ? "page" : undefined}
@@ -587,35 +568,7 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
         </button>
       </div>
 
-      {expandedFile && (
-        <div
-          key={expandedFile}
-          style={{
-            position: "absolute",
-            top: 36,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            zIndex: 3,
-            background: "var(--c-bg-white)",
-            animation: "slideInRight var(--duration-normal) var(--ease-out-expo)",
-          }}
-        >
-          <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
-            <FilePreview
-              filePath={expandedFile}
-              fileName={previewFileName}
-              remotePtyId={remotePtyId}
-              onClose={() => setExpandedFile(null)}
-              fill
-            />
-          </Suspense>
-        </div>
-      )}
-
       <div
-        aria-hidden={expandedFile ? true : undefined}
-        inert={expandedFile ? true : undefined}
         style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}
       >
         <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px var(--sp-2)", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
@@ -664,8 +617,6 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
       <div
         key={contentKey}
-        aria-hidden={expandedFile ? true : undefined}
-        inert={expandedFile ? true : undefined}
         style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }}
         className="no-scrollbar scroll-fade-y"
       >
@@ -696,14 +647,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     {group.lines.map((ln) => (
                       <button
                         key={ln.line}
-                        // Local hits jump to the matched line in the external
-                        // editor; remote paths mean nothing to a local editor,
-                        // so they open the same full-height remote preview state
-                        // (same affordance as remote name-search hits).
-                        onClick={() => isRemote
-                          ? toggleSearchFile(group.path)
-                          : openEditor(group.path, ln.line)}
-                        title={isRemote ? group.rel : t("explorer.search_mode.open_at_line", { line: ln.line })}
+                        // Content hits open the owning file tab. Keeping local
+                        // and SSH results on the same workspace surface avoids
+                        // sending remote paths to a local external editor.
+                        onClick={() => openFile(group.path)}
+                        title={group.rel}
                         className="hover-bg"
                         style={{ width: "100%", padding: "2px var(--sp-2) 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
                       >
@@ -733,11 +681,11 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                 <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{searchHits.length}</span>
               </div>
               {searchHits.map((hit) => {
-                const isExpanded = expandedFile === hit.path;
+                const isExpanded = activeFilePath === hit.path;
                 return (
                   <div key={hit.path}>
                     <button
-                      onClick={() => hit.isDir ? openSearchDir(hit.path) : toggleSearchFile(hit.path)}
+                      onClick={() => hit.isDir ? openSearchDir(hit.path) : openFile(hit.path)}
                       className="hover-bg"
                       style={{
                         width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
@@ -764,6 +712,30 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
           <PanelEmptyState icon={folderEmptyIcon} label={t("explorer.dir_empty")} />
         ) : (
           <>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", height: 24, padding: "0 var(--sp-2)", marginBottom: 3, borderBottom: "1px solid var(--c-border-1)" }}>
+              {(["name", "modified"] as const).map((key) => {
+                const active = sort.key === key;
+                const label = t(key === "name" ? "explorer.column.name" : "explorer.column.modified");
+                const directionLabel = t(sort.direction === "asc" ? "explorer.sort.ascending" : "explorer.sort.descending");
+                return (
+                  <div key={key}>
+                    <button
+                      type="button"
+                      onClick={() => changeSort(key)}
+                      className="explorer-sort-button"
+                      title={active ? `${label}, ${directionLabel}` : label}
+                      aria-label={active ? `${label}, ${directionLabel}` : label}
+                      aria-pressed={active}
+                    >
+                      <span>{label}</span>
+                      <span className="explorer-sort-direction" data-visible={active ? "true" : "false"} aria-hidden="true">
+                        {sort.direction === "asc" ? "↑" : "↓"}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
             {dirs.map((entry) => {
               const fullPath = joinPath(currentPath, entry.name);
               return (
@@ -786,11 +758,14 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                   });
                 }}
                 className="hover-bg"
-                style={{ width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2 }}
+                style={{ width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", textAlign: "left", marginBottom: 2 }}
               >
-                <FolderIcon />
-                <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
-                <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <FolderIcon />
+                  <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
+                  <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>
+                </span>
+                <span title={entry.mtime > 0 ? new Date(entry.mtime).toLocaleString() : undefined} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", overflow: "hidden", whiteSpace: "nowrap", textAlign: "right" }}>{formatModifiedTime(entry.mtime)}</span>
               </button>
               );
             })}
@@ -801,23 +776,28 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
 
             {files.map((entry) => {
               const fullPath = joinPath(currentPath, entry.name);
-              const isExpanded = expandedFile === fullPath;
+              const isExpanded = activeFilePath === fullPath;
               return (
                 <div key={"f-" + entry.name}>
                   <button
                     data-file-path={fullPath}
-                    onClick={() => toggleFile(entry.name)}
+                    onClick={() => openFile(fullPath)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({
                         position: { x: e.clientX, y: e.clientY },
                         items: isRemote
                           ? [
+                              { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
+                              { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
                               { id: "file:download", label: t("explorer.download"), icon: "download", action: () => { void downloadRemoteFile(fullPath, entry.name); } },
                               { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                             ]
                           : [
-                              { id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openEditor(fullPath); } },
+                              { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
+                              { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
+                              { id: "file:open-vscode", label: t("explorer.open_in_vscode"), icon: "editor", action: () => { void openInEditorWithToast("vscode", fullPath, { sessionId }); } },
+                              ...(externalEditor === "vscode" ? [] : [{ id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor" as const, action: () => { openEditor(fullPath); } }]),
                               { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
                             ],
                       });
@@ -826,12 +806,14 @@ export function FileExplorer({ rootDir, remotePtyId }: FileExplorerProps) {
                     style={{
                       width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
                       background: isExpanded ? "var(--c-accent-bg-light)" : "transparent",
-                      cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2,
+                      cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", textAlign: "left", marginBottom: 2,
                     }}
                   >
-                    <FileIcon />
-                    <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{entry.name}</span>
-                    <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 48, textAlign: "right" }}>{formatSize(entry.size)}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <FileIcon />
+                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{entry.name}</span>
+                    </span>
+                    <span title={entry.mtime > 0 ? `${new Date(entry.mtime).toLocaleString()} · ${formatSize(entry.size)}` : formatSize(entry.size)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", overflow: "hidden", whiteSpace: "nowrap", textAlign: "right" }}>{formatModifiedTime(entry.mtime)}</span>
                   </button>
                 </div>
               );

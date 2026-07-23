@@ -1,4 +1,4 @@
-import { memo, useRef } from "react";
+import { lazy, memo, Suspense, useRef } from "react";
 import { TerminalView } from "./TerminalView";
 import type { Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
@@ -11,6 +11,9 @@ import { getNumberRecordValue } from "@/state/record-keys";
 import { useSessionGitContext } from "./useSessionGitContext";
 import { useWorkspaceHydration } from "./useWorkspaceHydration";
 import { splitLayoutGeometry, splitLayoutSessionIds } from "@/modules/session/split-layout";
+import { PanelLoadingState } from "./shared";
+
+const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -101,7 +104,10 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
   const split = useUIStore((s) => s.split);
   const pure = useUIStore((s) => s.presentationMode === "pure");
+  const fileTabs = useUIStore((s) => s.fileTabs);
+  const activeFileTabId = useUIStore((s) => s.activeFileTabId);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const fileSurfaceActive = !pure && activeFileTabId !== null;
 
   // Captured as primitives so the git effect depends on exactly the fields it
   // reads. Depending on the whole `active` object would re-run the effect on
@@ -143,6 +149,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   // PTY and kill any running agent). The BSP tree only provides normalized
   // rectangles; every terminal remains a stable root-level sibling.
   function paneWrapperStyle(s: Session): React.CSSProperties {
+    if (fileSurfaceActive) return { display: "none" };
     const pane = splitGeometry.panes[s.id];
 
     if (isSplit && pane) {
@@ -198,10 +205,40 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             style={paneWrapperStyle(s)}
           >
-            <TerminalPane session={s} isActive={s.id === activeSessionId} />
+            <TerminalPane session={s} isActive={!fileSurfaceActive && s.id === activeSessionId} />
           </div>
         ))}
-        {splitGeometry.handles.map((handle) => (
+        {fileTabs.map((tab) => {
+          const owner = sessions.find((session) => session.id === tab.sessionId);
+          if (!owner) return null;
+          const active = !pure && tab.id === activeFileTabId;
+          return (
+            <div
+              key={`file:${tab.id}`}
+              data-workspace-file-tab={tab.id}
+              aria-hidden={active ? undefined : true}
+              inert={active ? undefined : true}
+              style={{ position: "absolute", inset: 0, display: active ? "flex" : "none", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--c-bg-white)" }}
+            >
+              <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
+                <FilePreview
+                  sessionId={tab.sessionId}
+                  filePath={tab.filePath}
+                  fileName={tab.fileName}
+                  remotePtyId={owner.remote ? owner.ptyId : undefined}
+                  onClose={() => useUIStore.getState().closeFileTab(tab.id)}
+                  onDirtyChange={(dirty) => useUIStore.getState().setFileTabDirty(tab.id, dirty)}
+                  onNeedsAttention={() => {
+                    useSessionsStore.getState().setActive(tab.sessionId);
+                    useUIStore.getState().setActiveFileTab(tab.id);
+                  }}
+                  fill
+                />
+              </Suspense>
+            </div>
+          );
+        })}
+        {!fileSurfaceActive && splitGeometry.handles.map((handle) => (
           <SplitHandle
             key={handle.path}
             direction={handle.direction}
@@ -213,7 +250,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         ))}
       </div>
 
-      {!pure && <div
+      {!pure && !fileSurfaceActive && <div
         style={{
           height: "var(--h-statusbar)",
           background: "var(--c-bg-1)",

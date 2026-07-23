@@ -102,6 +102,10 @@ fn content_fingerprint(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn remote_mtime_millis(seconds: u32) -> u64 {
+    u64::from(seconds).saturating_mul(1_000)
+}
+
 fn validate_fingerprint(fingerprint: &str) -> Result<(), String> {
     if fingerprint.len() != 64
         || !fingerprint
@@ -251,7 +255,7 @@ pub async fn ssh_fs_read_dir(
             name,
             kind,
             size: meta.size.unwrap_or(0),
-            mtime: meta.mtime.unwrap_or(0) as u64,
+            mtime: remote_mtime_millis(meta.mtime.unwrap_or(0)),
         });
     }
 
@@ -1133,10 +1137,10 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 mod tests {
     use super::{
         choose_remote_home, read_remote_editable_bytes, reconcile_text_write_with_sftp,
-        remote_replace_lock_owner_path, remote_replace_lock_path, remote_sibling_temp_path,
-        remote_write_lock, shell_quote, validate_download_target, validate_fingerprint,
-        validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
-        TransactionOutcome, WriteRequest, REMOTE_WRITE_LOCKS,
+        remote_mtime_millis, remote_replace_lock_owner_path, remote_replace_lock_path,
+        remote_sibling_temp_path, remote_write_lock, shell_quote, validate_download_target,
+        validate_fingerprint, validate_remote_edit_path, write_text_transaction, RemoteWriteIo,
+        SftpWriteAdapter, TransactionOutcome, WriteRequest, REMOTE_WRITE_LOCKS,
     };
     use crate::modules::pty::PtyEvent;
     use crate::modules::ssh::auth::AuthOptions;
@@ -1146,6 +1150,12 @@ mod tests {
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
     use tauri::ipc::Channel;
+
+    #[test]
+    fn remote_directory_mtime_is_normalized_to_epoch_milliseconds() {
+        assert_eq!(remote_mtime_millis(1_700_000_000), 1_700_000_000_000);
+        assert_eq!(remote_mtime_millis(0), 0);
+    }
 
     // The validator confines downloads under the *real* home dir, so test
     // fixtures must be created inside home (temp_dir() lives outside home on

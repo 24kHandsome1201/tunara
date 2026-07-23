@@ -34,11 +34,15 @@ import {
 } from "@/modules/editor/editor-draft-registry";
 import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor/scroll-position";
 import { classifyFileOperationError, type FileOperationErrorKind } from "@/modules/editor/file-operation-error";
+import { parseNotebook, type NotebookCell } from "@/modules/editor/notebook";
 
 interface FilePreviewProps {
+  sessionId?: string;
   filePath: string;
   fileName: string;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onNeedsAttention?: () => void;
   /** Fill the inspector content area instead of rendering as an inline card. */
   fill?: boolean;
   /** 远程 SSH 会话的 PTY id；存在则经 SFTP 读取。 */
@@ -252,6 +256,87 @@ function TextPreview({ content, fill = false }: { content: string; fill?: boolea
   );
 }
 
+function NotebookMarkdownCell({ source }: { source: string }) {
+  const document = useMemo(() => parseMarkdownDocument(source), [source]);
+  const matchCursor: MarkdownFindCursor = { current: 0, active: -1 };
+  return (
+    <div className="notebook-markdown-cell">
+      {document.blocks.map((block) => (
+        <MarkdownBlock key={block.key} block={block} findQuery="" matchCursor={matchCursor} />
+      ))}
+    </div>
+  );
+}
+
+function NotebookCellView({ cell, index }: { cell: NotebookCell; index: number }) {
+  const t = useT();
+  if (cell.kind === "markdown") {
+    return (
+      <article className="notebook-cell" data-cell-kind="markdown" aria-label={t("preview.notebook.markdown_cell", { index: index + 1 })}>
+        <NotebookMarkdownCell source={cell.source} />
+      </article>
+    );
+  }
+  if (cell.kind === "raw") {
+    return (
+      <article className="notebook-cell" data-cell-kind="raw" aria-label={t("preview.notebook.raw_cell", { index: index + 1 })}>
+        <div className="notebook-cell-gutter">Raw</div>
+        <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
+      </article>
+    );
+  }
+  return (
+    <article className="notebook-cell" data-cell-kind="code" aria-label={t("preview.notebook.code_cell", { index: index + 1 })}>
+      <div className="notebook-cell-code">
+        <div className="notebook-cell-gutter">In [{cell.executionCount ?? " "}]</div>
+        <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
+      </div>
+      {cell.outputs.length > 0 && (
+        <div className="notebook-outputs">
+          {cell.outputs.map((output, outputIndex) => {
+            if (output.kind === "omitted") {
+              return <div className="notebook-output-omitted" key={outputIndex}>{t("preview.notebook.rich_output_omitted")}</div>;
+            }
+            if (output.kind === "error") {
+              const text = output.traceback.length > 0
+                ? output.traceback.join("\n")
+                : `${output.name}: ${output.value}`;
+              return <pre className="notebook-output notebook-output-error" key={outputIndex}><code>{text}</code></pre>;
+            }
+            return <pre className="notebook-output" key={outputIndex}><code>{output.text}</code></pre>;
+          })}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function NotebookPreview({ content }: { content: string }) {
+  const t = useT();
+  const parsed = useMemo(() => parseNotebook(content), [content]);
+  if (!parsed.ok) {
+    return (
+      <div className="notebook-invalid" role="alert">
+        <strong>{t("preview.notebook.invalid")}</strong>
+        <span>{t("preview.notebook.invalid_body")}</span>
+        <code>{parsed.message}</code>
+      </div>
+    );
+  }
+  return (
+    <div className="notebook-preview no-scrollbar">
+      <div className="notebook-summary">
+        <span>{t("preview.notebook.cells", { count: parsed.notebook.cells.length })}</span>
+        <span>{parsed.notebook.language ?? `nbformat ${parsed.notebook.nbformat}`}</span>
+        <span>{t("preview.notebook.safe_mode")}</span>
+      </div>
+      {parsed.notebook.cells.length > 0
+        ? parsed.notebook.cells.map((cell, index) => <NotebookCellView key={index} cell={cell} index={index} />)
+        : <div className="notebook-empty">{t("preview.notebook.empty")}</div>}
+    </div>
+  );
+}
+
 function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   return (
     <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 8 }}>
@@ -265,32 +350,40 @@ type SaveState = EditorDraftSaveState;
 type OperationError = { operation: "save" | "reload"; kind: FileOperationErrorKind; detail: string };
 
 function EditorSurface({
+  sessionId,
   filePath,
   fileName,
   initialContent,
   initialFingerprint,
   remotePtyId,
   isMarkdown,
+  isNotebook,
   onClose,
+  onDirtyChange,
+  onNeedsAttention,
 }: {
+  sessionId: string | null;
   filePath: string;
   fileName: string;
   initialContent: string;
   initialFingerprint: string;
   remotePtyId?: number;
   isMarkdown: boolean;
+  isNotebook: boolean;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onNeedsAttention?: () => void;
 }) {
   const t = useT();
   const externalEditor = useUIStore((state) => state.externalEditor);
-  // Capture the owning session once. A session switch can render the old tree
-  // once before unmount; deriving this key reactively would migrate its draft
-  // into the newly active session during that frame.
-  const sessionId = useRef(useSessionsStore.getState().activeSessionId).current;
   const draftKey = editorDraftKey(sessionId, filePath);
   const restoredDraftRef = useRef(readEditorDraft(draftKey));
   const restoredDraft = restoredDraftRef.current;
   const draftOwnerRef = useRef(Symbol("file-editor-draft"));
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  const onNeedsAttentionRef = useRef(onNeedsAttention);
+  onDirtyChangeRef.current = onDirtyChange;
+  onNeedsAttentionRef.current = onNeedsAttention;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const syntaxRef = useRef<HTMLPreElement>(null);
@@ -302,7 +395,7 @@ function EditorSurface({
   const [content, setContent] = useState(restoredDraft?.content ?? initialContent);
   const [fingerprint, setFingerprint] = useState(restoredDraft?.fingerprint ?? initialFingerprint);
   const [savedContent, setSavedContent] = useState(restoredDraft?.savedContent ?? initialContent);
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [mode, setMode] = useState<"edit" | "preview">(isNotebook ? "preview" : "edit");
   const [saveState, setSaveState] = useState<SaveState>(() => {
     if (!restoredDraft) return "idle";
     if (restoredDraft.saveState === "saving" || restoredDraft.saveState === "reconciling") {
@@ -320,6 +413,7 @@ function EditorSurface({
   const [operationError, setOperationError] = useState<OperationError | null>(null);
   const [reloadPending, setReloadPending] = useState(false);
   const dirty = content !== savedContent;
+  const previewable = isMarkdown;
   const lines = useMemo(() => content.split("\n"), [content]);
   const highlightedLines = useMemo(
     () => isMarkdown ? highlightMarkdownSource(content) : null,
@@ -349,12 +443,16 @@ function EditorSurface({
       // The following effect publishes the current value after registration;
       // starting clean keeps this effect independent from every keystroke.
       dirty: false,
-      requestConfirmation: () => setCloseConfirm(true),
+      requestConfirmation: () => {
+        onNeedsAttentionRef.current?.();
+        setCloseConfirm(true);
+      },
     });
   }, [filePath, sessionId]);
 
   useEffect(() => {
     updateDirtyDraft(draftOwnerRef.current, dirty);
+    onDirtyChangeRef.current?.(dirty);
   }, [dirty]);
 
   useLayoutEffect(() => {
@@ -503,7 +601,7 @@ function EditorSurface({
   };
 
   const switchMode = (nextMode: "edit" | "preview", focusTab = false) => {
-    if (nextMode === mode || (nextMode === "preview" && !isMarkdown)) return;
+    if (isNotebook || nextMode === mode || (nextMode === "preview" && !previewable)) return;
     if (mode === "edit") {
       const textarea = textareaRef.current;
       if (textarea) {
@@ -521,7 +619,7 @@ function EditorSurface({
   };
 
   const handleModeTabKey = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (!isMarkdown) return;
+    if (!previewable) return;
     let nextMode: "edit" | "preview" | null = null;
     if (event.key === "ArrowLeft" || event.key === "Home") nextMode = "edit";
     if (event.key === "ArrowRight" || event.key === "End") nextMode = "preview";
@@ -578,11 +676,11 @@ function EditorSurface({
         event.stopPropagation();
         setCloseConfirm(true);
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "s") {
+      if (!isNotebook && (event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "s") {
         event.preventDefault();
         void save();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "f") {
+      if (!isNotebook && (event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "f") {
         event.preventDefault();
         setFindOpen(true);
       }
@@ -594,10 +692,14 @@ function EditorSurface({
           {dirty && <span className="file-editor-dirty" aria-label={t("preview.editor.unsaved")} />}
         </div>
         <div className="file-editor-actions">
-          <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
-            <button ref={editTabRef} id={`${viewId}-edit-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "edit"} tabIndex={mode === "edit" ? 0 : -1} data-active={mode === "edit"} onKeyDown={handleModeTabKey} onClick={() => switchMode("edit")}>{t("preview.editor.edit")}</button>
-            {isMarkdown && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
-          </div>
+          {isNotebook ? (
+            <span className="file-editor-kicker">{t("preview.notebook.read_only")}</span>
+          ) : (
+            <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
+              <button ref={editTabRef} id={`${viewId}-edit-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "edit"} tabIndex={mode === "edit" ? 0 : -1} data-active={mode === "edit"} onKeyDown={handleModeTabKey} onClick={() => switchMode("edit")}>{t("preview.editor.edit")}</button>
+              {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
+            </div>
+          )}
           <button className="file-editor-icon-button" onClick={requestClose} title={t("common.close")} aria-label={t("common.close")}>
             <CloseIcon size={11} strokeWidth={2.5} />
           </button>
@@ -670,8 +772,10 @@ function EditorSurface({
         </div>
       )}
 
-      <div id={`${viewId}-panel`} className="file-editor-paper" role="tabpanel" aria-labelledby={`${viewId}-${mode}-tab`}>
-        {mode === "preview" && isMarkdown ? (
+      <div id={`${viewId}-panel`} className="file-editor-paper" role="tabpanel" aria-labelledby={isNotebook ? undefined : `${viewId}-${mode}-tab`} aria-label={isNotebook ? t("preview.notebook.read_only") : undefined}>
+        {mode === "preview" && isNotebook ? (
+          <NotebookPreview content={content} />
+        ) : mode === "preview" && isMarkdown ? (
           <MarkdownPreview content={content} fill findQuery={findQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
         ) : (
           <div className="file-editor-code">
@@ -719,14 +823,14 @@ function EditorSurface({
           {remotePtyId === undefined && (
             <button onClick={() => void openInEditorWithToast(externalEditor, filePath)}>{t("preview.editor.external")}</button>
           )}
-          <button data-editor-action="save" className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>
+          {!isNotebook && <button data-editor-action="save" className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>}
         </div>
       </div>
     </div>
   );
 }
 
-export function FilePreview({ filePath, fileName, onClose, fill = false, remotePtyId }: FilePreviewProps) {
+export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
   const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
@@ -783,6 +887,7 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
         : t("preview.read_failed_body");
 
   const isMarkdown = /\.mdx?$/i.test(fileName);
+  const isNotebook = /\.ipynb$/i.test(fileName);
   const textContent = result?.kind === "text"
     ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
     : "";
@@ -791,13 +896,17 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
     return (
       <EditorSurface
         key={`${filePath}:${result.fingerprint}`}
+        sessionId={sessionId ?? useSessionsStore.getState().activeSessionId}
         filePath={filePath}
         fileName={fileName}
         initialContent={result.content}
         initialFingerprint={result.fingerprint}
         remotePtyId={remotePtyId}
         isMarkdown={isMarkdown}
+        isNotebook={isNotebook}
         onClose={onClose}
+        onDirtyChange={onDirtyChange}
+        onNeedsAttention={onNeedsAttention}
       />
     );
   }
@@ -856,6 +965,8 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
       ) : result.kind === "toolarge" ? (
         <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
+      ) : isNotebook ? (
+        <NotebookPreview content={textContent} />
       ) : isMarkdown ? (
         <MarkdownPreview content={textContent} fill={fill} />
       ) : (

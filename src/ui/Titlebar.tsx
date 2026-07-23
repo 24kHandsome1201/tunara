@@ -10,6 +10,8 @@ import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { SessionMascotIcon } from "./SessionMascotIcon";
+import type { WorkspaceFileTab } from "@/state/ui";
+import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -158,7 +160,10 @@ function PresentationModeButton({
 interface TabButtonProps {
   isActive: boolean;
   label: string;
+  kind: "terminal" | "file";
+  dirty?: boolean;
   mascot?: Session["mascot"];
+  dirtyLabel: string;
   closeLabel: string;
   confirmCloseLabel: string;
   confirmClose?: boolean;
@@ -166,10 +171,28 @@ interface TabButtonProps {
   onClose: () => void;
 }
 
-function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: TabButtonProps) {
+function WorkspaceTabIcon({ kind }: { kind: "terminal" | "file" }) {
+  if (kind === "terminal") {
+    return (
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="2" />
+        <path d="m4.25 5 2 2-2 2M8 10h3.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M4 1.75h5l3 3v9.5H4z" />
+      <path d="M9 1.75v3h3" />
+    </svg>
+  );
+}
+
+function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: TabButtonProps) {
   return (
     <div
       className="tab-btn"
+      data-workspace-tab-kind={kind}
       data-active={isActive ? "true" : "false"}
       style={{
         height: 28,
@@ -200,16 +223,9 @@ function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, con
           borderRadius: "var(--r-pill) 0 0 var(--r-pill)",
         }}
       >
-        {mascot ? <SessionMascotIcon id={mascot} size={18} /> : isActive && (
-          <span aria-hidden="true" style={{
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: "var(--c-accent)",
-            flexShrink: 0,
-            animation: "scaleIn var(--duration-fast) var(--ease-out-back)",
-          }} />
-        )}
+        {kind === "terminal" && mascot
+          ? <SessionMascotIcon id={mascot} size={18} />
+          : <WorkspaceTabIcon kind={kind} />}
         <span style={{
           fontSize: "var(--fs-secondary)",
           fontWeight: isActive ? 600 : 400,
@@ -219,6 +235,7 @@ function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, con
         }}>
           {label}
         </span>
+        {dirty && <span className="workspace-tab-dirty" aria-label={dirtyLabel} />}
       </button>
       <button
         type="button"
@@ -311,7 +328,11 @@ export function Titlebar({
   const t = useT();
   const presentationMode = useUIStore((s) => s.presentationMode);
   const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
-  const showTabs = presentationMode === "workspace" && !sidebarVisible;
+  const fileTabs = useUIStore((s) => s.fileTabs);
+  const activeFileTabId = useUIStore((s) => s.activeFileTabId);
+  const setActiveFileTab = useUIStore((s) => s.setActiveFileTab);
+  const closeFileTab = useUIStore((s) => s.closeFileTab);
+  const showTabs = presentationMode === "workspace" && (!sidebarVisible || fileTabs.length > 0);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
@@ -388,6 +409,29 @@ export function Titlebar({
     return primary.length > 24 ? primary.slice(0, 24) + "…" : primary;
   }
 
+  function fileTabLabel(tab: WorkspaceFileTab): string {
+    return tab.fileName.length > 28 ? tab.fileName.slice(0, 28) + "…" : tab.fileName;
+  }
+
+  function selectFileTab(tab: WorkspaceFileTab) {
+    useSessionsStore.getState().setActive(tab.sessionId);
+    setActiveFileTab(tab.id);
+  }
+
+  function requestCloseFileTab(tab: WorkspaceFileTab) {
+    const close = () => {
+      const wasActive = useUIStore.getState().activeFileTabId === tab.id;
+      closeFileTab(tab.id);
+      if (!wasActive) return;
+      const ui = useUIStore.getState();
+      const adjacent = ui.fileTabs.find((candidate) => candidate.id === ui.activeFileTabId);
+      if (!adjacent) return;
+      useSessionsStore.getState().setActive(adjacent.sessionId);
+      ui.setActiveFileTab(adjacent.id);
+    };
+    if (requestDirtyDraftFileAction(tab.sessionId, tab.filePath, close)) close();
+  }
+
   // 监听 tabs 容器滚动，决定哪边显示渐隐提示
   useEffect(() => {
     const el = tabsRef.current;
@@ -405,7 +449,7 @@ export function Titlebar({
       el.removeEventListener("scroll", update);
       ro.disconnect();
     };
-  }, [showTabs, sessions.length]);
+  }, [showTabs, sessions.length, fileTabs.length]);
 
   // 鼠标滚轮 → 横向滚动（trackpad 横滑天生工作，无需介入）
   useEffect(() => {
@@ -426,14 +470,14 @@ export function Titlebar({
   // active tab 自动滚入视野
   useEffect(() => {
     const el = tabsRef.current;
-    if (!el || !showTabs || !activeSessionId) return;
-    const active = el.querySelector<HTMLElement>(`[data-tab-id="${activeSessionId}"]`);
+    if (!el || !showTabs) return;
+    const active = el.querySelector<HTMLElement>('[data-active-tab="true"]');
     if (!active) return;
     const left = active.offsetLeft;
     const right = left + active.offsetWidth;
     if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 16);
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 16;
-  }, [activeSessionId, showTabs, sessions.length]);
+  }, [activeFileTabId, activeSessionId, showTabs, sessions.length, fileTabs.length]);
 
   const tabsMask =
     overflowEdge === "both"
@@ -559,16 +603,33 @@ export function Titlebar({
           } as DragStyle}
         >
           {sessions.map((s) => (
-            <div key={s.id} data-tab-id={s.id} style={{ flexShrink: 0 }}>
+            <div key={`terminal:${s.id}`} data-tab-id={`terminal:${s.id}`} data-active-tab={activeFileTabId === null && s.id === activeSessionId ? "true" : undefined} style={{ flexShrink: 0 }}>
               <TabButton
-                isActive={s.id === activeSessionId}
+                isActive={activeFileTabId === null && s.id === activeSessionId}
                 label={tabLabel(s)}
+                kind="terminal"
                 mascot={s.mascot}
+                dirtyLabel={t("preview.editor.unsaved")}
                 closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
                 confirmCloseLabel={t("destructive.confirm_again.close")}
                 confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
                 onSelect={() => onSelectSession(s.id)}
                 onClose={() => onCloseSession(s.id)}
+              />
+            </div>
+          ))}
+          {fileTabs.map((tab) => (
+            <div key={`file:${tab.id}`} data-tab-id={`file:${tab.id}`} data-active-tab={tab.id === activeFileTabId ? "true" : undefined} style={{ flexShrink: 0 }}>
+              <TabButton
+                isActive={tab.id === activeFileTabId}
+                label={fileTabLabel(tab)}
+                kind="file"
+                dirty={tab.dirty}
+                dirtyLabel={t("preview.editor.unsaved")}
+                closeLabel={t("titlebar.file_tab.close", { file: tab.fileName })}
+                confirmCloseLabel={t("preview.editor.close_warning")}
+                onSelect={() => selectFileTab(tab)}
+                onClose={() => requestCloseFileTab(tab)}
               />
             </div>
           ))}

@@ -81,3 +81,20 @@ export function tokenizeShellWords(segment: string): string[] {
 export function shellCommandName(token: string): string {
   return token.toLowerCase().split("/").pop() ?? "";
 }
+
+/**
+ * Build the one fixed command used by File Explorer's "Open in terminal".
+ * The caller either starts the terminal in the file's parent directory or
+ * supplies an absolute directory for an idle terminal to enter first. Reject
+ * terminal controls, quote every untrusted value as one POSIX shell word, and
+ * keep `--` between less options and the untrusted name.
+ */
+export function terminalFileViewerCommand(fileName: string, directory?: string): string | null {
+  const hasTerminalControl = (value: string) => /[\u0000-\u001f\u007f-\u009f]/.test(value);
+  const quote = (value: string) => `'${value.split("'").join(`'"'"'`)}'`;
+  if (!fileName || hasTerminalControl(fileName)) return null;
+  const viewer = `less -- ${quote(fileName)}`;
+  if (directory === undefined) return viewer;
+  if (!directory.startsWith("/") || hasTerminalControl(directory)) return null;
+  return `cd ${quote(directory)} && ${viewer}`;
+}

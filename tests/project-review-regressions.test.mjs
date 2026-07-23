@@ -583,9 +583,9 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(explorer, /searchGen\.isCurrent\(token\)/);
   assert.match(explorer, /searchGen\.invalidate\(\)/);
   assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
-  // Remote grep hits can't jump to a local editor; they toggle the inline
-  // remote FilePreview instead.
-  assert.match(explorer, /isRemote[\s\S]*?\? toggleSearchFile\(group\.path\)[\s\S]*?: openEditor\(group\.path, ln\.line\)/);
+  // Local and remote grep hits open the same persistent Tunara workspace tab;
+  // SSH paths must never be handed to a local external editor.
+  assert.match(explorer, /onClick=\{\(\) => openFile\(group\.path\)\}/);
   // Editor launch failures must surface a toast (shared openInEditorWithToast helper),
   // not vanish into an empty catch.
   assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
@@ -822,7 +822,7 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string, previousActiveSessionId: string \| null\)/);
   assert.match(source, /previousActiveSessionId && splitLayoutHasSession\(split, previousActiveSessionId\)[\s\S]*ui\.replaceSplitPane\(targetSessionId, sessionId\)/);
   assert.match(source, /ensureSessionVisibleInSplit\(s\.id, previousActiveSessionId\)/);
-  assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id, currentId\);/);
+  assert.match(source, /if \(accepted\) \{[\s\S]*ensureSessionVisibleInSplit\(id, currentId\);[\s\S]*\}/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
   assert.match(source, /scheduleGitRefresh\(id, set\)/);
   assert.match(source, /const splitContext = splitTerminalContextFromSession\(source\);/);
@@ -865,7 +865,7 @@ test("terminal panes keep stable keyed mounts across single/split so the agent P
   assert.match(main, /function paneWrapperStyle\(s: Session\): React\.CSSProperties/);
   // Single stable-keyed mount list rendering a memoized TerminalPane (extracted
   // so MainArea re-renders on agent heartbeats don't re-render every terminal).
-  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{s\.id === activeSessionId\} \/>/);
+  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{!fileSurfaceActive && s\.id === activeSessionId\} \/>/);
   assert.match(main, /const TerminalPane = memo\(function TerminalPane/);
   assert.match(main, /const pane = splitGeometry\.panes\[s\.id\]/);
   assert.match(main, /position: "absolute"[\s\S]*left: `calc\(\$\{pane\.x \* 100\}%[\s\S]*width: `calc\(\$\{pane\.width \* 100\}%/);
@@ -1302,7 +1302,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(zhDict, /"sidebar\.dir\.new_terminal": "在此目录新建终端"/);
   assert.match(zhDict, /"sidebar\.dir\.copy_path": "复制路径"/);
   assert.doesNotMatch(explorer, /function SearchIcon/);
-  assert.match(explorer, /minWidth: 48, textAlign: "right"/);
+  assert.match(explorer, /gridTemplateColumns: "minmax\(0, 1fr\) 92px"/);
+  assert.match(explorer, /formatModifiedTime\(entry\.mtime\)/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);
   assert.match(tokens, /--font-ui: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', 'Noto Sans SC', monospace;/);
