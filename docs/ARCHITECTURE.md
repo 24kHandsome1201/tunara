@@ -31,15 +31,17 @@ fixed three-pane layout under a custom titlebar:
   WebGL, one per session, optionally split into two panes.
 - **Right: `InspectorPanel`** ([`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx)):
   overview, read-only git diff ([`DiffPanel`](../src/ui/DiffPanel.tsx)),
-  read-only file tree ([`FileExplorer`](../src/ui/FileExplorer.tsx) /
-  [`FilePreview`](../src/ui/FilePreview.tsx)), and session notes.
+  file tree ([`FileExplorer`](../src/ui/FileExplorer.tsx)), bounded text/Markdown
+  reading and safe editing ([`FilePreview`](../src/ui/FilePreview.tsx)), Preview
+  controls, and session notes. Only the active Inspector tab is mounted.
 
 Both side panes collapse to width `0` and switch to floating overlays below
 viewport breakpoints (720px for the sidebar, 900px for the panel). Overlays
 (`Settings`, `CommandPalette`, `SshConnect`, `HostKeyPromptDialog`,
 `WorkflowParamPrompt`, `ToastContainer`) are rendered as siblings, gated on
-`useUIStore`. State lives in Zustand stores under [`src/state/`](../src/state/)
-(`sessions`, `ui`, `workflows`, `persist`).
+`useUIStore`. The three Zustand stores under [`src/state/`](../src/state/) are
+`sessions`, `ui`, and `workflows`; `persist` provides snapshot I/O rather than
+a fourth store.
 
 ### macOS titlebar contract
 
@@ -68,7 +70,8 @@ The Rust side is a single library crate, [`src-tauri/src/lib.rs`](../src-tauri/s
 that wires up plugins, registers the IPC handlers, manages shared state, and runs
 the event loop. Backend logic is split into modules under
 [`src-tauri/src/modules/`](../src-tauri/src/modules/): `pty`, `ssh`, `fs`, `git`,
-`agent`, `resolver`, `editor`, `config`, `process`.
+`agent`, `preview`, `resolver`, `editor`, `config`,
+`process`, `workspace_store`.
 
 ## IPC surface
 
@@ -107,18 +110,21 @@ their own commands.
 | `ssh_hosts_import_config` | Import static host profiles from `~/.ssh/config` | `importSshConfig`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_fs_read_dir` | List a remote directory over SFTP | `sshReadDir`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_read_file` | Read a remote file over SFTP | `sshReadFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_fs_write_text_file` | Conflict-checked, atomic remote text save | `sshWriteTextFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_fs_reconcile_text_write` | Reconcile an outcome-unknown remote save after reconnect | `sshReconcileTextWrite`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_download` | Download a remote file to a local path, return bytes written | `sshDownload`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_home` | Resolve the remote home dir when no OSC 7 absolute cwd is known | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_search` / `ssh_fs_grep` | Cancellable remote filename/content search over exec channels | `sshSearch` / `sshGrep`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_git_status` / `ssh_git_diff` / `ssh_git_ahead_behind` | Read-only remote Git inspection over exec channels | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 | `ssh_git_workspace_context` | Read-only remote repository/common-dir/worktree discovery with the same shape as local discovery | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 
-### `fs` — local filesystem (read-only) [`modules/fs`](../src-tauri/src/modules/fs/mod.rs)
+### `fs` — local filesystem browsing, search, and safe writes [`modules/fs`](../src-tauri/src/modules/fs/mod.rs)
 
 | Command | Does | Frontend caller |
 |---|---|---|
 | `fs_read_dir` | List a local directory | `fsReadDir`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_read_file` | Read a file (text/binary/too-large classified) | `fsReadFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
+| `fs_write_text_file` | Fingerprint-checked atomic text save | `fsWriteTextFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_search` | Fuzzy filename search under a root | `fsSearch`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_grep` | Content grep under a root | `fsGrep`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) (via [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx)) |
 | `fs_cancel_search` | Cancel the active local or remote search generation | `fsCancelGrep` / `cancelRemoteSearch` in the filesystem bridges |
@@ -166,6 +172,47 @@ Reads/writes `~/.config/tunara/config.toml`.
 |---|---|---|
 | `load_config` | Load appearance + keybindings config (with parse-error surfaced) | `loadTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
 | `save_config` | Write the config back to disk | `saveTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
+
+### `preview` — tunneled preview webview windows [`modules/preview`](../src-tauri/src/modules/preview.rs)
+
+Owns the secondary webview windows used to preview local/remote web apps and
+static files. Manages lifecycle (open/close/refresh), viewport sizing, zoom,
+capture, telemetry ingestion, and SSH-tunneled source access. State is held in
+`PreviewWindowState` (managed when the Tauri builder is created).
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `preview_open` | Open a preview window for a `PreviewSource` | `previewOpen`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_refresh` / `preview_close` | Refresh or close a preview window | `previewRefresh` / `previewClose`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_status` | Report the runtime state of a preview window | `previewStatus`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_navigate` | Navigate a preview window to a URL/path | `previewNavigate`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_go_back` / `preview_go_forward` | History navigation | `previewGoBack` / `previewGoForward`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_set_zoom` / `preview_reset_zoom` | Set or reset zoom factor | `previewSetZoom` / `previewResetZoom`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_set_viewport` / `preview_reset_viewport` / `preview_fit_viewport` | Set, reset, or auto-fit the viewport size | `previewSetViewport` / `previewResetViewport` / `previewFitViewport`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_telemetry_ingest` | Accept nonce-bound telemetry from an instrumented preview page | Injected telemetry bridge in [`preview.rs`](../src-tauri/src/modules/preview.rs) |
+| `preview_telemetry_clear` / `preview_telemetry_send` | Clear captured failures or prepare them in the source terminal | `previewTelemetryClear` / `previewTelemetrySend`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_terminal_command_started` / `preview_terminal_command_finished` / `preview_terminal_exited` | Synchronize source-terminal lifecycle and command provenance | `previewTerminalCommandStarted` / `previewTerminalCommandFinished` / `previewTerminalExited`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_remote_source_observed` | Record a remote source before an explicit tunnel action | `previewRemoteSourceObserved`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_tunnel_open` / `preview_tunnel_status` / `preview_tunnel_close` | Open/status/close an SSH tunnel backing a remote preview | `previewTunnelOpen` / `previewTunnelStatus` / `previewTunnelClose`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_restart_prepare` | Prepare a proven failed source command in its terminal without executing it | `previewRestartPrepare`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_capture` | Capture a screenshot of the preview window | `previewCapture`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+| `preview_send_capture_to_source_terminal` | Prepare a captured image reference in the source terminal without executing it | `previewSendCaptureToSourceTerminal`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
+
+### `workspace_store` — persistence health and legacy cleanup [`modules/workspace_store`](../src-tauri/src/modules/workspace_store.rs)
+
+Reports whether the Tauri store plugin's session-persistence file
+(`tunara-sessions.json`, legacy `conduit-sessions.json`) is present on disk, so
+the frontend can distinguish a genuine first launch from a silently corrupted
+store (the store plugin's first `load` swallows read/parse errors and returns
+defaults). It also exposes a narrow compatibility path for explicitly deleting
+the discontinued v1.16 Agent Event Store without exposing its payloads or a
+caller-selected filesystem path.
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `workspace_store_file_state` | Report `missing` or `present` for a known store file | [`persist.ts`](../src/state/persist.ts) |
+| `legacy_agent_data_status` | Report whether fixed legacy `agent-events` data exists, without reading its contents | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
+| `legacy_agent_data_delete` | After explicit confirmation, delete only the fixed legacy directory; missing data is an idempotent success | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
 
 ## The three transports
 
@@ -247,14 +294,16 @@ For backend-originated notifications with no single waiting caller, the backend
 
 ## Managed state
 
-`lib.rs` registers four shared state objects. Three are `.manage()`d at builder
+`lib.rs` registers six shared state objects. Five are `.manage()`d at builder
 time; one is created in `.setup()` because it needs the `AppHandle`. All are
 retrieved in commands via `tauri::State<'_, T>`.
 
 | State | Holds | Lifecycle |
 |---|---|---|
 | [`PtyState`](../src-tauri/src/modules/pty/mod.rs) | All live sessions: `HashMap<u32, Arc<Session>>` (physical id → session), a `logical_id → physical_id` map for reopen/replace, and a monotonic `next_id` (starts at 1, never reused) | `.manage(PtyState::default())`; `close_all()` on `RunEvent::Exit` kills every session |
+| [`FsSearchCancellationState`](../src-tauri/src/modules/fs/grep.rs) | Pending, pre-cancelled, and recently finished filesystem-search request IDs | `.manage(FsSearchCancellationState::default())`; each request unregisters itself on completion |
 | [`ResolverState`](../src-tauri/src/modules/resolver/mod.rs) | User path overrides + the login-shell PATH dirs probed at startup | `.manage(ResolverState::default())`; `init_login_path()` called early in `.setup()` so `resolve_all_bins` works for GUI launches |
+| [`PreviewWindowState`](../src-tauri/src/modules/preview.rs) | Preview window generations, source/runtime status, tunnels, captures, and restart provenance | `.manage(PreviewWindowState::default())`; all tunnels close on `RunEvent::Exit` |
 | [`GitWatcherState`](../src-tauri/src/modules/git/watcher.rs) | Refcounted per-repo filesystem debouncers + the `git_status` result cache | `.manage(GitWatcherState::default())`; entries created by `git_watch`, removed at refcount 0 by `git_unwatch` |
 | [`HookListenerState`](../src-tauri/src/modules/agent/hooks.rs) | The agent-hook Unix socket path + a shutdown flag for its listener thread | Created by `start_listener(app.handle())` and `app.manage()`d in `.setup()`; `shutdown()` (removes the socket, stops the thread) on `RunEvent::Exit` |
 
@@ -263,6 +312,7 @@ in [`lib.rs`](../src-tauri/src/lib.rs):
 
 ```rust
 tauri::RunEvent::Exit => {
+    app.state::<PreviewWindowState>().close_all_tunnels(app);
     app.state::<pty::PtyState>().close_all();
     app.state::<HookListenerState>().shutdown();
 }

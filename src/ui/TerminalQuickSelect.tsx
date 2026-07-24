@@ -84,11 +84,23 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
       <div
         ref={dialogRef}
         role="dialog"
+        aria-modal="true"
+        aria-label={t("quick_select.title")}
         tabIndex={-1}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
             onClose();
+          } else if (e.key === "Tab") {
+            // 焦点陷阱：Tab/Shift+Tab 在弹窗内的按钮间循环，不逃逸到背景
+            e.preventDefault();
+            const buttons = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button") ?? []);
+            if (buttons.length === 0) return;
+            const idx = buttons.indexOf(document.activeElement as HTMLElement);
+            const next = e.shiftKey
+              ? buttons[idx <= 0 ? buttons.length - 1 : idx - 1]
+              : buttons[idx === -1 || idx === buttons.length - 1 ? 0 : idx + 1];
+            next?.focus();
           } else if (e.key === "ArrowDown") {
             e.preventDefault();
             stepSelection(1);
@@ -96,6 +108,8 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
             e.preventDefault();
             stepSelection(-1);
           } else if (e.key === "Enter") {
+            // 焦点在行内按钮上时 Enter 留给按钮自己，不和 hint 键冲突
+            if ((e.target as HTMLElement).closest("button")) return;
             e.preventDefault();
             const item = hintedItems[selectedIndex]?.item;
             if (item) {
@@ -103,6 +117,8 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
               else onCopy(item);
             }
           } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            // 空格同理留给按钮；字母数字走 hint 增量搜索
+            if (e.key === " " && (e.target as HTMLElement).closest("button")) return;
             e.preventDefault();
             selectByHint(e.key);
           }
@@ -139,7 +155,8 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                 key={item.id}
                 data-quick-select-index={index}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onDoubleClick={() => item.kind === "text" ? onCopy(item) : onOpen(item)}
+                // 单击即确认（原双击才能触发，单击是死区）；行内按钮 stopPropagation 防重复触发
+                onClick={() => item.kind === "text" ? onCopy(item) : onOpen(item)}
                 style={{
                   margin: "0 6px",
                   padding: "7px 8px",
@@ -148,6 +165,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                   gridTemplateColumns: "34px minmax(0, 1fr) auto",
                   alignItems: "center",
                   gap: 8,
+                  cursor: "pointer",
                   background: selected ? "var(--c-accent-bg-light)" : "transparent",
                 }}
               >
@@ -158,7 +176,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-primary)", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)" }}>{item.label}</div>
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", marginTop: 1 }}>{item.detail}</div>
                 </div>
-                <div style={{ display: "flex", gap: 4 }}>
+                <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => onCopy(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.copy")}</button>
                   {item.kind !== "text" && <button onClick={() => onOpen(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.open")}</button>}
                 </div>

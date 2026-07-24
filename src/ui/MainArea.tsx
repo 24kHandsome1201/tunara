@@ -1,16 +1,19 @@
-import { memo, useRef } from "react";
+import { lazy, memo, Suspense, useRef } from "react";
 import { TerminalView } from "./TerminalView";
 import type { Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
-import { AgentStatusBar } from "./AgentStatusBar";
 import { SshSuggestionBar } from "./SshSuggestionBar";
 import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { getNumberRecordValue } from "@/state/record-keys";
 import { useSessionGitContext } from "./useSessionGitContext";
 import { useWorkspaceHydration } from "./useWorkspaceHydration";
+import { splitLayoutGeometry, splitLayoutSessionIds } from "@/modules/session/split-layout";
+import { PanelLoadingState } from "./shared";
+
+const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 
 // Stable, module-level callback: clearing pendingInput only needs the session
 // id, so it never needs to close over render scope. Passing a fresh arrow per
@@ -29,12 +32,12 @@ const TerminalPane = memo(function TerminalPane({
   session: Session;
   isActive: boolean;
 }) {
+  const pure = useUIStore((s) => s.presentationMode === "pure");
   return (
-    <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <AgentStatusBar session={session} />
-      <SshSuggestionBar session={session} />
+    <div data-terminal-session-id={session.id} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {!pure && <SshSuggestionBar session={session} />}
       <TerminalView
-        key={`${session.id}:${session.reconnectNonce ?? 0}`}
+        key={`${session.id}:${session.terminalMountNonce ?? session.reconnectNonce ?? 0}`}
         sessionId={session.id}
         dir={session.dir}
         active={isActive}
@@ -100,13 +103,11 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const nonce = useSessionsStore((s) => active ? getNumberRecordValue(s.gitNonce, active.id) : 0);
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
   const split = useUIStore((s) => s.split);
+  const pure = useUIStore((s) => s.presentationMode === "pure");
+  const fileTabs = useUIStore((s) => s.fileTabs);
+  const activeFileTabId = useUIStore((s) => s.activeFileTabId);
   const splitContainerRef = useRef<HTMLDivElement>(null);
-
-  const paneASession =
-    split.mode !== "single" && split.paneA
-      ? sessions.find((s) => s.id === split.paneA)
-      : null;
-  const paneBSession = split.paneB ? sessions.find((s) => s.id === split.paneB) : null;
+  const fileSurfaceActive = !pure && activeFileTabId !== null;
 
   // Captured as primitives so the git effect depends on exactly the fields it
   // reads. Depending on the whole `active` object would re-run the effect on
@@ -131,41 +132,51 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;
-    const normalized = path.replace(/^\/Users\/[^/]+/, "~");
-    const parts = normalized.split("/").filter(Boolean);
+    // Home 缩写跨平台：macOS /Users/x、Linux /home/x、Windows C:\Users\x
+    const normalized = path
+      .replace(/^\/(Users|home)\/[^/]+/, "~")
+      .replace(/^[A-Za-z]:\\Users\\[^\\]+/, "~");
+    const parts = normalized.split(/[/\\]/).filter(Boolean);
     if (parts.length <= 3) return normalized;
     return `${parts[0]}/.../${parts.slice(-2).join("/")}`;
   }
 
-  const isSplit = split.mode !== "single" && paneASession && paneBSession && paneASession.id !== paneBSession.id;
-  const isHorizontal = split.mode === "horizontal";
+  const isSplit = split.root !== null;
+  const splitGeometry = splitLayoutGeometry(split);
 
   const mountedIdsForRender = new Set(Object.keys(launchedSessionIds));
   const mountedSessions = sessions.filter((s) => mountedIdsForRender.has(s.id));
 
   // Every mounted session keeps a stable, keyed wrapper across single<->split
   // transitions so React never unmounts its TerminalView (which would close the
-  // PTY and kill any running agent). Layout is driven entirely by CSS here.
+  // PTY and kill any running agent). The BSP tree only provides normalized
+  // rectangles; every terminal remains a stable root-level sibling.
   function paneWrapperStyle(s: Session): React.CSSProperties {
-    const isPaneA = isSplit && s.id === paneASession!.id;
-    const isPaneB = isSplit && s.id === paneBSession!.id;
+    if (fileSurfaceActive) return { display: "none" };
+    const pane = splitGeometry.panes[s.id];
 
-    if (isPaneA || isPaneB) {
-      const ratioPct = isPaneA ? split.ratio : 1 - split.ratio;
-      const activeMarker = isHorizontal
+    if (isSplit && pane) {
+      const leftInset = pane.x > 0 ? 2.5 : 0;
+      const topInset = pane.y > 0 ? 2.5 : 0;
+      const rightInset = pane.x + pane.width < 1 ? 2.5 : 0;
+      const bottomInset = pane.y + pane.height < 1 ? 2.5 : 0;
+      const activeMarker = pane.parentDirection === "horizontal"
         ? "inset 2px 0 0 var(--c-accent)"
         : "inset 0 2px 0 var(--c-accent)";
       return {
-        [isHorizontal ? "width" : "height"]: `calc(${ratioPct * 100}% - 2.5px)`,
-        order: isPaneA ? 0 : 2,
+        position: "absolute",
+        left: `calc(${pane.x * 100}% + ${leftInset}px)`,
+        top: `calc(${pane.y * 100}% + ${topInset}px)`,
+        width: `calc(${pane.width * 100}% - ${leftInset + rightInset}px)`,
+        height: `calc(${pane.height * 100}% - ${topInset + bottomInset}px)`,
         display: "flex",
         flexDirection: "column",
         minWidth: 0,
         minHeight: 0,
         overflow: "hidden",
-        borderRadius: "var(--r-btn)",
-        boxShadow: s.id === activeSessionId ? activeMarker : "none",
-        transition: "box-shadow var(--duration-normal) var(--ease-smooth)",
+        borderRadius: pure ? 0 : "var(--r-btn)",
+        boxShadow: !pure && s.id === activeSessionId ? activeMarker : "none",
+        transition: pure ? "none" : "box-shadow var(--duration-normal) var(--ease-smooth)",
       };
     }
 
@@ -184,8 +195,11 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}>
-      <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: isSplit ? (isHorizontal ? "row" : "column") : "row" }}>
+    <div
+      data-terminal-canvas={pure ? "pure" : "workspace"}
+      style={{ flex: 1, display: "flex", flexDirection: "column", background: pure ? "var(--terminal-canvas-bg, var(--c-bg-white))" : "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}
+    >
+      <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {mountedSessions.map((s) => (
           <div
             key={s.id}
@@ -194,19 +208,52 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             style={paneWrapperStyle(s)}
           >
-            <TerminalPane session={s} isActive={s.id === activeSessionId} />
+            <TerminalPane session={s} isActive={!fileSurfaceActive && s.id === activeSessionId} />
           </div>
         ))}
-        {isSplit && (
+        {fileTabs.map((tab) => {
+          const owner = sessions.find((session) => session.id === tab.sessionId);
+          if (!owner) return null;
+          const active = !pure && tab.id === activeFileTabId;
+          return (
+            <div
+              key={`file:${tab.id}`}
+              data-workspace-file-tab={tab.id}
+              aria-hidden={active ? undefined : true}
+              inert={active ? undefined : true}
+              style={{ position: "absolute", inset: 0, display: active ? "flex" : "none", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--c-bg-white)" }}
+            >
+              <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
+                <FilePreview
+                  sessionId={tab.sessionId}
+                  filePath={tab.filePath}
+                  fileName={tab.fileName}
+                  remotePtyId={owner.remote ? owner.ptyId : undefined}
+                  onClose={() => useUIStore.getState().closeFileTab(tab.id)}
+                  onDirtyChange={(dirty) => useUIStore.getState().setFileTabDirty(tab.id, dirty)}
+                  onNeedsAttention={() => {
+                    useSessionsStore.getState().setActive(tab.sessionId);
+                    useUIStore.getState().setActiveFileTab(tab.id);
+                  }}
+                  fill
+                />
+              </Suspense>
+            </div>
+          );
+        })}
+        {!fileSurfaceActive && splitGeometry.handles.map((handle) => (
           <SplitHandle
-            mode={split.mode as "horizontal" | "vertical"}
+            key={handle.path}
+            direction={handle.direction}
+            path={handle.path}
+            ratio={handle.ratio}
+            nodeRect={handle.nodeRect}
             containerRef={splitContainerRef}
-            order={1}
           />
-        )}
+        ))}
       </div>
 
-      <div
+      {!pure && !fileSurfaceActive && <div
         style={{
           height: "var(--h-statusbar)",
           background: "var(--c-bg-1)",
@@ -251,8 +298,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             <button
               onClick={() => {
                 const ui = useUIStore.getState();
-                const paneAId = ui.split.paneA;
-                if (paneAId) useSessionsStore.getState().setActive(paneAId);
+                const firstPaneId = splitLayoutSessionIds(ui.split)[0];
+                if (firstPaneId) useSessionsStore.getState().setActive(firstPaneId);
                 ui.closeSplit();
               }}
               title={t("split.close")}
@@ -315,7 +362,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             </>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

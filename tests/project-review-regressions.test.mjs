@@ -18,7 +18,45 @@ test("dead IPC commands are removed from the Tauri invoke handler", () => {
   assert.match(lib, /modules::resolver::set_bin_override/);
 });
 
-test("node test script can import TypeScript sources on Node 22", () => {
+test("persistent Agent Timeline is absent while lightweight Agent lifecycle remains", () => {
+  const lib = read("src-tauri/src/lib.rs");
+  const modules = read("src-tauri/src/modules/mod.rs");
+  const permission = read("src-tauri/permissions/main.toml");
+  const inspector = read("src/ui/InspectorPanel.tsx");
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const sessions = read("src/state/sessions.ts");
+  const workspaceStore = read("src-tauri/src/modules/workspace_store.rs");
+  const settings = read("src/ui/overlays/Settings.tsx");
+
+  assert.equal(existsSync(resolve(root, "src-tauri/src/modules/agent_event_store.rs")), false);
+  assert.equal(existsSync(resolve(root, "src/ui/AgentTimelinePanel.tsx")), false);
+  assert.doesNotMatch(`${lib}\n${modules}\n${permission}`, /agent_event_(?:store|append|list|payload|search|delete)/);
+  assert.doesNotMatch(`${inspector}\n${palette}`, /AgentTimeline|open-agent-timeline|inspector\.tab\.timeline/);
+  assert.match(modules, /pub mod agent;/);
+  assert.match(lib, /modules::agent::hooks::start_listener/);
+  assert.match(sessions, /sessionTimelines/);
+  assert.match(sessions, /appendTimelineEvent/);
+  assert.ok(existsSync(resolve(root, "src/state/timeline.ts")));
+  assert.match(lib, /modules::workspace_store::legacy_agent_data_delete/);
+  assert.match(permission, /"legacy_agent_data_delete"/);
+  assert.match(workspaceStore, /app_local_data_dir\.join\(LEGACY_AGENT_EVENTS_DIR\)/);
+  assert.match(workspaceStore, /pub async fn legacy_agent_data_delete\(\s*app: AppHandle,\s*confirmed: bool/);
+  assert.doesNotMatch(workspaceStore, /pub async fn legacy_agent_data_delete\([^)]*path:/s);
+  assert.match(settings, /tauriConfirmDialog\(t\("settings\.app\.legacy_agent_data\.confirm"\)/);
+  assert.match(settings, /invoke<"missing">\("legacy_agent_data_delete", \{ confirmed: true \}\)/);
+});
+
+test("fixed runbooks stay removed while user-configurable workflows remain", () => {
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const paletteFilter = read("src/ui/overlays/command-palette-filter.ts");
+
+  assert.equal(existsSync(resolve(root, "src/modules/runbook/blueprints.ts")), false);
+  assert.doesNotMatch(`${palette}\n${paletteFilter}`, /runbook|git restore --staged/iu);
+  assert.match(palette, /useWorkflowsStore/);
+  assert.ok(existsSync(resolve(root, "src/modules/workflows/starters.ts")));
+});
+
+test("node test script can import TypeScript sources on Node 24", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.match(pkg.scripts["test:node"], /--experimental-strip-types/);
   assert.match(pkg.scripts.test, /pnpm test:node/);
@@ -92,13 +130,12 @@ test("SSH reconnect is transactional and host-key prompts fail closed", () => {
   assert.match(connection, /tokio::time::timeout\(timeout, receiver\)/);
   assert.doesNotMatch(connection, /tokio::select! \{\s*biased;[\s\S]{0,300}input_rx\.recv/);
 
-  const explicitKeyIndex = auth.indexOf("if let Some(path) = &opts.identity_file");
-  const passwordIndex = auth.indexOf("if let Some(pw) = &opts.password");
-  const agentIndex = auth.indexOf("match try_agent(handle, &opts.user).await");
   const noneIndex = auth.indexOf("handle.authenticate_none(&opts.user).await");
-  assert.ok(noneIndex >= 0 && explicitKeyIndex > noneIndex, "none authentication probe must run first");
-  assert.ok(explicitKeyIndex >= 0 && agentIndex > explicitKeyIndex, "explicit identity must precede agent enumeration");
-  assert.ok(passwordIndex > explicitKeyIndex && agentIndex > passwordIndex, "supplied password must precede agent enumeration");
+  const selectedIndex = auth.indexOf("match selected_auth(opts)?");
+  assert.ok(noneIndex >= 0 && selectedIndex > noneIndex, "none authentication probe must run first");
+  assert.match(auth, /match opts\.method \{[\s\S]*AuthMethod::Agent[\s\S]*AuthMethod::Key[\s\S]*AuthMethod::Password[\s\S]*AuthMethod::KeyboardInteractive/);
+  assert.match(auth, /SelectedAuth::Password\(password\)[\s\S]*authenticate_password\(&opts\.user, password\)/);
+  assert.doesNotMatch(auth, /let mut errors: Vec<String>/);
   assert.match(auth, /metadata\.is_file\(\)/);
   assert.match(auth, /MAX_IDENTITY_FILE_BYTES/);
   assert.match(auth, /spawn_blocking/);
@@ -321,13 +358,15 @@ test("text config drives appearance, keybindings, and terminal font settings", (
 
 test("settings exposes the signed updater flow and restart permission", () => {
   const settings = read("src/ui/overlays/Settings.tsx");
+  const appUpdate = read("src/ui/overlays/useAppUpdate.ts");
   const lib = read("src-tauri/src/lib.rs");
   const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
   const capability = JSON.parse(read("src-tauri/capabilities/desktop.json"));
 
-  assert.match(settings, /check\(\{ timeout: 15_000 \}\)/);
-  assert.match(settings, /update\.downloadAndInstall/);
-  assert.match(settings, /await relaunch\(\)/);
+  assert.match(settings, /useAppUpdate\(activeTab\)/);
+  assert.match(appUpdate, /check\(\{ timeout: 15_000 \}\)/);
+  assert.match(appUpdate, /update\.downloadAndInstall/);
+  assert.match(appUpdate, /await relaunch\(\)/);
   assert.match(lib, /tauri_plugin_updater::Builder::new\(\)\.build\(\)/);
   assert.match(lib, /tauri_plugin_process::init\(\)/);
   assert.ok(defaultCapability.permissions.includes("core:app:allow-version"));
@@ -543,9 +582,9 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(explorer, /searchGen\.isCurrent\(token\)/);
   assert.match(explorer, /searchGen\.invalidate\(\)/);
   assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
-  // Remote grep hits can't jump to a local editor; they toggle the inline
-  // remote FilePreview instead.
-  assert.match(explorer, /isRemote[\s\S]*?\? toggleSearchFile\(group\.path\)[\s\S]*?: openEditor\(group\.path, ln\.line\)/);
+  // Local and remote grep hits open the same persistent Tunara workspace tab;
+  // SSH paths must never be handed to a local external editor.
+  assert.match(explorer, /onClick=\{\(\) => openFile\(group\.path\)\}/);
   // Editor launch failures must surface a toast (shared openInEditorWithToast helper),
   // not vanish into an empty catch.
   assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
@@ -779,14 +818,17 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   const sessionsGit = read("src/state/sessions-git.ts");
   const init = read("src/app/useInit.ts");
 
-  assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string\)/);
-  assert.match(source, /ui\.setSplitPaneB\(sessionId\)/);
-  assert.match(source, /ensureSessionVisibleInSplit\(s\.id\)/);
-  assert.match(source, /if \(accepted\) ensureSessionVisibleInSplit\(id\);/);
+  assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string, previousActiveSessionId: string \| null\)/);
+  assert.match(source, /previousActiveSessionId && splitLayoutHasSession\(split, previousActiveSessionId\)[\s\S]*ui\.replaceSplitPane\(targetSessionId, sessionId\)/);
+  assert.match(source, /ensureSessionVisibleInSplit\(s\.id, previousActiveSessionId\)/);
+  assert.match(source, /if \(accepted\) \{[\s\S]*ensureSessionVisibleInSplit\(id, currentId\);[\s\S]*\}/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
   assert.match(source, /scheduleGitRefresh\(id, set\)/);
-  assert.match(source, /const splitContext = splitTerminalContextFromSession\(active\);/);
+  assert.match(source, /const splitContext = splitTerminalContextFromSession\(source\);/);
   assert.match(source, /createSession\(splitContext\.dir,[\s\S]*remote: splitContext\.remote/);
+  // Install the new pane in the tree before addSession changes the active id;
+  // addSession's visibility guard must therefore see the pane already present.
+  assert.match(source, /splitPane\(source\.id, newSess\.id, direction\)[\s\S]*get\(\)\.addSession\(newSess\)/);
   assert.match(source, /from "\.\/sessions-git"/);
   // refreshGit coalesces per-session nonce bumps into one store write via
   // bumpGitNonce → flushGitNonceBumps; the increment itself is unchanged.
@@ -810,6 +852,7 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /recentDirs: snapshot\.recentDirs/);
   assert.match(init, /recentCommands: snapshot\.recentCommands/);
   assert.match(init, /agentResume: snapshot\.agentResume\[p\.id\]/);
+  assert.match(init, /for \(const sessionId of splitLayoutSessionIds\(split\)\)[\s\S]*launchedSessionIds\[sessionId\] = true/);
 });
 
 test("terminal panes keep stable keyed mounts across single/split so the agent PTY survives", () => {
@@ -821,14 +864,30 @@ test("terminal panes keep stable keyed mounts across single/split so the agent P
   assert.match(main, /function paneWrapperStyle\(s: Session\): React\.CSSProperties/);
   // Single stable-keyed mount list rendering a memoized TerminalPane (extracted
   // so MainArea re-renders on agent heartbeats don't re-render every terminal).
-  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{s\.id === activeSessionId\} \/>/);
+  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{!fileSurfaceActive && s\.id === activeSessionId\} \/>/);
   assert.match(main, /const TerminalPane = memo\(function TerminalPane/);
-  assert.match(main, /order: isPaneA \? 0 : 2/);
+  assert.match(main, /const pane = splitGeometry\.panes\[s\.id\]/);
+  assert.match(main, /position: "absolute"[\s\S]*left: `calc\(\$\{pane\.x \* 100\}%[\s\S]*width: `calc\(\$\{pane\.width \* 100\}%/);
   // Regression shape from the removed single-mode branch must be gone.
   assert.doesNotMatch(main, /display: isActive \? "flex" : "none"/);
-  // SplitHandle takes the middle flex slot via an order prop.
-  assert.match(handle, /order\?: number/);
-  assert.match(main, /containerRef=\{splitContainerRef\}\s*order=\{1\}/);
+  // Every nested BSP handle is absolutely positioned over its own normalized
+  // node rectangle instead of occupying a flex slot that would remount panes.
+  assert.match(handle, /position: "absolute"/);
+  assert.match(handle, /nodeRect\.x \+ nodeRect\.width \* ratio/);
+  assert.match(main, /splitGeometry\.handles\.map\(\(handle\) => \([\s\S]*key=\{handle\.path\}[\s\S]*nodeRect=\{handle\.nodeRect\}/);
+});
+
+test("terminal context menu splits the pane that was right-clicked and enforces the four-pane cap", () => {
+  const chrome = read("src/ui/TerminalViewChrome.tsx");
+  const layout = read("src/modules/session/split-layout.ts");
+
+  assert.match(chrome, /sessionId: string/);
+  assert.match(chrome, /canSplit: canSplitLayout\(useUIStore\.getState\(\)\.split\)/);
+  assert.match(chrome, /id: "split-right"[\s\S]*splitWithNewSession\("horizontal", sessionId\)/);
+  assert.match(chrome, /id: "split-down"[\s\S]*splitWithNewSession\("vertical", sessionId\)/);
+  assert.match(chrome, /disabled: !menu\.canSplit/g);
+  assert.match(layout, /export const MAX_SPLIT_PANES = 4/);
+  assert.match(layout, /splitLayoutPaneCount\(split\) < MAX_SPLIT_PANES/);
 });
 
 test("file previews and markdown rendering stay bounded", () => {
@@ -999,7 +1058,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /ArrowDown/);
   assert.match(contextMenu, /role="separator"/);
   assert.match(contextMenu, /boxShadow: "var\(--shadow-menu\)"/);
-  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "editor" \| "copy" \| "download" \| "rename" \| "search" \| "close"/);
+  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "ssh" \| "editor" \| "copy" \| "download" \| "rename" \| "search" \| "close"/);
   assert.match(contextMenu, /id\?: string/);
   assert.match(contextMenu, /function menuEntryKey/);
   assert.match(contextMenu, /function MenuIcon/);
@@ -1191,9 +1250,13 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
   // Idle→fade delay (was 1500ms transition; now 1200ms delay before sliding out via keyframe)
   assert.match(status, /setFading\(true\), 1200\)/);
-  // Exit animation now uses a keyframe ('statusBarSlideOut') driven by onAnimationEnd instead of an opacity/transform transition
+  // Exit animation keeps the statusBarSlideOut keyframe, but completion is
+  // timer-driven (120ms, matching --duration-fast) — the previous onAnimationEnd
+  // string match silently broke whenever the CSS keyframe was renamed.
   assert.match(status, /statusBarSlideOut var\(--duration-fast\)/);
-  assert.match(status, /onAnimationEnd=\{/);
+  assert.doesNotMatch(status, /onAnimationEnd/);
+  assert.doesNotMatch(status, /animationName/);
+  assert.match(status, /setTimeout\(\(\) => \{\s*setVisible\(false\)/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
   assert.match(settings, /getShellTint/);
   assert.match(settings, /terminalThemePreviewColors/);
@@ -1242,7 +1305,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(zhDict, /"sidebar\.dir\.new_terminal": "在此目录新建终端"/);
   assert.match(zhDict, /"sidebar\.dir\.copy_path": "复制路径"/);
   assert.doesNotMatch(explorer, /function SearchIcon/);
-  assert.match(explorer, /minWidth: 48, textAlign: "right"/);
+  assert.match(explorer, /gridTemplateColumns: "minmax\(0, 1fr\) 92px"/);
+  assert.match(explorer, /formatModifiedTime\(entry\.mtime\)/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);
   assert.match(tokens, /--font-ui: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', 'Noto Sans SC', monospace;/);
@@ -1359,21 +1423,18 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /quickSelectOverlay=\{quickSelect\.quickSelectOverlay\}/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
-  assert.match(terminal, /term\.attachCustomKeyEventHandler\(\(e\) => handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)\)/);
+  assert.match(terminal, /e\.key === "ContextMenu" \|\| \(e\.key === "F10" && e\.shiftKey\)/);
+  assert.match(terminal, /useUIStore\.getState\(\)\.presentationMode !== "pure"/);
+  assert.match(terminal, /handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
   assert.match(terminal, /import \{ handleCopyKeyEvent \} from "@\/modules\/terminal\/lib\/terminal-copy"/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputState\.buffer, data, inputState\.bracketedPasteActive\)/);
   assert.match(terminalChrome, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
-  assert.match(terminalChrome, /import \{ TerminalBlockFilterPanel \} from "\.\/TerminalBlockFilterPanel"/);
-  assert.match(terminalChrome, /import \{ TerminalBlocksBar \} from "\.\/TerminalBlocksBar"/);
+  assert.doesNotMatch(terminalChrome, /TerminalBlockFilterPanel/);
+  assert.doesNotMatch(terminalChrome, /TerminalBlocksBar/);
   assert.match(terminalChrome, /quickSelectOverlay\?: ReactNode/);
-  assert.match(terminalChrome, /onReadBlockOutput: \(id: string\) => string \| null/);
-  assert.match(terminalChrome, /useState<\{ block: TerminalCommandBlock; output: string \} \| null>/);
-  assert.match(terminalChrome, /onFilterBlock=\{\(block\) => \{/);
-  assert.match(terminalChrome, /setBlockFilter\(\{ block, output \}\)/);
-  assert.match(terminalChrome, /<TerminalBlockFilterPanel/);
-  assert.match(terminalChrome, /\{quickSelectOverlay\}/);
+  assert.match(terminalChrome, /\{!pure && quickSelectOverlay\}/);
   assert.match(terminalChrome, /onContextMenu=\{handleContextMenu\}/);
   assert.match(terminalChrome, /requestProtectedTerminalPaste\(term, text/);
   assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);

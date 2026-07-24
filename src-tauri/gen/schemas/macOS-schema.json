@@ -345,6 +345,18 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the trusted main window to use Tunara's existing application commands.",
+          "type": "string",
+          "const": "allow-main-commands",
+          "markdownDescription": "Allows the trusted main window to use Tunara's existing application commands."
+        },
+        {
+          "description": "Allows an isolated Preview window to submit only bounded console/network failure telemetry.",
+          "type": "string",
+          "const": "allow-preview-telemetry-ingest",
+          "markdownDescription": "Allows an isolated Preview window to submit only bounded console/network failure telemetry."
+        },
+        {
           "description": "This permission set configures if your\napplication can enable or disable auto\nstarting the application on boot.\n\n#### Granted Permissions\n\nIt allows all to check, enable and\ndisable the automatic start on boot.\n\n\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-is-enabled`",
           "type": "string",
           "const": "autostart:default",
@@ -2551,6 +2563,18 @@
           "type": "string",
           "const": "log:deny-log",
           "markdownDescription": "Denies the log command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the arm_release_failure command without any pre-configured scope.",
+          "type": "string",
+          "const": "m2-safe-write-benchmark:allow-arm-release-failure",
+          "markdownDescription": "Enables the arm_release_failure command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the arm_release_failure command without any pre-configured scope.",
+          "type": "string",
+          "const": "m2-safe-write-benchmark:deny-arm-release-failure",
+          "markdownDescription": "Denies the arm_release_failure command without any pre-configured scope."
         },
         {
           "description": "This permission set allows opening `mailto:`, `tel:`, `https://` and `http://` urls using their default application\nas well as reveal file in directories using default file explorer\n#### This default permission set includes:\n\n- `allow-open-url`\n- `allow-reveal-item-in-dir`\n- `allow-default-urls`",

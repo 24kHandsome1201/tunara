@@ -1,27 +1,37 @@
 # Testing
 
-Tunara has two test suites that run from one command:
+Tunara has three automated test suites that run from one command:
 
-- **Frontend** — Node's built-in test runner over `tests/*.test.mjs`, importing TypeScript sources directly.
+- **Frontend logic** — Node's built-in test runner over `tests/*.test.mjs`, importing TypeScript sources directly.
+- **UI components** — Vitest + Testing Library in `tests/ui/`, running in happy-dom.
 - **Rust** — in-module `#[cfg(test)]` blocks run by `cargo test`.
 
-There is no browser harness, no Vitest, no jsdom. The frontend suite is deliberately constrained to pure logic so it can import `.ts` source with zero build step.
+There is no end-to-end browser or Tauri webview harness. The Node suite is
+deliberately constrained to pure logic so it can import `.ts` source with zero
+build step; DOM-backed component behavior belongs in the separate Vitest suite.
 
 ## Running the tests
 
 ```bash
-pnpm test        # frontend + Rust (what CI and PRs run)
-pnpm test:node   # frontend only
+pnpm test        # Node frontend + UI components + Rust
+pnpm test:node   # pure logic and source assertions only
+pnpm test:ui     # UI typecheck + happy-dom component tests
 ```
 
 The scripts in `package.json` expand to:
 
 ```jsonc
 "test:node": "node --experimental-strip-types --test tests/*.test.mjs",
-"test":      "pnpm test:node && cargo test --manifest-path src-tauri/Cargo.toml"
+"test:ui":   "pnpm typecheck:ui && vitest run --config vitest.config.ts",
+"test":      "pnpm test:node && pnpm test:ui && cargo test --manifest-path src-tauri/Cargo.toml"
 ```
 
-`pnpm test` is `pnpm test:node && cargo test ...` — the Node suite gates the Rust suite, so a frontend failure short-circuits before `cargo test` runs. Node 22 is the development baseline (`--experimental-strip-types` is what lets the runner load `.ts` files without compiling them first).
+`pnpm test` runs the suites in that order, so a Node or UI failure short-circuits
+before `cargo test` runs. CI runs Node, UI, and Rust tests as independent steps
+(`if: always()` for the latter two), so an earlier suite cannot hide later
+failures. Node 24 is the development and CI baseline
+(`--experimental-strip-types` is what lets the Node runner load `.ts` files
+without compiling them first).
 
 To run a single frontend file:
 
@@ -35,7 +45,7 @@ To run a single Rust module's tests:
 cargo test --manifest-path src-tauri/Cargo.toml --lib ssh::auth
 ```
 
-## Frontend convention
+## Node frontend convention
 
 `.mjs` tests import `.ts` source **directly** — no transpile, no bundler. `node --experimental-strip-types` erases the type annotations at load time and runs the result. The runner is `node:test` + `node:assert/strict`; nothing else is imported from outside the repo.
 
@@ -130,9 +140,10 @@ Before opening a PR, run the full gate from [`CONTRIBUTING.md`](../CONTRIBUTING.
 
 ## Future: visual smoke
 
-End-to-end browser automation (Playwright or similar) is intentionally **not**
-in scope today — the repo has no DOM harness and the meaningful surface is the
-Tauri webview inside a signed macOS bundle.
+End-to-end browser/Tauri automation (Playwright or similar) is intentionally
+**not** in scope today. The happy-dom suite covers component behavior, but the
+meaningful runtime surface is still the Tauri webview inside a signed macOS
+bundle.
 
 Until a lightweight visual runner exists, treat the release bundle as the manual
 smoke gate. See also [`VISUAL_QA.md`](./VISUAL_QA.md).
@@ -167,44 +178,52 @@ frontend. Always verify the bundle that will actually be installed.
 
 ## Current test files
 
+The full set of frontend test files changes often; treat `ls tests/*.test.mjs`
+as the source of truth rather than a static list. The categories below cover
+the main themes by filename prefix.
+
 ### Frontend (`tests/`)
 
-Pure-logic suites (import `.ts` source and call it):
+- **Agent lifecycle and semantics** (`agent-*`, `*-semantics-source`): Agent
+  registry invariants, session summaries, shell-integration
+  OSC emission, and per-agent (claude/codex/opencode/aider/pi) source-assertion
+  suites.
+- **Terminal** (`terminal-*`, `local-terminal-*`): control-sequence stripping,
+  command classification, theme math, buffer reads, blocks menu, paste
+  protection, output buffering, WebGL atlas, and local CWD discovery.
+- **Editor and file preview** (`editor-*`, `file-preview-*`, `markdown-*`,
+  `dirty-draft-*`, `phase2-*`): draft guard, scroll position, markdown
+  reader/syntax, safe-write contracts, and the Phase 2 editor surface.
+- **File explorer** (`file-explorer-*`): remote root resolution and search.
+- **SSH and remote** (`ssh-*`): failure classification, host profile
+  serialization, write reconciliation, command detection, and M2 safe-write
+  gating.
+- **Preview** (`preview-*`): capture contract and source modeling.
+- **Persistence** (`persist-*`, `lifecycle-*`, `session-lifecycle`): snapshot
+  persistence, session lifecycle replay, and workspace hydration.
+- **Design and accessibility regression** (`design-*`, `compact-*`,
+  `focus-trap-*`, `shell-tint-*`, `resize-handle`, `titlebar-tabs`): a11y
+  policy, compact feedback layout, focus traps, shell tint contrast, and
+  chrome structure.
+- **Project-level regression** (`project-review-regressions`): cross-file
+  release/config invariants (version alignment, identifier, capability
+  permissions, deleted-module guards).
+- **Misc pure logic** (`breadcrumbs`, `diff-parse`, `dock-badge-state`,
+  `git-watch-refcount`, `sync-watches`, `workflow-*`, `ui-types`,
+  `clipboard`, `elapsed`, `update-reminder`, `workspace-*`,
+  `timeline`, `session-*`, `app-shell-layout`, `split-layout`,
+  `presentation-mode`, `record-keys`, `destructive-confirm`,
+  `new-terminal-directory`, `grep-group`, `i18n-core`): small pure-logic suites
+  keyed to a single module.
 
-| File | Covers |
-|------|--------|
-| `terminal-utils.test.mjs` | `stripTerminalControlSequences`, `cleanTerminalText`, `cleanTerminalLines` (`src/modules/terminal/lib/terminal-utils.ts`) |
-| `terminal-command.test.mjs` | `isMeaningfulCommand` noise classification (`src/modules/terminal/lib/terminal-command.ts`) |
-| `terminal-theme.test.mjs` | `isTerminalThemeDark`, `getTerminalTheme`, accent blending (`src/styles/terminalTheme.ts`) |
-| `terminal-buffer-read.test.mjs` | `extractCommandFromOsc` OSC 133 decode (`src/modules/terminal/lib/terminal-buffer-read.ts`) |
-| `agent-registry.test.mjs` | `AGENT_REGISTRY` / `AGENT_NAMES` / `AGENT_COMMANDS` / `AGENT_CODES` invariants (`src/modules/agent/registry.ts`) |
-| `ui-types.test.mjs` | `formatSize`, `groupByDir` (`src/ui/types.ts`) |
-| `terminal-blocks-menu.test.mjs` | `buildBlockContextMenuItems` (`src/modules/terminal/lib/terminal-blocks-menu.ts`) |
-| `breadcrumbs.test.mjs` | `breadcrumbSegments` path collapsing (`src/ui/lib/breadcrumbs.ts`) |
-| `diff-parse.test.mjs` | `buildMiniDiffRows`, `collectHunkTexts`, `filterRowsByQuery` (`src/ui/lib/diff-parse.ts`) |
-| `dock-badge-state.test.mjs` | `decideBadge`, `createDockBadgeController`, `countUnread` |
-| `git-watch-refcount.test.mjs` | `createWatchRefCount`, `normalizeRepoPath`, `sameRepoPath` |
-| `sync-watches.test.mjs` | `diffWatchedDirs` (`src/app/lib/sync-watches.ts`) |
-| `workflow-template.test.mjs` | `extractParams`, `applyParams`, `hasParams`, `sanitizeWorkflow` (`src/modules/workflows/template.ts`) |
-| `ssh-logic.test.mjs` | `classifySshFailure`, `toProfile`/`toRaw`/`makeHostId`, one-shot `stashSshCredentials`/`takeSshCredentials` |
-| `lifecycle-replay.test.mjs` | Agent lifecycle OSC parsing, run-state, command-palette filtering, paste protection, recent-commands/dirs, and more (broad pure-logic suite) |
-
-Source-assertion suites (`readFileSync` + regex over text):
-
-| File | Covers |
-|------|--------|
-| `agent-lifecycle-source.test.mjs` | Shell integration scripts + Rust agent/hook files: OSC emission, agent wrapper functions, `chmod 600`, no predictable `/tmp` paths |
-| `project-review-regressions.test.mjs` | Cross-file release/config invariants: version alignment, `dev.tunara.app` identifier, capability permissions, deleted-module guards |
+The `tests/ui/` subdirectory holds Vitest + happy-dom component tests (run by
+`pnpm test:ui`); `tests/visual/` holds visual/QA fixtures.
 
 ### Rust (`src-tauri/src/modules/`)
 
-`#[cfg(test)] mod tests` blocks live in:
+`#[cfg(test)] mod tests` blocks live alongside the code they cover. To list
+the modules that currently have tests:
 
-```
-agent/hooks.rs        agent/preflight.rs    agent/wrapper.rs
-config.rs             fs/grep.rs            fs/mod.rs
-git/commit.rs         git/mod.rs           git/watcher.rs
-process/error.rs      process/runner.rs     pty/shell_init.rs
-resolver/mod.rs       ssh/auth.rs          ssh/hosts.rs
-ssh/known_hosts.rs    ssh/sftp.rs          util.rs
+```bash
+rg -l '#\[cfg\(test\)\]' src-tauri/src/modules
 ```

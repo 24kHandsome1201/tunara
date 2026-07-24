@@ -3,6 +3,9 @@ import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
 import { SESSION_MASCOTS, SessionMascotIcon } from "./SessionMascotIcon";
 import type { CSSProperties } from "react";
+import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
+
+const NONE_ID = "none";
 
 function pickerButtonStyle(selected: boolean): CSSProperties {
   return {
@@ -25,6 +28,21 @@ export function SessionMascotPicker({ session }: { session: Session }) {
     useSessionsStore.getState().updateSession(session.id, { mascot });
   };
 
+  // APG radiogroup：单选语义 + roving tabindex + 方向键漫游
+  const optionIds = [NONE_ID, ...SESSION_MASCOTS.map((m) => m.id)];
+  const currentId = session.mascot ?? NONE_ID;
+
+  const handleGroupKeyDown = (e: React.KeyboardEvent) => {
+    // radiogroup 场景：role="radio"，不是 helper 默认的 role="tab"
+    const fromId = tabIdFromEventTarget(e.target, '[role="radio"]');
+    if (!fromId) return;
+    const nextId = resolveRovingTabId(optionIds, fromId, e.key);
+    if (!nextId || nextId === fromId) return;
+    e.preventDefault();
+    choose(nextId === NONE_ID ? undefined : (nextId as Session["mascot"]));
+    focusTabById(e.currentTarget as HTMLElement, nextId);
+  };
+
   return (
     <div
       data-session-mascot-picker={session.id}
@@ -36,10 +54,19 @@ export function SessionMascotPicker({ session }: { session: Session }) {
       <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", marginBottom: 9 }}>
         {t("mascot.hint")}
       </div>
-      <div role="group" aria-label={t("mascot.title")} style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+      <div
+        role="radiogroup"
+        aria-label={t("mascot.title")}
+        onKeyDown={handleGroupKeyDown}
+        style={{ display: "flex", flexWrap: "wrap", gap: 7 }}
+      >
         <button
           type="button"
-          aria-pressed={!session.mascot}
+          role="radio"
+          aria-checked={!session.mascot}
+          aria-label={t("mascot.none")}
+          data-tab-id={NONE_ID}
+          tabIndex={currentId === NONE_ID ? 0 : -1}
           title={t("mascot.none")}
           onClick={() => choose(undefined)}
           className="hover-bg"
@@ -56,8 +83,11 @@ export function SessionMascotPicker({ session }: { session: Session }) {
             <button
               key={mascot.id}
               type="button"
-              aria-pressed={selected}
+              role="radio"
+              aria-checked={selected}
               aria-label={t(mascot.labelKey)}
+              data-tab-id={mascot.id}
+              tabIndex={currentId === mascot.id ? 0 : -1}
               title={t(mascot.labelKey)}
               onClick={() => choose(mascot.id)}
               className="hover-bg"

@@ -1,0 +1,30 @@
+{
+  "platform": "macOS optimized isolated app",
+  "result": "pass",
+  "zoomPresets": [75, 90, 100, 110, 125, 150],
+  "zoomResetPercent": 100,
+  "viewportCssPixels": {
+    "phone": [390, 844],
+    "tablet": [768, 1024],
+    "desktop": [1280, 720],
+    "fit": [1630, 960],
+    "reset": [980, 720]
+  },
+  "worktreeIsolation": {
+    "sources": 2,
+    "ports": 2,
+    "independent": true
+  },
+  "closeReopenReset": true,
+  "mainWindowLogicalSize": [800, 600],
+  "ptyOpenGeometry": [55, 27],
+  "securityAclDeniedOnBothFixtures": true,
+  "serviceStopRecovery": "manual refresh failed then ready",
+  "phase3Complete": false,
+  "remainingRequiredGates": [
+    "screenshot",
+    "console-network-summary",
+    "service-restart-association",
+    "ssh-tunnel"
+  ]
+}

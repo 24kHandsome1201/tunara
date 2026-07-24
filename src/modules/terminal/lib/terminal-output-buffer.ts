@@ -16,6 +16,7 @@ interface TerminalOutputBufferOptions {
   scheduleTimeout?: (callback: () => void, timeoutMs: number) => TimerHandle;
   cancelTimeout?: (handle: TimerHandle) => void;
   onOverflow?: (droppedBytes: number) => void;
+  onWritten?: (data: Uint8Array) => void;
 }
 
 interface PendingChunk {
@@ -30,6 +31,7 @@ export function createTerminalOutputBuffer(term: Terminal, {
   scheduleTimeout = (callback, delay) => setTimeout(callback, delay),
   cancelTimeout = (handle) => clearTimeout(handle),
   onOverflow,
+  onWritten,
 }: TerminalOutputBufferOptions = {}) {
   let pending: PendingChunk[] = [];
   let pendingBytes = 0;
@@ -100,17 +102,18 @@ export function createTerminalOutputBuffer(term: Terminal, {
     const acknowledgements = batch.flatMap((chunk) => chunk.acknowledge ? [chunk.acknowledge] : []);
     writeInFlight = true;
     let completed = false;
-    const complete = () => {
+    const complete = (written: boolean) => {
       if (completed) return;
       completed = true;
+      if (written) onWritten?.(payload);
       completeInFlight = null;
       writeInFlight = false;
       for (const callback of acknowledgements) callback();
       if (pending.length > 0) scheduleFlush();
       else resolveIdle();
     };
-    completeInFlight = complete;
-    term.write(payload, complete);
+    completeInFlight = () => complete(false);
+    term.write(payload, () => complete(true));
   }
 
   return {

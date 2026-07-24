@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useUIStore } from "@/state/ui";
 import { applyBootShellTint } from "@/styles/shell-tint-boot";
+import { getTerminalTheme } from "@/styles/terminalTheme";
 
 export function useTheme() {
   const theme = useUIStore((s) => s.theme);
@@ -12,6 +13,7 @@ export function useTheme() {
 
     const apply = (systemDark: boolean) => {
       applyBootShellTint(root, terminalTheme, theme, accent, systemDark);
+      root.style.setProperty("--terminal-canvas-bg", getTerminalTheme(theme, terminalTheme, accent).background);
     };
 
     if (theme === "system") {

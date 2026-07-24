@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "platform": "macOS optimized Tauri",
+  "identifier": "dev.tunara.preview-controls",
+  "fixture": {
+    "worktrees": 2,
+    "loopbackOrigins": [
+      "http://127.0.0.1:41931",
+      "http://127.0.0.1:41932"
+    ],
+    "physicalPtys": 2
+  },
+  "captures": [
+    {
+      "role": "worktree-a",
+      "captureRef": "sha256:657a682f52128750fa2153d51ef2eaad13fb85ddfe6b97ca639c987353d76246",
+      "windowGeneration": 1,
+      "viewportCss": { "width": 312, "height": 675 },
+      "zoom": 1.25,
+      "image": {
+        "format": "png",
+        "width": 780,
+        "height": 1688,
+        "sha256": "657a682f52128750fa2153d51ef2eaad13fb85ddfe6b97ca639c987353d76246"
+      }
+    },
+    {
+      "role": "worktree-b",
+      "captureRef": "sha256:2173b9421cf4a33655758149ea5fecedab142d1849278cf324b2ee69931f9095",
+      "windowGeneration": 2,
+      "viewportCss": { "width": 853, "height": 1137 },
+      "zoom": 0.9,
+      "image": {
+        "format": "png",
+        "width": 1536,
+        "height": 2048,
+        "sha256": "2173b9421cf4a33655758149ea5fecedab142d1849278cf324b2ee69931f9095"
+      }
+    },
+    {
+      "role": "worktree-a-reopened",
+      "captureRef": "sha256:ed0b5fd263b7ba0edfc64546283d65b6a58c1d9347a6b43cbce0709a427bce43",
+      "windowGeneration": 3,
+      "viewportCss": { "width": 980, "height": 720 },
+      "zoom": 1.0,
+      "image": {
+        "format": "png",
+        "width": 1960,
+        "height": 1440,
+        "sha256": "ed0b5fd263b7ba0edfc64546283d65b6a58c1d9347a6b43cbce0709a427bce43"
+      }
+    }
+  ],
+  "assertions": {
+    "sourcesDistinct": true,
+    "pixelsExplainable": true,
+    "pageOnly": true,
+    "sourceBoundMetadata": true,
+    "sendReachedOnlyBoundPhysicalPty": true,
+    "sendExecuted": false,
+    "crossSourceRejected": true,
+    "closedRejected": true,
+    "oldGenerationRejected": true,
+    "rawArtifactsTracked": false
+  },
+  "passed": true
+}

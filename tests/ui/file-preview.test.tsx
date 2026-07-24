@@ -1,7 +1,10 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { FilePreview } from "@/ui/FilePreview";
+import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
+import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 
 const original = {
   kind: "text",
@@ -19,6 +22,107 @@ function renderSsh(fileName = "notes.txt") {
 }
 
 describe("FilePreview editor behavior", () => {
+  test("renders notebooks as inert read-only previews", async () => {
+    const script = "<script>globalThis.PWNED = true</script>";
+    const notebook = JSON.stringify({
+      nbformat: 4,
+      metadata: { language_info: { name: "python" } },
+      cells: [
+        { cell_type: "markdown", source: "# Notebook heading" },
+        {
+          cell_type: "code",
+          execution_count: 2,
+          source: "print('safe')",
+          outputs: [
+            { output_type: "stream", text: "safe output\n" },
+            { output_type: "display_data", data: { "text/html": script } },
+          ],
+        },
+      ],
+    });
+    mockIPC((command) => {
+      if (command === "fs_read_file") {
+        return { kind: "text", content: notebook, size: notebook.length, fingerprint: "a".repeat(64) };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("analysis.ipynb");
+    await screen.findByText("Notebook heading");
+    expect(screen.getByText("Read-only notebook preview")).toBeTruthy();
+    expect(screen.getByText("print('safe')")).toBeTruthy();
+    expect(screen.getByText(/safe output/)).toBeTruthy();
+    expect(screen.getByText("Rich output omitted for safety")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Edit analysis.ipynb" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByText(script)).toBeNull();
+    expect((globalThis as { PWNED?: boolean }).PWNED).toBeUndefined();
+  });
+
+  test("shows the initial local read error and retries exactly once", async () => {
+    let reads = 0;
+    let finishRetry: ((value: typeof original) => void) | undefined;
+    const retry = new Promise<typeof original>((resolve) => { finishRetry = resolve; });
+    mockIPC((command) => {
+      if (command !== "fs_read_file") throw new Error(`unexpected command: ${command}`);
+      reads += 1;
+      if (reads === 1) throw new Error("Permission denied (os error 13)");
+      return retry;
+    });
+
+    renderLocal();
+    await screen.findByText("Read failed");
+    expect(screen.getByText(/cannot access this file/i)).toBeTruthy();
+    expect(screen.getByText("Error: Permission denied (os error 13)")).toBeTruthy();
+
+    const retryButton = screen.getByRole("button", { name: "Retry" });
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+    expect(reads).toBe(2);
+
+    finishRetry?.(original);
+    await screen.findByRole("textbox", { name: "Edit notes.txt" });
+    expect(screen.queryByText("Read failed")).toBeNull();
+  });
+
+  test("offers the owning SSH session as the recovery path after an initial disconnect", async () => {
+    useSessionsStore.setState({
+      activeSessionId: "remote-session",
+      sessions: [{
+        id: "remote-session",
+        title: "Remote",
+        dir: "/tmp",
+        branch: "main",
+        runState: "idle",
+        remote: { host: "dev.example", port: 2202, user: "mawei", identityFile: "~/.ssh/id_ed25519" },
+        ptyId: 41,
+        updatedAt: 1,
+      }],
+    });
+    useUIStore.setState({ overlay: null, sshPrefill: null });
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_file") throw "no session for id 41";
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderSsh();
+    await screen.findByText("Read failed");
+    expect(screen.getByText(/SSH connection is unavailable/i)).toBeTruthy();
+    expect(screen.getByText("no session for id 41")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    expect(useUIStore.getState()).toMatchObject({
+      overlay: "ssh",
+      sshPrefill: {
+        host: "dev.example",
+        port: 2202,
+        user: "mawei",
+        identityFile: "~/.ssh/id_ed25519",
+        reconnectSessionId: "remote-session",
+      },
+    });
+  });
+
   test("saves a local draft through the fingerprint-safe IPC contract", async () => {
     const calls: Array<{ command: string; payload: unknown }> = [];
     mockIPC((command, payload) => {
@@ -45,6 +149,28 @@ describe("FilePreview editor behavior", () => {
       },
     });
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("keeps a pending guarded action when parent callbacks change identity", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return original;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const firstAttention = vi.fn();
+    const secondAttention = vi.fn();
+    const run = vi.fn();
+    const view = render(
+      <FilePreview sessionId="local" filePath="/tmp/notes.txt" fileName="notes.txt" fill onClose={() => {}} onNeedsAttention={firstAttention} />,
+    );
+    fireEvent.change(await screen.findByRole("textbox", { name: "Edit notes.txt" }), { target: { value: "draft\n" } });
+
+    expect(requestActiveDirtyDraftAction(run)).toBe(false);
+    expect(firstAttention).toHaveBeenCalledTimes(1);
+    view.rerender(
+      <FilePreview sessionId="local" filePath="/tmp/notes.txt" fileName="notes.txt" fill onClose={() => {}} onNeedsAttention={secondAttention} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   test("keeps the Markdown mode switch and save flow keyboard-complete", async () => {
@@ -77,6 +203,21 @@ describe("FilePreview editor behavior", () => {
     fireEvent.keyDown(restoredEditor, { key: "s", ctrlKey: true });
     await screen.findByText("Saved");
     expect(writes).toBe(1);
+  });
+
+  test("keeps Markdown source visible while syntax highlighting is debounced", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return original;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("notes.md");
+    const editor = await screen.findByRole("textbox", { name: "Edit notes.md" });
+    const visibleSource = document.querySelector<HTMLElement>(".file-editor-syntax");
+    expect(visibleSource?.textContent).toBe("before\n");
+
+    fireEvent.change(editor, { target: { value: "# live\n" } });
+    expect(visibleSource?.textContent).toBe("# live\n");
   });
 
   test("keeps the draft on conflict and replaces it only after a successful reload", async () => {
@@ -131,6 +272,7 @@ describe("FilePreview editor behavior", () => {
 
     await screen.findByText("We couldn't reload this file");
     expect(screen.getByText(/connection is unavailable/i)).toBeTruthy();
+    expect(screen.getByText("no session for id 41")).toBeTruthy();
     expect(editor.value).toBe("remote draft\n");
   });
 
@@ -148,6 +290,7 @@ describe("FilePreview editor behavior", () => {
 
     await screen.findByText("We couldn't save this file");
     expect(screen.getByText(/cannot access this file/i)).toBeTruthy();
+    expect(screen.getByText("Permission denied (os error 13)")).toBeTruthy();
     expect(editor.value).toBe("protected draft\n");
   });
 

@@ -102,6 +102,10 @@ fn content_fingerprint(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn remote_mtime_millis(seconds: u32) -> u64 {
+    u64::from(seconds).saturating_mul(1_000)
+}
+
 fn validate_fingerprint(fingerprint: &str) -> Result<(), String> {
     if fingerprint.len() != 64
         || !fingerprint
@@ -190,6 +194,14 @@ async fn read_remote_replace_lock_owner(
     Ok(owner)
 }
 
+fn stale_replace_lock_error(lock: &str, age_seconds: u64, owner: Option<&str>) -> IoError {
+    let owner = owner.unwrap_or("unknown");
+    IoError(format!(
+        "remote replace lock appears stale (age={age_seconds}s, owner={owner}); \
+         refusing automatic removal; reconcile the interrupted save or verify no writer is active before removing {lock}"
+    ))
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
@@ -251,7 +263,7 @@ pub async fn ssh_fs_read_dir(
             name,
             kind,
             size: meta.size.unwrap_or(0),
-            mtime: meta.mtime.unwrap_or(0) as u64,
+            mtime: remote_mtime_millis(meta.mtime.unwrap_or(0)),
         });
     }
 
@@ -645,7 +657,7 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
                     }
                     if !stale_checked {
                         stale_checked = true;
-                        let stale = self
+                        let age_seconds = self
                             .sftp
                             .metadata(lock.clone())
                             .await
@@ -656,12 +668,29 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .ok()
                                     .map(|now| now.as_secs().saturating_sub(u64::from(mtime)))
-                            })
-                            .is_some_and(|age| age >= REPLACE_LOCK_STALE_AFTER.as_secs());
-                        if stale {
-                            let _ = self.sftp.remove_file(owner_path.clone()).await;
-                            let _ = self.sftp.remove_dir(lock.clone()).await;
-                            continue;
+                            });
+                        if let Some(age_seconds) =
+                            age_seconds.filter(|age| *age >= REPLACE_LOCK_STALE_AFTER.as_secs())
+                        {
+                            // A stat/delete/recreate sequence cannot compare a
+                            // lock generation atomically over portable SFTP. An
+                            // active writer could replace the directory after
+                            // our stat and then have its new lock deleted here.
+                            // Fail closed and leave owner-aware reconciliation
+                            // (or explicit operator cleanup) as the recovery
+                            // path instead of risking two successful writers.
+                            let owner = tokio::time::timeout(
+                                SFTP_CONTROL_TIMEOUT,
+                                read_remote_replace_lock_owner(self.sftp, target),
+                            )
+                            .await
+                            .ok()
+                            .and_then(Result::ok);
+                            return Err(stale_replace_lock_error(
+                                &lock,
+                                age_seconds,
+                                owner.as_deref(),
+                            ));
                         }
                     }
                     if tokio::time::Instant::now() >= deadline {
@@ -1133,10 +1162,11 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 mod tests {
     use super::{
         choose_remote_home, read_remote_editable_bytes, reconcile_text_write_with_sftp,
-        remote_replace_lock_owner_path, remote_replace_lock_path, remote_sibling_temp_path,
-        remote_write_lock, shell_quote, validate_download_target, validate_fingerprint,
-        validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
-        TransactionOutcome, WriteRequest, REMOTE_WRITE_LOCKS,
+        remote_mtime_millis, remote_replace_lock_owner_path, remote_replace_lock_path,
+        remote_sibling_temp_path, remote_write_lock, shell_quote, stale_replace_lock_error,
+        validate_download_target, validate_fingerprint, validate_remote_edit_path,
+        write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome, WriteRequest,
+        REMOTE_WRITE_LOCKS,
     };
     use crate::modules::pty::PtyEvent;
     use crate::modules::ssh::auth::AuthOptions;
@@ -1146,6 +1176,25 @@ mod tests {
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
     use tauri::ipc::Channel;
+
+    #[test]
+    fn remote_directory_mtime_is_normalized_to_epoch_milliseconds() {
+        assert_eq!(remote_mtime_millis(1_700_000_000), 1_700_000_000_000);
+        assert_eq!(remote_mtime_millis(0), 0);
+    }
+
+    #[test]
+    fn stale_remote_replace_locks_fail_closed_with_recovery_context() {
+        let owner = "a".repeat(64);
+        let error = stale_replace_lock_error("/srv/.tunara.lock", 601, Some(&owner));
+        assert!(error.0.contains("appears stale"));
+        assert!(error.0.contains(&format!("owner={owner}")));
+        assert!(error.0.contains("refusing automatic removal"));
+        assert!(error.0.contains("/srv/.tunara.lock"));
+
+        let unknown = stale_replace_lock_error("/srv/.tunara.lock", 601, None);
+        assert!(unknown.0.contains("owner=unknown"));
+    }
 
     // The validator confines downloads under the *real* home dir, so test
     // fixtures must be created inside home (temp_dir() lives outside home on
@@ -1184,6 +1233,7 @@ mod tests {
                     port,
                     auth: AuthOptions {
                         user,
+                        method: crate::modules::ssh::auth::AuthMethod::Agent,
                         identity_file: None,
                         key_passphrase: None,
                         password: None,

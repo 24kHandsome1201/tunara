@@ -1,21 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThemeType, TerminalThemeName } from "../types";
-import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
+import { useUIStore, type CursorStyle, type ExternalEditor, type SettingsTab, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { getShellTint, isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
-import { getVersion } from "@tauri-apps/api/app";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { platform } from "@tauri-apps/plugin-os";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
 import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { CloseIcon, RefreshIcon } from "../shared";
 import { useT, LANGUAGES, type Language } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
+import { useAppUpdate } from "./useAppUpdate";
 import { WorkflowsSettings } from "./WorkflowsSettings";
 import { useWorkflowsStore } from "@/state/workflows";
+import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
 
 interface SettingsProps {
   onClose: () => void;
@@ -34,7 +33,7 @@ interface Preflight {
   hint: string | null;
 }
 
-type UpdateStatus = "idle" | "checking" | "current" | "available" | "downloading" | "restarting" | "error";
+type LegacyAgentDataState = "loading" | "missing" | "present" | "deleting" | "error";
 
 const TABS = ["appearance", "workflows", "cli", "app"] as const;
 
@@ -205,77 +204,29 @@ export function Settings({ onClose }: SettingsProps) {
   const [editingOverride, setEditingOverride] = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState("");
   const cliLoadStartedRef = useRef(false);
-  const [appVersion, setAppVersion] = useState("");
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle");
-  const [updateVersion, setUpdateVersion] = useState("");
-  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
-  const updateRef = useRef<Update | null>(null);
-  const appTabCheckStartedRef = useRef(false);
+  const { appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate } = useAppUpdate(activeTab);
+  const [legacyAgentDataState, setLegacyAgentDataState] = useState<LegacyAgentDataState>("loading");
 
-  useEffect(() => {
-    void getVersion().then(setAppVersion).catch(() => {});
-    return () => {
-      const update = updateRef.current;
-      updateRef.current = null;
-      if (update) void update.close();
-    };
+  const loadLegacyAgentDataStatus = useCallback(() => {
+    setLegacyAgentDataState("loading");
+    invoke<"missing" | "present">("legacy_agent_data_status")
+      .then(setLegacyAgentDataState)
+      .catch(() => setLegacyAgentDataState("error"));
   }, []);
 
-  const checkForUpdates = useCallback(async () => {
-    if (updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting") return;
-    setUpdateStatus("checking");
-    setUpdateProgress(null);
-    const previous = updateRef.current;
-    updateRef.current = null;
-    if (previous) await previous.close().catch(() => {});
-    try {
-      const update = await check({ timeout: 15_000 });
-      updateRef.current = update;
-      if (!update) {
-        setUpdateVersion("");
-        setUpdateStatus("current");
-        return;
-      }
-      setUpdateVersion(update.version);
-      setUpdateStatus("available");
-    } catch (error) {
-      console.warn("[Settings] update check failed", error);
-      setUpdateStatus("error");
-    }
-  }, [updateStatus]);
-
-  const installUpdate = async () => {
-    const update = updateRef.current;
-    if (!update || updateStatus === "downloading" || updateStatus === "restarting") return;
-    setUpdateStatus("downloading");
-    setUpdateProgress(0);
-    let downloaded = 0;
-    let total: number | undefined;
-    try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-          total = event.data.contentLength;
-        } else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength;
-          setUpdateProgress(total ? Math.min(99, Math.round((downloaded / total) * 100)) : null);
-        } else {
-          setUpdateProgress(100);
-        }
-      });
-      setUpdateStatus("restarting");
-      await relaunch();
-    } catch (error) {
-      console.warn("[Settings] update installation failed", error);
-      setUpdateStatus("error");
-      setUpdateProgress(null);
-    }
-  };
-
   useEffect(() => {
-    if (activeTab !== "app" || appTabCheckStartedRef.current) return;
-    appTabCheckStartedRef.current = true;
-    void checkForUpdates();
-  }, [activeTab, checkForUpdates]);
+    if (activeTab !== "app") return;
+    loadLegacyAgentDataStatus();
+  }, [activeTab, loadLegacyAgentDataStatus]);
+
+  const deleteLegacyAgentData = useCallback(async () => {
+    const confirmed = await tauriConfirmDialog(t("settings.app.legacy_agent_data.confirm"), { kind: "warning" });
+    if (!confirmed) return;
+    setLegacyAgentDataState("deleting");
+    invoke<"missing">("legacy_agent_data_delete", { confirmed: true })
+      .then(() => setLegacyAgentDataState("missing"))
+      .catch(() => setLegacyAgentDataState("error"));
+  }, [t]);
 
   const loadPreflights = useCallback((items: ResolvedCommand[]) => {
     // Only check login state for CLIs that are actually installed — an auth
@@ -329,7 +280,17 @@ export function Settings({ onClose }: SettingsProps) {
   const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
   const installedCliCount = CLI_LIST.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
   const updateBusy = updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting";
-  const canInstallUpdate = updateStatus === "available" || (updateStatus === "error" && !!updateRef.current);
+
+  // APG tabs 键盘漫游（自动激活）：方向键/Home/End 在设置页签间循环
+  const handleTabListKeyDown = (e: React.KeyboardEvent) => {
+    const currentId = tabIdFromEventTarget(e.target);
+    if (!currentId) return;
+    const nextId = resolveRovingTabId(TABS, currentId, e.key);
+    if (!nextId || nextId === currentId) return;
+    e.preventDefault();
+    setActiveTab(nextId as SettingsTab);
+    focusTabById(e.currentTarget as HTMLElement, nextId);
+  };
 
   return (
     <>
@@ -352,6 +313,7 @@ export function Settings({ onClose }: SettingsProps) {
             className="no-scrollbar"
             role="tablist"
             aria-label={t("settings.title")}
+            onKeyDown={handleTabListKeyDown}
             style={{ display: "flex", gap: 18, borderBottom: "1px solid var(--c-border-1)", overflowX: "auto", overscrollBehaviorX: "contain", scrollSnapType: "x proximity" }}
           >
             {TABS.map((tab) => (
@@ -360,6 +322,9 @@ export function Settings({ onClose }: SettingsProps) {
                 onClick={() => setActiveTab(tab)}
                 role="tab"
                 aria-selected={activeTab === tab}
+                aria-controls="settings-tabpanel"
+                data-tab-id={tab}
+                tabIndex={activeTab === tab ? 0 : -1}
                 data-active={activeTab === tab ? "true" : "false"}
                 className="settings-tab-pill"
                 style={{ padding: "5px 0 8px", marginBottom: -1, border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "color var(--duration-fast) var(--ease-smooth)", whiteSpace: "nowrap", flexShrink: 0, scrollSnapAlign: "start" }}
@@ -370,7 +335,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
+        <div role="tabpanel" id="settings-tabpanel" style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
           {activeTab === "appearance" && (
             <div>
               <div style={{ marginBottom: 24 }}>
@@ -399,6 +364,9 @@ export function Settings({ onClose }: SettingsProps) {
                     <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{t("settings.appearance.cursor_blink")}</span>
                     <button
                       onClick={() => setCursorBlink(!cursorBlink)}
+                      role="switch"
+                      aria-checked={cursorBlink}
+                      aria-label={t("settings.appearance.cursor_blink")}
                       style={{ ...TOGGLE_BUTTON, background: cursorBlink ? "var(--c-accent)" : "var(--c-bg-3)" }}
                     >
                       <div style={{ ...TOGGLE_KNOB, transform: cursorBlink ? "translateX(16px)" : "translateX(0)" }} />
@@ -471,6 +439,9 @@ export function Settings({ onClose }: SettingsProps) {
                   <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.bell_notification")}</span>
                   <button
                     onClick={() => setBellNotification(!bellNotification)}
+                    role="switch"
+                    aria-checked={bellNotification}
+                    aria-label={t("settings.appearance.bell_notification")}
                     style={{ ...TOGGLE_BUTTON, background: bellNotification ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
                     <div style={{ ...TOGGLE_KNOB, transform: bellNotification ? "translateX(16px)" : "translateX(0)" }} />
@@ -483,6 +454,9 @@ export function Settings({ onClose }: SettingsProps) {
                   <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.clipboard_write")}</span>
                   <button
                     onClick={() => setTerminalClipboardWrite(!terminalClipboardWrite)}
+                    role="switch"
+                    aria-checked={terminalClipboardWrite}
+                    aria-label={t("settings.appearance.clipboard_write")}
                     style={{ ...TOGGLE_BUTTON, background: terminalClipboardWrite ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
                     <div style={{ ...TOGGLE_KNOB, transform: terminalClipboardWrite ? "translateX(16px)" : "translateX(0)" }} />
@@ -495,6 +469,9 @@ export function Settings({ onClose }: SettingsProps) {
                   <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.inline_images")}</span>
                   <button
                     onClick={() => setTerminalInlineImages(!terminalInlineImages)}
+                    role="switch"
+                    aria-checked={terminalInlineImages}
+                    aria-label={t("settings.appearance.inline_images")}
                     style={{ ...TOGGLE_BUTTON, background: terminalInlineImages ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
                     <div style={{ ...TOGGLE_KNOB, transform: terminalInlineImages ? "translateX(16px)" : "translateX(0)" }} />
@@ -803,6 +780,41 @@ export function Settings({ onClose }: SettingsProps) {
                   </div>
                 </div>
               </div>
+              {(legacyAgentDataState === "present" || legacyAgentDataState === "deleting" || legacyAgentDataState === "error") && (
+                <div style={{ paddingTop: 20 }} aria-live="polite">
+                  <div style={SECTION_LABEL}>{t("settings.app.legacy_agent_data.title")}</div>
+                  {legacyAgentDataState === "error" ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                      <div style={{ ...SECTION_HINT, color: "var(--c-error)", marginBottom: 0 }}>
+                        {t("settings.app.legacy_agent_data.error")}
+                      </div>
+                      <button
+                        onClick={loadLegacyAgentDataStatus}
+                        className="hover-bg"
+                        style={{ padding: "7px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                      >
+                        {t("settings.app.legacy_agent_data.retry")}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                      <div style={{ ...SECTION_HINT, marginBottom: 0 }}>
+                        {t("settings.app.legacy_agent_data.hint")}
+                      </div>
+                      <button
+                        onClick={() => { void deleteLegacyAgentData(); }}
+                        disabled={legacyAgentDataState === "deleting"}
+                        className="hover-bg"
+                        style={{ padding: "7px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-error)", background: "transparent", color: "var(--c-error)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: legacyAgentDataState === "deleting" ? "wait" : "pointer", flexShrink: 0 }}
+                      >
+                        {legacyAgentDataState === "deleting"
+                          ? t("settings.app.legacy_agent_data.deleting")
+                          : t("settings.app.legacy_agent_data.delete")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

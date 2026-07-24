@@ -219,7 +219,9 @@ function MiniDiff({
                   cursor: "pointer",
                   padding: "2px 4px",
                   borderRadius: 3,
-                  display: "none",
+                  // 保持 display:flex 留在 tab 序里，可见性只由 CSS opacity 控制，
+                  // 否则键盘用户永远摸不到这个按钮
+                  display: "flex",
                   alignItems: "center",
                 }}
               >
@@ -740,7 +742,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
 
       <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar scroll-fade-y">
         {loading ? (
-          <PanelLoadingState label="git status" />
+          <PanelLoadingState label={t("diff.loading")} />
         ) : notGit ? (
           <PanelEmptyState label={t("diff.empty.not_git")} sublabel={displayPath} />
         ) : !hasChanges ? (

@@ -68,10 +68,13 @@ export function TerminalBlockFilterPanel({
   block,
   output,
   onClose,
+  topOffset = 42,
 }: {
   block: TerminalCommandBlock;
   output: string;
   onClose: () => void;
+  /** Absolute top offset; caller raises it when the search bar is open so the two never overlap. */
+  topOffset?: number;
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -119,7 +122,7 @@ export function TerminalBlockFilterPanel({
     <div
       style={{
         position: "absolute",
-        top: 42,
+        top: topOffset,
         right: 12,
         zIndex: 40,
         width: "min(720px, calc(100% - 24px))",
@@ -169,6 +172,7 @@ export function TerminalBlockFilterPanel({
           min={0}
           max={10}
           title={t("block.filter.context_lines")}
+          aria-label={t("block.filter.context_lines")}
           onChange={(event) => setContextLines(Number(event.target.value))}
           style={{
             width: 42,

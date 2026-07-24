@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { CloseIcon, SearchIcon } from "./shared";
 import { useT } from "@/modules/i18n";
@@ -58,6 +59,13 @@ export function TerminalSearchBar({
   const nextShortcut = formatShortcut("Enter");
   const closeShortcut = formatShortcut("Escape");
 
+  // autoFocus 在 WKWebView 下不可靠（与 TerminalQuickSelect 注释同一结论），
+  // 统一改为挂载后显式 focus。
+  useEffect(() => {
+    inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div
       style={{
@@ -92,7 +100,7 @@ export function TerminalSearchBar({
             else onNext();
           }
         }}
-        autoFocus
+        aria-label={t("term.search.placeholder")}
         placeholder={t("term.search.placeholder")}
         style={{
           border: "none",

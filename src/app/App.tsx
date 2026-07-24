@@ -6,6 +6,7 @@ import { Settings } from "@/ui/overlays/Settings";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
 import { SshConnect } from "@/ui/overlays/SshConnect";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
+import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { ToastContainer } from "@/ui/Toast";
 import { useT } from "@/modules/i18n";
@@ -19,13 +20,19 @@ import { useDockBadge } from "./useDockBadge";
 import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useUpdateReminder } from "./useUpdateReminder";
 import { useTerminalBenchmark } from "./useTerminalBenchmark";
+import { usePhase3TelemetryBenchmark } from "./usePhase3TelemetryBenchmark";
+import { usePhase3RestartBenchmark } from "./usePhase3RestartBenchmark";
+import { usePhase3TunnelBenchmark } from "./usePhase3TunnelBenchmark";
+import { usePhase3CaptureBenchmark } from "./usePhase3CaptureBenchmark";
 import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
 import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
 import { useM2NativeCloseBenchmark } from "./useM2NativeCloseBenchmark";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
+import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
+import { usePresentationModeContextMenuGuard } from "./usePresentationModeContextMenuGuard";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -34,6 +41,35 @@ const closeSessionById = (id: string) => useSessionsStore.getState().closeSessio
 const newTerminal = () => useSessionsStore.getState().newTerminal();
 const newTerminalInDirectory = () => { void openNewTerminalDirectoryDialog(); };
 const openSettings = () => useUIStore.getState().openSettings();
+
+// Same trick for the stacking-aware toggles: read the freshest layout input
+// from the store at call time instead of closing over render-scope values,
+// so the identities stay constant for the memoized Titlebar.
+const currentLayoutInput = () => {
+  const s = useUIStore.getState();
+  return {
+    viewportWidth: s.viewportWidth,
+    sidebarVisible: s.sidebarVisible,
+    panelVisible: s.panelVisible,
+    sidebarWidth: s.sidebarWidth,
+    panelWidth: s.panelWidth,
+    terminalColumnCount: splitHorizontalPaneCount(s.split),
+  };
+};
+const toggleSidebarWithoutStacking = () => {
+  const s = useUIStore.getState();
+  if (!s.sidebarVisible && auxiliarySurfaceToCloseOnOpen(currentLayoutInput(), "sidebar") === "panel") {
+    s.setPanelVisible(false);
+  }
+  s.toggleSidebar();
+};
+const togglePanelWithoutStacking = () => {
+  const s = useUIStore.getState();
+  if (!s.panelVisible && auxiliarySurfaceToCloseOnOpen(currentLayoutInput(), "panel") === "sidebar") {
+    s.setSidebarVisible(false);
+  }
+  s.togglePanel();
+};
 
 interface ResizeHandleProps {
   edge: "left" | "right";
@@ -48,6 +84,10 @@ interface ResizeHandleProps {
 }
 
 function ResizeHandle({ edge, getWidth, setWidth, minWidth, getMaxWidth, defaultWidth, ariaLabel, direction, className }: ResizeHandleProps) {
+  // 拖拽中途组件被卸载时兜底摘掉 document 监听（否则监听器泄漏且光标卡死）
+  const dragTeardownRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragTeardownRef.current?.(), []);
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     const width = resolveResizeHandleWidth({
       key: e.key,
@@ -74,20 +114,26 @@ function ResizeHandle({ edge, getWidth, setWidth, minWidth, getMaxWidth, default
       setWidth(startWidth + (ev.clientX - startX) * direction);
     };
 
-    const cleanup = (ev: PointerEvent) => {
-      if (handle.hasPointerCapture(ev.pointerId)) {
-        handle.releasePointerCapture(ev.pointerId);
-      }
+    const teardown = () => {
       document.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerup", cleanup);
       document.removeEventListener("pointercancel", cleanup);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      dragTeardownRef.current = null;
+    };
+
+    const cleanup = (ev: PointerEvent) => {
+      if (handle.hasPointerCapture(ev.pointerId)) {
+        handle.releasePointerCapture(ev.pointerId);
+      }
+      teardown();
     };
 
     document.addEventListener("pointermove", onPointerMove);
     document.addEventListener("pointerup", cleanup);
     document.addEventListener("pointercancel", cleanup);
+    dragTeardownRef.current = teardown;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   };
@@ -221,16 +267,13 @@ export default function App() {
   const setActive = useSessionsStore((s) => s.setActive);
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const panelVisible = useUIStore((s) => s.panelVisible);
+  const presentationMode = useUIStore((s) => s.presentationMode);
   const overlay = useUIStore((s) => s.overlay);
-  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
-  const togglePanel = useUIStore((s) => s.togglePanel);
-  const setSidebarVisible = useUIStore((s) => s.setSidebarVisible);
-  const setPanelVisible = useUIStore((s) => s.setPanelVisible);
   const setOverlay = useUIStore((s) => s.setOverlay);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const panelWidth = useUIStore((s) => s.panelWidth);
   const viewportWidth = useUIStore((s) => s.viewportWidth);
-  const splitMode = useUIStore((s) => s.split.mode);
+  const terminalColumnCount = useUIStore((s) => splitHorizontalPaneCount(s.split));
   const setViewportWidth = useUIStore((s) => s.setViewportWidth);
 
   useInit();
@@ -240,9 +283,14 @@ export default function App() {
   useGlobalShortcut();
   useUpdateReminder(ready);
   useTerminalBenchmark(ready);
+  usePhase3TelemetryBenchmark(ready);
+  usePhase3RestartBenchmark(ready);
+  usePhase3TunnelBenchmark(ready);
+  usePhase3CaptureBenchmark(ready);
   useM2SafeWriteBenchmark(ready);
   useM2LocalSafeWriteBenchmark(ready);
   useM2NativeCloseBenchmark(ready);
+  usePresentationModeContextMenuGuard(presentationMode === "pure");
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);
@@ -254,6 +302,9 @@ export default function App() {
   if (!ready) return <AppSplash />;
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
+  const workspaceMode = presentationMode === "workspace";
+  const presentedSidebarVisible = workspaceMode && sidebarVisible;
+  const presentedPanelVisible = workspaceMode && panelVisible;
   const {
     sidebarOverlay,
     panelOverlay,
@@ -263,37 +314,23 @@ export default function App() {
     panelReservedWidth,
   } = resolveAppShellLayout({
     viewportWidth,
-    sidebarVisible,
-    panelVisible,
+    sidebarVisible: presentedSidebarVisible,
+    panelVisible: presentedPanelVisible,
     sidebarWidth,
     panelWidth,
-    splitMode,
+    terminalColumnCount,
   });
-
-  const layoutInput = { viewportWidth, sidebarVisible, panelVisible, sidebarWidth, panelWidth, splitMode };
-  const toggleSidebarWithoutStacking = () => {
-    if (!sidebarVisible && auxiliarySurfaceToCloseOnOpen(layoutInput, "sidebar") === "panel") {
-      setPanelVisible(false);
-    }
-    toggleSidebar();
-  };
-  const togglePanelWithoutStacking = () => {
-    if (!panelVisible && auxiliarySurfaceToCloseOnOpen(layoutInput, "panel") === "sidebar") {
-      setSidebarVisible(false);
-    }
-    togglePanel();
-  };
-
 
   return (
     <div
+      data-presentation-mode={presentationMode}
       style={{
         display: "flex",
         flexDirection: "column",
         height: "100vh",
         overflow: "hidden",
         fontFamily: "var(--font-ui)",
-        background: "var(--c-bg-white)",
+        background: workspaceMode ? "var(--c-bg-white)" : "var(--terminal-canvas-bg, var(--c-bg-white))",
       }}
     >
       <Titlebar
@@ -311,7 +348,7 @@ export default function App() {
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" }}>
-        {sidebarOverlay && sidebarVisible && (
+        {sidebarOverlay && presentedSidebarVisible && (
           <div
             onClick={toggleSidebarWithoutStacking}
             style={{
@@ -326,8 +363,8 @@ export default function App() {
 
         <div
           className="tunara-sidebar"
-          aria-hidden={sidebarVisible ? undefined : true}
-          inert={sidebarVisible ? undefined : true}
+          aria-hidden={presentedSidebarVisible ? undefined : true}
+          inert={presentedSidebarVisible ? undefined : true}
           style={{
             display: "flex",
             minHeight: 0,
@@ -339,19 +376,23 @@ export default function App() {
             left: sidebarOverlay ? 0 : undefined,
             bottom: sidebarOverlay ? 0 : undefined,
             zIndex: sidebarOverlay ? 80 : undefined,
-            boxShadow: sidebarOverlay && sidebarVisible ? "var(--shadow-overlay)" : undefined,
-            transition: "width var(--duration-expand) var(--ease-out-expo)",
+            boxShadow: sidebarOverlay && presentedSidebarVisible ? "var(--shadow-overlay)" : undefined,
+            transition: workspaceMode ? "width var(--duration-expand) var(--ease-out-expo)" : "none",
           }}
         >
-          <Sidebar
-            sessions={sessions}
-            activeSessionId={activeSessionId ?? ""}
-            onSelectSession={setActive}
-            onNewTerminal={newTerminal}
-            onNewTerminalInDirectory={newTerminalInDirectory}
-            onCloseSession={closeSessionById}
-          />
-          {sidebarVisible && !sidebarOverlay && <SidebarResizeHandle />}
+          {workspaceMode && (
+            <>
+              <Sidebar
+                sessions={sessions}
+                activeSessionId={activeSessionId ?? ""}
+                onSelectSession={setActive}
+                onNewTerminal={newTerminal}
+                onNewTerminalInDirectory={newTerminalInDirectory}
+                onCloseSession={closeSessionById}
+              />
+              {sidebarVisible && !sidebarOverlay && <SidebarResizeHandle />}
+            </>
+          )}
         </div>
 
         {sidebarOverlay && sidebarReservedWidth > 0 && (
@@ -360,6 +401,7 @@ export default function App() {
 
         {sessions.length > 0 && (
           <MainArea
+            key="terminal-main-area"
             sessions={sessions}
             activeSessionId={activeSessionId ?? ""}
           />
@@ -369,7 +411,7 @@ export default function App() {
             last session was closed before the auto-create kicked in), show a
             centered empty-state with a clear call to action instead of a blank
             middle pane. */}
-        {sessions.length === 0 && (
+        {workspaceMode && sessions.length === 0 && (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
               <div style={{ width: 64, height: 64, borderRadius: "var(--r-overlay)", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-4)" }}>
@@ -395,6 +437,13 @@ export default function App() {
                 >
                   {t("sidebar.new_terminal_in_directory")}
                 </button>
+                <button
+                  onClick={() => useUIStore.getState().openSshConnect()}
+                  className="hover-bg"
+                  style={{ padding: "7px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}
+                >
+                  {t("sidebar.new_ssh_connection")}
+                </button>
               </div>
             </div>
           </div>
@@ -403,24 +452,28 @@ export default function App() {
         {activeSession && (
           <div
             className="tunara-panel"
-            aria-hidden={panelVisible ? undefined : true}
-            inert={panelVisible ? undefined : true}
+            aria-hidden={presentedPanelVisible ? undefined : true}
+            inert={presentedPanelVisible ? undefined : true}
             style={{
               position: panelOverlay ? "absolute" : "relative",
               top: panelOverlay ? 0 : undefined,
               right: panelOverlay ? 0 : undefined,
               bottom: panelOverlay ? 0 : undefined,
               zIndex: panelOverlay ? 80 : undefined,
-              boxShadow: panelOverlay && panelVisible ? "var(--shadow-overlay)" : undefined,
+              boxShadow: panelOverlay && presentedPanelVisible ? "var(--shadow-overlay)" : undefined,
               width: panelEffectiveWidth,
               display: "flex",
               minHeight: 0,
               overflow: "hidden",
-              transition: "width var(--duration-expand) var(--ease-out-expo)",
+              transition: workspaceMode ? "width var(--duration-expand) var(--ease-out-expo)" : "none",
             }}
           >
-            {panelVisible && !panelOverlay && <PanelResizeHandle />}
-            <InspectorPanel session={activeSession} onClose={togglePanelWithoutStacking} />
+            {workspaceMode && (
+              <>
+                {panelVisible && !panelOverlay && <PanelResizeHandle />}
+                <InspectorPanel session={activeSession} onClose={togglePanelWithoutStacking} />
+              </>
+            )}
           </div>
         )}
 
@@ -429,12 +482,18 @@ export default function App() {
         )}
       </div>
 
-      {overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
+      {workspaceMode && overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
-      {overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
+      {workspaceMode && overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
       <HostKeyPromptDialog />
-      <WorkflowParamPrompt />
-      <ToastContainer />
+      <KeyboardInteractivePromptDialog />
+      {workspaceMode && <WorkflowParamPrompt />}
+      <div
+        aria-hidden={workspaceMode ? undefined : true}
+        style={{ display: workspaceMode ? "contents" : "none" }}
+      >
+        <ToastContainer />
+      </div>
     </div>
   );
 }

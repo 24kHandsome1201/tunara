@@ -9,8 +9,8 @@
 //! - [`connection`]: the live `SshSession` (one russh `Handle`), host-key policy.
 //! - [`known_hosts`]: TOFU verification against `~/.ssh/known_hosts` (hashed
 //!   entries detected, not silently trusted).
-//! - [`hosts`]: saved host profiles in `tunara/hosts.toml` — host/port/user and
-//!   an identity-file PATH only, never passwords or passphrases.
+//! - [`hosts`]: saved host profiles in `tunara/hosts.toml` — endpoint, auth
+//!   method, and an optional identity-file path, never passwords or passphrases.
 //! - [`sftp`]: read-only remote browse + home-confined download.
 //!
 //! An unverifiable host key parks `ssh_open` and emits `PtyEvent::HostKeyPrompt`;
@@ -38,7 +38,7 @@ mod rtt_benchmark;
 mod safe_write;
 pub mod sftp;
 
-use auth::AuthOptions;
+use auth::{AuthMethod, AuthOptions};
 use connection::{ConnectParams, HostKeyPolicy, SshSession};
 
 use crate::modules::agent::{hooks::HookListenerState, wrapper};
@@ -54,6 +54,7 @@ type OpenAttempt = (u64, oneshot::Sender<()>);
 struct OpenAttemptState {
     pending: HashMap<String, OpenAttempt>,
     cancelled: HashSet<String>,
+    latest_pending_by_logical: HashMap<String, (String, u64)>,
 }
 
 static OPEN_ATTEMPTS: OnceLock<Mutex<OpenAttemptState>> = OnceLock::new();
@@ -66,10 +67,15 @@ fn open_attempts() -> &'static Mutex<OpenAttemptState> {
 struct OpenAttemptGuard {
     open_attempt_id: String,
     attempt_id: u64,
+    logical_session_id: Option<String>,
+    completed: bool,
 }
 
 impl Drop for OpenAttemptGuard {
     fn drop(&mut self) {
+        if self.completed {
+            return;
+        }
         if let Ok(mut state) = open_attempts().lock() {
             if state
                 .pending
@@ -78,43 +84,145 @@ impl Drop for OpenAttemptGuard {
             {
                 state.pending.remove(&self.open_attempt_id);
             }
+            if let Some(logical_id) = self.logical_session_id.as_deref() {
+                if state.latest_pending_by_logical.get(logical_id).is_some_and(
+                    |(open_id, attempt_id)| {
+                        open_id == &self.open_attempt_id && *attempt_id == self.attempt_id
+                    },
+                ) {
+                    state.latest_pending_by_logical.remove(logical_id);
+                }
+            }
             state.cancelled.remove(&self.open_attempt_id);
         }
     }
 }
 
-fn register_open_attempt(open_attempt_id: &str) -> (oneshot::Receiver<()>, OpenAttemptGuard) {
+impl OpenAttemptGuard {
+    /// Publish only if this is still the newest pending open for its logical
+    /// session. The state check and publication closure share one critical
+    /// section, so cancel/register cannot linearize between them and let an
+    /// older connection replace a newer live PTY.
+    fn publish_if_current<T>(mut self, publish: impl FnOnce() -> T) -> Result<T, String> {
+        let mut state = open_attempts()
+            .lock()
+            .map_err(|_| "SSH open attempt state is unavailable".to_string())?;
+        let pending_is_current = state
+            .pending
+            .get(&self.open_attempt_id)
+            .is_some_and(|(attempt_id, _)| *attempt_id == self.attempt_id);
+        let logical_is_current = self.logical_session_id.as_deref().is_none_or(|logical_id| {
+            state
+                .latest_pending_by_logical
+                .get(logical_id)
+                .is_some_and(|(open_id, attempt_id)| {
+                    open_id == &self.open_attempt_id && *attempt_id == self.attempt_id
+                })
+        });
+        if !pending_is_current || !logical_is_current {
+            return Err("SSH connection canceled or superseded".into());
+        }
+
+        state.pending.remove(&self.open_attempt_id);
+        if let Some(logical_id) = self.logical_session_id.as_deref() {
+            state.latest_pending_by_logical.remove(logical_id);
+        }
+        state.cancelled.remove(&self.open_attempt_id);
+        self.completed = true;
+        // Keep OPEN_ATTEMPTS locked until the backend PTY mapping is updated.
+        // The closure is synchronous and must stay free of UI/window actions.
+        Ok(publish())
+    }
+}
+
+fn register_open_attempt(
+    open_attempt_id: &str,
+    logical_session_id: Option<&str>,
+) -> (oneshot::Receiver<()>, OpenAttemptGuard) {
     let attempt_id = NEXT_OPEN_ATTEMPT.fetch_add(1, Ordering::Relaxed);
     let (sender, receiver) = oneshot::channel();
+    let mut sender = Some(sender);
     if let Ok(mut state) = open_attempts().lock() {
+        if let Some(logical_id) = logical_session_id {
+            if let Some((previous_open_id, previous_attempt_id)) =
+                state.latest_pending_by_logical.insert(
+                    logical_id.to_string(),
+                    (open_attempt_id.to_string(), attempt_id),
+                )
+            {
+                let previous_is_pending = state
+                    .pending
+                    .get(&previous_open_id)
+                    .is_some_and(|(id, _)| *id == previous_attempt_id);
+                if previous_is_pending {
+                    if let Some((_, previous)) = state.pending.remove(&previous_open_id) {
+                        let _ = previous.send(());
+                    }
+                }
+            }
+        }
         if state.cancelled.remove(open_attempt_id) {
-            let _ = sender.send(());
-        } else if let Some((_, previous)) = state
-            .pending
-            .insert(open_attempt_id.to_string(), (attempt_id, sender))
-        {
+            let _ = sender.take().expect("open sender available").send(());
+        } else if let Some((_, previous)) = state.pending.insert(
+            open_attempt_id.to_string(),
+            (attempt_id, sender.take().expect("open sender available")),
+        ) {
             let _ = previous.send(());
         }
+    } else if let Some(sender) = sender.take() {
+        // Fail closed if the global attempt state is poisoned; otherwise this
+        // open could never be canceled or prove that it is current.
+        let _ = sender.send(());
     }
     (
         receiver,
         OpenAttemptGuard {
             open_attempt_id: open_attempt_id.to_string(),
             attempt_id,
+            logical_session_id: logical_session_id.map(str::to_string),
+            completed: false,
         },
     )
+}
+
+/// Supersede an in-flight SSH open before publishing a local PTY for the same
+/// logical session. This shares the publication lock, so whichever operation
+/// wins is ordered and a late SSH attempt cannot replace the local terminal.
+pub(crate) fn cancel_pending_open_for_logical(logical_session_id: &str) -> bool {
+    let sender = if let Ok(mut state) = open_attempts().lock() {
+        let Some((open_attempt_id, attempt_id)) = state
+            .latest_pending_by_logical
+            .get(logical_session_id)
+            .cloned()
+        else {
+            return false;
+        };
+        let is_current = state
+            .pending
+            .get(&open_attempt_id)
+            .is_some_and(|(id, _)| *id == attempt_id);
+        is_current
+            .then(|| state.pending.remove(&open_attempt_id))
+            .flatten()
+            .map(|(_, sender)| sender)
+    } else {
+        return false;
+    };
+    sender.is_some_and(|sender| sender.send(()).is_ok())
 }
 
 async fn open_with_cancellation(
     params: ConnectParams,
     on_event: Channel<PtyEvent>,
     open_attempt_id: &str,
-) -> Result<SshSession, String> {
-    let (cancel, _guard) = register_open_attempt(open_attempt_id);
-    tokio::select! {
+) -> Result<(SshSession, OpenAttemptGuard), String> {
+    let logical_session_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
+    let (cancel, guard) = register_open_attempt(open_attempt_id, logical_session_id);
+    let ssh = tokio::select! {
         result = SshSession::open(params, on_event) => result,
         _ = cancel => Err("SSH connection canceled".to_string()),
-    }
+    }?;
+    Ok((ssh, guard))
 }
 
 fn validate_open_input(
@@ -171,7 +279,9 @@ fn validate_open_input(
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn ssh_open(
+    app: tauri::AppHandle,
     state: tauri::State<'_, PtyState>,
+    preview_state: tauri::State<'_, crate::modules::preview::PreviewWindowState>,
     hooks_state: tauri::State<'_, HookListenerState>,
     logical_session_id: Option<String>,
     open_attempt_id: String,
@@ -182,6 +292,7 @@ pub async fn ssh_open(
     identity_file: Option<String>,
     key_passphrase: Option<String>,
     password: Option<String>,
+    auth_method: Option<AuthMethod>,
     accept_unknown_host_key: Option<bool>,
     inject_shell_integration: Option<bool>,
     cols: u16,
@@ -210,6 +321,7 @@ pub async fn ssh_open(
         port,
         auth: AuthOptions {
             user,
+            method: auth_method.ok_or("SSH authentication method is required")?,
             identity_file,
             key_passphrase,
             password,
@@ -237,7 +349,7 @@ pub async fn ssh_open(
         session_id: logical_session_id.clone().unwrap_or_default(),
     };
 
-    let ssh = open_with_cancellation(params, on_event, &open_attempt_id)
+    let (ssh, open_attempt) = open_with_cancellation(params, on_event, &open_attempt_id)
         .await
         .map_err(|e| {
             log::error!("ssh_open failed: {e}");
@@ -250,10 +362,22 @@ pub async fn ssh_open(
     // failed reconnect into destructive data loss. PtyState::insert performs
     // the actual swap atomically and closes the old session only after `ssh`
     // is ready.
-    let id = state.insert(
-        std::sync::Arc::new(Session::Ssh(ssh)),
-        logical_session_id.as_deref(),
-    );
+    let (id, replaced_id) = open_attempt.publish_if_current(|| {
+        let replaced_id = logical_session_id
+            .as_deref()
+            .and_then(|logical_id| state.physical_for_logical(logical_id));
+        let id = state.insert(
+            std::sync::Arc::new(Session::Ssh(ssh)),
+            logical_session_id.as_deref(),
+        );
+        (id, replaced_id)
+    })?;
+    // Window/UI work stays outside OPEN_ATTEMPTS. `replaced_id` was captured
+    // in the same publication critical section, so this cannot target a newer
+    // connection even if another reconnect starts immediately afterwards.
+    if let Some(old_id) = replaced_id {
+        preview_state.close_tunnels_for_pty(&app, old_id);
+    }
     if let Some(logical_id) = logical_session_id.as_deref() {
         wrapper::cleanup_hooks_settings(logical_id, hooks_state.agent_config_dir());
     }
@@ -309,9 +433,24 @@ pub fn ssh_host_key_decision(prompt_id: String, accept: bool) -> Result<(), Stri
     }
 }
 
+#[tauri::command]
+pub fn ssh_keyboard_interactive_response(
+    prompt_id: String,
+    responses: Option<Vec<String>>,
+) -> Result<(), String> {
+    if auth::resolve_keyboard_interactive_prompt(&prompt_id, responses) {
+        Ok(())
+    } else {
+        Err("keyboard-interactive prompt no longer pending".into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{register_open_attempt, ssh_cancel_open, validate_open_input};
+    use super::{
+        cancel_pending_open_for_logical, register_open_attempt, ssh_cancel_open,
+        validate_open_input,
+    };
 
     #[test]
     fn validates_ssh_open_boundary_before_network_or_logging() {
@@ -336,16 +475,47 @@ mod tests {
     #[tokio::test]
     async fn pending_open_can_be_cancelled_by_attempt_id() {
         let attempt_id = "cancel-open-test";
-        let (receiver, _guard) = register_open_attempt(attempt_id);
+        let (receiver, guard) = register_open_attempt(attempt_id, Some("cancel-session"));
         assert!(ssh_cancel_open(attempt_id.to_string()));
         assert!(receiver.await.is_ok());
+        assert!(guard.publish_if_current(|| ()).is_err());
     }
 
     #[tokio::test]
     async fn cancel_before_registration_is_not_lost() {
         let attempt_id = "pre-cancel-open-test";
         assert!(ssh_cancel_open(attempt_id.to_string()));
-        let (receiver, _guard) = register_open_attempt(attempt_id);
+        let (receiver, guard) = register_open_attempt(attempt_id, Some("pre-cancel-session"));
         assert!(receiver.await.is_ok());
+        assert!(guard.publish_if_current(|| ()).is_err());
+    }
+
+    #[tokio::test]
+    async fn newer_logical_open_supersedes_an_older_attempt_before_publish() {
+        let (older_cancel, older) =
+            register_open_attempt("logical-order-older", Some("logical-order-session"));
+        let (_newer_cancel, newer) =
+            register_open_attempt("logical-order-newer", Some("logical-order-session"));
+
+        assert!(older_cancel.await.is_ok());
+        assert!(older.publish_if_current(|| "older").is_err());
+        assert_eq!(newer.publish_if_current(|| "newer"), Ok("newer"));
+    }
+
+    #[tokio::test]
+    async fn local_open_can_supersede_a_pending_ssh_attempt() {
+        let (cancel, pending) =
+            register_open_attempt("local-wins-open", Some("local-wins-session"));
+        assert!(cancel_pending_open_for_logical("local-wins-session"));
+        assert!(cancel.await.is_ok());
+        assert!(pending.publish_if_current(|| ()).is_err());
+    }
+
+    #[test]
+    fn opens_without_logical_ids_publish_independently() {
+        let (_first_cancel, first) = register_open_attempt("unbound-open-first", None);
+        let (_second_cancel, second) = register_open_attempt("unbound-open-second", None);
+        assert_eq!(first.publish_if_current(|| 1), Ok(1));
+        assert_eq!(second.publish_if_current(|| 2), Ok(2));
     }
 }

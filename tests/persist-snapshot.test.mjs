@@ -62,6 +62,7 @@ test("persisted session helpers keep only durable fields and restore idle runtim
       host: " box ",
       port: 22,
       user: " me ",
+      authMethod: "key",
       identityFile: " ~/.ssh/id_ed25519 ",
       password: "secret",
       keyPassphrase: "secret",
@@ -80,7 +81,14 @@ test("persisted session helpers keep only durable fields and restore idle runtim
     mascot: "fox",
     pinned: true,
     note: "oknote",
-    remote: { host: "box", port: 22, user: "me", identityFile: "~/.ssh/id_ed25519", injectShellIntegration: true },
+    remote: {
+      host: "box",
+      port: 22,
+      user: "me",
+      authMethod: "key",
+      identityFile: "~/.ssh/id_ed25519",
+      injectShellIntegration: true,
+    },
   });
 
   const restored = fromPersistedSession(persisted);
@@ -161,7 +169,9 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
           paneB: "s-b",
           ratio: 0.95,
         },
-        inspectorTab: "unknown",
+        // Snapshots written before persistent Agent Timeline was removed must
+        // still restore, but the retired tab falls back to Overview.
+        inspectorTab: "timeline",
       },
       terminals: {
         "s-a": terminalSnapshot("kept"),
@@ -241,7 +251,15 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.deepEqual(snapshot.ui.collapsedDiffSections, { staged: true, untracked: true });
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.ui.collapsedDirs, "constructor"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.ui.collapsedDiffSections, "__proto__"), false);
-    assert.deepEqual(snapshot.ui.split, { mode: "vertical", paneA: "s-a", paneB: "s-b", ratio: 0.8 });
+    assert.deepEqual(snapshot.ui.split, {
+      root: {
+        type: "split",
+        direction: "vertical",
+        ratio: 0.8,
+        first: { type: "pane", sessionId: "s-a" },
+        second: { type: "pane", sessionId: "s-b" },
+      },
+    });
     assert.equal(snapshot.ui.inspectorTab, "overview");
     assert.deepEqual(Object.keys(snapshot.terminals), ["s-a"]);
     assert.deepEqual(Object.keys(snapshot.agentResume), ["s-a", "s-active", "s-b"]);
@@ -266,6 +284,52 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
   }
 });
 
+test("snapshot sanitizer restores a four-pane BSP layout and keeps its nested ratios", () => {
+  const root = {
+    type: "split",
+    direction: "horizontal",
+    ratio: 0.6,
+    first: {
+      type: "split",
+      direction: "vertical",
+      ratio: 0.4,
+      first: { type: "pane", sessionId: "top-left" },
+      second: { type: "pane", sessionId: "bottom-left" },
+    },
+    second: {
+      type: "split",
+      direction: "vertical",
+      ratio: 0.7,
+      first: { type: "pane", sessionId: "top-right" },
+      second: { type: "pane", sessionId: "bottom-right" },
+    },
+  };
+  const snapshot = sanitizeSnapshot({
+    version: 1,
+    savedAt: 1,
+    activeSessionId: "outside",
+    sessions: [
+      persistedSession("top-left", "/repo/one"),
+      persistedSession("bottom-left", "/repo/two"),
+      persistedSession("top-right", "/repo/three"),
+      persistedSession("bottom-right", "/repo/four"),
+      persistedSession("outside", "/repo/outside"),
+    ],
+    ui: {
+      sidebarVisible: true,
+      panelVisible: false,
+      collapsedDirs: {},
+      collapsedDiffSections: {},
+      split: { root },
+      inspectorTab: "overview",
+    },
+  });
+
+  assert.ok(snapshot);
+  assert.deepEqual(snapshot.ui.split, { root });
+  assert.equal(snapshot.activeSessionId, "bottom-right");
+});
+
 test("snapshot sanitizer falls back to local session dirs when recents are absent", () => {
   const snapshot = sanitizeSnapshot({
     version: 1,
@@ -278,6 +342,7 @@ test("snapshot sanitizer falls back to local session dirs when recents are absen
           host: "box",
           port: "22",
           user: "me",
+          authMethod: "password",
           password: "secret",
           keyPassphrase: "secret",
           acceptUnknownHostKey: true,
@@ -293,7 +358,12 @@ test("snapshot sanitizer falls back to local session dirs when recents are absen
   assert.deepEqual(snapshot.recentDirs, ["/repo"]);
   assert.deepEqual(snapshot.sessions.map((s) => s.id), ["local", "remote"]);
   assert.deepEqual(localSessionDirs(snapshot.sessions), ["/repo"]);
-  assert.deepEqual(snapshot.sessions[1].remote, { host: "box", port: 22, user: "me" });
+  assert.deepEqual(snapshot.sessions[1].remote, {
+    host: "box",
+    port: 22,
+    user: "me",
+    authMethod: "password",
+  });
 });
 
 test("snapshot sanitizer drops malformed optional session fields without dropping the session", () => {

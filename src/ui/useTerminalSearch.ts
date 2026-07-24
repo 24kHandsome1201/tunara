@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { SearchAddon } from "@xterm/addon-search";
 import { getSearchDecorations } from "@/styles/terminalTheme";
@@ -19,6 +19,7 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
   const [searchCount, setSearchCount] = useState<{ current: number; total: number } | null>(null);
   const [useRegex, setUseRegex] = useState(lastTerminalSearch.useRegex);
   const [caseSensitive, setCaseSensitive] = useState(lastTerminalSearch.caseSensitive);
+  const presentationMode = useUIStore((s) => s.presentationMode);
 
   const optionsRef = useRef({ useRegex: lastTerminalSearch.useRegex, caseSensitive: lastTerminalSearch.caseSensitive });
   optionsRef.current = { useRegex, caseSensitive };
@@ -53,8 +54,13 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
     termRef.current?.focus();
   }, [termRef]);
 
+  useEffect(() => {
+    if (presentationMode === "pure" && searchOpenRef.current) closeSearch();
+  }, [closeSearch, presentationMode]);
+
   const handleCustomKeyEvent = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "f" && e.type === "keydown") {
+      if (useUIStore.getState().presentationMode === "pure") return true;
       searchOpenRef.current = true;
       setSearchOpen(true);
       // Re-run the remembered query so reopening lands on live matches, and

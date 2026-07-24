@@ -1,6 +1,8 @@
 import { formatShortcut } from "./formatShortcut";
 import { useT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
+import { useState } from "react";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 interface SidebarNewTerminalControlProps {
   onNewTerminal: () => void;
@@ -13,8 +15,25 @@ export function SidebarNewTerminalControl({
 }: SidebarNewTerminalControlProps) {
   const t = useT();
   const shortcut = useUIStore((state) => state.keybindings.newTerminal);
+  const [menu, setMenu] = useState<{ items: MenuEntry[]; position: { x: number; y: number } } | null>(null);
+
+  const openNewMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenu({
+      position: { x: rect.right, y: rect.bottom },
+      items: [
+        { id: "new-terminal", label: t("sidebar.new_terminal"), icon: "terminal", action: onNewTerminal },
+        ...(onNewTerminalInDirectory
+          ? [{ id: "new-terminal-directory", label: t("sidebar.new_terminal_in_directory"), icon: "folder" as const, action: onNewTerminalInDirectory }]
+          : []),
+        null,
+        { id: "new-ssh", label: t("sidebar.new_ssh_connection"), icon: "ssh", action: () => useUIStore.getState().openSshConnect() },
+      ],
+    });
+  };
 
   return (
+    <>
     <div style={{ padding: "8px 12px 6px" }}>
       <div
         style={{
@@ -98,7 +117,36 @@ export function SidebarNewTerminalControl({
             </svg>
           </button>
         )}
+        <button
+          type="button"
+          onClick={openNewMenu}
+          title={t("sidebar.new_menu")}
+          aria-label={t("sidebar.new_menu")}
+          aria-haspopup="menu"
+          aria-expanded={Boolean(menu)}
+          className="hover-accent-bg"
+          style={{
+            width: 24,
+            height: "100%",
+            padding: 0,
+            border: "none",
+            borderLeft: "1px solid var(--c-border-2)",
+            background: "transparent",
+            color: "var(--c-accent)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
+        </button>
       </div>
     </div>
+    {menu && <ContextMenu items={menu.items} position={menu.position} onClose={() => setMenu(null)} />}
+    </>
   );
 }

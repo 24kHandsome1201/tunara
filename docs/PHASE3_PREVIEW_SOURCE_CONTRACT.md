@@ -56,7 +56,7 @@ PreviewSource = {
 - 不创建 WebView、Preview tab 或 Inspector 页面。
 - 不实现地址栏、刷新、前进/后退、缩放、viewport、截图、console/network 摘要。
 - 不实现 URL 可达性探测、服务进程关联、SSH tunnel 或端口转发。
-- 不进入 Phase 4，不改变 Agent Timeline。
+- 不扩张 Agent 产品范围。
 
 ## 安全 WebView surface 切片
 
@@ -138,6 +138,94 @@ Refresh 每次只执行一个操作：已有 ready 页面使用 reload，初始/
 - 带历史窗口原生关闭后回 closed；重开从批准来源 URL 开始，Back/Forward 均 disabled，无旧 generation 残留。
 - 既有精确 origin redirect、popup、download、ACL、stale、初始不可达与生命周期自动门继续回归。
 
-## 后置项
+## 可信缩放与常用 viewport 切片
 
-缩放、viewport、截图、console/network 摘要、服务重启关联和 SSH tunnel 仍留在后续决策。本切片完成只关闭当前 Active Milestone；[GOAL](./GOAL.md) 中尚未满足的 Phase 3 required gates 继续保持 Phase 3 进行中，不得进入 Phase 4。
+- 控件只存在于可信 main Inspector；不可信页面仍无 Tauri/app/plugin capability，也没有页面内 bridge。
+- Zoom 直接使用 macOS `WKWebView.pageZoom`，仅接受 75/90/100/110/125/150%；Rust 在执行前拒绝 NaN、无限值、越界和非预设值，并在返回成功前读取原生值确认。Reset 为 100%。
+- Viewport 仅接受 phone 390×844、tablet 768×1024、desktop 1280×720，另有 Fit 与 Reset（980×720）。macOS Rust 边界从 `WKWebView.frame` 扣除原生 `safeAreaInsets` 得到真实 CSS 内容尺寸，异步等待窗口 resize 提交后再回读；另行报告 outer logical size。只有实际 CSS 内容尺寸命中目标才标记 exact，屏幕约束导致不一致时明确返回 unavailable，不把 Tauri window inner、outer 或请求值伪装成页面 viewport。
+- zoom/viewport 状态只存在于完整来源键对应的 Rust runtime entry，并受 window generation 保护；不进入 workspace snapshot。原生关闭销毁 entry，重开默认恢复 100% 与 980×720。
+- 受控 loopback fixture 自行报告页面 `innerWidth/innerHeight/devicePixelRatio`，真实验收以该页面事实与 Rust 的 WKWebView frame/safe-area、outer 状态交叉核对，不向普通页面注入测量脚本。
+- viewport 动作只改变对应 `preview-*` 原生窗口，不调整 main window、Inspector 或 PTY rows/cols。
+
+## 用户触发的来源绑定截图与安全送回切片
+
+截图只由可信 `main` Inspector 中的用户显式动作触发；不可信 Preview 页面不获得截图、PTY、文件、shell、store、opener 或其他 app/plugin bridge，也不能自行截图、持续录屏或后台定时抓取。Rust command boundary 以完整 repository/worktree/workspace/session/terminal/source URL 来源键定位当前 `preview-*` WKWebView，并再次核对 active/resolved/local/eligible、真实窗口 label、当前 URL、physical PTY 与单调 window generation。窗口关闭、来源 stale、terminal exit、generation/URL/viewport/zoom 在捕获期间变化、窗口缺失或原生捕获不可用时均 fail closed；不允许退化为主窗口、整屏或其他应用截图。
+
+- macOS 只使用 `WKWebView.takeSnapshot`，并以原生 safe-area 裁出页面内容；PNG 像素不包含 Preview titlebar、main、PTY、桌面或其他 worktree Preview。只接受 PNG，像素上限 16,777,216、编码上限 32 MiB；非法、过大或不支持格式在写盘前拒绝。
+- 原始 PNG 与原始 metadata 仅写入 app cache 的 `preview-evidence` 本机目录，使用不可覆盖的新文件；安全本地引用以 `$HOME` 别名表达，不暴露用户名或绝对路径。它们不进入 workspace snapshot、Git、Journal 或远程同步。
+- 每条 metadata 只含脱敏 repository/worktree 摘要、workspace/session/terminal/source URL 的 SHA-256 安全引用、去 query/fragment/credentials 的安全 origin、捕获时间、页面 CSS viewport、原生 zoom、window generation、PNG 格式/像素尺寸/字节数/SHA-256。文件名不使用用户名、路径、session id、token、Cookie、URL 凭据或页面内容。
+- Copy 只复制由 Rust 返回的安全单行引用。Send 在 Rust 侧再次核对 capture 的来源 label/generation 与当前 logical-to-physical PTY 映射，只把“安全本地引用 + 同源 origin + 脱敏来源摘要”写入该来源真实 physical PTY 输入区；不接受当前选中但来源不同的 PTY，不复制 PNG/base64，不附加 CR/LF，不执行。
+- 关闭重开创建新 window generation，旧 capture 引用不能送入新窗口对应 PTY；两 worktree 即使 URL 形状相似也不共享截图记录。运行时仅保留有界索引，原始 artifact 生命周期仍是本机 evidence/cache 管理责任，不扩展为通用截图管理器。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用连接两个 detached/linked worktree、两个 loopback fixture 与两条真实 PTY；分别以 390×844/125% 和 768×1024/90% 捕获，再关闭重开来源 A 于 980×720/100% 捕获。
+- fixture 的 `innerWidth/innerHeight/devicePixelRatio`、WKWebView zoom 与 PNG 像素交叉可解释；三张原图人工检查只含对应页面，不含 main、PTY、另一个 Preview、桌面或其他应用。
+- A/B Send 只填入各自 physical PTY，另一 PTY 不变且没有执行；跨来源、关闭、旧 generation、stale/terminal-exit 与无窗口动作拒绝。
+- 中英文可信控制面由真实组件与自动 UI 门覆盖；390px 窄 Preview、双 worktree、既有 navigation/history/zoom/viewport/lifecycle/ACL/popup/download 回归保持。
+- Git 只收录脱敏报告和结构化汇总；原始 PNG、metadata、fixture JSONL、应用日志与完整命令输出仅留 ignored/cache/temp，并在验收后清理。
+
+## 基础失败 telemetry 与绑定 PTY 送回切片
+
+本切片只收集用户已显式打开、仍 active/resolved/local/eligible 的 Preview runtime 中三类失败：`console-error`、`unhandled-error`、`network-failure`。它不是 Console 面板或 Network waterfall，不记录成功请求、body、headers、cookies、storage、完整 stack、性能 trace 或任意对象/二进制数据。
+
+- macOS 在每次同源页面 `Finished` 后向该 `preview-*` WebView 注入闭包式最小包装器；包装器只提交上述严格 schema，页面 capability 只允许 `preview_telemetry_ingest`。页面仍不能调用 PTY、文件、shell、store、opener、core 或其他 app/plugin 命令。
+- ingest 同时核对真实调用 WebView label、当前 URL origin、完整 repository/worktree/workspace/session/terminal/source URL 来源键、系统随机 32 字节（64 hex 字符）generation nonce 与当前 window generation。关闭、重开、跨端口、跨来源、旧 generation、stale 或 terminal exit 均 fail closed；handler 与 nonce 随 WebView/runtime entry 销毁。
+- console/unhandled 只接受有界文字；network 只接受 allowlist method、status 与 `fetch/xhr/resource/request` phase。相对 URL 先按当前页面解析，再只保留同源脱敏 path；凭据、query、fragment、secret marker、用户名、绝对路径和长高熵 token 被移除或替换。外部 origin 只显示 `<external>`。
+- 单 generation 最多保留 32 条不同事件；相同 kind/message 去重并累加 count；Rust 每 10 秒最多接收 40 条，页面每秒最多提交 12 条，超限只增加 bounded dropped count。telemetry 只存在 Rust runtime，不进入 workspace snapshot、Journal 或远程同步。
+- 可信 main Inspector 显示 bounded failure summary，并提供 Copy、Clear 与显式 Send。Send 在 Rust 侧重新生成单行脱敏摘要，重新核对来源绑定的 `physicalPtyId` 仍存在，只写入该真实 PTY 输入区；不接受当前选中但来源不同的 PTY，也不附加 CR/LF 或执行。
+- main capability 通过显式 `allow-main-commands` 保留既有可信应用命令；不可信 Preview capability 仍只有 ingest。release 构建必须检查 ACL pruning 输出，确保既有 PTY/Preview 主窗口命令未被意外裁掉。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用连接两个 linked worktree、两个 loopback 端口与两条真实 PTY；A/B 分别产生可区分的 console、unhandled 与 HTTP 503 fetch 失败，Inspector 只显示对应脱敏摘要。
+- A/B Send 分别只填入各自物理 PTY，未附加回车、未执行；Clear 清空当前 generation 的 bounded buffer。
+- A 原生关闭/重开后 generation 变化，旧窗口事件不污染新 entry，B 事件不进入 A。
+- 页面对 `fs_read_file`、store、`pty_write` 均得到 ACL 拒绝；伪造 telemetry nonce 到达窄 ingest 后仍被 generation 校验拒绝，没有任意高权限桥。
+- 原始 fixture JSONL、应用日志、截图和完整命令输出只保留本机 ignored/temp，Git 只收录本脱敏合同、报告和结构化代码/测试。
+
+## 来源绑定的 fail-closed 服务重启准备切片
+
+本切片不建设进程管理器或服务编排。可信 main Inspector 在 Preview `failed` 时继续展示 repository、worktree、workspace、session、terminal generation、source URL 与 physical PTY 的完整来源键，并提供“查看来源终端”。重启入口只是一项显式准备动作：把同一 terminal generation 已经真实提交过、且由 Rust 再验证的安全服务启动命令填入该 physical PTY 输入区；不附加 CR/LF、不执行、不自动聚焦后提交。
+
+### 命令 provenance 与顺序
+
+- xterm 解析真实 OSC 133 `C/D` 后，main 才把 command、submitted timestamp、单调 sequence 与 terminal generation 送入 Rust runtime map。Preview URL 扫描在 xterm 完成同一输出批次解析后运行，因此服务极快输出 URL 时也不会错误绑定上一代命令。
+- 同一完整来源再次输出 URL 时，只允许用当前 Rust command record 可证明的新 generation 更新 runtime provenance；保留首次发现时间。旧来源对象、旧窗口 failure 或迟到输出不能获得新 generation 的资格。
+- provenance、Preview source、failure/restart eligibility 只驻留内存，不进入 workspace snapshot、Journal 或远程同步。关闭重开、terminal exit 与另一来源不继承旧状态。
+
+### Rust fail-closed 边界
+
+- `preview_restart_prepare` 仅属于可信 main capability；不可信 Preview capability 仍只有严格 telemetry ingest。
+- Rust 同时核对 active/resolved/local/eligible、完整来源键、source URL、physical PTY、terminal generation/sequence/timestamp、命令指纹、当前 command record 与 failed runtime。PTY 忙碌、已退出、来源 stale、generation 改变、跨 worktree/端口、重复 prepare 或任何竞争都拒绝并返回可解释原因。
+- 命令上限为 384 bytes，只接受窄服务启动形状；拒绝 CR/LF、控制字符、首尾空白、compound/subshell、重定向、pipe、引号/转义/通配等 shell 结构及任意危险命令。不从页面、URL、端口、进程列表或历史记录猜命令，不扫描端口，不修改项目文件、脚本或配置。
+- prepare 持有 runtime 与 command state 锁完成最后一次核对，再只写命令字节到绑定 PTY，并以 one-shot `prepared` 阻止重复填入。用户必须在真实终端中检查并显式提交。
+
+### 本切片真实验收门
+
+- optimized macOS 隔离 identifier 应用连接两个 linked worktree、两个 loopback 服务与两条真实 PTY；A/B 初始均 ready，停止 A 并 Refresh 后只有 A failed 且重启可准备，B 保持 ready。
+- Inspector 显示 A 的完整来源键；“查看来源终端”回到并聚焦 A 的真实 xterm。重启按钮只把命令填入 A，B snapshot 不变，A 服务仍未监听；用户显式回车后 A 恢复 ready。
+- 跨来源、旧 generation、关闭重开残留、不可信后续命令与 terminal exit 全部拒绝；恢复后的新 URL 只绑定新 generation。
+- Preview 页面主动尝试文件、store、PTY 与 app command，0 次意外成功；main 与另一 PTY 正常。验收不依赖 Accessibility。
+- 原始终端尾部、应用日志、fixture 与 bundle 只留本机临时路径并在交付前清理；Git 只收录脱敏结论、代码与测试。
+
+## SSH remote loopback 显式转发闭环
+
+### 来源与用户动作
+
+- SSH terminal 输出中的合法 `localhost`、`127.0.0.1`、`[::1]` URL 仍先记录为 `remote-manual`，不会自动建立 tunnel。只有可信 main Inspector 对当前 active/resolved 来源执行“建立转发并打开”，并提供一次性 256-bit action nonce，才进入 opening。
+- 来源键除既有 repository/worktree/workspace/session/terminal generation/physical PTY/remote URL 外，还固定 SSH host、port、user 与逻辑 session。Rust 在监听前后都重新核对注册来源、同一 `Arc<Session>`、连接存活及完整来源；nonce 全局有界去重。
+- 原始 remote URL 永久保留在派生来源的 `remoteSourceUrl`；OS 通过 `127.0.0.1:0` 分配本地端口，实际 `localEndpoint` 明确标记为 `forwarded`。相同远端 URL/端口的不同 session/worktree 不共享 tunnel 或 Preview identity。
+
+### 窄 transport 与生命周期
+
+- tunnel 只复用来源绑定的既有 authenticated russh handle，并仅调用 `channel_open_direct_tcpip` 到已验证 remote loopback 的精确 effective port；不拼 shell，不读取或复制凭据，不扫描端口，不支持公网目标、`0.0.0.0`、reverse、dynamic 或 SOCKS。
+- 本地 listener 只绑定 `127.0.0.1` 的 OS 分配端口；每个 tunnel 最多同时处理 32 个本机 loopback 连接。建立 probe、relay channel 或 listener 失败都会进入带原因的 failed，不会改远端服务或项目。
+- 显式关闭 Preview/tunnel、physical PTY replacement、terminal/SSH exit 与 app exit 都取消 listener 和 relay tasks。remote service 停止后的下一次原生 Preview 请求使对应 tunnel/Preview failed，其他来源保持 ready；恢复必须重新显式建立，不从 snapshot、Journal 或重开窗口恢复。
+- Preview capability 仍只有 telemetry ingest；页面不能观察、建立、重配或关闭 tunnel，也不能获得 SSH、PTY、file、store、shell 或 app command。
+
+### 真实验收门
+
+- optimized macOS 隔离 identifier 应用使用真实 codex-netcup transport、两个独立 SSH Git workspace/session/physical PTY，以及同一 remote port 上可区分的 IPv4/IPv6 loopback 服务。A/B 显式建立后获得不同本地端点，两个 WKWebView 分别完成页面与 ACL telemetry。
+- 停止 A 后以 A 的原生 Preview Refresh 触发 relay failure：只有 A 为 failed，B 保持 ready；显式关闭 B 后 runtime/listener 消失，新 nonce 显式重建才恢复。B terminal/SSH exit 后 listener 回收，旧来源动作拒绝。
+- 并发建立只能有一个 winner；nonce replay、跨 worktree、stale 与旧 physical generation 全部拒绝。页面对 file/store/PTY/SSH/tunnel/app 六类高权限探针 0 次意外成功。详见[脱敏报告](./benchmarks/phase3-preview-ssh-tunnel-macos-2026-07-13.md)。

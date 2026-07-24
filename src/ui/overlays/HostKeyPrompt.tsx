@@ -70,6 +70,7 @@ export function HostKeyPromptDialog() {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="ssh-host-key-title"
         tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === "Escape") void decide(false);
@@ -93,7 +94,7 @@ export function HostKeyPromptDialog() {
         }}
       >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
-          <span style={{ fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
+          <span id="ssh-host-key-title" style={{ fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
             {t(titleKey)}
           </span>
         </div>

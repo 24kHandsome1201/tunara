@@ -425,13 +425,13 @@ test("agent hook runtime files avoid predictable shared tmp paths", () => {
   assert.match(ssh, /SshSession::open\(params, on_event\)[\s\S]*state\.insert\([\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
 });
 
-test("agent lifecycle policy preserves prompt state for Codex and Pi", () => {
+test("agent lifecycle policy preserves prompt state for Codex, Pi, and Amp", () => {
   const policy = read("src/modules/terminal/lib/agent-lifecycle.ts");
   const tracker = read("src/modules/terminal/lib/terminal-prompt-agent-state.ts");
   const utils = read("src/modules/terminal/lib/terminal-utils.ts");
 
   assert.match(policy, /export const HOOK_READY_AGENTS = new Set<AgentCode>\(\["CC", "DR"\]\);/);
-  assert.match(policy, /export const PROMPT_READY_AGENTS = new Set<AgentCode>\(\["CX", "PI"\]\);/);
+  assert.match(policy, /export const PROMPT_READY_AGENTS = new Set<AgentCode>\(\["CX", "PI", "AM"\]\);/);
   assert.match(policy, /export function detectAgentCommand\(commandLine: string\): AgentCode \| null/);
   assert.match(policy, /export function isAgentShellTitle\(title: string\): boolean/);
   assert.match(policy, /export function initialAgentActivity\(agent: AgentCode\): AgentActivity/);
@@ -459,8 +459,11 @@ test("agent lifecycle policy preserves prompt state for Codex and Pi", () => {
   assert.match(policy, /export function detectPiScreenState\(text: string\): AgentScreenState/);
   assert.match(policy, /PI_BUSY_PATTERN\.test\(recent\)[\s\S]*return "busy"/);
   assert.match(policy, /PI_READY_STATUS_PATTERN\.test\(recent\)[\s\S]*return "ready"/);
+  assert.match(policy, /export function detectAmpScreenState\(text: string\): AgentScreenState/);
+  assert.match(policy, /AMP_COMPOSER_TOP_PATTERN\.test\(recent\)[\s\S]*AMP_COMPOSER_BOTTOM_PATTERN\.test\(recent\)[\s\S]*return "ready"/);
   assert.match(policy, /export function detectPromptAgentScreenState\(agent: AgentCode, text: string\)/);
   assert.match(tracker, /export const PROMPT_AGENT_STATE_CHECK_DELAY_MS = 500;/);
+  assert.match(tracker, /if \(stateTimer\) return;/);
   assert.match(tracker, /getTerminalTailText\(terminal, PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT\)/);
   assert.match(tracker, /const screenState = detectPromptAgentScreenState\(current\.agent, tail\);/);
   assert.match(tracker, /screenState === "busy"[\s\S]*current\.agentActivity === "idle"[\s\S]*onBusy\(getSessionId\(\)\)/);
@@ -591,6 +594,6 @@ test("UI renders sidebar progress only when an agent is busy", () => {
   assert.match(status, /session\.agent && session\.agentActivity === "idle" && !hasCompletedAgentTurn\(session\)/);
   assert.match(status, /agentResumePendingInput\(resumeCommand\)/);
   assert.match(globalBar, /agentResumePendingInput\(resumeCommand\)/);
-  assert.match(main, /<AgentStatusBar session=/);
+  assert.doesNotMatch(main, /AgentStatusBar/);
   assert.doesNotMatch(diff, /session\.runState !== "running"/);
 });

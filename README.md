@@ -73,7 +73,8 @@ Tunara now has a small cockpit layer for people who keep several sessions open a
 - Session overview cards expose cwd, agent, Git, notes, and quick actions in one place
 - Session Notes add autosaved per-session scratchpads with task counts
 - Pinned sessions get a star marker and float higher in command-palette session results
-- Starter workflows can add common review and cleanup commands in one click
+- Starter workflows can add common review, test, and diagnostic commands in one click
+- Overview keeps a bounded, runtime-only list of recent session activity; it is not a persistent Agent history
 
 Future direction and feature notes live in [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -126,6 +127,10 @@ brew install --cask tunara
 
 Use Settings > App to check, install, and restart into a new release. Homebrew users can also update with `brew upgrade --cask tunara`.
 
+If Tunara 1.16 created local Agent history on this Mac, Settings > App shows a
+one-time option to delete that legacy data. Current versions do not read it,
+and never remove it without explicit confirmation.
+
 ### From source
 
 ```bash
@@ -133,7 +138,12 @@ pnpm install
 pnpm tauri build
 ```
 
-Prerequisites: Rust stable, Node 20+, pnpm 9+, plus the platform-specific [Tauri dependencies](https://tauri.app/start/prerequisites/).
+Prerequisites: Rust stable, Node 24+, pnpm 9+, plus the platform-specific [Tauri dependencies](https://tauri.app/start/prerequisites/).
+
+**Platform support:** macOS on Apple Silicon is the supported release target.
+Linux and Windows are experimental source-build targets: they receive no
+official installer or complete native Preview guarantee. Linux CI checks the
+shared compile and test surface, but it is not a release-support promise.
 
 ## Development
 
@@ -142,19 +152,21 @@ pnpm install          # install dependencies
 pnpm tauri dev        # dev mode
 pnpm build            # frontend build
 pnpm typecheck        # type-check
-pnpm test             # all tests (Node + Rust)
+pnpm test:node        # pure frontend logic and source-contract tests
+pnpm test:ui          # happy-dom component tests
+pnpm test             # all tests (Node + UI + Rust)
 ```
 
 Deeper developer docs live under [`docs/`](docs/):
 
-- [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: every Tauri command, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and the managed state objects.
-- [Testing](docs/TESTING.md) — the `.mjs`-imports-`.ts` pure-logic convention, the source-assertion style, the Node + Cargo split, and how to add a test.
+- [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: every Tauri command, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and the six managed state objects.
+- [Testing](docs/TESTING.md) — the `.mjs`-imports-`.ts` pure-logic convention, UI component gate, Node/UI/Cargo split, and how to add a test.
 - [Agent detection](docs/AGENT_DETECTION.md) — how agent detection & lifecycle work, plus a step-by-step checklist for adding a new agent.
-- [State & persistence](docs/STATE_AND_PERSISTENCE.md) — the Zustand dual store, the persisted workspace snapshot, and the contributor gotchas around restore-on-restart.
+- [State & persistence](docs/STATE_AND_PERSISTENCE.md) — the three Zustand stores, persisted workspace snapshot, and contributor gotchas around restore-on-restart.
 
 ## Keybindings
 
-| Action | macOS | Windows / Linux |
+| Action | macOS | Windows / Linux experimental builds |
 |--------|-------|-----------------|
 | New terminal | ⌘T | Ctrl+T |
 | Close session | ⌘W | Ctrl+W |
@@ -207,7 +219,7 @@ src-tauri/src/          # Rust backend
 
 | Milestone | Status | Contents |
 |-----------|--------|----------|
-| M0 Store | done | Zustand dual-store + Tauri Store persistence |
+| M0 Store | done | Zustand stores + Tauri Store persistence |
 | M1 Multi-session | done | Multi-PTY, sidebar grouping, tab navigation |
 | M2 Agent | done | 12 agent CLIs auto-detected |
 | M3 Git Diff | done | git2 + read-only review rail |
@@ -228,7 +240,7 @@ What we will not build matters as much as what we will. These are off the roadma
 
 - Bundled AI chat / model integration / MCP orchestration
 - Agent catalog, agent launcher, batch-launch entry points
-- Structured parsing of agent stdout, agent change timeline
+- Structured parsing of agent stdout, persistent Agent event history/search, or a rich Agent timeline
 - Stage / commit / push or any write operations in the DiffPanel
 - Plugin system, custom renderer, recursive tile splits
 - Telemetry, analytics, any kind of phone-home

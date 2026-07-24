@@ -8,6 +8,7 @@ import {
   registerDirtyDraft,
   requestActiveDirtyDraftAction,
   requestDirtyDraftAction,
+  requestDirtyDraftFileAction,
   resetDirtyDraftGuardForTests,
   updateDirtyDraft,
 } from "../src/modules/editor/dirty-draft-guard.ts";
@@ -60,6 +61,34 @@ test("application-wide close allows a clean editor without retaining an action",
   assert.equal(confirmDirtyDraftDiscard(owner), false);
 });
 
+test("application-wide close confirms every dirty file before running", () => {
+  const first = Symbol("first");
+  const second = Symbol("second");
+  const confirmations = [];
+  let closes = 0;
+  registerDirtyDraft({ owner: first, sessionId: "a", filePath: "/a.txt", dirty: true, requestConfirmation: () => confirmations.push("first") });
+  registerDirtyDraft({ owner: second, sessionId: "b", filePath: "/b.txt", dirty: true, requestConfirmation: () => confirmations.push("second") });
+
+  assert.equal(requestActiveDirtyDraftAction(() => closes++), false);
+  assert.deepEqual(confirmations, ["first"]);
+  assert.equal(confirmDirtyDraftDiscard(first), true);
+  assert.deepEqual(confirmations, ["first", "second"]);
+  assert.equal(closes, 0);
+  assert.equal(confirmDirtyDraftDiscard(second), true);
+  assert.equal(closes, 1);
+});
+
+test("file-tab close only guards the matching dirty draft", () => {
+  const first = Symbol("first");
+  const second = Symbol("second");
+  let requested = "";
+  registerDirtyDraft({ owner: first, sessionId: "a", filePath: "/a.txt", dirty: true, requestConfirmation: () => { requested = "first"; } });
+  registerDirtyDraft({ owner: second, sessionId: "a", filePath: "/b.txt", dirty: true, requestConfirmation: () => { requested = "second"; } });
+
+  assert.equal(requestDirtyDraftFileAction("a", "/b.txt", () => {}), false);
+  assert.equal(requested, "second");
+});
+
 test("cancel keeps the dirty draft and drops pending navigation", () => {
   const owner = Symbol("draft");
   let runs = 0;
@@ -99,9 +128,10 @@ test("latest blocked intent replaces an older navigation intent", () => {
   assert.deepEqual(runs, ["second"]);
 });
 
-test("session navigation and removal boundaries are wired to the central guard", async () => {
+test("session removal is guarded while tab selection keeps mounted drafts intact", async () => {
   const source = await readFile(new URL("../src/state/sessions.ts", import.meta.url), "utf8");
-  assert.match(source, /setActive: \(id\) => \{[\s\S]*requestDirtyDraftAction\(\[currentId\]/);
+  const setActive = source.slice(source.indexOf("setActive: (id)"), source.indexOf("// Cycle to the next/prev session"));
+  assert.doesNotMatch(setActive, /requestDirtyDraftAction/);
   assert.match(source, /removeSession: \(id\) => \{\s*if \(!requestDirtyDraftAction\(\[id\]/);
   assert.match(source, /closeSession: \(id\) => \{\s*if \(!requestDirtyDraftAction\(\[id\]/);
   assert.match(source, /closeSessions: \(ids, opts\) => \{[\s\S]*requestDirtyDraftAction\(/);

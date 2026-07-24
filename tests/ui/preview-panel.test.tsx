@@ -4,6 +4,21 @@ import { expect, test } from "vitest";
 import { PreviewPanel } from "@/ui/PreviewPanel";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 import type { Session } from "@/ui/types";
+import type { PreviewRuntimeState, PreviewTunnelState } from "@/modules/preview/preview-window";
+
+function runtime(overrides: Partial<PreviewRuntimeState> = {}): PreviewRuntimeState {
+  return {
+    status: "ready",
+    currentUrl: "http://127.0.0.1:41731/",
+    canGoBack: false,
+    canGoForward: false,
+    zoomFactor: 1,
+    viewport: { mode: "reset", requestedWidth: 980, requestedHeight: 720, actualWidth: 980, actualHeight: 720, outerWidth: 980, outerHeight: 748, exact: true },
+    telemetry: { generation: 1, events: [], dropped: 0, text: "Preview failures (generation 1)" },
+    restart: { eligible: false, reason: "not-failed" },
+    ...overrides,
+  };
+}
 
 function source(overrides: Partial<PreviewSource> = {}): PreviewSource {
   return {
@@ -12,6 +27,7 @@ function source(overrides: Partial<PreviewSource> = {}): PreviewSource {
     workspaceId: "repo-a::worktree-a",
     sessionId: "session-a",
     terminalId: "session-a:0",
+    physicalPtyId: 7,
     sourceUrl: "http://127.0.0.1:41731/",
     discoveredAt: 1,
     transport: "local",
@@ -29,6 +45,8 @@ function session(previewSources: PreviewSource[]): Session {
     dir: "/repo/a",
     branch: "main",
     runState: "idle",
+    ptyId: previewSources[0]?.physicalPtyId,
+    previewCommandProvenance: previewSources[0]?.restartProvenance,
     previewSources,
     updatedAt: 1,
   };
@@ -40,7 +58,7 @@ test("renders the full source identity and opens only an eligible source", async
     calls.push({ command, payload });
     if (command === "preview_open") return "preview-test";
     if (command === "preview_status") {
-      return calls.some((call) => call.command === "preview_open") ? { status: "ready", currentUrl: eligible.sourceUrl, canGoBack: false, canGoForward: false } : null;
+      return calls.some((call) => call.command === "preview_open") ? runtime({ currentUrl: eligible.sourceUrl }) : null;
     }
     throw new Error(`unexpected command: ${command}`);
   });
@@ -60,21 +78,62 @@ test("renders the full source identity and opens only an eligible source", async
 test("keeps SSH, stale, and fallback sources visibly blocked", () => {
   mockIPC((command) => command === "preview_status" ? null : undefined);
   render(<PreviewPanel session={session([
-    source({ terminalId: "session-a:1", transport: "ssh", permission: "remote-manual" }),
+    source({ terminalId: "session-a:1", transport: "ssh", permission: "remote-manual", sshHost: "dev.example", sshPort: 22, sshUser: "mawei" }),
     source({ terminalId: "session-a:2", state: "stale", staleReason: "terminal-exited" }),
     source({ terminalId: "session-a:3", workspaceResolution: "fallback" }),
   ])} />);
 
-  expect(screen.getAllByText("Closed").length).toBe(2);
+  expect(screen.getAllByText("Closed").length).toBe(3);
   expect(screen.getByText("Source stale / terminal exited")).toBeTruthy();
   for (const button of screen.getAllByRole("button", { name: "Open Preview" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   }
 });
 
+test("opens an SSH Preview only after an explicit source-bound tunnel action", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const remote = source({
+    transport: "ssh",
+    permission: "remote-manual",
+    sourceUrl: "http://127.0.0.1:41731/app",
+    sshHost: "dev.example",
+    sshPort: 22,
+    sshUser: "mawei",
+  });
+  const forwarded: PreviewSource = {
+    ...remote,
+    permission: "forwarded" as const,
+    sourceUrl: "http://127.0.0.1:53124/app",
+    remoteSourceUrl: remote.sourceUrl,
+    tunnelId: "a".repeat(64),
+  };
+  let tunnel: PreviewTunnelState | null = null;
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_tunnel_status") return tunnel;
+    if (command === "preview_tunnel_open") {
+      tunnel = { status: "ready", remotePort: 41731, localEndpoint: "http://127.0.0.1:53124/app", previewSource: forwarded };
+      return tunnel;
+    }
+    if (command === "preview_open") return "preview-forwarded";
+    if (command === "preview_status") return (payload as { source: PreviewSource }).source.permission === "forwarded" ? runtime({ currentUrl: forwarded.sourceUrl }) : null;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([remote])} />);
+
+  const external = screen.getByRole("button", { name: "Open externally" }) as HTMLButtonElement;
+  expect(external.disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Forward and open" }));
+  await waitFor(() => expect(calls.some((call) => call.command === "preview_tunnel_open" && /^[0-9a-f]{64}$/.test((call.payload as { actionNonce: string }).actionNonce))).toBe(true));
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_open", payload: { source: forwarded } }));
+  expect(await screen.findByText("http://127.0.0.1:53124/app")).toBeTruthy();
+  expect(screen.getByText("Tunnel ready")).toBeTruthy();
+  expect(calls.some((call) => call.command === "pty_write")).toBe(false);
+});
+
 test("shows a failed load with manual recovery and does not pretend it is ready", async () => {
   mockIPC((command) => {
-    if (command === "preview_status") return { status: "failed", currentUrl: source().sourceUrl, canGoBack: false, canGoForward: false };
+    if (command === "preview_status") return runtime({ status: "failed", currentUrl: source().sourceUrl });
     if (command === "preview_refresh") return undefined;
     throw new Error(`unexpected command: ${command}`);
   });
@@ -87,8 +146,47 @@ test("shows a failed load with manual recovery and does not pretend it is ready"
   expect(screen.getByRole("button", { name: "Open externally" })).toBeTruthy();
 });
 
+test("offers only a proven failed-source command and delegates fill-without-execute to Rust", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source({
+    restartProvenance: { generation: "session-a:0:1", sequence: 1, command: "python3 -m http.server 41731", submittedAt: 10 },
+  });
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return runtime({
+      status: "failed",
+      currentUrl: eligible.sourceUrl,
+      restart: { eligible: true, command: "python3 -m http.server 41731", reason: "ready" },
+    });
+    if (command === "preview_restart_prepare") return undefined;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  expect(await screen.findByText("python3 -m http.server 41731")).toBeTruthy();
+  const prepare = screen.getByRole("button", { name: "Fill source PTY" }) as HTMLButtonElement;
+  expect(prepare.disabled).toBe(false);
+  fireEvent.click(prepare);
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_restart_prepare", payload: { source: eligible } }));
+  expect(calls.some((call) => call.command === "pty_write")).toBe(false);
+});
+
+test("keeps restart disabled for busy, stale, changed, exited, or unproven sources", async () => {
+  const reasons = ["terminal-busy", "source-stale", "provenance-changed", "pty-exited", "command-unavailable"] as const;
+  let index = 0;
+  mockIPC((command) => command === "preview_status"
+    ? runtime({ status: "failed", restart: { eligible: false, reason: reasons[index++] ?? "command-unavailable" } })
+    : undefined);
+  render(<PreviewPanel session={session(reasons.map((_, sourceIndex) => source({ terminalId: `session-a:${sourceIndex}` })))} />);
+
+  await screen.findAllByText("Unreachable / failed");
+  for (const button of screen.getAllByRole("button", { name: "Fill source PTY" })) {
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  }
+});
+
 test("terminal exit keeps close available but blocks refresh and a new internal Preview", async () => {
-  mockIPC((command) => command === "preview_status" ? { status: "ready", currentUrl: source().sourceUrl, canGoBack: false, canGoForward: false } : undefined);
+  mockIPC((command) => command === "preview_status" ? runtime({ currentUrl: source().sourceUrl }) : undefined);
   render(<PreviewPanel session={session([source({ state: "stale", staleReason: "terminal-exited" })])} />);
 
   expect(await screen.findByText("Source stale / terminal exited")).toBeTruthy();
@@ -102,7 +200,7 @@ test("uses Rust-reported history state and submits addresses through the trusted
   const eligible = source();
   mockIPC((command, payload) => {
     calls.push({ command, payload });
-    if (command === "preview_status") return { status: "ready", currentUrl: "http://127.0.0.1:41731/a", canGoBack: true, canGoForward: false };
+    if (command === "preview_status") return runtime({ currentUrl: "http://127.0.0.1:41731/a", canGoBack: true });
     if (["preview_go_back", "preview_navigate"].includes(command)) return undefined;
     throw new Error(`unexpected command: ${command}`);
   });
@@ -118,4 +216,116 @@ test("uses Rust-reported history state and submits addresses through the trusted
   fireEvent.change(address, { target: { value: "/b?q=1#two" } });
   fireEvent.submit(screen.getByRole("form", { name: "Trusted Preview navigation" }));
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_navigate", payload: { source: eligible, address: "/b?q=1#two" } }));
+});
+
+test("changes zoom and viewport only after Rust reports native state", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  let state = runtime();
+  const eligible = source();
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return state;
+    if (command === "preview_set_zoom") {
+      state = runtime({ zoomFactor: 1.25 });
+      return undefined;
+    }
+    if (command === "preview_set_viewport") {
+      state = runtime({ viewport: { mode: "preset", requestedWidth: 390, requestedHeight: 844, actualWidth: 390, actualHeight: 844, outerWidth: 390, outerHeight: 872, exact: true } });
+      return undefined;
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  const zoom = await screen.findByRole("button", { name: "125%" });
+  expect(zoom.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(zoom);
+  await waitFor(() => expect(zoom.getAttribute("aria-pressed")).toBe("true"));
+  fireEvent.click(screen.getByRole("button", { name: "Phone 390×844" }));
+  await screen.findByText("390×844");
+  expect(calls).toContainEqual({ command: "preview_set_zoom", payload: { source: eligible, factor: 1.25 } });
+  expect(calls).toContainEqual({ command: "preview_set_viewport", payload: { source: eligible, width: 390, height: 844 } });
+});
+
+test("shows bounded failures and explicitly copies, clears, or fills only the source PTY", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source({ sourceUrl: "http://127.0.0.1:41731/app?token=secret#private" });
+  let state = runtime({
+    currentUrl: eligible.sourceUrl,
+    telemetry: {
+      generation: 4,
+      events: [
+        { kind: "console-error", message: "Render failed", count: 2 },
+        { kind: "network-failure", message: "GET /api · HTTP 503 · fetch", count: 1 },
+      ],
+      dropped: 3,
+      text: "Preview failures (generation 4)\n[console-error] Render failed ×2\n[network-failure] GET /api · HTTP 503 · fetch",
+    },
+  });
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return state;
+    if (command === "preview_telemetry_send") return undefined;
+    if (command === "preview_telemetry_clear") {
+      state = runtime({ telemetry: { generation: 4, events: [], dropped: 0, text: "Preview failures (generation 4)" } });
+      return undefined;
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  expect(await screen.findByText("Render failed ×2")).toBeTruthy();
+  expect(screen.getByText("GET /api · HTTP 503 · fetch")).toBeTruthy();
+  expect(screen.queryByText(/token=secret/)).toBeNull();
+  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-telemetry"]')!);
+  await waitFor(() => expect(calls).toContainEqual({ command: "preview_telemetry_send", payload: { source: eligible } }));
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  await screen.findByText("No bounded console or network failures for this Preview generation.");
+});
+
+test("captures only on explicit action and sends the safe reference to the bound PTY without execution", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source();
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return runtime();
+    if (command === "preview_capture") {
+      return {
+        captureId: "capture-safe",
+        localRef: "$HOME/Library/Caches/test/preview-evidence/capture-safe.png",
+        sourceOrigin: "http://127.0.0.1:41731",
+        sourceSummary: "repo=repository-sha256:a worktree=worktree-sha256:b",
+        preparedText: "Preview screenshot: ref=$HOME/Library/Caches/test/preview-evidence/capture-safe.png origin=http://127.0.0.1:41731 source=redacted generation=4",
+        capturedAtMs: 10,
+        viewportCssWidth: 980,
+        viewportCssHeight: 720,
+        zoomFactor: 1,
+        windowGeneration: 4,
+        imageFormat: "png",
+        imageWidth: 1960,
+        imageHeight: 1440,
+        imageSha256: "abc",
+      };
+    }
+    if (command === "preview_send_capture_to_source_terminal") {
+      return { terminalRef: "terminal-sha256:c", bytesWritten: 142, executed: false };
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  expect(calls.some((call) => call.command === "preview_capture")).toBe(false);
+  fireEvent.click(await screen.findByRole("button", { name: "Capture PNG" }));
+  await waitFor(() => expect(calls).toContainEqual({
+    command: "preview_capture",
+    payload: { source: eligible, options: { format: "png" } },
+  }));
+  expect(await screen.findByText(/1960×1440 PNG/)).toBeTruthy();
+
+  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-capture"]')!);
+  await waitFor(() => expect(calls).toContainEqual({
+    command: "preview_send_capture_to_source_terminal",
+    payload: { source: eligible, captureId: "capture-safe" },
+  }));
+  expect(await screen.findByText("Filled 142 bytes into the bound PTY without executing.")).toBeTruthy();
 });

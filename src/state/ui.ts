@@ -3,20 +3,23 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectPrefill } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
-import { isLanguage, setLanguage as applyLanguage, type Language } from "@/modules/i18n";
+import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
 import { persistBootAppearance } from "@/styles/shell-tint-boot";
+import {
+  emptySplitState,
+  insertSplitPane as insertSplitPaneLayout,
+  removeSplitPane as removeSplitPaneLayout,
+  replaceSplitPane as replaceSplitPaneLayout,
+  setSplitRatioAt,
+  type SplitDirection,
+  type SplitPath,
+  type SplitState,
+} from "@/modules/session/split-layout";
 
 export type CursorStyle = "bar" | "block" | "underline";
-
-export type SplitMode = "single" | "horizontal" | "vertical";
-
-export interface SplitState {
-  mode: SplitMode;
-  paneA: string | null;
-  paneB: string | null;
-  ratio: number;
-}
+export type PresentationMode = "workspace" | "pure";
+export type { SplitState } from "@/modules/session/split-layout";
 
 export interface AppearanceSettings {
   theme: ThemeType;
@@ -216,6 +219,15 @@ export interface HostKeyPrompt {
   reason: string;
 }
 
+/** One server-issued keyboard-interactive challenge round. Responses are kept
+ * in the dialog component only and are never added to this store. */
+export interface KeyboardInteractivePrompt {
+  promptId: string;
+  name: string;
+  instructions: string;
+  prompts: Array<{ prompt: string; echo: boolean }>;
+}
+
 /** A workflow chosen from the palette whose template has {{params}} still to
  * fill. An app-level prompt collects the values, then runs it. */
 export interface PendingWorkflow {
@@ -231,11 +243,25 @@ export interface PendingWorkflow {
   targetSessionId?: string;
 }
 
+export interface WorkspaceFileTab {
+  id: string;
+  sessionId: string;
+  filePath: string;
+  fileName: string;
+  dirty: boolean;
+}
+
+function workspaceFileTabId(sessionId: string, filePath: string): string {
+  return `${sessionId}\0${filePath}`;
+}
+
 interface UIState extends AppearanceSettings {
   ready: boolean;
   configLoaded: boolean;
   configPath: string;
   configError: string | null;
+  presentationMode: PresentationMode;
+  nativeFullscreen: boolean;
   sidebarVisible: boolean;
   panelVisible: boolean;
   overlay: OverlayType;
@@ -246,6 +272,8 @@ interface UIState extends AppearanceSettings {
   split: SplitState;
   inspectorTab: InspectorTab;
   settingsTab: SettingsTab;
+  fileTabs: WorkspaceFileTab[];
+  activeFileTabId: string | null;
   toasts: Toast[];
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
    *  so two SSH connections that both hit an unknown/unverifiable host key
@@ -253,11 +281,15 @@ interface UIState extends AppearanceSettings {
    *  ssh_open needs its own prompt answered or it stays blocked. The dialog
    *  renders the head; answering it shifts to the next. */
   hostKeyPrompts: HostKeyPrompt[];
+  keyboardInteractivePrompts: KeyboardInteractivePrompt[];
   pendingWorkflow: PendingWorkflow | null;
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   commandUsage: Record<string, number>;
 
+  setPresentationMode: (mode: PresentationMode) => void;
+  togglePresentationMode: () => void;
+  setNativeFullscreen: (fullscreen: boolean) => void;
   setSidebarVisible: (visible: boolean) => void;
   setPanelVisible: (visible: boolean) => void;
   toggleSidebar: () => void;
@@ -266,6 +298,12 @@ interface UIState extends AppearanceSettings {
   openSshConnect: (prefill?: SshConnectPrefill | null) => void;
   setInspectorTab: (t: InspectorTab) => void;
   setSettingsTab: (t: SettingsTab) => void;
+  openFileTab: (tab: Omit<WorkspaceFileTab, "id" | "dirty">) => void;
+  setActiveFileTab: (id: string) => void;
+  activateTerminal: () => void;
+  closeFileTab: (id: string) => void;
+  closeFileTabsForSession: (sessionId: string) => void;
+  setFileTabDirty: (id: string, dirty: boolean) => void;
   openSettings: (tab?: SettingsTab) => void;
   setTheme: (t: ThemeType) => void;
   setAccent: (c: string) => void;
@@ -281,12 +319,11 @@ interface UIState extends AppearanceSettings {
   setPanelWidth: (w: number) => void;
   setTrafficLightWidth: (w: number) => void;
   setViewportWidth: (w: number) => void;
-  splitHorizontal: (paneASessionId: string, paneBSessionId: string) => void;
-  splitVertical: (paneASessionId: string, paneBSessionId: string) => void;
+  splitPane: (targetSessionId: string, newSessionId: string, direction: SplitDirection) => boolean;
+  replaceSplitPane: (targetSessionId: string, newSessionId: string) => void;
+  removeSplitPane: (sessionId: string) => string | null;
   closeSplit: () => void;
-  setSplitRatio: (ratio: number) => void;
-  setSplitPaneB: (sessionId: string | null) => void;
-  setSplitPaneA: (sessionId: string | null) => void;
+  setSplitRatio: (path: SplitPath, ratio: number) => void;
   addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
   /** Append a host-key prompt to the queue (no-op if its promptId is already
@@ -294,6 +331,8 @@ interface UIState extends AppearanceSettings {
   enqueueHostKeyPrompt: (prompt: HostKeyPrompt) => void;
   /** Remove a resolved host-key prompt by promptId, advancing the queue head. */
   dismissHostKeyPrompt: (promptId: string) => void;
+  enqueueKeyboardInteractivePrompt: (prompt: KeyboardInteractivePrompt) => void;
+  dismissKeyboardInteractivePrompt: (promptId: string) => void;
   setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
   toggleDirCollapsed: (dir: string) => void;
   toggleDiffSectionCollapsed: (section: string) => void;
@@ -315,17 +354,22 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     configLoaded: false,
     configPath: "",
     configError: null,
+    presentationMode: "workspace",
+    nativeFullscreen: false,
     sidebarVisible: true,
     panelVisible: true,
     overlay: null,
     sshPrefill: null,
     trafficLightWidth: 0,
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
-    split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 },
+    split: emptySplitState(),
     inspectorTab: "overview" as InspectorTab,
     settingsTab: "appearance" as SettingsTab,
+    fileTabs: [],
+    activeFileTabId: null,
     toasts: [],
     hostKeyPrompts: [],
+    keyboardInteractivePrompts: [],
     pendingWorkflow: null,
     collapsedDirs: {},
     collapsedDiffSections: {},
@@ -333,14 +377,71 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     commandUsage: {},
     ...DEFAULT_SETTINGS,
 
+    setPresentationMode: (presentationMode) => set(presentationMode === "pure"
+      ? {
+          presentationMode,
+          overlay: null,
+          sshPrefill: null,
+          pendingWorkflow: null,
+        }
+      : { presentationMode, overlay: null, sshPrefill: null }),
+    togglePresentationMode: () => set((state) => state.presentationMode === "workspace"
+      ? {
+          presentationMode: "pure",
+          overlay: null,
+          sshPrefill: null,
+          pendingWorkflow: null,
+        }
+      : { presentationMode: "workspace", overlay: null, sshPrefill: null }),
+    setNativeFullscreen: (nativeFullscreen) => set({ nativeFullscreen }),
     setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
     setPanelVisible: (panelVisible) => set({ panelVisible }),
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
     togglePanel: () => set((s) => ({ panelVisible: !s.panelVisible })),
     setOverlay: (overlay) => set(overlay === "ssh" ? { overlay } : { overlay, sshPrefill: null }),
-    openSshConnect: (prefill) => set({ overlay: "ssh", sshPrefill: prefill ?? null }),
+    // Profile/config management stays out of Pure Mode. A user-triggered
+    // connect/reconnect first restores the workspace, then opens the sheet.
+    openSshConnect: (prefill) => set({
+      presentationMode: "workspace",
+      overlay: "ssh",
+      sshPrefill: prefill ?? null,
+    }),
     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
     setSettingsTab: (settingsTab) => set({ settingsTab }),
+    openFileTab: (tab) => set((state) => {
+      const id = workspaceFileTabId(tab.sessionId, tab.filePath);
+      if (state.fileTabs.some((candidate) => candidate.id === id)) {
+        return { activeFileTabId: id };
+      }
+      return {
+        fileTabs: [...state.fileTabs, { ...tab, id, dirty: false }],
+        activeFileTabId: id,
+      };
+    }),
+    setActiveFileTab: (id) => set((state) =>
+      state.fileTabs.some((tab) => tab.id === id) ? { activeFileTabId: id } : {},
+    ),
+    activateTerminal: () => set({ activeFileTabId: null }),
+    closeFileTab: (id) => set((state) => {
+      const index = state.fileTabs.findIndex((tab) => tab.id === id);
+      if (index < 0) return {};
+      const fileTabs = state.fileTabs.filter((tab) => tab.id !== id);
+      if (state.activeFileTabId !== id) return { fileTabs };
+      const adjacent = fileTabs[Math.min(index, fileTabs.length - 1)];
+      return { fileTabs, activeFileTabId: adjacent?.id ?? null };
+    }),
+    closeFileTabsForSession: (sessionId) => set((state) => {
+      const fileTabs = state.fileTabs.filter((tab) => tab.sessionId !== sessionId);
+      const activeRemoved = state.fileTabs.some((tab) =>
+        tab.id === state.activeFileTabId && tab.sessionId === sessionId,
+      );
+      return activeRemoved ? { fileTabs, activeFileTabId: null } : { fileTabs };
+    }),
+    setFileTabDirty: (id, dirty) => set((state) => {
+      const tab = state.fileTabs.find((candidate) => candidate.id === id);
+      if (!tab || tab.dirty === dirty) return state;
+      return { fileTabs: state.fileTabs.map((candidate) => candidate.id === id ? { ...candidate, dirty } : candidate) };
+    }),
     openSettings: (settingsTab) => set((state) => ({
       overlay: "settings",
       settingsTab: settingsTab ?? state.settingsTab,
@@ -364,18 +465,31 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     },
     setTrafficLightWidth: (trafficLightWidth) => set({ trafficLightWidth }),
     setViewportWidth: (viewportWidth) => set({ viewportWidth }),
-    splitHorizontal: (paneASessionId, paneBSessionId) =>
-      set({ split: { mode: "horizontal", paneA: paneASessionId, paneB: paneBSessionId, ratio: 0.5 } }),
-    splitVertical: (paneASessionId, paneBSessionId) =>
-      set({ split: { mode: "vertical", paneA: paneASessionId, paneB: paneBSessionId, ratio: 0.5 } }),
-    closeSplit: () =>
-      set({ split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }),
-    setSplitRatio: (ratio) =>
-      set((s) => ({ split: { ...s.split, ratio: Math.max(0.2, Math.min(0.8, ratio)) } })),
-    setSplitPaneB: (sessionId) =>
-      set((s) => sessionId ? { split: { ...s.split, paneB: sessionId } } : { split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }),
-    setSplitPaneA: (sessionId) =>
-      set((s) => sessionId ? { split: { ...s.split, paneA: sessionId } } : { split: { ...s.split, paneA: null } }),
+    splitPane: (targetSessionId, newSessionId, direction) => {
+      let inserted = false;
+      set((state) => {
+        const split = insertSplitPaneLayout(state.split, targetSessionId, newSessionId, direction);
+        if (!split) return {};
+        inserted = true;
+        return { split };
+      });
+      return inserted;
+    },
+    replaceSplitPane: (targetSessionId, newSessionId) =>
+      set((state) => ({ split: replaceSplitPaneLayout(state.split, targetSessionId, newSessionId) })),
+    removeSplitPane: (sessionId) => {
+      let focusSessionId: string | null = null;
+      set((state) => {
+        const result = removeSplitPaneLayout(state.split, sessionId);
+        if (!result.removed) return {};
+        focusSessionId = result.focusSessionId;
+        return { split: result.split };
+      });
+      return focusSessionId;
+    },
+    closeSplit: () => set({ split: emptySplitState() }),
+    setSplitRatio: (path, ratio) =>
+      set((state) => ({ split: setSplitRatioAt(state.split, path, ratio) })),
     addToast: (toast) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       // I8: keep the last 6 toasts (was 3). Batch operations like "close all
@@ -393,6 +507,16 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       ),
     dismissHostKeyPrompt: (promptId) =>
       set((s) => ({ hostKeyPrompts: s.hostKeyPrompts.filter((p) => p.promptId !== promptId) })),
+    enqueueKeyboardInteractivePrompt: (prompt) =>
+      set((s) =>
+        s.keyboardInteractivePrompts.some((p) => p.promptId === prompt.promptId)
+          ? {}
+          : { keyboardInteractivePrompts: [...s.keyboardInteractivePrompts, prompt] },
+      ),
+    dismissKeyboardInteractivePrompt: (promptId) =>
+      set((s) => ({
+        keyboardInteractivePrompts: s.keyboardInteractivePrompts.filter((p) => p.promptId !== promptId),
+      })),
     setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
     toggleDirCollapsed: (dir) =>
       set((s) => ({ collapsedDirs: toggleTrueRecordKey(s.collapsedDirs, dir) })),
@@ -465,6 +589,7 @@ const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorSt
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();
+let configPersistFailing = false;
 
 function enqueueConfigSave(settings: RawTunaraConfig): Promise<void> {
   const operation = configPersistQueue.then(() => saveTunaraConfig(settings));
@@ -484,7 +609,16 @@ useUIStore.subscribe(
       persistTimer = null;
       enqueueConfigSave(settingsToRawConfig(useUIStore.getState()))
         .then(() => useUIStore.setState({ configError: null }))
-        .catch((e) => useUIStore.setState({ configError: e instanceof Error ? e.message : String(e) }));
+        .then(() => { configPersistFailing = false; })
+        .catch((e) => {
+          const message = e instanceof Error ? e.message : String(e);
+          const alreadyFailing = configPersistFailing;
+          configPersistFailing = true;
+          useUIStore.setState({ configError: message });
+          if (!alreadyFailing) {
+            useUIStore.getState().addToast({ title: t("settings.config_error"), subtitle: message, variant: "error" });
+          }
+        });
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },

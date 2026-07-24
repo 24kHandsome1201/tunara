@@ -1,88 +1,111 @@
-import { useCallback, useRef } from "react";
-import { useUIStore, type SplitMode } from "@/state/ui";
+import { useCallback, useEffect, useRef } from "react";
+import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
+import type { SplitDirection, SplitPath, SplitRect } from "@/modules/session/split-layout";
 
 interface SplitHandleProps {
-  mode: Exclude<SplitMode, "single">;
+  direction: SplitDirection;
+  path: SplitPath;
+  ratio: number;
+  nodeRect: SplitRect;
   containerRef: React.RefObject<HTMLDivElement | null>;
-  order?: number;
 }
 
 const KEY_STEP = 0.02;
 const KEY_STEP_LARGE = 0.1;
 
-export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
+export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: SplitHandleProps) {
   const t = useT();
   const setSplitRatio = useUIStore((s) => s.setSplitRatio);
-  const ratio = useUIStore((s) => s.split.ratio);
   const dragging = useRef(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      const isHorizontal = mode === "horizontal";
+      const isHorizontal = direction === "horizontal";
       const decKey = isHorizontal ? "ArrowLeft" : "ArrowUp";
       const incKey = isHorizontal ? "ArrowRight" : "ArrowDown";
       if (e.key === decKey) {
         e.preventDefault();
-        setSplitRatio(ratio - (e.shiftKey ? KEY_STEP_LARGE : KEY_STEP));
+        setSplitRatio(path, ratio - (e.shiftKey ? KEY_STEP_LARGE : KEY_STEP));
       } else if (e.key === incKey) {
         e.preventDefault();
-        setSplitRatio(ratio + (e.shiftKey ? KEY_STEP_LARGE : KEY_STEP));
+        setSplitRatio(path, ratio + (e.shiftKey ? KEY_STEP_LARGE : KEY_STEP));
       } else if (e.key === "Home") {
         e.preventDefault();
-        setSplitRatio(0.2);
+        setSplitRatio(path, 0.2);
       } else if (e.key === "End") {
         e.preventDefault();
-        setSplitRatio(0.8);
+        setSplitRatio(path, 0.8);
       } else if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        setSplitRatio(0.5);
+        setSplitRatio(path, 0.5);
       }
     },
-    [mode, ratio, setSplitRatio],
+    [direction, path, ratio, setSplitRatio],
   );
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
       const handle = e.currentTarget as HTMLElement;
-      handle.setPointerCapture(e.pointerId);
-      dragging.current = true;
       const container = containerRef.current;
       if (!container) return;
+      dragCleanupRef.current?.();
+      const pointerId = e.pointerId;
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      handle.setPointerCapture(pointerId);
+      dragging.current = true;
 
       const onPointerMove = (ev: PointerEvent) => {
         if (!dragging.current || !container) return;
         const rect = container.getBoundingClientRect();
+        const nodeLeft = rect.left + nodeRect.x * rect.width;
+        const nodeTop = rect.top + nodeRect.y * rect.height;
+        const nodeWidth = nodeRect.width * rect.width;
+        const nodeHeight = nodeRect.height * rect.height;
         const ratio =
-          mode === "horizontal"
-            ? (ev.clientX - rect.left) / rect.width
-            : (ev.clientY - rect.top) / rect.height;
-        setSplitRatio(ratio);
+          direction === "horizontal"
+            ? (ev.clientX - nodeLeft) / nodeWidth
+            : (ev.clientY - nodeTop) / nodeHeight;
+        setSplitRatio(path, ratio);
       };
 
-      const cleanup = (ev: PointerEvent) => {
+      const cleanup = () => {
+        if (dragCleanupRef.current !== cleanup) return;
+        dragCleanupRef.current = null;
         dragging.current = false;
-        if (handle.hasPointerCapture(ev.pointerId)) {
-          handle.releasePointerCapture(ev.pointerId);
+        try {
+          if (handle.hasPointerCapture(pointerId)) {
+            handle.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // A handle unmounted mid-drag may already have lost pointer capture.
         }
         document.removeEventListener("pointermove", onPointerMove);
         document.removeEventListener("pointerup", cleanup);
         document.removeEventListener("pointercancel", cleanup);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
       };
 
-      document.body.style.cursor = mode === "horizontal" ? "col-resize" : "row-resize";
+      dragCleanupRef.current = cleanup;
+      document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize";
       document.body.style.userSelect = "none";
       document.addEventListener("pointermove", onPointerMove);
       document.addEventListener("pointerup", cleanup);
       document.addEventListener("pointercancel", cleanup);
     },
-    [mode, containerRef, setSplitRatio],
+    [direction, path, nodeRect, containerRef, setSplitRatio],
   );
 
-  const isHorizontal = mode === "horizontal";
+  const isHorizontal = direction === "horizontal";
+  const boundary = isHorizontal
+    ? nodeRect.x + nodeRect.width * ratio
+    : nodeRect.y + nodeRect.height * ratio;
 
   return (
     <div
@@ -97,17 +120,29 @@ export function SplitHandle({ mode, containerRef, order }: SplitHandleProps) {
       aria-label={isHorizontal ? t("split.handle.horizontal") : t("split.handle.vertical")}
       className={`split-handle ${isHorizontal ? "split-handle-h" : "split-handle-v"}`}
       style={{
-        position: "relative",
+        position: "absolute",
         zIndex: 10,
-        order,
         ...(isHorizontal
-          ? { width: 5, cursor: "col-resize", flexShrink: 0 }
-          : { height: 5, cursor: "row-resize", flexShrink: 0 }),
+          ? {
+              left: `calc(${boundary * 100}% - 2.5px)`,
+              top: `${nodeRect.y * 100}%`,
+              width: 5,
+              height: `${nodeRect.height * 100}%`,
+              cursor: "col-resize",
+            }
+          : {
+              left: `${nodeRect.x * 100}%`,
+              top: `calc(${boundary * 100}% - 2.5px)`,
+              width: `${nodeRect.width * 100}%`,
+              height: 5,
+              cursor: "row-resize",
+            }),
         background: "transparent",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        outline: "none",
+        // 不要再 inline outline:"none" —— 全局 :focus-visible 焦点环靠它生效，
+        // 线条高亮由 .split-handle:focus-visible .split-handle-line 负责
       }}
     >
       <div

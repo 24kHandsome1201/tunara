@@ -9,7 +9,10 @@ pnpm install
 pnpm tauri dev
 ```
 
-前置条件：Rust stable、Node 20+、pnpm 9+、以及平台对应的 [Tauri 依赖](https://tauri.app/start/prerequisites/)。
+前置条件：Rust stable、Node 24+、pnpm 9+、以及平台对应的 [Tauri 依赖](https://tauri.app/start/prerequisites/)。
+
+macOS Apple Silicon 是正式支持与发布目标。Linux/Windows 仅提供实验性
+源码构建；Linux CI 通过不等同于这些平台拥有正式安装包或完整原生 Preview 支持。
 
 ## 提交 PR 前
 
@@ -27,7 +30,7 @@ pnpm test                                        # 全部测试
 pnpm tauri build
 ```
 
-Linux CI 会跑编译与测试，但**不会**构建 macOS Tauri bundle（DMG/`.app` 签名与打包仅在 macOS runner 上验证 release 二进制链接）。涉及 macOS 原生窗口 chrome（overlay titlebar、traffic lights 对齐、vibrancy、`macos-private-api` 等）的改动，必须在本地按 [CLAUDE.md](CLAUDE.md#macos-titlebar-alignment) 构建并目视确认。
+Linux CI 会跑编译与测试，但**不会**构建 macOS Tauri bundle（DMG/`.app` 签名与打包仅在 macOS runner 上验证 release 二进制链接）。涉及 macOS 原生窗口 chrome（overlay titlebar、traffic lights 对齐、vibrancy、`macos-private-api` 等）的改动，必须在本地按 [视觉验收清单](docs/VISUAL_QA.md) 构建并目视确认。
 
 新增逻辑请同时补测试。测试如何组织、哪些代码可测、以及怎么加，见 [docs/TESTING.md](docs/TESTING.md)。
 

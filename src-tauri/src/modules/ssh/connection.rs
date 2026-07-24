@@ -17,6 +17,7 @@ use russh::client::{self, Handle};
 use russh::keys::ssh_key::{HashAlg, PublicKey};
 use russh::ChannelMsg;
 use tauri::ipc::Channel as IpcChannel;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 
 use super::auth::{self, AuthOptions};
@@ -51,7 +52,9 @@ static PENDING_PROMPTS: OnceLock<Mutex<HashMap<String, oneshot::Sender<bool>>>> 
 const HOST_KEY_PROMPT_TIMEOUT: Duration = Duration::from_secs(120);
 const SSH_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const SSH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(135);
-const SSH_AUTH_TIMEOUT: Duration = Duration::from_secs(45);
+// Keyboard-interactive may wait up to 120s for a user response. Keep the outer
+// stage timeout slightly longer so it does not cancel a still-valid challenge.
+const SSH_AUTH_TIMEOUT: Duration = Duration::from_secs(135);
 const SSH_CHANNEL_SETUP_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(super) async fn await_stage<T, E, F>(
@@ -268,6 +271,10 @@ pub struct SshSession {
     handle: Handle<ClientHandler>,
     control: Arc<SshControl>,
     output_flow: Arc<OutputFlow>,
+    host: String,
+    port: u16,
+    user: String,
+    logical_session_id: String,
     /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
     sftp: tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>,
@@ -358,7 +365,7 @@ impl SshSession {
         await_stage(
             "SSH authentication",
             SSH_AUTH_TIMEOUT,
-            auth::authenticate(&mut handle, &params.auth),
+            auth::authenticate(&mut handle, &params.auth, on_event.clone()),
         )
         .await?;
 
@@ -538,6 +545,7 @@ impl SshSession {
             if let Some(bytes) = output.flush() {
                 let _ = emit_output(&pump_output_flow, &on_event, bytes).await;
             }
+            pump_control.request_close();
             let _ = on_event.send(PtyEvent::Exit {
                 code: exit_code.unwrap_or(SSH_DISCONNECTED_EXIT_CODE),
             });
@@ -547,6 +555,10 @@ impl SshSession {
             handle,
             control,
             output_flow,
+            host: params.host,
+            port: params.port,
+            user: params.auth.user,
+            logical_session_id: params.session_id,
             sftp: tokio::sync::Mutex::new(None),
         })
     }
@@ -727,6 +739,93 @@ impl SshSession {
 
     pub fn acknowledge_output(&self, bytes: usize) {
         self.output_flow.acknowledge(bytes);
+    }
+
+    pub fn identity(&self) -> (&str, u16, &str, &str) {
+        (&self.host, self.port, &self.user, &self.logical_session_id)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.control.is_closed()
+    }
+
+    pub async fn wait_closed(&self) {
+        self.control.wait_for_close().await;
+    }
+
+    /// Open the exact RFC 4254 direct-tcpip target through this already
+    /// authenticated SSH connection. The caller supplies only a validated
+    /// loopback host and port; this API never invokes a remote shell.
+    pub async fn probe_direct_tcpip(&self, host: &str, port: u16) -> Result<(), String> {
+        if self.is_closed() {
+            return Err("SSH session closed".into());
+        }
+        let channel = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.handle
+                .channel_open_direct_tcpip(host, u32::from(port), "127.0.0.1", 0),
+        )
+        .await
+        .map_err(|_| "SSH port forward probe timed out".to_string())?
+        .map_err(|error| format!("SSH port forward target rejected: {error}"))?;
+        let _ = channel.close().await;
+        Ok(())
+    }
+
+    /// Bridge one accepted local loopback socket to the exact remote
+    /// loopback target over a dedicated direct-tcpip channel.
+    pub async fn forward_loopback_stream(
+        &self,
+        mut stream: tokio::net::TcpStream,
+        host: &str,
+        port: u16,
+    ) -> Result<(), String> {
+        if self.is_closed() {
+            return Err("SSH session closed".into());
+        }
+        let origin = stream
+            .peer_addr()
+            .map_err(|error| format!("local forward peer unavailable: {error}"))?;
+        let mut channel = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.handle.channel_open_direct_tcpip(
+                host,
+                u32::from(port),
+                origin.ip().to_string(),
+                u32::from(origin.port()),
+            ),
+        )
+        .await
+        .map_err(|_| "SSH port forward channel timed out".to_string())?
+        .map_err(|error| format!("SSH port forward channel failed: {error}"))?;
+        let mut local_closed = false;
+        let mut buffer = vec![0_u8; 64 * 1024];
+        loop {
+            tokio::select! {
+                biased;
+                _ = self.wait_closed() => {
+                    let _ = channel.close().await;
+                    return Err("SSH session closed".into());
+                }
+                read = stream.read(&mut buffer), if !local_closed => match read {
+                    Ok(0) => {
+                        local_closed = true;
+                        channel.eof().await.map_err(|error| error.to_string())?;
+                    }
+                    Ok(count) => channel.data(&buffer[..count]).await.map_err(|error| error.to_string())?,
+                    Err(error) => return Err(format!("local forward read failed: {error}")),
+                },
+                message = channel.wait() => match message {
+                    Some(ChannelMsg::Data { data }) => stream.write_all(&data).await.map_err(|error| format!("local forward write failed: {error}"))?,
+                    Some(ChannelMsg::ExtendedData { data, .. }) => stream.write_all(&data).await.map_err(|error| format!("local forward write failed: {error}"))?,
+                    Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+        }
+        let _ = stream.shutdown().await;
+        let _ = channel.close().await;
+        Ok(())
     }
 
     /// Run a one-shot command on the remote host over a fresh exec channel on
@@ -1181,6 +1280,7 @@ mod tests {
                     port,
                     auth: AuthOptions {
                         user,
+                        method: super::super::auth::AuthMethod::Agent,
                         identity_file: None,
                         key_passphrase: None,
                         password: None,

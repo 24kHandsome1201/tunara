@@ -42,6 +42,11 @@ import {
 } from "./sessions-git";
 import { clearSshCredentials } from "@/modules/ssh/pending-credentials";
 import {
+  splitLayoutHasSession,
+  splitLayoutSessionIds,
+  type SplitDirection,
+} from "@/modules/session/split-layout";
+import {
   initialConnectionEvidence,
   reduceConnectionEvidence,
   type ConnectionEvent,
@@ -52,6 +57,26 @@ import {
   mergePreviewSources,
   previewSourceContext,
 } from "@/modules/preview/preview-source";
+import { previewRemoteSourceObserved } from "@/modules/preview/preview-window";
+import type { PreviewCommandProvenance } from "@/modules/preview/preview-source";
+import {
+  previewTerminalCommandFinished,
+  previewTerminalCommandStarted,
+  previewTerminalExited,
+} from "@/modules/preview/preview-window";
+import { terminalFileViewerCommand } from "@/modules/terminal/lib/shell-command";
+
+let previewCommandSequence = 0;
+
+function createPreviewCommandProvenance(terminalId: string, command: string, submittedAt: number): PreviewCommandProvenance {
+  previewCommandSequence += 1;
+  return {
+    generation: `${terminalId}:${submittedAt}:${previewCommandSequence}`,
+    sequence: previewCommandSequence,
+    command,
+    submittedAt,
+  };
+}
 
 interface SessionsState {
   sessions: Session[];
@@ -91,6 +116,7 @@ interface SessionsState {
   handleAgentWaitingConfirmation: (id: string) => void;
   handleAgentBusy: (id: string) => void;
   handleAgentExited: (id: string, exitCode: number) => void;
+  handlePreviewCommandDetected: (id: string, command: string) => void;
   handleCommandDetected: (id: string, command: string) => void;
   handleCommandFinished: (id: string, exitCode: number) => void;
   handleTerminalExited: (id: string, exitCode: number) => void;
@@ -109,7 +135,8 @@ interface SessionsState {
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
   newTerminalWithInput: (input: string, dir?: string) => void;
-  splitWithNewSession: (direction: "horizontal" | "vertical") => void;
+  openFileInTerminal: (sourceSessionId: string, directory: string, fileName: string) => void;
+  splitWithNewSession: (direction: SplitDirection, sourceSessionId?: string) => void;
   closeSession: (id: string) => void;
 }
 
@@ -175,11 +202,15 @@ function isSessionObserved(activeSessionId: string | null, sessionId: string): b
     && (typeof document === "undefined" || document.hasFocus());
 }
 
-function ensureSessionVisibleInSplit(sessionId: string) {
+function ensureSessionVisibleInSplit(sessionId: string, previousActiveSessionId: string | null) {
   const ui = useUIStore.getState();
   const { split } = ui;
-  if (split.mode === "single" || split.paneA === sessionId || split.paneB === sessionId) return;
-  ui.setSplitPaneB(sessionId);
+  if (!split.root || splitLayoutHasSession(split, sessionId)) return;
+  const splitSessionIds = splitLayoutSessionIds(split);
+  const targetSessionId = previousActiveSessionId && splitLayoutHasSession(split, previousActiveSessionId)
+    ? previousActiveSessionId
+    : splitSessionIds[splitSessionIds.length - 1];
+  if (targetSessionId) ui.replaceSplitPane(targetSessionId, sessionId);
 }
 
 function cancelCloseConfirmationTimer(id: string) {
@@ -228,6 +259,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessionTimelines: {},
 
   addSession: (s) => {
+    const previousActiveSessionId = get().activeSessionId;
+    useUIStore.getState().activateTerminal();
     set((state) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
@@ -236,7 +269,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       // of the recent-dirs affordance.
       recentDirs: s.remote ? state.recentDirs : pushRecentDir(state.recentDirs, s.dir),
     }));
-    ensureSessionVisibleInSplit(s.id);
+    ensureSessionVisibleInSplit(s.id, previousActiveSessionId);
   },
 
   removeSession: (id) => {
@@ -248,6 +281,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     clearQueuedGitNonceBump(id);
     removeTerminalSnapshot(id);
     clearSshCredentials(id);
+    useUIStore.getState().closeFileTabsForSession(id);
+    const wasActive = get().activeSessionId === id;
+    const splitFocusSessionId = useUIStore.getState().removeSplitPane(id);
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
@@ -271,14 +307,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         recentSessionIds: state.recentSessionIds.filter((sid) => sid !== id),
       };
     });
+    if (wasActive && splitFocusSessionId && get().sessions.some((s) => s.id === splitFocusSessionId)) {
+      set((state) => ({
+        activeSessionId: splitFocusSessionId,
+        launchedSessionIds: { ...state.launchedSessionIds, [splitFocusSessionId]: true },
+      }));
+    }
   },
 
   setActive: (id) => {
     if (!get().sessions.some((session) => session.id === id)) return;
     const currentId = get().activeSessionId;
-    if (currentId && currentId !== id) {
-      if (!requestDirtyDraftAction([currentId], () => get().setActive(id))) return;
-    }
     let accepted = false;
     set((state) => {
       if (!state.sessions.some((s) => s.id === id)) return {};
@@ -292,7 +331,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         ),
       };
     });
-    if (accepted) ensureSessionVisibleInSplit(id);
+    if (accepted) {
+      useUIStore.getState().activateTerminal();
+      ensureSessionVisibleInSplit(id, currentId);
+    }
   },
 
   // Cycle to the next/prev session by most-recent-active order (Mod+Tab). "next"
@@ -604,6 +646,18 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
   },
 
+  handlePreviewCommandDetected: (id, command) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session) return;
+    const submittedAt = Date.now();
+    const context = previewSourceContext(session);
+    const provenance = createPreviewCommandProvenance(context.terminalId, command, submittedAt);
+    get().updateSession(id, { previewCommandProvenance: provenance });
+    void previewTerminalCommandStarted(context, provenance).catch(() => {
+      // Missing native provenance deliberately leaves restart unavailable.
+    });
+  },
+
   handleCommandDetected: (id, command) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = commandDetectedUpdate(session, command);
@@ -619,6 +673,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = isSessionObserved(get().activeSessionId, id);
     const update = commandFinishedUpdate(session, exitCode, isActive);
     if (!update) return;
+    if (session?.previewCommandProvenance) {
+      void previewTerminalCommandFinished(previewSourceContext(session), session.previewCommandProvenance).catch(() => {
+        // A missing native completion record keeps restart fail-closed.
+      });
+    }
     get().appendTimeline(id, "command_end", session?.lastCommand);
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
@@ -640,8 +699,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const update = terminalExitedUpdate(session, exitCode, isSessionObserved(get().activeSessionId, id));
     if (!update) return;
     const terminalId = session ? previewSourceContext(session).terminalId : undefined;
+    if (session) {
+      void previewTerminalExited(previewSourceContext(session)).catch(() => {
+        // The absent physical PTY independently keeps restart disabled.
+      });
+    }
     get().updateSession(id, {
       ...update.patch,
+      previewCommandProvenance: undefined,
       ...(terminalId && session?.previewSources
         ? { previewSources: markPreviewSourcesStale(session.previewSources, terminalId) }
         : {}),
@@ -652,7 +717,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleTerminalOutput: (id, output, discoveredAt = Date.now()) => {
     const session = get().sessions.find((s) => s.id === id);
     if (!session) return;
-    const detected = detectPreviewSources(output, previewSourceContext(session), discoveredAt);
+    const detected = detectPreviewSources(
+      output,
+      previewSourceContext(session),
+      discoveredAt,
+      session.runState === "running" ? session.previewCommandProvenance : undefined,
+    );
+    for (const source of detected) {
+      if (source.transport === "ssh" && source.workspaceResolution === "resolved" && source.physicalPtyId !== undefined) {
+        void previewRemoteSourceObserved(source).catch(() => {});
+      }
+    }
     if (detected.length === 0) return;
     get().updateSession(id, {
       previewSources: mergePreviewSources(session.previewSources ?? [], detected),
@@ -755,24 +830,62 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }));
   },
 
-  splitWithNewSession: (direction) => {
-    const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    const splitContext = splitTerminalContextFromSession(active);
+  openFileInTerminal: (sourceSessionId, directory, fileName) => {
+    const source = get().sessions.find((session) => session.id === sourceSessionId);
+    if (!source) return;
+    const command = terminalFileViewerCommand(fileName);
+    if (!command) {
+      useUIStore.getState().addToast({
+        sessionId: sourceSessionId,
+        title: t("explorer.open_terminal.failed"),
+        subtitle: t("explorer.open_terminal.unsupported_name"),
+        variant: "error",
+      });
+      return;
+    }
+
+    // Reuse an idle source terminal, including its authenticated SSH channel.
+    // A running shell/TUI must never receive injected input, so busy sessions
+    // get a fresh sibling terminal rooted in the file's directory instead.
+    if (!isSessionBusy(source)) {
+      const reusableCommand = source.dir === directory
+        ? command
+        : terminalFileViewerCommand(fileName, directory);
+      if (reusableCommand) {
+        get().setActive(source.id);
+        get().updateSession(source.id, {
+          pendingInput: reusableCommand,
+          pendingInputSubmit: true,
+        });
+        return;
+      }
+    }
+
+    // Busy terminals must never receive injected input. Start a sibling with
+    // the same transport/profile and root it in the file's directory. A rare
+    // relative local directory also takes this path because quoting `~` would
+    // intentionally suppress shell expansion in an existing terminal.
+    get().addSession(createSession(directory, {
+      title: t("session.default_title"),
+      remote: source.remote,
+      pendingInput: command,
+      pendingInputSubmit: true,
+    }));
+  },
+
+  splitWithNewSession: (direction, sourceSessionId) => {
+    const source = get().sessions.find((s) => s.id === (sourceSessionId ?? get().activeSessionId));
+    const splitContext = splitTerminalContextFromSession(source);
     const newSess = createSession(splitContext.dir, {
       title: t("session.default_title"),
       remote: splitContext.remote,
     });
-    if (!active) {
+    if (!source) {
       get().addSession(newSess);
       return;
     }
+    if (!useUIStore.getState().splitPane(source.id, newSess.id, direction)) return;
     get().addSession(newSess);
-    const ui = useUIStore.getState();
-    if (direction === "horizontal") {
-      ui.splitHorizontal(active.id, newSess.id);
-    } else {
-      ui.splitVertical(active.id, newSess.id);
-    }
   },
 
   closeSession: (id) => {
@@ -795,19 +908,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       }
     }
 
-    const ui = useUIStore.getState();
-    let survivor: string | null = null;
-    if (ui.split.mode !== "single") {
-      const split = ui.split;
-      if (split.paneA === id || split.paneB === id) {
-        survivor = split.paneA === id ? split.paneB : split.paneA;
-        ui.closeSplit();
-      }
-    }
     get().removeSession(id);
-    if (survivor && get().sessions.some((s) => s.id === survivor)) {
-      set({ activeSessionId: survivor });
-    }
     if (get().sessions.length === 0) get().addSession(createSession("~", { title: t("session.default_title") }));
   },
 }));

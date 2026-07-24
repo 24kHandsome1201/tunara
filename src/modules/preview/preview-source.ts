@@ -4,7 +4,7 @@ import { findTerminalUrlTokens } from "../terminal/lib/terminal-quick-select.ts"
 import { stripTerminalControlSequences } from "../terminal/lib/terminal-utils.ts";
 
 export type PreviewSourceTransport = "local" | "ssh";
-export type PreviewPermission = "eligible" | "remote-manual";
+export type PreviewPermission = "eligible" | "remote-manual" | "forwarded";
 export type PreviewSourceState = "active" | "stale";
 export const MAX_PREVIEW_SOURCES_PER_SESSION = 64;
 
@@ -17,6 +17,16 @@ export interface PreviewSourceContext {
   physicalPtyId?: number;
   transport: PreviewSourceTransport;
   workspaceResolution: "resolved" | "fallback";
+  sshHost?: string;
+  sshPort?: number;
+  sshUser?: string;
+}
+
+export interface PreviewCommandProvenance {
+  generation: string;
+  sequence: number;
+  command: string;
+  submittedAt: number;
 }
 
 export interface PreviewSource extends PreviewSourceContext {
@@ -25,6 +35,9 @@ export interface PreviewSource extends PreviewSourceContext {
   permission: PreviewPermission;
   state: PreviewSourceState;
   staleReason?: "terminal-exited" | "session-closed";
+  remoteSourceUrl?: string;
+  tunnelId?: string;
+  restartProvenance?: PreviewCommandProvenance;
 }
 
 export interface PreviewSourceSession {
@@ -58,6 +71,11 @@ export function previewSourceContext(session: PreviewSourceSession): PreviewSour
     ...(session.ptyId === undefined ? {} : { physicalPtyId: session.ptyId }),
     transport: session.remote ? "ssh" : "local",
     workspaceResolution: session.workspace && worktree ? "resolved" : "fallback",
+    ...(session.remote ? {
+      sshHost: session.remote.host,
+      sshPort: session.remote.port,
+      sshUser: session.remote.user,
+    } : {}),
   };
 }
 
@@ -78,13 +96,17 @@ export function normalizePreviewCandidate(raw: string): string | null {
   }
 }
 
-export function previewSourceKey(source: Pick<PreviewSource, "repositoryId" | "worktreeId" | "workspaceId" | "sessionId" | "terminalId" | "sourceUrl">): string {
+export function previewSourceKey(source: Pick<PreviewSource, "repositoryId" | "worktreeId" | "workspaceId" | "sessionId" | "terminalId" | "physicalPtyId" | "sourceUrl" | "sshHost" | "sshPort" | "sshUser">): string {
   return [
     source.repositoryId,
     source.worktreeId,
     source.workspaceId,
     source.sessionId,
     source.terminalId,
+    String(source.physicalPtyId ?? ""),
+    source.sshHost ?? "",
+    String(source.sshPort ?? ""),
+    source.sshUser ?? "",
     source.sourceUrl,
   ].join("\u0000");
 }
@@ -93,6 +115,7 @@ export function detectPreviewSources(
   output: string,
   context: PreviewSourceContext,
   discoveredAt = Date.now(),
+  restartProvenance?: PreviewCommandProvenance,
 ): PreviewSource[] {
   const seen = new Set<string>();
   const detected: PreviewSource[] = [];
@@ -105,6 +128,7 @@ export function detectPreviewSources(
       discoveredAt,
       permission: context.transport === "local" ? "eligible" : "remote-manual",
       state: "active",
+      ...(restartProvenance ? { restartProvenance } : {}),
     };
     const key = previewSourceKey(source);
     if (seen.has(key)) continue;
@@ -121,7 +145,14 @@ export function mergePreviewSources(
 ): PreviewSource[] {
   const byKey = new Map(current.map((source) => [previewSourceKey(source), source]));
   for (const source of incoming) {
-    if (!byKey.has(previewSourceKey(source))) byKey.set(previewSourceKey(source), source);
+    const key = previewSourceKey(source);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, source);
+    } else if (source.restartProvenance
+      && source.restartProvenance.generation !== existing.restartProvenance?.generation) {
+      byKey.set(key, { ...source, discoveredAt: existing.discoveredAt });
+    }
   }
   return [...byKey.values()].slice(-Math.max(0, limit));
 }

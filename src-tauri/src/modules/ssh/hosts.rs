@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use super::auth::AuthMethod;
+
 const CONFIG_DIR: &str = "tunara";
 
 /// A saved SSH connection target. `id` is a stable frontend-generated key.
@@ -25,7 +27,9 @@ pub struct SshHostProfile {
     pub host: String,
     pub port: u16,
     pub user: String,
-    /// Path to a private key (e.g. ~/.ssh/id_ed25519). Empty = use agent.
+    pub auth_method: Option<AuthMethod>,
+    /// Path to a private key (e.g. ~/.ssh/id_ed25519). Ignored unless
+    /// `auth_method` is explicitly `Key`.
     pub identity_file: String,
 }
 
@@ -171,13 +175,12 @@ fn ssh_config_tokens(line: &str) -> Option<Vec<String>> {
 
 /// Parse the textual contents of an ssh_config into host profiles.
 ///
-/// Only static `Host <name>` blocks are imported. `Host *` (and any name
-/// containing `*` or `?`) is skipped — those are ssh_config wildcards, not
-/// real connect targets. `Match` blocks and `Include` directives are ignored
-/// (not recursively followed). `HostName` defaults to the `Host` name when
-/// absent, matching openssh behavior. `Port` falls back to 22 on a missing or
-/// malformed value. `IdentityFile` is taken verbatim (no `~` expansion here —
-/// the auth layer expands it at connect time).
+/// Only self-contained static `Host <name>` blocks are returned. Wildcards,
+/// `Match`, `Include`, proxy directives, host-key aliases, and certificate
+/// files are counted as skipped instead of being silently flattened into a
+/// connection with different semantics. `HostName` defaults to the alias;
+/// `Port` defaults to 22. `IdentityFile` is taken verbatim (the auth layer
+/// expands `~` at connect time).
 ///
 /// This is a pure function so it can be unit-tested without touching the
 /// filesystem; `ssh_hosts_import_config` reads the file and delegates here.
@@ -228,6 +231,11 @@ pub(crate) fn parse_ssh_config(raw: &str) -> SshImportResult {
                 host: resolved_host,
                 port,
                 user: user.trim().to_string(),
+                auth_method: if identity_file.trim().is_empty() {
+                    None
+                } else {
+                    Some(AuthMethod::Key)
+                },
                 identity_file: identity_file.trim().to_string(),
             });
         }
@@ -317,11 +325,25 @@ pub(crate) fn parse_ssh_config(raw: &str) -> SshImportResult {
                 "user" => user = first_value.clone(),
                 "port" => port_raw = first_value.clone(),
                 "identityfile" => identity_file = first_value,
-                // Include is not followed recursively; ignore all other
-                // directives (ProxyJump, ForwardAgent, …) — they don't affect
-                // the connection target tuple we store.
+                // These directives materially change routing, host identity,
+                // or credentials. Tunara does not implement them, so offering
+                // the alias as a normal direct connection would be unsafe.
+                "include" | "proxyjump" | "proxycommand" | "hostkeyalias" | "certificatefile" => {
+                    skipped += host_names.len().max(1);
+                    host_names.clear();
+                    host_name.clear();
+                    user.clear();
+                    port_raw.clear();
+                    identity_file.clear();
+                    in_block = false;
+                }
                 _ => {}
             }
+        } else if key_lower == "include" {
+            // A global include can alter every later Host block. We cannot
+            // prove those aliases are self-contained, so make the limitation
+            // visible in the result rather than silently claiming full import.
+            skipped += 1;
         }
     }
     // Flush the final block.
@@ -378,6 +400,7 @@ mod tests {
             host: "example.com".into(),
             port: 22,
             user: "root".into(),
+            auth_method: Some(AuthMethod::Key),
             identity_file: "~/.ssh/id_ed25519".into(),
         };
         write_hosts(&path, std::slice::from_ref(&p)).unwrap();
@@ -385,12 +408,24 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].host, "example.com");
         assert_eq!(loaded[0].port, 22);
+        assert_eq!(loaded[0].auth_method, Some(AuthMethod::Key));
 
         // No secret fields exist on the struct — nothing to leak by construction.
         let body = fs::read_to_string(&path).unwrap();
         assert!(!body.to_lowercase().contains("password"));
+        assert!(!body.to_lowercase().contains("passphrase"));
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn legacy_profile_without_auth_method_remains_compatible() {
+        let parsed: HostsFile = toml::from_str(
+            "[[host]]\nid = 'old'\nlabel = ''\nhost = 'old.example'\nport = 22\nuser = 'alice'\nidentity_file = ''\n",
+        )
+        .unwrap();
+        assert_eq!(parsed.hosts.len(), 1);
+        assert_eq!(parsed.hosts[0].auth_method, None);
     }
 
     #[test]
@@ -419,6 +454,7 @@ Host dev
         assert_eq!(prod.user, "deploy");
         assert_eq!(prod.port, 2222);
         assert_eq!(prod.identity_file, "~/.ssh/id_prod");
+        assert_eq!(prod.auth_method, Some(AuthMethod::Key));
         assert_eq!(prod.label, "prod");
 
         let dev = result
@@ -429,6 +465,7 @@ Host dev
         assert_eq!(dev.host, "10.0.0.5");
         assert_eq!(dev.user, "root");
         assert_eq!(dev.port, 22); // absent → default
+        assert_eq!(dev.auth_method, None);
     }
 
     #[test]
@@ -502,8 +539,30 @@ Host real
         assert_eq!(result.imported.len(), 1);
         assert_eq!(result.imported[0].host, "real.example.com");
         assert_eq!(result.imported[0].user, "real");
-        // Include line is not a Host block, so it doesn't count as skipped.
-        assert_eq!(result.skipped, 0);
+        // Include is visible as unsupported rather than silently ignored.
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    fn parse_ssh_config_skips_hosts_with_unsupported_connection_semantics() {
+        let raw = "\
+Host direct
+  HostName direct.example.com
+  User deploy
+
+Host bastion-only
+  HostName private.example.com
+  ProxyJump jump.example.com
+  User deploy
+
+Host aliased-key
+  HostName host.example.com
+  HostKeyAlias canonical.example.com
+";
+        let result = parse_ssh_config(raw);
+        assert_eq!(result.imported.len(), 1);
+        assert_eq!(result.imported[0].label, "direct");
+        assert_eq!(result.skipped, 2);
     }
 
     #[test]

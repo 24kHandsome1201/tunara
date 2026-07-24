@@ -14,7 +14,8 @@
   --c-text-3: oklch(43% 0.011 48);
   --c-text-4: oklch(48% 0.01 48);
   --c-text-5: oklch(57% 0.009 48);
-  --c-text-6: oklch(67% 0.008 48);
+  /* text-6 压低到 60%：9px 徽章小字也能过 WCAG AA 4.5:1 */
+  --c-text-6: oklch(60% 0.009 48);
   --c-text-7: oklch(75% 0.007 48);
 
   /* ── 面/底 ── */
@@ -176,6 +177,10 @@
   --h-btn-md: 30px;
   --r-badge-sm: 4px;
 
+  /* ── 命令面板 ── */
+  --w-palette: 480px;
+  --palette-top: 15%;
+
   /* Solid surface alias retained for existing shell-tint integrations. */
   --c-bg-glass-fallback: var(--c-bg-2);
 }
@@ -189,7 +194,8 @@
   --c-text-3: oklch(72% 0.008 55);
   --c-text-4: oklch(62% 0.008 55);
   --c-text-5: oklch(53% 0.008 55);
-  --c-text-6: oklch(39% 0.008 55);
+  /* 暗色 text-6 提亮到 56%：配合 9px 小字过 AA */
+  --c-text-6: oklch(56% 0.008 55);
   --c-text-7: oklch(29% 0.008 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);
@@ -212,6 +218,8 @@
   --c-error-bg: #2e1a1a;
   --c-error-bg-light: #3a2020;
   --c-warning: #fbbf24;
+  --c-warning-text: #fbbf24;
+  --c-warning-bg: #3a2d18;
   --c-info: #60a5fa;
   --c-info-bg: #1a2540;
 
@@ -282,6 +290,9 @@
 }
 .hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
 .hover-bg:active { transform: scale(var(--scale-press)); transition-duration: 60ms; }
+.presentation-mode-exit-hint { background: var(--c-bg-white); color: var(--c-text-primary); }
+.presentation-mode-exit-hint:hover { background: var(--c-bg-1); }
+.presentation-mode-exit-hint:active { transition-duration: 60ms; }
 .hover-close {
   background: transparent; color: var(--c-text-5);
   transition: background var(--duration-fast) var(--ease-smooth),
@@ -306,11 +317,43 @@
 .tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
 .tab-close:focus-visible { opacity: 1; pointer-events: auto; }
 .tab-select:active { transform: scale(var(--scale-press)); transition: transform 60ms var(--ease-out-expo); }
+.workspace-tab-dirty {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  flex-shrink: 0;
+}
 
 .cmd-chip-more { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth); }
-.cmd-chip:hover .cmd-chip-more { opacity: 1; pointer-events: auto; }
+.cmd-chip:hover .cmd-chip-more,
+.cmd-chip-more:focus-visible { opacity: 1; pointer-events: auto; }
 .cmd-chip-more:hover { color: var(--c-text-2); }
 .tab-btn { transition: background var(--duration-fast) var(--ease-smooth); }
+
+.explorer-sort-button {
+  width: 100%;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font: 500 var(--fs-meta) var(--font-ui);
+  text-align: left;
+}
+.explorer-sort-button:active { transform: scale(var(--scale-press)); }
+.explorer-sort-direction {
+  color: var(--c-text-4);
+  opacity: 0;
+  transform: scale(.9);
+  transition: opacity 120ms var(--ease-smooth), transform 120ms var(--ease-smooth);
+}
+.explorer-sort-direction[data-visible="true"] { opacity: 1; transform: scale(1); }
 
 /* Inspector tabs use a compact underline, with the same press feedback as the
    titlebar controls. */
@@ -318,9 +361,12 @@
 .inspector-tab.hover-text-3:hover { background: var(--c-bg-hover) !important; }
 .inspector-tab[data-active="true"] { background: var(--c-bg-white); }
 
-.split-handle:hover .split-handle-line { background: var(--c-accent) !important; }
-.split-handle-h:hover .split-handle-line { width: 3px !important; }
-.split-handle-v:hover .split-handle-line { height: 3px !important; }
+.split-handle:hover .split-handle-line,
+.split-handle:focus-visible .split-handle-line { background: var(--c-accent) !important; }
+.split-handle-h:hover .split-handle-line,
+.split-handle-h:focus-visible .split-handle-line { width: 3px !important; }
+.split-handle-v:hover .split-handle-line,
+.split-handle-v:focus-visible .split-handle-line { height: 3px !important; }
 .split-handle-line { transition: background var(--duration-fast) var(--ease-smooth), width var(--duration-fast) var(--ease-out-expo), height var(--duration-fast) var(--ease-out-expo); }
 
 .session-card {
@@ -334,7 +380,8 @@
 .session-card[aria-current="page"] { border-color: var(--c-border-2) !important; box-shadow: var(--shadow-card); }
 .session-card[aria-current="page"]:hover { box-shadow: var(--shadow-card-hover); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
-.session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
+.session-card:hover .session-card-close,
+.session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
 .session-card-close:active { transform: scale(var(--scale-press)); }
 
 /* Global agent bar (GlobalAgentBar.tsx) */

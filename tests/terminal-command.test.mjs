@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { isMeaningfulCommand } from "../src/modules/terminal/lib/terminal-command.ts";
+import { terminalFileViewerCommand } from "../src/modules/terminal/lib/shell-command.ts";
 
 test("isMeaningfulCommand treats common noise commands as not meaningful", () => {
   for (const noise of ["ls", "cd", "pwd", "clear", "echo hi", "cat file", "exit"]) {
@@ -48,4 +49,26 @@ test("isMeaningfulCommand treats an empty string as not meaningful", () => {
 
 test("isMeaningfulCommand classifies the bare dot (source alias) as noise", () => {
   assert.equal(isMeaningfulCommand(". ~/.bashrc"), false);
+});
+
+test("terminal file viewer quotes one untrusted basename as a POSIX shell word", () => {
+  assert.equal(terminalFileViewerCommand("notes.txt"), "less -- 'notes.txt'");
+  assert.equal(terminalFileViewerCommand("space name.txt"), "less -- 'space name.txt'");
+  assert.equal(terminalFileViewerCommand("--help"), "less -- '--help'");
+  assert.equal(
+    terminalFileViewerCommand("a; $(touch PWNED) 'quote'.txt"),
+    "less -- 'a; $(touch PWNED) '\"'\"'quote'\"'\"'.txt'",
+  );
+  assert.equal(
+    terminalFileViewerCommand("notes.txt", "/srv/a; $(touch PWNED)/it's here"),
+    "cd '/srv/a; $(touch PWNED)/it'\"'\"'s here' && less -- 'notes.txt'",
+  );
+});
+
+test("terminal file viewer rejects names and directories with terminal controls", () => {
+  for (const fileName of ["", "a\0b", "a\rb", "a\nb", "a\tb", "a\u001bb", "a\u007fb"]) {
+    assert.equal(terminalFileViewerCommand(fileName), null);
+  }
+  assert.equal(terminalFileViewerCommand("notes.txt", "~/relative"), null);
+  assert.equal(terminalFileViewerCommand("notes.txt", "/srv/bad\u001bpath"), null);
 });

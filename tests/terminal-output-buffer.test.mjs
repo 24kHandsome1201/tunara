@@ -73,6 +73,29 @@ test("backend credit is acknowledged only after xterm consumes the merged write"
   buffer.dispose();
 });
 
+test("post-write observers run only after xterm parses the matching output batch", () => {
+  let completeWrite;
+  const order = [];
+  const term = {
+    write(_data, callback) {
+      order.push("parse-start");
+      completeWrite = () => {
+        order.push("parse-complete");
+        callback();
+      };
+    },
+  };
+  const buffer = createTerminalOutputBuffer(term, {
+    onWritten: (data) => order.push(`scan:${text(data)}`),
+  });
+  buffer.push(new TextEncoder().encode("OSC-before-URL"));
+  pumpAnimationFrames();
+  assert.deepEqual(order, ["parse-start"]);
+  completeWrite();
+  assert.deepEqual(order, ["parse-start", "parse-complete", "scan:OSC-before-URL"]);
+  buffer.dispose();
+});
+
 test("high output is sliced to one bounded xterm write per completed frame", () => {
   const writes = [];
   const completions = [];

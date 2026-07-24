@@ -4,6 +4,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { t } from "@/modules/i18n";
 import type { RemoteInfo } from "@/ui/types";
 import { classifySshFailure } from "@/modules/ssh/failure-reason";
+import type { SshAuthMethod } from "@/modules/ssh/hosts-model";
 import type { BackendConnectionPhase } from "./connection-state";
 import { recordTerminalBenchmarkExit, TERMINAL_BENCHMARK_MODE } from "./terminal-benchmark";
 
@@ -21,6 +22,13 @@ export type PtyEvent =
       /** "unknown" = first contact (accepting persists); "unverifiable" = key
        *  couldn't be confirmed against a relevant known_hosts record (not persisted). */
       reason: string;
+    }
+  | {
+      type: "keyboardInteractivePrompt";
+      promptId: string;
+      name: string;
+      instructions: string;
+      prompts: Array<{ prompt: string; echo: boolean }>;
     };
 
 /** Backend sentinel for an SSH transport that ended without ExitStatus. */
@@ -31,8 +39,20 @@ export async function answerHostKeyPrompt(promptId: string, accept: boolean): Pr
   await invoke("ssh_host_key_decision", { promptId, accept });
 }
 
+export async function answerKeyboardInteractivePrompt(
+  promptId: string,
+  responses: string[] | null,
+): Promise<void> {
+  await invoke("ssh_keyboard_interactive_response", { promptId, responses });
+}
+
 const sshOpenAttempts = new Map<string, string>();
 const cancelledSshOpenAttempts = new Set<string>();
+// Unlike sshOpenAttempts (which exists only while invoke("ssh_open") is
+// pending), this map stays alive for the physical connection's lifetime. It
+// prevents a superseded Channel from delivering late phases, prompts, output,
+// or exit events into a newer render generation of the same logical session.
+const sshConnectionGenerations = new Map<string, string>();
 let sshOpenAttemptCounter = 0;
 
 function nextSshOpenAttemptId(): string {
@@ -77,6 +97,15 @@ export function reportSshOpenFailure(
     reason,
     detail: error,
   });
+  notifySshOpenFailure(sessionId, remote, error);
+}
+
+/** Show a failed replacement attempt without marking a still-live PTY failed. */
+export function notifySshOpenFailure(
+  sessionId: string,
+  remote: RemoteInfo,
+  error: string,
+): void {
   useUIStore.getState().addToast({
     sessionId,
     title: `${remote.user}@${remote.host}`,
@@ -208,6 +237,7 @@ export type RemoteOpenInfo = {
   host: string;
   port: number;
   user: string;
+  authMethod?: SshAuthMethod;
   identityFile?: string;
   /** 加密私钥口令，仅本次连接，绝不持久化。 */
   keyPassphrase?: string;
@@ -233,6 +263,7 @@ export function openSessionPty(
       host: opts.remote.host,
       port: opts.remote.port,
       user: opts.remote.user,
+      authMethod: opts.remote.authMethod,
       cwd: opts.cwd?.startsWith("/") ? opts.cwd : undefined,
       identityFile: opts.remote.identityFile,
       keyPassphrase: opts.remote.keyPassphrase,
@@ -240,6 +271,9 @@ export function openSessionPty(
       injectShellIntegration: opts.remote.injectShellIntegration,
     });
   }
+  // A local reopen of the same logical session also supersedes any old SSH
+  // Channel. The backend independently cancels a still-pending SSH publish.
+  sshConnectionGenerations.delete(logicalSessionId);
   return openPty(logicalSessionId, cols, rows, handlers, opts.cwd);
 }
 
@@ -248,9 +282,12 @@ export type SshConnectOptions = {
   host: string;
   port?: number;
   user: string;
+  /** Explicit method. Missing survives only on legacy restores so the backend
+   * can reject it clearly and route the user through the reconnect sheet. */
+  authMethod?: SshAuthMethod;
   /** 恢复远程会话时的绝对 POSIX cwd；伪目录 user@host 不会传入。 */
   cwd?: string;
-  /** 私钥文件路径；缺省走 ssh-agent。 */
+  /** 私钥文件路径；仅在显式选择 key 时传给后端。 */
   identityFile?: string;
   /** 加密私钥的口令，仅本次连接使用。 */
   keyPassphrase?: string;
@@ -274,11 +311,16 @@ export async function openSshPty(
   conn: SshConnectOptions,
 ): Promise<PtySession> {
   const openAttemptId = nextSshOpenAttemptId();
+  const previousGeneration = sshConnectionGenerations.get(logicalSessionId);
   sshOpenAttempts.set(logicalSessionId, openAttemptId);
   const channel = new Channel<PtyEvent>();
   const acknowledger = createOutputAcknowledger();
   const pendingPromptIds = new Set<string>();
+  const pendingKeyboardPromptIds = new Set<string>();
   channel.onmessage = (event) => {
+    const published = sshConnectionGenerations.get(logicalSessionId) === openAttemptId;
+    const latestPending = sshOpenAttempts.get(logicalSessionId) === openAttemptId;
+    if (!published && !latestPending) return;
     switch (event.type) {
       case "data": {
         const bytes = decodeBase64(event.data);
@@ -314,11 +356,26 @@ export async function openSshPty(
           reason: event.reason,
         });
         break;
+      case "keyboardInteractivePrompt":
+        pendingKeyboardPromptIds.add(event.promptId);
+        useUIStore.getState().enqueueKeyboardInteractivePrompt({
+          promptId: event.promptId,
+          name: event.name,
+          instructions: event.instructions,
+          prompts: event.prompts,
+        });
+        break;
     }
   };
 
   let id: number;
   try {
+    // Strip every credential outside the explicitly selected strategy at the
+    // IPC boundary. In particular, Password never forwards an identity path,
+    // key passphrase, or any signal that could touch SSH Agent.
+    const identityFile = conn.authMethod === "key" ? conn.identityFile ?? null : null;
+    const keyPassphrase = conn.authMethod === "key" ? conn.keyPassphrase ?? null : null;
+    const password = conn.authMethod === "password" ? conn.password ?? null : null;
     id = await invoke<number>("ssh_open", {
       logicalSessionId,
       openAttemptId,
@@ -326,9 +383,10 @@ export async function openSshPty(
       port: conn.port ?? null,
       user: conn.user,
       cwd: conn.cwd ?? null,
-      identityFile: conn.identityFile ?? null,
-      keyPassphrase: conn.keyPassphrase ?? null,
-      password: conn.password ?? null,
+      identityFile,
+      keyPassphrase,
+      password,
+      authMethod: conn.authMethod ?? null,
       acceptUnknownHostKey: conn.acceptUnknownHostKey ?? null,
       injectShellIntegration: conn.injectShellIntegration ?? null,
       cols,
@@ -343,6 +401,9 @@ export async function openSshPty(
     for (const promptId of pendingPromptIds) {
       useUIStore.getState().dismissHostKeyPrompt(promptId);
     }
+    for (const promptId of pendingKeyboardPromptIds) {
+      useUIStore.getState().dismissKeyboardInteractivePrompt(promptId);
+    }
     throw error;
   } finally {
     if (sshOpenAttempts.get(logicalSessionId) === openAttemptId) {
@@ -351,11 +412,25 @@ export async function openSshPty(
     cancelledSshOpenAttempts.delete(openAttemptId);
   }
   acknowledger.setId(id);
+  // Keep the old published Channel live while authentication is pending. The
+  // backend swaps physical PTYs immediately before ssh_open returns; publish
+  // the matching renderer generation only now. A late older response must not
+  // overwrite a generation already published by a newer attempt.
+  if (sshConnectionGenerations.get(logicalSessionId) === previousGeneration) {
+    sshConnectionGenerations.set(logicalSessionId, openAttemptId);
+  }
 
   return {
     id,
     write: (data) => invoke("pty_write", { id, data }),
     resize: (c, r) => invoke("pty_resize", { id, cols: c, rows: r }),
-    close: () => invoke("pty_close", { id }),
+    close: () => {
+      if (sshConnectionGenerations.get(logicalSessionId) === openAttemptId) {
+        sshConnectionGenerations.delete(logicalSessionId);
+      }
+      // Always close this physical id. Generation identity only protects the
+      // logical map; it must never leak an older backend connection.
+      return invoke("pty_close", { id });
+    },
   };
 }

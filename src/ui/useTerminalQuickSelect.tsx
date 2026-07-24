@@ -32,12 +32,14 @@ export function useTerminalQuickSelect(
 ) {
   const [items, setItems] = useState<TerminalQuickSelectItem[] | null>(null);
   const t = useT();
+  const presentationMode = useUIStore((s) => s.presentationMode);
 
   const notify = useCallback((title: string, subtitle: string, variant: "success" | "error") => {
     useUIStore.getState().addToast({ sessionId, title, subtitle, variant });
   }, [sessionId]);
 
   const openQuickSelect = useCallback(() => {
+    if (useUIStore.getState().presentationMode === "pure") return;
     if (!active) return;
     const term = termRef.current;
     if (!term) return;
@@ -58,6 +60,10 @@ export function useTerminalQuickSelect(
   useEffect(() => {
     if (!active) setItems(null);
   }, [active]);
+
+  useEffect(() => {
+    if (presentationMode === "pure") setItems(null);
+  }, [presentationMode]);
 
   const closeQuickSelect = useCallback(() => {
     setItems(null);

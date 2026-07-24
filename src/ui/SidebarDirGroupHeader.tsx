@@ -48,28 +48,8 @@ export function DirGroupHeader({
   onContextMenu?: (e: MouseEvent) => void;
 }) {
   const t = useT();
-  return (
-    <div
-      className="dir-group-header"
-      role={onToggleCollapse ? "button" : undefined}
-      tabIndex={onToggleCollapse ? 0 : undefined}
-      onClick={onToggleCollapse}
-      onKeyDown={(e) => {
-        if (onToggleCollapse && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault();
-          onToggleCollapse();
-        }
-      }}
-      title={onToggleCollapse ? (collapsed ? t("dir_group.expand") : t("dir_group.collapse")) : undefined}
-      onContextMenu={onContextMenu}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "5px 9px",
-        cursor: onToggleCollapse ? "pointer" : undefined,
-      }}
-    >
+  const headerContent = (
+    <>
       {onToggleCollapse && (
         <svg
           width="10"
@@ -80,6 +60,7 @@ export function DirGroupHeader({
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
           style={{
             transform: collapsed ? "none" : "rotate(90deg)",
             transition: "transform var(--duration-normal) var(--ease-out-back)",
@@ -101,6 +82,7 @@ export function DirGroupHeader({
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             letterSpacing: workspace ? "0.02em" : undefined,
+            textAlign: "left",
           }}
         >
           {workspace ? workspace.repositoryName : dir.split("/").pop() || dir}
@@ -134,6 +116,51 @@ export function DirGroupHeader({
       >
         {agentCount > 0 ? `${count} · ${agentCount}A` : count}
       </span>
+    </>
+  );
+
+  return (
+    <div
+      className="dir-group-header"
+      onContextMenu={onContextMenu}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 9px",
+      }}
+    >
+      {/* 折叠切换用真实 button（容器不再 role=button 嵌套按钮），
+          aria-expanded 播报折叠状态 */}
+      {onToggleCollapse ? (
+        <button
+          type="button"
+          className="dir-group-toggle"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          title={collapsed ? t("dir_group.expand") : t("dir_group.collapse")}
+          aria-label={collapsed ? t("dir_group.expand") : t("dir_group.collapse")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flex: 1,
+            minWidth: 0,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            padding: 0,
+            font: "inherit",
+            color: "inherit",
+          }}
+        >
+          {headerContent}
+        </button>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+          {headerContent}
+        </div>
+      )}
       {onNewTerminal && (
         <button
           type="button"

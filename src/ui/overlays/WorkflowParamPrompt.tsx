@@ -105,6 +105,7 @@ export function WorkflowParamPrompt() {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="workflow-param-title"
         tabIndex={0}
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === "Escape") setPendingWorkflow(null);
@@ -131,18 +132,19 @@ export function WorkflowParamPrompt() {
         }}
       >
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
-          <span style={{ fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
+          <span id="workflow-param-title" style={{ fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
             {pending.name}
           </span>
         </div>
 
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-          {params.map((p) => (
+          {params.map((p, index) => (
             <div key={p.key}>
-              <label style={{ display: "block", fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 4 }}>
+              <label htmlFor={`workflow-param-${index}`} style={{ display: "block", fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 4 }}>
                 {p.key}
               </label>
               <input
+                id={`workflow-param-${index}`}
                 style={fieldStyle}
                 value={values[p.key] ?? ""}
                 onChange={(e) => setValues((v) => ({ ...v, [p.key]: e.target.value }))}

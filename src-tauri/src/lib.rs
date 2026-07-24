@@ -114,18 +114,39 @@ pub fn run() {
             modules::config::load_config,
             modules::config::save_config,
             modules::workspace_store::workspace_store_file_state,
+            modules::workspace_store::legacy_agent_data_status,
+            modules::workspace_store::legacy_agent_data_delete,
             modules::preview::preview_open,
             modules::preview::preview_refresh,
             modules::preview::preview_status,
             modules::preview::preview_navigate,
             modules::preview::preview_go_back,
             modules::preview::preview_go_forward,
+            modules::preview::preview_set_zoom,
+            modules::preview::preview_reset_zoom,
+            modules::preview::preview_set_viewport,
+            modules::preview::preview_reset_viewport,
+            modules::preview::preview_fit_viewport,
+            modules::preview::preview_telemetry_ingest,
+            modules::preview::preview_telemetry_clear,
+            modules::preview::preview_telemetry_send,
+            modules::preview::preview_terminal_command_started,
+            modules::preview::preview_terminal_command_finished,
+            modules::preview::preview_terminal_exited,
+            modules::preview::preview_remote_source_observed,
+            modules::preview::preview_tunnel_open,
+            modules::preview::preview_tunnel_status,
+            modules::preview::preview_tunnel_close,
+            modules::preview::preview_restart_prepare,
+            modules::preview::preview_capture,
+            modules::preview::preview_send_capture_to_source_terminal,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,
             modules::ssh::ssh_cancel_open,
             // §ssh-client 未知主机密钥 TOFU 指纹确认回传
             modules::ssh::ssh_host_key_decision,
+            modules::ssh::ssh_keyboard_interactive_response,
             // §ssh-client Phase 2 主机 profile 管理(无凭证存储)
             modules::ssh::hosts::ssh_hosts_load,
             modules::ssh::hosts::ssh_hosts_save,
@@ -161,6 +182,8 @@ pub fn run() {
                 show_main_window(app, "reopen");
             }
             tauri::RunEvent::Exit => {
+                app.state::<modules::preview::PreviewWindowState>()
+                    .close_all_tunnels(app);
                 app.state::<pty::PtyState>().close_all();
                 app.state::<HookListenerState>().shutdown();
             }

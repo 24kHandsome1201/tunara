@@ -122,6 +122,7 @@ async fn real_ssh_rtt_operations_benchmark() {
                         port: proxy_port,
                         auth: AuthOptions {
                             user: user.clone(),
+                            method: crate::modules::ssh::auth::AuthMethod::Agent,
                             identity_file: None,
                             key_passphrase: None,
                             password: None,

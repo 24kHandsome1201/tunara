@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-preview-telemetry-ingest"
+description = "Allows an isolated Preview window to submit only bounded console/network failure telemetry."
+commands.allow = ["preview_telemetry_ingest"]

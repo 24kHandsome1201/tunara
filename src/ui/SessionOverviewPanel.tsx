@@ -119,6 +119,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       host: session.remote.host,
       user: session.remote.user,
       port: session.remote.port,
+      authMethod: session.remote.authMethod,
       identityFile: session.remote.identityFile,
       injectShellIntegration: session.remote.injectShellIntegration,
       reconnectSessionId: session.id,
@@ -143,7 +144,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <InfoCard label={t("overview.card.status")} value={statusLabel(session, t)} hint={connectionHint ?? (session.lastExitCode !== undefined ? `exit ${session.lastExitCode}` : undefined)} />
+        <InfoCard label={t("overview.card.status")} value={statusLabel(session, t)} hint={connectionHint ?? (session.lastExitCode !== undefined ? t("overview.card.exit_code", { code: session.lastExitCode }) : undefined)} />
         <InfoCard label={t("overview.card.agent")} value={agentName} hint={session.agentActivity ? t(`overview.agent_activity.${session.agentActivity}`) : undefined} />
         <InfoCard label={isRemote ? t("overview.card.remote") : t("overview.card.cwd")} value={isRemote ? remoteLabel : session.dir} />
         <InfoCard label={t("overview.card.changes")} value={changes.fileCount > 0 ? t("overview.changes.files", { count: String(changes.fileCount) }) : changeHint} hint={changes.fileCount > 0 ? changeHint : undefined} />

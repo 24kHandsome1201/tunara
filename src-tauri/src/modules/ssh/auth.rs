@@ -1,4 +1,5 @@
-// SSH authentication chain: none probe → explicit key file → password → ssh-agent.
+// SSH authentication: a shared "none" probe followed by exactly one
+// user-selected method. There is deliberately no cross-method fallback.
 //
 // Tunara stores NO credentials. Auth is delegated to the system: the
 // ssh-agent (if reachable), an on-disk private key, or a password the user
@@ -7,30 +8,47 @@
 // macOS gotcha: GUI apps inherit a different environment than the login shell,
 // so `SSH_AUTH_SOCK` is often unset. We try the process environment, macOS
 // launchd, then well-known 1Password/Secretive sockets, with a short timeout
-// per candidate. Failure remains non-fatal so the chain can continue to a
-// password.
+// per candidate. Agent failures stay agent failures and never trigger an
+// implicit key/password attempt.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use russh::client::{AuthResult, Handle};
+use russh::client::{AuthResult, Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::agent::client::AgentClient;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
+use serde::{Deserialize, Serialize};
+use tauri::ipc::Channel;
+use tokio::sync::oneshot;
 
 use super::connection::ClientHandler;
+use crate::modules::pty::{KeyboardInteractivePrompt, PtyEvent};
 
 const AGENT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const IDENTITY_LOAD_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_IDENTITY_FILE_BYTES: u64 = 1024 * 1024;
+const KEYBOARD_INTERACTIVE_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// How the caller wants to authenticate. Built from the host profile +
-/// any password the user typed for this attempt.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub enum AuthMethod {
+    #[serde(rename = "agent")]
+    Agent,
+    #[serde(rename = "key")]
+    Key,
+    #[serde(rename = "password")]
+    Password,
+    #[serde(rename = "keyboard-interactive")]
+    KeyboardInteractive,
+}
+
+/// How the caller wants to authenticate. Built from the explicit UI selection
+/// plus any one-shot secret the selected method needs.
 pub struct AuthOptions {
     pub user: String,
-    /// Path to a private key file (e.g. ~/.ssh/id_ed25519). If `None`, agent
-    /// and password are still attempted.
+    pub method: AuthMethod,
+    /// Path to a private key file (e.g. ~/.ssh/id_ed25519). Used only by Key.
     pub identity_file: Option<String>,
     /// Passphrase for an encrypted key file, if needed.
     pub key_passphrase: Option<String>,
@@ -38,53 +56,186 @@ pub struct AuthOptions {
     pub password: Option<String>,
 }
 
-/// Run the auth chain against an already-connected handle. Returns Ok(()) on
-/// success, Err(message) describing why every method failed.
+#[derive(Debug, PartialEq, Eq)]
+enum SelectedAuth<'a> {
+    Agent,
+    Key {
+        path: &'a str,
+        passphrase: Option<&'a str>,
+    },
+    Password(&'a str),
+    KeyboardInteractive,
+}
+
+fn selected_auth(opts: &AuthOptions) -> Result<SelectedAuth<'_>, String> {
+    match opts.method {
+        AuthMethod::Agent => Ok(SelectedAuth::Agent),
+        AuthMethod::Key => Ok(SelectedAuth::Key {
+            path: opts
+                .identity_file
+                .as_deref()
+                .ok_or("key authentication requires an identity file")?,
+            passphrase: opts.key_passphrase.as_deref(),
+        }),
+        AuthMethod::Password => Ok(SelectedAuth::Password(
+            opts.password
+                .as_deref()
+                .ok_or("password authentication requires a password")?,
+        )),
+        AuthMethod::KeyboardInteractive => Ok(SelectedAuth::KeyboardInteractive),
+    }
+}
+
+/// Run only the selected auth method against an already-connected handle.
+/// `none` is probed first solely to support credential-free accounts.
 pub async fn authenticate(
     handle: &mut Handle<ClientHandler>,
     opts: &AuthOptions,
+    on_event: Channel<PtyEvent>,
 ) -> Result<(), String> {
-    let mut errors: Vec<String> = Vec::new();
-
     // OpenSSH starts with the "none" method both to discover allowed methods
     // and to support intentionally credential-free accounts. A rejection is
     // the normal case and should not pollute the final diagnostic.
     match handle.authenticate_none(&opts.user).await {
         Ok(result) if result.success() => return Ok(()),
         Ok(_) => {}
-        Err(error) => errors.push(format!("none: {error}")),
+        Err(error) => log::debug!("SSH none authentication probe failed: {error}"),
     }
 
-    // 1) An identity selected in the host profile is an explicit user choice.
-    // Try it before enumerating agent keys so a large agent cannot consume the
-    // server's authentication-attempt budget first.
-    if let Some(path) = &opts.identity_file {
-        match try_key_file(handle, &opts.user, path, opts.key_passphrase.as_deref()).await {
-            Ok(true) => return Ok(()),
-            Ok(false) => errors.push(format!("key {path}: rejected")),
-            Err(e) => errors.push(format!("key {path}: {e}")),
+    match selected_auth(opts)? {
+        SelectedAuth::Agent => match try_agent(handle, &opts.user).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("agent authentication failed: no offered key accepted".into()),
+            Err(error) => Err(format!("agent authentication failed: {error}")),
+        },
+        SelectedAuth::Key { path, passphrase } => {
+            match try_key_file(handle, &opts.user, path, passphrase).await {
+                Ok(true) => Ok(()),
+                Ok(false) => Err("key authentication failed: rejected".into()),
+                Err(error) => Err(format!("key authentication failed: {error}")),
+            }
+        }
+        SelectedAuth::Password(password) => {
+            let result = handle
+                .authenticate_password(&opts.user, password)
+                .await
+                .map_err(|error| format!("password authentication failed: {error}"))?;
+            if result.success() {
+                Ok(())
+            } else {
+                Err(concat!("password authentication failed: ", "rejected").into())
+            }
+        }
+        SelectedAuth::KeyboardInteractive => {
+            authenticate_keyboard_interactive(handle, &opts.user, on_event).await
         }
     }
+}
 
-    // 2) A password supplied for this attempt is another explicit user choice.
-    // Try it before enumerating an agent: a large agent can otherwise exhaust
-    // the server's MaxAuthTries budget before password auth is attempted.
-    if let Some(pw) = &opts.password {
-        match handle.authenticate_password(&opts.user, pw).await {
-            Ok(r) if r.success() => return Ok(()),
-            Ok(_) => errors.push("password: rejected".into()),
-            Err(e) => errors.push(format!("password: {e}")),
+type KeyboardResponses = Option<Vec<String>>;
+static PENDING_KEYBOARD_PROMPTS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, oneshot::Sender<KeyboardResponses>>>,
+> = std::sync::OnceLock::new();
+static NEXT_KEYBOARD_PROMPT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn pending_keyboard_prompts(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, oneshot::Sender<KeyboardResponses>>>
+{
+    PENDING_KEYBOARD_PROMPTS.get_or_init(Default::default)
+}
+
+pub fn resolve_keyboard_interactive_prompt(prompt_id: &str, responses: KeyboardResponses) -> bool {
+    pending_keyboard_prompts()
+        .lock()
+        .ok()
+        .and_then(|mut prompts| prompts.remove(prompt_id))
+        .is_some_and(|sender| sender.send(responses).is_ok())
+}
+
+async fn request_keyboard_responses(
+    on_event: &Channel<PtyEvent>,
+    name: String,
+    instructions: String,
+    prompts: Vec<russh::client::Prompt>,
+) -> Result<Vec<String>, String> {
+    let prompt_id = format!(
+        "kip-{}",
+        NEXT_KEYBOARD_PROMPT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let expected = prompts.len();
+    let (sender, receiver) = oneshot::channel();
+    pending_keyboard_prompts()
+        .lock()
+        .map_err(|_| "keyboard-interactive prompt registry unavailable")?
+        .insert(prompt_id.clone(), sender);
+    struct PromptGuard(String);
+    impl Drop for PromptGuard {
+        fn drop(&mut self) {
+            if let Ok(mut prompts) = pending_keyboard_prompts().lock() {
+                prompts.remove(&self.0);
+            }
         }
     }
-
-    // 3) ssh-agent (covers 1Password / Secretive / keychain-backed keys).
-    match try_agent(handle, &opts.user).await {
-        Ok(true) => return Ok(()),
-        Ok(false) => errors.push("agent: no offered key accepted".into()),
-        Err(e) => errors.push(format!("agent: {e}")),
+    let _guard = PromptGuard(prompt_id.clone());
+    on_event
+        .send(PtyEvent::KeyboardInteractivePrompt {
+            prompt_id,
+            name,
+            instructions,
+            prompts: prompts
+                .into_iter()
+                .map(|p| KeyboardInteractivePrompt {
+                    prompt: p.prompt,
+                    echo: p.echo,
+                })
+                .collect(),
+        })
+        .map_err(|_| "keyboard-interactive prompt delivery failed")?;
+    let responses = tokio::time::timeout(KEYBOARD_INTERACTIVE_TIMEOUT, receiver)
+        .await
+        .map_err(|_| "keyboard-interactive authentication timed out")?
+        .map_err(|_| "keyboard-interactive authentication canceled")?
+        .ok_or("keyboard-interactive authentication canceled")?;
+    if responses.len() != expected {
+        return Err(format!(
+            "keyboard-interactive response count mismatch: expected {expected}, got {}",
+            responses.len()
+        ));
     }
+    Ok(responses)
+}
 
-    Err(format!("authentication failed ({})", errors.join("; ")))
+async fn authenticate_keyboard_interactive(
+    handle: &mut Handle<ClientHandler>,
+    user: &str,
+    on_event: Channel<PtyEvent>,
+) -> Result<(), String> {
+    let mut response = handle
+        .authenticate_keyboard_interactive_start(user, None)
+        .await
+        .map_err(|error| format!("keyboard-interactive authentication failed: {error}"))?;
+    loop {
+        match response {
+            KeyboardInteractiveAuthResponse::Success => return Ok(()),
+            KeyboardInteractiveAuthResponse::Failure { .. } => {
+                return Err("keyboard-interactive authentication failed: rejected".into())
+            }
+            KeyboardInteractiveAuthResponse::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => {
+                let responses =
+                    request_keyboard_responses(&on_event, name, instructions, prompts).await?;
+                response = handle
+                    .authenticate_keyboard_interactive_respond(responses)
+                    .await
+                    .map_err(|error| {
+                        format!("keyboard-interactive authentication failed: {error}")
+                    })?;
+            }
+        }
+    }
 }
 
 async fn try_agent(handle: &mut Handle<ClientHandler>, user: &str) -> Result<bool, String> {
@@ -257,6 +408,64 @@ fn expand_tilde(path: &str) -> std::path::PathBuf {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn auth_method_wire_values_are_explicit() {
+        let cases = [
+            (AuthMethod::Agent, "\"agent\""),
+            (AuthMethod::Key, "\"key\""),
+            (AuthMethod::Password, "\"password\""),
+            (AuthMethod::KeyboardInteractive, "\"keyboard-interactive\""),
+        ];
+        for (method, wire) in cases {
+            assert_eq!(serde_json::to_string(&method).unwrap(), wire);
+            assert_eq!(serde_json::from_str::<AuthMethod>(wire).unwrap(), method);
+        }
+    }
+
+    #[test]
+    fn password_selection_ignores_key_and_agent_inputs() {
+        let opts = AuthOptions {
+            user: "alice".into(),
+            method: AuthMethod::Password,
+            identity_file: Some("~/.ssh/should-not-be-read".into()),
+            key_passphrase: Some("also-ignored".into()),
+            password: Some("one-shot".into()),
+        };
+        assert_eq!(
+            selected_auth(&opts).unwrap(),
+            SelectedAuth::Password("one-shot")
+        );
+    }
+
+    #[test]
+    fn each_selected_method_requires_only_its_own_input() {
+        let base = || AuthOptions {
+            user: "alice".into(),
+            method: AuthMethod::Agent,
+            identity_file: None,
+            key_passphrase: None,
+            password: None,
+        };
+        assert_eq!(selected_auth(&base()).unwrap(), SelectedAuth::Agent);
+
+        let mut key = base();
+        key.method = AuthMethod::Key;
+        assert!(selected_auth(&key).unwrap_err().contains("identity file"));
+
+        let mut password = base();
+        password.method = AuthMethod::Password;
+        assert!(selected_auth(&password)
+            .unwrap_err()
+            .contains("requires a password"));
+
+        let mut interactive = base();
+        interactive.method = AuthMethod::KeyboardInteractive;
+        assert_eq!(
+            selected_auth(&interactive).unwrap(),
+            SelectedAuth::KeyboardInteractive
+        );
+    }
 
     #[test]
     fn expand_tilde_handles_bare_and_prefixed() {

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "preview-untrusted-loopback",
-  "description": "Untrusted localhost Preview windows intentionally receive no Tauri commands or plugin permissions.",
+  "description": "Untrusted localhost Preview windows receive only one nonce-bound, schema-limited failure telemetry command and no core or plugin permissions.",
   "local": false,
   "remote": {
     "urls": [
@@ -9,10 +9,10 @@
       "https://localhost:*/*",
       "http://127.0.0.1:*/*",
       "https://127.0.0.1:*/*",
-      "http://[::1]:*/*",
-      "https://[::1]:*/*"
+      "http://[\\:\\:1]:*/*",
+      "https://[\\:\\:1]:*/*"
     ]
   },
   "windows": ["preview-*"],
-  "permissions": []
+  "permissions": ["allow-preview-telemetry-ingest"]
 }

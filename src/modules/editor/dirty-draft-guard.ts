@@ -11,21 +11,29 @@ interface PendingDraftAction {
   run: () => void;
 }
 
-let activeDraft: DirtyDraftRegistration | null = null;
+const drafts = new Map<symbol, DirtyDraftRegistration>();
 let pendingAction: PendingDraftAction | null = null;
 
 export function registerDirtyDraft(registration: DirtyDraftRegistration): () => void {
-  activeDraft = registration;
+  drafts.set(registration.owner, registration);
   return () => {
-    if (activeDraft?.owner === registration.owner) activeDraft = null;
+    drafts.delete(registration.owner);
     if (pendingAction?.owner === registration.owner) pendingAction = null;
   };
 }
 
 export function updateDirtyDraft(owner: symbol, dirty: boolean): void {
-  if (activeDraft?.owner !== owner) return;
-  activeDraft = { ...activeDraft, dirty };
+  const draft = drafts.get(owner);
+  if (!draft) return;
+  drafts.set(owner, { ...draft, dirty });
   if (!dirty && pendingAction?.owner === owner) pendingAction = null;
+}
+
+function requestDraftAction(draft: DirtyDraftRegistration | undefined, run: () => void): boolean {
+  if (!draft?.dirty) return true;
+  pendingAction = { owner: draft.owner, run };
+  draft.requestConfirmation();
+  return false;
 }
 
 /**
@@ -37,14 +45,22 @@ export function requestDirtyDraftAction(
   affectedSessionIds: readonly string[],
   run: () => void,
 ): boolean {
-  const draft = activeDraft;
-  if (!draft?.dirty || !affectedSessionIds.includes(draft.sessionId)) {
-    return true;
-  }
+  const affected = new Set(affectedSessionIds);
+  const draft = [...drafts.values()].find((candidate) =>
+    candidate.dirty && affected.has(candidate.sessionId),
+  );
+  return requestDraftAction(draft, run);
+}
 
-  pendingAction = { owner: draft.owner, run };
-  draft.requestConfirmation();
-  return false;
+export function requestDirtyDraftFileAction(
+  sessionId: string,
+  filePath: string,
+  run: () => void,
+): boolean {
+  const draft = [...drafts.values()].find((candidate) =>
+    candidate.sessionId === sessionId && candidate.filePath === filePath,
+  );
+  return requestDraftAction(draft, run);
 }
 
 /**
@@ -53,18 +69,21 @@ export function requestDirtyDraftAction(
  * session that owns it.
  */
 export function requestActiveDirtyDraftAction(run: () => void): boolean {
-  const draft = activeDraft;
-  if (!draft?.dirty) return true;
-  pendingAction = { owner: draft.owner, run };
-  draft.requestConfirmation();
-  return false;
+  const draft = [...drafts.values()].find((candidate) => candidate.dirty);
+  return requestDraftAction(draft, () => {
+    // An application-wide close affects every mounted file tab. Re-enter the
+    // guard after each discard so multiple dirty files are confirmed one by
+    // one instead of letting the first confirmation discard the rest.
+    if (requestActiveDirtyDraftAction(run)) run();
+  });
 }
 
 export function confirmDirtyDraftDiscard(owner: symbol): boolean {
-  if (activeDraft?.owner !== owner || pendingAction?.owner !== owner) return false;
+  const draft = drafts.get(owner);
+  if (!draft || pendingAction?.owner !== owner) return false;
   const action = pendingAction;
   pendingAction = null;
-  activeDraft = { ...activeDraft, dirty: false };
+  drafts.set(owner, { ...draft, dirty: false });
   action.run();
   return true;
 }
@@ -81,6 +100,6 @@ export function hasPendingDirtyDraftAction(owner: symbol): boolean {
 
 /** Test-only reset for the module-level UI registry. */
 export function resetDirtyDraftGuardForTests(): void {
-  activeDraft = null;
+  drafts.clear();
   pendingAction = null;
 }

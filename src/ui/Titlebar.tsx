@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deriveTitle, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { getNumberRecordValue } from "@/state/record-keys";
@@ -10,6 +10,9 @@ import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { SessionMascotIcon } from "./SessionMascotIcon";
+import type { WorkspaceFileTab } from "@/state/ui";
+import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
+import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -20,6 +23,7 @@ type DragStyle = React.CSSProperties & { WebkitAppRegion?: string };
 
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
 const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1;
+const FULLSCREEN_EXIT_HINT_DURATION_MS = 4000;
 
 interface TitlebarProps {
   sessions: Session[];
@@ -60,21 +64,138 @@ function GearIcon() {
   );
 }
 
+function PresentationModeIcon() {
+  return (
+    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5.5 2.5h-3v3" />
+      <path d="M10.5 2.5h3v3" />
+      <path d="M13.5 10.5v3h-3" />
+      <path d="M5.5 13.5h-3v-3" />
+    </svg>
+  );
+}
+
+interface PresentationModeButtonProps {
+  label: string;
+  shortcut: string;
+  onClick: () => void;
+  showShortcut?: boolean;
+  surface?: boolean;
+  floating?: boolean;
+  visible?: boolean;
+  onKeepVisible?: () => void;
+  onReleaseVisible?: () => void;
+}
+
+function PresentationModeButton({
+  label,
+  shortcut,
+  onClick,
+  showShortcut = false,
+  surface = false,
+  floating = false,
+  visible = true,
+  onKeepVisible,
+  onReleaseVisible,
+}: PresentationModeButtonProps) {
+  const accessibleLabel = `${label} ${shortcut}`;
+  return (
+    <button
+      type="button"
+      data-presentation-action={floating ? "exit-fullscreen-pure" : undefined}
+      data-visible={floating ? String(visible) : undefined}
+      onClick={onClick}
+      onPointerEnter={onKeepVisible}
+      onPointerLeave={onReleaseVisible}
+      onFocus={onKeepVisible}
+      onBlur={onReleaseVisible}
+      title={accessibleLabel}
+      aria-label={accessibleLabel}
+      aria-hidden={floating && !visible ? true : undefined}
+      tabIndex={floating && !visible ? -1 : 0}
+      className={floating || surface ? "presentation-mode-exit-hint" : "hover-bg"}
+      style={{
+        height: floating ? 30 : "var(--h-titlebar-control)",
+        padding: floating ? "0 10px" : "0 8px",
+        borderRadius: "var(--r-btn)",
+        border: floating || surface ? "1px solid var(--c-border-1)" : "none",
+        background: floating || surface ? undefined : "transparent",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        whiteSpace: "nowrap",
+        ...(floating ? {
+          position: "fixed",
+          top: 8,
+          left: "50%",
+          zIndex: 900,
+          opacity: visible ? 1 : 0,
+          transform: `translate(-50%, ${visible ? "0" : "-8px"})`,
+          pointerEvents: visible ? "auto" : "none",
+          transition: "opacity var(--duration-normal) var(--ease-smooth), transform var(--duration-normal) var(--ease-out-expo)",
+          boxShadow: "var(--shadow-menu)",
+        } : {}),
+      }}
+    >
+      <PresentationModeIcon />
+      <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 500 }}>{label}</span>
+      {showShortcut && (
+        <kbd style={{
+          padding: "1px 4px",
+          borderRadius: "var(--r-badge-sm)",
+          background: "var(--c-bg-2)",
+          color: "var(--c-text-4)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--fs-meta-sm)",
+          lineHeight: 1.4,
+        }}>
+          {shortcut}
+        </kbd>
+      )}
+    </button>
+  );
+}
+
 interface TabButtonProps {
   isActive: boolean;
   label: string;
+  kind: "terminal" | "file";
+  dirty?: boolean;
   mascot?: Session["mascot"];
+  dirtyLabel: string;
   closeLabel: string;
   confirmCloseLabel: string;
   confirmClose?: boolean;
+  /** Roving tabindex：仅当前 tab 为 0，其余 -1（APG tabs 模式） */
+  tabIndex?: number;
   onSelect: () => void;
   onClose: () => void;
 }
 
-function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, confirmClose, onSelect, onClose }: TabButtonProps) {
+function WorkspaceTabIcon({ kind }: { kind: "terminal" | "file" }) {
+  if (kind === "terminal") {
+    return (
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="2" />
+        <path d="m4.25 5 2 2-2 2M8 10h3.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M4 1.75h5l3 3v9.5H4z" />
+      <path d="M9 1.75v3h3" />
+    </svg>
+  );
+}
+
+function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabel, confirmCloseLabel, confirmClose, tabIndex, onSelect, onClose }: TabButtonProps) {
   return (
     <div
       className="tab-btn"
+      data-workspace-tab-kind={kind}
       data-active={isActive ? "true" : "false"}
       style={{
         height: 28,
@@ -90,6 +211,7 @@ function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, con
         type="button"
         role="tab"
         aria-selected={isActive}
+        tabIndex={tabIndex ?? 0}
         onClick={onSelect}
         className="tab-select"
         style={{
@@ -105,16 +227,9 @@ function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, con
           borderRadius: "var(--r-pill) 0 0 var(--r-pill)",
         }}
       >
-        {mascot ? <SessionMascotIcon id={mascot} size={18} /> : isActive && (
-          <span aria-hidden="true" style={{
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: "var(--c-accent)",
-            flexShrink: 0,
-            animation: "scaleIn var(--duration-fast) var(--ease-out-back)",
-          }} />
-        )}
+        {kind === "terminal" && mascot
+          ? <SessionMascotIcon id={mascot} size={18} />
+          : <WorkspaceTabIcon kind={kind} />}
         <span style={{
           fontSize: "var(--fs-secondary)",
           fontWeight: isActive ? 600 : 400,
@@ -124,6 +239,7 @@ function TabButton({ isActive, label, mascot, closeLabel, confirmCloseLabel, con
         }}>
           {label}
         </span>
+        {dirty && <span className="workspace-tab-dirty" aria-label={dirtyLabel} />}
       </button>
       <button
         type="button"
@@ -200,7 +316,7 @@ function WindowControls() {
   );
 }
 
-export function Titlebar({
+function TitlebarImpl({
   sessions,
   activeSessionId,
   panelVisible,
@@ -214,26 +330,85 @@ export function Titlebar({
   onOpenSettings,
 }: TitlebarProps) {
   const t = useT();
-  const showTabs = !sidebarVisible;
+  const presentationMode = useUIStore((s) => s.presentationMode);
+  const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
+  const fileTabs = useUIStore((s) => s.fileTabs);
+  const activeFileTabId = useUIStore((s) => s.activeFileTabId);
+  const setActiveFileTab = useUIStore((s) => s.setActiveFileTab);
+  const closeFileTab = useUIStore((s) => s.closeFileTab);
+  const showTabs = presentationMode === "workspace" && (!sidebarVisible || fileTabs.length > 0);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
   const openSettingsShortcut = useUIStore((s) => s.keybindings.openSettings);
   const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
+  const presentationModeBinding = useUIStore((s) => s.keybindings.togglePresentationMode);
+  const presentationModeShortcut = formatShortcut(presentationModeBinding);
+  const setPresentationMode = useUIStore((s) => s.setPresentationMode);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const fullscreenHintTimerRef = useRef<number | null>(null);
+  const [fullscreenExitHintVisible, setFullscreenExitHintVisible] = useState(false);
   const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
   const [newTerminalMenu, setNewTerminalMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
   } | null>(null);
 
+  useEffect(() => {
+    if (presentationMode === "pure") setNewTerminalMenu(null);
+  }, [presentationMode]);
+
+  const clearFullscreenHintTimer = useCallback(() => {
+    if (fullscreenHintTimerRef.current !== null) {
+      window.clearTimeout(fullscreenHintTimerRef.current);
+      fullscreenHintTimerRef.current = null;
+    }
+  }, []);
+
+  const keepFullscreenExitHintVisible = useCallback(() => {
+    clearFullscreenHintTimer();
+    setFullscreenExitHintVisible(true);
+  }, [clearFullscreenHintTimer]);
+
+  const revealFullscreenExitHint = useCallback(() => {
+    keepFullscreenExitHintVisible();
+    fullscreenHintTimerRef.current = window.setTimeout(() => {
+      fullscreenHintTimerRef.current = null;
+      setFullscreenExitHintVisible(false);
+    }, FULLSCREEN_EXIT_HINT_DURATION_MS);
+  }, [keepFullscreenExitHintVisible]);
+
+  useEffect(() => {
+    if (presentationMode === "pure" && nativeFullscreen) {
+      revealFullscreenExitHint();
+    } else {
+      clearFullscreenHintTimer();
+      setFullscreenExitHintVisible(false);
+    }
+    return clearFullscreenHintTimer;
+  }, [clearFullscreenHintTimer, nativeFullscreen, presentationMode, revealFullscreenExitHint]);
+
+  useEffect(() => {
+    if (presentationMode !== "pure" || !nativeFullscreen) return;
+    const revealAtTopEdge = (event: PointerEvent) => {
+      if (event.clientY <= 10) revealFullscreenExitHint();
+    };
+    window.addEventListener("pointermove", revealAtTopEdge, { passive: true });
+    return () => window.removeEventListener("pointermove", revealAtTopEdge);
+  }, [nativeFullscreen, presentationMode, revealFullscreenExitHint]);
+
   const openNewTerminalMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
     setNewTerminalMenu({
-      position: { x: event.clientX, y: event.clientY },
+      position: event.type === "contextmenu"
+        ? { x: event.clientX, y: event.clientY }
+        : { x: rect.left, y: rect.bottom },
       items: [
         { id: "new-terminal", label: t("titlebar.new_terminal"), icon: "terminal", action: onNewTerminal },
         { id: "new-terminal-directory", label: t("titlebar.new_terminal_in_directory"), icon: "folder", action: onNewTerminalInDirectory },
+        null,
+        { id: "new-ssh-session", label: t("titlebar.new_ssh_session"), icon: "ssh", action: () => useUIStore.getState().openSshConnect() },
       ],
     });
   };
@@ -241,6 +416,29 @@ export function Titlebar({
   function tabLabel(s: Session): string {
     const { primary } = deriveTitle(s);
     return primary.length > 24 ? primary.slice(0, 24) + "…" : primary;
+  }
+
+  function fileTabLabel(tab: WorkspaceFileTab): string {
+    return tab.fileName.length > 28 ? tab.fileName.slice(0, 28) + "…" : tab.fileName;
+  }
+
+  function selectFileTab(tab: WorkspaceFileTab) {
+    useSessionsStore.getState().setActive(tab.sessionId);
+    setActiveFileTab(tab.id);
+  }
+
+  function requestCloseFileTab(tab: WorkspaceFileTab) {
+    const close = () => {
+      const wasActive = useUIStore.getState().activeFileTabId === tab.id;
+      closeFileTab(tab.id);
+      if (!wasActive) return;
+      const ui = useUIStore.getState();
+      const adjacent = ui.fileTabs.find((candidate) => candidate.id === ui.activeFileTabId);
+      if (!adjacent) return;
+      useSessionsStore.getState().setActive(adjacent.sessionId);
+      ui.setActiveFileTab(adjacent.id);
+    };
+    if (requestDirtyDraftFileAction(tab.sessionId, tab.filePath, close)) close();
   }
 
   // 监听 tabs 容器滚动，决定哪边显示渐隐提示
@@ -260,7 +458,7 @@ export function Titlebar({
       el.removeEventListener("scroll", update);
       ro.disconnect();
     };
-  }, [showTabs, sessions.length]);
+  }, [showTabs, sessions.length, fileTabs.length]);
 
   // 鼠标滚轮 → 横向滚动（trackpad 横滑天生工作，无需介入）
   useEffect(() => {
@@ -281,14 +479,49 @@ export function Titlebar({
   // active tab 自动滚入视野
   useEffect(() => {
     const el = tabsRef.current;
-    if (!el || !showTabs || !activeSessionId) return;
-    const active = el.querySelector<HTMLElement>(`[data-tab-id="${activeSessionId}"]`);
+    if (!el || !showTabs) return;
+    const active = el.querySelector<HTMLElement>('[data-active-tab="true"]');
     if (!active) return;
-    const left = active.offsetLeft;
-    const right = left + active.offsetWidth;
+    // offsetLeft 是相对 offsetParent 的坐标，和 scrollLeft 的容器坐标系未必
+    // 一致（wrapper 有 transform 时会错位）；统一换算到容器坐标系再比较。
+    const elRect = el.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const left = activeRect.left - elRect.left + el.scrollLeft;
+    const right = left + activeRect.width;
     if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 16);
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 16;
-  }, [activeSessionId, showTabs, sessions.length]);
+  }, [activeFileTabId, activeSessionId, showTabs, sessions.length, fileTabs.length]);
+
+  // APG tabs 键盘漫游：方向键/Home/End 在 terminal 与 file tab 间循环（自动激活）
+  const orderedTabIds = useMemo(
+    () => [...sessions.map((s) => `terminal:${s.id}`), ...fileTabs.map((tab) => `file:${tab.id}`)],
+    [sessions, fileTabs],
+  );
+  const activeTabId = activeFileTabId !== null
+    ? `file:${activeFileTabId}`
+    : sessions.some((s) => s.id === activeSessionId)
+      ? `terminal:${activeSessionId}`
+      : orderedTabIds[0];
+  const selectTabById = useCallback((tabId: string) => {
+    if (tabId.startsWith("terminal:")) {
+      onSelectSession(tabId.slice("terminal:".length));
+      return;
+    }
+    const fileId = tabId.slice("file:".length);
+    const tab = useUIStore.getState().fileTabs.find((candidate) => candidate.id === fileId);
+    if (!tab) return;
+    useSessionsStore.getState().setActive(tab.sessionId);
+    useUIStore.getState().setActiveFileTab(tab.id);
+  }, [onSelectSession]);
+  const handleTabListKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const currentId = tabIdFromEventTarget(e.target);
+    if (!currentId) return;
+    const nextId = resolveRovingTabId(orderedTabIds, currentId, e.key);
+    if (!nextId || nextId === currentId) return;
+    e.preventDefault();
+    selectTabById(nextId);
+    focusTabById(tabsRef.current, nextId);
+  }, [orderedTabIds, selectTabById]);
 
   const tabsMask =
     overflowEdge === "both"
@@ -299,6 +532,49 @@ export function Titlebar({
           ? "linear-gradient(to right, #000 calc(100% - 24px), transparent 100%)"
           : undefined;
   const titlebarControlTransform = _isMac ? `translateY(${MAC_TITLEBAR_CONTROL_Y_OFFSET}px)` : undefined;
+
+  if (presentationMode === "pure") {
+    if (nativeFullscreen) {
+      return (
+        <PresentationModeButton
+          label={t("palette.cmd.exit_pure")}
+          shortcut={presentationModeShortcut}
+          onClick={() => setPresentationMode("workspace")}
+          showShortcut
+          floating
+          visible={fullscreenExitHintVisible}
+          onKeepVisible={keepFullscreenExitHintVisible}
+          onReleaseVisible={revealFullscreenExitHint}
+        />
+      );
+    }
+    return (
+      <div
+        data-presentation-chrome="windowed"
+        data-tauri-drag-region
+        style={{
+          height: "var(--h-titlebar)",
+          background: "var(--terminal-canvas-bg, var(--c-bg-white))",
+          display: "flex",
+          alignItems: "center",
+          flexShrink: 0,
+          WebkitAppRegion: "drag",
+        } as DragStyle}
+      >
+        <div data-tauri-drag-region style={{ flex: 1 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: _isMac ? 12 : 4, WebkitAppRegion: "no-drag" } as DragStyle}>
+          <PresentationModeButton
+            label={t("palette.cmd.exit_pure")}
+            shortcut={presentationModeShortcut}
+            onClick={() => setPresentationMode("workspace")}
+            showShortcut
+            surface
+          />
+          {!_isMac && <WindowControls />}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -353,6 +629,7 @@ export function Titlebar({
           ref={tabsRef}
           role="tablist"
           aria-label={t("titlebar.tabs")}
+          onKeyDown={handleTabListKeyDown}
           className="no-scrollbar"
           style={{
             display: "flex",
@@ -371,24 +648,45 @@ export function Titlebar({
           } as DragStyle}
         >
           {sessions.map((s) => (
-            <div key={s.id} data-tab-id={s.id} style={{ flexShrink: 0 }}>
+            <div key={`terminal:${s.id}`} data-tab-id={`terminal:${s.id}`} data-active-tab={activeFileTabId === null && s.id === activeSessionId ? "true" : undefined} style={{ flexShrink: 0 }}>
               <TabButton
-                isActive={s.id === activeSessionId}
+                isActive={activeFileTabId === null && s.id === activeSessionId}
                 label={tabLabel(s)}
+                kind="terminal"
                 mascot={s.mascot}
+                dirtyLabel={t("preview.editor.unsaved")}
                 closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
                 confirmCloseLabel={t("destructive.confirm_again.close")}
                 confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
+                tabIndex={`terminal:${s.id}` === activeTabId ? 0 : -1}
                 onSelect={() => onSelectSession(s.id)}
                 onClose={() => onCloseSession(s.id)}
               />
             </div>
           ))}
+          {fileTabs.map((tab) => (
+            <div key={`file:${tab.id}`} data-tab-id={`file:${tab.id}`} data-active-tab={tab.id === activeFileTabId ? "true" : undefined} style={{ flexShrink: 0 }}>
+              <TabButton
+                isActive={tab.id === activeFileTabId}
+                label={fileTabLabel(tab)}
+                kind="file"
+                dirty={tab.dirty}
+                dirtyLabel={t("preview.editor.unsaved")}
+                closeLabel={t("titlebar.file_tab.close", { file: tab.fileName })}
+                confirmCloseLabel={t("preview.editor.close_warning")}
+                tabIndex={`file:${tab.id}` === activeTabId ? 0 : -1}
+                onSelect={() => selectFileTab(tab)}
+                onClose={() => requestCloseFileTab(tab)}
+              />
+            </div>
+          ))}
           <button
-            onClick={onNewTerminal}
+            onClick={openNewTerminalMenu}
             onContextMenu={openNewTerminalMenu}
-            title={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
-            aria-label={`${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
+            title={`${t("titlebar.new_menu")} · ${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
+            aria-label={t("titlebar.new_menu")}
+            aria-haspopup="menu"
+            aria-expanded={Boolean(newTerminalMenu)}
             style={{
               width: "var(--w-titlebar-control)",
               height: "var(--h-titlebar-control)",
@@ -449,6 +747,11 @@ export function Titlebar({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
+        <PresentationModeButton
+          label={t("titlebar.pure_mode")}
+          shortcut={presentationModeShortcut}
+          onClick={() => setPresentationMode("pure")}
+        />
 
         <button
           onClick={onOpenSettings}
@@ -506,3 +809,8 @@ export function Titlebar({
     </div>
   );
 }
+
+// Memoized: props are store primitives + module-level/useCallback-stable
+// callbacks from App, so dragging the sidebar width no longer re-renders
+// the titlebar (and its tabs) on every pointer frame.
+export const Titlebar = memo(TitlebarImpl);

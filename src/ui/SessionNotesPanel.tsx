@@ -78,6 +78,7 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
         onChange={(e) => handleEdit(sanitizeSessionNote(e.target.value))}
         onBlur={flush}
         placeholder={t("notes.placeholder")}
+        aria-label={t("inspector.tab.notes")}
         spellCheck
         style={{
           flex: 1,

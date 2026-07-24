@@ -34,11 +34,25 @@ import {
 } from "@/modules/editor/editor-draft-registry";
 import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor/scroll-position";
 import { classifyFileOperationError, type FileOperationErrorKind } from "@/modules/editor/file-operation-error";
+import { parseNotebook, type NotebookCell } from "@/modules/editor/notebook";
+
+/** 值防抖：delayMs 内连续变化只取最后一个，用于高开销派生的计算闸门。 */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 interface FilePreviewProps {
+  sessionId?: string;
   filePath: string;
   fileName: string;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onNeedsAttention?: () => void;
   /** Fill the inspector content area instead of rendering as an inline card. */
   fill?: boolean;
   /** 远程 SSH 会话的 PTY id；存在则经 SFTP 读取。 */
@@ -73,8 +87,7 @@ function HighlightedText({ text, query, cursor }: { text: string; query: string;
   return parts.length > 0 ? parts : text;
 }
 
-function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {
-  const t = useT();
+function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {  const t = useT();
   const document = useMemo(() => parseMarkdownDocument(content), [content]);
   const previewRef = useRef<HTMLDivElement>(null);
   const matchCursor: MarkdownFindCursor = { current: 0, active: activeFindIndex };
@@ -252,6 +265,87 @@ function TextPreview({ content, fill = false }: { content: string; fill?: boolea
   );
 }
 
+function NotebookMarkdownCell({ source }: { source: string }) {
+  const document = useMemo(() => parseMarkdownDocument(source), [source]);
+  const matchCursor: MarkdownFindCursor = { current: 0, active: -1 };
+  return (
+    <div className="notebook-markdown-cell">
+      {document.blocks.map((block) => (
+        <MarkdownBlock key={block.key} block={block} findQuery="" matchCursor={matchCursor} />
+      ))}
+    </div>
+  );
+}
+
+function NotebookCellView({ cell, index }: { cell: NotebookCell; index: number }) {
+  const t = useT();
+  if (cell.kind === "markdown") {
+    return (
+      <article className="notebook-cell" data-cell-kind="markdown" aria-label={t("preview.notebook.markdown_cell", { index: index + 1 })}>
+        <NotebookMarkdownCell source={cell.source} />
+      </article>
+    );
+  }
+  if (cell.kind === "raw") {
+    return (
+      <article className="notebook-cell" data-cell-kind="raw" aria-label={t("preview.notebook.raw_cell", { index: index + 1 })}>
+        <div className="notebook-cell-gutter">{t("preview.notebook.raw_gutter")}</div>
+        <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
+      </article>
+    );
+  }
+  return (
+    <article className="notebook-cell" data-cell-kind="code" aria-label={t("preview.notebook.code_cell", { index: index + 1 })}>
+      <div className="notebook-cell-code">
+        <div className="notebook-cell-gutter">{t("preview.notebook.in_gutter", { count: cell.executionCount ?? " " })}</div>
+        <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
+      </div>
+      {cell.outputs.length > 0 && (
+        <div className="notebook-outputs">
+          {cell.outputs.map((output, outputIndex) => {
+            if (output.kind === "omitted") {
+              return <div className="notebook-output-omitted" key={outputIndex}>{t("preview.notebook.rich_output_omitted")}</div>;
+            }
+            if (output.kind === "error") {
+              const text = output.traceback.length > 0
+                ? output.traceback.join("\n")
+                : `${output.name}: ${output.value}`;
+              return <pre className="notebook-output notebook-output-error" key={outputIndex}><code>{text}</code></pre>;
+            }
+            return <pre className="notebook-output" key={outputIndex}><code>{output.text}</code></pre>;
+          })}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function NotebookPreview({ content }: { content: string }) {
+  const t = useT();
+  const parsed = useMemo(() => parseNotebook(content), [content]);
+  if (!parsed.ok) {
+    return (
+      <div className="notebook-invalid" role="alert">
+        <strong>{t("preview.notebook.invalid")}</strong>
+        <span>{t("preview.notebook.invalid_body")}</span>
+        <code>{parsed.message}</code>
+      </div>
+    );
+  }
+  return (
+    <div className="notebook-preview no-scrollbar">
+      <div className="notebook-summary">
+        <span>{t("preview.notebook.cells", { count: parsed.notebook.cells.length })}</span>
+        <span>{parsed.notebook.language ?? `nbformat ${parsed.notebook.nbformat}`}</span>
+        <span>{t("preview.notebook.safe_mode")}</span>
+      </div>
+      {parsed.notebook.cells.length > 0
+        ? parsed.notebook.cells.map((cell, index) => <NotebookCellView key={index} cell={cell} index={index} />)
+        : <div className="notebook-empty">{t("preview.notebook.empty")}</div>}
+    </div>
+  );
+}
+
 function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   return (
     <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 8 }}>
@@ -262,35 +356,43 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
 }
 
 type SaveState = EditorDraftSaveState;
-type OperationError = { operation: "save" | "reload"; kind: FileOperationErrorKind };
+type OperationError = { operation: "save" | "reload"; kind: FileOperationErrorKind; detail: string };
 
 function EditorSurface({
+  sessionId,
   filePath,
   fileName,
   initialContent,
   initialFingerprint,
   remotePtyId,
   isMarkdown,
+  isNotebook,
   onClose,
+  onDirtyChange,
+  onNeedsAttention,
 }: {
+  sessionId: string | null;
   filePath: string;
   fileName: string;
   initialContent: string;
   initialFingerprint: string;
   remotePtyId?: number;
   isMarkdown: boolean;
+  isNotebook: boolean;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onNeedsAttention?: () => void;
 }) {
   const t = useT();
   const externalEditor = useUIStore((state) => state.externalEditor);
-  // Capture the owning session once. A session switch can render the old tree
-  // once before unmount; deriving this key reactively would migrate its draft
-  // into the newly active session during that frame.
-  const sessionId = useRef(useSessionsStore.getState().activeSessionId).current;
   const draftKey = editorDraftKey(sessionId, filePath);
   const restoredDraftRef = useRef(readEditorDraft(draftKey));
   const restoredDraft = restoredDraftRef.current;
   const draftOwnerRef = useRef(Symbol("file-editor-draft"));
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  const onNeedsAttentionRef = useRef(onNeedsAttention);
+  onDirtyChangeRef.current = onDirtyChange;
+  onNeedsAttentionRef.current = onNeedsAttention;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const syntaxRef = useRef<HTMLPreElement>(null);
@@ -302,7 +404,7 @@ function EditorSurface({
   const [content, setContent] = useState(restoredDraft?.content ?? initialContent);
   const [fingerprint, setFingerprint] = useState(restoredDraft?.fingerprint ?? initialFingerprint);
   const [savedContent, setSavedContent] = useState(restoredDraft?.savedContent ?? initialContent);
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [mode, setMode] = useState<"edit" | "preview">(isNotebook ? "preview" : "edit");
   const [saveState, setSaveState] = useState<SaveState>(() => {
     if (!restoredDraft) return "idle";
     if (restoredDraft.saveState === "saving" || restoredDraft.saveState === "reconciling") {
@@ -320,16 +422,24 @@ function EditorSurface({
   const [operationError, setOperationError] = useState<OperationError | null>(null);
   const [reloadPending, setReloadPending] = useState(false);
   const dirty = content !== savedContent;
+  const previewable = isMarkdown;
   const lines = useMemo(() => content.split("\n"), [content]);
-  const highlightedLines = useMemo(
-    () => isMarkdown ? highlightMarkdownSource(content) : null,
-    [content, isMarkdown],
+  // 语法分类挂在防抖后的值上；等待分类时同步渲染纯文本，避免透明
+  // textarea 后面的可见内容落后于输入。行号列同样保持实时。
+  const debouncedContent = useDebouncedValue(content, 200);
+  const debouncedFindQuery = useDebouncedValue(findQuery, 150);
+  const debouncedHighlightedLines = useMemo(
+    () => isMarkdown ? highlightMarkdownSource(debouncedContent) : null,
+    [debouncedContent, isMarkdown],
   );
+  const highlightedLines = isMarkdown && debouncedContent !== content
+    ? lines.map((line) => [{ kind: "text" as const, text: line }])
+    : debouncedHighlightedLines;
   const matches = useMemo(() => {
-    if (!findQuery) return [] as number[];
+    if (!debouncedFindQuery) return [] as number[];
     const found: number[] = [];
     const haystack = content.toLocaleLowerCase();
-    const needle = findQuery.toLocaleLowerCase();
+    const needle = debouncedFindQuery.toLocaleLowerCase();
     let offset = 0;
     while (offset <= haystack.length - needle.length) {
       const index = haystack.indexOf(needle, offset);
@@ -338,7 +448,7 @@ function EditorSurface({
       offset = index + Math.max(needle.length, 1);
     }
     return found;
-  }, [content, findQuery]);
+  }, [content, debouncedFindQuery]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -349,12 +459,16 @@ function EditorSurface({
       // The following effect publishes the current value after registration;
       // starting clean keeps this effect independent from every keystroke.
       dirty: false,
-      requestConfirmation: () => setCloseConfirm(true),
+      requestConfirmation: () => {
+        onNeedsAttentionRef.current?.();
+        setCloseConfirm(true);
+      },
     });
   }, [filePath, sessionId]);
 
   useEffect(() => {
     updateDirtyDraft(draftOwnerRef.current, dirty);
+    onDirtyChangeRef.current?.(dirty);
   }, [dirty]);
 
   useLayoutEffect(() => {
@@ -427,7 +541,7 @@ function EditorSurface({
         setSaveState("unknown");
         return;
       }
-      setOperationError({ operation: "save", kind: classifyFileOperationError(error) });
+      setOperationError({ operation: "save", kind: classifyFileOperationError(error), detail: String(error) });
       setSaveState("error");
     }
   };
@@ -467,7 +581,7 @@ function EditorSurface({
         ? await fsReadFile(filePath)
         : await sshReadFile(remotePtyId, filePath);
       if (result.kind !== "text" || !result.fingerprint) {
-        setOperationError({ operation: "reload", kind: "unsupported" });
+        setOperationError({ operation: "reload", kind: "unsupported", detail: "" });
         setSaveState("error");
         return;
       }
@@ -479,7 +593,7 @@ function EditorSurface({
       setSaveState("idle");
       setCloseConfirm(false);
     } catch (error) {
-      setOperationError({ operation: "reload", kind: classifyFileOperationError(error) });
+      setOperationError({ operation: "reload", kind: classifyFileOperationError(error), detail: String(error) });
       setSaveState("error");
     } finally {
       setReloadPending(false);
@@ -503,7 +617,7 @@ function EditorSurface({
   };
 
   const switchMode = (nextMode: "edit" | "preview", focusTab = false) => {
-    if (nextMode === mode || (nextMode === "preview" && !isMarkdown)) return;
+    if (isNotebook || nextMode === mode || (nextMode === "preview" && !previewable)) return;
     if (mode === "edit") {
       const textarea = textareaRef.current;
       if (textarea) {
@@ -521,7 +635,7 @@ function EditorSurface({
   };
 
   const handleModeTabKey = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (!isMarkdown) return;
+    if (!previewable) return;
     let nextMode: "edit" | "preview" | null = null;
     if (event.key === "ArrowLeft" || event.key === "Home") nextMode = "edit";
     if (event.key === "ArrowRight" || event.key === "End") nextMode = "preview";
@@ -578,11 +692,11 @@ function EditorSurface({
         event.stopPropagation();
         setCloseConfirm(true);
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "s") {
+      if (!isNotebook && (event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "s") {
         event.preventDefault();
         void save();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "f") {
+      if (!isNotebook && (event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "f") {
         event.preventDefault();
         setFindOpen(true);
       }
@@ -594,10 +708,14 @@ function EditorSurface({
           {dirty && <span className="file-editor-dirty" aria-label={t("preview.editor.unsaved")} />}
         </div>
         <div className="file-editor-actions">
-          <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
-            <button ref={editTabRef} id={`${viewId}-edit-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "edit"} tabIndex={mode === "edit" ? 0 : -1} data-active={mode === "edit"} onKeyDown={handleModeTabKey} onClick={() => switchMode("edit")}>{t("preview.editor.edit")}</button>
-            {isMarkdown && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
-          </div>
+          {isNotebook ? (
+            <span className="file-editor-kicker">{t("preview.notebook.read_only")}</span>
+          ) : (
+            <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
+              <button ref={editTabRef} id={`${viewId}-edit-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "edit"} tabIndex={mode === "edit" ? 0 : -1} data-active={mode === "edit"} onKeyDown={handleModeTabKey} onClick={() => switchMode("edit")}>{t("preview.editor.edit")}</button>
+              {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
+            </div>
+          )}
           <button className="file-editor-icon-button" onClick={requestClose} title={t("common.close")} aria-label={t("common.close")}>
             <CloseIcon size={11} strokeWidth={2.5} />
           </button>
@@ -621,6 +739,9 @@ function EditorSurface({
                   ? "preview.editor.outcome_unknown_cleanup_body"
                   : "preview.editor.outcome_unknown_body")
                 : operationErrorBody}</span>
+            {saveState === "error" && operationError?.detail ? (
+              <span title={operationError.detail} style={{ display: "block", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{operationError.detail}</span>
+            ) : null}
           </div>
           <div className="file-editor-alert-actions">
             <button onClick={() => void copyDraft()}>{t(draftCopyState === "copied"
@@ -667,9 +788,11 @@ function EditorSurface({
         </div>
       )}
 
-      <div id={`${viewId}-panel`} className="file-editor-paper" role="tabpanel" aria-labelledby={`${viewId}-${mode}-tab`}>
-        {mode === "preview" && isMarkdown ? (
-          <MarkdownPreview content={content} fill findQuery={findQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
+      <div id={`${viewId}-panel`} className="file-editor-paper" role="tabpanel" aria-labelledby={isNotebook ? undefined : `${viewId}-${mode}-tab`} aria-label={isNotebook ? t("preview.notebook.read_only") : undefined}>
+        {mode === "preview" && isNotebook ? (
+          <NotebookPreview content={content} />
+        ) : mode === "preview" && isMarkdown ? (
+          <MarkdownPreview content={content} fill findQuery={debouncedFindQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
         ) : (
           <div className="file-editor-code">
             <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
@@ -716,31 +839,72 @@ function EditorSurface({
           {remotePtyId === undefined && (
             <button onClick={() => void openInEditorWithToast(externalEditor, filePath)}>{t("preview.editor.external")}</button>
           )}
-          <button data-editor-action="save" className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>
+          {!isNotebook && <button data-editor-action="save" className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>}
         </div>
       </div>
     </div>
   );
 }
 
-export function FilePreview({ filePath, fileName, onClose, fill = false, remotePtyId }: FilePreviewProps) {
+export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
-  const [error, setError] = useState(false);
+  const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const readingRef = useRef(false);
+  const remoteSession = useSessionsStore((state) => remotePtyId === undefined
+    ? undefined
+    : state.sessions.find((session) => session.ptyId === remotePtyId));
 
   useEffect(() => {
     let cancelled = false;
+    readingRef.current = true;
     setResult(null);
-    setError(false);
+    setReadError(null);
     const read =
       remotePtyId !== undefined ? sshReadFile(remotePtyId, filePath) : fsReadFile(filePath);
     read
       .then((r) => { if (!cancelled) setResult(r); })
-      .catch(() => { if (!cancelled) setError(true); });
+      .catch((error) => {
+        if (!cancelled) {
+          setReadError({ kind: classifyFileOperationError(error), detail: String(error) });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) readingRef.current = false;
+      });
     return () => { cancelled = true; };
-  }, [filePath, remotePtyId]);
+  }, [filePath, readAttempt, remotePtyId]);
+
+  const retryRead = () => {
+    if (readingRef.current) return;
+    readingRef.current = true;
+    setReadAttempt((attempt) => attempt + 1);
+  };
+
+  const reconnectRemote = () => {
+    if (!remoteSession?.remote) return;
+    useUIStore.getState().openSshConnect({
+      host: remoteSession.remote.host,
+      user: remoteSession.remote.user,
+      port: remoteSession.remote.port,
+      authMethod: remoteSession.remote.authMethod,
+      identityFile: remoteSession.remote.identityFile,
+      injectShellIntegration: remoteSession.remote.injectShellIntegration,
+      reconnectSessionId: remoteSession.id,
+    });
+  };
+
+  const readErrorBody = readError?.kind === "permission"
+    ? t("preview.read_failed_permission")
+    : readError?.kind === "disconnected"
+      ? t("preview.read_failed_disconnected")
+      : readError?.kind === "unsupported"
+        ? t("preview.read_failed_unsupported")
+        : t("preview.read_failed_body");
 
   const isMarkdown = /\.mdx?$/i.test(fileName);
+  const isNotebook = /\.ipynb$/i.test(fileName);
   const textContent = result?.kind === "text"
     ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
     : "";
@@ -749,13 +913,17 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
     return (
       <EditorSurface
         key={`${filePath}:${result.fingerprint}`}
+        sessionId={sessionId ?? useSessionsStore.getState().activeSessionId}
         filePath={filePath}
         fileName={fileName}
         initialContent={result.content}
         initialFingerprint={result.fingerprint}
         remotePtyId={remotePtyId}
         isMarkdown={isMarkdown}
+        isNotebook={isNotebook}
         onClose={onClose}
+        onDirtyChange={onDirtyChange}
+        onNeedsAttention={onNeedsAttention}
       />
     );
   }
@@ -793,8 +961,18 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
         </button>
       </div>
 
-      {error ? (
-        <PreviewMessage icon="⊘" text={t("preview.read_failed")} />
+      {readError ? (
+        <div role="alert" style={{ padding: 12, display: "flex", minHeight: 0, flex: fill ? 1 : undefined, flexDirection: "column", alignItems: "flex-start", justifyContent: fill ? "center" : undefined, gap: 7 }}>
+          <strong style={{ color: "var(--c-text-2)", fontSize: "var(--fs-secondary)" }}>{t("preview.read_failed")}</strong>
+          <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
+          <span title={readError.detail} style={{ display: "block", maxWidth: "100%", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{readError.detail}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={retryRead}>{t("preview.retry")}</button>
+            {readError.kind === "disconnected" && remoteSession?.remote ? (
+              <button onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+            ) : null}
+          </div>
+        </div>
       ) : !result ? (
         <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "loadPulse 1.2s var(--ease-in-out) infinite", flexShrink: 0 }} />
@@ -804,6 +982,8 @@ export function FilePreview({ filePath, fileName, onClose, fill = false, remoteP
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
       ) : result.kind === "toolarge" ? (
         <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
+      ) : isNotebook ? (
+        <NotebookPreview content={textContent} />
       ) : isMarkdown ? (
         <MarkdownPreview content={textContent} fill={fill} />
       ) : (

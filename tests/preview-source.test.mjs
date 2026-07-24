@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -53,6 +54,29 @@ test("重复输出按完整来源身份和规范 URL 去重并保留首次发现
   assert.equal(merged[0].sourceUrl, "http://localhost:3000/x?q=1#ok");
 });
 
+test("服务 URL 只携带同一终端 generation 的显式提交 provenance", () => {
+  const context = previewSourceContext(session("s-a", "wt-a"));
+  const provenance = { generation: "s-a:0:10:1", sequence: 1, command: "pnpm dev", submittedAt: 10 };
+  const source = detectPreviewSources("ready http://localhost:3000 ", context, 11, provenance)[0];
+  assert.deepEqual(source.restartProvenance, provenance);
+  const unrelated = detectPreviewSources("ready http://localhost:4000 ", context, 12)[0];
+  assert.equal(unrelated.restartProvenance, undefined);
+});
+
+test("同一服务恢复后只用再次输出 URL 的新 generation 替换旧 provenance", () => {
+  const context = previewSourceContext(session("s-a", "wt-a"));
+  const oldProvenance = { generation: "s-a:0:10:1", sequence: 1, command: "pnpm dev", submittedAt: 10 };
+  const newProvenance = { generation: "s-a:0:20:2", sequence: 2, command: "pnpm dev", submittedAt: 20 };
+  const first = detectPreviewSources("http://localhost:3000 ", context, 11, oldProvenance);
+  const recovered = detectPreviewSources("http://localhost:3000 ", context, 21, newProvenance);
+  const unrelatedOutput = detectPreviewSources("http://localhost:3000 ", context, 22);
+  const merged = mergePreviewSources(first, recovered);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].discoveredAt, 11);
+  assert.deepEqual(merged[0].restartProvenance, newProvenance);
+  assert.deepEqual(mergePreviewSources(merged, unrelatedOutput)[0].restartProvenance, newProvenance);
+});
+
 test("只接受明确 loopback HTTP(S)，处理 IPv6、query/fragment 与尾随标点", () => {
   const context = previewSourceContext(session("s-a", "wt-a"));
   const sources = detectPreviewSources(
@@ -75,6 +99,19 @@ test("SSH localhost 只记录 remote source，不自动获得直连权限", () =
   assert.equal(source.transport, "ssh");
   assert.equal(source.permission, "remote-manual");
   assert.match(source.repositoryId, /^repo-1$/);
+  assert.deepEqual(
+    { host: source.sshHost, port: source.sshPort, user: source.sshUser, physicalPtyId: source.physicalPtyId },
+    { host: "dev.example", port: 22, user: "mawei", physicalPtyId: 9 },
+  );
+});
+
+test("相同 remote URL/端口在不同 SSH transport incarnation 中不会串线", () => {
+  const remote = { host: "dev.example", port: 22, user: "mawei" };
+  const first = detectPreviewSources("http://localhost:4173 ", previewSourceContext(session("s-ssh", "wt-ssh", 9, remote)), 10);
+  const second = detectPreviewSources("http://localhost:4173 ", previewSourceContext(session("s-ssh", "wt-ssh", 10, remote)), 20);
+  const merged = mergePreviewSources(first, second);
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged.map((source) => source.physicalPtyId), [9, 10]);
 });
 
 test("终端关闭后保留可解释 stale/source 状态", () => {
@@ -106,6 +143,7 @@ test("previewSources 明确保持 runtime-only，不进入 workspace session sna
       previewSourceContext(session("s-a", "wt-a")),
       10,
     ),
+    previewCommandProvenance: { generation: "s-a:0:10:1", sequence: 1, command: "pnpm dev", submittedAt: 10 },
   };
   const persisted = toPersistedSession(runtimeSession);
   assert.equal(Object.hasOwn(persisted, "previewSources"), false);
@@ -158,4 +196,32 @@ test("每个 session 的 runtime 候选集合有固定上限", () => {
   const merged = mergePreviewSources([], sources);
   assert.equal(merged.length, MAX_PREVIEW_SOURCES_PER_SESSION);
   assert.equal(merged[0].sourceUrl, "http://localhost:3010/");
+});
+
+test("不可信 Preview capability 只有严格 telemetry ingest，没有 core/plugin/app 高权限", () => {
+  const capability = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/preview.json", import.meta.url), "utf8"));
+  assert.deepEqual(capability.permissions, ["allow-preview-telemetry-ingest"]);
+  const permission = readFileSync(new URL("../src-tauri/permissions/preview.toml", import.meta.url), "utf8");
+  assert.match(permission, /commands\.allow = \["preview_telemetry_ingest"\]/);
+  for (const forbidden of ["pty_write", "fs_read_file", "preview_tunnel_open", "preview_tunnel_close", "ssh_", "shell", "store", "opener", "core:"]) {
+    assert.equal(permission.includes(forbidden), false, `unexpected Preview permission: ${forbidden}`);
+  }
+});
+
+test("可信 main ACL 明确覆盖全部既有 app command，且 ingest 只属于 Preview", () => {
+  const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+  const handler = lib.match(/generate_handler!\[([\s\S]*?)\]\)/)?.[1] ?? "";
+  const registered = [...handler.matchAll(/(?:\w+::)+(\w+),/g)].map((match) => match[1]);
+  assert.ok(registered.length > 50, "generate_handler command inventory unexpectedly small");
+
+  const permission = readFileSync(new URL("../src-tauri/permissions/main.toml", import.meta.url), "utf8");
+  const allowed = [...permission.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+  assert.deepEqual(
+    [...allowed].sort(),
+    registered.filter((command) => command !== "preview_telemetry_ingest").sort(),
+  );
+  assert.equal(allowed.includes("preview_telemetry_ingest"), false);
+
+  const mainCapability = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
+  assert.ok(mainCapability.permissions.includes("allow-main-commands"));
 });

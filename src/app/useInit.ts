@@ -18,6 +18,7 @@ import { toPersistedSession } from "@/state/persist-snapshot";
 import { diffWatchedDirs, gitWatchDirsForSessions } from "./lib/sync-watches";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
+import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 
 function buildSnapshot(): WorkspaceSnapshotV1 {
   const st = useSessionsStore.getState();
@@ -129,13 +130,8 @@ export function useInit() {
       if (activeSessionId) launchedSessionIds[activeSessionId] = true;
 
       const { split } = snapshot.ui;
-      if (split.mode !== "single") {
-        if (split.paneA && merged.some((s) => s.id === split.paneA)) {
-          launchedSessionIds[split.paneA] = true;
-        }
-        if (split.paneB && merged.some((s) => s.id === split.paneB)) {
-          launchedSessionIds[split.paneB] = true;
-        }
+      for (const sessionId of splitLayoutSessionIds(split)) {
+        if (merged.some((s) => s.id === sessionId)) launchedSessionIds[sessionId] = true;
       }
 
       useSessionsStore.setState({
@@ -183,23 +179,33 @@ export function useInit() {
       if (!win) throw new Error("current window unavailable");
       const p = platform();
       const isMac = p === "macos";
-      const setTL = (fs: boolean) =>
-        useUIStore.getState().setTrafficLightWidth(isMac && !fs ? 96 : 0);
+      const syncWindowChrome = (fullscreen: boolean) => {
+        const ui = useUIStore.getState();
+        ui.setNativeFullscreen(fullscreen);
+        ui.setTrafficLightWidth(isMac && !fullscreen ? 96 : 0);
+      };
 
-      win.isFullscreen().then((fs) => setTL(fs));
-
-      if (isMac) {
-        let pending = false;
-        const check = () => {
-          if (pending) return;
-          pending = true;
-          requestAnimationFrame(() => {
-            win.isFullscreen().then((fs) => setTL(fs));
+      let pending = false;
+      let queued = false;
+      const check = () => {
+        if (pending) {
+          queued = true;
+          return;
+        }
+        pending = true;
+        requestAnimationFrame(() => {
+          void win.isFullscreen().then(syncWindowChrome).finally(() => {
             pending = false;
+            if (queued) {
+              queued = false;
+              check();
+            }
           });
-        };
-        unlistens.push(win.onResized(check));
-      }
+        });
+      };
+      unlistens.push(win.onResized(check));
+      unlistens.push(win.onFocusChanged(check));
+      check();
     } catch (e) {
       console.warn("[useInit] platform/window probe failed, assuming macOS traffic lights", e);
       useUIStore.getState().setTrafficLightWidth(96);

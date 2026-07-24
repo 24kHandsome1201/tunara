@@ -12,8 +12,8 @@ import { useWorkflowsStore } from "@/state/workflows";
 import { hasPromptableParams, resolveTemplate } from "@/modules/workflows/template";
 import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
-import { RUNBOOK_BLUEPRINTS, appendRunbookToNote } from "@/modules/runbook/blueprints";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
+import { canSplitLayout } from "@/modules/session/split-layout";
 
 interface Command {
   id: string;
@@ -54,8 +54,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const uiStore = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
-  const sidebarVisible = useUIStore((s) => s.sidebarVisible);
-  const panelVisible = useUIStore((s) => s.panelVisible);
+  const presentationMode = useUIStore((s) => s.presentationMode);
   const workflows = useWorkflowsStore((s) => s.workflows);
 
   // Stable identity so the commands useMemo below can list it as a dependency
@@ -64,6 +63,25 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
     let idx = 0;
+    const presentationCommand: Command = {
+      id: "toggle-presentation-mode",
+      label: presentationMode === "pure" ? t("palette.cmd.exit_pure") : t("palette.cmd.enter_pure"),
+      shortcut: formatShortcut(keybindings.togglePresentationMode),
+      icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        const ui = uiStore.getState();
+        ui.recordCommandUse("toggle-presentation-mode");
+        ui.togglePresentationMode();
+        onClose();
+      },
+    };
+
+    // In pure mode the palette is a deliberate escape hatch, not a second
+    // business surface layered over the terminal canvas.
+    if (presentationMode === "pure") return [presentationCommand];
 
     [...sessions]
       .filter((s: Session) => s.id !== activeSessionId)
@@ -120,7 +138,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("new-ssh-session");
-        uiStore.getState().setOverlay("ssh");
+        uiStore.getState().openSshConnect();
       },
     });
 
@@ -184,46 +202,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             },
           });
         }
-      }
-
-      for (const runbook of RUNBOOK_BLUEPRINTS) {
-        cmds.push({
-          id: `runbook-run-${runbook.id}`,
-          label: t("palette.cmd.run_runbook", { name: t(runbook.nameKey) }),
-          subtitle: t(runbook.descriptionKey),
-          icon: <CmdIcon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />,
-          section: t("palette.section.runbook"),
-          scopes: ["action", "terminal", "runbook"],
-          originalIndex: idx++,
-          action: () => {
-            uiStore.getState().recordCommandUse(`runbook-run-${runbook.id}`);
-            useSessionsStore.getState().updateSession(activeSession.id, {
-              pendingInput: runbook.template,
-              pendingInputSubmit: false,
-            });
-            onClose();
-          },
-        });
-        cmds.push({
-          id: `runbook-note-${runbook.id}`,
-          label: t("palette.cmd.copy_runbook_to_notes", { name: t(runbook.nameKey) }),
-          subtitle: runbook.template,
-          icon: <CmdIcon d="M5 4h10l4 4v12H5zM15 4v5h5M8 13h8M8 17h5" />,
-          section: t("palette.section.runbook"),
-          scopes: ["action", "app", "runbook"],
-          originalIndex: idx++,
-          action: () => {
-            uiStore.getState().recordCommandUse(`runbook-note-${runbook.id}`);
-            const current = activeSession.note ?? "";
-            useSessionsStore.getState().setSessionNote(
-              activeSession.id,
-              appendRunbookToNote(current, runbook.template),
-            );
-            uiStore.getState().setPanelVisible(true);
-            uiStore.getState().setInspectorTab("notes");
-            onClose();
-          },
-        });
       }
 
       // Local workflows keep opening a fresh terminal. Remote workflows fill
@@ -385,26 +363,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       action: () => { uiStore.getState().recordCommandUse("toggle-panel"); uiStore.getState().togglePanel(); onClose(); },
     });
 
-    cmds.push({
-      id: "toggle-focus-mode",
-      label: sidebarVisible || panelVisible ? t("palette.cmd.enter_focus") : t("palette.cmd.exit_focus"),
-      icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
-      section: t("palette.section.action"),
-      scopes: ["action", "app"],
-      originalIndex: idx++,
-      action: () => {
-        const ui = uiStore.getState();
-        ui.recordCommandUse("toggle-focus-mode");
-        if (ui.sidebarVisible || ui.panelVisible) {
-          ui.setSidebarVisible(false);
-          ui.setPanelVisible(false);
-        } else {
-          ui.setSidebarVisible(true);
-          ui.setPanelVisible(true);
-        }
-        onClose();
-      },
-    });
+    cmds.push(presentationCommand);
 
     cmds.push({
       id: "split-horizontal",
@@ -416,7 +375,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-horizontal");
-        if (uiStore.getState().split.mode !== "single") { onClose(); return; }
+        if (!canSplitLayout(uiStore.getState().split)) { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("horizontal");
         onClose();
       },
@@ -432,7 +391,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-vertical");
-        if (uiStore.getState().split.mode !== "single") { onClose(); return; }
+        if (!canSplitLayout(uiStore.getState().split)) { onClose(); return; }
         useSessionsStore.getState().splitWithNewSession("vertical");
         onClose();
       },
@@ -503,7 +462,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, sidebarVisible, panelVisible, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, presentationMode, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);
@@ -579,10 +538,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         onKeyDown={handleKeyDown}
         style={{
           position: "fixed",
-          top: "15%",
+          top: "var(--palette-top)",
           left: "50%",
           transform: "translateX(-50%)",
-          width: 480,
+          width: "var(--w-palette)",
           maxWidth: "90vw",
           maxHeight: "60vh",
           background: "var(--c-bg-white)",
@@ -601,6 +560,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-listbox"
+            aria-activedescendant={ranked.length > 0 ? `palette-option-${selectedIndex}` : undefined}
+            aria-autocomplete="list"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onCompositionStart={() => { composingRef.current = true; }}
@@ -627,6 +591,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         <div
           ref={listRef}
           role="listbox"
+          id="palette-listbox"
           aria-label={t("palette.placeholder")}
           style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}
           className="no-scrollbar scroll-fade-y"
@@ -665,6 +630,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   <div
                     key={cmd.id}
                     role="option"
+                    id={`palette-option-${globalIdx}`}
                     aria-selected={isSelected}
                     data-cmd-index={globalIdx}
                     onClick={() => cmd.action()}

@@ -1,6 +1,6 @@
 # State & Persistence
 
-Tunara keeps all renderer state in two Zustand stores and persists a single
+Tunara keeps renderer state in three Zustand stores and persists a single
 versioned workspace snapshot to a Tauri plugin-store file. This doc covers the
 store split, what gets persisted vs. what is ephemeral, the save/restore
 lifecycle, the legacy `conduit-*` migration, and the sanitizers that defend the
@@ -17,7 +17,7 @@ restore path against corrupt or outdated data.
 | `src/state/recent-dirs.ts` | `pushRecentDir` / `sanitizeRecentDirs` (pure helpers) |
 | `src/app/useInit.ts` | Wires it all together: restore on mount, debounced + interval + on-close save |
 
-## 1. The two Zustand stores
+## 1. The three Zustand stores
 
 ### `useSessionsStore` (`src/state/sessions.ts`)
 
@@ -33,6 +33,7 @@ closeConfirmations: Record<string, number>     // "press close again" timestamps
 dirCloseConfirmations: Record<string, number>  // same, for "close all in dir"
 recentDirs: string[]                      // hydrated from the snapshot on init
 recentCommands: string[]                  // hydrated from the snapshot on init
+sessionTimelines: Record<string, TimelineEvent[]> // bounded, runtime-only recent activity
 ```
 
 `Session` itself (defined in `src/ui/types.ts`) carries both persisted fields
@@ -120,6 +121,14 @@ resolves it.
    are persisted into the snapshot file, *not* the config file. `useInit`
    subscribes to those keys and triggers a snapshot save.
 
+### `useWorkflowsStore` (`src/state/workflows.ts`)
+
+Stores user-defined command templates that can be launched from the command
+palette. The store is restored from and written into the workspace snapshot;
+unlike the removed fixed Runbook catalog, it does not inject built-in recovery
+or rollback actions. Optional starter workflows are copied into this store only
+when the user explicitly adds them.
+
 ## 2. Persistence layer (`src/state/persist.ts`)
 
 ### `WorkspaceSnapshotV1`
@@ -163,6 +172,10 @@ restart, including `runState` (forced back to `"idle"` on restore via
 is *not* part of `PersistedSession` but is persisted **separately** in the
 snapshot's top-level `agentResume` map (keyed by session id) and re-attached to
 the session on restore.
+
+`sessionTimelines` is also ephemeral store-level state: it is capped in memory,
+shown as recent activity in Overview, and intentionally absent from
+`WorkspaceSnapshotV1`. It is not an event journal or audit history.
 
 `remote` carries only the SSH connection descriptor (host/port/user/identity
 path) — **no secrets**. `persist-snapshot.ts` sanitizes it by white-listing
@@ -208,7 +221,9 @@ The legacy `sessions` / `activeSessionId` / `uiLayout` keys are read only during
 one-time migration. The normal `useInit` runtime save path writes the workspace
 snapshot directly and never writes those legacy per-key values.
 
-## 3. Store file naming & the conduit → tunara migration
+## 3. Store migration and legacy cleanup
+
+### Session store naming and the conduit → tunara migration
 
 The plugin-store file is named in `persist.ts`:
 
@@ -225,6 +240,20 @@ Tunara has written anything the legacy file is never read again.
 
 > The project name changed from **Conduit** to **Tunara**; this fallback is the
 > upgrade bridge for users who persisted state under the old name.
+
+### Tunara 1.16 Agent data
+
+Tunara 1.16 briefly shipped an opt-in persistent Agent Event Store under
+`<app_local_data_dir>/agent-events`. The current product does not mount or read
+that store. Because it may contain private prompts and tool payloads, an
+upgraded user can remove it from **Settings > App > Legacy Agent history**.
+
+Cleanup is deliberately not automatic. The UI asks for an irreversible-action
+confirmation, and the Rust command requires a separate `confirmed: true` flag.
+The backend derives the fixed `agent-events` path from Tauri's
+`app_local_data_dir`; it accepts no caller-provided path, treats missing data as
+an idempotent success, and never follows a replacement symlink outside the app
+data directory. No legacy payload is returned to the renderer.
 
 ## 4. Sanitizers (defending the restore path)
 

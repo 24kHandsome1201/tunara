@@ -93,6 +93,7 @@ export async function disconnectAndReconnectSshBenchmarkSession(sessionId: strin
   const disconnectedSession = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
   const disconnectedEvidence = disconnectedSession?.connection;
   const reconnectStartedAt = performance.now();
+  const reconnectNonce = (disconnectedSession?.reconnectNonce ?? 0) + 1;
   useSessionsStore.getState().updateSession(sessionId, {
     ptyId: undefined,
     runState: "idle",
@@ -100,7 +101,8 @@ export async function disconnectAndReconnectSshBenchmarkSession(sessionId: strin
     completedAt: undefined,
     lastExitCode: undefined,
     terminalProgress: undefined,
-    reconnectNonce: (disconnectedSession?.reconnectNonce ?? 0) + 1,
+    reconnectNonce,
+    terminalMountNonce: reconnectNonce,
   });
   useSessionsStore.getState().handleConnectionEvent(sessionId, {
     type: "openRequested",
@@ -272,7 +274,7 @@ export function useTerminalBenchmark(ready: boolean): void {
   const startedRef = useRef(false);
 
   useEffect(() => {
-    if (!TERMINAL_BENCHMARK_MODE || TERMINAL_BENCHMARK_VARIANT === "m2-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-local-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-native-close" || !ready || startedRef.current) return;
+    if (!TERMINAL_BENCHMARK_MODE || TERMINAL_BENCHMARK_VARIANT === "m2-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-local-safe-write" || TERMINAL_BENCHMARK_VARIANT === "m2-native-close" || TERMINAL_BENCHMARK_VARIANT === "phase3-telemetry" || TERMINAL_BENCHMARK_VARIANT === "phase3-restart" || TERMINAL_BENCHMARK_VARIANT === "phase3-tunnel" || TERMINAL_BENCHMARK_VARIANT === "phase3-capture" || !ready || startedRef.current) return;
     startedRef.current = true;
     const appReadyMs = performance.now();
     let cancelled = false;

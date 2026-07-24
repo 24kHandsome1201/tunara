@@ -163,6 +163,7 @@ export function initialConnectionEvidence(
 export function connectionDiagnostic(input: {
   sessionId: string;
   endpoint?: string;
+  authMethod?: string;
   evidence?: ConnectionEvidence;
 }): string {
   const evidence = input.evidence;
@@ -170,6 +171,7 @@ export function connectionDiagnostic(input: {
     `session=${input.sessionId}`,
     `endpoint=${input.endpoint ?? "local"}`,
     `transport=${evidence?.transport ?? "unknown"}`,
+    ...(input.authMethod ? [`authMethod=${input.authMethod}`] : []),
     `phase=${evidence?.phase ?? "unknown"}`,
     `source=${evidence?.source ?? "unknown"}`,
     `updatedAt=${evidence ? new Date(evidence.updatedAt).toISOString() : "unknown"}`,

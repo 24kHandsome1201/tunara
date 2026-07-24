@@ -37,6 +37,8 @@ export function AgentBadge({ agent, size = 22, disabled }: { agent?: string; siz
 
   return (
     <div
+      // 徽章内容与旁边的 agent 名称文本重复，纯装饰，读屏跳过
+      aria-hidden="true"
       style={{
         width: size,
         height: size,

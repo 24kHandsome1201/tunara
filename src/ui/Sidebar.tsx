@@ -4,7 +4,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { groupByDir, deriveTitle, type Session } from "./types";
 import { DirGroupHeader, SidebarSearchIcon } from "./SidebarDirGroupHeader";
 import { CloseIcon } from "./shared";
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
@@ -49,6 +49,9 @@ export function Sidebar({
   const dragRef = useRef<DragState | null>(null);
   const dragStartY = useRef(0);
   const dragStarted = useRef(false);
+  // 拖拽中途组件被卸载时兜底摘掉 document 监听
+  const dragTeardownRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragTeardownRef.current?.(), []);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const dirCloseConfirmations = useSessionsStore((s) => s.dirCloseConfirmations);
   const collapsedDirs = useUIStore((s) => s.collapsedDirs);
@@ -89,7 +92,10 @@ export function Sidebar({
       const card = Array.from(document.querySelectorAll<HTMLElement>("[data-session-card-id]")).find(
         (el) => el.dataset.sessionCardId === sessionId,
       );
-      card?.focus();
+      // The outer card div has no tabIndex — focus() on it is a no-op. The
+      // keyboard-focusable element is the overlay select button inside it.
+      const target = card?.querySelector<HTMLElement>(".session-card-select") ?? card;
+      target?.focus();
       card?.scrollIntoView({ block: "nearest" });
     });
   }, []);
@@ -167,6 +173,7 @@ export function Sidebar({
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", cleanup);
       document.removeEventListener("pointercancel", cleanup);
+      dragTeardownRef.current = null;
       const finalDrag = dragRef.current;
       if (dragStarted.current && finalDrag) {
         const current = useSessionsStore.getState().sessions;
@@ -183,6 +190,13 @@ export function Sidebar({
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", cleanup);
     document.addEventListener("pointercancel", cleanup);
+    dragTeardownRef.current = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", cleanup);
+      document.removeEventListener("pointercancel", cleanup);
+      dragRef.current = null;
+      dragStarted.current = false;
+    };
   }, []);
 
   return (
