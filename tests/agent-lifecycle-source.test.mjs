@@ -62,7 +62,6 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
 });
 
 test("remote integration can replace pre-existing aliases in bash", () => {
-  const script = resolve(root, "src-tauri/src/modules/ssh/scripts/remote-integration.sh");
   const bashOutput = execFileSync(
     "bash",
     [
@@ -71,11 +70,10 @@ test("remote integration can replace pre-existing aliases in bash", () => {
       "-O",
       "expand_aliases",
       "-c",
-      'alias claude="claude --model opus"; alias codex="codex --profile work"; source "$1"; _tunara_r_agent_run() { printf "WRAPPED %s\\n" "$*"; }; _tunara_r_agent_plain_run() { printf "WRAPPED %s\\n" "$*"; }; eval "claude hello"; eval "codex go"',
+      'alias claude="claude --model opus"; alias codex="codex --profile work"; source src-tauri/src/modules/ssh/scripts/remote-integration.sh; _tunara_r_agent_run() { printf "WRAPPED %s\\n" "$*"; }; _tunara_r_agent_plain_run() { printf "WRAPPED %s\\n" "$*"; }; eval "claude hello"; eval "codex go"',
       "bash",
-      script,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", cwd: root },
   );
   assert.match(bashOutput, /WRAPPED claude CC --model opus hello/);
   assert.match(bashOutput, /WRAPPED codex CX --profile work go/);
@@ -84,17 +82,15 @@ test("remote integration can replace pre-existing aliases in bash", () => {
 const hasZsh = spawnSync("zsh", ["--version"], { stdio: "ignore" }).status === 0;
 
 test("remote integration can replace pre-existing aliases in zsh", { skip: !hasZsh }, () => {
-  const script = resolve(root, "src-tauri/src/modules/ssh/scripts/remote-integration.sh");
   const zshOutput = execFileSync(
     "zsh",
     [
       "-f",
       "-c",
-      'alias claude="claude --model opus"; alias codex="codex --profile work"; source "$1"; _tunara_r_agent_run() { print -r -- "WRAPPED $*"; }; _tunara_r_agent_plain_run() { print -r -- "WRAPPED $*"; }; eval "claude hello"; eval "codex go"',
+      'alias claude="claude --model opus"; alias codex="codex --profile work"; source src-tauri/src/modules/ssh/scripts/remote-integration.sh; _tunara_r_agent_run() { print -r -- "WRAPPED $*"; }; _tunara_r_agent_plain_run() { print -r -- "WRAPPED $*"; }; eval "claude hello"; eval "codex go"',
       "zsh",
-      script,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", cwd: root },
   );
   assert.match(zshOutput, /WRAPPED claude CC --model opus hello/);
   assert.match(zshOutput, /WRAPPED codex CX --profile work go/);
@@ -207,14 +203,14 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
         "--noprofile",
         "--norc",
         "-c",
-        'source "$1"; PATH="$3:$PATH"; hash -r; nc() { return 1; }; claude --settings "$2" hello; droid --settings "$2" hello',
+        'source src-tauri/src/modules/pty/scripts/bashrc.bash; PATH="$2:$PATH"; hash -r; nc() { return 1; }; claude --settings "$1" hello; droid --settings "$1" hello',
         "bash",
-        resolve(root, "src-tauri/src/modules/pty/scripts/bashrc.bash"),
         user,
         binDir,
       ],
       {
         encoding: "utf8",
+        cwd: root,
         env: {
           ...process.env,
           PATH: `${binDir}:${process.env.PATH ?? ""}`,
@@ -347,13 +343,18 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
         "--noprofile",
         "--norc",
         "-c",
-        'PATH="$3:$PATH"; source "$1" >/dev/null; claude --settings "$2" hello; droid --settings "$2" hello',
+        'claude --settings "$1" hello; droid --settings "$1" hello',
         "bash",
-        script,
         user,
-        binDir,
       ],
-      { encoding: "utf8", env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` } },
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BASH_ENV: script,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
     );
     const claude = output.slice(output.indexOf("CALL:claude"), output.indexOf("CALL:droid"));
     const droid = output.slice(output.indexOf("CALL:droid"));
@@ -371,15 +372,13 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
 
 test("remote Bash prompt integration installs OSC 133 B exactly once", () => {
   if (process.platform === "win32") return;
-  const script = resolve(root, "src-tauri/src/modules/ssh/scripts/remote-integration.sh");
   const output = execFileSync("bash", [
     "--noprofile",
     "--norc",
     "-c",
-    'PS1=x; source "$1" >/dev/null; _tunara_r_prompt >/dev/null; before=${#PS1}; first=${PS1:0:1}; _tunara_r_prompt >/dev/null; printf "%s %s %s" "$before" "${#PS1}" "$first"',
+    'PS1=x; source src-tauri/src/modules/ssh/scripts/remote-integration.sh >/dev/null; _tunara_r_prompt >/dev/null; before=${#PS1}; first=${PS1:0:1}; _tunara_r_prompt >/dev/null; printf "%s %s %s" "$before" "${#PS1}" "$first"',
     "bash",
-    script,
-  ], { encoding: "utf8" });
+  ], { encoding: "utf8", cwd: root });
   const [beforeText, afterText, first] = output.trim().split(/\s+/);
   const [before, after] = [beforeText, afterText].map(Number);
   assert.equal(after, before);

@@ -1535,6 +1535,11 @@ test("terminal font loader falls back quickly when font loading stalls", async (
   assert.equal(TERMINAL_FONT_LOAD_TIMEOUT_MS, 200);
 });
 
+test("terminal font family escapes backslashes before quotes", () => {
+  const quotedFamily = buildTerminalFontFamily(String.raw`A\"B`, false).split(", ")[0];
+  assert.deepEqual([...quotedFamily], ["\"", "A", "\\", "\\", "\\", "\"", "B", "\""]);
+});
+
 test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {
   const h = createHarness();
 

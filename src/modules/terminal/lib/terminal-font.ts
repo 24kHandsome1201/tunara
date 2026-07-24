@@ -9,7 +9,7 @@ function quoteSingleFamily(fontFamily: string): string {
   if (!trimmed) return '"JetBrains Mono"';
   if (trimmed.includes(",") || trimmed.startsWith("\"") || trimmed.startsWith("'")) return trimmed;
   if (/^(monospace|serif|sans-serif|cursive|fantasy|system-ui)$/i.test(trimmed)) return trimmed;
-  return `"${trimmed.replace(/"/g, "\\\"")}"`;
+  return `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
 }
 
 export function buildTerminalFontFamily(fontFamily: string, nerdFontFallback: boolean): string {
