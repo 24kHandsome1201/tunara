@@ -5,9 +5,9 @@ import type React from "react";
  *
  * These consolidate the repeated "22px accent-bordered action button" and
  * "30px inline bar container" patterns that were copy-pasted across
- * AgentStatusBar, SshSuggestionBar, TerminalExitBanner, PtyErrorBanner, and
- * GlobalAgentBar. Extracting them keeps spacing, radius, and color decisions
- * in one place so future token changes propagate automatically.
+ * SshSuggestionBar, TerminalExitBanner, PtyErrorBanner, and GlobalAgentBar.
+ * Extracting them keeps spacing, radius, and color decisions in one place so
+ * future token changes propagate automatically.
  */
 
 /** Accent-bordered action button used inside inline bars and banners. */

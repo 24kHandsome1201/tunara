@@ -46,6 +46,37 @@ test("persistent Agent Timeline is absent while lightweight Agent lifecycle rema
   assert.match(settings, /invoke<"missing">\("legacy_agent_data_delete", \{ confirmed: true \}\)/);
 });
 
+test("terminal chrome permanently omits agent status and command block surfaces", () => {
+  const terminal = read("src/ui/TerminalView.tsx");
+  const chrome = read("src/ui/TerminalViewChrome.tsx");
+  const main = read("src/ui/MainArea.tsx");
+  const globalAgentBar = read("src/ui/GlobalAgentBar.tsx");
+
+  for (const path of [
+    "src/ui/AgentStatusBar.tsx",
+    "src/ui/TerminalBlocksBar.tsx",
+    "src/ui/TerminalBlockFilterPanel.tsx",
+    "src/ui/useTerminalBlocksChrome.tsx",
+  ]) {
+    assert.equal(existsSync(resolve(root, path)), false, `${path} must not be remounted as terminal chrome`);
+  }
+  assert.doesNotMatch(`${terminal}\n${chrome}`, /AgentStatusBar|TerminalBlocksBar|TerminalBlockFilterPanel|useTerminalBlocksChrome|blocksChrome/);
+  assert.doesNotMatch(terminal, /blocks=\{blocks\}/);
+
+  // Keep the underlying terminal navigation and essential feedback while
+  // removing only the two unwanted visual surfaces.
+  assert.match(terminal, /const blocks = useTerminalBlocks\(termRef\)/);
+  assert.match(terminal, /blocks\.handleCustomKeyEvent\(e\)/);
+  assert.match(terminal, /<ConnectingOverlay/);
+  assert.match(terminal, /<TerminalExitBanner/);
+  assert.match(terminal, /<PtyErrorBanner/);
+  assert.match(main, /!pure && <SshSuggestionBar session=\{session\} \/>/);
+  assert.match(globalAgentBar, /agentResumePendingInput\(resumeCommand\)/);
+  assert.match(chrome, /!pure && search\.searchOpen/);
+  assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
+  assert.match(chrome, /!pure && menu &&/);
+});
+
 test("fixed runbooks stay removed while user-configurable workflows remain", () => {
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const paletteFilter = read("src/ui/overlays/command-palette-filter.ts");
@@ -999,7 +1030,6 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const terminalProgress = read("src/modules/terminal/lib/terminal-progress.ts");
   const terminalOsc9 = read("src/modules/terminal/lib/terminal-osc9.ts");
   const terminalNotification = read("src/modules/terminal/lib/terminal-notification.ts");
-  const status = read("src/ui/AgentStatusBar.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
   const sessions = read("src/state/sessions.ts");
@@ -1044,10 +1074,6 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalNotification, /parseTerminalNotificationOsc9/);
   assert.match(terminalNotification, /parseTerminalNotificationOsc777/);
   assert.match(terminalNotification, /\^\\s\*\\d\+\(\?:;\|\$\)/);
-
-  assert.doesNotMatch(status, /position: "absolute"/);
-  assert.match(status, /minHeight: "var\(--h-inline-bar\)"/);
-  assert.match(status, /borderBottom: "1px solid var\(--c-border-1\)"/);
 
   assert.doesNotMatch(sessions, /launchAllAgents/);
   assert.doesNotMatch(sidebar, /启动所有 Agent/);
@@ -1176,7 +1202,6 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const main = read("src/ui/MainArea.tsx");
-  const status = read("src/ui/AgentStatusBar.tsx");
   const settings = read("src/ui/overlays/Settings.tsx");
   const diff = read("src/ui/DiffPanel.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
@@ -1248,15 +1273,6 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(main, /title=\{`\$\{t\("split\.vertical"\)\} \$\{formatShortcut\(splitVerticalShortcut\)\}`\}/);
   assert.match(main, /aria-label=\{t\("split\.horizontal"\)\}/);
   assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
-  // Idle→fade delay (was 1500ms transition; now 1200ms delay before sliding out via keyframe)
-  assert.match(status, /setFading\(true\), 1200\)/);
-  // Exit animation keeps the statusBarSlideOut keyframe, but completion is
-  // timer-driven (120ms, matching --duration-fast) — the previous onAnimationEnd
-  // string match silently broke whenever the CSS keyframe was renamed.
-  assert.match(status, /statusBarSlideOut var\(--duration-fast\)/);
-  assert.doesNotMatch(status, /onAnimationEnd/);
-  assert.doesNotMatch(status, /animationName/);
-  assert.match(status, /setTimeout\(\(\) => \{\s*setVisible\(false\)/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
   assert.match(settings, /getShellTint/);
   assert.match(settings, /terminalThemePreviewColors/);
@@ -1329,7 +1345,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
   const terminalSearchHook = read("src/ui/useTerminalSearch.ts");
   const terminalBlockFilter = read("src/modules/terminal/lib/terminal-block-filter.ts");
-  const terminalBlockFilterPanel = read("src/ui/TerminalBlockFilterPanel.tsx");
   const terminalRuntimeSync = read("src/ui/useTerminalRuntimeSync.ts");
   const terminalWebgl = read("src/ui/useTerminalWebgl.ts");
   const terminalQuickSelect = read("src/modules/terminal/lib/terminal-quick-select.ts");
@@ -1339,7 +1354,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalAttention = read("src/ui/terminal-attention.ts");
   const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
   const terminalBlocksPure = read("src/modules/terminal/lib/terminal-blocks.ts");
-  const terminalBlocksBar = read("src/ui/TerminalBlocksBar.tsx");
   const terminalBufferRead = read("src/modules/terminal/lib/terminal-buffer-read.ts");
   const terminalPromptAgentState = read("src/modules/terminal/lib/terminal-prompt-agent-state.ts");
   const terminalCommand = read("src/modules/terminal/lib/terminal-command.ts");
@@ -1487,10 +1501,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlockFilter, /export function filterTerminalBlockOutput/);
   assert.match(terminalBlockFilter, /export function formatTerminalBlockFilterText/);
   assert.match(terminalBlockFilter, /invalidRegex: true/);
-  assert.match(terminalBlockFilterPanel, /filterTerminalBlockOutput/);
-  assert.match(terminalBlockFilterPanel, /formatTerminalBlockFilterText/);
-  assert.match(terminalBlockFilterPanel, /FILTER_RENDER_LIMIT = 500/);
-  assert.match(terminalBlockFilterPanel, /setContextLines\(Number\(event\.target\.value\)\)/);
   assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
   assert.match(terminalRuntimeSync, /getTerminalTheme\(theme, terminalTheme, accent\)/);
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
@@ -1546,30 +1556,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // Clipboard writes route through the shared copyText helper, not raw navigator.clipboard.
   assert.match(terminalBlocks, /import \{ copyText \} from "\.\/lib\/clipboard"/);
   assert.doesNotMatch(terminalBlocks, /navigator\.clipboard\.writeText/);
-  assert.match(terminalBlocksBar, /export function TerminalBlocksBar/);
-  assert.match(terminalBlocksBar, /type CopyBlockResult = boolean \| Promise<boolean>/);
-  assert.match(terminalBlocksBar, /import \{ ContextMenu, type MenuEntry \} from "\.\/ContextMenu"/);
-  assert.match(terminalBlocksBar, /import \{ buildBlockContextMenuItems \} from "@\/modules\/terminal\/lib\/terminal-blocks-menu"/);
-  assert.match(terminalBlocksBar, /import \{ hasTrueRecordKey \} from "@\/state\/record-keys"/);
-  assert.match(terminalBlocksBar, /className="cmd-chip"/);
-  assert.match(terminalBlocksBar, /className="cmd-chip-more"/);
-  assert.match(terminalBlocksBar, /buildBlockContextMenuItems\(contextMenu\.block, contextMenu\.completed, contextMenu\.collapsed/);
-  assert.match(terminalBlocksBar, /onFilterBlock: \(block: TerminalCommandBlock\) => void/);
-  assert.match(terminalBlocksBar, /const openContextMenu = \([\s\S]*setContextMenu/);
-  assert.match(terminalBlocksBar, /onContextMenu=\{\(e\) => \{[\s\S]*openContextMenu\(stickyBlock/);
-  assert.match(terminalBlocksBar, /openContextMenu\(block, completed, collapsed/);
-  assert.match(terminalBlocksBar, /hasTrueRecordKey\(collapsedBlockIds, stickyBlock\.id\)/);
-  assert.match(terminalBlocksBar, /hasTrueRecordKey\(collapsedBlockIds, block\.id\)/);
-  assert.doesNotMatch(terminalBlocksBar, /!!collapsedBlockIds\[/);
-  // Block status / current-output labels are localized via i18n (no hardcoded Chinese).
-  assert.match(terminalBlocksBar, /t\("block\.current_output"\)/);
-  assert.match(terminalBlocksBar, /stickyBlock/);
-  assert.match(terminalBlocksBar, /const visibleBlocks = historyCandidates\.slice\(-5\)\.reverse\(\)/);
-  assert.match(terminalBlocksBar, /t\("block\.history\.more"/);
-  assert.match(terminalBlocksBar, /completed=\{completed\}/);
-  assert.match(terminalBlocksBar, /t\("block\.status\.running"\)/);
-  assert.doesNotMatch(terminalBlocksBar, /当前输出|更多操作/);
-  assert.doesNotMatch(terminalBlocksBar, /code === 0 \|\| code === undefined/);
   assert.match(terminalBufferRead, /export function extractCommandFromBuffer/);
   assert.match(terminalBufferRead, /export function extractCommandFromOsc/);
   assert.match(terminalBufferRead, /export function getTerminalTailText/);

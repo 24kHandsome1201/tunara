@@ -572,7 +572,6 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
 
 test("UI renders sidebar progress only when an agent is busy", () => {
   const card = read("src/ui/SessionCard.tsx");
-  const status = read("src/ui/AgentStatusBar.tsx");
   const globalBar = read("src/ui/GlobalAgentBar.tsx");
   const main = read("src/ui/MainArea.tsx");
   const diff = read("src/ui/DiffPanel.tsx");
@@ -587,11 +586,6 @@ test("UI renders sidebar progress only when an agent is busy", () => {
   assert.match(card, /showBusyProgress && <BusyProgress \/>/);
   assert.match(card, /animation: "agentBusyProgress/);
   assert.doesNotMatch(card, /const showBusyProgress = session\.runState === "running";/);
-  assert.match(status, /import \{ hasCompletedAgentTurn, isAgentActivityBusy \}/);
-  assert.match(status, /const isBusy = !!session\.agent && isAgentActivityBusy\(session\.agentActivity\);/);
-  assert.match(status, /const displayAgent = session\.agent \?\? resumeAgent \?\? agentCode;/);
-  assert.match(status, /session\.agent && session\.agentActivity === "idle" && !hasCompletedAgentTurn\(session\)/);
-  assert.match(status, /agentResumePendingInput\(resumeCommand\)/);
   assert.match(globalBar, /agentResumePendingInput\(resumeCommand\)/);
   assert.doesNotMatch(main, /AgentStatusBar/);
   assert.doesNotMatch(diff, /session\.runState !== "running"/);

@@ -7,12 +7,10 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 test("waiting confirmation uses a dedicated readable text token", () => {
   const tokens = read("src/styles/tokens.css");
   const card = read("src/ui/SessionCard.tsx");
-  const status = read("src/ui/AgentStatusBar.tsx");
   const global = read("src/ui/GlobalAgentBar.tsx");
   assert.match(tokens, /--c-warning-text:\s*oklch\(43%/);
   assert.match(tokens, /--c-warning-bg:/);
   assert.match(card, /var\(--c-warning-text\)/);
-  assert.match(status, /var\(--c-warning-text\)/);
   assert.match(global, /var\(--c-warning-text\)/);
 });
 
