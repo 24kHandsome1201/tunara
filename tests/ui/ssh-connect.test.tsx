@@ -1,7 +1,7 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
+import { hasLiveSshPty, takeSshCredentials, takeSshReconnect } from "@/modules/ssh/pending-credentials";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SshConnect } from "@/ui/overlays/SshConnect";
@@ -108,5 +108,59 @@ describe("SSH connection sheet", () => {
     expect(JSON.stringify(saves[0])).not.toContain(secret);
     const [session] = useSessionsStore.getState().sessions;
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
+  });
+
+  test("a live reconnect stages the candidate without replacing or remounting the published session", async () => {
+    mockEmptySources();
+    useSessionsStore.setState({
+      sessions: [{
+        id: "live-ssh",
+        title: "deploy@old.example",
+        dir: "/srv/app",
+        branch: "main",
+        runState: "idle",
+        updatedAt: 1,
+        reconnectNonce: 4,
+        ptyId: 91,
+        remote: { host: "old.example", port: 22, user: "deploy", authMethod: "agent" },
+        connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
+      }],
+      activeSessionId: "live-ssh",
+    });
+    useUIStore.setState({
+      overlay: "ssh",
+      sshPrefill: {
+        host: "new.example",
+        port: 2222,
+        user: "ops",
+        authMethod: "agent",
+        reconnectSessionId: "live-ssh",
+      },
+      inspectorTab: "files",
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    const session = useSessionsStore.getState().sessions[0];
+    expect(session.remote).toEqual({ host: "old.example", port: 22, user: "deploy", authMethod: "agent" });
+    expect(session.ptyId).toBe(91);
+    expect(session.connection?.phase).toBe("ready");
+    expect(session.reconnectNonce).toBe(5);
+    expect(session.terminalMountNonce).toBe(4);
+    expect(hasLiveSshPty({
+      ...session,
+      connection: { transport: "ssh", phase: "authenticating", source: "backend", updatedAt: 2 },
+    })).toBe(true);
+    expect(takeSshReconnect(session.id)).toEqual({
+      remote: {
+        host: "new.example",
+        port: 2222,
+        user: "ops",
+        authMethod: "agent",
+        injectShellIntegration: true,
+      },
+      credentials: {},
+    });
   });
 });

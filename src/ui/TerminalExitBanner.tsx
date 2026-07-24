@@ -87,8 +87,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
 
   return (
     <div
-      role="status"
-      aria-live="polite"
+      role={disconnected || exitCode !== 0 ? "alert" : "status"}
       aria-atomic="true"
       style={{
         position: "absolute",

@@ -140,6 +140,7 @@ pub fn pty_open(
     on_event: Channel<PtyEvent>,
 ) -> Result<u32, String> {
     if let Some(logical_id) = logical_session_id.as_deref() {
+        crate::modules::ssh::cancel_pending_open_for_logical(logical_id);
         if let Some(old_id) = state.physical_for_logical(logical_id) {
             preview_state.close_tunnels_for_pty(&app, old_id);
         }

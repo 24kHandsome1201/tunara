@@ -37,7 +37,7 @@ const TerminalPane = memo(function TerminalPane({
     <div data-terminal-session-id={session.id} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {!pure && <SshSuggestionBar session={session} />}
       <TerminalView
-        key={`${session.id}:${session.reconnectNonce ?? 0}`}
+        key={`${session.id}:${session.terminalMountNonce ?? session.reconnectNonce ?? 0}`}
         sessionId={session.id}
         dir={session.dir}
         active={isActive}

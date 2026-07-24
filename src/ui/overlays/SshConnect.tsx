@@ -15,7 +15,7 @@ import {
   type SshAuthMethod,
   type SshHostProfile,
 } from "@/modules/ssh/hosts-bridge";
-import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
+import { hasLiveSshPty, stashSshCredentials, stashSshReconnect, takeSshCredentials, takeSshReconnect } from "@/modules/ssh/pending-credentials";
 import type { RemoteInfo } from "../types";
 import { useFocusTrap } from "./useFocusTrap";
 import { useDestructiveConfirm } from "../lib/destructive-confirm";
@@ -287,24 +287,43 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setKeyPassphrase("");
 
     if (existingSession?.remote) {
-      const endpointChanged = existingSession.remote.host !== remote.host
-        || existingSession.remote.port !== remote.port
-        || existingSession.remote.user !== remote.user;
-      const label = `${remote.user}@${remote.host}`;
-      useSessionsStore.getState().updateSession(existingSession.id, {
-        remote,
-        dir: endpointChanged ? label : existingSession.dir,
-        title: endpointChanged && !existingSession.customTitle ? label : existingSession.title,
-        ptyId: undefined,
-        runState: "idle",
-        startedAt: undefined,
-        completedAt: undefined,
-        lastExitCode: undefined,
-        terminalProgress: undefined,
-        reconnectNonce: (existingSession.reconnectNonce ?? 0) + 1,
-      });
-      useSessionsStore.getState().handleConnectionEvent(existingSession.id, { type: "openRequested", transport: "ssh", source: "user" });
-      useSessionsStore.getState().setActive(existingSession.id);
+      const reconnectNonce = (existingSession.reconnectNonce ?? 0) + 1;
+      if (hasLiveSshPty(existingSession)) {
+        // Keep the mounted terminal and its published PTY alive until the
+        // candidate authenticates and the backend atomically publishes it.
+        stashSshReconnect(existingSession.id, {
+          remote,
+          credentials: takeSshCredentials(existingSession.id) ?? {},
+        });
+        useSessionsStore.getState().updateSession(existingSession.id, {
+          reconnectNonce,
+          terminalMountNonce: existingSession.terminalMountNonce ?? existingSession.reconnectNonce ?? 0,
+        });
+        useSessionsStore.getState().setActive(existingSession.id);
+      } else {
+        // A dead/remount reconnect supersedes any candidate request that was
+        // staged while the old PTY was still live, including its credentials.
+        takeSshReconnect(existingSession.id);
+        const endpointChanged = existingSession.remote.host !== remote.host
+          || existingSession.remote.port !== remote.port
+          || existingSession.remote.user !== remote.user;
+        const label = `${remote.user}@${remote.host}`;
+        useSessionsStore.getState().updateSession(existingSession.id, {
+          remote,
+          dir: endpointChanged ? label : existingSession.dir,
+          title: endpointChanged && !existingSession.customTitle ? label : existingSession.title,
+          ptyId: undefined,
+          runState: "idle",
+          startedAt: undefined,
+          completedAt: undefined,
+          lastExitCode: undefined,
+          terminalProgress: undefined,
+          reconnectNonce,
+          terminalMountNonce: reconnectNonce,
+        });
+        useSessionsStore.getState().handleConnectionEvent(existingSession.id, { type: "openRequested", transport: "ssh", source: "user" });
+        useSessionsStore.getState().setActive(existingSession.id);
+      }
     } else {
       addSession(session);
     }

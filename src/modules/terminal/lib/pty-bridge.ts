@@ -48,6 +48,11 @@ export async function answerKeyboardInteractivePrompt(
 
 const sshOpenAttempts = new Map<string, string>();
 const cancelledSshOpenAttempts = new Set<string>();
+// Unlike sshOpenAttempts (which exists only while invoke("ssh_open") is
+// pending), this map stays alive for the physical connection's lifetime. It
+// prevents a superseded Channel from delivering late phases, prompts, output,
+// or exit events into a newer render generation of the same logical session.
+const sshConnectionGenerations = new Map<string, string>();
 let sshOpenAttemptCounter = 0;
 
 function nextSshOpenAttemptId(): string {
@@ -92,6 +97,15 @@ export function reportSshOpenFailure(
     reason,
     detail: error,
   });
+  notifySshOpenFailure(sessionId, remote, error);
+}
+
+/** Show a failed replacement attempt without marking a still-live PTY failed. */
+export function notifySshOpenFailure(
+  sessionId: string,
+  remote: RemoteInfo,
+  error: string,
+): void {
   useUIStore.getState().addToast({
     sessionId,
     title: `${remote.user}@${remote.host}`,
@@ -257,6 +271,9 @@ export function openSessionPty(
       injectShellIntegration: opts.remote.injectShellIntegration,
     });
   }
+  // A local reopen of the same logical session also supersedes any old SSH
+  // Channel. The backend independently cancels a still-pending SSH publish.
+  sshConnectionGenerations.delete(logicalSessionId);
   return openPty(logicalSessionId, cols, rows, handlers, opts.cwd);
 }
 
@@ -294,12 +311,16 @@ export async function openSshPty(
   conn: SshConnectOptions,
 ): Promise<PtySession> {
   const openAttemptId = nextSshOpenAttemptId();
+  const previousGeneration = sshConnectionGenerations.get(logicalSessionId);
   sshOpenAttempts.set(logicalSessionId, openAttemptId);
   const channel = new Channel<PtyEvent>();
   const acknowledger = createOutputAcknowledger();
   const pendingPromptIds = new Set<string>();
   const pendingKeyboardPromptIds = new Set<string>();
   channel.onmessage = (event) => {
+    const published = sshConnectionGenerations.get(logicalSessionId) === openAttemptId;
+    const latestPending = sshOpenAttempts.get(logicalSessionId) === openAttemptId;
+    if (!published && !latestPending) return;
     switch (event.type) {
       case "data": {
         const bytes = decodeBase64(event.data);
@@ -391,11 +412,25 @@ export async function openSshPty(
     cancelledSshOpenAttempts.delete(openAttemptId);
   }
   acknowledger.setId(id);
+  // Keep the old published Channel live while authentication is pending. The
+  // backend swaps physical PTYs immediately before ssh_open returns; publish
+  // the matching renderer generation only now. A late older response must not
+  // overwrite a generation already published by a newer attempt.
+  if (sshConnectionGenerations.get(logicalSessionId) === previousGeneration) {
+    sshConnectionGenerations.set(logicalSessionId, openAttemptId);
+  }
 
   return {
     id,
     write: (data) => invoke("pty_write", { id, data }),
     resize: (c, r) => invoke("pty_resize", { id, cols: c, rows: r }),
-    close: () => invoke("pty_close", { id }),
+    close: () => {
+      if (sshConnectionGenerations.get(logicalSessionId) === openAttemptId) {
+        sshConnectionGenerations.delete(logicalSessionId);
+      }
+      // Always close this physical id. Generation identity only protects the
+      // logical map; it must never leak an older backend connection.
+      return invoke("pty_close", { id });
+    },
   };
 }
