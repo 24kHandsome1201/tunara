@@ -424,14 +424,17 @@ function EditorSurface({
   const dirty = content !== savedContent;
   const previewable = isMarkdown;
   const lines = useMemo(() => content.split("\n"), [content]);
-  // 高开销派生全部挂在防抖后的值上：语法高亮（200ms）与查找匹配（150ms）
-  // 不再每击键全量重算，大文件敲字不卡。行号列是廉价 split+map，保持实时。
+  // 语法分类挂在防抖后的值上；等待分类时同步渲染纯文本，避免透明
+  // textarea 后面的可见内容落后于输入。行号列同样保持实时。
   const debouncedContent = useDebouncedValue(content, 200);
   const debouncedFindQuery = useDebouncedValue(findQuery, 150);
-  const highlightedLines = useMemo(
+  const debouncedHighlightedLines = useMemo(
     () => isMarkdown ? highlightMarkdownSource(debouncedContent) : null,
     [debouncedContent, isMarkdown],
   );
+  const highlightedLines = isMarkdown && debouncedContent !== content
+    ? lines.map((line) => [{ kind: "text" as const, text: line }])
+    : debouncedHighlightedLines;
   const matches = useMemo(() => {
     if (!debouncedFindQuery) return [] as number[];
     const found: number[] = [];

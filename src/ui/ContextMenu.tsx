@@ -148,6 +148,7 @@ function menuEntryKey(items: MenuEntry[], entry: MenuEntry, index: number): stri
 export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const onCloseRef = useRef(onClose);
   const [pos, setPos] = useState({ x: position.x, y: position.y });
   const firstEnabled = Math.max(0, items.findIndex((entry) => entry && !entry.disabled));
   const [activeIndex, setActiveIndex] = useState(firstEnabled);
@@ -175,16 +176,22 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   }, [position.x, position.y]);
 
   useEffect(() => {
-    // 记录触发源，卸载时把焦点还回去（键盘用户不丢上下文）
-    const trigger = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const returnFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const menu = ref.current;
+    menu?.focus();
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(e.target as Node)) onCloseRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
-    const onResize = () => onClose();
+    const onResize = () => onCloseRef.current();
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
@@ -192,11 +199,11 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
-      if (trigger && trigger.isConnected && document.activeElement === document.body) {
-        trigger.focus();
-      }
+      const focused = document.activeElement;
+      const focusStayedInMenu = focused === document.body || focused === menu || !focused?.isConnected;
+      if (returnFocus?.isConnected && focusStayedInMenu) returnFocus.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     ref.current

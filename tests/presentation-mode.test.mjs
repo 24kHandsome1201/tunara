@@ -27,7 +27,7 @@ test("presentation mode stays runtime-only and preserves terminal mounts", () =>
   assert.match(ui, /presentationMode: "workspace"/);
   assert.doesNotMatch(snapshotBuilder, /presentationMode/);
   assert.match(app, /key="terminal-main-area"/);
-  assert.match(main, /key=\{`\$\{session\.id\}:\$\{session\.reconnectNonce \?\? 0\}`\}/);
+  assert.match(main, /key=\{`\$\{session\.id\}:\$\{session\.terminalMountNonce \?\? session\.reconnectNonce \?\? 0\}`\}/);
   assert.match(main, /<TerminalPane session=\{s\} isActive=\{!fileSurfaceActive && s\.id === activeSessionId\} \/>/);
   assert.match(main, /const fileSurfaceActive = !pure && activeFileTabId !== null/);
 });

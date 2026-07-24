@@ -104,6 +104,38 @@ describe("FileExplorer workspace files", () => {
     ], "modified", "desc").map((entry) => entry.name)).toEqual(["alpha.txt", "zeta.txt"]);
   });
 
+  test("moves keyboard focus across a virtualized directory slice", async () => {
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() { return this.classList.contains("scroll-fade-y") ? 96 : 0; },
+    });
+    mockIPC((command) => {
+      if (command === "fs_read_dir") {
+        return Array.from({ length: 101 }, (_, index) => ({
+          name: `file-${String(index).padStart(3, "0")}.txt`,
+          kind: "file",
+          size: 1,
+          mtime: index,
+        }));
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    try {
+      render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+      const first = await screen.findByRole("button", { name: /^file-000\.txt/ });
+      first.focus();
+      for (let index = 1; index <= 11; index += 1) {
+        fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowDown" });
+        await waitFor(() => expect(document.activeElement?.textContent).toContain(`file-${String(index).padStart(3, "0")}.txt`));
+      }
+    } finally {
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+      else delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    }
+  });
+
   test("offers explicit VS Code and safely quoted terminal actions", async () => {
     const calls: Array<{ command: string; payload: unknown }> = [];
     useSessionsStore.setState({

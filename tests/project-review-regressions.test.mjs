@@ -1423,7 +1423,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /quickSelectOverlay=\{quickSelect\.quickSelectOverlay\}/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
-  assert.match(terminal, /term\.attachCustomKeyEventHandler\(\(e\) => handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)\)/);
+  assert.match(terminal, /e\.key === "ContextMenu" \|\| \(e\.key === "F10" && e\.shiftKey\)/);
+  assert.match(terminal, /useUIStore\.getState\(\)\.presentationMode !== "pure"/);
+  assert.match(terminal, /handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
   assert.match(terminal, /import \{ handleCopyKeyEvent \} from "@\/modules\/terminal\/lib\/terminal-copy"/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);

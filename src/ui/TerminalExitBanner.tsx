@@ -18,8 +18,12 @@ function useFocusPrimaryActionOnMount() {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const scope = root.closest("[data-terminal-session-id]") ?? document;
-    (scope.querySelector("textarea") as HTMLElement | null)?.blur();
+    const scope = root.closest("[data-terminal-session-id]");
+    const focused = document.activeElement;
+    // An inactive split can fail while the user is typing elsewhere. Move
+    // focus only when it was already inside this terminal's dead textarea.
+    if (!scope || !(focused instanceof HTMLTextAreaElement) || !scope.contains(focused)) return;
+    focused.blur();
     const buttons = root.querySelectorAll<HTMLElement>("button");
     buttons[buttons.length - 1]?.focus();
   }, []);
@@ -107,8 +111,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
   return (
     <div
       ref={rootRef}
-      role="status"
-      aria-live="polite"
+      role={disconnected || exitCode !== 0 ? "alert" : "status"}
       aria-atomic="true"
       style={{
         position: "absolute",

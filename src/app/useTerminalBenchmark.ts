@@ -93,6 +93,7 @@ export async function disconnectAndReconnectSshBenchmarkSession(sessionId: strin
   const disconnectedSession = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
   const disconnectedEvidence = disconnectedSession?.connection;
   const reconnectStartedAt = performance.now();
+  const reconnectNonce = (disconnectedSession?.reconnectNonce ?? 0) + 1;
   useSessionsStore.getState().updateSession(sessionId, {
     ptyId: undefined,
     runState: "idle",
@@ -100,7 +101,8 @@ export async function disconnectAndReconnectSshBenchmarkSession(sessionId: strin
     completedAt: undefined,
     lastExitCode: undefined,
     terminalProgress: undefined,
-    reconnectNonce: (disconnectedSession?.reconnectNonce ?? 0) + 1,
+    reconnectNonce,
+    terminalMountNonce: reconnectNonce,
   });
   useSessionsStore.getState().handleConnectionEvent(sessionId, {
     type: "openRequested",
