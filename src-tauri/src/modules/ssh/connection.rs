@@ -645,8 +645,8 @@ impl SshSession {
                 final_output.push(bytes);
             }
             let tail_bytes: usize = final_output.iter().map(Vec::len).sum();
-            if tail_bytes > 0 {
-                if !bounded_final_flush(&pump_output_flow, SSH_FINAL_OUTPUT_FLUSH_TIMEOUT, async {
+            if tail_bytes > 0
+                && !bounded_final_flush(&pump_output_flow, SSH_FINAL_OUTPUT_FLUSH_TIMEOUT, async {
                     for bytes in final_output {
                         if !emit_output(&pump_output_flow, &on_event, bytes).await {
                             return false;
@@ -655,11 +655,8 @@ impl SshSession {
                     true
                 })
                 .await
-                {
-                    log::warn!(
-                        "ssh: dropped {tail_bytes} buffered output bytes during final flush"
-                    );
-                }
+            {
+                log::warn!("ssh: dropped {tail_bytes} buffered output bytes during final flush");
             }
             pump_output_flow.close();
             pump_control.request_close();
