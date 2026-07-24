@@ -119,6 +119,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const { isPending, tryConfirm } = useDestructiveConfirm();
   const containerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const addSession = useSessionsStore((s) => s.addSession);
   const setOverlay = useUIStore((s) => s.setOverlay);
   const prefill = useUIStore.getState().sshPrefill;
@@ -233,6 +234,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const hasSources = hosts.length > 0 || configHosts.length > 0;
   const portText = port.trim();
   const portInvalid = portText.length > 0 && parseSshPort(portText) === null;
+
+  // 切到 password 认证时显式聚焦密码框（autoFocus 在 WKWebView 下不可靠）
+  useEffect(() => {
+    if (authMethod === "password") passwordRef.current?.focus();
+  }, [authMethod]);
   const methodReady = authMethod === "key"
     ? identityFile.trim().length > 0
     : authMethod === "password"
@@ -438,7 +444,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
               </div>
               <div style={{ flex: 1 }}>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} />
+                <input id="ssh-connect-port" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} />
+                {portInvalid && (
+                  <span id="ssh-connect-port-error" role="alert" style={{ display: "block", marginTop: 4, fontSize: "var(--fs-meta)", color: "var(--c-warning-text)", lineHeight: 1.35 }}>
+                    {t("ssh.port_invalid")}
+                  </span>
+                )}
               </div>
             </div>
             <div>
@@ -468,7 +479,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             {authMethod === "password" && (
               <div>
                 <label htmlFor="ssh-connect-password" style={labelStyle}>{t("ssh.password")}</label>
-                <input id="ssh-connect-password" style={fieldStyle} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} autoFocus />
+                <input ref={passwordRef} id="ssh-connect-password" style={fieldStyle} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} />
                 <span style={{ display: "block", marginTop: 5, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.4 }}>{t("ssh.auth.password.strict")}</span>
               </div>
             )}

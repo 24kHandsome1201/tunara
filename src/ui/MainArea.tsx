@@ -132,8 +132,11 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;
-    const normalized = path.replace(/^\/Users\/[^/]+/, "~");
-    const parts = normalized.split("/").filter(Boolean);
+    // Home 缩写跨平台：macOS /Users/x、Linux /home/x、Windows C:\Users\x
+    const normalized = path
+      .replace(/^\/(Users|home)\/[^/]+/, "~")
+      .replace(/^[A-Za-z]:\\Users\\[^\\]+/, "~");
+    const parts = normalized.split(/[/\\]/).filter(Boolean);
     if (parts.length <= 3) return normalized;
     return `${parts[0]}/.../${parts.slice(-2).join("/")}`;
   }

@@ -538,10 +538,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         onKeyDown={handleKeyDown}
         style={{
           position: "fixed",
-          top: "15%",
+          top: "var(--palette-top)",
           left: "50%",
           transform: "translateX(-50%)",
-          width: 480,
+          width: "var(--w-palette)",
           maxWidth: "90vw",
           maxHeight: "60vh",
           background: "var(--c-bg-white)",
@@ -560,6 +560,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-listbox"
+            aria-activedescendant={ranked.length > 0 ? `palette-option-${selectedIndex}` : undefined}
+            aria-autocomplete="list"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onCompositionStart={() => { composingRef.current = true; }}
@@ -586,6 +591,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         <div
           ref={listRef}
           role="listbox"
+          id="palette-listbox"
           aria-label={t("palette.placeholder")}
           style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}
           className="no-scrollbar scroll-fade-y"
@@ -624,6 +630,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   <div
                     key={cmd.id}
                     role="option"
+                    id={`palette-option-${globalIdx}`}
                     aria-selected={isSelected}
                     data-cmd-index={globalIdx}
                     onClick={() => cmd.action()}

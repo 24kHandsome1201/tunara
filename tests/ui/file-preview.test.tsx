@@ -205,6 +205,21 @@ describe("FilePreview editor behavior", () => {
     expect(writes).toBe(1);
   });
 
+  test("keeps Markdown source visible while syntax highlighting is debounced", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return original;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("notes.md");
+    const editor = await screen.findByRole("textbox", { name: "Edit notes.md" });
+    const visibleSource = document.querySelector<HTMLElement>(".file-editor-syntax");
+    expect(visibleSource?.textContent).toBe("before\n");
+
+    fireEvent.change(editor, { target: { value: "# live\n" } });
+    expect(visibleSource?.textContent).toBe("# live\n");
+  });
+
   test("keeps the draft on conflict and replaces it only after a successful reload", async () => {
     let reads = 0;
     mockIPC((command) => {

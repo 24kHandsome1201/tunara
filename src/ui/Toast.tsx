@@ -55,16 +55,27 @@ function ToastItem({ toast }: { toast: Toast }) {
     copiedTimerRef.current = setTimeout(() => setCopied(false), 1200);
   };
 
-  const handleMouseEnter = () => {
+  // 暂停/恢复只各生效一次：hover 与焦点可能同时停留，避免 remain 被重复扣减
+  const pausedRef = useRef(false);
+  const hoveredRef = useRef(false);
+  const focusWithinRef = useRef(false);
+  const pauseCountdown = () => {
+    if (pausedRef.current) return;
+    pausedRef.current = true;
     setPaused(true);
     clearTimeout(timerRef.current);
     remainRef.current -= Date.now() - startRef.current;
   };
-
-  const handleMouseLeave = () => {
+  const resumeCountdown = () => {
+    if (!pausedRef.current) return;
+    pausedRef.current = false;
     setPaused(false);
     startRef.current = Date.now();
     timerRef.current = setTimeout(dismiss, Math.max(remainRef.current, 500));
+  };
+
+  const resumeWhenUnengaged = () => {
+    if (!hoveredRef.current && !focusWithinRef.current) resumeCountdown();
   };
 
   const handleClick = () => {
@@ -86,8 +97,15 @@ function ToastItem({ toast }: { toast: Toast }) {
     <div
       role={toast.variant === "error" ? "alert" : "status"}
       aria-live={toast.variant === "error" ? "assertive" : "polite"}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onMouseEnter={() => { hoveredRef.current = true; pauseCountdown(); }}
+      onMouseLeave={() => { hoveredRef.current = false; resumeWhenUnengaged(); }}
+      // WCAG 2.2.1：键盘聚焦（含内部按钮）同样暂停倒计时
+      onFocus={() => { focusWithinRef.current = true; pauseCountdown(); }}
+      onBlur={(event) => {
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+        focusWithinRef.current = false;
+        resumeWhenUnengaged();
+      }}
       style={{
         width: "fit-content",
         minWidth: 260,

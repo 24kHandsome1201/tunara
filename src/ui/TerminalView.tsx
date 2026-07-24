@@ -166,9 +166,9 @@ function TerminalViewImpl({
       const searchResultDisposable = search.registerSearchAddon(searchAddon);
       cleanups.push(() => searchResultDisposable.dispose());
       cleanups.push(blocks.registerScrollTracking(term));
-      // ⌘C copy runs first: on a selection it copies and short-circuits the chain
-      // (returns false) so search/blocks don't see the key; otherwise it passes through.
-      term.attachCustomKeyEventHandler((e) => handleCopyKeyEvent(term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
+      // ⌘C with a selection and workspace context-menu keys return false before
+      // search/blocks so xterm neither consumes them nor forwards them to the PTY.
+      term.attachCustomKeyEventHandler((e) => !((e.type === "keydown" && (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey))) && useUIStore.getState().presentationMode !== "pure") && handleCopyKeyEvent(term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
       // OSC 133: A prompt start, B input start, C command start, D;N command end.
       let osc133Active = false;
       let osc133InputFallback = false;
@@ -397,7 +397,7 @@ function TerminalViewImpl({
         });
       } catch (e) {
         if (disposed) return;
-        term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[31m${t("pty.error.inline", { error: String(e) })}\x1b[0m\r\n`);
         setOpenError(String(e));
         const cur = getCurrentSession();
         reportSshOpenFailure(sessionIdRef.current, cur?.remote, String(e));

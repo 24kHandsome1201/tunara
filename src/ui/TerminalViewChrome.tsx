@@ -71,6 +71,24 @@ export function TerminalViewChrome({
     if (sel) void copyText(sel);
   };
 
+  // Shift+F10 / ContextMenu 键：右键菜单的键盘入口（WCAG 键盘可操作性）。
+  // 菜单锚定在终端区左上内侧，和鼠标右键走同一套菜单状态。
+  const handleMenuKeyDown = (e: React.KeyboardEvent) => {
+    if (pure) return;
+    const isMenuKey = e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
+    if (!isMenuKey) return;
+    const term = getTerminal();
+    if (!term) return;
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({
+      x: rect.left + 24,
+      y: rect.top + 24,
+      hasSelection: !!term.getSelection(),
+      canSplit: canSplitLayout(useUIStore.getState().split),
+    });
+  };
+
   const pasteClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -81,7 +99,12 @@ export function TerminalViewChrome({
         tauriConfirmDialog(message, { kind: "warning" }), () => getTerminal() === term);
       if (!protectedPaste) term.paste(text);
     } catch {
-      /* clipboard read denied / unavailable */
+      // 剪贴板读取被拒/不可用：静默 catch 用户会以为菜单坏了，给明确反馈
+      useUIStore.getState().addToast({
+        title: t("term.paste_clipboard_denied"),
+        subtitle: "",
+        variant: "warning",
+      });
     }
   };
 
@@ -89,6 +112,7 @@ export function TerminalViewChrome({
     <div
       style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}
       onContextMenu={handleContextMenu}
+      onKeyDown={handleMenuKeyDown}
     >
       {!pure && blocksChrome.strips}
       {/* Search bar / filter panel / quick select anchor to this wrapper so

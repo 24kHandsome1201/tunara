@@ -15,6 +15,7 @@ import { useUIStore } from "@/state/ui";
 import { ContextMenu } from "@/ui/ContextMenu";
 import { SplitHandle } from "@/ui/SplitHandle";
 import { PtyErrorBanner, TerminalExitBanner } from "@/ui/TerminalExitBanner";
+import { ToastContainer } from "@/ui/Toast";
 import type { Session } from "@/ui/types";
 import { createTerminalSshReconnect } from "@/ui/useTerminalSshReconnect";
 
@@ -357,4 +358,56 @@ test("SSH failure and disconnect banners announce dynamic status", () => {
 
   view.rerender(<TerminalExitBanner session={remoteSession} exitCode={0} />);
   expect(screen.getByRole("status")).toBeTruthy();
+});
+
+test("a background terminal failure does not steal focus from another control", () => {
+  const activeControl = document.createElement("button");
+  document.body.appendChild(activeControl);
+  activeControl.focus();
+
+  render(
+    <div data-terminal-session-id={remoteSession.id}>
+      <PtyErrorBanner session={remoteSession} error="password authentication failed" />
+    </div>,
+  );
+
+  expect(document.activeElement).toBe(activeControl);
+  activeControl.remove();
+});
+
+test("a dead terminal moves its own textarea focus to the primary recovery action", () => {
+  const pane = document.createElement("div");
+  pane.dataset.terminalSessionId = remoteSession.id;
+  const terminalInput = document.createElement("textarea");
+  const bannerRoot = document.createElement("div");
+  pane.append(terminalInput, bannerRoot);
+  document.body.appendChild(pane);
+  terminalInput.focus();
+
+  const view = render(
+    <PtyErrorBanner session={remoteSession} error="password authentication failed" />,
+    { container: bannerRoot },
+  );
+
+  expect(document.activeElement).toBe(view.getByRole("button", { name: "Retry" }));
+  view.unmount();
+  pane.remove();
+});
+
+test("toast countdown stays paused while hover and keyboard focus overlap", () => {
+  useUIStore.setState({ toasts: [] });
+  useUIStore.getState().addToast({ title: "Paused toast", subtitle: "", variant: "success" });
+  render(<ToastContainer />);
+  const toast = screen.getByRole("status");
+  const close = screen.getByRole("button", { name: "Close" });
+  const progress = [...toast.querySelectorAll<HTMLElement>("div")]
+    .find((element) => element.style.animation.includes("toastProgress"));
+
+  fireEvent.mouseEnter(toast);
+  close.focus();
+  fireEvent.mouseLeave(toast);
+  expect(progress?.style.animationPlayState).toBe("paused");
+
+  fireEvent.blur(close);
+  expect(progress?.style.animationPlayState).toBe("running");
 });

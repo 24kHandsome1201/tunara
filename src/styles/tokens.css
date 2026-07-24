@@ -14,7 +14,8 @@
   --c-text-3: oklch(43% 0.011 48);
   --c-text-4: oklch(48% 0.01 48);
   --c-text-5: oklch(57% 0.009 48);
-  --c-text-6: oklch(67% 0.008 48);
+  /* text-6 压低到 60%：9px 徽章小字也能过 WCAG AA 4.5:1 */
+  --c-text-6: oklch(60% 0.009 48);
   --c-text-7: oklch(75% 0.007 48);
 
   /* ── 面/底 ── */
@@ -176,6 +177,10 @@
   --h-btn-md: 30px;
   --r-badge-sm: 4px;
 
+  /* ── 命令面板 ── */
+  --w-palette: 480px;
+  --palette-top: 15%;
+
   /* Solid surface alias retained for existing shell-tint integrations. */
   --c-bg-glass-fallback: var(--c-bg-2);
 }
@@ -189,7 +194,8 @@
   --c-text-3: oklch(72% 0.008 55);
   --c-text-4: oklch(62% 0.008 55);
   --c-text-5: oklch(53% 0.008 55);
-  --c-text-6: oklch(39% 0.008 55);
+  /* 暗色 text-6 提亮到 56%：配合 9px 小字过 AA */
+  --c-text-6: oklch(56% 0.008 55);
   --c-text-7: oklch(29% 0.008 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);

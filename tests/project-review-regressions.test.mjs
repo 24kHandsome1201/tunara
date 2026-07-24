@@ -1250,9 +1250,13 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
   // Idle→fade delay (was 1500ms transition; now 1200ms delay before sliding out via keyframe)
   assert.match(status, /setFading\(true\), 1200\)/);
-  // Exit animation now uses a keyframe ('statusBarSlideOut') driven by onAnimationEnd instead of an opacity/transform transition
+  // Exit animation keeps the statusBarSlideOut keyframe, but completion is
+  // timer-driven (120ms, matching --duration-fast) — the previous onAnimationEnd
+  // string match silently broke whenever the CSS keyframe was renamed.
   assert.match(status, /statusBarSlideOut var\(--duration-fast\)/);
-  assert.match(status, /onAnimationEnd=\{/);
+  assert.doesNotMatch(status, /onAnimationEnd/);
+  assert.doesNotMatch(status, /animationName/);
+  assert.match(status, /setTimeout\(\(\) => \{\s*setVisible\(false\)/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(118px, 1fr\)\)"/);
   assert.match(settings, /getShellTint/);
   assert.match(settings, /terminalThemePreviewColors/);
@@ -1419,7 +1423,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /quickSelectOverlay=\{quickSelect\.quickSelectOverlay\}/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
-  assert.match(terminal, /term\.attachCustomKeyEventHandler\(\(e\) => handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)\)/);
+  assert.match(terminal, /e\.key === "ContextMenu" \|\| \(e\.key === "F10" && e\.shiftKey\)/);
+  assert.match(terminal, /useUIStore\.getState\(\)\.presentationMode !== "pure"/);
+  assert.match(terminal, /handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
   assert.match(terminal, /import \{ handleCopyKeyEvent \} from "@\/modules\/terminal\/lib\/terminal-copy"/);
   assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);

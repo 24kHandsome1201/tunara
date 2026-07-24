@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
@@ -7,6 +8,27 @@ import type { Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 import { copyText } from "./lib/clipboard";
+
+/**
+ * banner 挂载时：把焦点从死终端的 xterm textarea 挪到 banner 主操作按钮
+ * （重启/重连），键盘用户不用 Tab 完整圈终端才能到达动作。
+ */
+function useFocusPrimaryActionOnMount() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const scope = root.closest("[data-terminal-session-id]");
+    const focused = document.activeElement;
+    // An inactive split can fail while the user is typing elsewhere. Move
+    // focus only when it was already inside this terminal's dead textarea.
+    if (!scope || !(focused instanceof HTMLTextAreaElement) || !scope.contains(focused)) return;
+    focused.blur();
+    const buttons = root.querySelectorAll<HTMLElement>("button");
+    buttons[buttons.length - 1]?.focus();
+  }, []);
+  return rootRef;
+}
 
 function ConnectionDiagnosticButton({ session }: { session: Session }) {
   const t = useT();
@@ -53,6 +75,7 @@ interface TerminalExitBannerProps {
 export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
+  const rootRef = useFocusPrimaryActionOnMount();
 
   const restart = () => {
     const store = useSessionsStore.getState();
@@ -87,6 +110,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
 
   return (
     <div
+      ref={rootRef}
       role={disconnected || exitCode !== 0 ? "alert" : "status"}
       aria-atomic="true"
       style={{
@@ -153,6 +177,7 @@ interface PtyErrorBannerProps {
 export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
+  const rootRef = useFocusPrimaryActionOnMount();
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
   const detail = isRemote ? sshFailureReason(error) : t("pty.error.subtitle");
   const phase = session.connection?.failedAtPhase;
@@ -183,6 +208,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
 
   return (
     <div
+      ref={rootRef}
       role="alert"
       aria-atomic="true"
       style={{
@@ -254,7 +280,8 @@ export function ConnectingOverlay({ phase, onCancel }: { phase?: ConnectionPhase
         alignItems: "center",
         justifyContent: "center",
         pointerEvents: onCancel ? "auto" : "none",
-        background: "var(--c-bg-white)",
+        // 半透明：让快照恢复中的终端内容透出来，连接过程不再是一块死白
+        background: "color-mix(in srgb, var(--terminal-canvas-bg, var(--c-bg-white)) 78%, transparent)",
         animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         zIndex: 4,
       }}

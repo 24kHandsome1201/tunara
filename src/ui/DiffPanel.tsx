@@ -742,7 +742,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
 
       <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar scroll-fade-y">
         {loading ? (
-          <PanelLoadingState label="git status" />
+          <PanelLoadingState label={t("diff.loading")} />
         ) : notGit ? (
           <PanelEmptyState label={t("diff.empty.not_git")} sublabel={displayPath} />
         ) : !hasChanges ? (

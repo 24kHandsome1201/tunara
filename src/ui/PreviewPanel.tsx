@@ -47,10 +47,19 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
       }
     };
     void sync();
-    const timer = window.setInterval(() => void sync(), 750);
+    // 页面隐藏时暂停轮询（省电省请求），回到前台立即补一次同步
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void sync();
+    }, 750);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void sync();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [isRemote, source]);
 

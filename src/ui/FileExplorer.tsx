@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { computeVirtualSlice } from "./lib/diff-virtual";
+
+/** 目录行距：30px 按钮 + 2px marginBottom，恒定值（展开态只改底色不改高度）。 */
+const LISTING_ROW_HEIGHT = 32;
+/** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
+const LISTING_TOP_INSET = 33;
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   fsCancelActiveNameSearch,
@@ -236,6 +242,10 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
     s.fileTabs.find((tab) => tab.id === s.activeFileTabId && tab.sessionId === sessionId)?.filePath,
   );
   const searchGenerationRef = useRef(new FileSearchGeneration());
+  const resultsListRef = useRef<HTMLDivElement>(null);
+  // 目录列表虚拟滚动：行距恒定 32px（30 按钮 + 2 margin），仅列表很长时启用
+  const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
+  const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
 
   const openEditor = (path: string, line?: number) => {
     void openInEditorWithToast(externalEditor, path, { line });
@@ -419,6 +429,53 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
   const isSearching = searchQuery.trim().length > 0;
   const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
 
+  // ── 目录列表虚拟滚动（仅非搜索态的大目录启用；搜索结果本身有 searchLimit 分页）──
+  const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
+  useLayoutEffect(() => {
+    const el = resultsListRef.current;
+    if (!el) return;
+    const update = () => setListScroll({ top: el.scrollTop, height: el.clientHeight });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [contentKey]);
+  const listingRowCount = dirs.length + files.length;
+  const virtualizeListing = !isSearching && listingRowCount > 100;
+  const listingSlice = virtualizeListing
+    ? computeVirtualSlice(
+        listingRowCount,
+        Math.max(0, listScroll.top - LISTING_TOP_INSET),
+        listScroll.height,
+        LISTING_ROW_HEIGHT,
+      )
+    : { first: 0, last: listingRowCount, topPad: 0, bottomPad: 0 };
+  const dirSlice = {
+    first: Math.min(listingSlice.first, dirs.length),
+    last: Math.min(listingSlice.last, dirs.length),
+  };
+  const fileSlice = {
+    first: Math.max(0, listingSlice.first - dirs.length),
+    last: Math.max(0, listingSlice.last - dirs.length),
+  };
+
+  useEffect(() => {
+    if (pendingListingFocus === null) return;
+    const target = resultsListRef.current?.querySelector<HTMLElement>(
+      `[data-listing-index="${pendingListingFocus}"]`,
+    );
+    if (!target) {
+      setPendingListingFocus(null);
+      return;
+    }
+    target.focus({ preventScroll: true });
+    setPendingListingFocus(null);
+  }, [pendingListingFocus, listingSlice.first, listingSlice.last]);
+
   function loadMoreSearchResults() {
     setSearchLimit((current) => nextFileSearchLimit(current, searchMode, isRemote));
   }
@@ -459,8 +516,6 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
       ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
       : { key, direction: key === "modified" ? "desc" : "asc" });
   }
-
-  const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
 
   return (
     <div
@@ -598,6 +653,25 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
               setSearchQuery(e.target.value);
               setSearchLimit(initialFileSearchLimit(searchMode));
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                // Esc 先清空，已空则让出焦点
+                if (searchQuery) {
+                  setSearchQuery("");
+                  setSearchLimit(initialFileSearchLimit(searchMode));
+                } else {
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              } else if (e.key === "ArrowDown") {
+                // 下箭头从搜索框直达第一个结果按钮
+                const first = resultsListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
+                if (first) {
+                  e.preventDefault();
+                  first.focus();
+                }
+              }
+            }}
             placeholder={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
             style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0 }}
           />
@@ -617,6 +691,45 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
 
       <div
         key={contentKey}
+        ref={resultsListRef}
+        onKeyDown={(e) => {
+          // 结果/树列表方向键漫游：↑↓ 在列表内按钮间移动焦点
+          if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+          const list = e.currentTarget as HTMLElement;
+          const active = document.activeElement as HTMLElement | null;
+          const listingIndex = active?.dataset.listingIndex;
+          if (virtualizeListing && listingIndex !== undefined) {
+            e.preventDefault();
+            const current = Number(listingIndex);
+            const targetIndex = Math.max(0, Math.min(
+              listingRowCount - 1,
+              current + (e.key === "ArrowDown" ? 1 : -1),
+            ));
+            if (targetIndex === current) return;
+            const mountedTarget = list.querySelector<HTMLElement>(`[data-listing-index="${targetIndex}"]`);
+            if (mountedTarget) {
+              mountedTarget.focus();
+              return;
+            }
+            const rowTop = LISTING_TOP_INSET + targetIndex * LISTING_ROW_HEIGHT;
+            const nextTop = rowTop < list.scrollTop
+              ? rowTop
+              : Math.max(0, rowTop + LISTING_ROW_HEIGHT - list.clientHeight);
+            list.scrollTop = nextTop;
+            setListScroll({ top: nextTop, height: list.clientHeight });
+            setPendingListingFocus(targetIndex);
+            return;
+          }
+          const items = Array.from(list.querySelectorAll<HTMLElement>("[data-explorer-item]"));
+          if (items.length === 0) return;
+          e.preventDefault();
+          const idx = items.indexOf(active as HTMLElement);
+          if (idx === -1) return;
+          const next = e.key === "ArrowDown"
+            ? items[Math.min(idx + 1, items.length - 1)]
+            : items[Math.max(idx - 1, 0)];
+          next?.focus();
+        }}
         style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }}
         className="no-scrollbar scroll-fade-y"
       >
@@ -647,6 +760,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
                     {group.lines.map((ln) => (
                       <button
                         key={ln.line}
+                        data-explorer-item
                         // Content hits open the owning file tab. Keeping local
                         // and SSH results on the same workspace surface avoids
                         // sending remote paths to a local external editor.
@@ -685,6 +799,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
                 return (
                   <div key={hit.path}>
                     <button
+                      data-explorer-item
                       onClick={() => hit.isDir ? openSearchDir(hit.path) : openFile(hit.path)}
                       className="hover-bg"
                       style={{
@@ -736,11 +851,14 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
                 );
               })}
             </div>
-            {dirs.map((entry) => {
+            {virtualizeListing && <div aria-hidden="true" style={{ height: listingSlice.topPad, flexShrink: 0 }} />}
+            {dirs.slice(dirSlice.first, dirSlice.last).map((entry, sliceIndex) => {
               const fullPath = joinPath(currentPath, entry.name);
               return (
               <button
                 key={"d-" + entry.name}
+                data-explorer-item
+                data-listing-index={dirSlice.first + sliceIndex}
                 onClick={() => enterDir(entry.name)}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -770,16 +888,18 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
               );
             })}
 
-            {dirs.length > 0 && files.length > 0 && (
+            {!virtualizeListing && dirSlice.last > dirSlice.first && fileSlice.last > fileSlice.first && (
               <div style={{ borderTop: "1px solid var(--c-border-2)", margin: "4px 0" }} />
             )}
 
-            {files.map((entry) => {
+            {files.slice(fileSlice.first, fileSlice.last).map((entry, sliceIndex) => {
               const fullPath = joinPath(currentPath, entry.name);
               const isExpanded = activeFilePath === fullPath;
               return (
                 <div key={"f-" + entry.name}>
                   <button
+                    data-explorer-item
+                    data-listing-index={dirs.length + fileSlice.first + sliceIndex}
                     data-file-path={fullPath}
                     onClick={() => openFile(fullPath)}
                     onContextMenu={(e) => {
@@ -818,6 +938,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
                 </div>
               );
             })}
+            {virtualizeListing && <div aria-hidden="true" style={{ height: listingSlice.bottomPad, flexShrink: 0 }} />}
           </>
         )}
       </div>
