@@ -397,7 +397,7 @@ function TerminalViewImpl({
         });
       } catch (e) {
         if (disposed) return;
-        term.write(`\r\n\x1b[31m[PTY error: ${e}]\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[31m${t("pty.error.inline", { error: String(e) })}\x1b[0m\r\n`);
         setOpenError(String(e));
         const cur = getCurrentSession();
         reportSshOpenFailure(sessionIdRef.current, cur?.remote, String(e));

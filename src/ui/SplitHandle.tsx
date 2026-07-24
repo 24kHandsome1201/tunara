@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import type { SplitDirection, SplitPath, SplitRect } from "@/modules/session/split-layout";
@@ -18,6 +18,9 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
   const t = useT();
   const setSplitRatio = useUIStore((s) => s.setSplitRatio);
   const dragging = useRef(false);
+  // 拖拽中途组件被卸载时兜底摘掉 document 监听（否则监听器泄漏且光标卡死）
+  const dragTeardownRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragTeardownRef.current?.(), []);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -67,16 +70,21 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
         setSplitRatio(path, ratio);
       };
 
-      const cleanup = (ev: PointerEvent) => {
+      const teardown = () => {
         dragging.current = false;
-        if (handle.hasPointerCapture(ev.pointerId)) {
-          handle.releasePointerCapture(ev.pointerId);
-        }
         document.removeEventListener("pointermove", onPointerMove);
         document.removeEventListener("pointerup", cleanup);
         document.removeEventListener("pointercancel", cleanup);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        dragTeardownRef.current = null;
+      };
+
+      const cleanup = (ev: PointerEvent) => {
+        if (handle.hasPointerCapture(ev.pointerId)) {
+          handle.releasePointerCapture(ev.pointerId);
+        }
+        teardown();
       };
 
       document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize";
@@ -84,6 +92,7 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
       document.addEventListener("pointermove", onPointerMove);
       document.addEventListener("pointerup", cleanup);
       document.addEventListener("pointercancel", cleanup);
+      dragTeardownRef.current = teardown;
     },
     [direction, path, nodeRect, containerRef, setSplitRatio],
   );

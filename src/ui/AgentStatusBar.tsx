@@ -44,6 +44,17 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
     }
   }, [isBusy, isWaitingConfirmation, isCompletedTurn, session.agent]);
 
+  // 收场用计时器而非动画事件字符串匹配——CSS 改名不会静默失效
+  // （--duration-fast = 120ms，与 statusBarSlideOut 时长保持一致）
+  useEffect(() => {
+    if (!fading) return;
+    const timer = setTimeout(() => {
+      setVisible(false);
+      setFading(false);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [fading]);
+
   // A prompt-aware agent reaching its first ready prompt only completed
   // startup. It has no completedAt evidence and must never flash "Done".
   if (session.agent && session.agentActivity === "idle" && !hasCompletedAgentTurn(session)) return null;
@@ -76,12 +87,6 @@ export function AgentStatusBar({ session }: AgentStatusBarProps) {
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      onAnimationEnd={(e) => {
-        if (fading && e.animationName === "statusBarSlideOut") {
-          setVisible(false);
-          setFading(false);
-        }
-      }}
       style={{
         minHeight: "var(--h-inline-bar)",
         flexShrink: 0,

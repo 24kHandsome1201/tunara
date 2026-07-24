@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
@@ -147,6 +147,7 @@ function menuEntryKey(items: MenuEntry[], entry: MenuEntry, index: number): stri
 
 export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const menuId = useId();
   const [pos, setPos] = useState({ x: position.x, y: position.y });
   const firstEnabled = Math.max(0, items.findIndex((entry) => entry && !entry.disabled));
   const [activeIndex, setActiveIndex] = useState(firstEnabled);
@@ -174,6 +175,8 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   }, [position.x, position.y]);
 
   useEffect(() => {
+    // 记录触发源，卸载时把焦点还回去（键盘用户不丢上下文）
+    const trigger = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -189,6 +192,9 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
+      if (trigger && trigger.isConnected && document.activeElement === document.body) {
+        trigger.focus();
+      }
     };
   }, [onClose]);
 
@@ -212,6 +218,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       ref={ref}
       role="menu"
       tabIndex={-1}
+      aria-activedescendant={`${menuId}-item-${activeIndex}`}
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => {
         if (e.key === "ArrowDown") {
@@ -265,6 +272,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
           <div
             key={menuEntryKey(items, item, i)}
             role="menuitem"
+            id={`${menuId}-item-${i}`}
             data-menu-index={i}
             aria-disabled={item.disabled ? true : undefined}
             tabIndex={-1}

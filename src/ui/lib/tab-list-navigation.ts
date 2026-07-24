@@ -19,10 +19,11 @@ export function resolveRovingTabId(tabIds: readonly string[], currentId: string,
  * 从事件目标向上找实际 tab 控件所属的 data-tab-id；不在 tab 上时返回 null。
  * tab wrapper 里可能还有独立的关闭按钮，不能把它冒泡到 tablist 的方向键
  * 事件误判成 tab 导航。
+ * roleSelector 适配非 tab 的同类漫游场景（如 radiogroup 里的 role="radio"）。
  */
-export function tabIdFromEventTarget(target: EventTarget | null): string | null {
+export function tabIdFromEventTarget(target: EventTarget | null, roleSelector = '[role="tab"]'): string | null {
   if (!(target instanceof HTMLElement)) return null;
-  const tab = target.closest<HTMLElement>('[role="tab"]');
+  const tab = target.closest<HTMLElement>(roleSelector);
   if (!tab) return null;
   return tab.getAttribute("data-tab-id")
     ?? tab.closest("[data-tab-id]")?.getAttribute("data-tab-id")

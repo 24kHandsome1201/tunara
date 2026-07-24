@@ -224,9 +224,11 @@ html[data-chrome="borderless"] {
 .dir-group-header:hover .dir-group-close,
 .dir-group-header .dir-group-add:focus-visible,
 .dir-group-header .dir-group-close:focus-visible { opacity: 1; transform: scale(1); }
-.dir-group-header[role="button"] { transition: background var(--duration-fast) var(--ease-smooth); border-radius: var(--r-btn); }
-.dir-group-header[role="button"]:hover { background: var(--c-bg-hover); }
-.dir-group-header[role="button"]:active { transform: scale(0.99); }
+/* Dir group header: 容器整行 hover 底色；折叠切换是内部真实 button */
+.dir-group-header { transition: background var(--duration-fast) var(--ease-smooth); border-radius: var(--r-btn); }
+.dir-group-header:hover { background: var(--c-bg-hover); }
+.dir-group-toggle:active { transform: scale(0.99); }
+.dir-group-toggle { transition: transform var(--duration-fast) var(--ease-out-expo); border-radius: var(--r-btn); }
 
 /* DiffPanel: external-editor button reveals on row hover / keyboard focus */
 .diff-file-row .diff-file-open { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); transform: translateX(4px); }

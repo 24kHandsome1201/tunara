@@ -27,7 +27,7 @@ import { usePhase3CaptureBenchmark } from "./usePhase3CaptureBenchmark";
 import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
 import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
 import { useM2NativeCloseBenchmark } from "./useM2NativeCloseBenchmark";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
@@ -84,6 +84,10 @@ interface ResizeHandleProps {
 }
 
 function ResizeHandle({ edge, getWidth, setWidth, minWidth, getMaxWidth, defaultWidth, ariaLabel, direction, className }: ResizeHandleProps) {
+  // 拖拽中途组件被卸载时兜底摘掉 document 监听（否则监听器泄漏且光标卡死）
+  const dragTeardownRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragTeardownRef.current?.(), []);
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     const width = resolveResizeHandleWidth({
       key: e.key,
@@ -110,20 +114,26 @@ function ResizeHandle({ edge, getWidth, setWidth, minWidth, getMaxWidth, default
       setWidth(startWidth + (ev.clientX - startX) * direction);
     };
 
-    const cleanup = (ev: PointerEvent) => {
-      if (handle.hasPointerCapture(ev.pointerId)) {
-        handle.releasePointerCapture(ev.pointerId);
-      }
+    const teardown = () => {
       document.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerup", cleanup);
       document.removeEventListener("pointercancel", cleanup);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      dragTeardownRef.current = null;
+    };
+
+    const cleanup = (ev: PointerEvent) => {
+      if (handle.hasPointerCapture(ev.pointerId)) {
+        handle.releasePointerCapture(ev.pointerId);
+      }
+      teardown();
     };
 
     document.addEventListener("pointermove", onPointerMove);
     document.addEventListener("pointerup", cleanup);
     document.addEventListener("pointercancel", cleanup);
+    dragTeardownRef.current = teardown;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   };

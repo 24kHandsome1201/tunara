@@ -36,6 +36,16 @@ import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor
 import { classifyFileOperationError, type FileOperationErrorKind } from "@/modules/editor/file-operation-error";
 import { parseNotebook, type NotebookCell } from "@/modules/editor/notebook";
 
+/** 值防抖：delayMs 内连续变化只取最后一个，用于高开销派生的计算闸门。 */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 interface FilePreviewProps {
   sessionId?: string;
   filePath: string;
@@ -77,8 +87,7 @@ function HighlightedText({ text, query, cursor }: { text: string; query: string;
   return parts.length > 0 ? parts : text;
 }
 
-function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {
-  const t = useT();
+function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {  const t = useT();
   const document = useMemo(() => parseMarkdownDocument(content), [content]);
   const previewRef = useRef<HTMLDivElement>(null);
   const matchCursor: MarkdownFindCursor = { current: 0, active: activeFindIndex };
@@ -280,7 +289,7 @@ function NotebookCellView({ cell, index }: { cell: NotebookCell; index: number }
   if (cell.kind === "raw") {
     return (
       <article className="notebook-cell" data-cell-kind="raw" aria-label={t("preview.notebook.raw_cell", { index: index + 1 })}>
-        <div className="notebook-cell-gutter">Raw</div>
+        <div className="notebook-cell-gutter">{t("preview.notebook.raw_gutter")}</div>
         <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
       </article>
     );
@@ -288,7 +297,7 @@ function NotebookCellView({ cell, index }: { cell: NotebookCell; index: number }
   return (
     <article className="notebook-cell" data-cell-kind="code" aria-label={t("preview.notebook.code_cell", { index: index + 1 })}>
       <div className="notebook-cell-code">
-        <div className="notebook-cell-gutter">In [{cell.executionCount ?? " "}]</div>
+        <div className="notebook-cell-gutter">{t("preview.notebook.in_gutter", { count: cell.executionCount ?? " " })}</div>
         <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
       </div>
       {cell.outputs.length > 0 && (
@@ -415,15 +424,19 @@ function EditorSurface({
   const dirty = content !== savedContent;
   const previewable = isMarkdown;
   const lines = useMemo(() => content.split("\n"), [content]);
+  // 高开销派生全部挂在防抖后的值上：语法高亮（200ms）与查找匹配（150ms）
+  // 不再每击键全量重算，大文件敲字不卡。行号列是廉价 split+map，保持实时。
+  const debouncedContent = useDebouncedValue(content, 200);
+  const debouncedFindQuery = useDebouncedValue(findQuery, 150);
   const highlightedLines = useMemo(
-    () => isMarkdown ? highlightMarkdownSource(content) : null,
-    [content, isMarkdown],
+    () => isMarkdown ? highlightMarkdownSource(debouncedContent) : null,
+    [debouncedContent, isMarkdown],
   );
   const matches = useMemo(() => {
-    if (!findQuery) return [] as number[];
+    if (!debouncedFindQuery) return [] as number[];
     const found: number[] = [];
     const haystack = content.toLocaleLowerCase();
-    const needle = findQuery.toLocaleLowerCase();
+    const needle = debouncedFindQuery.toLocaleLowerCase();
     let offset = 0;
     while (offset <= haystack.length - needle.length) {
       const index = haystack.indexOf(needle, offset);
@@ -432,7 +445,7 @@ function EditorSurface({
       offset = index + Math.max(needle.length, 1);
     }
     return found;
-  }, [content, findQuery]);
+  }, [content, debouncedFindQuery]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -776,7 +789,7 @@ function EditorSurface({
         {mode === "preview" && isNotebook ? (
           <NotebookPreview content={content} />
         ) : mode === "preview" && isMarkdown ? (
-          <MarkdownPreview content={content} fill findQuery={findQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
+          <MarkdownPreview content={content} fill findQuery={debouncedFindQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
         ) : (
           <div className="file-editor-code">
             <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
