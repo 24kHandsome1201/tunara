@@ -183,6 +183,102 @@ impl SshOutputBatch {
     }
 }
 
+/// Removes Tunara's own bootstrap input from the initial interactive-shell
+/// output. A tty may echo input once when it arrives and again when readline
+/// redraws the pending canonical buffer, so suppression continues until the
+/// bootstrap command emits its private completion marker. Both patterns may span
+/// arbitrary SSH data frames.
+pub(super) struct SshBootstrapOutputFilter {
+    typed_command: Vec<u8>,
+    completion_marker: Vec<u8>,
+    pending: Vec<u8>,
+    complete: bool,
+}
+
+impl SshBootstrapOutputFilter {
+    pub(super) fn new(typed_line: &[u8], completion_marker: &[u8]) -> Self {
+        let start = typed_line
+            .iter()
+            .position(|byte| !byte.is_ascii_whitespace())
+            .unwrap_or(typed_line.len());
+        let end = typed_line
+            .iter()
+            .rposition(|byte| !byte.is_ascii_whitespace())
+            .map(|index| index + 1)
+            .unwrap_or(start);
+        let typed_command = typed_line[start..end].to_vec();
+        Self {
+            complete: typed_command.is_empty() || completion_marker.is_empty(),
+            typed_command,
+            completion_marker: completion_marker.to_vec(),
+            pending: Vec::new(),
+        }
+    }
+
+    pub(super) fn push(&mut self, data: &[u8]) -> Vec<u8> {
+        if self.complete {
+            return data.to_vec();
+        }
+
+        self.pending.extend_from_slice(data);
+        let mut visible = Vec::new();
+        loop {
+            let command_at = find_bytes(&self.pending, &self.typed_command);
+            let completion_at = find_bytes(&self.pending, &self.completion_marker);
+            match (command_at, completion_at) {
+                (Some(command_at), Some(completion_at)) if command_at < completion_at => {
+                    visible.extend_from_slice(&self.pending[..command_at]);
+                    self.pending.drain(..command_at + self.typed_command.len());
+                }
+                (_, Some(completion_at)) => {
+                    visible.extend_from_slice(&self.pending[..completion_at]);
+                    visible.extend_from_slice(
+                        &self.pending[completion_at + self.completion_marker.len()..],
+                    );
+                    self.pending.clear();
+                    self.complete = true;
+                    break;
+                }
+                (Some(command_at), None) => {
+                    visible.extend_from_slice(&self.pending[..command_at]);
+                    self.pending.drain(..command_at + self.typed_command.len());
+                }
+                (None, None) => {
+                    let keep = suffix_prefix_len(&self.pending, &self.typed_command)
+                        .max(suffix_prefix_len(&self.pending, &self.completion_marker));
+                    let emit = self.pending.len() - keep;
+                    visible.extend_from_slice(&self.pending[..emit]);
+                    self.pending.drain(..emit);
+                    break;
+                }
+            }
+        }
+        visible
+    }
+
+    pub(super) fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    pub(super) fn finish(mut self) -> Vec<u8> {
+        std::mem::take(&mut self.pending)
+    }
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn suffix_prefix_len(data: &[u8], pattern: &[u8]) -> usize {
+    let max = data.len().min(pattern.len().saturating_sub(1));
+    (1..=max)
+        .rev()
+        .find(|&len| data[data.len() - len..] == pattern[..len])
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,5 +360,50 @@ mod tests {
         assert_eq!(&ready[0][first.len()..], b"bc");
         assert_eq!(batch.flush().as_deref(), Some(b"de".as_slice()));
         assert!(batch.flush().is_none());
+    }
+
+    #[test]
+    fn bootstrap_output_filter_strips_repeated_fragmented_echoes_until_completion() {
+        let typed = b" . /tmp/.t-NvgmOd2pq5;rm -f /tmp/.t-NvgmOd2pq5\n";
+        let completion = b"\x1b]777;tunara-bootstrap;session-1\x1b\\";
+        let echoed = &typed[..typed.len() - 1];
+        let mut raw = b"This system has been minimized\r\n".to_vec();
+        raw.extend_from_slice(echoed);
+        raw.extend_from_slice(b"\r\nshell startup output\r\nREMOTE> ");
+        raw.extend_from_slice(echoed);
+        raw.extend_from_slice(b"\r\n");
+        raw.extend_from_slice(completion);
+        raw.extend_from_slice(b"\x1b]7;file://localhost/srv/app\x1b\\REMOTE> ");
+
+        let mut filter = SshBootstrapOutputFilter::new(typed, completion);
+        let mut visible = Vec::new();
+        for chunk in raw.chunks(17) {
+            visible.extend(filter.push(chunk));
+        }
+        visible.extend(filter.finish());
+
+        assert_eq!(
+            visible,
+            b"This system has been minimized\r\n \r\nshell startup output\r\nREMOTE>  \r\n\x1b]7;file://localhost/srv/app\x1b\\REMOTE> "
+        );
+        assert!(!visible
+            .windows(completion.len())
+            .any(|window| window == completion));
+        assert!(!visible
+            .windows(typed.len() - 2)
+            .any(|window| window == &typed[1..typed.len() - 1]));
+    }
+
+    #[test]
+    fn bootstrap_output_filter_flushes_an_unmatched_partial_prefix_on_finish() {
+        let typed = b" . /tmp/.t-AbCd012345;rm -f /tmp/.t-AbCd012345\n";
+        let completion = b"\x1b]777;tunara-bootstrap;session-1\x1b\\";
+        let output = b"ordinary output ending in .";
+        let mut filter = SshBootstrapOutputFilter::new(typed, completion);
+
+        let mut visible = filter.push(output);
+        visible.extend(filter.finish());
+
+        assert_eq!(visible, output);
     }
 }

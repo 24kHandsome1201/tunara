@@ -22,7 +22,8 @@ use tokio::sync::oneshot;
 
 use super::auth::{self, AuthOptions};
 use super::flow_control::{
-    SshControl, SshOutputBatch, INPUT_WRITE_CHUNK_BYTES, OUTPUT_BATCH_INTERVAL,
+    SshBootstrapOutputFilter, SshControl, SshOutputBatch, INPUT_WRITE_CHUNK_BYTES,
+    OUTPUT_BATCH_INTERVAL,
 };
 use super::known_hosts::{self, Verdict};
 use crate::modules::pty::output_flow::OutputFlow;
@@ -307,6 +308,23 @@ fn send_connection_status(on_event: &IpcChannel<PtyEvent>, phase: &str) {
     });
 }
 
+fn push_shell_output(
+    output: &mut SshOutputBatch,
+    bootstrap_filter: &mut Option<SshBootstrapOutputFilter>,
+    data: &[u8],
+) -> Vec<Vec<u8>> {
+    let Some(filter) = bootstrap_filter.as_mut() else {
+        return output.push(data);
+    };
+    let visible = filter.push(data);
+    let complete = filter.is_complete();
+    let ready = output.push(&visible);
+    if complete {
+        *bootstrap_filter = None;
+    }
+    ready
+}
+
 impl SshSession {
     /// Connect, authenticate, open a shell PTY, and start pumping output into
     /// `on_event`. Returns once the shell is live; output streaming continues
@@ -410,7 +428,9 @@ impl SshSession {
         // keeps long/unicode paths and the integration payload out of the tty's
         // canonical input limit. If staging is unavailable, a normal-sized cwd
         // still falls back to a directly typed, safely quoted `cd` command.
+        let mut bootstrap_output_filter = None;
         if params.inject_shell_integration || params.initial_cwd.is_some() {
+            let completion_marker = bootstrap_completion_marker(&params.session_id);
             match stage_remote_bootstrap(
                 &handle,
                 &params.session_id,
@@ -421,16 +441,30 @@ impl SshSession {
             {
                 Ok(path) => {
                     let line = integration_source_line(&path);
-                    if let Err(e) = channel.data(line.as_bytes()).await {
-                        log::debug!("ssh bootstrap inject failed: {e}");
+                    match channel.data(line.as_bytes()).await {
+                        Ok(()) => {
+                            bootstrap_output_filter = Some(SshBootstrapOutputFilter::new(
+                                line.as_bytes(),
+                                &completion_marker,
+                            ));
+                        }
+                        Err(e) => log::debug!("ssh bootstrap inject failed: {e}"),
                     }
                 }
                 Err(e) => {
                     log::debug!("ssh bootstrap staging failed: {e}");
                     if let Some(cwd) = params.initial_cwd.as_deref() {
-                        let line = initial_cwd_fallback_line(cwd);
-                        if let Err(write_error) = channel.data(line.as_bytes()).await {
-                            log::debug!("ssh initial cwd fallback failed: {write_error}");
+                        let line = initial_cwd_fallback_line(cwd, &params.session_id);
+                        match channel.data(line.as_bytes()).await {
+                            Ok(()) => {
+                                bootstrap_output_filter = Some(SshBootstrapOutputFilter::new(
+                                    line.as_bytes(),
+                                    &completion_marker,
+                                ));
+                            }
+                            Err(write_error) => {
+                                log::debug!("ssh initial cwd fallback failed: {write_error}");
+                            }
                         }
                     }
                 }
@@ -477,14 +511,22 @@ impl SshSession {
                         let Some(msg) = msg else { break };
                         match msg {
                             ChannelMsg::Data { ref data } => {
-                                for bytes in output.push(data) {
+                                for bytes in push_shell_output(
+                                    &mut output,
+                                    &mut bootstrap_output_filter,
+                                    data,
+                                ) {
                                     if !emit_output(&pump_output_flow, &on_event, bytes).await { break 'pump; }
                                 }
                             }
                             // stderr (ext=1) is interleaved into the same stream;
                             // a terminal shows both on one screen.
                             ChannelMsg::ExtendedData { ref data, ext: 1 } => {
-                                for bytes in output.push(data) {
+                                for bytes in push_shell_output(
+                                    &mut output,
+                                    &mut bootstrap_output_filter,
+                                    data,
+                                ) {
                                     if !emit_output(&pump_output_flow, &on_event, bytes).await { break 'pump; }
                                 }
                             }
@@ -539,6 +581,14 @@ impl SshSession {
                                 _ = channel.window_change(cols as u32, rows as u32, 0, 0) => {}
                             }
                         }
+                    }
+                }
+            }
+            if let Some(filter) = bootstrap_output_filter.take() {
+                let tail = filter.finish();
+                for bytes in output.push(&tail) {
+                    if !emit_output(&pump_output_flow, &on_event, bytes).await {
+                        break;
                     }
                 }
             }
@@ -1152,15 +1202,37 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
+fn safe_session_id(session_id: &str) -> String {
+    session_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        .collect()
+}
+
+fn bootstrap_completion_token(session_id: &str) -> String {
+    format!("tunara-bootstrap;{}", safe_session_id(session_id))
+}
+
+fn bootstrap_completion_marker(session_id: &str) -> Vec<u8> {
+    format!("\x1b]777;{}\x1b\\", bootstrap_completion_token(session_id)).into_bytes()
+}
+
+fn bootstrap_completion_command(session_id: &str) -> String {
+    format!(
+        "printf '\\033]777;{}\\033\\\\'",
+        bootstrap_completion_token(session_id)
+    )
+}
+
 fn render_remote_bootstrap(
     session_id: &str,
     inject_shell_integration: bool,
     initial_cwd: Option<&str>,
 ) -> String {
-    // Erase the short source command from inside the staged script. Keeping
-    // this control sequence out of the typed line prevents the typed line from
-    // wrapping before it can erase itself.
-    let mut script = "printf '\\033[1A\\r\\033[2K'\n".to_string();
+    // The output pump removes this private marker together with every tty echo
+    // of the typed source line. Unlike relative cursor erasure, filtering the
+    // exact generated bytes is independent of MOTD, prompt, and readline order.
+    let mut script = format!("{}\n", bootstrap_completion_command(session_id));
     if inject_shell_integration {
         script.push_str(&render_remote_integration(session_id));
     }
@@ -1182,10 +1254,7 @@ fn render_remote_integration(session_id: &str) -> String {
     // outside the id charset before substitution. An empty id disables the
     // agent wrappers via the script's own `[ -n ... ]` guard, leaving
     // OSC 7 / 133 intact.
-    let safe_sid: String = session_id
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-        .collect();
+    let safe_sid = safe_session_id(session_id);
     REMOTE_INTEGRATION
         .replace("__TUNARA_SESSION_ID__", &safe_sid)
         .replace("__TUNARA_AGENT_HOOK_B64__", &B64.encode(AGENT_HOOK_HELPER))
@@ -1204,30 +1273,23 @@ fn integration_stage_command(encoded: &str) -> String {
 /// then remove it. The path is unquoted only because `is_safe_remote_path`
 /// restricts it to a shell-inert ASCII charset. Leading space keeps it out of
 /// ignorespace-style history. Must stay far below 1024 bytes, the smallest
-/// (BSD) canonical-mode tty line buffer, and below a typical 64-column prompt
-/// line so the staged script can erase the echo without leaving a wrapped
-/// fragment behind.
+/// (BSD) canonical-mode tty line buffer. The output pump suppresses the exact
+/// generated command until its completion marker arrives, including
+/// both the tty's initial echo and any later readline redraw.
 fn integration_source_line(path: &str) -> String {
     format!(" . {path};rm -f {path}\n")
 }
 
-fn initial_cwd_fallback_line(cwd: &str) -> String {
-    let line = clear_typed_line(&format!("cd {}", shell_quote(cwd)));
+fn initial_cwd_fallback_line(cwd: &str, session_id: &str) -> String {
+    let completion = bootstrap_completion_command(session_id);
+    let line = format!(" {completion};cd {}\n", shell_quote(cwd));
     if line.len() < 1_024 {
         line
     } else {
-        clear_typed_line(
-            "printf '%s\\n' '[tunara] saved remote directory path is too long to restore'",
+        format!(
+            " {completion};printf '%s\\n' '[tunara] saved remote directory path is too long to restore'\n"
         )
     }
-}
-
-/// The shell echoes the bootstrap input before executing it. As the first
-/// command, move to that just-echoed line and erase it; later bootstrap output
-/// (including an unavailable-cwd warning) remains visible. This avoids relying
-/// on PTY ECHO modes that login shells may reset during startup.
-fn clear_typed_line(command: &str) -> String {
-    format!(" printf '\\033[1A\\r\\033[2K';{command}\n")
 }
 
 /// Accept only the path shape our own stage command can produce — an absolute
@@ -1423,7 +1485,11 @@ mod tests {
     fn remote_bootstrap_restores_a_shell_quoted_unicode_cwd() {
         let cwd = "/srv/可爱动物/it's-here";
         let rendered = render_remote_bootstrap("session-1", true, Some(cwd));
-        assert!(rendered.starts_with("printf '\\033[1A\\r\\033[2K'\n"));
+        assert!(rendered.starts_with("printf '\\033]777;tunara-bootstrap;session-1\\033\\\\'\n"));
+        assert_eq!(
+            bootstrap_completion_marker("session-1"),
+            b"\x1b]777;tunara-bootstrap;session-1\x1b\\"
+        );
         assert!(rendered.contains("cd '/srv/可爱动物/it'\"'\"'s-here'"));
         assert!(rendered.contains("saved remote directory unavailable"));
         assert!(rendered.contains("session-1"));
@@ -1441,11 +1507,11 @@ mod tests {
     #[test]
     fn initial_cwd_fallback_is_tty_bounded() {
         assert_eq!(
-            initial_cwd_fallback_line("/srv/my app"),
-            " printf '\\033[1A\\r\\033[2K';cd '/srv/my app'\n"
+            initial_cwd_fallback_line("/srv/my app", "session-1"),
+            " printf '\\033]777;tunara-bootstrap;session-1\\033\\\\';cd '/srv/my app'\n"
         );
         let long = format!("/{}", "'".repeat(4_096));
-        let line = initial_cwd_fallback_line(&long);
+        let line = initial_cwd_fallback_line(&long, "session-1");
         assert!(line.len() < 1_024);
         assert!(line.contains("too long"));
     }
