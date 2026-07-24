@@ -369,4 +369,36 @@ describe("FilePreview editor behavior", () => {
     });
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  test("freezes an SSH draft across disconnect and never falls back to local file IPC", async () => {
+    const calls: string[] = [];
+    mockIPC((command) => {
+      calls.push(command);
+      if (command === "ssh_fs_read_file") return original;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const view = render(
+      <FilePreview sessionId="remote-draft" filePath="/srv/notes.txt" fileName="notes.txt" fill remote remotePtyId={41} onClose={() => {}} />,
+    );
+    const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "preserved remote draft\n" } });
+
+    view.rerender(
+      <FilePreview sessionId="remote-draft" filePath="/srv/notes.txt" fileName="notes.txt" fill remote onClose={() => {}} />,
+    );
+    expect((screen.getByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement).value).toBe("preserved remote draft\n");
+    expect(await screen.findByText("SSH disconnected · draft preserved")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Open in external editor" })).toBeNull();
+    expect(calls).not.toContain("fs_read_file");
+    expect(calls).not.toContain("fs_write_text_file");
+
+    view.rerender(
+      <FilePreview sessionId="remote-draft" filePath="/srv/notes.txt" fileName="notes.txt" fill remote remotePtyId={84} onClose={() => {}} />,
+    );
+    const restored = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
+    expect(restored.value).toBe("preserved remote draft\n");
+    expect(calls.filter((command) => command === "ssh_fs_read_file")).toHaveLength(2);
+  });
 });

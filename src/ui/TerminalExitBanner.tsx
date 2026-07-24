@@ -106,7 +106,13 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
     : exitCode === 0
       ? t("terminal.exited.ok")
       : t("terminal.exited.failed", { code: exitCode });
-  const actionLabel = isRemote ? t("terminal.exited.reconnect") : t("terminal.exited.restart");
+  const visibleLabel = disconnected
+    ? `${label} · ${t("terminal.exited.history_readonly")}`
+    : label;
+  const actionLabel = isRemote
+    ? disconnected ? t("terminal.exited.reconnect") : t("terminal.exited.open_new_shell")
+    : t("terminal.exited.restart");
+  const closeLabel = t("terminal.exited.close_session");
 
   return (
     <div
@@ -153,9 +159,17 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
           minWidth: 0,
         }}
       >
-        {label}
+        {visibleLabel}
       </span>
       {isRemote && <ConnectionDiagnosticButton session={session} />}
+      <button
+        type="button"
+        onClick={() => { useSessionsStore.getState().closeSession(session.id); }}
+        className="hover-bg"
+        style={{ border: "1px solid var(--c-border-1)", background: "transparent", color: "var(--c-text-3)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 8px", borderRadius: "var(--r-btn)", flexShrink: 0 }}
+      >
+        {closeLabel}
+      </button>
       <AccentActionButton onClick={restart} title={actionLabel} ariaLabel={actionLabel}>
         <RestartIcon size={10} />
         {actionLabel}
@@ -254,6 +268,14 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
         {summary}
       </span>
       <ConnectionDiagnosticButton session={session} />
+      <button
+        type="button"
+        onClick={() => { useSessionsStore.getState().closeSession(session.id); }}
+        className="hover-bg"
+        style={{ border: "1px solid var(--c-border-1)", background: "transparent", color: "var(--c-text-3)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 8px", borderRadius: "var(--r-btn)", flexShrink: 0 }}
+      >
+        {t("terminal.exited.close_session")}
+      </button>
       <AccentActionButton onClick={retry} title={t("pty.error.retry")} ariaLabel={t("pty.error.retry")}>
         <RestartIcon size={10} />
         {t("pty.error.retry")}
@@ -268,11 +290,20 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
  * pane is blank with no signal. Lifted out of TerminalView to keep that file
  * under its regression-tested line budget.
  */
-export function ConnectingOverlay({ phase, onCancel }: { phase?: ConnectionPhase; onCancel?: () => void }) {
+export function ConnectingOverlay({
+  phase,
+  onCancel,
+}: {
+  phase?: ConnectionPhase;
+  onCancel?: () => void;
+}) {
   const label = staticT(`connection.phase.${phase ?? "connecting"}`);
+  const cancelLabel = staticT("ssh.connecting.close_session");
   return (
     <div
+      role="status"
       aria-live="polite"
+      aria-atomic="true"
       style={{
         position: "absolute",
         inset: 0,
@@ -308,7 +339,7 @@ export function ConnectingOverlay({ phase, onCancel }: { phase?: ConnectionPhase
               cursor: "pointer",
             }}
           >
-            {staticT("ssh.connecting.close_session")}
+            {cancelLabel}
           </button>
         )}
       </div>

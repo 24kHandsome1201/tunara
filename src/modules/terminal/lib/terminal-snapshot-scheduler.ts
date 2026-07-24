@@ -1,6 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
 import type { SerializeAddon } from "@xterm/addon-serialize";
 import { updateTerminalSnapshot } from "./terminal-snapshot.ts";
+import { captureSafeTerminalHistory } from "./terminal-safe-history.ts";
 
 export function createTerminalSnapshotScheduler({
   term,
@@ -32,6 +33,7 @@ export function createTerminalSnapshotScheduler({
     lastSnapshotAt = Date.now();
     updateTerminalSnapshot(sessionId(), {
       serialized: serializeAddon.serialize(),
+      safeHistory: captureSafeTerminalHistory(term),
       viewportY: term.buffer.active.viewportY,
       baseY: term.buffer.active.baseY,
       cols: term.cols,

@@ -159,6 +159,7 @@ export function terminalExitedUpdate(
       // the process exits, every Files/Git/SFTP consumer must stop routing
       // requests through it, even if the logical session remains visible.
       ptyId: undefined,
+      transportGeneration: undefined,
       agent: undefined,
       agentActivity: undefined,
       ...(wasAgent ? { title: t("session.default_title"), lastCommand: undefined } : {}),
@@ -166,6 +167,7 @@ export function terminalExitedUpdate(
       terminalProgress: undefined,
       runState: exitCode === 0 ? "done" : "failed",
       completedAt: now,
+      shellTitle: undefined,
       suppressShellTitle: true,
       ...(!isActive ? { unread: true } : {}),
     },

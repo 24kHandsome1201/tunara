@@ -1,7 +1,7 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { hasLiveSshPty, takeSshCredentials, takeSshReconnect } from "@/modules/ssh/pending-credentials";
+import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SshConnect } from "@/ui/overlays/SshConnect";
@@ -110,7 +110,7 @@ describe("SSH connection sheet", () => {
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
   });
 
-  test("a live reconnect stages the candidate without replacing or remounting the published session", async () => {
+  test("reconnecting publishes no stale PTY and remounts a fresh terminal parser", async () => {
     mockEmptySources();
     useSessionsStore.setState({
       sessions: [{
@@ -121,7 +121,9 @@ describe("SSH connection sheet", () => {
         runState: "idle",
         updatedAt: 1,
         reconnectNonce: 4,
+        terminalMountNonce: 4,
         ptyId: 91,
+        transportGeneration: "ssh:old",
         remote: { host: "old.example", port: 22, user: "deploy", authMethod: "agent" },
         connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
       }],
@@ -130,9 +132,9 @@ describe("SSH connection sheet", () => {
     useUIStore.setState({
       overlay: "ssh",
       sshPrefill: {
-        host: "new.example",
-        port: 2222,
-        user: "ops",
+        host: "old.example",
+        port: 22,
+        user: "deploy",
         authMethod: "agent",
         reconnectSessionId: "live-ssh",
       },
@@ -143,24 +145,57 @@ describe("SSH connection sheet", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
 
     const session = useSessionsStore.getState().sessions[0];
-    expect(session.remote).toEqual({ host: "old.example", port: 22, user: "deploy", authMethod: "agent" });
-    expect(session.ptyId).toBe(91);
-    expect(session.connection?.phase).toBe("ready");
+    expect(session.remote).toEqual({
+      host: "old.example",
+      port: 22,
+      user: "deploy",
+      authMethod: "agent",
+      injectShellIntegration: true,
+    });
+    expect(session.ptyId).toBeUndefined();
+    expect(session.transportGeneration).toBeUndefined();
+    expect(session.connection?.phase).toBe("reconnecting");
     expect(session.reconnectNonce).toBe(5);
-    expect(session.terminalMountNonce).toBe(4);
-    expect(hasLiveSshPty({
-      ...session,
-      connection: { transport: "ssh", phase: "authenticating", source: "backend", updatedAt: 2 },
-    })).toBe(true);
-    expect(takeSshReconnect(session.id)).toEqual({
-      remote: {
+    expect(session.terminalMountNonce).toBe(5);
+  });
+
+  test("a reconnect edited to another endpoint opens a new session and preserves the old boundary", async () => {
+    mockEmptySources();
+    useSessionsStore.setState({
+      sessions: [{
+        id: "old-boundary",
+        title: "deploy@old.example",
+        dir: "/srv/app",
+        branch: "main",
+        runState: "failed",
+        updatedAt: 1,
+        remote: { host: "old.example", port: 22, user: "deploy", authMethod: "agent" },
+        connection: { transport: "ssh", phase: "disconnected", source: "transport", updatedAt: 1 },
+      }],
+      activeSessionId: "old-boundary",
+    });
+    useUIStore.setState({
+      overlay: "ssh",
+      sshPrefill: {
         host: "new.example",
         port: 2222,
         user: "ops",
         authMethod: "agent",
-        injectShellIntegration: true,
+        reconnectSessionId: "old-boundary",
       },
-      credentials: {},
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    const sessions = useSessionsStore.getState().sessions;
+    expect(sessions).toHaveLength(2);
+    expect(sessions.find((candidate) => candidate.id === "old-boundary")).toMatchObject({
+      remote: { host: "old.example" },
+      dir: "/srv/app",
+      connection: { phase: "disconnected" },
+    });
+    expect(sessions.find((candidate) => candidate.id !== "old-boundary")).toMatchObject({
+      remote: { host: "new.example", port: 2222, user: "ops" },
     });
   });
 });

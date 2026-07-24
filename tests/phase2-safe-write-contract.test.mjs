@@ -90,5 +90,5 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(editor, /sshReconcileOutcomeUnknownTextWrite\(/);
   assert.match(editor, /saveState === "unknown"/);
   assert.match(editor, /unknownOutcome\?\.cleanupPending/);
-  assert.match(editor, /disabled=\{!dirty \|\| saveState === "saving" \|\| saveState === "reconciling" \|\| saveState === "unknown"\}/);
+  assert.match(editor, /disabled=\{remoteDisconnected \|\| !dirty \|\| saveState === "saving" \|\| saveState === "reconciling" \|\| saveState === "unknown"\}/);
 });

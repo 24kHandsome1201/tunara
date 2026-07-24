@@ -1,6 +1,11 @@
 import type { PersistedTerminalSnapshot } from "@/state/persist";
-import { MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE, MAX_TERMINAL_SNAPSHOTS } from "./terminal-snapshot-limits.ts";
+import {
+  MAX_TERMINAL_SNAPSHOT_SAFE_HISTORY_SIZE,
+  MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE,
+  MAX_TERMINAL_SNAPSHOTS,
+} from "./terminal-snapshot-limits.ts";
 import { trimTerminalSnapshotSerialized } from "./terminal-snapshot-trim.ts";
+import { tailTerminalHistoryWithinUtf8Limit } from "./terminal-safe-history.ts";
 
 const snapshots = new Map<string, PersistedTerminalSnapshot>();
 
@@ -25,9 +30,18 @@ export function markTerminalSnapshotDirty(): void {
 }
 
 function trimSnapshot(snapshot: PersistedTerminalSnapshot): PersistedTerminalSnapshot {
-  if (snapshot.serialized.length <= MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE) return snapshot;
+  const safeHistory = snapshot.safeHistory === undefined
+    ? undefined
+    : tailTerminalHistoryWithinUtf8Limit(
+      snapshot.safeHistory,
+      MAX_TERMINAL_SNAPSHOT_SAFE_HISTORY_SIZE,
+    );
+  if (snapshot.serialized.length <= MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE) {
+    return safeHistory === snapshot.safeHistory ? snapshot : { ...snapshot, safeHistory };
+  }
   return {
     ...snapshot,
+    safeHistory,
     serialized: trimTerminalSnapshotSerialized(
       snapshot.serialized,
       MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE,

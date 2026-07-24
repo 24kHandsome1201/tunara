@@ -10,6 +10,7 @@ import { recordTerminalBenchmarkExit, TERMINAL_BENCHMARK_MODE } from "./terminal
 
 export type PtyEvent =
   | { type: "data"; data: string }
+  | { type: "transportLost"; reason: string }
   | { type: "exit"; code: number }
   | { type: "connectionStatus"; phase: BackendConnectionPhase }
   | {
@@ -58,6 +59,10 @@ let sshOpenAttemptCounter = 0;
 function nextSshOpenAttemptId(): string {
   return globalThis.crypto?.randomUUID?.()
     ?? `ssh-${Date.now()}-${sshOpenAttemptCounter += 1}`;
+}
+
+function nextPtyGeneration(transport: "local" | "ssh"): string {
+  return `${transport}:${nextSshOpenAttemptId()}`;
 }
 
 /** Cancel an SSH open before it has returned a physical PTY id. */
@@ -115,14 +120,27 @@ export function notifySshOpenFailure(
 }
 
 export type PtyHandlers = {
-  onData: (bytes: Uint8Array, acknowledge: () => void) => void;
-  onExit?: (code: number) => void;
-  onConnectionStatus?: (phase: PtyConnectionStatusPhase) => void;
+  onData: (bytes: Uint8Array, acknowledge: () => void, generation: string) => void;
+  onTransportLost?: (reason: string, generation: string) => void;
+  onExit?: (code: number, generation: string) => void;
+  onConnectionStatus?: (phase: PtyConnectionStatusPhase, generation: string) => void;
+  /** Candidate-only progress; the bridge admits it only for the latest open attempt. */
+  onPendingConnectionStatus?: (phase: PtyConnectionStatusPhase) => void;
 };
 
 export type PtyConnectionStatusPhase = BackendConnectionPhase | "verifyingHostKey";
 
-export function recordPtyConnectionStatus(sessionId: string, phase: PtyConnectionStatusPhase): void {
+function acceptsTransportGeneration(sessionId: string, generation: string): boolean {
+  const current = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
+  return current?.transportGeneration === generation;
+}
+
+export function recordPtyConnectionStatus(
+  sessionId: string,
+  phase: PtyConnectionStatusPhase,
+  generation: string,
+): void {
+  if (!acceptsTransportGeneration(sessionId, generation)) return;
   useSessionsStore.getState().handleConnectionEvent(
     sessionId,
     phase === "verifyingHostKey"
@@ -131,7 +149,21 @@ export function recordPtyConnectionStatus(sessionId: string, phase: PtyConnectio
   );
 }
 
-export function recordPtyExit(sessionId: string, remote: boolean, code: number): void {
+/** Record progress already proven by openSshPty to belong to the latest candidate. */
+export function recordPendingPtyConnectionStatus(
+  sessionId: string,
+  phase: PtyConnectionStatusPhase,
+): void {
+  useSessionsStore.getState().handleConnectionEvent(
+    sessionId,
+    phase === "verifyingHostKey"
+      ? { type: "hostKeyPrompt" }
+      : { type: "backendPhase", transport: "ssh", phase },
+  );
+}
+
+export function recordPtyExit(sessionId: string, remote: boolean, code: number, generation: string): void {
+  if (!acceptsTransportGeneration(sessionId, generation)) return;
   if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkExit(sessionId, code);
   useSessionsStore.getState().handleConnectionEvent(sessionId, {
     type: "exit",
@@ -143,6 +175,9 @@ export function recordPtyExit(sessionId: string, remote: boolean, code: number):
 
 export type PtySession = {
   id: number;
+  generation: string;
+  /** Publish queued events only after the renderer has installed this generation. */
+  activate: () => boolean;
   write: (data: string) => Promise<void>;
   resize: (cols: number, rows: number) => Promise<void>;
   close: () => Promise<void>;
@@ -192,9 +227,13 @@ export async function openPty(
   handlers: PtyHandlers,
   cwd?: string,
 ): Promise<PtySession> {
+  const generation = nextPtyGeneration("local");
   const acknowledger = createOutputAcknowledger();
   const channel = new Channel<PtyEvent>();
-  channel.onmessage = (event) => {
+  let activated = false;
+  let closed = false;
+  let pendingEvents: PtyEvent[] = [];
+  const dispatch = (event: PtyEvent) => {
     switch (event.type) {
       case "data": {
         const bytes = decodeBase64(event.data);
@@ -203,16 +242,27 @@ export async function openPty(
           if (acknowledged) return;
           acknowledged = true;
           acknowledger.acknowledge(bytes.byteLength);
-        });
+        }, generation);
         break;
       }
+      case "transportLost":
+        handlers.onTransportLost?.(event.reason, generation);
+        break;
       case "exit":
-        handlers.onExit?.(event.code);
+        handlers.onExit?.(event.code, generation);
         break;
       case "connectionStatus":
-        handlers.onConnectionStatus?.(event.phase);
+        handlers.onConnectionStatus?.(event.phase, generation);
+        break;
+      case "hostKeyPrompt":
+      case "keyboardInteractivePrompt":
         break;
     }
+  };
+  channel.onmessage = (event) => {
+    if (closed) return;
+    if (activated) dispatch(event);
+    else pendingEvents.push(event);
   };
 
   const id = await invoke<number>("pty_open", {
@@ -226,9 +276,22 @@ export async function openPty(
 
   return {
     id,
+    generation,
+    activate: () => {
+      if (closed || activated) return false;
+      activated = true;
+      const queued = pendingEvents;
+      pendingEvents = [];
+      for (const event of queued) dispatch(event);
+      return true;
+    },
     write: (data) => invoke("pty_write", { id, data }),
     resize: (c, r) => invoke("pty_resize", { id, cols: c, rows: r }),
-    close: () => invoke("pty_close", { id }),
+    close: () => {
+      closed = true;
+      pendingEvents = [];
+      return invoke("pty_close", { id });
+    },
   };
 }
 
@@ -311,16 +374,20 @@ export async function openSshPty(
   conn: SshConnectOptions,
 ): Promise<PtySession> {
   const openAttemptId = nextSshOpenAttemptId();
+  const generation = `ssh:${openAttemptId}`;
   const previousGeneration = sshConnectionGenerations.get(logicalSessionId);
   sshOpenAttempts.set(logicalSessionId, openAttemptId);
   const channel = new Channel<PtyEvent>();
   const acknowledger = createOutputAcknowledger();
   const pendingPromptIds = new Set<string>();
   const pendingKeyboardPromptIds = new Set<string>();
-  channel.onmessage = (event) => {
-    const published = sshConnectionGenerations.get(logicalSessionId) === openAttemptId;
-    const latestPending = sshOpenAttempts.get(logicalSessionId) === openAttemptId;
-    if (!published && !latestPending) return;
+  let physicalId: number | null = null;
+  let publishable = false;
+  let activated = false;
+  let closed = false;
+  let pendingEvents: PtyEvent[] = [];
+
+  const dispatch = (event: PtyEvent) => {
     switch (event.type) {
       case "data": {
         const bytes = decodeBase64(event.data);
@@ -329,17 +396,54 @@ export async function openSshPty(
           if (acknowledged) return;
           acknowledged = true;
           acknowledger.acknowledge(bytes.byteLength);
-        });
+        }, generation);
         break;
       }
+      case "transportLost":
+        handlers.onTransportLost?.(event.reason, generation);
+        break;
       case "exit":
-        handlers.onExit?.(event.code);
+        handlers.onExit?.(event.code, generation);
         break;
       case "connectionStatus":
-        handlers.onConnectionStatus?.(event.phase);
+        handlers.onConnectionStatus?.(event.phase, generation);
         break;
       case "hostKeyPrompt":
-        handlers.onConnectionStatus?.("verifyingHostKey");
+      case "keyboardInteractivePrompt":
+        break;
+    }
+  };
+
+  const acknowledgeDiscardedData = (event: PtyEvent) => {
+    if (event.type === "data" && physicalId !== null) {
+      acknowledger.acknowledge(decodeBase64(event.data).byteLength);
+    }
+  };
+
+  channel.onmessage = (event) => {
+    const published = sshConnectionGenerations.get(logicalSessionId) === openAttemptId;
+    const latestPending = sshOpenAttempts.get(logicalSessionId) === openAttemptId;
+    if (published && activated) {
+      dispatch(event);
+      return;
+    }
+    const currentCandidate = !closed && (latestPending || publishable);
+    if (!currentCandidate) {
+      acknowledgeDiscardedData(event);
+      return;
+    }
+    switch (event.type) {
+      case "data":
+      case "transportLost":
+      case "exit":
+        pendingEvents.push(event);
+        break;
+      case "connectionStatus":
+        handlers.onPendingConnectionStatus?.(event.phase);
+        pendingEvents.push(event);
+        break;
+      case "hostKeyPrompt":
+        handlers.onPendingConnectionStatus?.("verifyingHostKey");
         // Queue the confirmation in the UI store; an app-level dialog renders
         // the head and calls answerHostKeyPrompt with the user's decision. The
         // backend ssh_open call is blocked inside check_server_key until then.
@@ -411,20 +515,38 @@ export async function openSshPty(
     }
     cancelledSshOpenAttempts.delete(openAttemptId);
   }
+  physicalId = id;
   acknowledger.setId(id);
-  // Keep the old published Channel live while authentication is pending. The
-  // backend swaps physical PTYs immediately before ssh_open returns; publish
-  // the matching renderer generation only now. A late older response must not
-  // overwrite a generation already published by a newer attempt.
-  if (sshConnectionGenerations.get(logicalSessionId) === previousGeneration) {
-    sshConnectionGenerations.set(logicalSessionId, openAttemptId);
-  }
+  publishable = true;
 
   return {
     id,
+    generation,
+    activate: () => {
+      if (closed || activated || sshConnectionGenerations.get(logicalSessionId) !== previousGeneration) {
+        for (const event of pendingEvents) acknowledgeDiscardedData(event);
+        pendingEvents = [];
+        publishable = false;
+        return false;
+      }
+      // The renderer installs its generation before activation. Only then can
+      // initial shell output enter xterm; this prevents candidate bytes from
+      // being parsed by the previous connection's terminal state.
+      sshConnectionGenerations.set(logicalSessionId, openAttemptId);
+      activated = true;
+      publishable = false;
+      const queued = pendingEvents;
+      pendingEvents = [];
+      for (const event of queued) dispatch(event);
+      return true;
+    },
     write: (data) => invoke("pty_write", { id, data }),
     resize: (c, r) => invoke("pty_resize", { id, cols: c, rows: r }),
     close: () => {
+      closed = true;
+      publishable = false;
+      for (const event of pendingEvents) acknowledgeDiscardedData(event);
+      pendingEvents = [];
       if (sshConnectionGenerations.get(logicalSessionId) === openAttemptId) {
         sshConnectionGenerations.delete(logicalSessionId);
       }

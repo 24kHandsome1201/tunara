@@ -6,9 +6,9 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { cancelSshOpen, openSessionPty, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { cancelSshOpen, openSessionPty, recordPendingPtyConnectionStatus, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, SSH_DISCONNECTED_EXIT_CODE, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
-import { registerCwdHandler } from "@/modules/terminal/lib/osc-handlers";
+import { registerCwdHandler, registerTitleHandlers } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
 import type { AgentCode } from "./types";
 import { cleanTerminalText } from "@/modules/terminal/lib/terminal-utils";
@@ -34,10 +34,13 @@ import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, should
 import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
+import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-history";
+import { createTerminalOscGuard } from "@/modules/terminal/lib/terminal-osc-guard";
+import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
-import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source"; import { createTerminalSshReconnect, useTerminalSshReconnect } from "./useTerminalSshReconnect";
+import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -66,7 +69,7 @@ function TerminalViewImpl({
   activeRef.current = active;
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
-  const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId)); const reconnectPtyRef = useTerminalSshReconnect(sessionId, session?.reconnectNonce, ptyReady);
+  const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId));
   const search = useTerminalSearch(termRef);
   const blocks = useTerminalBlocks(termRef);
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
@@ -252,11 +255,9 @@ function TerminalViewImpl({
         return true;
       };
       cleanups.push(registerCwdHandler(term, handleCwdChange));
-      const titleDisposable = term.onTitleChange((title) => {
-        const clean = cleanTerminalText(title);
-        if (clean) useSessionsStore.getState().handleShellTitle(sessionIdRef.current, clean);
-      });
-      cleanups.push(() => titleDisposable.dispose());
+      cleanups.push(registerTitleHandlers(term, (title) => {
+        useSessionsStore.getState().handleShellTitle(sessionIdRef.current, title);
+      }));
       const currentBufferRow = () => term.buffer.active.cursorY + term.buffer.active.baseY;
       const agentLifecycleDisposable = term.parser.registerOscHandler(777, applyAgentLifecycleEvent);
       cleanups.push(() => agentLifecycleDisposable.dispose());
@@ -330,7 +331,10 @@ function TerminalViewImpl({
       const existingSnapshot = getTerminalSnapshot(sessionIdRef.current);
       if (existingSnapshot) {
         const rl = getCurrentSession()?.remote ? t("terminal.restored_remote") : t("terminal.restored_local");
-        term.write(existingSnapshot.serialized + `\r\n\x1b[2m[${rl}]\x1b[0m\r\n`);
+        const restored = getCurrentSession()?.remote
+          ? safeHistoryForTerminal(existingSnapshot.safeHistory ?? "", rl)
+          : existingSnapshot.serialized + `\r\n\x1b[2m[${rl}]\x1b[0m\r\n`;
+        term.write(restored);
         requestAnimationFrame(() => { if (existingSnapshot.viewportY !== undefined) term.scrollToLine(existingSnapshot.viewportY); });
       }
       const snapshotScheduler = createTerminalSnapshotScheduler({
@@ -347,15 +351,28 @@ function TerminalViewImpl({
         type: "openRequested",
         transport,
       });
+      const oscGuard = createTerminalOscGuard();
       const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined, onWritten: (bytes) => { previewScanner.push(bytes); recordTerminalAtlasOutputPressure(bytes.byteLength); } });
       cleanups.push(() => outputBuffer.dispose()); cleanups.push(previewScanner.dispose);
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkSnapshotReader(sessionIdRef.current, async () => { await outputBuffer.drain(); return serializeAddon.serialize(); }));
       // Declared before ptyHandlers so onExit can flip it even if exit races the
       // await openSessionPty() return.
-      let inputToPtyEnabled = true, ptyAlive = false;
-      const ptyHandlers = {
-        onData: (bytes: Uint8Array, acknowledge: () => void) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
-          outputBuffer.push(bytes, acknowledge);
+      let inputToPtyEnabled = true;
+      const finishGeneration = (code: number, generation: string) => {
+        if (disposed) return;
+        inputToPtyEnabled = false;
+        term.options.disableStdin = true;
+        oscGuard.reset();
+        recordPtyExit(sessionIdRef.current, Boolean(getCurrentSession()?.remote), code, generation);
+        handleTerminalProcessExit(term, sessionIdRef.current, code, Boolean(getCurrentSession()?.remote));
+        snapshotScheduler.flush();
+        setExitCode(code);
+      };
+      const generationGate = createTerminalPtyGenerationGate({
+        onData: (bytes: Uint8Array, acknowledge: () => void, _generation: string) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
+          const guarded = oscGuard.push(bytes);
+          if (guarded.byteLength === 0) acknowledge();
+          else outputBuffer.push(guarded, acknowledge);
           blocks.updateActiveBlockEnd(currentBufferRow());
           snapshotScheduler.schedule();
           const current = getCurrentSession();
@@ -369,18 +386,20 @@ function TerminalViewImpl({
             }
           }
         },
-        onExit: (code: number) => {
-          if (disposed) return; ptyAlive = false;
-          inputToPtyEnabled = false;
-          recordPtyExit(sessionIdRef.current, Boolean(getCurrentSession()?.remote), code);
-          handleTerminalProcessExit(term, sessionIdRef.current, code, Boolean(getCurrentSession()?.remote));
-          snapshotScheduler.flush();
-          setExitCode(code);
+        onTransportLost: (_reason: string, generation: string) => {
+          finishGeneration(SSH_DISCONNECTED_EXIT_CODE, generation);
         },
-        onConnectionStatus: (phase: PtyConnectionStatusPhase) => {
-          if (!disposed) recordPtyConnectionStatus(sessionIdRef.current, phase);
+        onExit: (code: number, generation: string) => {
+          finishGeneration(code, generation);
         },
-      };
+        onConnectionStatus: (phase: PtyConnectionStatusPhase, generation: string) => {
+          if (!disposed) recordPtyConnectionStatus(sessionIdRef.current, phase, generation);
+        },
+        onPendingConnectionStatus: (phase: PtyConnectionStatusPhase) => {
+          if (!disposed) recordPendingPtyConnectionStatus(sessionIdRef.current, phase);
+        },
+      });
+      const ptyHandlers = generationGate.handlers;
       let pty;
       try {
         // Remote (SSH) and local sessions share the PtySession interface and
@@ -416,7 +435,21 @@ function TerminalViewImpl({
         pty.close().catch(() => {});
         return;
       }
-      ptyRef.current = pty; ptyAlive = true;
+      generationGate.publish(pty.generation);
+      ptyRef.current = pty;
+      useSessionsStore.getState().updateSession(sessionIdRef.current, {
+        ptyId: pty.id,
+        transportGeneration: pty.generation,
+      });
+      if (!pty.activate()) {
+        pty.close().catch(() => {});
+        useSessionsStore.getState().updateSession(sessionIdRef.current, {
+          ptyId: undefined,
+          transportGeneration: undefined,
+        });
+        setOpenError(t("pty.error.subtitle"));
+        return;
+      }
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkWriter(sessionIdRef.current, (data) => ptyRef.current?.write(data) ?? Promise.reject(new Error("PTY unavailable"))));
       setPtyReady(true); // triggers the pendingInput effect once, now that pty is live
       if (transport === "local") {
@@ -425,9 +458,6 @@ function TerminalViewImpl({
           transport: "local",
         });
       }
-      // Expose the live PTY id on the session so the remote file panel can
-      // locate the backend SSH connection for SFTP commands.
-      useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
       const onWriteError = createInputQueueFullWarner(term);
       const writePty = (data: string) => {
         if (!inputToPtyEnabled || !ptyRef.current) return; const pty = ptyRef.current;
@@ -504,13 +534,13 @@ function TerminalViewImpl({
       // Self-heal the idle-garble case: rebuild the WebGL atlas on focus /
       // visibility regain (see terminal-atlas-refresh for the root cause).
       cleanups.push(registerTerminalAtlasRefresh(rebuildWebglAtlas));
-      cleanups.push(resetAgentObservers); reconnectPtyRef.current = createTerminalSshReconnect(sessionIdRef, term, ptyRef, ptyHandlers, () => disposed, () => ptyAlive, (alive) => { ptyAlive = alive; }, (enabled) => { inputToPtyEnabled = enabled; }, setExitCode, setOpenError, setPtyReady);
+      cleanups.push(resetAgentObservers);
       if (active) term.focus();
     })().catch((error) => {
       if (!disposed) setOpenError(reportTerminalInitializationFailure(sessionIdRef.current, Boolean(session?.remote), error));
     });
     return () => {
-      disposed = true; initRef.current = false; reconnectPtyRef.current = null; // Fast Refresh preserves refs across effect lifecycles.
+      disposed = true; initRef.current = false; // Fast Refresh preserves refs across effect lifecycles.
       if (session?.remote) {
         void cancelSshOpen(sessionIdRef.current);
       }

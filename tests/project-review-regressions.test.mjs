@@ -183,7 +183,7 @@ test("SSH connection state comes from backend phase evidence and remains ephemer
   for (const phase of ["connecting", "handshaking", "authenticating", "openingShell", "ready"]) {
     assert.match(connection, new RegExp(`send_connection_status\\(&on_event, "${phase}"\\)`));
   }
-  assert.match(bridge, /onConnectionStatus\?: \(phase: PtyConnectionStatusPhase\)/);
+  assert.match(bridge, /onConnectionStatus\?: \(phase: PtyConnectionStatusPhase, generation: string\)/);
   assert.match(terminal, /recordPtyConnectionStatus/);
   assert.match(bridge, /type: "backendPhase"/);
   assert.match(bridge, /type: "hostKeyPrompt"/);
@@ -1592,8 +1592,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // wired on BOTH command-detection paths — the OSC 133 path that local
   // sessions use by default, and the keystroke fallback). 540→550 for the
   // post-exit inputToPtyEnabled gate + deferred DA handler registration.
-  // The heavy logic always stays in its own module — this remains a guard
-  // against re-monolithizing.
-  assert.ok(terminal.split("\n").length < 550);
+  // The 580 ceiling leaves room for generation publication and inert SSH
+  // restore; both state machines remain extracted into terminal lib modules.
+  assert.ok(terminal.split("\n").length < 580);
   assert.ok(sidebar.split("\n").length < 400);
 });

@@ -34,6 +34,11 @@ pub enum PtyEvent {
     Data {
         data: String,
     },
+    /// The SSH transport disappeared without a remote exit or a local close.
+    /// `reason` is a stable machine-readable value, never a raw network error.
+    TransportLost {
+        reason: String,
+    },
     Exit {
         code: i32,
     },

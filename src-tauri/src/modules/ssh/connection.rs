@@ -240,6 +240,25 @@ const REMOTE_INTEGRATION: &str = include_str!("scripts/remote-integration.sh");
 const AGENT_HOOK_HELPER: &str = include_str!("../agent/scripts/agent-hook.sh");
 
 const SSH_DISCONNECTED_EXIT_CODE: i32 = -2;
+const SSH_FINAL_OUTPUT_FLUSH_TIMEOUT: Duration = Duration::from_millis(250);
+const SSH_TRANSPORT_LOST_REASON: &str = "transportClosed";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PumpEnd {
+    RemoteExit,
+    LocalClose,
+    TransportLost,
+}
+
+fn classify_pump_end(exit_code: Option<i32>, local_close: bool) -> PumpEnd {
+    if exit_code.is_some() {
+        PumpEnd::RemoteExit
+    } else if local_close {
+        PumpEnd::LocalClose
+    } else {
+        PumpEnd::TransportLost
+    }
+}
 
 /// Parameters to open an SSH session.
 pub struct ConnectParams {
@@ -300,6 +319,17 @@ async fn emit_output(
         output_flow.close();
     }
     sent
+}
+
+async fn bounded_final_flush<F>(output_flow: &OutputFlow, timeout: Duration, flush: F) -> bool
+where
+    F: Future<Output = bool>,
+{
+    let flushed = tokio::time::timeout(timeout, flush).await.unwrap_or(false);
+    if !flushed {
+        output_flow.close();
+    }
+    flushed
 }
 
 fn send_connection_status(on_event: &IpcChannel<PtyEvent>, phase: &str) {
@@ -495,16 +525,21 @@ impl SshSession {
             let mut flush_tick = tokio::time::interval(OUTPUT_BATCH_INTERVAL);
             flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             flush_tick.tick().await;
+            let mut local_close = false;
             'pump: loop {
                 tokio::select! {
                     biased;
                     _ = pump_control.wait_for_close() => {
+                        local_close = true;
                         let _ = channel.eof().await;
                         break;
                     }
                     _ = flush_tick.tick() => {
                         if let Some(bytes) = output.flush() {
-                            if !emit_output(&pump_output_flow, &on_event, bytes).await { break; }
+                            if !emit_output(&pump_output_flow, &on_event, bytes).await {
+                                local_close = true;
+                                break;
+                            }
                         }
                     }
                     msg = channel.wait() => {
@@ -516,7 +551,10 @@ impl SshSession {
                                     &mut bootstrap_output_filter,
                                     data,
                                 ) {
-                                    if !emit_output(&pump_output_flow, &on_event, bytes).await { break 'pump; }
+                                    if !emit_output(&pump_output_flow, &on_event, bytes).await {
+                                        local_close = true;
+                                        break 'pump;
+                                    }
                                 }
                             }
                             // stderr (ext=1) is interleaved into the same stream;
@@ -527,7 +565,10 @@ impl SshSession {
                                     &mut bootstrap_output_filter,
                                     data,
                                 ) {
-                                    if !emit_output(&pump_output_flow, &on_event, bytes).await { break 'pump; }
+                                    if !emit_output(&pump_output_flow, &on_event, bytes).await {
+                                        local_close = true;
+                                        break 'pump;
+                                    }
                                 }
                             }
                             ChannelMsg::ExitStatus { exit_status } => {
@@ -550,6 +591,7 @@ impl SshSession {
                                     tokio::select! {
                                         biased;
                                         _ = pump_control.wait_for_close() => {
+                                            local_close = true;
                                             let _ = channel.eof().await;
                                             break 'pump;
                                         }
@@ -575,6 +617,7 @@ impl SshSession {
                             tokio::select! {
                                 biased;
                                 _ = pump_control.wait_for_close() => {
+                                    local_close = true;
                                     let _ = channel.eof().await;
                                     break 'pump;
                                 }
@@ -584,17 +627,38 @@ impl SshSession {
                     }
                 }
             }
+            let pump_end = classify_pump_end(exit_code, local_close || pump_control.is_closed());
+            if pump_end == PumpEnd::TransportLost {
+                let _ = on_event.send(PtyEvent::TransportLost {
+                    reason: SSH_TRANSPORT_LOST_REASON.to_string(),
+                });
+            }
+
+            // Preserve any unmatched bootstrap-filter suffix, but never let
+            // its delivery delay the TransportLost control event or block
+            // teardown indefinitely while renderer output credit is stalled.
+            let mut final_output = Vec::new();
             if let Some(filter) = bootstrap_output_filter.take() {
-                let tail = filter.finish();
-                for bytes in output.push(&tail) {
-                    if !emit_output(&pump_output_flow, &on_event, bytes).await {
-                        break;
-                    }
-                }
+                final_output.extend(output.push(&filter.finish()));
             }
             if let Some(bytes) = output.flush() {
-                let _ = emit_output(&pump_output_flow, &on_event, bytes).await;
+                final_output.push(bytes);
             }
+            let tail_bytes: usize = final_output.iter().map(Vec::len).sum();
+            if tail_bytes > 0
+                && !bounded_final_flush(&pump_output_flow, SSH_FINAL_OUTPUT_FLUSH_TIMEOUT, async {
+                    for bytes in final_output {
+                        if !emit_output(&pump_output_flow, &on_event, bytes).await {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .await
+            {
+                log::warn!("ssh: dropped {tail_bytes} buffered output bytes during final flush");
+            }
+            pump_output_flow.close();
             pump_control.request_close();
             let _ = on_event.send(PtyEvent::Exit {
                 code: exit_code.unwrap_or(SSH_DISCONNECTED_EXIT_CODE),
@@ -1318,6 +1382,45 @@ impl Drop for SshSession {
 mod tests {
     use super::*;
     use tauri::ipc::{Channel, InvokeResponseBody};
+
+    #[test]
+    fn pump_end_classification_only_reports_unexpected_transport_loss() {
+        assert_eq!(classify_pump_end(Some(0), false), PumpEnd::RemoteExit);
+        assert_eq!(classify_pump_end(Some(-1), false), PumpEnd::RemoteExit);
+        assert_eq!(classify_pump_end(None, true), PumpEnd::LocalClose);
+        assert_eq!(classify_pump_end(None, false), PumpEnd::TransportLost);
+    }
+
+    #[test]
+    fn transport_lost_event_has_a_stable_camel_case_contract() {
+        let json = serde_json::to_value(PtyEvent::TransportLost {
+            reason: SSH_TRANSPORT_LOST_REASON.to_string(),
+        })
+        .expect("serialize transport-lost event");
+        assert_eq!(json["type"], "transportLost");
+        assert_eq!(json["reason"], "transportClosed");
+    }
+
+    #[tokio::test]
+    async fn bounded_final_flush_times_out_and_closes_output_flow() {
+        let flow = OutputFlow::new();
+        assert!(
+            !bounded_final_flush(
+                &flow,
+                Duration::from_millis(1),
+                std::future::pending::<bool>(),
+            )
+            .await
+        );
+        assert!(!flow.reserve(1).await, "closed flow must reject new output");
+    }
+
+    #[tokio::test]
+    async fn bounded_final_flush_preserves_a_completed_flush() {
+        let flow = OutputFlow::new();
+        assert!(bounded_final_flush(&flow, Duration::from_secs(1), async { true }).await);
+        assert!(flow.reserve(1).await, "successful flush leaves flow usable");
+    }
 
     #[tokio::test]
     #[ignore = "requires TUNARA_SSH_SMOKE_HOST and a working SSH agent"]

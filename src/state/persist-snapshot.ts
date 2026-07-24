@@ -4,9 +4,11 @@ import { sanitizeWorkflow } from "../modules/workflows/template.ts";
 import { sanitizeSessionNote } from "../modules/session/session-notes.ts";
 import {
   MAX_TERMINAL_SNAPSHOTS,
+  MAX_TERMINAL_SNAPSHOT_SAFE_HISTORY_SIZE,
   MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE,
 } from "../modules/terminal/lib/terminal-snapshot-limits.ts";
 import { trimTerminalSnapshotSerialized } from "../modules/terminal/lib/terminal-snapshot-trim.ts";
+import { tailTerminalHistoryWithinUtf8Limit } from "../modules/terminal/lib/terminal-safe-history.ts";
 import { initialConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
 import { isSshAuthMethod, parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
@@ -70,6 +72,8 @@ export interface PersistedUILayoutV2 {
 
 export interface PersistedTerminalSnapshot {
   serialized: string;
+  /** Inert rendered text used across SSH transport generations. */
+  safeHistory?: string;
   viewportY: number;
   baseY: number;
   cols: number;
@@ -310,8 +314,15 @@ function sanitizeTerminalSnapshot(raw: unknown): PersistedTerminalSnapshot | nul
   const serialized = t.serialized.length > MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE
     ? trimTerminalSnapshotSerialized(t.serialized, MAX_TERMINAL_SNAPSHOT_SERIALIZED_SIZE)
     : t.serialized;
+  const safeHistory = typeof t.safeHistory === "string"
+    ? tailTerminalHistoryWithinUtf8Limit(
+      t.safeHistory,
+      MAX_TERMINAL_SNAPSHOT_SAFE_HISTORY_SIZE,
+    )
+    : undefined;
   return {
     serialized,
+    ...(safeHistory !== undefined ? { safeHistory } : {}),
     viewportY: Math.trunc(viewportY),
     baseY: Math.trunc(baseY),
     cols: Math.trunc(cols),

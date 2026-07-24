@@ -10,6 +10,7 @@ export type ConnectionPhase =
   | "handshaking"
   | "authenticating"
   | "openingShell"
+  | "reconnecting"
   | "ready"
   | "disconnected"
   | "failed"
@@ -46,6 +47,7 @@ export interface ConnectionEvidence {
 export type ConnectionEvent =
   | { type: "queued"; transport: ConnectionTransport; source?: "user" | "restore" }
   | { type: "openRequested"; transport: ConnectionTransport; source?: "user" | "renderer" }
+  | { type: "reconnectRequested" }
   | { type: "backendPhase"; transport: "ssh"; phase: BackendConnectionPhase }
   | { type: "hostKeyPrompt" }
   | { type: "ready"; transport: ConnectionTransport; source?: "renderer" | "backend" }
@@ -96,6 +98,14 @@ export function reduceConnectionEvidence(
         transport: event.transport,
         phase: event.transport === "ssh" ? "connecting" : "opening",
         source: event.source ?? "renderer",
+        updatedAt: now,
+      };
+      break;
+    case "reconnectRequested":
+      next = {
+        transport: "ssh",
+        phase: "reconnecting",
+        source: "user",
         updatedAt: now,
       };
       break;

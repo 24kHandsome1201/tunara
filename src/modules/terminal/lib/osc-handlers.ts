@@ -1,4 +1,5 @@
 import type { IMarker, Terminal } from "@xterm/xterm";
+import { sanitizeTerminalTitle } from "./terminal-utils.ts";
 
 export function registerCwdHandler(
   term: Terminal,
@@ -10,6 +11,25 @@ export function registerCwdHandler(
     return true;
   });
   return () => d.dispose();
+}
+
+export function registerTitleHandlers(
+  term: Terminal,
+  onTitle: (title: string) => void,
+): () => void {
+  const handle = (data: string) => {
+    const title = sanitizeTerminalTitle(data);
+    if (title) onTitle(title);
+    // Consume OSC 0/2 so xterm's unbounded built-in title callback cannot
+    // bypass product sanitization.
+    return true;
+  };
+  const iconAndTitle = term.parser.registerOscHandler(0, handle);
+  const title = term.parser.registerOscHandler(2, handle);
+  return () => {
+    iconAndTitle.dispose();
+    title.dispose();
+  };
 }
 
 export type PromptTracker = {

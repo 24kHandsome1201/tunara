@@ -23,7 +23,7 @@ test("dirty drafts keep explicit close, conflict, reload, find, and external esc
   assert.match(preview, /void reload\(\)/);
   assert.match(preview, /catch \(error\) \{\s*setOperationError\(\{ operation: "reload", kind: classifyFileOperationError\(error\), detail: String\(error\) \}\)/);
   assert.match(preview, /operationError\?\.operation === "reload"/);
-  assert.match(preview, /disabled=\{reloadPending\}/);
+  assert.match(preview, /disabled=\{remoteDisconnected \|\| reloadPending\}/);
   assert.match(preview, /event\.key\.toLocaleLowerCase\(\) === "f"/);
   assert.match(preview, /openInEditorWithToast\(externalEditor, filePath\)/);
 });

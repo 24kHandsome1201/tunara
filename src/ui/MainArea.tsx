@@ -229,6 +229,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                   filePath={tab.filePath}
                   fileName={tab.fileName}
                   remotePtyId={owner.remote ? owner.ptyId : undefined}
+                  remote={Boolean(owner.remote)}
                   onClose={() => useUIStore.getState().closeFileTab(tab.id)}
                   onDirtyChange={(dirty) => useUIStore.getState().setFileTabDirty(tab.id, dirty)}
                   onNeedsAttention={() => {
