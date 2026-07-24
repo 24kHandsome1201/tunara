@@ -33,6 +33,8 @@ export function SshSuggestionBar({ session }: SshSuggestionBarProps) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       style={{
         minHeight: "var(--h-inline-bar)",
         margin: "4px 8px 0",

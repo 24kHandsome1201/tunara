@@ -97,6 +97,15 @@ export function reportSshOpenFailure(
     reason,
     detail: error,
   });
+  notifySshOpenFailure(sessionId, remote, error);
+}
+
+/** Show a failed replacement attempt without marking a still-live PTY failed. */
+export function notifySshOpenFailure(
+  sessionId: string,
+  remote: RemoteInfo,
+  error: string,
+): void {
   useUIStore.getState().addToast({
     sessionId,
     title: `${remote.user}@${remote.host}`,
@@ -302,14 +311,16 @@ export async function openSshPty(
   conn: SshConnectOptions,
 ): Promise<PtySession> {
   const openAttemptId = nextSshOpenAttemptId();
+  const previousGeneration = sshConnectionGenerations.get(logicalSessionId);
   sshOpenAttempts.set(logicalSessionId, openAttemptId);
-  sshConnectionGenerations.set(logicalSessionId, openAttemptId);
   const channel = new Channel<PtyEvent>();
   const acknowledger = createOutputAcknowledger();
   const pendingPromptIds = new Set<string>();
   const pendingKeyboardPromptIds = new Set<string>();
   channel.onmessage = (event) => {
-    if (sshConnectionGenerations.get(logicalSessionId) !== openAttemptId) return;
+    const published = sshConnectionGenerations.get(logicalSessionId) === openAttemptId;
+    const latestPending = sshOpenAttempts.get(logicalSessionId) === openAttemptId;
+    if (!published && !latestPending) return;
     switch (event.type) {
       case "data": {
         const bytes = decodeBase64(event.data);
@@ -393,9 +404,6 @@ export async function openSshPty(
     for (const promptId of pendingKeyboardPromptIds) {
       useUIStore.getState().dismissKeyboardInteractivePrompt(promptId);
     }
-    if (sshConnectionGenerations.get(logicalSessionId) === openAttemptId) {
-      sshConnectionGenerations.delete(logicalSessionId);
-    }
     throw error;
   } finally {
     if (sshOpenAttempts.get(logicalSessionId) === openAttemptId) {
@@ -404,6 +412,13 @@ export async function openSshPty(
     cancelledSshOpenAttempts.delete(openAttemptId);
   }
   acknowledger.setId(id);
+  // Keep the old published Channel live while authentication is pending. The
+  // backend swaps physical PTYs immediately before ssh_open returns; publish
+  // the matching renderer generation only now. A late older response must not
+  // overwrite a generation already published by a newer attempt.
+  if (sshConnectionGenerations.get(logicalSessionId) === previousGeneration) {
+    sshConnectionGenerations.set(logicalSessionId, openAttemptId);
+  }
 
   return {
     id,

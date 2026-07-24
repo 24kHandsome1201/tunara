@@ -37,7 +37,7 @@ import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; 
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
-import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
+import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source"; import { createTerminalSshReconnect, useTerminalSshReconnect } from "./useTerminalSshReconnect";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -66,7 +66,7 @@ function TerminalViewImpl({
   activeRef.current = active;
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
-  const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId));
+  const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId)); const reconnectPtyRef = useTerminalSshReconnect(sessionId, session?.reconnectNonce, ptyReady);
   const search = useTerminalSearch(termRef);
   const blocks = useTerminalBlocks(termRef);
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
@@ -352,7 +352,7 @@ function TerminalViewImpl({
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkSnapshotReader(sessionIdRef.current, async () => { await outputBuffer.drain(); return serializeAddon.serialize(); }));
       // Declared before ptyHandlers so onExit can flip it even if exit races the
       // await openSessionPty() return.
-      let inputToPtyEnabled = true;
+      let inputToPtyEnabled = true, ptyAlive = false;
       const ptyHandlers = {
         onData: (bytes: Uint8Array, acknowledge: () => void) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
           outputBuffer.push(bytes, acknowledge);
@@ -370,7 +370,7 @@ function TerminalViewImpl({
           }
         },
         onExit: (code: number) => {
-          if (disposed) return;
+          if (disposed) return; ptyAlive = false;
           inputToPtyEnabled = false;
           recordPtyExit(sessionIdRef.current, Boolean(getCurrentSession()?.remote), code);
           handleTerminalProcessExit(term, sessionIdRef.current, code, Boolean(getCurrentSession()?.remote));
@@ -416,8 +416,8 @@ function TerminalViewImpl({
         pty.close().catch(() => {});
         return;
       }
-      ptyRef.current = pty;
-      if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkWriter(sessionIdRef.current, (data) => pty.write(data)));
+      ptyRef.current = pty; ptyAlive = true;
+      if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkWriter(sessionIdRef.current, (data) => ptyRef.current?.write(data) ?? Promise.reject(new Error("PTY unavailable"))));
       setPtyReady(true); // triggers the pendingInput effect once, now that pty is live
       if (transport === "local") {
         useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
@@ -430,7 +430,7 @@ function TerminalViewImpl({
       useSessionsStore.getState().updateSession(sessionIdRef.current, { ptyId: pty.id });
       const onWriteError = createInputQueueFullWarner(term);
       const writePty = (data: string) => {
-        if (!inputToPtyEnabled) return;
+        if (!inputToPtyEnabled || !ptyRef.current) return; const pty = ptyRef.current;
         pty.write(data).catch(onWriteError);
       };
       cleanups.push(registerTerminalDeviceAttributesHandler(term, {
@@ -438,7 +438,7 @@ function TerminalViewImpl({
         sendInput: writePty,
       }));
       const resizePty = (cols: number, rows: number) => {
-        pty.resize(cols, rows).catch(() => {
+        ptyRef.current!.resize(cols, rows).catch(() => {
           /* Resize can race with process exit or pane teardown. */
         });
       };
@@ -504,14 +504,14 @@ function TerminalViewImpl({
       // Self-heal the idle-garble case: rebuild the WebGL atlas on focus /
       // visibility regain (see terminal-atlas-refresh for the root cause).
       cleanups.push(registerTerminalAtlasRefresh(rebuildWebglAtlas));
-      cleanups.push(resetAgentObservers);
+      cleanups.push(resetAgentObservers); reconnectPtyRef.current = createTerminalSshReconnect(sessionIdRef, term, ptyRef, ptyHandlers, () => disposed, () => ptyAlive, (alive) => { ptyAlive = alive; }, (enabled) => { inputToPtyEnabled = enabled; }, setExitCode, setOpenError, setPtyReady);
       if (active) term.focus();
     })().catch((error) => {
       if (!disposed) setOpenError(reportTerminalInitializationFailure(sessionIdRef.current, Boolean(session?.remote), error));
     });
     return () => {
-      disposed = true; initRef.current = false; // Fast Refresh preserves refs across effect lifecycles.
-      if (!ptyRef.current && session?.remote) {
+      disposed = true; initRef.current = false; reconnectPtyRef.current = null; // Fast Refresh preserves refs across effect lifecycles.
+      if (session?.remote) {
         void cancelSshOpen(sessionIdRef.current);
       }
       // Run every cleanup even if one throws — a failing disposable must not
@@ -533,7 +533,7 @@ function TerminalViewImpl({
   }, []);
   return (
     <>
-      <TerminalViewChrome sessionId={sessionId} containerRef={containerRef} getTerminal={() => termRef.current} search={search} quickSelectOverlay={quickSelect.quickSelectOverlay} />
+      <TerminalViewChrome sessionId={sessionId} containerRef={containerRef} getTerminal={() => termRef.current} search={search} quickSelectOverlay={quickSelect.quickSelectOverlay} blocks={blocks} />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {
         void cancelSshOpen(sessionId);
         useSessionsStore.getState().closeSession(sessionId);

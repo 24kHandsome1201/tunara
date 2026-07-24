@@ -42,6 +42,35 @@ const newTerminal = () => useSessionsStore.getState().newTerminal();
 const newTerminalInDirectory = () => { void openNewTerminalDirectoryDialog(); };
 const openSettings = () => useUIStore.getState().openSettings();
 
+// Same trick for the stacking-aware toggles: read the freshest layout input
+// from the store at call time instead of closing over render-scope values,
+// so the identities stay constant for the memoized Titlebar.
+const currentLayoutInput = () => {
+  const s = useUIStore.getState();
+  return {
+    viewportWidth: s.viewportWidth,
+    sidebarVisible: s.sidebarVisible,
+    panelVisible: s.panelVisible,
+    sidebarWidth: s.sidebarWidth,
+    panelWidth: s.panelWidth,
+    terminalColumnCount: splitHorizontalPaneCount(s.split),
+  };
+};
+const toggleSidebarWithoutStacking = () => {
+  const s = useUIStore.getState();
+  if (!s.sidebarVisible && auxiliarySurfaceToCloseOnOpen(currentLayoutInput(), "sidebar") === "panel") {
+    s.setPanelVisible(false);
+  }
+  s.toggleSidebar();
+};
+const togglePanelWithoutStacking = () => {
+  const s = useUIStore.getState();
+  if (!s.panelVisible && auxiliarySurfaceToCloseOnOpen(currentLayoutInput(), "panel") === "sidebar") {
+    s.setSidebarVisible(false);
+  }
+  s.togglePanel();
+};
+
 interface ResizeHandleProps {
   edge: "left" | "right";
   getWidth: () => number;
@@ -230,10 +259,6 @@ export default function App() {
   const panelVisible = useUIStore((s) => s.panelVisible);
   const presentationMode = useUIStore((s) => s.presentationMode);
   const overlay = useUIStore((s) => s.overlay);
-  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
-  const togglePanel = useUIStore((s) => s.togglePanel);
-  const setSidebarVisible = useUIStore((s) => s.setSidebarVisible);
-  const setPanelVisible = useUIStore((s) => s.setPanelVisible);
   const setOverlay = useUIStore((s) => s.setOverlay);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const panelWidth = useUIStore((s) => s.panelWidth);
@@ -285,21 +310,6 @@ export default function App() {
     panelWidth,
     terminalColumnCount,
   });
-
-  const layoutInput = { viewportWidth, sidebarVisible, panelVisible, sidebarWidth, panelWidth, terminalColumnCount };
-  const toggleSidebarWithoutStacking = () => {
-    if (!sidebarVisible && auxiliarySurfaceToCloseOnOpen(layoutInput, "sidebar") === "panel") {
-      setPanelVisible(false);
-    }
-    toggleSidebar();
-  };
-  const togglePanelWithoutStacking = () => {
-    if (!panelVisible && auxiliarySurfaceToCloseOnOpen(layoutInput, "panel") === "sidebar") {
-      setSidebarVisible(false);
-    }
-    togglePanel();
-  };
-
 
   return (
     <div

@@ -212,6 +212,8 @@
   --c-error-bg: #2e1a1a;
   --c-error-bg-light: #3a2020;
   --c-warning: #fbbf24;
+  --c-warning-text: #fbbf24;
+  --c-warning-bg: #3a2d18;
   --c-info: #60a5fa;
   --c-info-bg: #1a2540;
 
@@ -318,7 +320,8 @@
 }
 
 .cmd-chip-more { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth); }
-.cmd-chip:hover .cmd-chip-more { opacity: 1; pointer-events: auto; }
+.cmd-chip:hover .cmd-chip-more,
+.cmd-chip-more:focus-visible { opacity: 1; pointer-events: auto; }
 .cmd-chip-more:hover { color: var(--c-text-2); }
 .tab-btn { transition: background var(--duration-fast) var(--ease-smooth); }
 
@@ -352,9 +355,12 @@
 .inspector-tab.hover-text-3:hover { background: var(--c-bg-hover) !important; }
 .inspector-tab[data-active="true"] { background: var(--c-bg-white); }
 
-.split-handle:hover .split-handle-line { background: var(--c-accent) !important; }
-.split-handle-h:hover .split-handle-line { width: 3px !important; }
-.split-handle-v:hover .split-handle-line { height: 3px !important; }
+.split-handle:hover .split-handle-line,
+.split-handle:focus-visible .split-handle-line { background: var(--c-accent) !important; }
+.split-handle-h:hover .split-handle-line,
+.split-handle-h:focus-visible .split-handle-line { width: 3px !important; }
+.split-handle-v:hover .split-handle-line,
+.split-handle-v:focus-visible .split-handle-line { height: 3px !important; }
 .split-handle-line { transition: background var(--duration-fast) var(--ease-smooth), width var(--duration-fast) var(--ease-out-expo), height var(--duration-fast) var(--ease-out-expo); }
 
 .session-card {
@@ -368,7 +374,8 @@
 .session-card[aria-current="page"] { border-color: var(--c-border-2) !important; box-shadow: var(--shadow-card); }
 .session-card[aria-current="page"]:hover { box-shadow: var(--shadow-card-hover); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
-.session-card:hover .session-card-close { opacity: 1; pointer-events: auto; }
+.session-card:hover .session-card-close,
+.session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
 .session-card-close:active { transform: scale(var(--scale-press)); }
 
 /* Global agent bar (GlobalAgentBar.tsx) */

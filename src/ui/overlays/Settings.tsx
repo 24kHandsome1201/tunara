@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThemeType, TerminalThemeName } from "../types";
-import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
+import { useUIStore, type CursorStyle, type ExternalEditor, type SettingsTab, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { getShellTint, isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
@@ -14,6 +14,7 @@ import { useFocusTrap } from "./useFocusTrap";
 import { useAppUpdate } from "./useAppUpdate";
 import { WorkflowsSettings } from "./WorkflowsSettings";
 import { useWorkflowsStore } from "@/state/workflows";
+import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
 
 interface SettingsProps {
   onClose: () => void;
@@ -280,6 +281,17 @@ export function Settings({ onClose }: SettingsProps) {
   const installedCliCount = CLI_LIST.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
   const updateBusy = updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting";
 
+  // APG tabs 键盘漫游（自动激活）：方向键/Home/End 在设置页签间循环
+  const handleTabListKeyDown = (e: React.KeyboardEvent) => {
+    const currentId = tabIdFromEventTarget(e.target);
+    if (!currentId) return;
+    const nextId = resolveRovingTabId(TABS, currentId, e.key);
+    if (!nextId || nextId === currentId) return;
+    e.preventDefault();
+    setActiveTab(nextId as SettingsTab);
+    focusTabById(e.currentTarget as HTMLElement, nextId);
+  };
+
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
@@ -301,6 +313,7 @@ export function Settings({ onClose }: SettingsProps) {
             className="no-scrollbar"
             role="tablist"
             aria-label={t("settings.title")}
+            onKeyDown={handleTabListKeyDown}
             style={{ display: "flex", gap: 18, borderBottom: "1px solid var(--c-border-1)", overflowX: "auto", overscrollBehaviorX: "contain", scrollSnapType: "x proximity" }}
           >
             {TABS.map((tab) => (
@@ -309,6 +322,9 @@ export function Settings({ onClose }: SettingsProps) {
                 onClick={() => setActiveTab(tab)}
                 role="tab"
                 aria-selected={activeTab === tab}
+                aria-controls="settings-tabpanel"
+                data-tab-id={tab}
+                tabIndex={activeTab === tab ? 0 : -1}
                 data-active={activeTab === tab ? "true" : "false"}
                 className="settings-tab-pill"
                 style={{ padding: "5px 0 8px", marginBottom: -1, border: "none", background: "transparent", color: activeTab === tab ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: activeTab === tab ? 600 : 400, cursor: "pointer", transition: "color var(--duration-fast) var(--ease-smooth)", whiteSpace: "nowrap", flexShrink: 0, scrollSnapAlign: "start" }}
@@ -319,7 +335,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
+        <div role="tabpanel" id="settings-tabpanel" style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
           {activeTab === "appearance" && (
             <div>
               <div style={{ marginBottom: 24 }}>
@@ -348,6 +364,9 @@ export function Settings({ onClose }: SettingsProps) {
                     <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{t("settings.appearance.cursor_blink")}</span>
                     <button
                       onClick={() => setCursorBlink(!cursorBlink)}
+                      role="switch"
+                      aria-checked={cursorBlink}
+                      aria-label={t("settings.appearance.cursor_blink")}
                       style={{ ...TOGGLE_BUTTON, background: cursorBlink ? "var(--c-accent)" : "var(--c-bg-3)" }}
                     >
                       <div style={{ ...TOGGLE_KNOB, transform: cursorBlink ? "translateX(16px)" : "translateX(0)" }} />
@@ -420,6 +439,9 @@ export function Settings({ onClose }: SettingsProps) {
                   <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.bell_notification")}</span>
                   <button
                     onClick={() => setBellNotification(!bellNotification)}
+                    role="switch"
+                    aria-checked={bellNotification}
+                    aria-label={t("settings.appearance.bell_notification")}
                     style={{ ...TOGGLE_BUTTON, background: bellNotification ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
                     <div style={{ ...TOGGLE_KNOB, transform: bellNotification ? "translateX(16px)" : "translateX(0)" }} />
@@ -432,6 +454,9 @@ export function Settings({ onClose }: SettingsProps) {
                   <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.clipboard_write")}</span>
                   <button
                     onClick={() => setTerminalClipboardWrite(!terminalClipboardWrite)}
+                    role="switch"
+                    aria-checked={terminalClipboardWrite}
+                    aria-label={t("settings.appearance.clipboard_write")}
                     style={{ ...TOGGLE_BUTTON, background: terminalClipboardWrite ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
                     <div style={{ ...TOGGLE_KNOB, transform: terminalClipboardWrite ? "translateX(16px)" : "translateX(0)" }} />
@@ -444,6 +469,9 @@ export function Settings({ onClose }: SettingsProps) {
                   <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.inline_images")}</span>
                   <button
                     onClick={() => setTerminalInlineImages(!terminalInlineImages)}
+                    role="switch"
+                    aria-checked={terminalInlineImages}
+                    aria-label={t("settings.appearance.inline_images")}
                     style={{ ...TOGGLE_BUTTON, background: terminalInlineImages ? "var(--c-accent)" : "var(--c-bg-3)" }}
                   >
                     <div style={{ ...TOGGLE_KNOB, transform: terminalInlineImages ? "translateX(16px)" : "translateX(0)" }} />

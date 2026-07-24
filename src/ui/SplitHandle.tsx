@@ -141,7 +141,8 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        outline: "none",
+        // 不要再 inline outline:"none" —— 全局 :focus-visible 焦点环靠它生效，
+        // 线条高亮由 .split-handle:focus-visible .split-handle-line 负责
       }}
     >
       <div

@@ -6,20 +6,30 @@ import { SessionOverviewPanel } from "./SessionOverviewPanel";
 import { SessionNotesPanel } from "./SessionNotesPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { useUIStore } from "@/state/ui";
+import type { InspectorTab } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { CloseIcon, PanelEmptyState } from "./shared";
 import { WorkspaceSourceChip } from "./WorkspaceSource";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
+import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
+
+const INSPECTOR_TAB_IDS: readonly InspectorTab[] = ["overview", "changes", "files", "preview", "notes"];
+const INSPECTOR_TABPANEL_ID = "inspector-tabpanel";
 
 interface InspectorPanelProps {
   session: Session;
   onClose?: () => void;
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function TabButton({ active, onClick, children, tabId }: { active: boolean; onClick: () => void; children: React.ReactNode; tabId: InspectorTab }) {
   return (
     <button
       onClick={onClick}
+      role="tab"
+      aria-selected={active}
+      aria-controls={INSPECTOR_TABPANEL_ID}
+      data-tab-id={tabId}
+      tabIndex={active ? 0 : -1}
       data-active={active ? "true" : "false"}
       style={{
         height: 36,
@@ -87,15 +97,31 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
       break;
   }
 
+  const handleTabListKeyDown = (e: React.KeyboardEvent) => {
+    const currentId = tabIdFromEventTarget(e.target);
+    if (!currentId) return;
+    const nextId = resolveRovingTabId(INSPECTOR_TAB_IDS, currentId, e.key);
+    if (!nextId || nextId === currentId) return;
+    e.preventDefault();
+    setTab(nextId as InspectorTab);
+    focusTabById(e.currentTarget as HTMLElement, nextId);
+  };
+
   return (
     <div style={{ width: "100%", background: "var(--c-bg-2)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
       <div style={{ minHeight: "var(--h-titlebar)", background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", paddingLeft: 8, gap: 0, flexShrink: 0 }}>
-        <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden" }}>
-          <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
-          <TabButton active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
-          <TabButton active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
-          <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>
-          <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
+        <div
+          className="no-scrollbar"
+          role="tablist"
+          aria-label={t("inspector.tab.aria_label")}
+          onKeyDown={handleTabListKeyDown}
+          style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden" }}
+        >
+          <TabButton tabId="overview" active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
+          <TabButton tabId="changes" active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
+          <TabButton tabId="files" active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
+          <TabButton tabId="preview" active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>
+          <TabButton tabId="notes" active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
         </div>
 
         {onClose && (
@@ -126,7 +152,11 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
         </div>
       )}
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div
+        role="tabpanel"
+        id={INSPECTOR_TABPANEL_ID}
+        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+      >
         <div key={tab} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
           {activePanel}
         </div>

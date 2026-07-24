@@ -404,11 +404,15 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           aria-current={active ? "page" : undefined}
           aria-label={primary}
           onClick={handleClick}
+          // The overlay button covers the whole card, so the title's own
+          // dblclick never fires — rename must be triggered from here.
+          onDoubleClick={onRename ? () => startRename() : undefined}
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           className="session-card-select"
-          style={{ position: "absolute", inset: 0, zIndex: 1, padding: 0, border: "none", borderRadius: "var(--r-card)", background: "transparent", cursor: "pointer" }}
+          // cursor 继承外层 wrapper（grab / grabbing / pointer），不再固定 pointer 盖掉拖拽光标
+          style={{ position: "absolute", inset: 0, zIndex: 1, padding: 0, border: "none", borderRadius: "var(--r-card)", background: "transparent", cursor: "inherit" }}
         />
       )}
 

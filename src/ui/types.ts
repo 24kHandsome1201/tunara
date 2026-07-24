@@ -73,8 +73,10 @@ export interface Session {
 
   pendingInput?: string;
   pendingInputSubmit?: boolean;
-  /** Ephemeral generation used to remount a dead terminal in place. */
+  /** Ephemeral generation for reconnect attempts and preview identity. */
   reconnectNonce?: number;
+  /** Separately advances only when a dead terminal must actually remount. */
+  terminalMountNonce?: number;
 
   // ── SSH 远程会话（§ssh-client）。存在即为远程会话，否则为本地。 ──
   remote?: RemoteInfo;
