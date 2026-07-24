@@ -73,6 +73,25 @@ describe("FileExplorer workspace files", () => {
     expect(screen.queryByText("Open with VS Code")).toBeNull();
   });
 
+  test("keeps the cached remote tree inert while its PTY generation is disconnected", async () => {
+    const calls: string[] = [];
+    mockIPC((command) => {
+      calls.push(command);
+      if (command === "ssh_fs_read_dir") {
+        return [{ name: "cached.txt", kind: "file", size: 7, mtime: 0 }];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const view = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remote remotePtyId={41} />);
+    await screen.findByRole("button", { name: /^cached\.txt/ });
+    view.rerender(<FileExplorer sessionId="remote" rootDir="/srv/app" remote />);
+
+    expect(await screen.findByText("SSH disconnected · showing a read-only cached tree")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^cached\.txt/ })).toBeTruthy();
+    expect(calls).not.toContain("fs_read_dir");
+  });
+
   test("sorts each file group by name or modified time in both directions", async () => {
     mockIPC((command) => {
       if (command === "fs_read_dir") {

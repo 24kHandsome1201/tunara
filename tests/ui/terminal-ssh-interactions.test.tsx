@@ -5,11 +5,13 @@ import { useRef } from "react";
 import { expect, test, vi } from "vitest";
 import {
   openSshPty,
+  openPty,
+  recordPtyExit,
   SSH_DISCONNECTED_EXIT_CODE,
   type PtyEvent,
   type PtyHandlers,
-  type PtySession,
 } from "@/modules/terminal/lib/pty-bridge";
+import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { ContextMenu } from "@/ui/ContextMenu";
@@ -17,7 +19,30 @@ import { SplitHandle } from "@/ui/SplitHandle";
 import { PtyErrorBanner, TerminalExitBanner } from "@/ui/TerminalExitBanner";
 import { ToastContainer } from "@/ui/Toast";
 import type { Session } from "@/ui/types";
-import { createTerminalSshReconnect } from "@/ui/useTerminalSshReconnect";
+
+test("local PTY events wait for generation publication before reaching the renderer", async () => {
+  let channel: Channel<PtyEvent> | undefined;
+  mockIPC((command, payload) => {
+    if (command === "pty_open") {
+      channel = (payload as { onEvent: Channel<PtyEvent> }).onEvent;
+      channel.onmessage({ type: "data", data: "YQ==" });
+      channel.onmessage({ type: "exit", code: 0 });
+      return 77;
+    }
+    if (command === "pty_output_ack" || command === "pty_close") return undefined;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  const onData = vi.fn((_bytes: Uint8Array, acknowledge: () => void) => acknowledge());
+  const onExit = vi.fn();
+  const pty = await openPty("local-generation", 80, 24, { onData, onExit });
+
+  expect(onData).not.toHaveBeenCalled();
+  expect(onExit).not.toHaveBeenCalled();
+  expect(pty.activate()).toBe(true);
+  expect(onData).toHaveBeenCalledOnce();
+  expect(onExit).toHaveBeenCalledWith(0, pty.generation);
+  expect(pty.activate()).toBe(false);
+});
 
 test("superseded SSH channels cannot mutate the new connection generation", async () => {
   const channels: Array<Channel<PtyEvent>> = [];
@@ -45,6 +70,7 @@ test("superseded SSH channels cannot mutate the new connection generation", asyn
     onData: vi.fn(),
     onExit: vi.fn(),
     onConnectionStatus: vi.fn(),
+    onPendingConnectionStatus: vi.fn(),
   };
   const options = { host: "ssh.example", port: 22, user: "deploy", authMethod: "agent" as const };
   const olderOpen = openSshPty("generation-session", 80, 24, olderHandlers, options);
@@ -62,26 +88,52 @@ test("superseded SSH channels cannot mutate the new connection generation", asyn
     reason: "unknown",
   });
 
-  expect(newerHandlers.onConnectionStatus).toHaveBeenCalledWith("ready");
+  expect(newerHandlers.onConnectionStatus).not.toHaveBeenCalled();
+  expect(newerHandlers.onPendingConnectionStatus).toHaveBeenCalledWith("ready");
   expect(olderHandlers.onConnectionStatus).not.toHaveBeenCalled();
   expect(useUIStore.getState().hostKeyPrompts).toEqual([]);
 
   resolveOpen[1](202);
   const newer = await newerOpen;
+  expect(newer.activate()).toBe(true);
+  expect(newerHandlers.onConnectionStatus).toHaveBeenCalledWith("ready", newer.generation);
   resolveOpen[0](101);
   const older = await olderOpen;
+  expect(older.activate()).toBe(false);
   await older.close();
   expect(closed).toEqual([101]);
 
   // Closing the stale physical connection must not clear the newer logical
   // generation; its live Channel still owns status events.
   channels[1].onmessage({ type: "connectionStatus", phase: "openingShell" });
-  expect(newerHandlers.onConnectionStatus).toHaveBeenLastCalledWith("openingShell");
+  expect(newerHandlers.onConnectionStatus).toHaveBeenLastCalledWith("openingShell", newer.generation);
 
   await newer.close();
   channels[1].onmessage({ type: "exit", code: SSH_DISCONNECTED_EXIT_CODE });
   expect(newerHandlers.onExit).not.toHaveBeenCalled();
   expect(closed).toEqual([101, 202]);
+});
+
+test("store-level generation checks reject old exit events during a reconnect remount", () => {
+  const session: Session = {
+    id: "store-generation",
+    title: "deploy@example",
+    dir: "/srv/app",
+    branch: "main",
+    runState: "idle",
+    updatedAt: 1,
+    remote: { host: "example", port: 22, user: "deploy", authMethod: "agent" },
+    transportGeneration: "ssh:old",
+    connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
+  };
+  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+  useSessionsStore.getState().updateSession(session.id, {
+    transportGeneration: undefined,
+    connection: { transport: "ssh", phase: "reconnecting", source: "user", updatedAt: 2 },
+  });
+
+  recordPtyExit(session.id, true, SSH_DISCONNECTED_EXIT_CODE, "ssh:old");
+  expect(useSessionsStore.getState().sessions[0].connection?.phase).toBe("reconnecting");
 });
 
 test("a failed replacement keeps the published SSH channel live and acknowledged", async () => {
@@ -105,7 +157,8 @@ test("a failed replacement keeps the published SSH channel live and acknowledged
     onData: publishedData,
   }, { host: "old.example", user: "deploy", authMethod: "agent" });
   opens[0].resolve(301);
-  await published;
+  const publishedPty = await published;
+  expect(publishedPty.activate()).toBe(true);
 
   const failedReplacement = openSshPty("failed-replacement-session", 80, 24, {
     onData: vi.fn(),
@@ -126,114 +179,35 @@ test("a failed replacement keeps the published SSH channel live and acknowledged
   ]);
 });
 
-test("overlapping failed reconnects restore the published session and its evidence", async () => {
-  const opens: Array<{ reject: (error: Error) => void }> = [];
-  mockIPC((command) => {
-    if (command === "ssh_open") {
-      return new Promise<number>((_resolve, reject) => opens.push({ reject }));
-    }
-    throw new Error(`unexpected command: ${command}`);
-  });
-  const publishedSession: Session = {
-    id: "live-reconnect-session",
-    title: "deploy@old.example",
-    dir: "/srv/app",
-    branch: "main",
-    runState: "idle",
-    updatedAt: 1,
-    ptyId: 401,
-    remote: { host: "old.example", port: 22, user: "deploy", authMethod: "agent" },
-    connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
-  };
-  useSessionsStore.setState({ sessions: [publishedSession], activeSessionId: publishedSession.id });
-  useUIStore.setState({ toasts: [] });
-  const publishedPty: PtySession = {
-    id: 401,
-    write: vi.fn(async () => {}),
-    resize: vi.fn(async () => {}),
-    close: vi.fn(async () => {}),
-  };
-  const ptyRef = { current: publishedPty };
-  const reconnect = createTerminalSshReconnect(
-    { current: publishedSession.id },
-    { cols: 80, rows: 24, options: { disableStdin: false } } as never,
-    ptyRef,
-    { onData: vi.fn() },
-    () => false,
-    () => true,
-    vi.fn(),
-    vi.fn(),
-    vi.fn(),
-    vi.fn(),
-    vi.fn(),
-  );
+test("generation gate prioritizes transport loss and acknowledges every stale data event", () => {
+  const onData = vi.fn((_bytes: Uint8Array, acknowledge: () => void) => acknowledge());
+  const onTransportLost = vi.fn();
+  const onExit = vi.fn();
+  const onConnectionStatus = vi.fn();
+  const gate = createTerminalPtyGenerationGate({ onData, onTransportLost, onExit, onConnectionStatus });
+  const staleAck = vi.fn();
 
-  const first = reconnect({
-    remote: { host: "first.example", port: 22, user: "deploy", authMethod: "agent" },
-    credentials: {},
-  });
-  const second = reconnect({
-    remote: { host: "second.example", port: 22, user: "deploy", authMethod: "agent" },
-    credentials: {},
-  });
-  opens[0].reject(new Error("superseded"));
-  opens[1].reject(new Error("authentication failed"));
-  await Promise.all([first, second]);
+  gate.publish("ssh:one");
+  gate.handlers.onData(new Uint8Array([1]), vi.fn(), "ssh:one");
+  gate.publish("ssh:two");
+  gate.handlers.onData(new Uint8Array([2]), staleAck, "ssh:one");
+  gate.handlers.onConnectionStatus?.("ready", "ssh:one");
+  gate.handlers.onTransportLost?.("transportClosed", "ssh:one");
+  gate.handlers.onExit?.(-2, "ssh:one");
 
-  const session = useSessionsStore.getState().sessions[0];
-  expect(ptyRef.current).toBe(publishedPty);
-  expect(session.remote).toEqual(publishedSession.remote);
-  expect(session.ptyId).toBe(401);
-  expect(session.connection).toEqual(publishedSession.connection);
-});
+  expect(staleAck).toHaveBeenCalledOnce();
+  expect(onData).toHaveBeenCalledOnce();
+  expect(onConnectionStatus).not.toHaveBeenCalled();
+  expect(onTransportLost).not.toHaveBeenCalled();
+  expect(onExit).not.toHaveBeenCalled();
 
-test("a successful reconnect publishes the replacement PTY and reasserts ready evidence", async () => {
-  mockIPC((command) => {
-    if (command === "ssh_open") return 502;
-    throw new Error(`unexpected command: ${command}`);
-  });
-  const publishedSession: Session = {
-    id: "successful-reconnect-session",
-    title: "deploy@old.example",
-    dir: "/srv/app",
-    branch: "main",
-    runState: "idle",
-    updatedAt: 1,
-    ptyId: 501,
-    remote: { host: "old.example", port: 22, user: "deploy", authMethod: "agent" },
-    connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
-  };
-  useSessionsStore.setState({ sessions: [publishedSession], activeSessionId: publishedSession.id });
-  const ptyRef = { current: {
-    id: 501,
-    write: vi.fn(async () => {}),
-    resize: vi.fn(async () => {}),
-    close: vi.fn(async () => {}),
-  } as PtySession };
-  const reconnect = createTerminalSshReconnect(
-    { current: publishedSession.id },
-    { cols: 80, rows: 24, options: { disableStdin: true } } as never,
-    ptyRef,
-    { onData: vi.fn() },
-    () => false,
-    () => true,
-    vi.fn(),
-    vi.fn(),
-    vi.fn(),
-    vi.fn(),
-    vi.fn(),
-  );
-
-  await reconnect({
-    remote: { host: "new.example", port: 2222, user: "ops", authMethod: "agent" },
-    credentials: {},
-  });
-
-  const session = useSessionsStore.getState().sessions[0];
-  expect(ptyRef.current.id).toBe(502);
-  expect(session.remote).toEqual({ host: "new.example", port: 2222, user: "ops", authMethod: "agent" });
-  expect(session.ptyId).toBe(502);
-  expect(session.connection?.phase).toBe("ready");
+  gate.handlers.onTransportLost?.("transportClosed", "ssh:two");
+  gate.handlers.onExit?.(-2, "ssh:two");
+  const terminatedAck = vi.fn();
+  gate.handlers.onData(new Uint8Array([3]), terminatedAck, "ssh:two");
+  expect(onTransportLost).toHaveBeenCalledOnce();
+  expect(onExit).not.toHaveBeenCalled();
+  expect(terminatedAck).toHaveBeenCalledOnce();
 });
 
 test("closing a context menu restores focus to the terminal trigger", async () => {

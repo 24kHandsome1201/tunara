@@ -4,30 +4,12 @@
 // promise. SshConnect stashes them keyed by session id; TerminalView consumes
 // (and deletes) them once when it opens the PTY.
 
-import type { RemoteInfo, Session } from "@/ui/types";
-
 export interface PendingSshCredentials {
   password?: string;
   keyPassphrase?: string;
 }
 
 const pending = new Map<string, PendingSshCredentials>();
-
-export interface PendingSshReconnect {
-  remote: RemoteInfo;
-  credentials: PendingSshCredentials;
-}
-
-const pendingReconnects = new Map<string, PendingSshReconnect>();
-
-const LIVE_SSH_PHASES = new Set([
-  "ready",
-  "connecting",
-  "verifyingHostKey",
-  "handshaking",
-  "authenticating",
-  "openingShell",
-]);
 
 export function stashSshCredentials(sessionId: string, creds: PendingSshCredentials): void {
   // Only store if at least one secret is present; otherwise nothing to keep.
@@ -52,28 +34,7 @@ export function takeSshCredentials(sessionId: string): PendingSshCredentials | u
   return creds;
 }
 
-/** A published SSH PTY can be replaced without remounting its terminal. */
-export function hasLiveSshPty(session: Session): boolean {
-  return Boolean(
-    session.remote
-    && session.ptyId !== undefined
-    && LIVE_SSH_PHASES.has(session.connection?.phase ?? ""),
-  );
-}
-
-/** Stage a replacement without mutating the live session or persisting secrets. */
-export function stashSshReconnect(sessionId: string, reconnect: PendingSshReconnect): void {
-  pendingReconnects.set(sessionId, reconnect);
-}
-
-export function takeSshReconnect(sessionId: string): PendingSshReconnect | undefined {
-  const reconnect = pendingReconnects.get(sessionId);
-  if (reconnect) pendingReconnects.delete(sessionId);
-  return reconnect;
-}
-
 /** Drop credentials when a session is removed before its first PTY open. */
 export function clearSshCredentials(sessionId: string): void {
   pending.delete(sessionId);
-  pendingReconnects.delete(sessionId);
 }

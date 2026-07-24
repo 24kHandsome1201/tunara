@@ -563,7 +563,7 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminal, /handleAgentBusy\(sessionIdRef\.current\)/);
   assert.match(terminal, /handleAgentReady\(sessionIdRef\.current\)/);
   assert.match(terminal, /handleAgentExited\(sessionIdRef\.current, exitCode\)/);
-  assert.match(terminal, /onExit: \(code: number\) => \{[\s\S]*?if \(disposed\) return;[\s\S]*?handleTerminalProcessExit\(term, sessionIdRef\.current, code, Boolean\(getCurrentSession\(\)\?\.remote\)\);[\s\S]*?\}/);
+  assert.match(terminal, /const finishGeneration = \(code: number, generation: string\) => \{[\s\S]*?if \(disposed\) return;[\s\S]*?handleTerminalProcessExit\(term, sessionIdRef\.current, code, Boolean\(getCurrentSession\(\)\?\.remote\)\);[\s\S]*?\}/);
   assert.match(terminalExit, /remote && code === SSH_DISCONNECTED_EXIT_CODE[\s\S]*?terminal\.inline\.disconnected[\s\S]*?terminal\.inline\.exited/);
   assert.match(terminalExit, /term\.write\(`\\r\\n\\x1b\[2m\$\{message\}\\x1b\[0m\\r\\n`\);/);
   assert.match(terminalExit, /term\.options\.disableStdin = true;/);

@@ -57,6 +57,8 @@ interface FilePreviewProps {
   fill?: boolean;
   /** 远程 SSH 会话的 PTY id；存在则经 SFTP 读取。 */
   remotePtyId?: number;
+  /** Stable transport identity; remains true while an SSH PTY is disconnected. */
+  remote?: boolean;
 }
 
 interface MarkdownFindCursor {
@@ -365,6 +367,7 @@ function EditorSurface({
   initialContent,
   initialFingerprint,
   remotePtyId,
+  remote,
   isMarkdown,
   isNotebook,
   onClose,
@@ -377,6 +380,7 @@ function EditorSurface({
   initialContent: string;
   initialFingerprint: string;
   remotePtyId?: number;
+  remote?: boolean;
   isMarkdown: boolean;
   isNotebook: boolean;
   onClose: () => void;
@@ -384,6 +388,8 @@ function EditorSurface({
   onNeedsAttention?: () => void;
 }) {
   const t = useT();
+  const isRemote = remote || remotePtyId !== undefined;
+  const remoteDisconnected = isRemote && remotePtyId === undefined;
   const externalEditor = useUIStore((state) => state.externalEditor);
   const draftKey = editorDraftKey(sessionId, filePath);
   const restoredDraftRef = useRef(readEditorDraft(draftKey));
@@ -515,7 +521,7 @@ function EditorSurface({
   };
 
   const save = async () => {
-    if (!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown") return;
+    if (remoteDisconnected || !dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown") return;
     setSaveState("saving");
     setUnknownOutcome(null);
     setOperationError(null);
@@ -573,7 +579,7 @@ function EditorSurface({
   };
 
   const reload = async () => {
-    if (reloadPending) return;
+    if (remoteDisconnected || reloadPending) return;
     setReloadPending(true);
     setOperationError(null);
     try {
@@ -674,7 +680,9 @@ function EditorSurface({
     onClose();
   };
 
-  const statusLabel = saveState === "saving"
+  const statusLabel = remoteDisconnected
+    ? t("preview.editor.remote_disconnected")
+    : saveState === "saving"
     ? t("preview.editor.saving")
     : saveState === "reconciling"
       ? t("preview.editor.reconciling")
@@ -703,7 +711,7 @@ function EditorSurface({
     }}>
       <div className="file-editor-header">
         <div className="file-editor-identity">
-          <span className="file-editor-kicker">{remotePtyId === undefined ? t("preview.editor.local") : t("preview.editor.ssh")}</span>
+          <span className="file-editor-kicker">{isRemote ? t("preview.editor.ssh") : t("preview.editor.local")}</span>
           <span className="file-editor-name" title={filePath}>{fileName}</span>
           {dirty && <span className="file-editor-dirty" aria-label={t("preview.editor.unsaved")} />}
         </div>
@@ -751,7 +759,7 @@ function EditorSurface({
                 : "preview.editor.copy_draft")}</button>
             {saveState === "unknown" || saveState === "reconciling"
               ? <button data-editor-action="reconcile" disabled={saveState === "reconciling"} onClick={() => void reconcileUnknownSave()}>{t("preview.editor.check_result")}</button>
-              : <button data-editor-action="reload" disabled={reloadPending} onClick={() => void reload()}>{t(reloadPending
+              : <button data-editor-action="reload" disabled={remoteDisconnected || reloadPending} onClick={() => void reload()}>{t(reloadPending
                 ? "preview.editor.reloading"
                 : "preview.editor.reload")}</button>}
           </div>
@@ -836,33 +844,40 @@ function EditorSurface({
         <span>{t("preview.editor.lines", { count: lines.length })}</span>
         <span>{formatSize(new TextEncoder().encode(content).length)}</span>
         <div className="file-editor-footer-actions">
-          {remotePtyId === undefined && (
+          {!isRemote && (
             <button onClick={() => void openInEditorWithToast(externalEditor, filePath)}>{t("preview.editor.external")}</button>
           )}
-          {!isNotebook && <button data-editor-action="save" className="file-editor-save" disabled={!dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>}
+          {!isNotebook && <button data-editor-action="save" className="file-editor-save" disabled={remoteDisconnected || !dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>}
         </div>
       </div>
     </div>
   );
 }
 
-export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId }: FilePreviewProps) {
+export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId, remote = remotePtyId !== undefined }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
   const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
   const [readAttempt, setReadAttempt] = useState(0);
   const readingRef = useRef(false);
-  const remoteSession = useSessionsStore((state) => remotePtyId === undefined
+  const remoteSession = useSessionsStore((state) => !remote
     ? undefined
-    : state.sessions.find((session) => session.ptyId === remotePtyId));
+    : state.sessions.find((session) =>
+      (sessionId !== undefined && session.id === sessionId)
+      || (remotePtyId !== undefined && session.ptyId === remotePtyId)));
 
   useEffect(() => {
     let cancelled = false;
     readingRef.current = true;
+    if (remote && remotePtyId === undefined) {
+      readingRef.current = false;
+      setReadError({ kind: "disconnected", detail: "" });
+      return;
+    }
     setResult(null);
     setReadError(null);
     const read =
-      remotePtyId !== undefined ? sshReadFile(remotePtyId, filePath) : fsReadFile(filePath);
+      remote ? sshReadFile(remotePtyId!, filePath) : fsReadFile(filePath);
     read
       .then((r) => { if (!cancelled) setResult(r); })
       .catch((error) => {
@@ -874,7 +889,7 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
         if (!cancelled) readingRef.current = false;
       });
     return () => { cancelled = true; };
-  }, [filePath, readAttempt, remotePtyId]);
+  }, [filePath, readAttempt, remote, remotePtyId]);
 
   const retryRead = () => {
     if (readingRef.current) return;
@@ -919,6 +934,7 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
         initialContent={result.content}
         initialFingerprint={result.fingerprint}
         remotePtyId={remotePtyId}
+        remote={remote}
         isMarkdown={isMarkdown}
         isNotebook={isNotebook}
         onClose={onClose}

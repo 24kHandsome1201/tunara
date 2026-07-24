@@ -70,6 +70,8 @@ interface FileExplorerProps {
    * rootDir 有 OSC 7 识别出的绝对路径时从该 cwd 打开；旧会话标签才解析 home。
    */
   remotePtyId?: number;
+  /** Stable transport identity while the physical SSH PTY is unavailable. */
+  remote?: boolean;
 }
 
 function FolderIcon() {
@@ -184,9 +186,10 @@ const folderEmptyIcon = (
   </svg>
 );
 
-export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerProps) {
+export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remotePtyId !== undefined }: FileExplorerProps) {
   const t = useT();
-  const isRemote = remotePtyId !== undefined;
+  const isRemote = remote;
+  const remoteDisconnected = isRemote && remotePtyId === undefined;
 
   const downloadRemoteFile = async (remotePath: string, fileName: string) => {
     if (remotePtyId === undefined) return;
@@ -259,7 +262,8 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
     // Content search works for remote sessions too (ssh_fs_grep).
     setSearchMode(lastFileSearchMode);
     setSearchLimit(initialFileSearchLimit(lastFileSearchMode));
-    if (isRemote && remotePtyId !== undefined) {
+    if (isRemote) {
+      if (remotePtyId === undefined) return;
       const knownRoot = knownRemoteExplorerRoot(rootDir);
       if (knownRoot) {
         setBaseDir(knownRoot);
@@ -299,6 +303,10 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
 
   useEffect(() => {
     if (baseDir === null) return; // remote home not resolved yet
+    if (remoteDisconnected) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(false);
@@ -321,7 +329,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId]);
+  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected]);
 
   useEffect(() => {
     const q = searchQuery.trim();
@@ -332,6 +340,10 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
       setSearchTruncated(false);
       setSearchLoading(false);
       setSearchError(false);
+      return;
+    }
+    if (remoteDisconnected) {
+      setSearchLoading(false);
       return;
     }
 
@@ -411,7 +423,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
         cancelRemoteSearch(remotePtyId);
       }
     };
-  }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId, searchRetryNonce]);
+  }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected, searchRetryNonce]);
 
   const canGoUp = currentPath !== "/" && (isRemote || currentPath !== baseDir);
   const breadcrumbRoot = baseDir !== null
@@ -481,6 +493,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
   }
 
   function refresh() {
+    if (remoteDisconnected) return;
     // Drop the remote search cache so Refresh actually re-runs ssh_fs_search
     // instead of returning the cached (now-stale) hits while the directory
     // listing reloads — otherwise Refresh is a no-op for remote search.
@@ -521,6 +534,11 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId }: FileExplorerPr
     <div
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}
     >
+      {remoteDisconnected && (
+        <div role="status" aria-live="polite" style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)" }}>
+          {t("explorer.remote_disconnected")}
+        </div>
+      )}
       <div style={{ height: 36, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 var(--sp-2)", gap: 4, flexShrink: 0 }}>
         <button
           onClick={() => { if (canGoUp) goUp(); }}

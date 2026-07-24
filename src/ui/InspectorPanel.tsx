@@ -8,7 +8,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { useUIStore } from "@/state/ui";
 import type { InspectorTab } from "@/state/ui";
 import { useT } from "@/modules/i18n";
-import { CloseIcon, PanelEmptyState } from "./shared";
+import { CloseIcon } from "./shared";
 import { WorkspaceSourceChip } from "./WorkspaceSource";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
@@ -70,21 +70,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
       activePanel = <DiffPanel session={session} embedded />;
       break;
     case "files":
-      activePanel = isRemote && session.ptyId === undefined ? (
-        <PanelEmptyState
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
-          }
-          label={t("inspector.remote_hint")}
-          sublabel={session.dir}
-        />
-      ) : (
-        <FileExplorer sessionId={session.id} rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} />
-      );
+      activePanel = <FileExplorer sessionId={session.id} rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} remote={isRemote} />;
       break;
     case "preview":
       activePanel = <PreviewPanel session={session} />;
