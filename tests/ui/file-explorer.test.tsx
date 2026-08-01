@@ -2,7 +2,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
-import { downloadFailureKey, FileExplorer, sortExplorerEntries } from "@/ui/FileExplorer";
+import { downloadFailureKey, FileExplorer, parseUploadFailure, sortExplorerEntries, uploadFailureKey } from "@/ui/FileExplorer";
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 
@@ -76,7 +76,7 @@ describe("FileExplorer workspace files", () => {
       && !(payload as { localPath: string; remotePath: string; overwrite: boolean }).overwrite)).toBe(true));
     await waitFor(() => expect(reads).toBe(2));
     const toasts = useUIStore.getState().toasts;
-    expect(toasts[toasts.length - 1]).toMatchObject({ title: "Upload complete", variant: "success" });
+    expect(toasts[toasts.length - 1]).toMatchObject({ sessionId: "remote", title: "Upload complete", variant: "success" });
   });
 
   test("cancels an in-flight upload from the progress surface", async () => {
@@ -99,7 +99,11 @@ describe("FileExplorer workspace files", () => {
         // before the backend has registered the transfer ID.
         if (cancelAttempts === 1) return false;
         cancelled.push((payload as { transferId: string }).transferId);
-        rejectUpload?.(new Error("upload cancelled"));
+        rejectUpload?.(new Error(`tunaraUploadError:${JSON.stringify({
+          kind: "cancelled",
+          message: "upload cancelled",
+          residuePath: "/srv/app/.large.bin.tunara-cancelled-0.tmp",
+        })}`));
         return true;
       }
       throw new Error(`unexpected command: ${command}`);
@@ -113,6 +117,37 @@ describe("FileExplorer workspace files", () => {
     await waitFor(() => expect(cancelled).toEqual([transferId]));
     expect(cancelAttempts).toBe(2);
     await waitFor(() => expect(screen.queryByText(/Uploading large\.bin/)).toBeNull());
+    const toasts = useUIStore.getState().toasts;
+    const toast = toasts[toasts.length - 1];
+    expect(toast?.subtitle).toContain("/srv/app/.large.bin.tunara-cancelled-0.tmp");
+    expect(toast?.subtitle).not.toContain("may remain at /srv/app/large.bin.");
+  });
+
+  test.each(["partial", "changed", "uncertain"])("shows the exact hidden residue for an overwrite %s failure", async (kind) => {
+    const destination = "/srv/app/existing.txt";
+    const residue = "/srv/app/.existing.txt.tunara-deadbeef-0.tmp";
+    let uploadCalls = 0;
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [];
+      if (command === "plugin:dialog|open") return "/home/alice/existing.txt";
+      if (command === "plugin:dialog|message") return "Ok";
+      if (command === "ssh_fs_upload") {
+        uploadCalls += 1;
+        if (uploadCalls === 1) return Promise.reject(new Error("remote destination already exists"));
+        return Promise.reject(new Error(`tunaraUploadError:${JSON.stringify({ kind, message: "safe failure", residuePath: residue })}`));
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} />);
+    await screen.findByText("Directory is empty");
+    fireEvent.click(screen.getByRole("button", { name: "Upload file…" }));
+
+    await waitFor(() => expect(uploadCalls).toBe(2));
+    const toasts = useUIStore.getState().toasts;
+    const toast = toasts[toasts.length - 1];
+    expect(toast?.subtitle).toContain(residue);
+    expect(toast?.subtitle).not.toContain(`may remain at ${destination}.`);
   });
 
   test("does not offer an overwrite when cancellation wins the destination check race", async () => {
@@ -246,10 +281,11 @@ describe("FileExplorer workspace files", () => {
     expect(status.textContent).toContain("Downloading report.txt");
     expect(status.getAttribute("aria-busy")).toBe("true");
     expect(screen.getByRole("progressbar", { name: "Remote file download in progress" })).toBeTruthy();
+    useSessionsStore.setState({ activeSessionId: "another-session" });
     finish?.(8);
     await waitFor(() => expect(screen.queryByText(/Downloading report\.txt/)).toBeNull());
     const toasts = useUIStore.getState().toasts;
-    expect(toasts[toasts.length - 1]).toMatchObject({ title: "Download complete", variant: "success" });
+    expect(toasts[toasts.length - 1]).toMatchObject({ sessionId: "remote", title: "Download complete", variant: "success" });
   });
 
   test("locks download before the destination chooser resolves", async () => {
@@ -295,6 +331,22 @@ describe("FileExplorer workspace files", () => {
     expect(downloadFailureKey(new Error("destination already exists"))).toBe("explorer.download.error_exists");
     expect(downloadFailureKey(new Error("remote file exceeds download limit (100 MiB)"))).toBe("explorer.download.error_limit");
     expect(downloadFailureKey(new Error("opaque backend failure"))).toBe("explorer.download.failed_hint");
+  });
+
+  test("maps upload safety failures to actionable localized message keys", () => {
+    expect(uploadFailureKey(new Error("server does not support safe atomic overwrite"))).toBe("explorer.upload.error_unsupported_overwrite");
+    expect(uploadFailureKey(new Error("destination permissions changed during upload"))).toBe("explorer.upload.error_changed");
+    expect(uploadFailureKey(new Error("upload outcome unknown after replacement"))).toBe("explorer.upload.error_uncertain");
+    expect(uploadFailureKey(new Error("a partial upload may remain"))).toBe("explorer.upload.error_partial");
+    expect(uploadFailureKey(new Error("opaque backend failure"))).toBe("explorer.upload.failed_hint");
+  });
+
+  test.each(["cancelled", "partial", "changed", "uncertain"])("keeps the backend residue path for %s upload errors", (kind) => {
+    const destination = "/srv/report.txt";
+    const residue = "/srv/.report.txt.tunara-a1b2-0.tmp";
+    const error = new Error(`tunaraUploadError:${JSON.stringify({ kind, message: "safe failure", residuePath: residue })}`);
+    expect(parseUploadFailure(error)).toEqual({ kind, residuePath: residue });
+    expect(parseUploadFailure(error).residuePath).not.toBe(destination);
   });
 
   test("keeps the cached remote tree inert while its PTY generation is disconnected", async () => {

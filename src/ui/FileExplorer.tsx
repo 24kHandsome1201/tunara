@@ -97,6 +97,49 @@ export function downloadFailureKey(error: unknown): string {
   return "explorer.download.failed_hint";
 }
 
+export interface UploadFailure {
+  kind: string;
+  residuePath?: string;
+}
+
+export function parseUploadFailure(error: unknown): UploadFailure {
+  const raw = String(error);
+  const prefix = "tunaraUploadError:";
+  const offset = raw.indexOf(prefix);
+  if (offset >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(offset + prefix.length)) as unknown;
+      if (parsed && typeof parsed === "object" && "kind" in parsed && typeof parsed.kind === "string") {
+        return {
+          kind: parsed.kind,
+          residuePath: "residuePath" in parsed && typeof parsed.residuePath === "string"
+            ? parsed.residuePath
+            : undefined,
+        };
+      }
+    } catch {
+      // Fall through to compatibility matching for malformed/older errors.
+    }
+  }
+  const message = raw.toLowerCase();
+  if (message.includes("upload cancelled")) return { kind: "cancelled" };
+  if (message.includes("does not support safe atomic overwrite")) return { kind: "unsupported" };
+  if (message.includes("permissions changed during upload")) return { kind: "changed" };
+  if (message.includes("outcome unknown after replacement")) return { kind: "uncertain" };
+  if (message.includes("partial upload may remain")) return { kind: "partial" };
+  return { kind: "generic" };
+}
+
+export function uploadFailureKey(error: unknown): string {
+  const { kind } = parseUploadFailure(error);
+  if (kind === "unsupported") return "explorer.upload.error_unsupported_overwrite";
+  if (kind === "changed") return "explorer.upload.error_changed";
+  if (kind === "uncertain") return "explorer.upload.error_uncertain";
+  if (kind === "partial") return "explorer.upload.error_partial";
+  if (kind === "cancelled") return "explorer.upload.error_cancelled";
+  return "explorer.upload.failed_hint";
+}
+
 function FolderIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -268,7 +311,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
       const bytes = await sshDownload(remotePtyId, remotePath, localPath);
       if (transfer.disposed) return;
       useUIStore.getState().addToast({
-        sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+        sessionId,
         title: t("explorer.download.complete"),
         subtitle: `${fileName} · ${formatSize(bytes)}`,
         variant: "success",
@@ -276,7 +319,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     } catch (error) {
       if (!transfer.disposed) {
         useUIStore.getState().addToast({
-          sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+          sessionId,
           title: t("explorer.download.failed"),
           subtitle: t(downloadFailureKey(error)),
           variant: "error",
@@ -353,7 +396,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
       });
     } catch {
       if (!transfer.disposed) {
-        useUIStore.getState().addToast({ title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
+        useUIStore.getState().addToast({ sessionId, title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
       }
       if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
       return;
@@ -417,7 +460,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
       }
       if (!transfer.disposed) {
         useUIStore.getState().addToast({
-          sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+          sessionId,
           title: t("explorer.upload.complete"),
           subtitle: `${fileName} · ${formatSize(bytes)}`,
           variant: "success",
@@ -425,11 +468,16 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         refresh();
       }
     } catch (error) {
-      if (!transfer.disposed && !/^(error: )?upload cancelled$/i.test(String(error))) {
+      const failure = parseUploadFailure(error);
+      if (!transfer.disposed && (failure.kind !== "cancelled" || failure.residuePath)) {
+        const primary = t(uploadFailureKey(error));
+        const residue = failure.residuePath
+          ? ` ${t("explorer.upload.error_residue", { path: failure.residuePath })}`
+          : "";
         useUIStore.getState().addToast({
-          sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+          sessionId,
           title: t("explorer.upload.failed"),
-          subtitle: t("explorer.upload.failed_hint"),
+          subtitle: `${primary}${residue}`,
           variant: "error",
         });
       }
@@ -487,7 +535,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
             // I9: surface the fallback so the user understands why the file
             // list starts at root instead of their home directory.
             useUIStore.getState().addToast({
-              sessionId: useSessionsStore.getState().activeSessionId ?? "",
+              sessionId,
               title: staticT("explorer.remote_home_failed"),
               subtitle: "",
               variant: "warning",
@@ -498,7 +546,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     }
     setBaseDir(rootDir);
     setCurrentPath(rootDir);
-  }, [rootDir, isRemote, remotePtyId]);
+  }, [rootDir, isRemote, remotePtyId, sessionId]);
 
   useEffect(() => {
     if (baseDir === null) return; // remote home not resolved yet

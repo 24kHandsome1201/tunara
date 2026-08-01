@@ -490,12 +490,7 @@ export default function App() {
       <HostKeyPromptDialog />
       <KeyboardInteractivePromptDialog />
       {workspaceMode && <WorkflowParamPrompt />}
-      <div
-        aria-hidden={workspaceMode ? undefined : true}
-        style={{ display: workspaceMode ? "contents" : "none" }}
-      >
-        <ToastContainer />
-      </div>
+      <ToastContainer />
     </div>
   );
 }

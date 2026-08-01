@@ -23,7 +23,10 @@ import { SessionCard } from "@/ui/SessionCard";
 import { buildSessionMenuItems } from "@/ui/sidebar-session-menu";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
+import { useTerminalQuickSelect } from "@/ui/useTerminalQuickSelect";
+import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import type { Session } from "@/ui/types";
+import type { Terminal } from "@xterm/xterm";
 
 test("local PTY events wait for generation publication before reaching the renderer", async () => {
   let channel: Channel<PtyEvent> | undefined;
@@ -419,6 +422,40 @@ test("Quick Select exposes listbox selection and target-specific action names", 
   expect(options[1].getAttribute("aria-selected")).toBe("true");
   expect(screen.getByRole("button", { name: "Copy src/app.ts:12" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Open src/app.ts:12" })).toBeTruthy();
+});
+
+test("Quick Select restores terminal focus after an asynchronous copy", async () => {
+  const focus = vi.fn();
+  const term = {
+    rows: 24,
+    focus,
+    buffer: {
+      active: {
+        length: 1,
+        viewportY: 0,
+        getLine: () => ({ translateToString: () => "https://docs.example" }),
+      },
+    },
+  } as unknown as Terminal;
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  });
+
+  function Harness() {
+    const termRef = useRef<Terminal | null>(term);
+    return useTerminalQuickSelect(termRef, {
+      active: true,
+      cwd: "/repo",
+      sessionId: "quick-select-session",
+    }).quickSelectOverlay;
+  }
+
+  render(<Harness />);
+  window.dispatchEvent(new Event(TERMINAL_QUICK_SELECT_EVENT));
+  fireEvent.click(await screen.findByRole("button", { name: "Copy https://docs.example" }));
+  await waitFor(() => expect(focus).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("listbox", { name: "Quick select" })).toBeNull();
 });
 
 test("session cards announce lifecycle, unread, and transport state", () => {

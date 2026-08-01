@@ -12,12 +12,11 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Component, Path};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 
-use russh_sftp::client::error::Error as SftpError;
-use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
+use russh_sftp::protocol::{FileAttributes, OpenFlags};
 use tauri::ipc::Channel;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -40,7 +39,6 @@ const SFTP_PREVIEW_TIMEOUT: Duration = Duration::from_secs(60);
 const SFTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
 const SFTP_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 const REPLACE_LOCK_STALE_AFTER: Duration = Duration::from_secs(10 * 60);
-static REMOTE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 type UploadCancellationTable = HashMap<String, Arc<AtomicBool>>;
 static UPLOAD_CANCELLATIONS: OnceLock<std::sync::Mutex<UploadCancellationTable>> = OnceLock::new();
 type RemoteWriteLock = Arc<tokio::sync::Mutex<()>>;
@@ -118,10 +116,31 @@ pub struct UploadProgress {
     total: u64,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UploadCommandError<'a> {
+    kind: &'a str,
+    message: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    residue_path: Option<&'a str>,
+}
+
+fn encode_upload_error(kind: &str, message: &str, residue_path: Option<&str>) -> String {
+    let payload = UploadCommandError {
+        kind,
+        message,
+        residue_path,
+    };
+    match serde_json::to_string(&payload) {
+        Ok(json) => format!("tunaraUploadError:{json}"),
+        Err(_) => message.to_string(),
+    }
+}
+
 async fn validate_upload_replace_target(
     sftp: &russh_sftp::client::SftpSession,
     remote_path: &str,
-) -> Result<(), String> {
+) -> Result<u32, String> {
     let metadata = await_stage(
         "validate remote upload replacement target",
         SFTP_CONTROL_TIMEOUT,
@@ -132,46 +151,43 @@ async fn validate_upload_replace_target(
     if metadata.is_symlink() || !metadata.is_regular() {
         return Err("remote upload replacement target must be a regular non-symlink file".into());
     }
-    Ok(())
+    metadata
+        .permissions
+        .map(|mode| mode & 0o7777)
+        .ok_or_else(|| "remote server did not report replacement file permissions".to_string())
 }
 
-async fn cleanup_upload_partial(
-    sftp: &russh_sftp::client::SftpSession,
-    partial_path: &str,
-    error: String,
-) -> String {
-    match await_stage(
-        "remove partial remote upload",
-        SFTP_CONTROL_TIMEOUT,
-        sftp.remove_file(partial_path),
+fn upload_residue_error(partial_path: &str, error: String) -> String {
+    // SFTP v3 has no compare-and-unlink operation. Once the upload handle is
+    // closed, removing this pathname could delete a regular file substituted
+    // by another remote process. Fail closed and tell the user exactly which
+    // private (0600) residue may need inspection/removal.
+    let kind = if error == "upload cancelled" {
+        "cancelled"
+    } else if error.contains("permissions changed during upload") {
+        "changed"
+    } else {
+        "partial"
+    };
+    encode_upload_error(kind, &error, Some(partial_path))
+}
+
+fn uncertain_upload_error(partial_path: &str) -> String {
+    encode_upload_error(
+        "uncertain",
+        "upload outcome unknown after replacement; refresh the remote directory before retrying",
+        Some(partial_path),
     )
-    .await
-    {
-        Ok(()) => error,
-        Err(cleanup) => {
-            format!("{error}; remote partial cleanup failed for {partial_path}: {cleanup}")
-        }
-    }
 }
 
-async fn cleanup_uncertain_upload_partial(
-    sftp: &russh_sftp::client::SftpSession,
-    partial_path: &str,
-) -> String {
-    let outcome =
-        "upload outcome unknown after replacement; refresh the remote directory before retrying";
-    match tokio::time::timeout(SFTP_CONTROL_TIMEOUT, sftp.remove_file(partial_path)).await {
-        Ok(Ok(())) => outcome.to_string(),
-        Ok(Err(SftpError::Status(status))) if status.status_code == StatusCode::NoSuchFile => {
-            outcome.to_string()
-        }
-        Ok(Err(error)) => {
-            format!("{outcome}; remote partial cleanup pending for {partial_path}: {error}")
-        }
-        Err(_) => format!(
-            "{outcome}; remote partial cleanup pending for {partial_path}: cleanup timed out"
-        ),
+fn preserved_upload_mode(initial_mode: u32, final_mode: u32) -> Result<u32, String> {
+    if final_mode != initial_mode {
+        return Err(
+            "remote destination permissions changed during upload; retry after reviewing the file"
+                .into(),
+        );
     }
+    Ok(final_mode & 0o7777)
 }
 
 fn remote_write_lock(id: u32, path: &str) -> RemoteWriteLock {
@@ -274,7 +290,13 @@ fn remote_sibling_temp_path(path: &str, attempt: u32) -> Result<String, String> 
     let parent = parsed
         .parent()
         .ok_or_else(|| "editable path has no parent".to_string())?;
-    let nonce = REMOTE_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    // Unpredictability is part of cleanup safety: a remote process must not be
+    // able to guess this pathname and substitute an unrelated file before a
+    // failed/cancelled transaction removes its residue.
+    let mut random = [0_u8; 16];
+    getrandom::fill(&mut random)
+        .map_err(|_| "could not generate a secure remote temporary name".to_string())?;
+    let nonce: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
     Ok(parent
         .join(format!(".{name}.tunara-{nonce}-{attempt}.tmp"))
         .to_string_lossy()
@@ -1231,8 +1253,12 @@ pub fn ssh_fs_cancel_upload(transfer_id: String) -> bool {
 
 /// Upload one user-selected regular local file to an absolute remote path.
 /// New files use SFTP EXCLUDE for atomic no-overwrite behavior. Explicit
-/// replacements are streamed to a hidden sibling and committed with `mv -fT`,
-/// so cancellation and I/O failures never truncate the existing destination,
+/// replacements are streamed to a hidden sibling and committed with OpenSSH's
+/// posix-rename SFTP extension. It is supported by OpenSSH on Linux/macOS/BSD,
+/// avoids login-shell and GNU `mv` assumptions, and cannot move the temporary
+/// file inside a directory racing into the destination pathname. We fail before
+/// transfer when that safe primitive is unavailable. Cancellation and I/O
+/// failures never truncate the existing destination,
 /// and a racing directory cannot capture the temporary file as a child.
 #[tauri::command]
 pub async fn ssh_fs_upload(
@@ -1290,8 +1316,19 @@ pub async fn ssh_fs_upload(
     };
     let sftp = ssh.sftp().await?;
 
+    let replacement_mode = if overwrite {
+        if !ssh.supports_sftp_posix_rename().await? {
+            return Err(
+                "remote SFTP server does not support safe atomic overwrite; upload with a new name"
+                    .into(),
+            );
+        }
+        Some(validate_upload_replace_target(&sftp, &remote_path).await?)
+    } else {
+        None
+    };
+
     let upload_path = if overwrite {
-        validate_upload_replace_target(&sftp, &remote_path).await?;
         let mut temporary = None;
         for attempt in 0..16 {
             let candidate = remote_sibling_temp_path(&remote_path, attempt)?;
@@ -1382,6 +1419,19 @@ pub async fn ssh_fs_upload(
             transferred = transferred.saturating_add(count as u64);
             let _ = on_progress.send(UploadProgress { transferred, total });
         }
+        if let Some(initial_mode) = replacement_mode {
+            let final_mode = validate_upload_replace_target(&sftp, &remote_path).await?;
+            let preserved_mode = preserved_upload_mode(initial_mode, final_mode)?;
+            await_stage(
+                "preserve remote upload replacement permissions",
+                SFTP_CONTROL_TIMEOUT,
+                destination.set_metadata(FileAttributes {
+                    permissions: Some(preserved_mode),
+                    ..FileAttributes::empty()
+                }),
+            )
+            .await?;
+        }
         await_stage(
             "finish remote upload",
             SFTP_CHUNK_TIMEOUT,
@@ -1397,34 +1447,23 @@ pub async fn ssh_fs_upload(
 
     drop(destination);
     if let Err(error) = transfer_result {
-        return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
+        return Err(upload_residue_error(&partial_path, error));
     }
     if overwrite {
-        if let Err(error) = validate_upload_replace_target(&sftp, &remote_path).await {
-            return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
-        }
         if let Err(error) = registration.begin_commit() {
-            return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
+            return Err(upload_residue_error(&partial_path, error));
         }
-        let marker = format!(
-            "tunara-upload-{}",
-            content_fingerprint(transfer_id.as_bytes())
-        );
-        let command = format!(
-            "if [ -f {target} ] && [ ! -L {target} ]; then mv -fT -- {temporary} {target} && printf %s {marker}; else exit 73; fi",
-            target = shell_quote(&remote_path),
-            temporary = shell_quote(&partial_path),
-            marker = shell_quote(&marker),
-        );
-        let commit = ssh.exec(&command, 16 * 1024).await;
-        if !matches!(commit.as_deref(), Ok(output) if output == marker) {
-            // The command may have committed before its response was lost. A
-            // temp removal is safe because the temp and target are distinct.
-            // Report residue explicitly when absence/removal cannot be confirmed.
-            return Err(cleanup_uncertain_upload_partial(&sftp, &partial_path).await);
+        if ssh
+            .sftp_posix_rename(&partial_path, &remote_path)
+            .await
+            .is_err()
+        {
+            // The server may have committed before its response was lost. Do
+            // not unlink either pathname: SFTP cannot prove path ownership.
+            return Err(uncertain_upload_error(&partial_path));
         }
     } else if let Err(error) = registration.begin_commit() {
-        return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
+        return Err(upload_residue_error(&partial_path, error));
     }
     Ok(transferred)
 }
@@ -1508,10 +1547,11 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::{
-        choose_remote_home, read_remote_editable_bytes, reconcile_text_write_with_sftp,
-        remote_mtime_millis, remote_replace_lock_owner_path, remote_replace_lock_path,
-        remote_sibling_temp_path, remote_write_lock, shell_quote, ssh_fs_cancel_upload,
-        stale_replace_lock_error, validate_download_target, validate_fingerprint,
+        choose_remote_home, preserved_upload_mode, read_remote_editable_bytes,
+        reconcile_text_write_with_sftp, remote_mtime_millis, remote_replace_lock_owner_path,
+        remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock, shell_quote,
+        ssh_fs_cancel_upload, stale_replace_lock_error, uncertain_upload_error,
+        upload_residue_error, validate_download_target, validate_fingerprint,
         validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
         TransactionOutcome, UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
     };
@@ -1541,6 +1581,43 @@ mod tests {
         let committed = UploadRegistration::register("test-upload-commit").unwrap();
         committed.begin_commit().unwrap();
         assert!(!ssh_fs_cancel_upload("test-upload-commit".into()));
+    }
+
+    #[test]
+    fn failed_uploads_fail_closed_without_claiming_residue_was_removed() {
+        let failed = upload_residue_error("/srv/.file.random.tmp", "upload cancelled".into());
+        let payload: serde_json::Value = serde_json::from_str(
+            failed
+                .strip_prefix("tunaraUploadError:")
+                .expect("structured error prefix"),
+        )
+        .expect("structured error JSON");
+        assert_eq!(payload["kind"], "cancelled");
+        assert_eq!(payload["message"], "upload cancelled");
+        assert_eq!(payload["residuePath"], "/srv/.file.random.tmp");
+
+        let uncertain = uncertain_upload_error("/srv/.file.random.tmp");
+        let payload: serde_json::Value = serde_json::from_str(
+            uncertain
+                .strip_prefix("tunaraUploadError:")
+                .expect("structured error prefix"),
+        )
+        .expect("structured error JSON");
+        assert_eq!(payload["kind"], "uncertain");
+        assert!(payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("outcome unknown"));
+        assert_eq!(payload["residuePath"], "/srv/.file.random.tmp");
+    }
+
+    #[test]
+    fn overwrite_preserves_the_observed_mode_and_rejects_concurrent_chmod() {
+        assert_eq!(preserved_upload_mode(0o755, 0o755), Ok(0o755));
+        assert_eq!(preserved_upload_mode(0o104755, 0o104755), Ok(0o4755));
+        assert!(preserved_upload_mode(0o644, 0o600)
+            .unwrap_err()
+            .contains("permissions changed"));
     }
 
     #[test]
@@ -2266,10 +2343,18 @@ mod tests {
     fn remote_temp_is_a_hidden_sibling_and_never_the_target() {
         let target = "/srv/app/可爱 animal.md";
         let temporary = remote_sibling_temp_path(target, 3).expect("temp path");
+        let second = remote_sibling_temp_path(target, 3).expect("second temp path");
         assert!(temporary.starts_with("/srv/app/.可爱 animal.md.tunara-"));
         assert!(temporary.ends_with("-3.tmp"));
         assert_ne!(temporary, target);
+        assert_ne!(temporary, second);
         assert_eq!(Path::new(&temporary).parent(), Path::new(target).parent());
+        let nonce = temporary
+            .strip_prefix("/srv/app/.可爱 animal.md.tunara-")
+            .and_then(|value| value.strip_suffix("-3.tmp"))
+            .expect("nonce");
+        assert_eq!(nonce.len(), 32);
+        assert!(nonce.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 
     #[test]

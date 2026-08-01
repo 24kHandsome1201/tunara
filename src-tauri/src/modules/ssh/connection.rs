@@ -29,6 +29,18 @@ use super::known_hosts::{self, Verdict};
 use crate::modules::pty::output_flow::OutputFlow;
 use crate::modules::pty::PtyEvent;
 
+#[derive(serde::Serialize)]
+struct PosixRenameRequest<'a> {
+    old_path: &'a str,
+    new_path: &'a str,
+}
+
+fn encode_posix_rename_request(old_path: &str, new_path: &str) -> Result<Vec<u8>, String> {
+    russh_sftp::ser::to_bytes(&PosixRenameRequest { old_path, new_path })
+        .map(|bytes| bytes.to_vec())
+        .map_err(|error| format!("encode atomic rename request failed: {error}"))
+}
+
 /// How to handle a host key the store can't confirm (Unknown / Unverifiable).
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum HostKeyPolicy {
@@ -718,6 +730,110 @@ impl SshSession {
         Ok(arc)
     }
 
+    /// Atomically replace `new_path` with `old_path` through OpenSSH's
+    /// posix-rename extension. A dedicated channel lets us inspect negotiated
+    /// extensions and avoids remote login-shell and platform-specific `mv`
+    /// behavior entirely.
+    pub async fn sftp_posix_rename(&self, old_path: &str, new_path: &str) -> Result<(), String> {
+        let channel = await_stage(
+            "open atomic rename SFTP channel",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            self.handle.channel_open_session(),
+        )
+        .await?;
+        if let Err(error) = await_stage(
+            "request atomic rename SFTP subsystem",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            channel.request_subsystem(true, "sftp"),
+        )
+        .await
+        {
+            let _ = channel.close().await;
+            return Err(error);
+        }
+
+        let raw = russh_sftp::client::RawSftpSession::new(channel.into_stream());
+        raw.set_timeout(SSH_CHANNEL_SETUP_TIMEOUT.as_secs());
+        let result = async {
+            let version = await_stage(
+                "initialize atomic rename SFTP",
+                SSH_CHANNEL_SETUP_TIMEOUT,
+                raw.init(),
+            )
+            .await?;
+            if version
+                .extensions
+                .get("posix-rename@openssh.com")
+                .map(String::as_str)
+                != Some("1")
+            {
+                return Err(
+                    "remote SFTP server does not support safe atomic overwrite; upload with a new name"
+                        .to_string(),
+                );
+            }
+            let data = encode_posix_rename_request(old_path, new_path)?;
+            match await_stage(
+                "replace remote upload destination",
+                SSH_CHANNEL_SETUP_TIMEOUT,
+                raw.extended("posix-rename@openssh.com", data),
+            )
+            .await?
+            {
+                russh_sftp::protocol::Packet::Status(status)
+                    if status.status_code == russh_sftp::protocol::StatusCode::Ok =>
+                {
+                    Ok(())
+                }
+                russh_sftp::protocol::Packet::Status(status) => {
+                    Err(format!("atomic remote replacement failed: {}", status.error_message))
+                }
+                _ => Err("atomic remote replacement returned an unexpected response".into()),
+            }
+        }
+        .await;
+        let _ = raw.close_session();
+        result
+    }
+
+    /// Check overwrite support before streaming bytes so unsupported servers
+    /// fail without leaving a remote partial file.
+    pub async fn supports_sftp_posix_rename(&self) -> Result<bool, String> {
+        let channel = await_stage(
+            "open SFTP capability channel",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            self.handle.channel_open_session(),
+        )
+        .await?;
+        if let Err(error) = await_stage(
+            "request SFTP capability subsystem",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            channel.request_subsystem(true, "sftp"),
+        )
+        .await
+        {
+            let _ = channel.close().await;
+            return Err(error);
+        }
+        let raw = russh_sftp::client::RawSftpSession::new(channel.into_stream());
+        raw.set_timeout(SSH_CHANNEL_SETUP_TIMEOUT.as_secs());
+        let result = await_stage(
+            "initialize SFTP capability check",
+            SSH_CHANNEL_SETUP_TIMEOUT,
+            raw.init(),
+        )
+        .await
+        .map(|version| {
+            version
+                .extensions
+                .get("posix-rename@openssh.com")
+                .map(String::as_str)
+                == Some("1")
+        });
+        let _ = raw.close_session();
+        result
+    }
+
     /// Read a remote directory a page at a time, enforcing limits before pages
     /// accumulate into one unbounded high-level `ReadDir`. A dedicated SFTP
     /// channel keeps cleanup local: every success, timeout, protocol error, and
@@ -1382,6 +1498,21 @@ impl Drop for SshSession {
 mod tests {
     use super::*;
     use tauri::ipc::{Channel, InvokeResponseBody};
+
+    #[test]
+    fn posix_rename_request_preserves_two_exact_wire_paths() {
+        let old = "/srv/-tmp/可爱 ' draft.tmp";
+        let new = "/srv/-tmp/最终 ' file.txt";
+        let encoded = encode_posix_rename_request(old, new).expect("encode request");
+        let expected = [
+            (old.len() as u32).to_be_bytes().as_slice(),
+            old.as_bytes(),
+            (new.len() as u32).to_be_bytes().as_slice(),
+            new.as_bytes(),
+        ]
+        .concat();
+        assert_eq!(encoded, expected);
+    }
 
     #[test]
     fn pump_end_classification_only_reports_unexpected_transport_loss() {

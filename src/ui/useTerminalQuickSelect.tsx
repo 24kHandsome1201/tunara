@@ -77,8 +77,9 @@ export function useTerminalQuickSelect(
       } else {
         notify(t("quick_select.copy_failed.title"), item.label, "error");
       }
+      termRef.current?.focus();
     });
-  }, [notify, t]);
+  }, [notify, t, termRef]);
 
   const openItem = useCallback((item: TerminalQuickSelectItem) => {
     if (item.kind === "text") {
@@ -90,8 +91,9 @@ export function useTerminalQuickSelect(
       : openInEditor(useUIStore.getState().externalEditor, item.target, item.line, item.column);
     run
       .then(() => setItems(null))
-      .catch(() => notify(t("quick_select.open_failed.title"), item.label, "error"));
-  }, [copyItem, notify, t]);
+      .catch(() => notify(t("quick_select.open_failed.title"), item.label, "error"))
+      .finally(() => termRef.current?.focus());
+  }, [copyItem, notify, t, termRef]);
 
   return {
     openQuickSelect,
