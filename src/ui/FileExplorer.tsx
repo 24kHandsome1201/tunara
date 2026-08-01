@@ -5,7 +5,8 @@ import { computeVirtualSlice } from "./lib/diff-virtual";
 const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+const MAX_REMOTE_DOWNLOAD_BYTES = 100 * 1024 * 1024;
+import { confirm as confirmDialog, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   fsCancelActiveNameSearch,
   fsCancelGrep,
@@ -20,10 +21,12 @@ import {
   cancelRemoteSearch,
   invalidateRemoteSearchCache,
   sshDownload,
+  sshCancelUpload,
   sshGrep,
   sshHome,
   sshReadDir,
   sshSearch,
+  sshUpload,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -72,6 +75,69 @@ interface FileExplorerProps {
   remotePtyId?: number;
   /** Stable transport identity while the physical SSH PTY is unavailable. */
   remote?: boolean;
+}
+
+interface DownloadTransfer {
+  disposed: boolean;
+}
+
+export function downloadFailureKey(error: unknown): string {
+  const message = String(error).toLowerCase();
+  if (message.includes("destination already exists")) return "explorer.download.error_exists";
+  if (message.includes("exceeds download limit")) return "explorer.download.error_limit";
+  if (message.includes("under the home directory") || message.includes("refusing to write") || message.includes("download path")) {
+    return "explorer.download.error_unsafe_path";
+  }
+  if (message.includes("write local file") || message.includes("permission") || message.includes("space")) {
+    return "explorer.download.error_local_write";
+  }
+  if (message.includes("connection") || message.includes("transport") || message.includes("session") || message.includes("timed out") || message.includes("timeout") || message.includes("pty")) {
+    return "explorer.download.error_connection";
+  }
+  return "explorer.download.failed_hint";
+}
+
+export interface UploadFailure {
+  kind: string;
+  residuePath?: string;
+}
+
+export function parseUploadFailure(error: unknown): UploadFailure {
+  const raw = String(error);
+  const prefix = "tunaraUploadError:";
+  const offset = raw.indexOf(prefix);
+  if (offset >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(offset + prefix.length)) as unknown;
+      if (parsed && typeof parsed === "object" && "kind" in parsed && typeof parsed.kind === "string") {
+        return {
+          kind: parsed.kind,
+          residuePath: "residuePath" in parsed && typeof parsed.residuePath === "string"
+            ? parsed.residuePath
+            : undefined,
+        };
+      }
+    } catch {
+      // Fall through to compatibility matching for malformed/older errors.
+    }
+  }
+  const message = raw.toLowerCase();
+  if (message.includes("upload cancelled")) return { kind: "cancelled" };
+  if (message.includes("does not support safe atomic overwrite")) return { kind: "unsupported" };
+  if (message.includes("permissions changed during upload")) return { kind: "changed" };
+  if (message.includes("outcome unknown after replacement")) return { kind: "uncertain" };
+  if (message.includes("partial upload may remain")) return { kind: "partial" };
+  return { kind: "generic" };
+}
+
+export function uploadFailureKey(error: unknown): string {
+  const { kind } = parseUploadFailure(error);
+  if (kind === "unsupported") return "explorer.upload.error_unsupported_overwrite";
+  if (kind === "changed") return "explorer.upload.error_changed";
+  if (kind === "uncertain") return "explorer.upload.error_uncertain";
+  if (kind === "partial") return "explorer.upload.error_partial";
+  if (kind === "cancelled") return "explorer.upload.error_cancelled";
+  return "explorer.upload.failed_hint";
 }
 
 function FolderIcon() {
@@ -148,6 +214,27 @@ function compactRelativePath(path: string): string {
   return "…/" + parts.slice(-3).join("/");
 }
 
+interface UploadTransfer {
+  transferId?: string;
+  cancelled: boolean;
+  disposed?: boolean;
+  backendActive?: boolean;
+  cancelRequest?: Promise<boolean>;
+}
+
+function requestUploadCancellation(transfer: UploadTransfer): Promise<boolean> {
+  if (transfer.cancelRequest) return transfer.cancelRequest;
+  transfer.cancelRequest = (async () => {
+    while (transfer.backendActive && transfer.transferId) {
+      if (await sshCancelUpload(transfer.transferId)) return true;
+      // The invoke can reach the frontend before Rust has registered the ID.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return false;
+  })();
+  return transfer.cancelRequest;
+}
+
 type SortKey = "name" | "modified";
 type SortDirection = "asc" | "desc";
 
@@ -190,29 +277,57 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   const t = useT();
   const isRemote = remote;
   const remoteDisconnected = isRemote && remotePtyId === undefined;
+  const [upload, setUpload] = useState<{
+    transferId: string;
+    fileName: string;
+    transferred: number;
+    total: number;
+    cancelling: boolean;
+  } | null>(null);
+  const uploadTransferRef = useRef<UploadTransfer | null>(null);
+  const [download, setDownload] = useState<{ fileName: string } | null>(null);
+  const downloadTransferRef = useRef<DownloadTransfer | null>(null);
+  const copyPathWithFeedback = async (path: string) => {
+    const ok = await copyText(path);
+    useUIStore.getState().addToast({
+      sessionId,
+      title: t(ok ? "clipboard.copy_success" : "clipboard.copy_failed"),
+      subtitle: "",
+      variant: ok ? "success" : "error",
+    });
+  };
 
   const downloadRemoteFile = async (remotePath: string, fileName: string) => {
-    if (remotePtyId === undefined) return;
-    const localPath = await saveDialog({
-      title: t("explorer.download.choose_destination"),
-      defaultPath: fileName,
-    });
-    if (!localPath) return;
+    if (remotePtyId === undefined || downloadTransferRef.current) return;
+    const transfer: DownloadTransfer = { disposed: false };
+    downloadTransferRef.current = transfer;
     try {
+      const localPath = await saveDialog({
+        title: t("explorer.download.choose_destination"),
+        defaultPath: fileName,
+      });
+      if (!localPath || transfer.disposed) return;
+      setDownload({ fileName });
       const bytes = await sshDownload(remotePtyId, remotePath, localPath);
+      if (transfer.disposed) return;
       useUIStore.getState().addToast({
-        sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+        sessionId,
         title: t("explorer.download.complete"),
         subtitle: `${fileName} · ${formatSize(bytes)}`,
         variant: "success",
       });
     } catch (error) {
-      useUIStore.getState().addToast({
-        sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
-        title: t("explorer.download.failed"),
-        subtitle: String(error),
-        variant: "error",
-      });
+      if (!transfer.disposed) {
+        useUIStore.getState().addToast({
+          sessionId,
+          title: t("explorer.download.failed"),
+          subtitle: t(downloadFailureKey(error)),
+          variant: "error",
+        });
+      }
+    } finally {
+      if (downloadTransferRef.current === transfer) downloadTransferRef.current = null;
+      if (!transfer.disposed) setDownload(null);
     }
   };
   // For local sessions the base is rootDir directly. Remote sessions use an
@@ -249,6 +364,138 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   // 目录列表虚拟滚动：行距恒定 32px（30 按钮 + 2 margin），仅列表很长时启用
   const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
+
+  useEffect(() => () => {
+    const downloadTransfer = downloadTransferRef.current;
+    if (downloadTransfer) {
+      downloadTransfer.disposed = true;
+      if (downloadTransferRef.current === downloadTransfer) downloadTransferRef.current = null;
+      setDownload(null);
+    }
+    const transfer = uploadTransferRef.current;
+    if (!transfer) return;
+    transfer.cancelled = true;
+    transfer.disposed = true;
+    if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+    if (transfer.transferId) {
+      setUpload((current) => current?.transferId === transfer.transferId ? null : current);
+    }
+    if (transfer.transferId) void requestUploadCancellation(transfer).catch(() => {});
+  }, [remotePtyId, sessionId]);
+
+  const uploadToRemoteDirectory = async (directory: string) => {
+    if (remotePtyId === undefined || uploadTransferRef.current) return;
+    const transfer: UploadTransfer = { cancelled: false };
+    uploadTransferRef.current = transfer;
+    let selected: string | string[] | null;
+    try {
+      selected = await openDialog({
+        title: t("explorer.upload.choose_file"),
+        directory: false,
+        multiple: false,
+      });
+    } catch {
+      if (!transfer.disposed) {
+        useUIStore.getState().addToast({ sessionId, title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
+      }
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      return;
+    }
+    const localPath = Array.isArray(selected) ? selected[0] : selected;
+    if (!localPath || transfer.cancelled) {
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      return;
+    }
+    const fileName = localPath.split(/[\\/]/).filter(Boolean).pop();
+    if (!fileName) {
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      return;
+    }
+    const remotePath = joinPath(directory, fileName);
+    const transferId = globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    transfer.transferId = transferId;
+    setUpload({ transferId, fileName, transferred: 0, total: 0, cancelling: false });
+
+    const throwIfCancelled = () => {
+      if (transfer.cancelled) throw new Error("upload cancelled");
+    };
+
+    const run = async (overwrite: boolean) => {
+      throwIfCancelled();
+      transfer.backendActive = true;
+      try {
+        return await sshUpload(
+          remotePtyId,
+          transferId,
+          localPath,
+          remotePath,
+          overwrite,
+          ({ transferred, total }) => {
+            if (!transfer.disposed) {
+              setUpload((current) => current?.transferId === transferId
+                ? { ...current, transferred, total }
+                : current);
+            }
+          },
+        );
+      } finally {
+        transfer.backendActive = false;
+      }
+    };
+
+    try {
+      let bytes: number;
+      try {
+        bytes = await run(false);
+      } catch (error) {
+        if (!String(error).includes("remote destination already exists")) throw error;
+        throwIfCancelled();
+        const overwrite = await confirmDialog(t("explorer.upload.overwrite_message", { file: fileName }), {
+          title: t("explorer.upload.overwrite_title"),
+          kind: "warning",
+        });
+        if (!overwrite) return;
+        throwIfCancelled();
+        bytes = await run(true);
+      }
+      if (!transfer.disposed) {
+        useUIStore.getState().addToast({
+          sessionId,
+          title: t("explorer.upload.complete"),
+          subtitle: `${fileName} · ${formatSize(bytes)}`,
+          variant: "success",
+        });
+        refresh();
+      }
+    } catch (error) {
+      const failure = parseUploadFailure(error);
+      if (!transfer.disposed && (failure.kind !== "cancelled" || failure.residuePath)) {
+        const primary = t(uploadFailureKey(error));
+        const residue = failure.residuePath
+          ? ` ${t("explorer.upload.error_residue", { path: failure.residuePath })}`
+          : "";
+        useUIStore.getState().addToast({
+          sessionId,
+          title: t("explorer.upload.failed"),
+          subtitle: `${primary}${residue}`,
+          variant: "error",
+        });
+      }
+    } finally {
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      setUpload((current) => current?.transferId === transferId ? null : current);
+    }
+  };
+
+  const cancelUpload = () => {
+    const transfer = uploadTransferRef.current;
+    if (!transfer) return;
+    transfer.cancelled = true;
+    setUpload((current) => current ? { ...current, cancelling: true } : null);
+    if (transfer.transferId && transfer.backendActive) {
+      void requestUploadCancellation(transfer).catch(() => {});
+    }
+  };
 
   const openEditor = (path: string, line?: number) => {
     void openInEditorWithToast(externalEditor, path, { line });
@@ -288,7 +535,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
             // I9: surface the fallback so the user understands why the file
             // list starts at root instead of their home directory.
             useUIStore.getState().addToast({
-              sessionId: useSessionsStore.getState().activeSessionId ?? "",
+              sessionId,
               title: staticT("explorer.remote_home_failed"),
               subtitle: "",
               variant: "warning",
@@ -299,7 +546,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     }
     setBaseDir(rootDir);
     setCurrentPath(rootDir);
-  }, [rootDir, isRemote, remotePtyId]);
+  }, [rootDir, isRemote, remotePtyId, sessionId]);
 
   useEffect(() => {
     if (baseDir === null) return; // remote home not resolved yet
@@ -612,6 +859,18 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         >
           <RefreshIcon />
         </button>
+        {isRemote && (
+          <button
+            onClick={() => { void uploadToRemoteDirectory(currentPath); }}
+            disabled={remoteDisconnected || upload !== null}
+            className="hover-bg"
+            title={t("explorer.upload")}
+            aria-label={t("explorer.upload")}
+            style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}
+          >
+            ↑
+          </button>
+        )}
         <button
           onClick={() => setIncludeHidden((v) => !v)}
           className="hover-bg"
@@ -640,6 +899,24 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
           .*
         </button>
       </div>
+
+      {upload && (
+        <div role="status" aria-live="polite" style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {upload.cancelling ? t("explorer.upload.cancelling") : t("explorer.upload.progress", { file: upload.fileName, percent: upload.total > 0 ? Math.min(100, Math.round(upload.transferred / upload.total * 100)) : 0 })}
+            </span>
+            <button type="button" onClick={cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("explorer.upload.cancel")}</button>
+          </div>
+          <progress aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5, accentColor: "var(--c-accent)" }} />
+        </div>
+      )}
+      {download && (
+        <div role="status" aria-live="polite" aria-busy="true" style={{ padding: "7px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={download.fileName}>
+          {t("explorer.download.progress", { file: download.fileName })}
+          <progress aria-label={t("explorer.download.progress_label")} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
+        </div>
+      )}
 
       <div
         style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}
@@ -878,18 +1155,25 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
                 data-explorer-item
                 data-listing-index={dirSlice.first + sliceIndex}
                 onClick={() => enterDir(entry.name)}
+                onKeyDown={(e) => {
+                  if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));
+                  }
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setContextMenu({
                     position: { x: e.clientX, y: e.clientY },
                     items: isRemote
                       ? [
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                         ]
                       : [
                           { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
                           { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openEditor(fullPath); } },
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                         ],
                   });
                 }}
@@ -920,6 +1204,13 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
                     data-listing-index={dirs.length + fileSlice.first + sliceIndex}
                     data-file-path={fullPath}
                     onClick={() => openFile(fullPath)}
+                    onKeyDown={(e) => {
+                      if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));
+                      }
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({
@@ -928,15 +1219,15 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
                           ? [
                               { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
                               { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
-                              { id: "file:download", label: t("explorer.download"), icon: "download", action: () => { void downloadRemoteFile(fullPath, entry.name); } },
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                              { id: "file:download", label: entry.size > MAX_REMOTE_DOWNLOAD_BYTES ? t("explorer.download.too_large") : t("explorer.download"), icon: "download", disabled: entry.size > MAX_REMOTE_DOWNLOAD_BYTES || download !== null, action: () => { void downloadRemoteFile(fullPath, entry.name); } },
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                             ]
                           : [
                               { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
                               { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
                               { id: "file:open-vscode", label: t("explorer.open_in_vscode"), icon: "editor", action: () => { void openInEditorWithToast("vscode", fullPath, { sessionId }); } },
                               ...(externalEditor === "vscode" ? [] : [{ id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor" as const, action: () => { openEditor(fullPath); } }]),
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                             ],
                       });
                     }}

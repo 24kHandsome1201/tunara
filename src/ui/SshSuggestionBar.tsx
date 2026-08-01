@@ -46,6 +46,9 @@ export function SshSuggestionBar({ session }: SshSuggestionBarProps) {
         alignItems: "center",
         padding: "0 6px 0 10px",
         gap: 8,
+        flexWrap: "wrap",
+        paddingTop: 4,
+        paddingBottom: 4,
         animation: "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)",
       }}
     >
@@ -56,7 +59,9 @@ export function SshSuggestionBar({ session }: SshSuggestionBarProps) {
           lineHeight: "16px",
           overflow: "hidden",
           textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          whiteSpace: "normal",
+          minWidth: 0,
+          flex: "1 1 120px",
         }}
       >
         {t("ssh.suggest.title", { target })}
@@ -65,7 +70,7 @@ export function SshSuggestionBar({ session }: SshSuggestionBarProps) {
         onClick={open}
         title={t("ssh.suggest.open")}
         ariaLabel={t("ssh.suggest.open")}
-        style={{ marginLeft: "auto" }}
+        style={{ marginLeft: "auto", flexShrink: 0 }}
       >
         {t("ssh.suggest.open")}
       </AccentActionButton>

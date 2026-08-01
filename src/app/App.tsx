@@ -268,6 +268,7 @@ export default function App() {
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const panelVisible = useUIStore((s) => s.panelVisible);
   const presentationMode = useUIStore((s) => s.presentationMode);
+  const inspectorTab = useUIStore((s) => s.inspectorTab);
   const overlay = useUIStore((s) => s.overlay);
   const setOverlay = useUIStore((s) => s.setOverlay);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
@@ -304,7 +305,8 @@ export default function App() {
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const workspaceMode = presentationMode === "workspace";
   const presentedSidebarVisible = workspaceMode && sidebarVisible;
-  const presentedPanelVisible = workspaceMode && panelVisible;
+  const pureFilesVisible = !workspaceMode && panelVisible && inspectorTab === "files";
+  const presentedPanelVisible = (workspaceMode && panelVisible) || pureFilesVisible;
   const {
     sidebarOverlay,
     panelOverlay,
@@ -468,10 +470,10 @@ export default function App() {
               transition: workspaceMode ? "width var(--duration-expand) var(--ease-out-expo)" : "none",
             }}
           >
-            {workspaceMode && (
+            {(workspaceMode || pureFilesVisible) && (
               <>
-                {panelVisible && !panelOverlay && <PanelResizeHandle />}
-                <InspectorPanel session={activeSession} onClose={togglePanelWithoutStacking} />
+                {presentedPanelVisible && !panelOverlay && <PanelResizeHandle />}
+                <InspectorPanel session={activeSession} filesOnly={!workspaceMode} onClose={() => useUIStore.getState().setPanelVisible(false)} />
               </>
             )}
           </div>
@@ -488,12 +490,7 @@ export default function App() {
       <HostKeyPromptDialog />
       <KeyboardInteractivePromptDialog />
       {workspaceMode && <WorkflowParamPrompt />}
-      <div
-        aria-hidden={workspaceMode ? undefined : true}
-        style={{ display: workspaceMode ? "contents" : "none" }}
-      >
-        <ToastContainer />
-      </div>
+      <ToastContainer />
     </div>
   );
 }

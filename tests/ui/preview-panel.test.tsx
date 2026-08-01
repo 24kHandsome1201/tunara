@@ -2,6 +2,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { PreviewPanel } from "@/ui/PreviewPanel";
+import { useUIStore } from "@/state/ui";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 import type { Session } from "@/ui/types";
 import type { PreviewRuntimeState, PreviewTunnelState } from "@/modules/preview/preview-window";
@@ -275,6 +276,16 @@ test("shows bounded failures and explicitly copies, clears, or fills only the so
   render(<PreviewPanel session={session([eligible])} />);
 
   expect(await screen.findByText("Render failed ×2")).toBeTruthy();
+  useUIStore.setState({ toasts: [] });
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async () => {} },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+  await waitFor(() => {
+    const toasts = useUIStore.getState().toasts;
+    expect(toasts[toasts.length - 1]).toMatchObject({ title: "Copied", variant: "success" });
+  });
   expect(screen.getByText("GET /api · HTTP 503 · fetch")).toBeTruthy();
   expect(screen.queryByText(/token=secret/)).toBeNull();
   fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-telemetry"]')!);

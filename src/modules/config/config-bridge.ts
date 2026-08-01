@@ -17,6 +17,7 @@ export interface RawAppearanceConfig {
   bell_notification: boolean;
   terminal_clipboard_write: boolean;
   terminal_inline_images: boolean;
+  show_pure_mode_files_button: boolean;
   language: string;
   global_shortcut: string;
 }

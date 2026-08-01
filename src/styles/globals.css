@@ -654,6 +654,37 @@ textarea:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 12%, transparent);
 }
 
+/* Preview controls deliberately inherit the same compact surface treatment as
+   Tunara's other inspector controls instead of falling back to WebView-native
+   buttons and inputs. All action groups wrap in the component for narrow rails. */
+.preview-source-card button,
+.preview-source-card input {
+  min-height: 26px;
+  box-sizing: border-box;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-btn);
+  background: var(--c-bg-white);
+  color: var(--c-text-2);
+  font: 500 var(--fs-secondary) var(--font-ui);
+}
+.preview-source-card button {
+  padding: 0 8px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-out-expo);
+}
+.preview-source-card button:hover:not(:disabled) {
+  background: var(--c-bg-hover);
+  color: var(--c-text-primary);
+}
+.preview-source-card button:active:not(:disabled) { transform: scale(var(--scale-press)); }
+.preview-source-card button:disabled {
+  cursor: default;
+  opacity: .45;
+}
+.preview-source-card input { padding: 0 8px; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -38,6 +38,7 @@ export interface AppearanceSettings {
   bellNotification: boolean;
   terminalClipboardWrite: boolean;
   terminalInlineImages: boolean;
+  showPureModeFilesButton: boolean;
   keybindings: KeybindingConfig;
   language: Language;
   globalShortcut: string;
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   bellNotification: true,
   terminalClipboardWrite: false,
   terminalInlineImages: true,
+  showPureModeFilesButton: true,
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
@@ -134,6 +136,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
     terminalInlineImages: typeof raw?.terminal_inline_images === "boolean" ? raw.terminal_inline_images : DEFAULT_SETTINGS.terminalInlineImages,
+    showPureModeFilesButton: typeof raw?.show_pure_mode_files_button === "boolean" ? raw.show_pure_mode_files_button : DEFAULT_SETTINGS.showPureModeFilesButton,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
     globalShortcut: typeof raw?.global_shortcut === "string" ? raw.global_shortcut : DEFAULT_SETTINGS.globalShortcut,
@@ -167,6 +170,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       bell_notification: s.bellNotification,
       terminal_clipboard_write: s.terminalClipboardWrite,
       terminal_inline_images: s.terminalInlineImages,
+      show_pure_mode_files_button: s.showPureModeFilesButton,
       language: s.language,
       global_shortcut: s.globalShortcut,
     },
@@ -341,6 +345,7 @@ interface UIState extends AppearanceSettings {
   setBellNotification: (b: boolean) => void;
   setTerminalClipboardWrite: (enabled: boolean) => void;
   setTerminalInlineImages: (enabled: boolean) => void;
+  setShowPureModeFilesButton: (enabled: boolean) => void;
   setGlobalShortcut: (shortcut: string) => void;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
@@ -532,6 +537,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalInlineImages: (terminalInlineImages) => set({ terminalInlineImages: typeof terminalInlineImages === "boolean" ? terminalInlineImages : DEFAULT_SETTINGS.terminalInlineImages }),
+    setShowPureModeFilesButton: (showPureModeFilesButton) => set({ showPureModeFilesButton: typeof showPureModeFilesButton === "boolean" ? showPureModeFilesButton : DEFAULT_SETTINGS.showPureModeFilesButton }),
     setGlobalShortcut: (globalShortcut) => set({ globalShortcut: typeof globalShortcut === "string" ? globalShortcut : DEFAULT_SETTINGS.globalShortcut }),
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
@@ -585,7 +591,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "showPureModeFilesButton", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

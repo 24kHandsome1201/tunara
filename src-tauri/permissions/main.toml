@@ -67,6 +67,8 @@ commands.allow = [
   "ssh_fs_write_text_file",
   "ssh_fs_reconcile_text_write",
   "ssh_fs_download",
+  "ssh_fs_upload",
+  "ssh_fs_cancel_upload",
   "ssh_fs_home",
   "ssh_git_status",
   "ssh_git_diff",

@@ -41,6 +41,7 @@ export function Sidebar({
   const t = useT();
   const [search, setSearch] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [reorderAnnouncement, setReorderAnnouncement] = useState("");
   const [contextMenu, setContextMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -129,9 +130,13 @@ export function Sidebar({
     e.preventDefault();
     setContextMenu({
       position: { x: e.clientX, y: e.clientY },
-      items: buildSessionMenuItems({ session, t, externalEditor, onSelectSession, onCloseSession }),
+      items: buildSessionMenuItems({
+        session, t, externalEditor, onSelectSession, onCloseSession, canReorder,
+        groupSessions: sessions.filter((candidate) => candidate.dir === session.dir),
+        onReordered: (position) => setReorderAnnouncement(t("sidebar.session.moved", { session: deriveTitle(session).primary, position })),
+      }),
     });
-  }, [t, externalEditor, onCloseSession, onSelectSession]);
+  }, [t, externalEditor, onCloseSession, onSelectSession, canReorder, sessions]);
 
   const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
     dragStartY.current = e.clientY;
@@ -335,6 +340,13 @@ export function Sidebar({
                   items: buildDirGroupMenuItems({ dir, groupSessions, t, externalEditor }),
                 });
               }}
+              onKeyDown={(e) => {
+                if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.bottom }));
+                }
+              }}
             />
             {!collapsed && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
@@ -388,6 +400,7 @@ export function Sidebar({
           onClose={() => setContextMenu(null)}
         />
       )}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">{reorderAnnouncement}</div>
     </div>
   );
 }
