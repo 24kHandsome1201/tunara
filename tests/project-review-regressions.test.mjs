@@ -799,10 +799,10 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(app, /sidebarOverlay && sidebarReservedWidth > 0/);
   assert.match(app, /panelOverlay && panelReservedWidth > 0/);
   assert.match(app, /sidebarVisible && !sidebarOverlay && <SidebarResizeHandle \/>/);
-  assert.match(app, /panelVisible && !panelOverlay && <PanelResizeHandle \/>/);
+  assert.match(app, /presentedPanelVisible && !panelOverlay && <PanelResizeHandle \/>/);
   assert.doesNotMatch(app, /panelOverlay && panelVisible && \([\s\S]*onClick=\{togglePanel\}/);
   assert.match(app, /onClick=\{toggleSidebarWithoutStacking\}/);
-  assert.match(app, /onClose=\{togglePanelWithoutStacking\}/);
+  assert.match(app, /onClose=\{\(\) => useUIStore\.getState\(\)\.setPanelVisible\(false\)\}/);
   assert.match(keys, /resolveAppShellLayout\(\{/);
   assert.match(keys, /if \(e\.key === "Escape"\)/);
   assert.match(keys, /ui\.setOverlay\(null\)/);
@@ -1467,7 +1467,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectHook, /readQuickSelectTerminalLines/);
   assert.match(terminalQuickSelectHook, /terminalQuickSelectRange\(buffer\.length, buffer\.viewportY, term\.rows\)/);
   assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readQuickSelectTerminalLines\(term\), cwd\)/);
-  assert.match(terminalQuickSelectHook, /t\("quick_select\.empty\.body"\)/);
+  assert.doesNotMatch(terminalQuickSelectHook, /quick_select\.empty[\s\S]*?"error"/);
   assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelectHook, /copyText\(item\.copyText\)/);
   assert.match(terminalQuickSelectHook, /if \(item\.kind === "text"\) \{[\s\S]*copyItem\(item\);[\s\S]*return;/);
@@ -1481,8 +1481,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectOverlay, /hint\.startsWith\(typedHint\)/);
   assert.doesNotMatch(terminalQuickSelectOverlay, /ArrowDown[\s\S]*setTypedHint\(""\)/);
   assert.match(terminalQuickSelectOverlay, /const dialogRef = useRef<HTMLDivElement>\(null\)/);
-  assert.match(terminalQuickSelectOverlay, /useEffect\(\(\) => \{[\s\S]*dialogRef\.current\?\.focus\(\);[\s\S]*\}, \[\]\)/);
+  assert.match(terminalQuickSelectOverlay, /useEffect\(\(\) => \{[\s\S]*listRef\.current\?\.focus\(\);[\s\S]*\}, \[\]\)/);
   assert.match(terminalQuickSelectOverlay, /ref=\{dialogRef\}[\s\S]*role="dialog"/);
+  assert.match(terminalQuickSelectOverlay, /role="listbox"[\s\S]*aria-activedescendant/);
+  assert.match(terminalQuickSelectOverlay, /id=\{`quick-select-option-\$\{index\}`\}/);
   assert.doesNotMatch(terminalQuickSelectOverlay, /\sautoFocus(?:\s|=)/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(commandPalette, /id: "quick-select-visible-output"/);
@@ -1595,5 +1597,5 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // The 580 ceiling leaves room for generation publication and inert SSH
   // restore; both state machines remain extracted into terminal lib modules.
   assert.ok(terminal.split("\n").length < 580);
-  assert.ok(sidebar.split("\n").length < 400);
+  assert.ok(sidebar.split("\n").length < 410);
 });

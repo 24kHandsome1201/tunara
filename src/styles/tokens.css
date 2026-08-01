@@ -13,9 +13,9 @@
   --c-text-2: oklch(34% 0.012 48);
   --c-text-3: oklch(43% 0.011 48);
   --c-text-4: oklch(48% 0.01 48);
-  --c-text-5: oklch(57% 0.009 48);
-  /* text-6 压低到 60%：9px 徽章小字也能过 WCAG AA 4.5:1 */
-  --c-text-6: oklch(60% 0.009 48);
+  --c-text-5: oklch(49% 0.009 48);
+  /* Small normal text: conservative AA contrast on the lightest used surface. */
+  --c-text-6: oklch(48% 0.009 48);
   --c-text-7: oklch(75% 0.007 48);
 
   /* ── 面/底 ── */
@@ -34,10 +34,10 @@
   --c-border-3: oklch(93% 0.006 55);
 
   /* ── 语义色 ── */
-  --c-success: #2f9e7a;
+  --c-success: #187257;
   --c-success-bg: #dff2ea;
   --c-success-bg-light: #e8f6ef;
-  --c-error: #e0556b;
+  --c-error: #b82842;
   --c-error-bg: #fdf4f5;
   --c-error-bg-light: #fbe1e5;
   --c-warning: oklch(59% 0.12 72);
@@ -193,9 +193,9 @@
   --c-text-2: oklch(84% 0.008 55);
   --c-text-3: oklch(72% 0.008 55);
   --c-text-4: oklch(62% 0.008 55);
-  --c-text-5: oklch(53% 0.008 55);
-  /* 暗色 text-6 提亮到 56%：配合 9px 小字过 AA */
-  --c-text-6: oklch(56% 0.008 55);
+  --c-text-5: oklch(68% 0.008 55);
+  /* Small normal text: conservative AA contrast on dark panel surfaces. */
+  --c-text-6: oklch(68% 0.008 55);
   --c-text-7: oklch(29% 0.008 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);
@@ -377,7 +377,7 @@
 }
 .session-card:hover { background: var(--c-bg-hover); box-shadow: var(--shadow-card); }
 .session-card:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
-.session-card[aria-current="page"] { border-color: var(--c-border-2) !important; box-shadow: var(--shadow-card); }
+.session-card[aria-current="page"] { border-color: color-mix(in srgb, var(--c-accent) 42%, var(--c-border-2)) !important; box-shadow: var(--shadow-card); }
 .session-card[aria-current="page"]:hover { box-shadow: var(--shadow-card-hover); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .session-card:hover .session-card-close,

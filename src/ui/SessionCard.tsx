@@ -288,6 +288,15 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const closeLabel = `${t("session.close.title")} ${formatShortcut(closeSessionShortcut)}`;
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
+  const lifecycleLabel = session.agentActivity === "waiting_confirmation"
+    ? t("agent.status.waiting_confirmation")
+    : t(`sidebar.session.status.${displayRunState}`);
+  const accessibleLabel = [
+    primary,
+    lifecycleLabel,
+    session.unread ? t("sidebar.session.unread") : "",
+    t(session.remote ? "sidebar.session.remote" : "sidebar.session.local"),
+  ].filter(Boolean).join(", ");
   const busy = isSessionBusy(session);
   const showTerminalProgress = !!session.terminalProgress;
   const showBusyProgress = !!session.agent && busy && !showTerminalProgress;
@@ -337,6 +346,12 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const handleClick = () => onSelect(session.id);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (!editing && ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu")) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));
+      return;
+    }
     if (!editing && onRename && e.key === "F2") {
       e.preventDefault();
       startRename();
@@ -402,7 +417,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           type="button"
           tabIndex={tabIndex ?? 0}
           aria-current={active ? "page" : undefined}
-          aria-label={primary}
+          aria-label={accessibleLabel}
           onClick={handleClick}
           // The overlay button covers the whole card, so the title's own
           // dblclick never fires — rename must be triggered from here.
@@ -435,8 +450,8 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             position: "absolute",
             top: 6,
             right: 6,
-            width: 18,
-            height: 18,
+            width: 24,
+            height: 24,
             borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",

@@ -4,6 +4,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { getSessionNoteStats, sanitizeSessionNote } from "@/modules/session/session-notes";
 import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
+import { useUIStore } from "@/state/ui";
 import { useDestructiveConfirm } from "./lib/destructive-confirm";
 
 interface SessionNotesPanelProps {
@@ -120,7 +121,12 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
           {isPending(`notes-clear:${session.id}`) ? t("destructive.confirm_again") : t("notes.clear")}
         </button>
         <button
-          onClick={() => void copyText(value)}
+          onClick={() => void copyText(value).then((ok) => useUIStore.getState().addToast({
+            sessionId: session.id,
+            title: t(ok ? "clipboard.copy_success" : "clipboard.copy_failed"),
+            subtitle: "",
+            variant: ok ? "success" : "error",
+          }))}
           className="hover-text-3"
           style={{ border: "none", background: "transparent", color: "var(--c-text-5)", cursor: "pointer", fontSize: "var(--fs-meta)" }}
         >

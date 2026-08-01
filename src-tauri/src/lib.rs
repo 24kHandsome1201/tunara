@@ -158,6 +158,8 @@ pub fn run() {
             modules::ssh::sftp::ssh_fs_write_text_file,
             modules::ssh::sftp::ssh_fs_reconcile_text_write,
             modules::ssh::sftp::ssh_fs_download,
+            modules::ssh::sftp::ssh_fs_upload,
+            modules::ssh::sftp::ssh_fs_cancel_upload,
             modules::ssh::sftp::ssh_fs_home,
             // Remote git status/diff over the SSH exec channel (review rail for
             // SSH sessions — complements the read-only local git2 path).

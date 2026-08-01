@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { CloseIcon, SearchIcon } from "./shared";
 import { useT } from "@/modules/i18n";
 
@@ -25,6 +25,7 @@ export function DirGroupHeader({
   onCloseAll,
   confirmClose,
   onContextMenu,
+  onKeyDown,
 }: {
   dir: string;
   count: number;
@@ -46,6 +47,7 @@ export function DirGroupHeader({
   onCloseAll?: () => void;
   confirmClose?: boolean;
   onContextMenu?: (e: MouseEvent) => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const t = useT();
   const headerContent = (
@@ -123,6 +125,10 @@ export function DirGroupHeader({
     <div
       className="dir-group-header"
       onContextMenu={onContextMenu}
+      onKeyDown={onKeyDown}
+      role="group"
+      aria-label={`${dir}, ${t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}`}
+      tabIndex={0}
       style={{
         display: "flex",
         alignItems: "center",

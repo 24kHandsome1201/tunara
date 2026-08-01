@@ -11,6 +11,9 @@ interface BuildSessionMenuOptions {
   externalEditor: ExternalEditor;
   onSelectSession: (id: string) => void;
   onCloseSession?: (id: string) => void;
+  groupSessions?: Session[];
+  canReorder?: boolean;
+  onReordered?: (position: number) => void;
 }
 
 export function buildSessionMenuItems({
@@ -19,7 +22,16 @@ export function buildSessionMenuItems({
   externalEditor,
   onSelectSession,
   onCloseSession,
+  groupSessions = [],
+  canReorder = true,
+  onReordered,
 }: BuildSessionMenuOptions): MenuEntry[] {
+  const groupIndex = groupSessions.findIndex((candidate) => candidate.id === session.id);
+  const move = (delta: -1 | 1) => {
+    const next = groupIndex + delta;
+    useSessionsStore.getState().reorderInGroup(session.dir, groupIndex, next);
+    onReordered?.(next + 1);
+  };
   const openNotes = () => {
     onSelectSession(session.id);
     const ui = useUIStore.getState();
@@ -42,6 +54,8 @@ export function buildSessionMenuItems({
     { id: "session:mascot", label: t("sidebar.session.choose_mascot"), icon: "mascot", action: chooseMascot },
     { id: "session:notes", label: t("sidebar.session.open_notes"), icon: "note", action: openNotes },
     { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
+    { id: "session:move-up", label: t("sidebar.session.move_up"), disabled: !canReorder || groupIndex <= 0, action: () => move(-1) },
+    { id: "session:move-down", label: t("sidebar.session.move_down"), disabled: !canReorder || groupIndex < 0 || groupIndex >= groupSessions.length - 1, action: () => move(1) },
   ];
   if (!session.remote) {
     items.push({ id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { void openInEditorWithToast(externalEditor, session.dir, { sessionId: session.id }); } });

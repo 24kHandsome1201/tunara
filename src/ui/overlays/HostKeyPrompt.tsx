@@ -82,6 +82,8 @@ export function HostKeyPromptDialog() {
           transform: "translate(-50%, -50%)",
           width: 440,
           maxWidth: "calc(100vw - 32px)",
+          maxHeight: "calc(100vh - 32px)",
+          minHeight: 0,
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
@@ -99,7 +101,7 @@ export function HostKeyPromptDialog() {
           </span>
         </div>
 
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 0, flex: 1 }}>
           <p style={{ margin: 0, fontSize: "var(--fs-body)", color: "var(--c-text-primary)", lineHeight: 1.5 }}>
             {t(bodyKey, { host: hostLabel })}
           </p>

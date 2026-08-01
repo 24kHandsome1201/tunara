@@ -19,6 +19,7 @@ const INSPECTOR_TABPANEL_ID = "inspector-tabpanel";
 interface InspectorPanelProps {
   session: Session;
   onClose?: () => void;
+  filesOnly?: boolean;
 }
 
 function TabButton({ active, onClick, children, tabId }: { active: boolean; onClick: () => void; children: React.ReactNode; tabId: InspectorTab }) {
@@ -53,12 +54,13 @@ function TabButton({ active, onClick, children, tabId }: { active: boolean; onCl
   );
 }
 
-export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
+export function InspectorPanel({ session, onClose, filesOnly = false }: InspectorPanelProps) {
   const t = useT();
   const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
   const isRemote = !!session.remote;
-  const tab = storeTab;
+  const tab = filesOnly ? "files" : storeTab;
+  const tabIds = filesOnly ? (["files"] as const) : INSPECTOR_TAB_IDS;
   const showSourceSummary = Boolean(
     currentWorkspaceWorktree(session.workspace)
     || session.workspaceState === "unavailable"
@@ -86,7 +88,7 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
   const handleTabListKeyDown = (e: React.KeyboardEvent) => {
     const currentId = tabIdFromEventTarget(e.target);
     if (!currentId) return;
-    const nextId = resolveRovingTabId(INSPECTOR_TAB_IDS, currentId, e.key);
+    const nextId = resolveRovingTabId(tabIds, currentId, e.key);
     if (!nextId || nextId === currentId) return;
     e.preventDefault();
     setTab(nextId as InspectorTab);
@@ -103,11 +105,11 @@ export function InspectorPanel({ session, onClose }: InspectorPanelProps) {
           onKeyDown={handleTabListKeyDown}
           style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden" }}
         >
-          <TabButton tabId="overview" active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>
-          <TabButton tabId="changes" active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>
+          {!filesOnly && <TabButton tabId="overview" active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>}
+          {!filesOnly && <TabButton tabId="changes" active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>}
           <TabButton tabId="files" active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
-          <TabButton tabId="preview" active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>
-          <TabButton tabId="notes" active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>
+          {!filesOnly && <TabButton tabId="preview" active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>}
+          {!filesOnly && <TabButton tabId="notes" active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>}
         </div>
 
         {onClose && (
