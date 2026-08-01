@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type { DirEntry, GrepResponse, ReadResult, SearchHit, WriteTextResult } from "@/modules/fs/fs-bridge";
 import { RemoteOperationCache, remoteOperationCacheKey } from "./remote-operation-cache.ts";
 import {
@@ -88,6 +88,36 @@ export function sshHome(id: number): Promise<string> {
 /** 下载远程文件到本地路径，返回写入字节数。 */
 export function sshDownload(id: number, remotePath: string, localPath: string): Promise<number> {
   return invoke<number>("ssh_fs_download", { id, remotePath, localPath });
+}
+
+export interface SshUploadProgress {
+  transferred: number;
+  total: number;
+}
+
+/** Stream a local file to an absolute remote path over the session's SFTP channel. */
+export function sshUpload(
+  id: number,
+  transferId: string,
+  localPath: string,
+  remotePath: string,
+  overwrite: boolean,
+  onProgress: (progress: SshUploadProgress) => void,
+): Promise<number> {
+  const progress = new Channel<SshUploadProgress>();
+  progress.onmessage = onProgress;
+  return invoke<number>("ssh_fs_upload", {
+    id,
+    transferId,
+    localPath,
+    remotePath,
+    overwrite,
+    onProgress: progress,
+  });
+}
+
+export function sshCancelUpload(transferId: string): Promise<boolean> {
+  return invoke<boolean>("ssh_fs_cancel_upload", { transferId });
 }
 
 // ── Remote file search (over the SSH exec channel) ────────────────────────

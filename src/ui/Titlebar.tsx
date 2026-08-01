@@ -82,6 +82,7 @@ interface PresentationModeButtonProps {
   showShortcut?: boolean;
   surface?: boolean;
   floating?: boolean;
+  draggable?: boolean;
   visible?: boolean;
   onKeepVisible?: () => void;
   onReleaseVisible?: () => void;
@@ -94,17 +95,94 @@ function PresentationModeButton({
   showShortcut = false,
   surface = false,
   floating = false,
+  draggable = false,
   visible = true,
   onKeepVisible,
   onReleaseVisible,
 }: PresentationModeButtonProps) {
   const accessibleLabel = `${label} ${shortcut}`;
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; offset: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const clampDragOffset = useCallback((offset: number) => {
+    const button = buttonRef.current;
+    if (!button) return offset;
+    const rect = button.getBoundingClientRect();
+    const baseLeft = rect.left - dragOffset;
+    const edge = 8;
+    return Math.min(
+      window.innerWidth - edge - rect.width - baseLeft,
+      Math.max(edge - baseLeft, offset),
+    );
+  }, [dragOffset]);
+
+  useEffect(() => {
+    const keepInViewport = () => setDragOffset((offset) => clampDragOffset(offset));
+    window.addEventListener("resize", keepInViewport);
+    return () => window.removeEventListener("resize", keepInViewport);
+  }, [clampDragOffset]);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!draggable || event.button !== 0) return;
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, offset: dragOffset, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onKeepVisible?.();
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const delta = event.clientX - drag.startX;
+    const verticalDelta = event.clientY - drag.startY;
+    if (!drag.moved && Math.max(Math.abs(delta), Math.abs(verticalDelta)) < 4) return;
+    drag.moved = true;
+    setDragOffset(clampDragOffset(drag.offset + delta));
+  };
+
+  const finishDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    suppressClickRef.current = drag.moved;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    onReleaseVisible?.();
+  };
+
+  const cancelDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    suppressClickRef.current = false;
+    setDragOffset(clampDragOffset(drag.offset));
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    onReleaseVisible?.();
+  };
+
   return (
     <button
+      ref={buttonRef}
       type="button"
       data-presentation-action={floating ? "exit-fullscreen-pure" : undefined}
       data-visible={floating ? String(visible) : undefined}
-      onClick={onClick}
+      onClick={(event) => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          event.preventDefault();
+          return;
+        }
+        onClick();
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={cancelDrag}
+      onLostPointerCapture={cancelDrag}
       onPointerEnter={onKeepVisible}
       onPointerLeave={onReleaseVisible}
       onFocus={onKeepVisible}
@@ -126,6 +204,9 @@ function PresentationModeButton({
         justifyContent: "center",
         gap: 6,
         whiteSpace: "nowrap",
+        touchAction: draggable ? "none" : undefined,
+        userSelect: draggable ? "none" : undefined,
+        translate: draggable ? `${dragOffset}px 0` : undefined,
         ...(floating ? {
           position: "fixed",
           top: 8,
@@ -542,6 +623,7 @@ function TitlebarImpl({
           onClick={() => setPresentationMode("workspace")}
           showShortcut
           floating
+          draggable
           visible={fullscreenExitHintVisible}
           onKeepVisible={keepFullscreenExitHintVisible}
           onReleaseVisible={revealFullscreenExitHint}

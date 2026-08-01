@@ -12,11 +12,13 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Component, Path};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 
-use russh_sftp::protocol::{FileAttributes, OpenFlags};
+use russh_sftp::client::error::Error as SftpError;
+use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
+use tauri::ipc::Channel;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::connection::await_stage;
@@ -39,10 +41,138 @@ const SFTP_CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
 const SFTP_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 const REPLACE_LOCK_STALE_AFTER: Duration = Duration::from_secs(10 * 60);
 static REMOTE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
+type UploadCancellationTable = HashMap<String, Arc<AtomicBool>>;
+static UPLOAD_CANCELLATIONS: OnceLock<std::sync::Mutex<UploadCancellationTable>> = OnceLock::new();
 type RemoteWriteLock = Arc<tokio::sync::Mutex<()>>;
 type RemoteWriteLockKey = (u32, String);
 type RemoteWriteLockTable = HashMap<RemoteWriteLockKey, Weak<tokio::sync::Mutex<()>>>;
 static REMOTE_WRITE_LOCKS: OnceLock<std::sync::Mutex<RemoteWriteLockTable>> = OnceLock::new();
+
+struct UploadRegistration {
+    transfer_id: String,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl UploadRegistration {
+    fn register(transfer_id: &str) -> Result<Self, String> {
+        if transfer_id.is_empty() || transfer_id.len() > 128 {
+            return Err("invalid upload transfer id".into());
+        }
+        let table = UPLOAD_CANCELLATIONS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+        let mut table = table
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if table.contains_key(transfer_id) {
+            return Err("upload transfer id is already active".into());
+        }
+        let cancelled = Arc::new(AtomicBool::new(false));
+        table.insert(transfer_id.to_string(), Arc::clone(&cancelled));
+        Ok(Self {
+            transfer_id: transfer_id.to_string(),
+            cancelled,
+        })
+    }
+
+    fn begin_commit(&self) -> Result<(), String> {
+        let table = UPLOAD_CANCELLATIONS
+            .get()
+            .ok_or_else(|| "upload cancellation registry unavailable".to_string())?;
+        let mut table = table
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err("upload cancelled".into());
+        }
+        if table
+            .get(&self.transfer_id)
+            .is_some_and(|current| Arc::ptr_eq(current, &self.cancelled))
+        {
+            table.remove(&self.transfer_id);
+            Ok(())
+        } else {
+            Err("upload cancellation registry changed unexpectedly".into())
+        }
+    }
+}
+
+impl Drop for UploadRegistration {
+    fn drop(&mut self) {
+        let Some(table) = UPLOAD_CANCELLATIONS.get() else {
+            return;
+        };
+        let mut table = table
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if table
+            .get(&self.transfer_id)
+            .is_some_and(|current| Arc::ptr_eq(current, &self.cancelled))
+        {
+            table.remove(&self.transfer_id);
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct UploadProgress {
+    transferred: u64,
+    total: u64,
+}
+
+async fn validate_upload_replace_target(
+    sftp: &russh_sftp::client::SftpSession,
+    remote_path: &str,
+) -> Result<(), String> {
+    let metadata = await_stage(
+        "validate remote upload replacement target",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.symlink_metadata(remote_path),
+    )
+    .await
+    .map_err(|_| "remote destination changed before replacement".to_string())?;
+    if metadata.is_symlink() || !metadata.is_regular() {
+        return Err("remote upload replacement target must be a regular non-symlink file".into());
+    }
+    Ok(())
+}
+
+async fn cleanup_upload_partial(
+    sftp: &russh_sftp::client::SftpSession,
+    partial_path: &str,
+    error: String,
+) -> String {
+    match await_stage(
+        "remove partial remote upload",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.remove_file(partial_path),
+    )
+    .await
+    {
+        Ok(()) => error,
+        Err(cleanup) => {
+            format!("{error}; remote partial cleanup failed for {partial_path}: {cleanup}")
+        }
+    }
+}
+
+async fn cleanup_uncertain_upload_partial(
+    sftp: &russh_sftp::client::SftpSession,
+    partial_path: &str,
+) -> String {
+    let outcome =
+        "upload outcome unknown after replacement; refresh the remote directory before retrying";
+    match tokio::time::timeout(SFTP_CONTROL_TIMEOUT, sftp.remove_file(partial_path)).await {
+        Ok(Ok(())) => outcome.to_string(),
+        Ok(Err(SftpError::Status(status))) if status.status_code == StatusCode::NoSuchFile => {
+            outcome.to_string()
+        }
+        Ok(Err(error)) => {
+            format!("{outcome}; remote partial cleanup pending for {partial_path}: {error}")
+        }
+        Err(_) => format!(
+            "{outcome}; remote partial cleanup pending for {partial_path}: cleanup timed out"
+        ),
+    }
+}
 
 fn remote_write_lock(id: u32, path: &str) -> RemoteWriteLock {
     let locks = REMOTE_WRITE_LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
@@ -1082,6 +1212,223 @@ pub async fn ssh_fs_download(
     Ok(written)
 }
 
+/// Cancel an active upload. The transfer loop checks the flag before each
+/// local read and remote write, then removes its partial remote file.
+#[tauri::command]
+pub fn ssh_fs_cancel_upload(transfer_id: String) -> bool {
+    let Some(table) = UPLOAD_CANCELLATIONS.get() else {
+        return false;
+    };
+    let table = table
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(cancelled) = table.get(&transfer_id) else {
+        return false;
+    };
+    cancelled.store(true, Ordering::Release);
+    true
+}
+
+/// Upload one user-selected regular local file to an absolute remote path.
+/// New files use SFTP EXCLUDE for atomic no-overwrite behavior. Explicit
+/// replacements are streamed to a hidden sibling and committed with `mv -fT`,
+/// so cancellation and I/O failures never truncate the existing destination,
+/// and a racing directory cannot capture the temporary file as a child.
+#[tauri::command]
+pub async fn ssh_fs_upload(
+    state: tauri::State<'_, PtyState>,
+    id: u32,
+    transfer_id: String,
+    local_path: String,
+    remote_path: String,
+    overwrite: bool,
+    on_progress: Channel<UploadProgress>,
+) -> Result<u64, String> {
+    let registration = UploadRegistration::register(&transfer_id)?;
+    validate_remote_edit_path(&remote_path)?;
+    let local = Path::new(&local_path);
+    if !local.is_absolute() {
+        return Err("upload source path must be absolute".into());
+    }
+    if local
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("upload source path must not contain '..'".into());
+    }
+    let path_metadata = tokio::fs::symlink_metadata(local)
+        .await
+        .map_err(|error| format!("read upload source metadata failed: {error}"))?;
+    if !path_metadata.file_type().is_file() {
+        return Err("upload source must be a regular file (symlinks are not followed)".into());
+    }
+    let mut source = tokio::fs::File::open(local)
+        .await
+        .map_err(|error| format!("open upload source failed: {error}"))?;
+    let opened_metadata = source
+        .metadata()
+        .await
+        .map_err(|error| format!("read opened upload source metadata failed: {error}"))?;
+    if !opened_metadata.is_file() {
+        return Err("opened upload source is not a regular file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if path_metadata.dev() != opened_metadata.dev()
+            || path_metadata.ino() != opened_metadata.ino()
+        {
+            return Err("upload source changed while it was being opened".into());
+        }
+    }
+    let total = opened_metadata.len();
+
+    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+    let ssh = match session.as_ref() {
+        Session::Ssh(ssh) => ssh,
+        Session::Local(_) => return Err("not a remote session".into()),
+    };
+    let sftp = ssh.sftp().await?;
+
+    let upload_path = if overwrite {
+        validate_upload_replace_target(&sftp, &remote_path).await?;
+        let mut temporary = None;
+        for attempt in 0..16 {
+            let candidate = remote_sibling_temp_path(&remote_path, attempt)?;
+            match await_stage(
+                "create remote upload temporary file",
+                SFTP_CONTROL_TIMEOUT,
+                sftp.open_with_flags_and_attributes(
+                    candidate.clone(),
+                    OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                    FileAttributes {
+                        permissions: Some(0o600),
+                        ..FileAttributes::empty()
+                    },
+                ),
+            )
+            .await
+            {
+                Ok(file) => {
+                    temporary = Some((candidate, file));
+                    break;
+                }
+                Err(error) if error.to_ascii_lowercase().contains("exist") => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        temporary.ok_or_else(|| {
+            "could not allocate remote upload temporary file after 16 attempts".to_string()
+        })?
+    } else {
+        if await_stage(
+            "check remote upload destination",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.symlink_metadata(&remote_path),
+        )
+        .await
+        .is_ok()
+        {
+            return Err("remote destination already exists".into());
+        }
+        let file = await_stage(
+            "create remote upload destination",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.open_with_flags_and_attributes(
+                remote_path.clone(),
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+                FileAttributes {
+                    permissions: Some(0o600),
+                    ..FileAttributes::empty()
+                },
+            ),
+        )
+        .await
+        .map_err(|error| {
+            if error.to_ascii_lowercase().contains("exist") {
+                "remote destination already exists".to_string()
+            } else {
+                error
+            }
+        })?;
+        (remote_path.clone(), file)
+    };
+    let (partial_path, mut destination) = upload_path;
+    let _ = on_progress.send(UploadProgress {
+        transferred: 0,
+        total,
+    });
+    let mut transferred = 0_u64;
+    let mut buffer = vec![0_u8; 64 * 1024];
+
+    let transfer_result: Result<(), String> = async {
+        loop {
+            if registration.cancelled.load(Ordering::Acquire) {
+                return Err("upload cancelled".into());
+            }
+            let count = source
+                .read(&mut buffer)
+                .await
+                .map_err(|error| format!("read upload source failed: {error}"))?;
+            if count == 0 {
+                break;
+            }
+            await_stage(
+                "write remote upload chunk",
+                SFTP_CHUNK_TIMEOUT,
+                destination.write_all(&buffer[..count]),
+            )
+            .await?;
+            transferred = transferred.saturating_add(count as u64);
+            let _ = on_progress.send(UploadProgress { transferred, total });
+        }
+        await_stage(
+            "finish remote upload",
+            SFTP_CHUNK_TIMEOUT,
+            destination.shutdown(),
+        )
+        .await?;
+        if registration.cancelled.load(Ordering::Acquire) {
+            return Err("upload cancelled".into());
+        }
+        Ok(())
+    }
+    .await;
+
+    drop(destination);
+    if let Err(error) = transfer_result {
+        return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
+    }
+    if overwrite {
+        if let Err(error) = validate_upload_replace_target(&sftp, &remote_path).await {
+            return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
+        }
+        if let Err(error) = registration.begin_commit() {
+            return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
+        }
+        let marker = format!(
+            "tunara-upload-{}",
+            content_fingerprint(transfer_id.as_bytes())
+        );
+        let command = format!(
+            "if [ -f {target} ] && [ ! -L {target} ]; then mv -fT -- {temporary} {target} && printf %s {marker}; else exit 73; fi",
+            target = shell_quote(&remote_path),
+            temporary = shell_quote(&partial_path),
+            marker = shell_quote(&marker),
+        );
+        let commit = ssh.exec(&command, 16 * 1024).await;
+        if !matches!(commit.as_deref(), Ok(output) if output == marker) {
+            // The command may have committed before its response was lost. A
+            // temp removal is safe because the temp and target are distinct.
+            // Report residue explicitly when absence/removal cannot be confirmed.
+            return Err(cleanup_uncertain_upload_partial(&sftp, &partial_path).await);
+        }
+    } else if let Err(error) = registration.begin_commit() {
+        return Err(cleanup_upload_partial(&sftp, &partial_path, error).await);
+    }
+    Ok(transferred)
+}
+
 /// Pick the better of an SFTP-derived path and an `echo $HOME` exec result.
 ///
 /// `canonicalize(".")` is the cheap, no-extra-round-trip way to learn the remote
@@ -1163,10 +1510,10 @@ mod tests {
     use super::{
         choose_remote_home, read_remote_editable_bytes, reconcile_text_write_with_sftp,
         remote_mtime_millis, remote_replace_lock_owner_path, remote_replace_lock_path,
-        remote_sibling_temp_path, remote_write_lock, shell_quote, stale_replace_lock_error,
-        validate_download_target, validate_fingerprint, validate_remote_edit_path,
-        write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome, WriteRequest,
-        REMOTE_WRITE_LOCKS,
+        remote_sibling_temp_path, remote_write_lock, shell_quote, ssh_fs_cancel_upload,
+        stale_replace_lock_error, validate_download_target, validate_fingerprint,
+        validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
+        TransactionOutcome, UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
     };
     use crate::modules::pty::PtyEvent;
     use crate::modules::ssh::auth::AuthOptions;
@@ -1181,6 +1528,19 @@ mod tests {
     fn remote_directory_mtime_is_normalized_to_epoch_milliseconds() {
         assert_eq!(remote_mtime_millis(1_700_000_000), 1_700_000_000_000);
         assert_eq!(remote_mtime_millis(0), 0);
+    }
+
+    #[test]
+    fn upload_cancellation_registry_distinguishes_cancel_from_commit() {
+        let cancelled = UploadRegistration::register("test-upload-cancel").unwrap();
+        assert!(ssh_fs_cancel_upload("test-upload-cancel".into()));
+        assert_eq!(cancelled.begin_commit().unwrap_err(), "upload cancelled");
+        drop(cancelled);
+        assert!(!ssh_fs_cancel_upload("test-upload-cancel".into()));
+
+        let committed = UploadRegistration::register("test-upload-commit").unwrap();
+        committed.begin_commit().unwrap();
+        assert!(!ssh_fs_cancel_upload("test-upload-commit".into()));
     }
 
     #[test]

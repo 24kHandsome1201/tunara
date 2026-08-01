@@ -1,3 +1,4 @@
+import { Channel } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
@@ -47,6 +48,123 @@ describe("FileExplorer directory navigation", () => {
 });
 
 describe("FileExplorer workspace files", () => {
+  test("uploads a selected local file with progress and refreshes the remote directory", async () => {
+    const calls: Array<{ command: string; payload: unknown }> = [];
+    let reads = 0;
+    mockIPC((command, payload) => {
+      calls.push({ command, payload });
+      if (command === "ssh_fs_read_dir") {
+        reads += 1;
+        return [];
+      }
+      if (command === "plugin:dialog|open") return "/home/alice/report.txt";
+      if (command === "ssh_fs_upload") {
+        const progress = (payload as { onProgress: Channel<{ transferred: number; total: number }> }).onProgress;
+        progress.onmessage({ transferred: 4, total: 8 });
+        return 8;
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={42} />);
+    await screen.findByText("Directory is empty");
+    fireEvent.click(screen.getByRole("button", { name: "Upload file…" }));
+
+    await waitFor(() => expect(calls.some(({ command, payload }) => command === "ssh_fs_upload"
+      && (payload as { localPath: string; remotePath: string; overwrite: boolean }).localPath === "/home/alice/report.txt"
+      && (payload as { localPath: string; remotePath: string; overwrite: boolean }).remotePath === "/srv/app/report.txt"
+      && !(payload as { localPath: string; remotePath: string; overwrite: boolean }).overwrite)).toBe(true));
+    await waitFor(() => expect(reads).toBe(2));
+    const toasts = useUIStore.getState().toasts;
+    expect(toasts[toasts.length - 1]).toMatchObject({ title: "Upload complete", variant: "success" });
+  });
+
+  test("cancels an in-flight upload from the progress surface", async () => {
+    let transferId = "";
+    let rejectUpload: ((error: Error) => void) | undefined;
+    const cancelled: string[] = [];
+    let cancelAttempts = 0;
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_read_dir") return [];
+      if (command === "plugin:dialog|open") return "/home/alice/large.bin";
+      if (command === "ssh_fs_upload") {
+        transferId = (payload as { transferId: string }).transferId;
+        const progress = (payload as { onProgress: Channel<{ transferred: number; total: number }> }).onProgress;
+        progress.onmessage({ transferred: 64, total: 1024 });
+        return new Promise<number>((_resolve, reject) => { rejectUpload = reject; });
+      }
+      if (command === "ssh_fs_cancel_upload") {
+        cancelAttempts += 1;
+        // Exercise the real invoke race where cancellation can arrive just
+        // before the backend has registered the transfer ID.
+        if (cancelAttempts === 1) return false;
+        cancelled.push((payload as { transferId: string }).transferId);
+        rejectUpload?.(new Error("upload cancelled"));
+        return true;
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={43} />);
+    await screen.findByText("Directory is empty");
+    fireEvent.click(screen.getByRole("button", { name: "Upload file…" }));
+    await screen.findByText(/Uploading large\.bin/);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(cancelled).toEqual([transferId]));
+    expect(cancelAttempts).toBe(2);
+    await waitFor(() => expect(screen.queryByText(/Uploading large\.bin/)).toBeNull());
+  });
+
+  test("does not offer an overwrite when cancellation wins the destination check race", async () => {
+    let rejectUpload: ((error: Error) => void) | undefined;
+    let uploadCalls = 0;
+    let confirmCalls = 0;
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [];
+      if (command === "plugin:dialog|open") return "/home/alice/existing.txt";
+      if (command === "ssh_fs_upload") {
+        uploadCalls += 1;
+        return new Promise<number>((_resolve, reject) => { rejectUpload = reject; });
+      }
+      if (command === "ssh_fs_cancel_upload") return false;
+      if (command === "plugin:dialog|message") {
+        confirmCalls += 1;
+        return true;
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={44} />);
+    await screen.findByText("Directory is empty");
+    fireEvent.click(screen.getByRole("button", { name: "Upload file…" }));
+    await screen.findByText(/Uploading existing\.txt/);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    rejectUpload?.(new Error("remote destination already exists"));
+
+    await waitFor(() => expect(screen.queryByText(/Uploading existing\.txt/)).toBeNull());
+    expect(uploadCalls).toBe(1);
+    expect(confirmCalls).toBe(0);
+  });
+
+  test("detaches stale upload UI when the remote PTY changes", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [];
+      if (command === "plugin:dialog|open") return "/home/alice/stale.bin";
+      if (command === "ssh_fs_upload") return new Promise<number>(() => {});
+      if (command === "ssh_fs_cancel_upload") return true;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const view = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={45} />);
+    await screen.findByText("Directory is empty");
+    fireEvent.click(screen.getByRole("button", { name: "Upload file…" }));
+    await screen.findByText(/Uploading stale\.bin/);
+
+    view.rerender(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={46} />);
+    await waitFor(() => expect(screen.queryByText(/Uploading stale\.bin/)).toBeNull());
+    expect((screen.getByRole("button", { name: "Upload file…" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   test("opens a remote file as a workspace tab", async () => {
     mockIPC((command) => {
       if (command === "ssh_fs_read_dir") {

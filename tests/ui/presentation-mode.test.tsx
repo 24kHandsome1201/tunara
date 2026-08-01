@@ -176,6 +176,44 @@ test("native fullscreen teaches the exit shortcut, fades, and reveals again at t
   }
 });
 
+test("the pure-mode exit button drags horizontally without turning the drag into an exit click", () => {
+  useUIStore.setState({ configLoaded: false, presentationMode: "pure", nativeFullscreen: true });
+  renderTitlebar();
+  const exit = screen.getByRole("button", { name: /Exit Pure Mode.+P/ }) as HTMLButtonElement;
+  Object.defineProperty(exit, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({ left: 390, right: 510, top: 8, bottom: 38, width: 120, height: 30, x: 390, y: 8, toJSON: () => ({}) }),
+  });
+  Object.defineProperties(exit, {
+    setPointerCapture: { configurable: true, value: vi.fn() },
+    hasPointerCapture: { configurable: true, value: () => true },
+    releasePointerCapture: { configurable: true, value: vi.fn() },
+  });
+
+  fireEvent.pointerDown(exit, { button: 0, pointerId: 7, clientX: 450 });
+  fireEvent.pointerMove(exit, { pointerId: 7, clientX: 600 });
+  fireEvent.pointerUp(exit, { pointerId: 7, clientX: 600 });
+  expect(exit.style.translate).toBe("150px 0");
+
+  fireEvent.click(exit);
+  expect(useUIStore.getState().presentationMode).toBe("pure");
+
+  fireEvent.pointerDown(exit, { button: 0, pointerId: 8, clientX: 600, clientY: 20 });
+  fireEvent.pointerMove(exit, { pointerId: 8, clientX: 600, clientY: 40 });
+  fireEvent.pointerUp(exit, { pointerId: 8, clientX: 600, clientY: 40 });
+  fireEvent.click(exit);
+  expect(useUIStore.getState().presentationMode).toBe("pure");
+
+  fireEvent.pointerDown(exit, { button: 0, pointerId: 9, clientX: 600, clientY: 20 });
+  fireEvent.pointerMove(exit, { pointerId: 9, clientX: 650, clientY: 20 });
+  expect(exit.style.translate).toBe("200px 0");
+  fireEvent.pointerCancel(exit, { pointerId: 9, clientX: 650, clientY: 20 });
+  expect(exit.style.translate).toBe("150px 0");
+
+  fireEvent.click(exit);
+  expect(useUIStore.getState().presentationMode).toBe("workspace");
+});
+
 test("the pure-mode command palette is a focused exit path", () => {
   useUIStore.setState({
     configLoaded: false,

@@ -5,7 +5,7 @@ import { computeVirtualSlice } from "./lib/diff-virtual";
 const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { confirm as confirmDialog, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   fsCancelActiveNameSearch,
   fsCancelGrep,
@@ -20,10 +20,12 @@ import {
   cancelRemoteSearch,
   invalidateRemoteSearchCache,
   sshDownload,
+  sshCancelUpload,
   sshGrep,
   sshHome,
   sshReadDir,
   sshSearch,
+  sshUpload,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -148,6 +150,27 @@ function compactRelativePath(path: string): string {
   return "…/" + parts.slice(-3).join("/");
 }
 
+interface UploadTransfer {
+  transferId?: string;
+  cancelled: boolean;
+  disposed?: boolean;
+  backendActive?: boolean;
+  cancelRequest?: Promise<boolean>;
+}
+
+function requestUploadCancellation(transfer: UploadTransfer): Promise<boolean> {
+  if (transfer.cancelRequest) return transfer.cancelRequest;
+  transfer.cancelRequest = (async () => {
+    while (transfer.backendActive && transfer.transferId) {
+      if (await sshCancelUpload(transfer.transferId)) return true;
+      // The invoke can reach the frontend before Rust has registered the ID.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return false;
+  })();
+  return transfer.cancelRequest;
+}
+
 type SortKey = "name" | "modified";
 type SortDirection = "asc" | "desc";
 
@@ -190,6 +213,14 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   const t = useT();
   const isRemote = remote;
   const remoteDisconnected = isRemote && remotePtyId === undefined;
+  const [upload, setUpload] = useState<{
+    transferId: string;
+    fileName: string;
+    transferred: number;
+    total: number;
+    cancelling: boolean;
+  } | null>(null);
+  const uploadTransferRef = useRef<UploadTransfer | null>(null);
 
   const downloadRemoteFile = async (remotePath: string, fileName: string) => {
     if (remotePtyId === undefined) return;
@@ -249,6 +280,127 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   // 目录列表虚拟滚动：行距恒定 32px（30 按钮 + 2 margin），仅列表很长时启用
   const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
+
+  useEffect(() => () => {
+    const transfer = uploadTransferRef.current;
+    if (!transfer) return;
+    transfer.cancelled = true;
+    transfer.disposed = true;
+    if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+    if (transfer.transferId) {
+      setUpload((current) => current?.transferId === transfer.transferId ? null : current);
+    }
+    if (transfer.transferId) void requestUploadCancellation(transfer).catch(() => {});
+  }, [remotePtyId, sessionId]);
+
+  const uploadToRemoteDirectory = async (directory: string) => {
+    if (remotePtyId === undefined || uploadTransferRef.current) return;
+    const transfer: UploadTransfer = { cancelled: false };
+    uploadTransferRef.current = transfer;
+    let selected: string | string[] | null;
+    try {
+      selected = await openDialog({
+        title: t("explorer.upload.choose_file"),
+        directory: false,
+        multiple: false,
+      });
+    } catch (error) {
+      if (!transfer.disposed) {
+        useUIStore.getState().addToast({ title: t("explorer.upload.failed"), subtitle: String(error), variant: "error" });
+      }
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      return;
+    }
+    const localPath = Array.isArray(selected) ? selected[0] : selected;
+    if (!localPath || transfer.cancelled) {
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      return;
+    }
+    const fileName = localPath.split(/[\\/]/).filter(Boolean).pop();
+    if (!fileName) {
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      return;
+    }
+    const remotePath = joinPath(directory, fileName);
+    const transferId = globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    transfer.transferId = transferId;
+    setUpload({ transferId, fileName, transferred: 0, total: 0, cancelling: false });
+
+    const throwIfCancelled = () => {
+      if (transfer.cancelled) throw new Error("upload cancelled");
+    };
+
+    const run = async (overwrite: boolean) => {
+      throwIfCancelled();
+      transfer.backendActive = true;
+      try {
+        return await sshUpload(
+          remotePtyId,
+          transferId,
+          localPath,
+          remotePath,
+          overwrite,
+          ({ transferred, total }) => {
+            if (!transfer.disposed) {
+              setUpload((current) => current?.transferId === transferId
+                ? { ...current, transferred, total }
+                : current);
+            }
+          },
+        );
+      } finally {
+        transfer.backendActive = false;
+      }
+    };
+
+    try {
+      let bytes: number;
+      try {
+        bytes = await run(false);
+      } catch (error) {
+        if (!String(error).includes("remote destination already exists")) throw error;
+        throwIfCancelled();
+        const overwrite = await confirmDialog(t("explorer.upload.overwrite_message", { file: fileName }), {
+          title: t("explorer.upload.overwrite_title"),
+          kind: "warning",
+        });
+        if (!overwrite) return;
+        throwIfCancelled();
+        bytes = await run(true);
+      }
+      if (!transfer.disposed) {
+        useUIStore.getState().addToast({
+          sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+          title: t("explorer.upload.complete"),
+          subtitle: `${fileName} · ${formatSize(bytes)}`,
+          variant: "success",
+        });
+        refresh();
+      }
+    } catch (error) {
+      if (!transfer.disposed && !/^(error: )?upload cancelled$/i.test(String(error))) {
+        useUIStore.getState().addToast({
+          sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+          title: t("explorer.upload.failed"),
+          subtitle: String(error),
+          variant: "error",
+        });
+      }
+    } finally {
+      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
+      setUpload((current) => current?.transferId === transferId ? null : current);
+    }
+  };
+
+  const cancelUpload = () => {
+    const transfer = uploadTransferRef.current;
+    if (!transfer) return;
+    transfer.cancelled = true;
+    setUpload((current) => current ? { ...current, cancelling: true } : null);
+    if (transfer.transferId && transfer.backendActive) {
+      void requestUploadCancellation(transfer).catch(() => {});
+    }
+  };
 
   const openEditor = (path: string, line?: number) => {
     void openInEditorWithToast(externalEditor, path, { line });
@@ -612,6 +764,18 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         >
           <RefreshIcon />
         </button>
+        {isRemote && (
+          <button
+            onClick={() => { void uploadToRemoteDirectory(currentPath); }}
+            disabled={remoteDisconnected || upload !== null}
+            className="hover-bg"
+            title={t("explorer.upload")}
+            aria-label={t("explorer.upload")}
+            style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}
+          >
+            ↑
+          </button>
+        )}
         <button
           onClick={() => setIncludeHidden((v) => !v)}
           className="hover-bg"
@@ -640,6 +804,18 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
           .*
         </button>
       </div>
+
+      {upload && (
+        <div role="status" aria-live="polite" style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {upload.cancelling ? t("explorer.upload.cancelling") : t("explorer.upload.progress", { file: upload.fileName, percent: upload.total > 0 ? Math.min(100, Math.round(upload.transferred / upload.total * 100)) : 0 })}
+            </span>
+            <button type="button" onClick={cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("explorer.upload.cancel")}</button>
+          </div>
+          <progress aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5, accentColor: "var(--c-accent)" }} />
+        </div>
+      )}
 
       <div
         style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}
