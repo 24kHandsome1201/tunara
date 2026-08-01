@@ -57,6 +57,14 @@ test("mounts only the active Inspector tab", () => {
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
 });
 
+test("projects only Files controls in Pure Mode", () => {
+  render(<InspectorPanel session={session} filesOnly />);
+
+  expect(screen.getByTestId("files-panel")).toBeTruthy();
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Files"]);
+  expect(useUIStore.getState().inspectorTab).toBe("overview");
+});
+
 test("flushes a pending note when switching away before the debounce", () => {
   render(<InspectorPanel session={session} />);
   fireEvent.click(screen.getByRole("tab", { name: "Notes" }));

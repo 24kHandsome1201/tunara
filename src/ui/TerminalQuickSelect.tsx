@@ -24,11 +24,10 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
     setSelectedIndex((index) => Math.min(index, Math.max(0, items.length - 1)));
   }, [items.length]);
 
-  // `autoFocus` on a generic div is not reliable in WKWebView. Focus in a
-  // mount effect so a command-palette focus trap finishes unmounting first and
-  // the quick-select dialog deterministically owns Escape/hint key events.
+  // Focus the composite owner so aria-activedescendant changes are announced.
+  // A mount effect also waits for the command-palette focus trap to unmount.
   useEffect(() => {
-    dialogRef.current?.focus();
+    listRef.current?.focus();
   }, []);
 
   useEffect(() => {
@@ -94,12 +93,12 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
           } else if (e.key === "Tab") {
             // 焦点陷阱：Tab/Shift+Tab 在弹窗内的按钮间循环，不逃逸到背景
             e.preventDefault();
-            const buttons = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button") ?? []);
-            if (buttons.length === 0) return;
-            const idx = buttons.indexOf(document.activeElement as HTMLElement);
+            const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("[tabindex='0'], button:not(:disabled)") ?? []);
+            if (focusable.length === 0) return;
+            const idx = focusable.indexOf(document.activeElement as HTMLElement);
             const next = e.shiftKey
-              ? buttons[idx <= 0 ? buttons.length - 1 : idx - 1]
-              : buttons[idx === -1 || idx === buttons.length - 1 ? 0 : idx + 1];
+              ? focusable[idx <= 0 ? focusable.length - 1 : idx - 1]
+              : focusable[idx === -1 || idx === focusable.length - 1 ? 0 : idx + 1];
             next?.focus();
           } else if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -147,12 +146,15 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
           <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 700, color: "var(--c-text-primary)" }}>{t("quick_select.title")}</span>
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{items.length}</span>
         </div>
-        <div ref={listRef} className="no-scrollbar scroll-fade-y" style={{ overflowY: "auto", padding: "6px 0" }}>
+        <div ref={listRef} role="listbox" tabIndex={0} aria-activedescendant={hintedItems[selectedIndex] ? `quick-select-option-${selectedIndex}` : undefined} aria-label={t("quick_select.title")} className="no-scrollbar scroll-fade-y" style={{ overflowY: "auto", padding: "6px 0", outline: "none", minHeight: 0 }}>
           {hintedItems.map(({ item, hint }, index) => {
             const selected = index === selectedIndex;
             return (
               <div
                 key={item.id}
+                id={`quick-select-option-${index}`}
+                role="option"
+                aria-selected={selected}
                 data-quick-select-index={index}
                 onMouseEnter={() => setSelectedIndex(index)}
                 // 单击即确认（原双击才能触发，单击是死区）；行内按钮 stopPropagation 防重复触发
@@ -162,7 +164,7 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                   padding: "7px 8px",
                   borderRadius: "var(--r-btn)",
                   display: "grid",
-                  gridTemplateColumns: "34px minmax(0, 1fr) auto",
+                  gridTemplateColumns: "34px minmax(0, 1fr)",
                   alignItems: "center",
                   gap: 8,
                   cursor: "pointer",
@@ -176,14 +178,16 @@ export function TerminalQuickSelect({ items, onClose, onCopy, onOpen }: Terminal
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-primary)", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)" }}>{item.label}</div>
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", marginTop: 1 }}>{item.detail}</div>
                 </div>
-                <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => onCopy(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.copy")}</button>
-                  {item.kind !== "text" && <button onClick={() => onOpen(item)} className="hover-bg" style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.open")}</button>}
-                </div>
               </div>
             );
           })}
         </div>
+        {hintedItems[selectedIndex] && (
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, padding: "8px 12px", borderTop: "1px solid var(--c-border-1)" }}>
+            <button aria-label={`${t("quick_select.copy")} ${hintedItems[selectedIndex].item.label}`} onClick={() => onCopy(hintedItems[selectedIndex].item)} className="hover-bg" style={{ height: 28, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.copy")}</button>
+            {hintedItems[selectedIndex].item.kind !== "text" && <button aria-label={`${t("quick_select.open")} ${hintedItems[selectedIndex].item.label}`} onClick={() => onOpen(hintedItems[selectedIndex].item)} className="hover-bg" style={{ height: 28, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("quick_select.open")}</button>}
+          </div>
+        )}
       </div>
     </>
   );

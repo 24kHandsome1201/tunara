@@ -45,11 +45,10 @@ export function useTerminalQuickSelect(
     if (!term) return;
     const next = collectTerminalQuickSelectItems(readQuickSelectTerminalLines(term), cwd);
     if (next.length === 0) {
-      notify(t("quick_select.empty.title"), t("quick_select.empty.body"), "error");
       return;
     }
     setItems(next);
-  }, [active, cwd, notify, t, termRef]);
+  }, [active, cwd, termRef]);
 
   useEffect(() => {
     const onQuickSelect = () => openQuickSelect();

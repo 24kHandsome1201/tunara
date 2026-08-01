@@ -168,6 +168,17 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
     setCaptureNotice(copied ? t("inspector.preview.capture_copied") : t("inspector.preview.capture_copy_failed"));
   };
 
+  const copyTelemetry = async () => {
+    if (!telemetry) return;
+    const ok = await copyText(telemetry.text);
+    useUIStore.getState().addToast({
+      sessionId: session.id,
+      title: t(ok ? "clipboard.copy_success" : "clipboard.copy_failed"),
+      subtitle: "",
+      variant: ok ? "success" : "error",
+    });
+  };
+
   const sendCapture = async () => {
     if (!capture) return;
     setBusy(true);
@@ -191,18 +202,18 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   );
 
   return (
-    <section style={{ padding: 10, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-1)", display: "flex", flexDirection: "column", gap: 7 }}>
+    <section className="preview-source-card" style={{ padding: 10, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-1)", display: "flex", flexDirection: "column", gap: 7, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontWeight: 650, color: "var(--c-text-primary)" }}>{t(isRemote ? "inspector.preview.remote_source" : "inspector.preview.source")}</span>
         <span role="status" style={{ marginLeft: "auto", color: displayStatus === "failed" ? "var(--c-danger)" : blocked || displayStatus === "stale" ? "var(--c-warning)" : displayStatus === "ready" ? "var(--c-success)" : "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>
           {t(`inspector.preview.status.${displayStatus}`)}
         </span>
       </div>
-      {isOpen && <form aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run(() => previewNavigate(effectiveSource, address), "loading"); }} style={{ display: "flex", gap: 6 }}>
-        <button type="button" aria-label={t("inspector.preview.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoBack(effectiveSource), "loading")}>←</button>
-        <button type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoForward(effectiveSource), "loading")}>→</button>
-        <input aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: 1, fontFamily: "var(--font-mono)" }} />
-        <button type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
+      {isOpen && <form className="preview-toolbar" aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run(() => previewNavigate(effectiveSource, address), "loading"); }} style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+        <button className="preview-control" type="button" aria-label={t("inspector.preview.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoBack(effectiveSource), "loading")}>←</button>
+        <button className="preview-control" type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoForward(effectiveSource), "loading")}>→</button>
+        <input className="preview-control" aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: "1 1 180px", fontFamily: "var(--font-mono)" }} />
+        <button className="preview-control" type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
       </form>}
       <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "var(--fs-meta)", color: "var(--c-text-3)", minWidth: 0 }}>
         {row(t("inspector.preview.repository"), source.repositoryId)}
@@ -262,11 +273,11 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
       </div>}
       {captureNotice && <div role="status" style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)" }}>{captureNotice}</div>}
       {isOpen && <section aria-label={t("inspector.preview.telemetry")} style={{ borderTop: "1px solid var(--c-border-1)", paddingTop: 7, display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
           <span style={{ fontWeight: 650 }}>{t("inspector.preview.telemetry")}</span>
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{telemetry?.events.length ?? 0}/{32}</span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            <button disabled={busy || !hasTelemetry} onClick={() => { if (telemetry) void copyText(telemetry.text); }}>{t("inspector.preview.telemetry.copy")}</button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+            <button disabled={busy || !hasTelemetry} onClick={() => { void copyTelemetry(); }}>{t("inspector.preview.telemetry.copy")}</button>
             <button data-preview-action="send-telemetry" disabled={busy || !!blocked || !hasTelemetry || effectiveSource.physicalPtyId === undefined} onClick={() => void run(() => previewTelemetrySend(effectiveSource))}>{t("inspector.preview.telemetry.send")}</button>
             <button disabled={busy || !hasTelemetry} onClick={() => void run(() => previewTelemetryClear(effectiveSource))}>{t("inspector.preview.telemetry.clear")}</button>
           </div>

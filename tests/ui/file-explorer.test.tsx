@@ -1,8 +1,8 @@
 import { Channel } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
-import { FileExplorer, sortExplorerEntries } from "@/ui/FileExplorer";
+import { describe, expect, test, vi } from "vitest";
+import { downloadFailureKey, FileExplorer, sortExplorerEntries } from "@/ui/FileExplorer";
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 
@@ -189,6 +189,112 @@ describe("FileExplorer workspace files", () => {
     fireEvent.contextMenu(file, { clientX: 20, clientY: 20 });
     expect(screen.getByText("Open in terminal")).toBeTruthy();
     expect(screen.queryByText("Open with VS Code")).toBeNull();
+  });
+
+  test("opens a remote file context menu from the keyboard and anchors it to the row", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [{ name: "keyboard.txt", kind: "file", size: 7, mtime: 0 }];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={47} />);
+    const file = await screen.findByRole("button", { name: /^keyboard\.txt/ });
+    Object.defineProperty(file, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 120, right: 320, top: 40, bottom: 72, width: 200, height: 32, x: 120, y: 40, toJSON: () => ({}) }),
+    });
+
+    fireEvent.keyDown(file, { key: "F10", shiftKey: true });
+
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(screen.getByText("Download…")).toBeTruthy();
+  });
+
+  test("blocks known oversized downloads before choosing a destination", async () => {
+    const save = vi.fn();
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [{ name: "huge.bin", kind: "file", size: 100 * 1024 * 1024 + 1, mtime: 0 }];
+      if (command === "plugin:dialog|save") {
+        save();
+        return "/tmp/huge.bin";
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={48} />);
+    const file = await screen.findByRole("button", { name: /^huge\.bin/ });
+    fireEvent.contextMenu(file, { clientX: 20, clientY: 20 });
+
+    const download = screen.getByRole("menuitem", { name: "Download unavailable (100 MiB limit)" });
+    expect(download.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(download);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  test("shows an immediate indeterminate download state and clears it on completion", async () => {
+    let finish: ((bytes: number) => void) | undefined;
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [{ name: "report.txt", kind: "file", size: 8, mtime: 0 }];
+      if (command === "plugin:dialog|save") return "/tmp/report.txt";
+      if (command === "ssh_fs_download") return new Promise<number>((resolve) => { finish = resolve; });
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={49} />);
+    const file = await screen.findByRole("button", { name: /^report\.txt/ });
+    fireEvent.contextMenu(file, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByText("Download…"));
+
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("Downloading report.txt");
+    expect(status.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByRole("progressbar", { name: "Remote file download in progress" })).toBeTruthy();
+    finish?.(8);
+    await waitFor(() => expect(screen.queryByText(/Downloading report\.txt/)).toBeNull());
+    const toasts = useUIStore.getState().toasts;
+    expect(toasts[toasts.length - 1]).toMatchObject({ title: "Download complete", variant: "success" });
+  });
+
+  test("locks download before the destination chooser resolves", async () => {
+    let finishChooser: ((path: string | null) => void) | undefined;
+    const chooser = vi.fn(() => new Promise<string | null>((resolve) => { finishChooser = resolve; }));
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [{ name: "report.txt", kind: "file", size: 8, mtime: 0 }];
+      if (command === "plugin:dialog|save") return chooser();
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={50} />);
+    const file = await screen.findByRole("button", { name: /^report\.txt/ });
+
+    fireEvent.contextMenu(file, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByText("Download…"));
+    fireEvent.contextMenu(file, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByText("Download…"));
+
+    expect(chooser).toHaveBeenCalledOnce();
+    finishChooser?.(null);
+  });
+
+  test("reports a destination chooser failure without leaking the raw error", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [{ name: "report.txt", kind: "file", size: 8, mtime: 0 }];
+      if (command === "plugin:dialog|save") throw new Error("native chooser secret detail");
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={51} />);
+    const file = await screen.findByRole("button", { name: /^report\.txt/ });
+    fireEvent.contextMenu(file, { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByText("Download…"));
+
+    await waitFor(() => {
+      const toasts = useUIStore.getState().toasts;
+      const toast = toasts[toasts.length - 1];
+      expect(toast).toMatchObject({ title: "Download failed", variant: "error" });
+      expect(toast?.subtitle).toBe("Check the SSH connection, destination permissions, and available disk space.");
+    });
+  });
+
+  test("maps download failures to actionable localized message keys", () => {
+    expect(downloadFailureKey(new Error("destination already exists"))).toBe("explorer.download.error_exists");
+    expect(downloadFailureKey(new Error("remote file exceeds download limit (100 MiB)"))).toBe("explorer.download.error_limit");
+    expect(downloadFailureKey(new Error("opaque backend failure"))).toBe("explorer.download.failed_hint");
   });
 
   test("keeps the cached remote tree inert while its PTY generation is disconnected", async () => {

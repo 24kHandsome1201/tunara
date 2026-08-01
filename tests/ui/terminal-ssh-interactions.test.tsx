@@ -17,7 +17,12 @@ import { useUIStore } from "@/state/ui";
 import { ContextMenu } from "@/ui/ContextMenu";
 import { SplitHandle } from "@/ui/SplitHandle";
 import { PtyErrorBanner, TerminalExitBanner } from "@/ui/TerminalExitBanner";
+import { TerminalQuickSelect } from "@/ui/TerminalQuickSelect";
 import { ToastContainer } from "@/ui/Toast";
+import { SessionCard } from "@/ui/SessionCard";
+import { buildSessionMenuItems } from "@/ui/sidebar-session-menu";
+import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
+import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import type { Session } from "@/ui/types";
 
 test("local PTY events wait for generation publication before reaching the renderer", async () => {
@@ -384,4 +389,121 @@ test("toast countdown stays paused while hover and keyboard focus overlap", () =
 
   fireEvent.blur(close);
   expect(progress?.style.animationPlayState).toBe("running");
+});
+
+test("Quick Select exposes listbox selection and target-specific action names", () => {
+  const onCopy = vi.fn();
+  const onOpen = vi.fn();
+  render(<TerminalQuickSelect
+    items={[
+      { id: "url:docs example", kind: "url", label: "docs.example", detail: "https://docs.example", copyText: "https://docs.example", target: "https://docs.example" },
+      { id: "file-two", kind: "file", label: "src/app.ts:12", detail: "/repo/src/app.ts", copyText: "/repo/src/app.ts:12", target: "/repo/src/app.ts", line: 12 },
+    ]}
+    onClose={() => {}}
+    onCopy={onCopy}
+    onOpen={onOpen}
+  />);
+
+  const listbox = screen.getByRole("listbox", { name: "Quick select" });
+  expect(document.activeElement).toBe(listbox);
+  expect(listbox.getAttribute("aria-activedescendant")).toBe("quick-select-option-0");
+  const options = screen.getAllByRole("option");
+  expect(options[0].getAttribute("aria-selected")).toBe("true");
+  expect(options[1].getAttribute("aria-selected")).toBe("false");
+  expect(screen.getByRole("button", { name: "Copy docs.example" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open src/app.ts:12" })).toBeNull();
+  expect(options[0].querySelector("button")).toBeNull();
+
+  fireEvent.keyDown(listbox, { key: "ArrowDown" });
+  expect(listbox.getAttribute("aria-activedescendant")).toBe("quick-select-option-1");
+  expect(options[1].getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("button", { name: "Copy src/app.ts:12" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Open src/app.ts:12" })).toBeTruthy();
+});
+
+test("session cards announce lifecycle, unread, and transport state", () => {
+  render(<SessionCard
+    session={{
+      id: "accessible-session",
+      title: "Deploy",
+      dir: "/srv/app",
+      branch: "main",
+      runState: "failed",
+      unread: true,
+      updatedAt: 1,
+      remote: { host: "ssh.example", port: 22, user: "deploy" },
+    }}
+    active
+    onSelect={() => {}}
+  />);
+
+  expect(screen.getByRole("button", { name: /Deploy, Failed, Unread, Remote SSH session/ })).toBeTruthy();
+});
+
+test("session menu exposes bounded keyboard reorder actions", () => {
+  const sessions: Session[] = [
+    { id: "one", title: "One", dir: "/repo", branch: "main", runState: "idle", updatedAt: 1 },
+    { id: "two", title: "Two", dir: "/repo", branch: "main", runState: "idle", updatedAt: 2 },
+    { id: "other", title: "Other", dir: "/other", branch: "main", runState: "idle", updatedAt: 3 },
+  ];
+  useSessionsStore.setState({ sessions });
+  const moved: number[] = [];
+  const items = buildSessionMenuItems({
+    session: sessions[0],
+    groupSessions: sessions.slice(0, 2),
+    canReorder: true,
+    onReordered: (position) => moved.push(position),
+    t: (key) => key,
+    externalEditor: "vscode",
+    onSelectSession: () => {},
+  });
+  const up = items.find((item) => item?.id === "session:move-up");
+  const down = items.find((item) => item?.id === "session:move-down");
+  expect(up && up.disabled).toBe(true);
+  expect(down && down.disabled).toBe(false);
+
+  down?.action();
+
+  expect(useSessionsStore.getState().sessions.map((session) => session.id)).toEqual(["two", "one", "other"]);
+  expect(moved).toEqual([2]);
+});
+
+test("workflow parameters keep a scrollable body and reachable footer", () => {
+  useUIStore.setState({
+    pendingWorkflow: {
+      workflowId: "many-params",
+      name: "Deploy workflow",
+      template: "deploy {{one}} {{two}} {{three}} {{four}} {{five}}",
+      dir: "/repo",
+    },
+  });
+  render(<WorkflowParamPrompt />);
+
+  const dialog = screen.getByRole("dialog", { name: "Deploy workflow" });
+  expect(dialog.style.maxHeight).toBe("calc(100vh - 32px)");
+  const scrollBody = screen.getByLabelText("one").parentElement?.parentElement as HTMLElement;
+  expect(scrollBody.style.overflowY).toBe("auto");
+  expect(screen.getByRole("button", { name: "Run" }).parentElement?.style.borderTop).toContain("var(--c-border-2)");
+  useUIStore.setState({ pendingWorkflow: null });
+});
+
+test("host key prompt constrains height and safely focuses Reject", () => {
+  useUIStore.setState({
+    hostKeyPrompts: [{
+      promptId: "host-key-overflow",
+      host: "very-long-host.example",
+      port: 22,
+      fingerprint: "SHA256:abcdefghijklmnopqrstuvwxyz",
+      keyType: "ssh-ed25519",
+      reason: "unknown",
+    }],
+  });
+  render(<HostKeyPromptDialog />);
+
+  const dialog = screen.getByRole("dialog", { name: "Verify host key" });
+  expect(dialog.style.maxHeight).toBe("calc(100vh - 32px)");
+  expect(screen.getByRole("button", { name: "Cancel" })).toBe(document.activeElement);
+  const body = screen.getByText(/very-long-host\.example/).parentElement as HTMLElement;
+  expect(body.style.overflowY).toBe("auto");
+  useUIStore.setState({ hostKeyPrompts: [] });
 });

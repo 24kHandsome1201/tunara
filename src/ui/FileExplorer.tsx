@@ -5,6 +5,7 @@ import { computeVirtualSlice } from "./lib/diff-virtual";
 const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
+const MAX_REMOTE_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 import { confirm as confirmDialog, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   fsCancelActiveNameSearch,
@@ -74,6 +75,26 @@ interface FileExplorerProps {
   remotePtyId?: number;
   /** Stable transport identity while the physical SSH PTY is unavailable. */
   remote?: boolean;
+}
+
+interface DownloadTransfer {
+  disposed: boolean;
+}
+
+export function downloadFailureKey(error: unknown): string {
+  const message = String(error).toLowerCase();
+  if (message.includes("destination already exists")) return "explorer.download.error_exists";
+  if (message.includes("exceeds download limit")) return "explorer.download.error_limit";
+  if (message.includes("under the home directory") || message.includes("refusing to write") || message.includes("download path")) {
+    return "explorer.download.error_unsafe_path";
+  }
+  if (message.includes("write local file") || message.includes("permission") || message.includes("space")) {
+    return "explorer.download.error_local_write";
+  }
+  if (message.includes("connection") || message.includes("transport") || message.includes("session") || message.includes("timed out") || message.includes("timeout") || message.includes("pty")) {
+    return "explorer.download.error_connection";
+  }
+  return "explorer.download.failed_hint";
 }
 
 function FolderIcon() {
@@ -221,16 +242,31 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     cancelling: boolean;
   } | null>(null);
   const uploadTransferRef = useRef<UploadTransfer | null>(null);
+  const [download, setDownload] = useState<{ fileName: string } | null>(null);
+  const downloadTransferRef = useRef<DownloadTransfer | null>(null);
+  const copyPathWithFeedback = async (path: string) => {
+    const ok = await copyText(path);
+    useUIStore.getState().addToast({
+      sessionId,
+      title: t(ok ? "clipboard.copy_success" : "clipboard.copy_failed"),
+      subtitle: "",
+      variant: ok ? "success" : "error",
+    });
+  };
 
   const downloadRemoteFile = async (remotePath: string, fileName: string) => {
-    if (remotePtyId === undefined) return;
-    const localPath = await saveDialog({
-      title: t("explorer.download.choose_destination"),
-      defaultPath: fileName,
-    });
-    if (!localPath) return;
+    if (remotePtyId === undefined || downloadTransferRef.current) return;
+    const transfer: DownloadTransfer = { disposed: false };
+    downloadTransferRef.current = transfer;
     try {
+      const localPath = await saveDialog({
+        title: t("explorer.download.choose_destination"),
+        defaultPath: fileName,
+      });
+      if (!localPath || transfer.disposed) return;
+      setDownload({ fileName });
       const bytes = await sshDownload(remotePtyId, remotePath, localPath);
+      if (transfer.disposed) return;
       useUIStore.getState().addToast({
         sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
         title: t("explorer.download.complete"),
@@ -238,12 +274,17 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         variant: "success",
       });
     } catch (error) {
-      useUIStore.getState().addToast({
-        sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
-        title: t("explorer.download.failed"),
-        subtitle: String(error),
-        variant: "error",
-      });
+      if (!transfer.disposed) {
+        useUIStore.getState().addToast({
+          sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
+          title: t("explorer.download.failed"),
+          subtitle: t(downloadFailureKey(error)),
+          variant: "error",
+        });
+      }
+    } finally {
+      if (downloadTransferRef.current === transfer) downloadTransferRef.current = null;
+      if (!transfer.disposed) setDownload(null);
     }
   };
   // For local sessions the base is rootDir directly. Remote sessions use an
@@ -282,6 +323,12 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
 
   useEffect(() => () => {
+    const downloadTransfer = downloadTransferRef.current;
+    if (downloadTransfer) {
+      downloadTransfer.disposed = true;
+      if (downloadTransferRef.current === downloadTransfer) downloadTransferRef.current = null;
+      setDownload(null);
+    }
     const transfer = uploadTransferRef.current;
     if (!transfer) return;
     transfer.cancelled = true;
@@ -304,9 +351,9 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         directory: false,
         multiple: false,
       });
-    } catch (error) {
+    } catch {
       if (!transfer.disposed) {
-        useUIStore.getState().addToast({ title: t("explorer.upload.failed"), subtitle: String(error), variant: "error" });
+        useUIStore.getState().addToast({ title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
       }
       if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
       return;
@@ -382,7 +429,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         useUIStore.getState().addToast({
           sessionId: useSessionsStore.getState().activeSessionId ?? undefined,
           title: t("explorer.upload.failed"),
-          subtitle: String(error),
+          subtitle: t("explorer.upload.failed_hint"),
           variant: "error",
         });
       }
@@ -816,6 +863,12 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
           <progress aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5, accentColor: "var(--c-accent)" }} />
         </div>
       )}
+      {download && (
+        <div role="status" aria-live="polite" aria-busy="true" style={{ padding: "7px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={download.fileName}>
+          {t("explorer.download.progress", { file: download.fileName })}
+          <progress aria-label={t("explorer.download.progress_label")} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
+        </div>
+      )}
 
       <div
         style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}
@@ -1054,18 +1107,25 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
                 data-explorer-item
                 data-listing-index={dirSlice.first + sliceIndex}
                 onClick={() => enterDir(entry.name)}
+                onKeyDown={(e) => {
+                  if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));
+                  }
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setContextMenu({
                     position: { x: e.clientX, y: e.clientY },
                     items: isRemote
                       ? [
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                         ]
                       : [
                           { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
                           { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openEditor(fullPath); } },
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                         ],
                   });
                 }}
@@ -1096,6 +1156,13 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
                     data-listing-index={dirs.length + fileSlice.first + sliceIndex}
                     data-file-path={fullPath}
                     onClick={() => openFile(fullPath)}
+                    onKeyDown={(e) => {
+                      if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));
+                      }
+                    }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({
@@ -1104,15 +1171,15 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
                           ? [
                               { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
                               { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
-                              { id: "file:download", label: t("explorer.download"), icon: "download", action: () => { void downloadRemoteFile(fullPath, entry.name); } },
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                              { id: "file:download", label: entry.size > MAX_REMOTE_DOWNLOAD_BYTES ? t("explorer.download.too_large") : t("explorer.download"), icon: "download", disabled: entry.size > MAX_REMOTE_DOWNLOAD_BYTES || download !== null, action: () => { void downloadRemoteFile(fullPath, entry.name); } },
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                             ]
                           : [
                               { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
                               { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
                               { id: "file:open-vscode", label: t("explorer.open_in_vscode"), icon: "editor", action: () => { void openInEditorWithToast("vscode", fullPath, { sessionId }); } },
                               ...(externalEditor === "vscode" ? [] : [{ id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor" as const, action: () => { openEditor(fullPath); } }]),
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyText(fullPath); } },
+                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
                             ],
                       });
                     }}

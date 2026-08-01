@@ -185,6 +185,8 @@ export function Settings({ onClose }: SettingsProps) {
   const setTerminalClipboardWrite = useUIStore((s) => s.setTerminalClipboardWrite);
   const terminalInlineImages = useUIStore((s) => s.terminalInlineImages);
   const setTerminalInlineImages = useUIStore((s) => s.setTerminalInlineImages);
+  const showPureModeFilesButton = useUIStore((s) => s.showPureModeFilesButton);
+  const setShowPureModeFilesButton = useUIStore((s) => s.setShowPureModeFilesButton);
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
 
@@ -478,6 +480,15 @@ export function Settings({ onClose }: SettingsProps) {
                   </button>
                 </div>
                 <div style={SECTION_HINT}>{t("settings.appearance.inline_images.hint")}</div>
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={TOGGLE_ROW}>
+                  <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.pure_files_button")}</span>
+                  <button onClick={() => setShowPureModeFilesButton(!showPureModeFilesButton)} role="switch" aria-checked={showPureModeFilesButton} aria-label={t("settings.appearance.pure_files_button")} style={{ ...TOGGLE_BUTTON, background: showPureModeFilesButton ? "var(--c-accent)" : "var(--c-bg-3)" }}>
+                    <div style={{ ...TOGGLE_KNOB, transform: showPureModeFilesButton ? "translateX(16px)" : "translateX(0)" }} />
+                  </button>
+                </div>
+                <div style={SECTION_HINT}>{t("settings.appearance.pure_files_button.hint")}</div>
               </div>
               {_isMac && (
                 <div style={{ marginBottom: 24 }}>

@@ -160,8 +160,18 @@ test("native fullscreen teaches the exit shortcut, fades, and reveals again at t
 
     expect(screen.getByRole("button", { name: /Exit Pure Mode.+P/ })).toBeTruthy();
 
-    act(() => vi.advanceTimersByTime(4000));
-    expect(screen.queryByRole("button", { name: /Exit Pure Mode.+P/ })).toBeNull();
+    act(() => vi.advanceTimersByTime(1200));
+    const edgeExit = screen.getByRole("button", { name: /Exit Pure Mode.+P/ });
+    expect(edgeExit.getAttribute("data-visible")).toBe("false");
+    expect(edgeExit.style.top).toBe("-26px");
+
+    fireEvent.pointerDown(edgeExit, { button: 0, pointerId: 3, clientX: 450, clientY: 1 });
+    expect(edgeExit.getAttribute("data-visible")).toBe("true");
+    fireEvent.pointerUp(edgeExit, { pointerId: 3, clientX: 450, clientY: 1 });
+    act(() => vi.advanceTimersByTime(1200));
+    edgeExit.blur();
+    fireEvent.focus(edgeExit);
+    expect(edgeExit.getAttribute("data-visible")).toBe("true");
 
     const pointerMove = new PointerEvent("pointermove", { bubbles: true, cancelable: true, clientY: 2 });
     act(() => window.dispatchEvent(pointerMove));
@@ -174,6 +184,31 @@ test("native fullscreen teaches the exit shortcut, fades, and reveals again at t
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("Pure Mode Files button follows its setting while the command palette remains an alternate path", () => {
+  useUIStore.setState({
+    configLoaded: false,
+    presentationMode: "pure",
+    nativeFullscreen: false,
+    showPureModeFilesButton: true,
+    panelVisible: false,
+    inspectorTab: "overview",
+  });
+  const view = renderTitlebar();
+
+  fireEvent.click(screen.getByRole("button", { name: "Open Files in Pure Mode" }));
+  expect(useUIStore.getState()).toMatchObject({ panelVisible: true, inspectorTab: "files" });
+
+  act(() => useUIStore.getState().setShowPureModeFilesButton(false));
+  expect(screen.queryByRole("button", { name: "Open Files in Pure Mode" })).toBeNull();
+  view.unmount();
+
+  useUIStore.setState({ overlay: "command-palette" });
+  render(<CommandPalette onClose={() => useUIStore.getState().setOverlay(null)} />);
+  expect(screen.getByText("Open Files in Pure Mode")).toBeTruthy();
+  fireEvent.click(screen.getByText("Open Files in Pure Mode"));
+  expect(useUIStore.getState()).toMatchObject({ panelVisible: true, inspectorTab: "files", presentationMode: "pure" });
 });
 
 test("the pure-mode exit button drags horizontally without turning the drag into an exit click", () => {

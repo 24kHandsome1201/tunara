@@ -121,6 +121,8 @@ export function WorkflowParamPrompt() {
           transform: "translate(-50%, -50%)",
           width: 440,
           maxWidth: "calc(100vw - 32px)",
+          maxHeight: "calc(100vh - 32px)",
+          minHeight: 0,
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
@@ -137,7 +139,7 @@ export function WorkflowParamPrompt() {
           </span>
         </div>
 
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 0, flex: 1 }}>
           {params.map((p, index) => (
             <div key={p.key}>
               <label htmlFor={`workflow-param-${index}`} style={{ display: "block", fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 4 }}>

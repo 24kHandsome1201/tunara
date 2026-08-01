@@ -23,7 +23,7 @@ type DragStyle = React.CSSProperties & { WebkitAppRegion?: string };
 
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
 const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1;
-const FULLSCREEN_EXIT_HINT_DURATION_MS = 4000;
+const FULLSCREEN_EXIT_HINT_DURATION_MS = 1200;
 
 interface TitlebarProps {
   sessions: Session[];
@@ -189,8 +189,6 @@ function PresentationModeButton({
       onBlur={onReleaseVisible}
       title={accessibleLabel}
       aria-label={accessibleLabel}
-      aria-hidden={floating && !visible ? true : undefined}
-      tabIndex={floating && !visible ? -1 : 0}
       className={floating || surface ? "presentation-mode-exit-hint" : "hover-bg"}
       style={{
         height: floating ? 30 : "var(--h-titlebar-control)",
@@ -209,12 +207,12 @@ function PresentationModeButton({
         translate: draggable ? `${dragOffset}px 0` : undefined,
         ...(floating ? {
           position: "fixed",
-          top: 8,
+          top: visible ? 8 : -26,
           left: "50%",
           zIndex: 900,
-          opacity: visible ? 1 : 0,
-          transform: `translate(-50%, ${visible ? "0" : "-8px"})`,
-          pointerEvents: visible ? "auto" : "none",
+          opacity: visible ? 1 : 0.01,
+          transform: "translateX(-50%)",
+          pointerEvents: "auto",
           transition: "opacity var(--duration-normal) var(--ease-smooth), transform var(--duration-normal) var(--ease-out-expo)",
           boxShadow: "var(--shadow-menu)",
         } : {}),
@@ -413,6 +411,7 @@ function TitlebarImpl({
   const t = useT();
   const presentationMode = useUIStore((s) => s.presentationMode);
   const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
+  const showPureModeFilesButton = useUIStore((s) => s.showPureModeFilesButton);
   const fileTabs = useUIStore((s) => s.fileTabs);
   const activeFileTabId = useUIStore((s) => s.activeFileTabId);
   const setActiveFileTab = useUIStore((s) => s.setActiveFileTab);
@@ -645,6 +644,13 @@ function TitlebarImpl({
       >
         <div data-tauri-drag-region style={{ flex: 1 }} />
         <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: _isMac ? 12 : 4, WebkitAppRegion: "no-drag" } as DragStyle}>
+          {showPureModeFilesButton && (
+            <button type="button" className="hover-bg" aria-label={t("pure.files.open")} title={t("pure.files.open")}
+              onClick={() => { const ui = useUIStore.getState(); ui.setInspectorTab("files"); ui.setPanelVisible(true); }}
+              style={{ height: "var(--h-titlebar-control)", padding: "0 8px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "transparent", color: "var(--c-text-2)", cursor: "pointer" }}>
+              {t("pure.files.button")}
+            </button>
+          )}
           <PresentationModeButton
             label={t("palette.cmd.exit_pure")}
             shortcut={presentationModeShortcut}

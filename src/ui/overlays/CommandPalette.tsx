@@ -81,7 +81,16 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     // In pure mode the palette is a deliberate escape hatch, not a second
     // business surface layered over the terminal canvas.
-    if (presentationMode === "pure") return [presentationCommand];
+    if (presentationMode === "pure") return [
+      {
+        id: "open-files-pure",
+        label: t("pure.files.open"),
+        icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+        section: t("palette.section.action"), scopes: ["action", "app"], originalIndex: idx++,
+        action: () => { const ui = uiStore.getState(); ui.setInspectorTab("files"); ui.setPanelVisible(true); onClose(); },
+      },
+      presentationCommand,
+    ];
 
     [...sessions]
       .filter((s: Session) => s.id !== activeSessionId)

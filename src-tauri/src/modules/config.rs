@@ -36,6 +36,7 @@ pub struct AppearanceConfig {
     pub bell_notification: bool,
     pub terminal_clipboard_write: bool,
     pub terminal_inline_images: bool,
+    pub show_pure_mode_files_button: bool,
     pub language: String,
     pub global_shortcut: String,
 }
@@ -59,6 +60,7 @@ impl Default for AppearanceConfig {
             bell_notification: true,
             terminal_clipboard_write: false,
             terminal_inline_images: true,
+            show_pure_mode_files_button: true,
             language: "system".into(),
             global_shortcut: "CmdOrCtrl+Shift+T".into(),
         }
@@ -169,7 +171,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 18] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 19] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -192,6 +194,10 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 1
         (
             "terminal_inline_images",
             value(config.terminal_inline_images),
+        ),
+        (
+            "show_pure_mode_files_button",
+            value(config.show_pure_mode_files_button),
         ),
         ("language", value(config.language.clone())),
         ("global_shortcut", value(config.global_shortcut.clone())),
@@ -388,6 +394,7 @@ future_action = "Mod+F"
         config.appearance.font_size = 999;
         config.appearance.sidebar_width = 1;
         config.appearance.panel_width = 810;
+        config.appearance.show_pure_mode_files_button = false;
         config
             .keybindings
             .insert("new_terminal".into(), "Mod+Shift+T".into());
@@ -408,6 +415,7 @@ future_action = "Mod+F"
         assert_eq!(loaded.config.appearance.font_size, MAX_FONT_SIZE);
         assert_eq!(loaded.config.appearance.sidebar_width, MIN_SIDEBAR_WIDTH);
         assert_eq!(loaded.config.appearance.panel_width, 810);
+        assert!(!loaded.config.appearance.show_pure_mode_files_button);
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
@@ -480,6 +488,7 @@ font_size = 15
         assert!(saved.contains("[appearance]"));
         assert!(saved.contains("[keybindings]"));
         assert!(saved.contains("scrollback = 2000"));
+        assert!(saved.contains("show_pure_mode_files_button = true"));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }

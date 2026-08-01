@@ -72,6 +72,8 @@ export function TerminalSearchBar({
         position: "absolute",
         top: 38,
         right: 12,
+        left: 12,
+        maxWidth: "max-content",
         zIndex: 30,
         background: "var(--c-bg-white)",
         border: "1px solid var(--c-border-2)",
@@ -80,6 +82,7 @@ export function TerminalSearchBar({
         display: "flex",
         alignItems: "center",
         gap: 3,
+        flexWrap: "wrap",
         boxShadow: "var(--shadow-menu)",
         animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
       }}
@@ -111,6 +114,8 @@ export function TerminalSearchBar({
           color: "var(--c-text-primary)",
           fontFamily: "var(--font-ui)",
           width: 180,
+          minWidth: 72,
+          flex: "1 1 120px",
         }}
       />
 
