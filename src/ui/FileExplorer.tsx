@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
 /** 目录行距：30px 按钮 + 2px marginBottom，恒定值（展开态只改底色不改高度）。 */
@@ -7,6 +7,7 @@ const LISTING_ROW_HEIGHT = 32;
 const LISTING_TOP_INSET = 33;
 const MAX_REMOTE_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 import { confirm as confirmDialog, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   fsCancelActiveNameSearch,
   fsCancelGrep,
@@ -33,6 +34,7 @@ import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState 
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useT, t as staticT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
@@ -40,6 +42,14 @@ import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
 import { FileSearchGeneration } from "./lib/file-search-session";
+import { classifyTransferDrop, expandFolderTransfer, renamedSibling } from "@/modules/ssh/transfer-intent";
+import { validateManifest } from "@/modules/ssh/transfer-bridge";
+import { useTransferStore, type TransferRequest } from "@/modules/ssh/transfer-store";
+import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
+import { RemoteFsMutationDialog } from "@/modules/ssh/remote-fs/RemoteFsMutationDialog";
+import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
+import { performRemoteMutation } from "@/modules/ssh/remote-fs/actions";
+import { useModalBehavior } from "./overlays/Modal";
 import {
   initialFileSearchLimit,
   maxFileSearchLimit,
@@ -73,12 +83,29 @@ interface FileExplorerProps {
    * rootDir 有 OSC 7 识别出的绝对路径时从该 cwd 打开；旧会话标签才解析 home。
    */
   remotePtyId?: number;
+  /** Backend-authored generation required by transfer/mutation v1 contracts. */
+  transportGeneration?: string;
   /** Stable transport identity while the physical SSH PTY is unavailable. */
   remote?: boolean;
+  remoteHost?: string;
+  onInspectRemotePath?: (path: string) => void;
 }
 
 interface DownloadTransfer {
   disposed: boolean;
+}
+
+interface ExplorerTreeNode {
+  entry: DirEntry;
+  path: string;
+  parentPath: string | null;
+  level: number;
+  posInSet: number;
+  setSize: number;
+}
+
+interface TreeLoadError {
+  kind: "readFailed";
 }
 
 export function downloadFailureKey(error: unknown): string {
@@ -104,6 +131,11 @@ export interface UploadFailure {
 
 export function parseUploadFailure(error: unknown): UploadFailure {
   const raw = String(error);
+  if (raw.includes("SSH_TRANSFER_CANCELLED")) return { kind: "cancelled" };
+  if (raw.includes("SSH_TRANSFER_UNSUPPORTED")) return { kind: "unsupported" };
+  if (raw.includes("SSH_TRANSFER_CHANGED")) return { kind: "changed" };
+  if (raw.includes("SSH_TRANSFER_OUTCOME_UNKNOWN")) return { kind: "uncertain" };
+  if (raw.includes("SSH_TRANSFER_PARTIAL")) return { kind: "partial" };
   const prefix = "tunaraUploadError:";
   const offset = raw.indexOf(prefix);
   if (offset >= 0) {
@@ -220,6 +252,8 @@ interface UploadTransfer {
   disposed?: boolean;
   backendActive?: boolean;
   cancelRequest?: Promise<boolean>;
+  lastAnnouncementAt?: number;
+  lastAnnouncementPercent?: number;
 }
 
 function requestUploadCancellation(transfer: UploadTransfer): Promise<boolean> {
@@ -273,7 +307,15 @@ const folderEmptyIcon = (
   </svg>
 );
 
-export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remotePtyId !== undefined }: FileExplorerProps) {
+export function FileExplorer({
+  sessionId,
+  rootDir,
+  remotePtyId,
+  transportGeneration,
+  remote = remotePtyId !== undefined,
+  remoteHost,
+  onInspectRemotePath,
+}: FileExplorerProps) {
   const t = useT();
   const isRemote = remote;
   const remoteDisconnected = isRemote && remotePtyId === undefined;
@@ -285,6 +327,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     cancelling: boolean;
   } | null>(null);
   const uploadTransferRef = useRef<UploadTransfer | null>(null);
+  const [transferAnnouncement, setTransferAnnouncement] = useState("");
   const [download, setDownload] = useState<{ fileName: string } | null>(null);
   const downloadTransferRef = useRef<DownloadTransfer | null>(null);
   const copyPathWithFeedback = async (path: string) => {
@@ -354,6 +397,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   const [contextMenu, setContextMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
+    bindingKey: string;
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
   const activeFilePath = useUIStore((s) =>
@@ -364,6 +408,183 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   // 目录列表虚拟滚动：行距恒定 32px（30 按钮 + 2 margin），仅列表很长时启用
   const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
+  const [listingFocusIndex, setListingFocusIndex] = useState(0);
+  const explorerRef = useRef<HTMLDivElement>(null);
+  const [dropActive, setDropActive] = useState(false);
+  const [dropMessage, setDropMessage] = useState("");
+  const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string } | null>(null);
+  const [mutationRequest, setMutationRequest] = useState<MutationRequestV1 | null>(null);
+  const [mutationBusy, setMutationBusy] = useState(false);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
+  const [treeChildren, setTreeChildren] = useState<Record<string, DirEntry[]>>({});
+  const [treeLoading, setTreeLoading] = useState<Set<string>>(() => new Set());
+  const [treeErrors, setTreeErrors] = useState<Record<string, TreeLoadError>>({});
+  const treeRequestGenerationRef = useRef(0);
+  const treeRequestTokensRef = useRef(new Map<string, string>());
+  const treeRequestContext = JSON.stringify({
+    logical: sessionId,
+    physical: remotePtyId ?? null,
+    transport: transportGeneration ?? null,
+    currentPath,
+    includeHidden,
+    remote: isRemote,
+    disconnected: remoteDisconnected,
+  });
+  const treeRequestContextRef = useRef(treeRequestContext);
+  // Render-time assignment closes the window before passive effect cleanup.
+  treeRequestContextRef.current = treeRequestContext;
+  const mutationComposerRef = useRef<HTMLDivElement>(null);
+  const menuReturnFocusRef = useRef<HTMLElement>(null);
+  useModalBehavior(mutationComposerRef, {
+    active: mutationComposer !== null,
+    initialFocus: "input",
+    bindingKey: mutationComposer?.bindingKey,
+    currentBindingKey: treeRequestContext,
+    returnFocusToken: menuReturnFocusRef,
+    onRequestClose: (reason) => {
+      if (mutationBusy && reason !== "stale-binding") return;
+      setMutationComposer(null);
+      restoreMenuFocus();
+    },
+  });
+  const focusedPathRef = useRef<string | null>(null);
+  const menuReturnPathRef = useRef<string | null>(null);
+  const suppressMenuFocusRef = useRef(false);
+  const typeaheadRef = useRef({ text: "", timer: 0 });
+  const binding = useMemo<SessionBindingV1 | null>(() => isRemote
+    && remotePtyId !== undefined
+    && transportGeneration
+    ? { logicalSessionId: sessionId, physicalPtyId: remotePtyId, transportGeneration }
+    : null, [isRemote, remotePtyId, sessionId, transportGeneration]);
+  const mutationRequestIsCurrent = !mutationRequest || !!binding
+    && mutationRequest.binding.logicalSessionId === binding.logicalSessionId
+    && mutationRequest.binding.physicalPtyId === binding.physicalPtyId
+    && mutationRequest.binding.transportGeneration === binding.transportGeneration;
+  useEffect(() => {
+    if (mutationRequest && !mutationRequestIsCurrent) setMutationRequest(null);
+  }, [mutationRequest, mutationRequestIsCurrent]);
+
+  const queueLocalPaths = useCallback(async (paths: string[], destinationRoot: string) => {
+    if (!binding || paths.length === 0) return false;
+    const requests: TransferRequest[] = [];
+    const directories: string[] = [];
+    for (const localPath of paths) {
+      let isDirectory = false;
+      try {
+        await fsReadDir(localPath, false);
+        isDirectory = true;
+      } catch {
+        // Tauri exposes OS paths but not their kinds. Directory validation is
+        // authoritative below; ordinary files continue through the file intent.
+      }
+      const intent = classifyTransferDrop({ localPaths: [localPath], folder: isDirectory });
+      if (intent.kind === "folder") {
+        const manifest = await validateManifest({ kind: "local", root: intent.root });
+        const leaf = intent.root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "upload";
+        const plan = expandFolderTransfer({
+          manifest,
+          binding,
+          direction: "upload",
+          sourceRoot: intent.root,
+          destinationRoot: joinPath(destinationRoot, leaf),
+          conflict: "rename",
+        });
+        directories.push(...plan.directories);
+        requests.push(...plan.requests);
+      } else if (intent.kind === "upload") {
+        for (const source of intent.localPaths) {
+          const leaf = source.split(/[\\/]/).pop() ?? "upload";
+          requests.push({ binding, direction: "upload", source, destination: joinPath(destinationRoot, leaf), conflict: "rename" });
+        }
+      }
+    }
+    const conflicts: TransferRequest[] = [];
+    for (const request of requests) {
+      try {
+        await sshStatV1(binding, request.destination);
+        conflicts.push(request);
+      } catch (error) {
+        if (!String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) throw error;
+      }
+    }
+    if (conflicts.length > 0) {
+      const endpoint = remoteHost ?? `${binding.logicalSessionId} / PTY ${binding.physicalPtyId}`;
+      const replaceAll = await confirmDialog(t("transfer.preflight.message", {
+        endpoint,
+        root: destinationRoot,
+        count: conflicts.length,
+      }), { title: t("transfer.preflight.title"), kind: "warning" });
+      if (replaceAll) {
+        for (const conflict of conflicts) conflict.conflict = "replace";
+      } else if (await confirmDialog(t("transfer.preflight.rename_all", { count: conflicts.length }), { title: t("transfer.preflight.title"), kind: "warning" })) {
+        const occupied = new Set(requests.map((request) => request.destination));
+        for (const conflict of conflicts) {
+          let candidate = renamedSibling(conflict.destination, occupied);
+          for (;;) {
+            try { await sshStatV1(binding, candidate); occupied.add(candidate); candidate = renamedSibling(conflict.destination, occupied); }
+            catch (error) { if (String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) break; throw error; }
+          }
+          conflict.destination = candidate;
+          conflict.conflict = "rename";
+          occupied.add(conflict.destination);
+        }
+      } else if (await confirmDialog(t("transfer.preflight.skip_all", { count: conflicts.length }), { title: t("transfer.preflight.title"), kind: "warning" })) {
+        for (const conflict of conflicts) requests.splice(requests.indexOf(conflict), 1);
+      } else {
+        const occupied = new Set(requests.map((request) => request.destination));
+        for (const conflict of conflicts) {
+          const replace = await confirmDialog(t("transfer.preflight.replace_item", { path: conflict.destination, endpoint }), { title: t("transfer.preflight.title"), kind: "warning" });
+          if (replace) { conflict.conflict = "replace"; continue; }
+          const rename = await confirmDialog(t("transfer.preflight.rename_item", { path: conflict.destination }), { title: t("transfer.preflight.title"), kind: "warning" });
+          if (rename) {
+            let candidate = renamedSibling(conflict.destination, occupied);
+            for (;;) {
+              try { await sshStatV1(binding, candidate); occupied.add(candidate); candidate = renamedSibling(conflict.destination, occupied); }
+              catch (error) { if (String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) break; throw error; }
+            }
+            conflict.destination = candidate;
+            conflict.conflict = "rename";
+            occupied.add(conflict.destination);
+          } else requests.splice(requests.indexOf(conflict), 1);
+        }
+      }
+    }
+    // Folder uploads are a two-phase operation: materialize every directory
+    // first (including empty ones), then publish file work to the queue. A
+    // typed mutation failure aborts the whole plan so children never race a
+    // missing parent and the UI never claims the folder was queued.
+    try {
+      for (const path of [...new Set(directories)]) {
+        const parent = path.replace(/[\\/][^\\/]+$/, "") || "/";
+        const parentMetadata = await sshStatV1(binding, parent);
+        let existing;
+        try {
+          existing = await sshStatV1(binding, path);
+        } catch (error) {
+          if (!String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) throw error;
+          existing = undefined;
+        }
+        if (existing?.kind === "directory") continue;
+        if (existing) throw new Error("folder destination already exists and is not a directory");
+        const request: MutationRequestV1 = {
+          operationId: nextOperationId(),
+          binding,
+          operation: { kind: "mkdir", path },
+          precondition: { source: { state: "absent" }, sourceParent: parentMetadata.precondition },
+        };
+        const { result } = await performRemoteMutation(request);
+        if (result.status !== "applied" && result.status !== "desiredStateObserved") {
+          throw new Error("remote folder creation was not confirmed");
+        }
+      }
+    } catch {
+      setDropMessage(t("explorer.mutation.prepare_failed"));
+      return false;
+    }
+    if (requests.length > 0) useTransferStore.getState().enqueueBatch(requests);
+    setDropMessage(t("explorer.drop.queued", { files: requests.length, directories: directories.length }));
+    return true;
+  }, [binding, remoteHost, t]);
 
   useEffect(() => () => {
     const downloadTransfer = downloadTransferRef.current;
@@ -380,11 +601,67 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     if (transfer.transferId) {
       setUpload((current) => current?.transferId === transfer.transferId ? null : current);
     }
+    setTransferAnnouncement("");
     if (transfer.transferId) void requestUploadCancellation(transfer).catch(() => {});
   }, [remotePtyId, sessionId]);
 
+  useEffect(() => {
+    if (!binding) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const handleDragDrop = (event: Parameters<Parameters<ReturnType<typeof getCurrentWebview>["onDragDropEvent"]>[0]>[0]) => {
+      if (disposed) return;
+      if (event.payload.type === "leave") {
+        setDropActive(false);
+        return;
+      }
+      const rect = explorerRef.current?.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      const x = event.payload.position.x / scale;
+      const y = event.payload.position.y / scale;
+      const inside = rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+      if (!inside) return;
+      if (event.payload.type === "enter" || event.payload.type === "over") {
+        setDropActive(true);
+      } else if (event.payload.type === "drop") {
+        setDropActive(false);
+        void queueLocalPaths(event.payload.paths, currentPath).catch((error: unknown) => {
+          setDropMessage(t("explorer.drop.failed"));
+          useUIStore.getState().addToast({
+            sessionId,
+            title: t("explorer.drop.failed"),
+            subtitle: error instanceof Error ? error.message : String(error),
+            variant: "error",
+          });
+        });
+      }
+    };
+    try {
+      void getCurrentWebview().onDragDropEvent(handleDragDrop)
+        .then((next) => { if (disposed) next(); else unlisten = next; })
+        .catch(() => {});
+    } catch {
+      // Browser/unit-test environments have no current Tauri webview.
+    }
+    return () => { disposed = true; unlisten?.(); };
+  }, [binding, currentPath, queueLocalPaths, sessionId, t]);
+
   const uploadToRemoteDirectory = async (directory: string) => {
     if (remotePtyId === undefined || uploadTransferRef.current) return;
+    if (binding) {
+      const selected = await openDialog({
+        title: t("explorer.upload.choose_file"),
+        directory: false,
+        multiple: true,
+      });
+      const paths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
+      try {
+        await queueLocalPaths(paths, directory);
+      } catch {
+        useUIStore.getState().addToast({ sessionId, title: t("explorer.drop.failed"), subtitle: t("explorer.mutation.prepare_failed"), variant: "error" });
+      }
+      return;
+    }
     const transfer: UploadTransfer = { cancelled: false };
     uploadTransferRef.current = transfer;
     let selected: string | string[] | null;
@@ -414,7 +691,10 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     const remotePath = joinPath(directory, fileName);
     const transferId = globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     transfer.transferId = transferId;
+    transfer.lastAnnouncementAt = Date.now();
+    transfer.lastAnnouncementPercent = 0;
     setUpload({ transferId, fileName, transferred: 0, total: 0, cancelling: false });
+    setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent: 0 }));
 
     const throwIfCancelled = () => {
       if (transfer.cancelled) throw new Error("upload cancelled");
@@ -435,6 +715,16 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
               setUpload((current) => current?.transferId === transferId
                 ? { ...current, transferred, total }
                 : current);
+              const percent = total > 0 ? Math.min(100, Math.floor(transferred / total * 100)) : 0;
+              const percentBucket = Math.floor(percent / 10) * 10;
+              const now = Date.now();
+              const crossedTenPercent = percentBucket >= (transfer.lastAnnouncementPercent ?? 0) + 10;
+              const waitedTwoSeconds = now - (transfer.lastAnnouncementAt ?? now) >= 2_000;
+              if (crossedTenPercent || waitedTwoSeconds) {
+                transfer.lastAnnouncementAt = now;
+                transfer.lastAnnouncementPercent = percentBucket;
+                setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent }));
+              }
             }
           },
         );
@@ -448,7 +738,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
       try {
         bytes = await run(false);
       } catch (error) {
-        if (!String(error).includes("remote destination already exists")) throw error;
+        if (!String(error).includes("SSH_TRANSFER_DESTINATION_EXISTS")) throw error;
         throwIfCancelled();
         const overwrite = await confirmDialog(t("explorer.upload.overwrite_message", { file: fileName }), {
           title: t("explorer.upload.overwrite_title"),
@@ -459,6 +749,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         bytes = await run(true);
       }
       if (!transfer.disposed) {
+        setTransferAnnouncement("");
         useUIStore.getState().addToast({
           sessionId,
           title: t("explorer.upload.complete"),
@@ -470,6 +761,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     } catch (error) {
       const failure = parseUploadFailure(error);
       if (!transfer.disposed && (failure.kind !== "cancelled" || failure.residuePath)) {
+        setTransferAnnouncement("");
         const primary = t(uploadFailureKey(error));
         const residue = failure.residuePath
           ? ` ${t("explorer.upload.error_residue", { path: failure.residuePath })}`
@@ -487,10 +779,28 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     }
   };
 
+  const uploadFolderToRemoteDirectory = async (directory: string) => {
+    if (!binding) return;
+    const selected = await openDialog({
+      title: t("explorer.upload.choose_folder"),
+      directory: true,
+      multiple: false,
+    });
+    const path = Array.isArray(selected) ? selected[0] : selected;
+    if (path) {
+      try {
+        await queueLocalPaths([path], directory);
+      } catch {
+        useUIStore.getState().addToast({ sessionId, title: t("explorer.drop.failed"), subtitle: t("explorer.mutation.prepare_failed"), variant: "error" });
+      }
+    }
+  };
+
   const cancelUpload = () => {
     const transfer = uploadTransferRef.current;
     if (!transfer) return;
     transfer.cancelled = true;
+    setTransferAnnouncement(t("explorer.upload.cancelling"));
     setUpload((current) => current ? { ...current, cancelling: true } : null);
     if (transfer.transferId && transfer.backendActive) {
       void requestUploadCancellation(transfer).catch(() => {});
@@ -549,6 +859,10 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   }, [rootDir, isRemote, remotePtyId, sessionId]);
 
   useEffect(() => {
+    treeRequestGenerationRef.current += 1;
+    treeRequestTokensRef.current.clear();
+    setTreeLoading(new Set());
+    setTreeErrors({});
     if (baseDir === null) return; // remote home not resolved yet
     if (remoteDisconnected) {
       setLoading(false);
@@ -565,6 +879,8 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
       .then((e) => {
         if (!cancelled) {
           setEntries(e);
+          setExpandedPaths(new Set());
+          setTreeChildren({});
           setLoading(false);
         }
       })
@@ -576,7 +892,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected]);
+  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration]);
 
   useEffect(() => {
     const q = searchQuery.trim();
@@ -677,14 +993,24 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     && (currentPath === baseDir || currentPath.startsWith(`${baseDir}/`))
     ? baseDir
     : "/";
-  const dirs = useMemo(
-    () => sortExplorerEntries(entries.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
-    [entries, sort],
-  );
-  const files = useMemo(
-    () => sortExplorerEntries(entries.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
-    [entries, sort],
-  );
+  const visibleTreeNodes = useMemo(() => {
+    const result: ExplorerTreeNode[] = [];
+    const append = (siblings: DirEntry[], parent: string, parentLevel: number, parentPath: string | null) => {
+      const sorted = [
+        ...sortExplorerEntries(siblings.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
+        ...sortExplorerEntries(siblings.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
+      ];
+      sorted.forEach((entry, index) => {
+        const path = joinPath(parent, entry.name);
+        result.push({ entry, path, parentPath, level: parentLevel, posInSet: index + 1, setSize: sorted.length });
+        if (entry.kind === "dir" && expandedPaths.has(path) && treeChildren[path]) {
+          append(treeChildren[path], path, parentLevel + 1, path);
+        }
+      });
+    };
+    append(entries, currentPath, 1, null);
+    return result;
+  }, [entries, currentPath, expandedPaths, treeChildren, sort]);
   const isSearching = searchQuery.trim().length > 0;
   const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
 
@@ -703,8 +1029,10 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
       ro.disconnect();
     };
   }, [contentKey]);
-  const listingRowCount = dirs.length + files.length;
-  const virtualizeListing = !isSearching && listingRowCount > 100;
+  const listingRowCount = visibleTreeNodes.length;
+  // Nested groups have variable height, so only virtualize the unexpanded root
+  // list. Once a directory is expanded, render the semantic hierarchy in full.
+  const virtualizeListing = !isSearching && expandedPaths.size === 0 && listingRowCount > 100;
   const listingSlice = virtualizeListing
     ? computeVirtualSlice(
         listingRowCount,
@@ -713,14 +1041,20 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
         LISTING_ROW_HEIGHT,
       )
     : { first: 0, last: listingRowCount, topPad: 0, bottomPad: 0 };
-  const dirSlice = {
-    first: Math.min(listingSlice.first, dirs.length),
-    last: Math.min(listingSlice.last, dirs.length),
-  };
-  const fileSlice = {
-    first: Math.max(0, listingSlice.first - dirs.length),
-    last: Math.max(0, listingSlice.last - dirs.length),
-  };
+  useEffect(() => {
+    setListingFocusIndex((current) => Math.max(0, Math.min(current, listingRowCount - 1)));
+  }, [listingRowCount]);
+
+  useEffect(() => {
+    setListingFocusIndex(0);
+  }, [contentKey]);
+
+  useEffect(() => {
+    const path = focusedPathRef.current;
+    if (!path || isSearching) return;
+    const index = visibleTreeNodes.findIndex((node) => node.path === path);
+    if (index >= 0) setListingFocusIndex(index);
+  }, [visibleTreeNodes, isSearching]);
 
   useEffect(() => {
     if (pendingListingFocus === null) return;
@@ -755,9 +1089,348 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
     setCurrentPath(parentPath(currentPath));
   }
 
-  function enterDir(name: string) {
-    setNavDir("in");
-    setCurrentPath(joinPath(currentPath, name));
+  function expandDirectory(path: string) {
+    setExpandedPaths((current) => new Set(current).add(path));
+    if (treeChildren[path] || treeLoading.has(path) || remoteDisconnected) return;
+    setTreeErrors((current) => {
+      if (!(path in current)) return current;
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+    setTreeLoading((current) => new Set(current).add(path));
+    const token = JSON.stringify({
+      logical: sessionId,
+      physical: remotePtyId ?? null,
+      transport: transportGeneration ?? null,
+      generation: treeRequestGenerationRef.current,
+      path,
+      includeHidden,
+      remote: isRemote,
+    });
+    treeRequestTokensRef.current.set(path, token);
+    const capturedContext = treeRequestContext;
+    const currentRequest = () => treeRequestContextRef.current === capturedContext
+      && treeRequestTokensRef.current.get(path) === token;
+    const read = isRemote && remotePtyId !== undefined
+      ? sshReadDir(remotePtyId, path, includeHidden)
+      : fsReadDir(path, includeHidden);
+    void read.then((children) => {
+      if (!currentRequest()) return;
+      setTreeChildren((current) => ({ ...current, [path]: children }));
+      setTreeErrors((current) => {
+        if (!(path in current)) return current;
+        const next = { ...current };
+        delete next[path];
+        return next;
+      });
+    })
+      .catch(() => {
+        if (currentRequest()) {
+          setTreeErrors((current) => ({ ...current, [path]: { kind: "readFailed" } }));
+        }
+      })
+      .finally(() => setTreeLoading((current) => {
+        if (!currentRequest()) return current;
+        treeRequestTokensRef.current.delete(path);
+        const next = new Set(current);
+        next.delete(path);
+        return next;
+      }));
+  }
+
+  function focusTreeIndex(index: number) {
+    const target = Math.max(0, Math.min(index, visibleTreeNodes.length - 1));
+    const node = visibleTreeNodes[target];
+    if (!node) return;
+    focusedPathRef.current = node.path;
+    setListingFocusIndex(target);
+    const list = resultsListRef.current;
+    const mounted = list?.querySelector<HTMLElement>(`[data-listing-index="${target}"]`);
+    if (mounted) mounted.focus();
+    else if (list) {
+      const rowTop = LISTING_TOP_INSET + target * LISTING_ROW_HEIGHT;
+      list.scrollTop = Math.max(0, rowTop - Math.max(0, list.clientHeight - LISTING_ROW_HEIGHT));
+      setListScroll({ top: list.scrollTop, height: list.clientHeight });
+      setPendingListingFocus(target);
+    }
+  }
+
+  function restoreMenuFocus() {
+    const path = menuReturnPathRef.current;
+    window.setTimeout(() => {
+      const focused = document.activeElement;
+      const canRestore = !focused
+        || focused === document.body
+        || focused === document.documentElement
+        || !focused.isConnected;
+      if (!canRestore) return;
+      const returnFocus = menuReturnFocusRef.current;
+      if (returnFocus?.isConnected) {
+        returnFocus.focus({ preventScroll: true });
+        return;
+      }
+      const index = visibleTreeNodes.findIndex((node) => node.path === path);
+      if (index >= 0) focusTreeIndex(index);
+    });
+  }
+
+  const nextOperationId = () => globalThis.crypto?.randomUUID?.()
+    ?? `remote-fs-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  async function observedExpectation(path: string): Promise<PathExpectationV1> {
+    if (!binding) throw new Error("remote session binding unavailable");
+    try {
+      const metadata = await sshStatV1(binding, path);
+      return { state: "present", identity: metadata.precondition };
+    } catch (error) {
+      if (String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) return { state: "absent" };
+      throw error;
+    }
+  }
+
+  async function prepareDelete(node: ExplorerTreeNode) {
+    if (!binding || mutationBusy) return;
+    const requestContext = treeRequestContextRef.current;
+    setMutationBusy(true);
+    try {
+      const metadata = await sshStatV1(binding, node.path);
+      if (treeRequestContextRef.current !== requestContext) return;
+      if (!metadata.parentPrecondition) throw new Error("parent metadata unavailable");
+      setMutationRequest({
+        operationId: nextOperationId(),
+        binding,
+        operation: { kind: "delete", path: node.path },
+        precondition: {
+          source: { state: "present", identity: metadata.precondition },
+          sourceParent: metadata.parentPrecondition,
+        },
+      });
+    } catch (error) {
+      if (treeRequestContextRef.current !== requestContext) return;
+      useUIStore.getState().addToast({ sessionId, title: t("explorer.mutation.prepare_failed"), subtitle: String(error), variant: "error" });
+    } finally {
+      setMutationBusy(false);
+    }
+  }
+
+  async function prepareNamedMutation() {
+    if (!binding || !mutationComposer || mutationBusy) return;
+    const requestContext = mutationComposer.bindingKey;
+    const name = mutationComposer.value.trim();
+    if (!name || name === "." || name === ".." || /[\\/\r\n]/.test(name)) return;
+    setMutationBusy(true);
+    try {
+      if (mutationComposer.kind === "mkdir") {
+        const parentMetadata = await sshStatV1(binding, mutationComposer.node.path);
+        if (treeRequestContextRef.current !== requestContext) return;
+        const path = joinPath(mutationComposer.node.path, name);
+        const source = await observedExpectation(path);
+        if (treeRequestContextRef.current !== requestContext) return;
+        setMutationRequest({
+          operationId: nextOperationId(),
+          binding,
+          operation: { kind: "mkdir", path },
+          precondition: {
+            source,
+            sourceParent: parentMetadata.precondition,
+          },
+        });
+      } else {
+        const source = await sshStatV1(binding, mutationComposer.node.path);
+        if (treeRequestContextRef.current !== requestContext) return;
+        if (!source.parentPrecondition) throw new Error("parent metadata unavailable");
+        const destinationPath = joinPath(mutationComposer.node.parentPath ?? currentPath, name);
+        const destination = await observedExpectation(destinationPath);
+        if (treeRequestContextRef.current !== requestContext) return;
+        setMutationRequest({
+          operationId: nextOperationId(),
+          binding,
+          operation: { kind: "rename", sourcePath: mutationComposer.node.path, destinationPath, replace: false },
+          precondition: {
+            source: { state: "present", identity: source.precondition },
+            sourceParent: source.parentPrecondition,
+            destination,
+            destinationParent: source.parentPrecondition,
+          },
+        });
+      }
+      setMutationComposer(null);
+    } catch (error) {
+      if (treeRequestContextRef.current !== requestContext) return;
+      useUIStore.getState().addToast({ sessionId, title: t("explorer.mutation.prepare_failed"), subtitle: String(error), variant: "error" });
+    } finally {
+      setMutationBusy(false);
+    }
+  }
+
+  function treeMenuItems(node: ExplorerTreeNode): MenuEntry[] {
+    const isDir = node.entry.kind === "dir";
+    if (isDir) {
+      return isRemote
+        ? [
+            { id: "dir:mkdir", label: t("explorer.mutation.mkdir"), icon: "folder", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "mkdir", node, value: "", bindingKey: treeRequestContext }); } },
+            { id: "dir:new-file", label: t("explorer.capability.new_file_unavailable"), icon: "editor", disabled: true, action: () => {} },
+            { id: "dir:download", label: t("explorer.capability.directory_download_unavailable"), icon: "download", disabled: true, action: () => {} },
+            { id: "dir:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
+            { id: "dir:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
+            { id: "dir:metadata", label: t("explorer.metadata"), icon: "search", action: () => { suppressMenuFocusRef.current = true; onInspectRemotePath?.(node.path); } },
+            { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
+          ]
+        : [
+            { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(node.path) },
+            { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => openEditor(node.path) },
+            { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
+          ];
+    }
+    return isRemote
+      ? [
+          { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => openFile(node.path) },
+          { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
+          { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
+          { id: "file:metadata", label: t("explorer.metadata"), icon: "search", action: () => { suppressMenuFocusRef.current = true; onInspectRemotePath?.(node.path); } },
+          { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
+          { id: "file:download", label: node.entry.size > MAX_REMOTE_DOWNLOAD_BYTES ? t("explorer.download.too_large") : t("explorer.download"), icon: "download", disabled: node.entry.size > MAX_REMOTE_DOWNLOAD_BYTES || download !== null, action: () => { void downloadRemoteFile(node.path, node.entry.name); } },
+          { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
+        ]
+      : [
+          { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => openFile(node.path) },
+          { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
+          { id: "file:open-vscode", label: t("explorer.open_in_vscode"), icon: "editor", action: () => { void openInEditorWithToast("vscode", node.path, { sessionId }); } },
+          ...(externalEditor === "vscode" ? [] : [{ id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor" as const, action: () => openEditor(node.path) }]),
+          { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
+        ];
+  }
+
+  function renderTreeNode(node: ExplorerTreeNode) {
+    const listingIndex = visibleTreeNodes.findIndex((candidate) => candidate.path === node.path);
+    const isDir = node.entry.kind === "dir";
+    const expanded = isDir && expandedPaths.has(node.path);
+    const children = visibleTreeNodes.filter((candidate) => candidate.parentPath === node.path);
+    const active = activeFilePath === node.path;
+    const openMenu = (x: number, y: number, opener: HTMLElement) => {
+      menuReturnPathRef.current = node.path;
+      menuReturnFocusRef.current = opener;
+      setContextMenu({ position: { x, y }, items: treeMenuItems(node), bindingKey: treeRequestContext });
+    };
+    return (
+      <div
+        key={node.path}
+        role="treeitem"
+        aria-level={node.level}
+        aria-expanded={isDir ? expanded : undefined}
+        aria-setsize={node.setSize}
+        aria-posinset={node.posInSet}
+        data-explorer-item
+        data-listing-index={listingIndex}
+        data-tree-path={node.path}
+        data-file-path={!isDir ? node.path : undefined}
+        tabIndex={listingFocusIndex === listingIndex ? 0 : -1}
+        onFocus={(event) => {
+          if (event.target !== event.currentTarget) return;
+          focusedPathRef.current = node.path;
+          setListingFocusIndex(listingIndex);
+        }}
+        onClick={(event) => {
+          if (event.target !== event.currentTarget && (event.target as HTMLElement).closest("[role=group]")) return;
+          if (isDir) { setNavDir("in"); setCurrentPath(node.path); } else openFile(node.path);
+        }}
+        onContextMenu={(event) => { event.preventDefault(); openMenu(event.clientX, event.clientY, event.currentTarget); }}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openMenu(rect.left + 8, rect.top + rect.height / 2, event.currentTarget);
+            return;
+          }
+          if (event.key === "Enter") {
+            event.preventDefault(); event.stopPropagation();
+            if (isDir) { setNavDir("in"); setCurrentPath(node.path); } else openFile(node.path);
+            return;
+          }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
+            event.preventDefault(); event.stopPropagation();
+            const target = event.key === "Home" ? 0
+              : event.key === "End" ? visibleTreeNodes.length - 1
+                : listingIndex + (event.key === "ArrowDown" ? 1 : -1);
+            focusTreeIndex(target);
+            return;
+          }
+          if (event.key === "ArrowRight" && isDir) {
+            event.preventDefault(); event.stopPropagation();
+            if (!expanded) expandDirectory(node.path);
+            else if (visibleTreeNodes[listingIndex + 1]?.parentPath === node.path) focusTreeIndex(listingIndex + 1);
+            return;
+          }
+          if (event.key === "ArrowLeft") {
+            if (isDir && expanded) {
+              event.preventDefault(); event.stopPropagation();
+              setExpandedPaths((current) => { const next = new Set(current); next.delete(node.path); return next; });
+            } else if (node.parentPath) {
+              event.preventDefault(); event.stopPropagation();
+              focusTreeIndex(visibleTreeNodes.findIndex((candidate) => candidate.path === node.parentPath));
+            }
+            return;
+          }
+          if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault(); event.stopPropagation();
+            window.clearTimeout(typeaheadRef.current.timer);
+            const nextText = `${typeaheadRef.current.text}${event.key.toLocaleLowerCase()}`;
+            const query = nextText.split("").every((character) => character === nextText[0])
+              ? nextText[0]
+              : nextText;
+            typeaheadRef.current.text = query;
+            typeaheadRef.current.timer = window.setTimeout(() => { typeaheadRef.current.text = ""; }, 500);
+            for (let offset = 1; offset <= visibleTreeNodes.length; offset += 1) {
+              const index = (listingIndex + offset) % visibleTreeNodes.length;
+              if (visibleTreeNodes[index].entry.name.toLocaleLowerCase().startsWith(query)) { focusTreeIndex(index); break; }
+            }
+          }
+        }}
+        className="hover-bg"
+        style={{ width: "100%", minHeight: 30, padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`, borderRadius: "var(--r-btn)", border: "none", background: active ? "var(--c-accent-bg-light)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(42px, 92px) 28px", columnGap: 4, alignItems: "center", textAlign: "left", marginBottom: 2 }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, height: 30, pointerEvents: "none" }}>
+          {isDir ? <FolderIcon /> : <FileIcon />}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)" }}>{node.entry.name}</span>
+          {isDir && <span aria-hidden="true" style={{ fontSize: 10 }}>{expanded ? "⌄" : "›"}</span>}
+        </span>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", textAlign: "right", pointerEvents: "none" }}>{formatModifiedTime(node.entry.mtime)}</span>
+        <button
+          type="button"
+          tabIndex={-1}
+          className="hover-bg"
+          aria-label={`${t("common.more_actions")}: ${node.entry.name}`}
+          title={t("common.more_actions")}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openMenu(rect.right, rect.bottom, event.currentTarget);
+          }}
+          style={{ width: 26, height: 26, padding: 0, border: 0, borderRadius: "var(--r-btn)", background: "transparent", color: "var(--c-text-4)", cursor: "pointer" }}
+        >
+          <span aria-hidden="true">⋯</span>
+        </button>
+        {isDir && expanded && children.length > 0 && (
+          <div role="group" style={{ gridColumn: "1 / -1", marginLeft: -8 }}>
+            {children.map(renderTreeNode)}
+          </div>
+        )}
+        {isDir && expanded && treeErrors[node.path]?.kind === "readFailed" && (
+          <div role="group" style={{ gridColumn: "1 / -1", padding: "2px 0 4px 22px" }}>
+            <div role="alert" style={{ color: "var(--c-danger)", fontSize: "var(--fs-meta)" }}>
+              {t("explorer.read_dir_failed")}
+            </div>
+            <button type="button" onClick={() => expandDirectory(node.path)}>
+              {t("explorer.search_retry")}
+            </button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   function openSearchDir(path: string) {
@@ -767,8 +1440,9 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
   }
 
   function openFile(path: string) {
-    const fileName = path.split("/").filter(Boolean).pop() ?? path;
-    useUIStore.getState().openFileTab({ sessionId, filePath: path, fileName });
+    const owner = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
+    if (!owner) return;
+    void openResource(resourceRefForSession(owner, path), "preview");
   }
 
   function changeSort(key: SortKey) {
@@ -779,8 +1453,19 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
 
   return (
     <div
-      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}
+      ref={explorerRef}
+      onDragEnter={(event) => { event.preventDefault(); if (binding) setDropActive(true); }}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false); }}
+      onDrop={(event) => { event.preventDefault(); setDropActive(false); }}
+      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative", overflow: "hidden", outline: dropActive ? "2px dashed var(--c-accent)" : undefined, outlineOffset: -3 }}
     >
+      {dropActive && (
+        <div role="status" style={{ flexShrink: 0, padding: "7px var(--sp-2)", borderBottom: "1px dashed var(--c-accent)", fontWeight: 600, textAlign: "center" }}>
+          ↥ {t("explorer.drop.ready")}
+        </div>
+      )}
+      {dropMessage && <div role="status" aria-live="polite" className="sr-only">{dropMessage}</div>}
       {remoteDisconnected && (
         <div role="status" aria-live="polite" style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)" }}>
           {t("explorer.remote_disconnected")}
@@ -860,16 +1545,30 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
           <RefreshIcon />
         </button>
         {isRemote && (
-          <button
-            onClick={() => { void uploadToRemoteDirectory(currentPath); }}
-            disabled={remoteDisconnected || upload !== null}
-            className="hover-bg"
-            title={t("explorer.upload")}
-            aria-label={t("explorer.upload")}
-            style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}
-          >
-            ↑
-          </button>
+          <>
+            <button
+              onClick={() => { void uploadToRemoteDirectory(currentPath); }}
+              disabled={remoteDisconnected || upload !== null}
+              className="hover-bg"
+              title={t("explorer.upload")}
+              aria-label={t("explorer.upload")}
+              style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}
+            >
+              ↑
+            </button>
+            {binding && (
+              <button
+                onClick={() => { void uploadFolderToRemoteDirectory(currentPath); }}
+                disabled={remoteDisconnected}
+                className="hover-bg"
+                title={t("explorer.upload_folder")}
+                aria-label={t("explorer.upload_folder")}
+                style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+              >
+                <span aria-hidden="true">↥▣</span>
+              </button>
+            )}
+          </>
         )}
         <button
           onClick={() => setIncludeHidden((v) => !v)}
@@ -901,7 +1600,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
       </div>
 
       {upload && (
-        <div role="status" aria-live="polite" style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", flexShrink: 0 }}>
+        <div style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {upload.cancelling ? t("explorer.upload.cancelling") : t("explorer.upload.progress", { file: upload.fileName, percent: upload.total > 0 ? Math.min(100, Math.round(upload.transferred / upload.total * 100)) : 0 })}
@@ -911,6 +1610,9 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
           <progress aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5, accentColor: "var(--c-accent)" }} />
         </div>
       )}
+      <div aria-live="polite" aria-atomic="true" className="sr-only" data-transfer-announcement>
+        {transferAnnouncement}
+      </div>
       {download && (
         <div role="status" aria-live="polite" aria-busy="true" style={{ padding: "7px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={download.fileName}>
           {t("explorer.download.progress", { file: download.fileName })}
@@ -1003,6 +1705,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
             if (targetIndex === current) return;
             const mountedTarget = list.querySelector<HTMLElement>(`[data-listing-index="${targetIndex}"]`);
             if (mountedTarget) {
+              setListingFocusIndex(targetIndex);
               mountedTarget.focus();
               return;
             }
@@ -1012,6 +1715,7 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
               : Math.max(0, rowTop + LISTING_ROW_HEIGHT - list.clientHeight);
             list.scrollTop = nextTop;
             setListScroll({ top: nextTop, height: list.clientHeight });
+            setListingFocusIndex(targetIndex);
             setPendingListingFocus(targetIndex);
             return;
           }
@@ -1146,117 +1850,72 @@ export function FileExplorer({ sessionId, rootDir, remotePtyId, remote = remoteP
                 );
               })}
             </div>
-            {virtualizeListing && <div aria-hidden="true" style={{ height: listingSlice.topPad, flexShrink: 0 }} />}
-            {dirs.slice(dirSlice.first, dirSlice.last).map((entry, sliceIndex) => {
-              const fullPath = joinPath(currentPath, entry.name);
-              return (
-              <button
-                key={"d-" + entry.name}
-                data-explorer-item
-                data-listing-index={dirSlice.first + sliceIndex}
-                onClick={() => enterDir(entry.name)}
-                onKeyDown={(e) => {
-                  if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
-                    e.preventDefault();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContextMenu({
-                    position: { x: e.clientX, y: e.clientY },
-                    items: isRemote
-                      ? [
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
-                        ]
-                      : [
-                          { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(fullPath) },
-                          { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { openEditor(fullPath); } },
-                          { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
-                        ],
-                  });
-                }}
-                className="hover-bg"
-                style={{ width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", textAlign: "left", marginBottom: 2 }}
-              >
-                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                  <FolderIcon />
-                  <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
-                  <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>
-                </span>
-                <span title={entry.mtime > 0 ? new Date(entry.mtime).toLocaleString() : undefined} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", overflow: "hidden", whiteSpace: "nowrap", textAlign: "right" }}>{formatModifiedTime(entry.mtime)}</span>
-              </button>
-              );
-            })}
-
-            {!virtualizeListing && dirSlice.last > dirSlice.first && fileSlice.last > fileSlice.first && (
-              <div style={{ borderTop: "1px solid var(--c-border-2)", margin: "4px 0" }} />
-            )}
-
-            {files.slice(fileSlice.first, fileSlice.last).map((entry, sliceIndex) => {
-              const fullPath = joinPath(currentPath, entry.name);
-              const isExpanded = activeFilePath === fullPath;
-              return (
-                <div key={"f-" + entry.name}>
-                  <button
-                    data-explorer-item
-                    data-listing-index={dirs.length + fileSlice.first + sliceIndex}
-                    data-file-path={fullPath}
-                    onClick={() => openFile(fullPath)}
-                    onKeyDown={(e) => {
-                      if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
-                        e.preventDefault();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({
-                        position: { x: e.clientX, y: e.clientY },
-                        items: isRemote
-                          ? [
-                              { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
-                              { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
-                              { id: "file:download", label: entry.size > MAX_REMOTE_DOWNLOAD_BYTES ? t("explorer.download.too_large") : t("explorer.download"), icon: "download", disabled: entry.size > MAX_REMOTE_DOWNLOAD_BYTES || download !== null, action: () => { void downloadRemoteFile(fullPath, entry.name); } },
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
-                            ]
-                          : [
-                              { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => { openFile(fullPath); } },
-                              { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, entry.name) },
-                              { id: "file:open-vscode", label: t("explorer.open_in_vscode"), icon: "editor", action: () => { void openInEditorWithToast("vscode", fullPath, { sessionId }); } },
-                              ...(externalEditor === "vscode" ? [] : [{ id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor" as const, action: () => { openEditor(fullPath); } }]),
-                              { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(fullPath); } },
-                            ],
-                      });
-                    }}
-                    className="hover-bg"
-                    style={{
-                      width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
-                      background: isExpanded ? "var(--c-accent-bg-light)" : "transparent",
-                      cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", textAlign: "left", marginBottom: 2,
-                    }}
-                  >
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                      <FileIcon />
-                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{entry.name}</span>
-                    </span>
-                    <span title={entry.mtime > 0 ? `${new Date(entry.mtime).toLocaleString()} · ${formatSize(entry.size)}` : formatSize(entry.size)} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", overflow: "hidden", whiteSpace: "nowrap", textAlign: "right" }}>{formatModifiedTime(entry.mtime)}</span>
-                  </button>
-                </div>
-              );
-            })}
-            {virtualizeListing && <div aria-hidden="true" style={{ height: listingSlice.bottomPad, flexShrink: 0 }} />}
+            <div role="tree" aria-label={t("explorer.file_list")}>
+              {virtualizeListing && <div aria-hidden="true" role="presentation" style={{ height: listingSlice.topPad }} />}
+              {visibleTreeNodes
+                .filter((node) => node.parentPath === null)
+                .slice(listingSlice.first, listingSlice.last)
+                .map(renderTreeNode)}
+              {virtualizeListing && <div aria-hidden="true" role="presentation" style={{ height: listingSlice.bottomPad }} />}
+            </div>
           </>
         )}
       </div>
+
+      {mutationComposer && (
+        <>
+          <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 318 }} />
+          <div
+            ref={mutationComposerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remote-mutation-name-title"
+            style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 420, maxWidth: "calc(100vw - 32px)", padding: 18, zIndex: 319, background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", display: "grid", gap: 12 }}
+          >
+            <strong id="remote-mutation-name-title">{t(`explorer.mutation.${mutationComposer.kind}`)}</strong>
+            <label>
+              {t("explorer.mutation.name")}
+              <input
+                autoFocus
+                value={mutationComposer.value}
+                onChange={(event) => setMutationComposer((current) => current ? { ...current, value: event.target.value } : current)}
+                onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void prepareNamedMutation(); } }}
+              />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" onClick={() => { setMutationComposer(null); restoreMenuFocus(); }} disabled={mutationBusy}>{t("common.cancel")}</button>
+              <button type="button" onClick={() => { void prepareNamedMutation(); }} disabled={mutationBusy || !mutationComposer.value.trim()}>{t("common.continue")}</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {mutationRequest && mutationRequestIsCurrent && (
+        <RemoteFsMutationDialog
+          host={remoteHost ?? sessionId}
+          request={mutationRequest}
+          onClose={() => {
+            setMutationRequest(null);
+            restoreMenuFocus();
+          }}
+          onComplete={() => refresh()}
+        />
+      )}
 
       {contextMenu && (
         <ContextMenu
           items={contextMenu.items}
           position={contextMenu.position}
-          onClose={() => setContextMenu(null)}
+          bindingKey={contextMenu.bindingKey}
+          currentBindingKey={treeRequestContext}
+          returnFocusToken={menuReturnFocusRef}
+          onClose={() => {
+            setContextMenu(null);
+            if (suppressMenuFocusRef.current) {
+              suppressMenuFocusRef.current = false;
+              return;
+            }
+          }}
         />
       )}
     </div>

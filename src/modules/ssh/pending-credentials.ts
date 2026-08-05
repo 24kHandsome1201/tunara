@@ -7,13 +7,17 @@
 export interface PendingSshCredentials {
   password?: string;
   keyPassphrase?: string;
+  jumpPassword?: string;
+  jumpKeyPassphrase?: string;
 }
 
 const pending = new Map<string, PendingSshCredentials>();
 
 export function stashSshCredentials(sessionId: string, creds: PendingSshCredentials): void {
-  // Only store if at least one secret is present; otherwise nothing to keep.
-  if (creds.password || creds.keyPassphrase) {
+  // Every call replaces the pending attempt. An attempt with no secrets must
+  // revoke any older, not-yet-consumed credentials for the same session.
+  pending.delete(sessionId);
+  if (creds.password || creds.keyPassphrase || creds.jumpPassword || creds.jumpKeyPassphrase) {
     pending.set(sessionId, creds);
   }
 }

@@ -13,6 +13,8 @@ import { SessionMascotIcon } from "./SessionMascotIcon";
 import type { WorkspaceFileTab } from "@/state/ui";
 import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
+import { copyActiveTerminal, safePasteActiveTerminal, searchActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
+import { TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, type TerminalContextAnnouncement } from "@/modules/terminal/lib/terminal-context-announcement";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -237,6 +239,157 @@ function PresentationModeButton({
   );
 }
 
+function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false, includeExit = true }: { activeSessionId: string; exitShortcut: string; fullscreen?: boolean; includeExit?: boolean }) {
+  const t = useT();
+  const activeSession = useSessionsStore((state) => state.sessions.find((session) => session.id === activeSessionId));
+  const showFilesButton = useUIStore((state) => state.showPureModeFilesButton);
+  const [visible, setVisible] = useState(true);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [contextAnnouncement, setContextAnnouncement] = useState<TerminalContextAnnouncement | null>(null);
+  const hideTimer = useRef<number | null>(null);
+
+  const keepVisible = useCallback(() => {
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = null;
+    setVisible(true);
+  }, []);
+  const releaseVisible = useCallback(() => {
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => {
+      hideTimer.current = null;
+      setVisible(false);
+    }, 1400);
+  }, []);
+
+  useEffect(() => {
+    releaseVisible();
+    const revealAtEdge = (event: PointerEvent) => {
+      if (event.clientY <= 12 || event.pointerType === "touch") keepVisible();
+    };
+    window.addEventListener("pointermove", revealAtEdge, { passive: true });
+    window.addEventListener("pointerdown", revealAtEdge, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", revealAtEdge);
+      window.removeEventListener("pointerdown", revealAtEdge);
+      if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    };
+  }, [keepVisible, releaseVisible]);
+
+  useEffect(() => {
+    const updateContext = (event: Event) => {
+      setContextAnnouncement((event as CustomEvent<TerminalContextAnnouncement>).detail);
+    };
+    window.addEventListener(TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, updateContext);
+    return () => window.removeEventListener(TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, updateContext);
+  }, []);
+
+  useEffect(() => {
+    setContextAnnouncement((current) => current?.logicalSessionId === activeSessionId ? current : null);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!contextAnnouncement) return;
+    const timeout = window.setTimeout(() => setContextAnnouncement(null), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [contextAnnouncement]);
+
+  const openFiles = () => {
+    const ui = useUIStore.getState();
+    ui.setInspectorTab("files");
+    ui.setPanelVisible(true);
+  };
+  const openPalette = () => useUIStore.getState().setOverlay("command-palette");
+  const exit = () => useUIStore.getState().setPresentationMode("workspace");
+  const actions = [
+    { id: "paste", label: t("pure.action.safe_paste"), run: () => void safePasteActiveTerminal(activeSessionId) },
+    { id: "copy", label: t("term.copy"), run: () => void copyActiveTerminal(activeSessionId) },
+    { id: "search", label: t("pure.action.search"), run: () => searchActiveTerminal(activeSessionId) },
+    { id: "files", label: t("pure.files.button"), run: openFiles },
+    { id: "palette", label: t("pure.action.command_palette"), run: openPalette },
+    ...(includeExit ? [{ id: "exit", label: t("palette.cmd.exit_pure"), run: exit }] : []),
+  ];
+  const announcedSession = useSessionsStore((state) => contextAnnouncement
+    ? state.sessions.find((session) => session.id === contextAnnouncement.logicalSessionId)
+    : undefined);
+  const contextSession = contextAnnouncement ? announcedSession : activeSession;
+  const cue = contextSession?.agentActivity === "waiting_confirmation"
+    ? t("pure.cue.waiting")
+    : contextSession?.unread
+      ? t("pure.cue.unread")
+      : "";
+  const sessionLabel = contextSession
+    ? deriveTitle(contextSession).primary
+    : contextAnnouncement?.title || t("pure.cue.no_session");
+  const contextPosition = contextAnnouncement?.index !== undefined && contextAnnouncement.total !== undefined
+    ? `${contextAnnouncement.index}/${contextAnnouncement.total}`
+    : "";
+  const buttonStyle: React.CSSProperties = {
+    minHeight: 30,
+    padding: "0 9px",
+    border: "none",
+    borderRadius: "var(--r-btn)",
+    background: "transparent",
+    color: "var(--c-text-2)",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+
+  return (
+    <div
+      role="toolbar"
+      aria-label={t("pure.action_strip")}
+      data-pure-action-strip
+      data-visible={String(visible)}
+      onPointerEnter={keepVisible}
+      onPointerLeave={releaseVisible}
+      onFocusCapture={keepVisible}
+      onBlurCapture={releaseVisible}
+      style={{
+        position: "fixed",
+        top: visible ? (fullscreen ? 44 : 7) : -28,
+        left: fullscreen ? 10 : "50%",
+        zIndex: 890,
+        transform: fullscreen ? undefined : "translateX(-50%)",
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        padding: "2px 4px",
+        border: "1px solid var(--c-border-1)",
+        borderRadius: "var(--r-card)",
+        background: "var(--c-bg-white)",
+        boxShadow: "var(--shadow-menu)",
+        opacity: visible ? 1 : 0.02,
+        transition: "top var(--duration-normal) var(--ease-smooth), opacity var(--duration-normal) var(--ease-smooth)",
+        WebkitAppRegion: "no-drag",
+      } as DragStyle}
+    >
+      <span role="status" aria-live="polite" title={sessionLabel} style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 7px", fontSize: "var(--fs-meta)", color: cue ? "var(--c-accent)" : "var(--c-text-4)" }}>
+        {sessionLabel}{contextPosition ? ` · ${contextPosition}` : ""}{cue ? ` · ${cue}` : ""}
+      </span>
+      {actions.filter((action) => action.id !== "files" || showFilesButton).map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          aria-label={action.id === "files" ? t("pure.files.open") : action.id === "exit" ? `${action.label} ${exitShortcut}` : action.label}
+          style={buttonStyle}
+          className="hover-bg"
+          onClick={action.run}
+        >
+          {action.label}
+        </button>
+      ))}
+      <details data-touch-overflow onToggle={(event) => { setOverflowOpen(event.currentTarget.open); keepVisible(); }} style={{ position: "relative" }}>
+        <summary aria-label={t("common.more_actions")} title={t("common.more_actions")} style={{ ...buttonStyle, display: "flex", alignItems: "center", listStyle: "none" }}>•••</summary>
+        {overflowOpen && (
+          <div role="menu" style={{ position: "absolute", right: 0, top: 34, padding: 4, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", boxShadow: "var(--shadow-menu)" }}>
+            {actions.map((action) => <button key={action.id} type="button" role="menuitem" style={{ ...buttonStyle, width: "100%", textAlign: "left" }} onClick={action.run}>{action.label}</button>)}
+          </div>
+        )}
+      </details>
+    </div>
+  );
+}
+
 interface TabButtonProps {
   isActive: boolean;
   label: string;
@@ -411,7 +564,6 @@ function TitlebarImpl({
   const t = useT();
   const presentationMode = useUIStore((s) => s.presentationMode);
   const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
-  const showPureModeFilesButton = useUIStore((s) => s.showPureModeFilesButton);
   const fileTabs = useUIStore((s) => s.fileTabs);
   const activeFileTabId = useUIStore((s) => s.activeFileTabId);
   const setActiveFileTab = useUIStore((s) => s.setActiveFileTab);
@@ -616,17 +768,20 @@ function TitlebarImpl({
   if (presentationMode === "pure") {
     if (nativeFullscreen) {
       return (
-        <PresentationModeButton
-          label={t("palette.cmd.exit_pure")}
-          shortcut={presentationModeShortcut}
-          onClick={() => setPresentationMode("workspace")}
-          showShortcut
-          floating
-          draggable
-          visible={fullscreenExitHintVisible}
-          onKeepVisible={keepFullscreenExitHintVisible}
-          onReleaseVisible={revealFullscreenExitHint}
-        />
+        <>
+          <PureModeActionStrip activeSessionId={activeSessionId} exitShortcut={presentationModeShortcut} fullscreen includeExit={false} />
+          <PresentationModeButton
+            label={t("palette.cmd.exit_pure")}
+            shortcut={presentationModeShortcut}
+            onClick={() => setPresentationMode("workspace")}
+            showShortcut
+            floating
+            draggable
+            visible={fullscreenExitHintVisible}
+            onKeepVisible={keepFullscreenExitHintVisible}
+            onReleaseVisible={revealFullscreenExitHint}
+          />
+        </>
       );
     }
     return (
@@ -642,22 +797,9 @@ function TitlebarImpl({
           WebkitAppRegion: "drag",
         } as DragStyle}
       >
+        <PureModeActionStrip activeSessionId={activeSessionId} exitShortcut={presentationModeShortcut} />
         <div data-tauri-drag-region style={{ flex: 1 }} />
         <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: _isMac ? 12 : 4, WebkitAppRegion: "no-drag" } as DragStyle}>
-          {showPureModeFilesButton && (
-            <button type="button" className="hover-bg" aria-label={t("pure.files.open")} title={t("pure.files.open")}
-              onClick={() => { const ui = useUIStore.getState(); ui.setInspectorTab("files"); ui.setPanelVisible(true); }}
-              style={{ height: "var(--h-titlebar-control)", padding: "0 8px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "transparent", color: "var(--c-text-2)", cursor: "pointer" }}>
-              {t("pure.files.button")}
-            </button>
-          )}
-          <PresentationModeButton
-            label={t("palette.cmd.exit_pure")}
-            shortcut={presentationModeShortcut}
-            onClick={() => setPresentationMode("workspace")}
-            showShortcut
-            surface
-          />
           {!_isMac && <WindowControls />}
         </div>
       </div>

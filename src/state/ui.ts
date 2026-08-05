@@ -16,6 +16,7 @@ import {
   type SplitPath,
   type SplitState,
 } from "@/modules/session/split-layout";
+import type { TerminalHostModifier } from "@/modules/terminal/lib/terminal-input-router";
 
 export type CursorStyle = "bar" | "block" | "underline";
 export type PresentationMode = "workspace" | "pure";
@@ -38,7 +39,9 @@ export interface AppearanceSettings {
   bellNotification: boolean;
   terminalClipboardWrite: boolean;
   terminalInlineImages: boolean;
+  terminalScreenReaderMode: boolean;
   showPureModeFilesButton: boolean;
+  terminalHostModifier: TerminalHostModifier;
   keybindings: KeybindingConfig;
   language: Language;
   globalShortcut: string;
@@ -70,7 +73,11 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   bellNotification: true,
   terminalClipboardWrite: false,
   terminalInlineImages: true,
+  terminalScreenReaderMode: false,
   showPureModeFilesButton: true,
+  // Cmd on macOS still needs real-hardware/WKWebView verification; Option is
+  // available as an alternative. Shift is the conservative Win/Linux choice.
+  terminalHostModifier: typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "meta" : "shift",
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
@@ -136,7 +143,9 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
     terminalInlineImages: typeof raw?.terminal_inline_images === "boolean" ? raw.terminal_inline_images : DEFAULT_SETTINGS.terminalInlineImages,
+    terminalScreenReaderMode: typeof raw?.terminal_screen_reader_mode === "boolean" ? raw.terminal_screen_reader_mode : DEFAULT_SETTINGS.terminalScreenReaderMode,
     showPureModeFilesButton: typeof raw?.show_pure_mode_files_button === "boolean" ? raw.show_pure_mode_files_button : DEFAULT_SETTINGS.showPureModeFilesButton,
+    terminalHostModifier: raw?.terminal_host_modifier === "meta" || raw?.terminal_host_modifier === "alt" || raw?.terminal_host_modifier === "shift" ? raw.terminal_host_modifier : DEFAULT_SETTINGS.terminalHostModifier,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
     globalShortcut: typeof raw?.global_shortcut === "string" ? raw.global_shortcut : DEFAULT_SETTINGS.globalShortcut,
@@ -170,7 +179,9 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       bell_notification: s.bellNotification,
       terminal_clipboard_write: s.terminalClipboardWrite,
       terminal_inline_images: s.terminalInlineImages,
+      terminal_screen_reader_mode: s.terminalScreenReaderMode,
       show_pure_mode_files_button: s.showPureModeFilesButton,
+      terminal_host_modifier: s.terminalHostModifier,
       language: s.language,
       global_shortcut: s.globalShortcut,
     },
@@ -178,7 +189,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
   };
 }
 
-export type InspectorTab = "overview" | "changes" | "files" | "preview" | "notes";
+export type InspectorTab = "overview" | "changes" | "files" | "transfers" | "metadata" | "forwarding" | "diagnostics" | "knownHosts" | "preview" | "notes";
 
 export type SettingsTab = "appearance" | "workflows" | "cli" | "app";
 
@@ -212,6 +223,7 @@ export interface Toast {
 /** A pending SSH host-key confirmation (TOFU). The backend ssh_open call is
  * blocked until the user accepts/rejects the fingerprint. */
 export interface HostKeyPrompt {
+  hopRole: "direct" | "jump" | "target";
   promptId: string;
   host: string;
   port: number;
@@ -226,6 +238,11 @@ export interface HostKeyPrompt {
 /** One server-issued keyboard-interactive challenge round. Responses are kept
  * in the dialog component only and are never added to this store. */
 export interface KeyboardInteractivePrompt {
+  hopRole: "direct" | "jump" | "target";
+  origin: {
+    user: string; host: string; port: number; logicalSessionId: string;
+    hopRole: "direct" | "jump" | "target"; transportGeneration: string;
+  };
   promptId: string;
   name: string;
   instructions: string;
@@ -252,6 +269,8 @@ export interface WorkspaceFileTab {
   sessionId: string;
   filePath: string;
   fileName: string;
+  line?: number;
+  column?: number;
   dirty: boolean;
 }
 
@@ -318,6 +337,7 @@ interface UIState extends AppearanceSettings {
   setFontLigatures: (enabled: boolean) => void;
   setNerdFontFallback: (enabled: boolean) => void;
   setScrollback: (n: number) => void;
+  setTerminalScreenReaderMode: (enabled: boolean) => void;
   setTerminalTheme: (t: TerminalThemeName) => void;
   setSidebarWidth: (w: number) => void;
   setPanelWidth: (w: number) => void;
@@ -346,6 +366,7 @@ interface UIState extends AppearanceSettings {
   setTerminalClipboardWrite: (enabled: boolean) => void;
   setTerminalInlineImages: (enabled: boolean) => void;
   setShowPureModeFilesButton: (enabled: boolean) => void;
+  setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
   setGlobalShortcut: (shortcut: string) => void;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
@@ -461,6 +482,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setFontLigatures: (fontLigatures) => set({ fontLigatures: typeof fontLigatures === "boolean" ? fontLigatures : DEFAULT_SETTINGS.fontLigatures }),
     setNerdFontFallback: (nerdFontFallback) => set({ nerdFontFallback: typeof nerdFontFallback === "boolean" ? nerdFontFallback : DEFAULT_SETTINGS.nerdFontFallback }),
     setScrollback: (scrollback) => set({ scrollback: clampNumber(scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback) }),
+    setTerminalScreenReaderMode: (terminalScreenReaderMode) => set({ terminalScreenReaderMode: typeof terminalScreenReaderMode === "boolean" ? terminalScreenReaderMode : DEFAULT_SETTINGS.terminalScreenReaderMode }),
     setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
     setSidebarWidth: (sidebarWidth) => {
       set({ sidebarWidth: clampNumber(sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth) });
@@ -538,6 +560,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalInlineImages: (terminalInlineImages) => set({ terminalInlineImages: typeof terminalInlineImages === "boolean" ? terminalInlineImages : DEFAULT_SETTINGS.terminalInlineImages }),
     setShowPureModeFilesButton: (showPureModeFilesButton) => set({ showPureModeFilesButton: typeof showPureModeFilesButton === "boolean" ? showPureModeFilesButton : DEFAULT_SETTINGS.showPureModeFilesButton }),
+    setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
     setGlobalShortcut: (globalShortcut) => set({ globalShortcut: typeof globalShortcut === "string" ? globalShortcut : DEFAULT_SETTINGS.globalShortcut }),
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
@@ -591,7 +614,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "showPureModeFilesButton", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

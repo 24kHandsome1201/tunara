@@ -35,7 +35,9 @@ export const KEYBINDING_ACTIONS = [
 export type KeybindingAction = typeof KEYBINDING_ACTIONS[number];
 export type KeybindingConfig = Record<KeybindingAction, string>;
 
-export const DEFAULT_KEYBINDINGS: Readonly<KeybindingConfig> = {
+export type KeybindingPlatform = "macos" | "windows" | "linux";
+
+const COMMON_DEFAULT_KEYBINDINGS: KeybindingConfig = {
   newTerminal: "Mod+T",
   newTerminalAlt: "Mod+N",
   closeSession: "Mod+W",
@@ -68,6 +70,27 @@ export const DEFAULT_KEYBINDINGS: Readonly<KeybindingConfig> = {
   navigatePrevBlock: "Mod+Shift+ArrowUp",
   navigateNextBlock: "Mod+Shift+ArrowDown",
 };
+
+/** Defaults are explicit by platform so terminal-hostile bare Ctrl sequences are never introduced. */
+export function defaultKeybindingsForPlatform(platform: KeybindingPlatform): KeybindingConfig {
+  const defaults = { ...COMMON_DEFAULT_KEYBINDINGS };
+  if (platform !== "macos") {
+    defaults.newTerminalAlt = "Ctrl+Shift+N";
+    defaults.closeSession = "Ctrl+Shift+W";
+    defaults.splitHorizontal = "Alt+Shift+D";
+    defaults.commandPalette = "Ctrl+Shift+K";
+  }
+  return defaults;
+}
+
+function runtimePlatform(): KeybindingPlatform {
+  if (typeof navigator === "undefined") return "linux";
+  const value = `${navigator.platform} ${navigator.userAgent}`.toLowerCase();
+  if (value.includes("mac")) return "macos";
+  return value.includes("win") ? "windows" : "linux";
+}
+
+export const DEFAULT_KEYBINDINGS: Readonly<KeybindingConfig> = defaultKeybindingsForPlatform(runtimePlatform());
 
 export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
   newTerminal: "new_terminal",
@@ -137,6 +160,60 @@ function normalizeKey(key: string): string {
   return lowered;
 }
 
+export function normalizeKeybinding(def: string, platform: KeybindingPlatform = runtimePlatform()): string | null {
+  const parsed = parseKeybinding(def);
+  if (!parsed) return null;
+  const modifiers = [
+    parsed.mod && "Mod",
+    parsed.ctrl && "Ctrl",
+    parsed.meta && "Cmd",
+    parsed.alt && "Alt",
+    parsed.shift && "Shift",
+  ].filter(Boolean);
+  const key = parsed.key === " " ? "Space" : parsed.key.length === 1 ? parsed.key.toUpperCase() : parsed.key[0].toUpperCase() + parsed.key.slice(1);
+  // Persisted `Mod` remains portable; platform is used by conflict/risk signatures below.
+  void platform;
+  return [...modifiers, key].join("+");
+}
+
+function keybindingSignature(def: string, platform: KeybindingPlatform): string | null {
+  const parsed = parseKeybinding(def);
+  if (!parsed) return null;
+  const ctrl = parsed.ctrl || (parsed.mod && platform !== "macos");
+  const meta = parsed.meta || (parsed.mod && platform === "macos");
+  return [ctrl && "Ctrl", meta && "Cmd", parsed.alt && "Alt", parsed.shift && "Shift", parsed.key]
+    .filter(Boolean)
+    .join("+");
+}
+
+export function captureKeybinding(e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">): string | null {
+  if (["Meta", "Control", "Alt", "Shift"].includes(e.key)) return null;
+  const key = normalizeKey(e.key);
+  if (!key) return null;
+  return normalizeKeybinding([
+    e.metaKey && "Cmd", e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift",
+    key === " " ? "Space" : key,
+  ].filter(Boolean).join("+"));
+}
+
+export function findKeybindingConflict(config: KeybindingConfig, action: KeybindingAction, binding: string, platform: KeybindingPlatform = runtimePlatform()): KeybindingAction | null {
+  const normalized = keybindingSignature(binding, platform);
+  if (!normalized) return null;
+  return KEYBINDING_ACTIONS.find((candidate) => candidate !== action && keybindingSignature(config[candidate], platform) === normalized) ?? null;
+}
+
+export type TerminalKeybindingRisk = { risky: boolean; reason?: "bare-control" | "shell-tui" };
+export function analyzeTerminalKeybindingRisk(binding: string, platform: KeybindingPlatform = runtimePlatform()): TerminalKeybindingRisk {
+  const parsed = parseKeybinding(binding);
+  if (!parsed) return { risky: false };
+  const effectiveCtrl = parsed.ctrl || (parsed.mod && platform !== "macos");
+  const effectiveMeta = parsed.meta || (parsed.mod && platform === "macos");
+  const bareCtrl = effectiveCtrl && !parsed.shift && !parsed.alt && !effectiveMeta;
+  if (bareCtrl && (parsed.key.length === 1 || ["[", "]", "\\", "space"].includes(parsed.key))) return { risky: true, reason: "bare-control" };
+  const common = new Set(["Ctrl+c", "Ctrl+d", "Ctrl+z", "Ctrl+l", "Ctrl+r", "Ctrl+a", "Ctrl+e", "Ctrl+k", "Ctrl+u", "Ctrl+w"]);
+  return common.has(keybindingSignature(binding, platform) ?? "") ? { risky: true, reason: "shell-tui" } : { risky: false };
+}
+
 export function parseKeybinding(def: string): ParsedKeybinding | null {
   const plusKey = /\+\s*$/.test(def);
   const rawParts = def.split("+").map((p) => p.trim()).filter(Boolean);
@@ -191,7 +268,8 @@ export function matchesKeybinding(e: KeyboardEvent, binding: string, isMac: bool
   const actualKey = normalizeKey(e.key);
   const plusFromEquals = parsed.key === "=" && actualKey === "+";
 
-  if (parsed.mod !== modPressed) return false;
+  const expectsPlatformMod = parsed.mod || (isMac ? parsed.meta : parsed.ctrl);
+  if (expectsPlatformMod !== modPressed) return false;
   if (explicitCtrl !== (parsed.mod && !isMac ? false : e.ctrlKey)) return false;
   if (explicitMeta !== (parsed.mod && isMac ? false : e.metaKey)) return false;
   if (parsed.alt !== e.altKey) return false;

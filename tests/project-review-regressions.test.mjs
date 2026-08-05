@@ -72,7 +72,7 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.match(terminal, /<PtyErrorBanner/);
   assert.match(main, /!pure && <SshSuggestionBar session=\{session\} \/>/);
   assert.match(globalAgentBar, /agentResumePendingInput\(resumeCommand\)/);
-  assert.match(chrome, /!pure && search\.searchOpen/);
+  assert.match(chrome, /\{search\.searchOpen &&/);
   assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
   assert.match(chrome, /!pure && menu &&/);
 });
@@ -149,15 +149,21 @@ test("SSH reconnect is transactional and host-key prompts fail closed", () => {
   const ssh = read("src-tauri/src/modules/ssh/mod.rs");
   const connection = read("src-tauri/src/modules/ssh/connection.rs");
   const auth = read("src-tauri/src/modules/ssh/auth.rs");
+  const reconnect = read("src/modules/ssh/auto-reconnect.ts");
+  const forwarding = read("src-tauri/src/modules/ssh/forwarding.rs");
 
-  const openIndex = ssh.indexOf("SshSession::open(params, on_event)");
-  const insertIndex = ssh.indexOf("state.insert(", openIndex);
+  const openIndex = ssh.search(/let \(ssh, open_attempt\)\s*=\s*open_with_cancellation\(/);
+  const insertIndex = ssh.indexOf("state.insert_ssh(", openIndex);
   assert.ok(openIndex >= 0 && insertIndex > openIndex, "replacement must happen after a successful SSH open");
   assert.equal(ssh.slice(0, openIndex).includes("state.remove_logical"), false);
   assert.match(connection, /HOST_KEY_PROMPT_TIMEOUT: Duration = Duration::from_secs\(120\)/);
   assert.match(connection, /SSH_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs\(15\)/);
   assert.match(connection, /tokio::time::timeout\([\s\S]*SSH_TCP_CONNECT_TIMEOUT[\s\S]*TcpStream::connect/);
-  assert.match(connection, /client::connect_stream\(config, socket, handler\)/);
+  assert.match(connection, /client::connect_stream\(config, stream, handler\)/);
+  assert.match(connection, /fn disconnected\([\s\S]*self\.disconnected\.send\(true\)/);
+  assert.match(connection, /classify_pump_end\([\s\S]*transport_disconnected: bool/);
+  assert.match(reconnect, /latest\.sshReconnectLifecycle !== lifecycle/);
+  assert.match(forwarding, /ssh_forwarding_reconnect_snapshot[\s\S]*stop_rule\(cancel, completed\)\.await/);
   assert.match(connection, /tokio::time::timeout\(timeout, receiver\)/);
   assert.doesNotMatch(connection, /tokio::select! \{\s*biased;[\s\S]{0,300}input_rx\.recv/);
 
@@ -332,7 +338,11 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(security, /terminal_clipboard_write = true/);
   assert.match(security, /does not implement clipboard read responses/);
   assert.match(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
-  const defaultConfigKeys = [...configRs.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
+  const defaultKeybindingBody = configRs.slice(
+    configRs.indexOf("fn old_default_keybindings"),
+    configRs.indexOf("fn old_backend_default_keybindings"),
+  );
+  const defaultConfigKeys = [...defaultKeybindingBody.matchAll(/\("([a-z0-9_]+)", "Mod\+[^"]+"\)/g)].map((m) => m[1]);
   assert.equal(new Set(defaultConfigKeys).size, defaultConfigKeys.length);
   assert.match(bridge, /invoke<LoadedTunaraConfig>\("load_config"\)/);
   assert.match(bridge, /invoke\("save_config", \{ config \}\)/);
@@ -624,8 +634,8 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(explorer, /const next = m === "name" \? "content" : "name"/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
-  assert.match(explorer, /items: isRemote[\s\S]*?id: "dir:copy-path"/);
-  assert.match(explorer, /items: isRemote[\s\S]*?id: "file:copy-path"/);
+  assert.match(explorer, /return isRemote[\s\S]*?id: "dir:copy-path"/);
+  assert.match(explorer, /return isRemote[\s\S]*?id: "file:copy-path"/);
   const remoteFsBridge = read("src/modules/ssh/remote-fs-bridge.ts");
   assert.match(remoteFsBridge, /export function sshGrep\(/);
   assert.match(remoteFsBridge, /invoke<GrepResponse>\("ssh_fs_grep"/);
@@ -810,7 +820,7 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
   assert.match(keys, /compactLayout\.panelOverlay[\s\S]*ui\.setPanelVisible\(false\)[\s\S]*compactLayout\.sidebarOverlay[\s\S]*ui\.setSidebarVisible\(false\)/);
   assert.match(keys, /splitFocusTarget\(ui\.split, st\.activeSessionId, direction\)/);
-  assert.match(keys, /if \(target\) st\.setActive\(target\)/);
+  assert.match(keys, /if \(target\) \{[^}]*st\.setActive\(target\)/);
   assert.match(gitContext, /const repoPath = activeIsRemote \? undefined : normalizeLocalRepoPath\(activeDir\);/);
   assert.match(gitContext, /if \(!activeIsRemote && !repoPath\) \{[\s\S]*?setRemoteState\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
   assert.match(gitContext, /gitAheadBehind\(repoPath!\)/);
@@ -835,12 +845,14 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
 test("remote file downloads are reachable from the explorer", () => {
   const explorer = read("src/ui/FileExplorer.tsx");
   const bridge = read("src/modules/ssh/remote-fs-bridge.ts");
+  const transferBridge = read("src/modules/ssh/transfer-bridge.ts");
   const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
 
   assert.match(explorer, /saveDialog\(\{/);
   assert.match(explorer, /sshDownload\(remotePtyId, remotePath, localPath\)/);
   assert.match(explorer, /id: "file:download"/);
-  assert.match(bridge, /invoke<number>\("ssh_fs_download"/);
+  assert.match(bridge, /export \{ sshCancelUpload, sshDownload, sshUpload \} from "\.\/transfer-bridge\.ts"/);
+  assert.match(transferBridge, /invoke<number>\("ssh_fs_download"/);
   assert.ok(capability.permissions.includes("dialog:allow-save"));
 });
 
@@ -1058,7 +1070,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalFileLinks, /options\.getCwd\(bufferLineNumber\)/);
   assert.match(terminalLineCwd, /if \(!cwd\.trim\(\)\)/);
   assert.match(terminalLineCwd, /last\?\.cwd === cwd/);
-  assert.match(terminalFileLinks, /openInEditorWithToast\(options\.getEditor\(\), path, \{ line: match\.line, column: match\.column \}\)/);
+  assert.match(terminalFileLinks, /openResource\(options\.createResource\(path, match\.line, match\.column\)\)/);
   assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
   assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
@@ -1322,7 +1334,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(zhDict, /"sidebar\.dir\.copy_path": "复制路径"/);
   assert.doesNotMatch(explorer, /function SearchIcon/);
   assert.match(explorer, /gridTemplateColumns: "minmax\(0, 1fr\) 92px"/);
-  assert.match(explorer, /formatModifiedTime\(entry\.mtime\)/);
+  assert.match(explorer, /formatModifiedTime\(node\.entry\.mtime\)/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);
   assert.match(tokens, /--font-ui: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', 'Noto Sans SC', monospace;/);
@@ -1424,7 +1436,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ scanTerminalInputBuffer, shouldScanTerminalInput \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
-  assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl\)/);
+  assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl, linkInputRef\.current\.shouldActivate\)/);
   // Paste protection must be wired with the Tauri dialog confirmer —
   // window.confirm never renders in wry's WKWebView (silent false), which
   // silently dropped every multiline/large paste before the fix.
@@ -1441,7 +1453,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /useUIStore\.getState\(\)\.presentationMode !== "pure"/);
   assert.match(terminal, /handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
   assert.match(terminal, /import \{ handleCopyKeyEvent \} from "@\/modules\/terminal\/lib\/terminal-copy"/);
-  assert.match(terminal, /const search = useTerminalSearch\(termRef\)/);
+  assert.match(terminal, /const search = useTerminalSearch\(sessionId\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputState\.buffer, data, inputState\.bracketedPasteActive\)/);
   assert.match(terminalChrome, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
@@ -1471,7 +1483,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelectHook, /copyText\(item\.copyText\)/);
   assert.match(terminalQuickSelectHook, /if \(item\.kind === "text"\) \{[\s\S]*copyItem\(item\);[\s\S]*return;/);
-  assert.match(terminalQuickSelectHook, /openInEditor\(useUIStore\.getState\(\)\.externalEditor, item\.target, item\.line, item\.column\)/);
+  assert.match(terminalQuickSelectHook, /openResource\(resourceRefForSession\(owner, item\.target, item\.line, item\.column\)\)/);
   assert.match(terminalQuickSelectOverlay, /export function TerminalQuickSelect/);
   assert.match(terminalQuickSelectOverlay, /item\.kind !== "text"/);
   assert.match(terminalQuickSelectOverlay, /quickSelectHint\(index\)/);
@@ -1516,7 +1528,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalPasteProtection, /event\.preventDefault\(\)/);
   assert.match(
     terminalPasteProtection,
-    /requestProtectedTerminalPaste\(term, text, confirmPaste, \(\) => active\)/,
+    /requestProtectedTerminalPaste\(term, text, confirmPaste, \(\) => active && targetIsCurrent\(\)\)/,
   );
   assert.match(terminalBlocks, /export function useTerminalBlocks/);
   assert.match(terminalBlocksPure, /export function findStickyCommandBlock/);
@@ -1594,8 +1606,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // wired on BOTH command-detection paths — the OSC 133 path that local
   // sessions use by default, and the keystroke fallback). 540→550 for the
   // post-exit inputToPtyEnabled gate + deferred DA handler registration.
-  // The 580 ceiling leaves room for generation publication and inert SSH
-  // restore; both state machines remain extracted into terminal lib modules.
-  assert.ok(terminal.split("\n").length < 580);
+  // The 580 ceiling left room for generation publication and inert SSH
+  // restore. 580→625 covers input ownership plus binding-aware terminal
+  // actions; their state machines remain extracted into terminal lib modules.
+  assert.ok(terminal.split("\n").length < 625);
   assert.ok(sidebar.split("\n").length < 410);
 });

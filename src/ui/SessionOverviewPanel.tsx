@@ -1,5 +1,5 @@
 import type React from "react";
-import { AGENT_NAMES, deriveTitle, type Session } from "./types";
+import { AGENT_NAMES, deriveTitle, reconnectPrefillFromSession, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
@@ -12,6 +12,7 @@ import { formatTimelineRelativeTime, type TimelineEvent } from "@/state/timeline
 import { SessionMascotIcon } from "./SessionMascotIcon";
 import { SessionMascotPicker } from "./SessionMascotPicker";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
+import { SessionRemediationNotice } from "./SessionRemediationNotice";
 
 interface SessionOverviewPanelProps {
   session: Session;
@@ -115,15 +116,7 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
 
   const reconnectRemote = () => {
     if (!session.remote) return;
-    useUIStore.getState().openSshConnect({
-      host: session.remote.host,
-      user: session.remote.user,
-      port: session.remote.port,
-      authMethod: session.remote.authMethod,
-      identityFile: session.remote.identityFile,
-      injectShellIntegration: session.remote.injectShellIntegration,
-      reconnectSessionId: session.id,
-    });
+    useUIStore.getState().openSshConnect(reconnectPrefillFromSession(session));
   };
 
   return (
@@ -151,6 +144,8 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       </div>
 
       <SessionMascotPicker session={session} />
+
+      <SessionRemediationNotice session={session} />
 
       {session.workspaceState === "unavailable" && (
         <div role="status" style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: "9px 11px", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>

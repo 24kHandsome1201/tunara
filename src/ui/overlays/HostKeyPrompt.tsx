@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { answerHostKeyPrompt } from "@/modules/terminal/lib/pty-bridge";
-import { useFocusTrap } from "./useFocusTrap";
+import { useModalBehavior } from "./Modal";
 
 /**
  * App-level dialog shown when an SSH connection meets an unknown / unverifiable
@@ -16,8 +16,8 @@ export function HostKeyPromptDialog() {
   const prompt = useUIStore((s) => s.hostKeyPrompts[0] ?? null);
   const dismissHostKeyPrompt = useUIStore((s) => s.dismissHostKeyPrompt);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const rejectRef = useRef<HTMLButtonElement>(null);
   const [submitting, setSubmitting] = useState(false);
-  useFocusTrap(dialogRef);
 
   const decide = async (accept: boolean) => {
     if (!prompt || submitting) return;
@@ -36,11 +36,13 @@ export function HostKeyPromptDialog() {
     }
   };
 
-  // Focus the safe (reject) action by default so an accidental Enter doesn't trust.
-  const rejectRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (prompt) rejectRef.current?.focus();
-  }, [prompt]);
+  useModalBehavior(dialogRef, {
+    active: prompt !== null,
+    initialFocus: rejectRef,
+    bindingKey: prompt?.promptId,
+    currentBindingKey: prompt?.promptId,
+    onRequestClose: () => { void decide(false); },
+  });
 
   if (!prompt) return null;
 
@@ -57,6 +59,7 @@ export function HostKeyPromptDialog() {
   return (
     <>
       <div
+        aria-hidden="true"
         onClick={() => { void decide(false); }}
         style={{
           position: "fixed",
@@ -71,10 +74,8 @@ export function HostKeyPromptDialog() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="ssh-host-key-title"
+        aria-describedby="ssh-host-key-hop ssh-host-key-body ssh-host-key-hint"
         tabIndex={0}
-        onKeyDown={(e: React.KeyboardEvent) => {
-          if (e.key === "Escape") void decide(false);
-        }}
         style={{
           position: "fixed",
           top: "50%",
@@ -102,7 +103,8 @@ export function HostKeyPromptDialog() {
         </div>
 
         <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 0, flex: 1 }}>
-          <p style={{ margin: 0, fontSize: "var(--fs-body)", color: "var(--c-text-primary)", lineHeight: 1.5 }}>
+          <strong id="ssh-host-key-hop">{t(`ssh.hop.${prompt.hopRole}`)}</strong>
+          <p id="ssh-host-key-body" style={{ margin: 0, fontSize: "var(--fs-body)", color: "var(--c-text-primary)", lineHeight: 1.5 }}>
             {t(bodyKey, { host: hostLabel })}
           </p>
           <div
@@ -122,7 +124,7 @@ export function HostKeyPromptDialog() {
             </div>
             {prompt.fingerprint}
           </div>
-          <p style={{ margin: 0, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.5 }}>
+          <p id="ssh-host-key-hint" style={{ margin: 0, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.5 }}>
             {t(hintKey)}
           </p>
         </div>

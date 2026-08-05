@@ -6,6 +6,7 @@ import type { SessionMascotId } from "../modules/session/session-mascot.ts";
 import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
 import type { PreviewCommandProvenance, PreviewSource } from "../modules/preview/preview-source.ts";
 import type { SshAuthMethod } from "../modules/ssh/hosts-model.ts";
+import type { ForwardReconnectIntent } from "../modules/terminal/lib/pty-bridge.ts";
 export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
@@ -79,6 +80,12 @@ export interface Session {
   terminalMountNonce?: number;
   /** Runtime-only PTY/Channel generation currently allowed to mutate this session. */
   transportGeneration?: string;
+  /** Runtime-only state for a TransportLost-triggered replacement shell. */
+  sshReconnectAttempt?: number;
+  /** Invalidates every timer/await owned by an older reconnect lifecycle. */
+  sshReconnectLifecycle?: number;
+  sshReconnectNeedsCredential?: boolean;
+  sshReconnectForwards?: ForwardReconnectIntent[];
 
   // ── SSH 远程会话（§ssh-client）。存在即为远程会话，否则为本地。 ──
   remote?: RemoteInfo;
@@ -122,11 +129,20 @@ export interface RemoteInfo {
   authMethod?: SshAuthMethod;
   /** 私钥文件路径（如 ~/.ssh/id_ed25519），仅 key 模式使用。 */
   identityFile?: string;
+  /** Optional OpenSSH user certificate paired with the private key. */
+  certificateFile?: string;
+  /** Persisted, secret-free, single-hop route. */
+  route?: {
+    profileId: string;
+    jump: Pick<RemoteInfo, "host" | "port" | "user" | "authMethod" | "identityFile" | "certificateFile">;
+  };
   /**
    * Phase 4：连接时向远程 shell 注入集成脚本，启用远程 cwd / 命令边界 /
    * agent 检测。默认开启——失败时静默降级，可由用户显式关闭。
    */
   injectShellIntegration?: boolean;
+  /** Explicit opt-in. Missing and false both disable automatic reconnect. */
+  autoReconnect?: boolean;
 }
 
 /**
@@ -143,8 +159,31 @@ export interface SshConnectSuggestion {
 export interface SshConnectPrefill extends SshConnectSuggestion {
   authMethod?: SshAuthMethod;
   identityFile?: string;
+  certificateFile?: string;
+  route?: RemoteInfo["route"];
+  reconnectForwards?: ForwardReconnectIntent[];
   injectShellIntegration?: boolean;
+  autoReconnect?: boolean;
   reconnectSessionId?: string;
+}
+
+/** Secret-free replacement-shell intent shared by every reconnect entry. */
+export function reconnectPrefillFromSession(session: Session): SshConnectPrefill | null {
+  const remote = session.remote;
+  if (!remote) return null;
+  return {
+    host: remote.host,
+    port: remote.port,
+    user: remote.user,
+    authMethod: remote.authMethod,
+    identityFile: remote.identityFile,
+    certificateFile: remote.certificateFile,
+    route: remote.route,
+    ...(session.sshReconnectForwards !== undefined ? { reconnectForwards: session.sshReconnectForwards } : {}),
+    injectShellIntegration: remote.injectShellIntegration,
+    autoReconnect: remote.autoReconnect,
+    reconnectSessionId: session.id,
+  };
 }
 
 /** 改动文件（与后端 git FileChange 对齐） */

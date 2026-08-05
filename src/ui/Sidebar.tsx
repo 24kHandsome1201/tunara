@@ -361,13 +361,14 @@ export function Sidebar({
                     <div
                       onPointerDown={(e) => {
                         if (!canReorder) return;
+                        if (e.pointerType === "touch") return;
                         if ((e.target as HTMLElement).closest(".session-card-close") || (e.target as HTMLElement).closest(".hover-close")) return;
                         handleDragStart(e, s.id, dir, idx);
                       }}
                       style={{
                         opacity: isDragging ? 0.3 : 1,
                         transition: "opacity 120ms ease",
-                        touchAction: canReorder ? "none" : "auto",
+                        touchAction: "pan-y",
                         cursor: !canReorder ? "pointer" : isDragging ? "grabbing" : "grab",
                       }}
                     >

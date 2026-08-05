@@ -134,27 +134,33 @@ pub async fn ssh_git_status(
     session_id: u32,
     cwd: String,
 ) -> Result<StatusResult, String> {
-    let session = ssh_session(&state, session_id)?;
-    let ssh = match session.as_ref() {
-        Session::Ssh(s) => s,
-        Session::Local(_) => return Err("not a remote session".to_string()),
-    };
-    let cwd = remote_git_cwd(&cwd)?;
-    // Exec channels start in sshd's default directory, not the interactive
-    // shell's live cwd, so pass the OSC-7-tracked path explicitly.
-    // `--no-renames` makes the path column
-    // stable (no `-> ` to split). No `2>&1` — the exec function captures stderr
-    // separately and returns it as Err when stdout is empty, so a missing git
-    // or a non-repo cwd surfaces as a clean error instead of being parsed as
-    // bogus porcelain output.
-    let command = format!("git -C {cwd} status --porcelain=v1 --branch --no-renames -z");
-    let out = ssh.exec(&command, MAX_STATUS_BYTES + 1).await?;
-    if out.len() > MAX_STATUS_BYTES {
-        return Err(format!(
-            "remote git status exceeds {MAX_STATUS_BYTES} bytes"
-        ));
-    }
-    Ok(parse_porcelain_v1(&out))
+    (async {
+        let session = ssh_session(&state, session_id)?;
+        let ssh = match session.as_ref() {
+            Session::Ssh(s) => s,
+            Session::Local(_) => return Err("not a remote session".to_string()),
+        };
+        let cwd = remote_git_cwd(&cwd)?;
+        // Exec channels start in sshd's default directory, not the interactive
+        // shell's live cwd, so pass the OSC-7-tracked path explicitly.
+        // `--no-renames` makes the path column
+        // stable (no `-> ` to split). No `2>&1` — the exec function captures stderr
+        // separately and returns it as Err when stdout is empty, so a missing git
+        // or a non-repo cwd surfaces as a clean error instead of being parsed as
+        // bogus porcelain output.
+        let command = format!("git -C {cwd} status --porcelain=v1 --branch --no-renames -z");
+        let out = ssh.exec(&command, MAX_STATUS_BYTES + 1).await?;
+        if out.len() > MAX_STATUS_BYTES {
+            return Err(format!(
+                "remote git status exceeds {MAX_STATUS_BYTES} bytes"
+            ));
+        }
+        Ok(parse_porcelain_v1(&out))
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
+    })
 }
 
 fn remote_basename(path: &str) -> String {
@@ -290,6 +296,7 @@ pub async fn ssh_git_workspace_context(
     repository_key: String,
     request_id: String,
 ) -> Result<WorkspaceContext, String> {
+    (async {
     validate_request_id(&request_id)?;
     if repository_key.is_empty()
         || repository_key.len() > 512
@@ -319,13 +326,13 @@ pub async fn ssh_git_workspace_context(
     }
     let workspace = parse_remote_workspace(&out, &repository_key)?;
     log::info!(
-        "git workspace discovered transport=ssh repository={} host={} worktrees={} current={}",
-        workspace.repository.name,
-        repository_key,
+        "git workspace discovered transport=ssh worktrees={} current={}",
         workspace.worktrees.len(),
         workspace.current_worktree_id.is_some()
     );
     Ok(workspace)
+
+    }).await.map_err(|error: String| crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error))
 }
 
 /// Run a remote `git diff` for one file/stage and wrap it as a `FileDiff::text`
@@ -340,71 +347,77 @@ pub async fn ssh_git_diff(
     stage: String,
     request_id: String,
 ) -> Result<FileDiff, String> {
-    validate_request_id(&request_id)?;
-    let session = ssh_session(&state, session_id)?;
-    let ssh = match session.as_ref() {
-        Session::Ssh(s) => s,
-        Session::Local(_) => return Err("not a remote session".to_string()),
-    };
-    // Stage → git diff flag. Untracked files have no diff, so surface them as
-    // metadataOnly (the local path does the same for empty-delta untracked).
-    let arg = match stage.as_str() {
-        "staged" => "--cached",
-        "unstaged" => "",
-        "untracked" => {
-            return Ok(FileDiff::MetadataOnly {
+    (async {
+        validate_request_id(&request_id)?;
+        let session = ssh_session(&state, session_id)?;
+        let ssh = match session.as_ref() {
+            Session::Ssh(s) => s,
+            Session::Local(_) => return Err("not a remote session".to_string()),
+        };
+        // Stage → git diff flag. Untracked files have no diff, so surface them as
+        // metadataOnly (the local path does the same for empty-delta untracked).
+        let arg = match stage.as_str() {
+            "staged" => "--cached",
+            "unstaged" => "",
+            "untracked" => {
+                return Ok(FileDiff::MetadataOnly {
+                    path: file,
+                    change: "untracked".to_string(),
+                });
+            }
+            _ => "",
+        };
+        // Shell-quote the path minimally: wrap in single quotes and escape any
+        // embedded single quotes. The file path comes from our own parsed status,
+        // not user input, but quoting defends against paths with spaces/quotes.
+        let quoted = shell_quote(&file);
+        let cwd = remote_git_cwd(&cwd)?;
+        // No `2>&1` — let the exec function's stderr-capture return git errors
+        // (e.g. "fatal: not a git repository") as Err instead of merging them
+        // into the patch text.
+        let cmd = format!("git -C {cwd} diff {arg} -- {quoted}");
+        // Ask exec for one byte over the cap: exec truncates to its limit, so a
+        // result strictly longer than MAX_DIFF_BYTES is the only unambiguous
+        // overflow signal (a diff of exactly the cap is complete, not too large).
+        let cancelled = search_state.register(&request_id);
+        let result = ssh
+            .exec_cancellable(&cmd, MAX_DIFF_BYTES + 1, cancelled.clone())
+            .await;
+        search_state.finish(&request_id, &cancelled);
+        let out = result?;
+        if out.len() > MAX_DIFF_BYTES {
+            return Ok(FileDiff::TooLarge {
                 path: file,
-                change: "untracked".to_string(),
+                bytes: out.len(),
             });
         }
-        _ => "",
-    };
-    // Shell-quote the path minimally: wrap in single quotes and escape any
-    // embedded single quotes. The file path comes from our own parsed status,
-    // not user input, but quoting defends against paths with spaces/quotes.
-    let quoted = shell_quote(&file);
-    let cwd = remote_git_cwd(&cwd)?;
-    // No `2>&1` — let the exec function's stderr-capture return git errors
-    // (e.g. "fatal: not a git repository") as Err instead of merging them
-    // into the patch text.
-    let cmd = format!("git -C {cwd} diff {arg} -- {quoted}");
-    // Ask exec for one byte over the cap: exec truncates to its limit, so a
-    // result strictly longer than MAX_DIFF_BYTES is the only unambiguous
-    // overflow signal (a diff of exactly the cap is complete, not too large).
-    let cancelled = search_state.register(&request_id);
-    let result = ssh
-        .exec_cancellable(&cmd, MAX_DIFF_BYTES + 1, cancelled.clone())
-        .await;
-    search_state.finish(&request_id, &cancelled);
-    let out = result?;
-    if out.len() > MAX_DIFF_BYTES {
-        return Ok(FileDiff::TooLarge {
+        // Under the byte cap but over the line cap: cut and flag truncation the
+        // same way the local path does, instead of silently returning a patch the
+        // local DiffPanel would have labelled as truncated.
+        let total_lines = out.lines().count();
+        if total_lines > MAX_DIFF_LINES {
+            let patch = out
+                .lines()
+                .take(MAX_DIFF_LINES)
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Ok(FileDiff::Text {
+                path: file,
+                patch,
+                truncated: true,
+                total_lines,
+            });
+        }
+        Ok(FileDiff::Text {
             path: file,
-            bytes: out.len(),
-        });
-    }
-    // Under the byte cap but over the line cap: cut and flag truncation the
-    // same way the local path does, instead of silently returning a patch the
-    // local DiffPanel would have labelled as truncated.
-    let total_lines = out.lines().count();
-    if total_lines > MAX_DIFF_LINES {
-        let patch = out
-            .lines()
-            .take(MAX_DIFF_LINES)
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Ok(FileDiff::Text {
-            path: file,
-            patch,
-            truncated: true,
+            patch: out,
+            truncated: false,
             total_lines,
-        });
-    }
-    Ok(FileDiff::Text {
-        path: file,
-        patch: out,
-        truncated: false,
-        total_lines,
+        })
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
     })
 }
 
@@ -423,61 +436,68 @@ pub async fn ssh_git_ahead_behind(
     session_id: u32,
     cwd: String,
 ) -> Result<RemoteState, String> {
-    let session = ssh_session(&state, session_id)?;
-    let ssh = match session.as_ref() {
-        Session::Ssh(s) => s,
-        Session::Local(_) => return Err("not a remote session".to_string()),
-    };
-    let cwd = remote_git_cwd(&cwd)?;
-    // `rev-list --left-right --count @{u}...HEAD` prints "<behind>\t<ahead>"
-    // (one line, tab-separated).
-    let rev_list = format!("git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null");
-    let out = ssh.exec_allow_nonzero(&rev_list, 256).await?;
-    let trimmed = out.trim();
-    // Empty output: no upstream (git exited non-zero, stderr suppressed).
-    if trimmed.is_empty() {
-        // Fall back to reading the branch name so the UI can show it.
-        let branch_command = format!("git -C {cwd} symbolic-ref --short HEAD 2>/dev/null");
-        let branch_out = ssh.exec(&branch_command, 128).await.unwrap_or_default();
-        let branch = branch_out.trim().to_string();
-        if branch.is_empty() {
-            // No HEAD ref at all → detached or unborn. Distinguish via
-            // rev-parse HEAD: success means detached.
-            let head_command = format!("git -C {cwd} rev-parse --short HEAD 2>/dev/null");
-            let head_out = ssh.exec(&head_command, 128).await.unwrap_or_default();
-            let oid = head_out.trim().to_string();
-            if oid.is_empty() {
-                return Ok(RemoteState::Unborn);
+    (async {
+        let session = ssh_session(&state, session_id)?;
+        let ssh = match session.as_ref() {
+            Session::Ssh(s) => s,
+            Session::Local(_) => return Err("not a remote session".to_string()),
+        };
+        let cwd = remote_git_cwd(&cwd)?;
+        // `rev-list --left-right --count @{u}...HEAD` prints "<behind>\t<ahead>"
+        // (one line, tab-separated).
+        let rev_list =
+            format!("git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null");
+        let out = ssh.exec_allow_nonzero(&rev_list, 256).await?;
+        let trimmed = out.trim();
+        // Empty output: no upstream (git exited non-zero, stderr suppressed).
+        if trimmed.is_empty() {
+            // Fall back to reading the branch name so the UI can show it.
+            let branch_command = format!("git -C {cwd} symbolic-ref --short HEAD 2>/dev/null");
+            let branch_out = ssh.exec(&branch_command, 128).await.unwrap_or_default();
+            let branch = branch_out.trim().to_string();
+            if branch.is_empty() {
+                // No HEAD ref at all → detached or unborn. Distinguish via
+                // rev-parse HEAD: success means detached.
+                let head_command = format!("git -C {cwd} rev-parse --short HEAD 2>/dev/null");
+                let head_out = ssh.exec(&head_command, 128).await.unwrap_or_default();
+                let oid = head_out.trim().to_string();
+                if oid.is_empty() {
+                    return Ok(RemoteState::Unborn);
+                }
+                return Ok(RemoteState::Detached { oid });
             }
-            return Ok(RemoteState::Detached { oid });
+            return Ok(RemoteState::NoUpstream { branch });
         }
-        return Ok(RemoteState::NoUpstream { branch });
-    }
-    // Parse "<behind>\t<ahead>". Malformed → Unknown.
-    let parts: Vec<&str> = trimmed.split_whitespace().collect();
-    if parts.len() != 2 {
-        return Ok(RemoteState::Unknown {
-            message: format!("unexpected rev-list output: {trimmed}"),
-        });
-    }
-    let Ok(behind) = parts[0].parse::<usize>() else {
-        return Ok(RemoteState::Unknown {
-            message: format!("non-numeric behind count: {}", parts[0]),
-        });
-    };
-    let Ok(ahead) = parts[1].parse::<usize>() else {
-        return Ok(RemoteState::Unknown {
-            message: format!("non-numeric ahead count: {}", parts[1]),
-        });
-    };
-    // Resolve the upstream name for the UI label.
-    let upstream_command = format!("git -C {cwd} rev-parse --abbrev-ref @{{u}} 2>/dev/null");
-    let up_out = ssh.exec(&upstream_command, 128).await.unwrap_or_default();
-    let upstream = up_out.trim().to_string();
-    Ok(RemoteState::Ok {
-        upstream,
-        ahead,
-        behind,
+        // Parse "<behind>\t<ahead>". Malformed → Unknown.
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() != 2 {
+            return Ok(RemoteState::Unknown {
+                message: format!("unexpected rev-list output: {trimmed}"),
+            });
+        }
+        let Ok(behind) = parts[0].parse::<usize>() else {
+            return Ok(RemoteState::Unknown {
+                message: format!("non-numeric behind count: {}", parts[0]),
+            });
+        };
+        let Ok(ahead) = parts[1].parse::<usize>() else {
+            return Ok(RemoteState::Unknown {
+                message: format!("non-numeric ahead count: {}", parts[1]),
+            });
+        };
+        // Resolve the upstream name for the UI label.
+        let upstream_command = format!("git -C {cwd} rev-parse --abbrev-ref @{{u}} 2>/dev/null");
+        let up_out = ssh.exec(&upstream_command, 128).await.unwrap_or_default();
+        let upstream = up_out.trim().to_string();
+        Ok(RemoteState::Ok {
+            upstream,
+            ahead,
+            behind,
+        })
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
     })
 }
 
@@ -541,39 +561,45 @@ pub async fn ssh_fs_search(
     search_state: State<'_, FsSearchCancellationState>,
     request: RemoteFileSearchRequest,
 ) -> Result<Vec<SearchHit>, String> {
-    let RemoteFileSearchRequest {
-        session_id,
-        root,
-        query,
-        limit,
-        request_id,
-    } = request;
-    validate_request_id(&request_id)?;
-    let session = ssh_session(&state, session_id)?;
-    let ssh = match session.as_ref() {
-        Session::Ssh(s) => s,
-        Session::Local(_) => return Err("not a remote session".to_string()),
-    };
-    let cap = limit.unwrap_or(80).min(200);
-    // Shell-quote: root in single quotes, query embedded inside find's -name
-    // glob (single-quoted so embedded quotes/semicolons can't escape).
-    let root_q = format!("'{}'", root.replace('\'', "'\\''"));
-    let query_q = format!("'*{}*'", query.replace('\'', "'\\''"));
-    // `-not -path '*/.*'` skips hidden dirs/files (matches local ignore walk).
-    // `2>/dev/null` suppresses permission-denied noise. `head` caps result count
-    // so a massive tree doesn't stream forever.
-    let cmd = format!(
-        "find {root_q} -name {query_q} -not -path '*/.*' 2>/dev/null | \
+    (async {
+        let RemoteFileSearchRequest {
+            session_id,
+            root,
+            query,
+            limit,
+            request_id,
+        } = request;
+        validate_request_id(&request_id)?;
+        let session = ssh_session(&state, session_id)?;
+        let ssh = match session.as_ref() {
+            Session::Ssh(s) => s,
+            Session::Local(_) => return Err("not a remote session".to_string()),
+        };
+        let cap = limit.unwrap_or(80).min(200);
+        // Shell-quote: root in single quotes, query embedded inside find's -name
+        // glob (single-quoted so embedded quotes/semicolons can't escape).
+        let root_q = format!("'{}'", root.replace('\'', "'\\''"));
+        let query_q = format!("'*{}*'", query.replace('\'', "'\\''"));
+        // `-not -path '*/.*'` skips hidden dirs/files (matches local ignore walk).
+        // `2>/dev/null` suppresses permission-denied noise. `head` caps result count
+        // so a massive tree doesn't stream forever.
+        let cmd = format!(
+            "find {root_q} -name {query_q} -not -path '*/.*' 2>/dev/null | \
          while IFS= read -r p; do if [ -d \"$p\" ]; then printf 'd\\t%s\\n' \"$p\"; \
          else printf 'f\\t%s\\n' \"$p\"; fi; done | head -{cap}"
-    );
-    let cancelled = search_state.register(&request_id);
-    let result = ssh
-        .exec_cancellable(&cmd, MAX_SEARCH_BYTES, cancelled.clone())
-        .await;
-    search_state.finish(&request_id, &cancelled);
-    let out = result?;
-    Ok(parse_find_output(&out, &root))
+        );
+        let cancelled = search_state.register(&request_id);
+        let result = ssh
+            .exec_cancellable(&cmd, MAX_SEARCH_BYTES, cancelled.clone())
+            .await;
+        search_state.finish(&request_id, &cancelled);
+        let out = result?;
+        Ok(parse_find_output(&out, &root))
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
+    })
 }
 
 // ── Remote content search (grep over the exec channel) ─────────────────────
@@ -684,65 +710,71 @@ pub async fn ssh_fs_grep(
     search_state: State<'_, FsSearchCancellationState>,
     request: RemoteGrepRequest,
 ) -> Result<GrepResponse, String> {
-    let RemoteGrepRequest {
-        session_id,
-        root,
-        pattern,
-        case_insensitive,
-        max_results,
-        request_id,
-    } = request;
-    validate_request_id(&request_id)?;
-    if pattern.is_empty() {
-        return Err("empty pattern".into());
-    }
-    let session = ssh_session(&state, session_id)?;
-    let ssh = match session.as_ref() {
-        Session::Ssh(s) => s,
-        Session::Local(_) => return Err("not a remote session".to_string()),
-    };
-    let cap = max_results
-        .unwrap_or(REMOTE_GREP_DEFAULT_RESULTS)
-        .clamp(1, REMOTE_GREP_HARD_MAX_RESULTS);
-
-    // Shell-quote root and pattern (same single-quote escape the diff path
-    // uses); `-e` keeps a leading `-` in the pattern from becoming a flag.
-    let root_q = format!("'{}'", root.replace('\'', "'\\''"));
-    let pattern_q = format!("'{}'", pattern.replace('\'', "'\\''"));
-    let case_flag = if case_insensitive == Some(true) {
-        "-i "
-    } else {
-        ""
-    };
-    // head asks for cap + 1 lines so the parser can distinguish "exactly cap
-    // matches" from "more matches exist". grep's stderr is discarded so
-    // permission-denied noise on a single unreadable subdir can't turn a valid
-    // zero-match search into an error; cd's stderr is NOT discarded, so a
-    // missing/denied root still surfaces as a visible failure via exec's
-    // empty-stdout-with-stderr path.
-    let head_cap = cap + 1;
-    let cmd = format!(
-        "cd {root_q} && grep -rEIn {case_flag}--exclude-dir=.git --exclude-dir=node_modules \
-         --exclude-dir=target --exclude-dir=dist -e {pattern_q} . 2>/dev/null | head -n {head_cap}"
-    );
-    let cancelled = search_state.register(&request_id);
-    let result = ssh
-        .exec_cancellable(&cmd, MAX_GREP_BYTES, cancelled.clone())
-        .await;
-    search_state.finish(&request_id, &cancelled);
-    let out = result?;
-    let (hits, truncated) = parse_grep_output(&out, &root, cap);
-    let files_scanned = {
-        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
-        for hit in &hits {
-            seen.insert(hit.rel.as_str());
+    (async {
+        let RemoteGrepRequest {
+            session_id,
+            root,
+            pattern,
+            case_insensitive,
+            max_results,
+            request_id,
+        } = request;
+        validate_request_id(&request_id)?;
+        if pattern.is_empty() {
+            return Err("empty pattern".into());
         }
-        seen.len()
-    };
-    Ok(GrepResponse {
-        hits,
-        truncated,
-        files_scanned,
+        let session = ssh_session(&state, session_id)?;
+        let ssh = match session.as_ref() {
+            Session::Ssh(s) => s,
+            Session::Local(_) => return Err("not a remote session".to_string()),
+        };
+        let cap = max_results
+            .unwrap_or(REMOTE_GREP_DEFAULT_RESULTS)
+            .clamp(1, REMOTE_GREP_HARD_MAX_RESULTS);
+
+        // Shell-quote root and pattern (same single-quote escape the diff path
+        // uses); `-e` keeps a leading `-` in the pattern from becoming a flag.
+        let root_q = format!("'{}'", root.replace('\'', "'\\''"));
+        let pattern_q = format!("'{}'", pattern.replace('\'', "'\\''"));
+        let case_flag = if case_insensitive == Some(true) {
+            "-i "
+        } else {
+            ""
+        };
+        // head asks for cap + 1 lines so the parser can distinguish "exactly cap
+        // matches" from "more matches exist". grep's stderr is discarded so
+        // permission-denied noise on a single unreadable subdir can't turn a valid
+        // zero-match search into an error; cd's stderr is NOT discarded, so a
+        // missing/denied root still surfaces as a visible failure via exec's
+        // empty-stdout-with-stderr path.
+        let head_cap = cap + 1;
+        let cmd = format!(
+            "cd {root_q} && grep -rEIn {case_flag}--exclude-dir=.git --exclude-dir=node_modules \
+         --exclude-dir=target --exclude-dir=dist -e {pattern_q} . 2>/dev/null | head -n {head_cap}"
+        );
+        let cancelled = search_state.register(&request_id);
+        let result = ssh
+            .exec_cancellable(&cmd, MAX_GREP_BYTES, cancelled.clone())
+            .await;
+        search_state.finish(&request_id, &cancelled);
+        let out = result?;
+        let (hits, truncated) = parse_grep_output(&out, &root, cap);
+        let files_scanned = {
+            let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            for hit in &hits {
+                seen.insert(hit.rel.as_str());
+            }
+            seen.len()
+        };
+        Ok(GrepResponse {
+            hits,
+            truncated,
+            files_scanned,
+        })
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
     })
 }
 

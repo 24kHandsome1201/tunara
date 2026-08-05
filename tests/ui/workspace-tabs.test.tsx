@@ -161,6 +161,19 @@ describe("workspace file and terminal tabs", () => {
     view.unmount();
   });
 
+  test("right pointer-down activates an inactive terminal pane during capture", () => {
+    const secondSession = { ...session, id: "terminal-2", title: "Second" };
+    useSessionsStore.setState({
+      sessions: [session, secondSession],
+      activeSessionId: session.id,
+      launchedSessionIds: { [session.id]: true, [secondSession.id]: true },
+    });
+    render(<MainArea sessions={[session, secondSession]} activeSessionId={session.id} />);
+
+    fireEvent.pointerDown(screen.getByTestId("terminal-terminal-2"), { button: 2 });
+    expect(useSessionsStore.getState().activeSessionId).toBe(secondSession.id);
+  });
+
   test("Pure Mode hides the file surface without forgetting its selected tab", () => {
     useUIStore.getState().openFileTab({ sessionId: session.id, filePath: "/tmp/project/notes.txt", fileName: "notes.txt" });
     const fileTabId = useUIStore.getState().activeFileTabId;

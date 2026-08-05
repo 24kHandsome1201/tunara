@@ -366,6 +366,106 @@ test("snapshot sanitizer falls back to local session dirs when recents are absen
   });
 });
 
+test("snapshot sanitizer preserves only bounded key and certificate paths, never credentials", () => {
+  const snapshot = sanitizeSnapshot({
+    version: 1,
+    savedAt: 1,
+    activeSessionId: "key",
+    sessions: [
+      persistedSession("key", "me@box", 1, {
+        remote: {
+          host: "box",
+          port: 22,
+          user: "me",
+          authMethod: "key",
+          identityFile: " ~/.ssh/id_ed25519 ",
+          certificateFile: " ~/.ssh/id_ed25519-cert.pub ",
+          password: "must-not-persist",
+          keyPassphrase: "must-not-persist",
+        },
+      }),
+      persistedSession("invalid-cert", "me@other", 2, {
+        remote: {
+          host: "other",
+          port: 22,
+          user: "me",
+          authMethod: "key",
+          identityFile: "~/.ssh/id_other",
+          certificateFile: "bad\npath",
+        },
+      }),
+    ],
+  });
+
+  assert.ok(snapshot);
+  assert.deepEqual(snapshot.sessions[0].remote, {
+    host: "box",
+    port: 22,
+    user: "me",
+    authMethod: "key",
+    identityFile: "~/.ssh/id_ed25519",
+    certificateFile: "~/.ssh/id_ed25519-cert.pub",
+  });
+  assert.deepEqual(snapshot.sessions[1].remote, {
+    host: "other",
+    port: 22,
+    user: "me",
+    authMethod: "key",
+    identityFile: "~/.ssh/id_other",
+  });
+  assert.doesNotMatch(JSON.stringify(snapshot), /must-not-persist/);
+});
+
+test("snapshot sanitizer preserves a bounded single-hop route without either hop's secrets", () => {
+  const snapshot = sanitizeSnapshot({
+    version: 1,
+    savedAt: 1,
+    activeSessionId: "routed",
+    sessions: [persistedSession("routed", "deploy@target", 1, {
+      remote: {
+        host: "target.internal",
+        port: 22,
+        user: "deploy",
+        authMethod: "agent",
+        password: "target-secret",
+        route: {
+          profileId: " jump-profile ",
+          jump: {
+            host: "jump.example",
+            port: 2222,
+            user: "ops",
+            authMethod: "key",
+            identityFile: " ~/.ssh/id_jump ",
+            certificateFile: " ~/.ssh/id_jump-cert.pub ",
+            password: "jump-secret",
+            keyPassphrase: "jump-passphrase",
+          },
+        },
+      },
+    })],
+  });
+
+  assert.ok(snapshot);
+  assert.deepEqual(snapshot.sessions[0].remote, {
+    host: "target.internal",
+    port: 22,
+    user: "deploy",
+    authMethod: "agent",
+    route: {
+      profileId: "jump-profile",
+      jump: {
+        host: "jump.example",
+        port: 2222,
+        user: "ops",
+        authMethod: "key",
+        identityFile: "~/.ssh/id_jump",
+        certificateFile: "~/.ssh/id_jump-cert.pub",
+      },
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(snapshot), /target-secret|jump-secret|jump-passphrase/);
+});
+
 test("snapshot sanitizer drops malformed optional session fields without dropping the session", () => {
   const snapshot = sanitizeSnapshot({
     version: 1,

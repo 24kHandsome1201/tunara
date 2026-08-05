@@ -18,6 +18,7 @@ import {
   pasteWithCapturedBracketedMode,
   registerTerminalPasteProtection,
   requestProtectedTerminalPaste,
+  terminalPasteWarningMessage,
   TERMINAL_LARGE_PASTE_WARNING_LENGTH,
 } from "../src/modules/terminal/lib/terminal-paste-protection.ts";
 import { setLanguage } from "../src/modules/i18n/core.ts";
@@ -44,6 +45,17 @@ test("multiline and oversized pastes warn", () => {
   assert.equal(analyzeTerminalPaste("a\nb").lineCount, 2);
   const big = "x".repeat(TERMINAL_LARGE_PASTE_WARNING_LENGTH + 1);
   assert.equal(analyzeTerminalPaste(big).large, true);
+});
+
+test("single-line C0/C1, ESC, NUL, and BEL are risky and previewed only as escapes", () => {
+  for (const character of ["\u0000", "\u0007", "\u001b", "\u0085"]) {
+    const warning = analyzeTerminalPaste(`echo${character}ok`);
+    assert.equal(warning.controlCharacters, true);
+    assert.doesNotMatch(warning.escapedPreview, /[\u0000-\u001f\u007f-\u009f]/);
+    const message = terminalPasteWarningMessage(warning);
+    assert.doesNotMatch(message, new RegExp(character));
+    assert.match(message, /\\(?:e|x[0-9a-f]{2})/);
+  }
 });
 
 // ── confirmProtectedTerminalPaste ────────────────────────────────────────
@@ -255,8 +267,7 @@ test("no window.confirm/alert/prompt anywhere in src (silent no-ops in wry)", ()
 
 test("context-menu paste invalidates confirmation when its terminal is replaced", () => {
   const chrome = readFileSync(join(import.meta.dirname, "..", "src/ui/TerminalViewChrome.tsx"), "utf8");
-  assert.match(
-    chrome,
-    /requestProtectedTerminalPaste\(term, text,[\s\S]*?\(\) => getTerminal\(\) === term\)/,
-  );
+  assert.match(chrome, /const isCurrent = capturePasteTarget\(term\)/);
+  assert.match(chrome, /if \(!text \|\| !isCurrent\(\)\) return/);
+  assert.match(chrome, /requestProtectedTerminalPaste\(term, text,[\s\S]*?isCurrent\)/);
 });

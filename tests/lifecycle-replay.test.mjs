@@ -104,13 +104,20 @@ import { parseConEmuCwdOsc9 } from "../src/modules/terminal/lib/terminal-osc9.ts
 import { parseTerminalProgressOsc } from "../src/modules/terminal/lib/terminal-progress.ts";
 import { DEFAULT_KEYBINDINGS, matchesKeybinding, parseKeybinding, sanitizeKeybindings } from "../src/modules/config/keybindings.ts";
 import { collectTerminalBlockOutputText, findNavigableCommandBlock, findStickyCommandBlock, formatTerminalBlockCommandAndOutput, normalizeBlockCommand, resolveTerminalBlockRows } from "../src/modules/terminal/lib/terminal-blocks.ts";
-import { deriveTitle } from "../src/ui/types.ts";
+import { deriveTitle, reconnectPrefillFromSession } from "../src/ui/types.ts";
 import { setLanguage } from "../src/modules/i18n/core.ts";
 import {
   connectionDiagnostic,
   initialConnectionEvidence,
+  remediationForSession,
+  remediationIsCurrent,
   reduceConnectionEvidence,
 } from "../src/modules/terminal/lib/connection-state.ts";
+import {
+  canRetrySshReconnect,
+  SSH_RECONNECT_MAX_ATTEMPTS,
+  sshReconnectDelayMs,
+} from "../src/modules/ssh/reconnect-policy.ts";
 
 // Agent title suffixes go through i18n; pin the locale so assertions are
 // deterministic regardless of the host's navigator.language.
@@ -270,6 +277,24 @@ test("connection failure evidence keeps the failed phase and produces bounded di
   assert.match(diagnostic, /source=renderer/);
   assert.match(diagnostic, /failedAtPhase=authenticating/);
   assert.match(diagnostic, /reason=auth/);
+});
+
+test("SSH reconnect is bounded full-jitter and exposes needs-user-action", () => {
+  assert.equal(sshReconnectDelayMs(1, () => 0), 0);
+  assert.equal(sshReconnectDelayMs(1, () => 1), 499);
+  assert.equal(sshReconnectDelayMs(4, () => 1), 3_999);
+  assert.equal(sshReconnectDelayMs(30, () => 1), 7_999);
+  assert.equal(canRetrySshReconnect(SSH_RECONNECT_MAX_ATTEMPTS - 1), true);
+  assert.equal(canRetrySshReconnect(SSH_RECONNECT_MAX_ATTEMPTS), false);
+
+  let evidence = initialConnectionEvidence("ssh", "user", 10);
+  evidence = reduceConnectionEvidence(evidence, { type: "transportLost" }, 20);
+  assert.equal(evidence.phase, "disconnected");
+  evidence = reduceConnectionEvidence(evidence, { type: "reconnectScheduled" }, 30);
+  assert.equal(evidence.phase, "reconnecting");
+  evidence = reduceConnectionEvidence(evidence, { type: "needsUserAction", reason: "hostKey" }, 40);
+  assert.equal(evidence.phase, "needsUserAction");
+  assert.equal(evidence.reason, "hostKey");
 });
 
 test("terminal input buffer scans submissions across chunks", () => {
@@ -1392,6 +1417,8 @@ test("terminal paste protection guards multiline and large pastes", async () => 
     lineCount: 2,
     large: false,
     multiline: true,
+    controlCharacters: true,
+    escapedPreview: "echo one\\x0aecho two",
   });
   assert.equal(analyzeTerminalPaste("x".repeat(TERMINAL_LARGE_PASTE_WARNING_LENGTH))?.large, undefined);
   assert.equal(analyzeTerminalPaste("x".repeat(TERMINAL_LARGE_PASTE_WARNING_LENGTH + 1))?.large, true);
@@ -2071,6 +2098,88 @@ test("OSC 7 cwd replay updates sidebar directory and clears stale git context", 
   assert.equal(h.session.shellTitle, undefined);
   assert.equal(h.session.suppressShellTitle, false);
   assert.equal(h.gitRefreshes, 1);
+});
+
+test("OSC 7 keeps local and SSH host ownership distinct", () => {
+  assert.equal(parseOsc7("file://remote.example/srv/app", "local"), null);
+  assert.equal(parseOsc7("file://remote.example/srv/app%20one", "ssh"), "/srv/app one");
+  assert.equal(parseOsc7("file://localhost/tmp/app", "local"), "/tmp/app");
+});
+
+test("every reconnect entry can share one complete secret-free replacement-shell prefill", () => {
+  const session = makeSession({
+    id: "ssh-prefill",
+    remote: {
+      host: "target.internal",
+      port: 2202,
+      user: "deploy",
+      authMethod: "key",
+      identityFile: "~/.ssh/id_target",
+      certificateFile: "~/.ssh/id_target-cert.pub",
+      route: {
+        profileId: "bastion",
+        jump: { host: "jump.internal", port: 22, user: "ops", authMethod: "agent" },
+      },
+      injectShellIntegration: false,
+      autoReconnect: true,
+      password: "must-not-cross",
+      keyPassphrase: "must-not-cross",
+    },
+    sshReconnectForwards: [{
+      kind: "local", oldRuleId: "forward-1",
+      oldBinding: { logicalSessionId: "ssh-prefill", physicalPtyId: 7, transportGeneration: "old-generation" },
+      bindHost: "127.0.0.1", requestedLocalPort: 8080, oldActualLocalPort: 8080,
+      targetHost: "127.0.0.1", targetPort: 80,
+    }],
+  });
+  const prefill = reconnectPrefillFromSession(session);
+  assert.deepEqual(prefill, {
+    host: "target.internal",
+    port: 2202,
+    user: "deploy",
+    authMethod: "key",
+    identityFile: "~/.ssh/id_target",
+    certificateFile: "~/.ssh/id_target-cert.pub",
+    route: {
+      profileId: "bastion",
+      jump: { host: "jump.internal", port: 22, user: "ops", authMethod: "agent" },
+    },
+    reconnectForwards: [{
+      kind: "local", oldRuleId: "forward-1",
+      oldBinding: { logicalSessionId: "ssh-prefill", physicalPtyId: 7, transportGeneration: "old-generation" },
+      bindHost: "127.0.0.1", requestedLocalPort: 8080, oldActualLocalPort: 8080,
+      targetHost: "127.0.0.1", targetPort: 80,
+    }],
+    injectShellIntegration: false,
+    autoReconnect: true,
+    reconnectSessionId: "ssh-prefill",
+  });
+  assert.doesNotMatch(JSON.stringify(prefill), /must-not-cross|password|passphrase/i);
+});
+
+test("typed remediation is source-bound and fails closed after a generation change", () => {
+  const session = makeSession({
+    id: "remediation-session",
+    remote: { host: "target.internal", port: 22, user: "deploy" },
+    ptyId: 41,
+    transportGeneration: "generation-a",
+    connection: { transport: "ssh", phase: "needsUserAction", source: "user", updatedAt: 1, reason: "auth" },
+  });
+  const remediation = remediationForSession(session);
+  assert.deepEqual(remediation, {
+    kind: "credentials",
+    sessionId: "remediation-session",
+    endpoint: "deploy@target.internal:22",
+    source: "binding",
+    binding: { logicalSessionId: "remediation-session", physicalPtyId: 41, transportGeneration: "generation-a" },
+  });
+  assert.equal(remediationIsCurrent(session, remediation), true);
+  assert.equal(remediationIsCurrent({ ...session, transportGeneration: "generation-b" }, remediation), false);
+
+  const pending = { ...session, ptyId: undefined, transportGeneration: undefined, sshReconnectLifecycle: 3 };
+  const pendingRemediation = remediationForSession(pending);
+  assert.equal(pendingRemediation.source, "reconnect");
+  assert.equal(remediationIsCurrent({ ...pending, sshReconnectLifecycle: 4 }, pendingRemediation), false);
 });
 
 test("ordinary commands do not replace an active agent identity", () => {

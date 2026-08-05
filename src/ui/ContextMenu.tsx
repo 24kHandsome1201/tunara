@@ -1,5 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { returnTerminalFocus, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
+import type { ModalFocusReturnToken } from "./overlays/Modal";
 
 export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
 
@@ -18,6 +20,10 @@ interface ContextMenuProps {
   items: MenuEntry[];
   position: { x: number; y: number };
   onClose: () => void;
+  terminalFocusReturnToken?: TerminalFocusReturnToken | null;
+  returnFocusToken?: ModalFocusReturnToken;
+  bindingKey?: string | null;
+  currentBindingKey?: string | null;
 }
 
 function MenuIcon({ name }: { name: MenuIconName }) {
@@ -145,8 +151,22 @@ function menuEntryKey(items: MenuEntry[], entry: MenuEntry, index: number): stri
   return `separator:${before}:${after}`;
 }
 
-export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
+function resolveFocusToken(token: ModalFocusReturnToken | undefined): HTMLElement | null {
+  if (!token) return null;
+  return token instanceof HTMLElement ? token : token.current;
+}
+
+export function ContextMenu({
+  items,
+  position,
+  onClose,
+  terminalFocusReturnToken,
+  returnFocusToken,
+  bindingKey,
+  currentBindingKey,
+}: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const terminalFocusReturnTokenRef = useRef(terminalFocusReturnToken);
   const menuId = useId();
   const onCloseRef = useRef(onClose);
   const [pos, setPos] = useState({ x: position.x, y: position.y });
@@ -180,30 +200,41 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   }, [onClose]);
 
   useEffect(() => {
-    const returnFocus = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
+    const returnFocus = resolveFocusToken(returnFocusToken)
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    const terminalFocusToken = terminalFocusReturnTokenRef.current;
     const menu = ref.current;
     menu?.focus();
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onCloseRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCloseRef.current();
     };
     const onResize = () => onCloseRef.current();
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
       const focused = document.activeElement;
       const focusStayedInMenu = focused === document.body || focused === menu || !focused?.isConnected;
-      if (returnFocus?.isConnected && focusStayedInMenu) returnFocus.focus({ preventScroll: true });
+      if (focusStayedInMenu && terminalFocusToken) returnTerminalFocus(terminalFocusToken);
+      else if (returnFocus?.isConnected && focusStayedInMenu) returnFocus.focus({ preventScroll: true });
     };
-  }, []);
+  }, [returnFocusToken]);
+
+  useEffect(() => {
+    if (
+      bindingKey !== undefined
+      && currentBindingKey !== undefined
+      && bindingKey !== currentBindingKey
+    ) {
+      onCloseRef.current();
+    }
+  }, [bindingKey, currentBindingKey]);
 
   useEffect(() => {
     ref.current

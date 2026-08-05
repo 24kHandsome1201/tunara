@@ -10,6 +10,7 @@ import { CloseIcon } from "./shared";
 import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
 import { formatElapsed } from "./lib/elapsed";
 import { SessionMascotIcon } from "./SessionMascotIcon";
+import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 
 function StatusDot({ runState, unread, waitingConfirmation = false }: { runState: RunState; unread?: boolean; waitingConfirmation?: boolean }) {
   if (waitingConfirmation) {
@@ -308,6 +309,17 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const [editValue, setEditValue] = useState("");
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const selectRef = useRef<HTMLButtonElement>(null);
+  const touchMenu = useContextMenuTrigger<HTMLButtonElement>({
+    disabled: editing || !onContextMenu,
+    onOpen: ({ x, y }) => {
+      selectRef.current?.dispatchEvent(new MouseEvent("contextmenu", {
+        bubbles: true,
+        clientX: x,
+        clientY: y,
+      }));
+    },
+  });
 
   useEffect(() => {
     if (isRenaming && !editing) {
@@ -414,11 +426,17 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
 
       {!editing && (
         <button
+          ref={selectRef}
           type="button"
           tabIndex={tabIndex ?? 0}
           aria-current={active ? "page" : undefined}
           aria-label={accessibleLabel}
           onClick={handleClick}
+          onClickCapture={touchMenu.onClickCapture}
+          onPointerDown={touchMenu.onPointerDown}
+          onPointerMove={touchMenu.onPointerMove}
+          onPointerUp={touchMenu.onPointerUp}
+          onPointerCancel={touchMenu.onPointerCancel}
           // The overlay button covers the whole card, so the title's own
           // dblclick never fires — rename must be triggered from here.
           onDoubleClick={onRename ? () => startRename() : undefined}

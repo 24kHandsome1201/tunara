@@ -14,14 +14,45 @@
 // Unverifiable rather than being mistaken for first use. OpenSSH's `|1|`
 // hashed hostnames are verified with their HMAC-SHA1 scheme.
 
-use std::fs;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
+use super::local_safe_write::{self, Revision};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use hmac::{Hmac, Mac};
 use russh::keys::ssh_key::PublicKey;
 use sha1::Sha1;
+use sha2::{Digest, Sha256};
+
+#[derive(Debug)]
+pub enum RememberError {
+    TrustChanged,
+    PreCommitFailure(std::io::Error),
+    CommittedButDurabilityUnknown(std::io::Error),
+}
+
+impl std::fmt::Display for RememberError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TrustChanged => formatter.write_str("known_hosts trust changed while prompting"),
+            Self::PreCommitFailure(error) => {
+                write!(formatter, "known_hosts persistence failed: {error}")
+            }
+            Self::CommittedButDurabilityUnknown(error) => write!(
+                formatter,
+                "known_hosts committed but durability is unknown: {error}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RememberError {}
+
+impl From<std::io::Error> for RememberError {
+    fn from(error: std::io::Error) -> Self {
+        Self::PreCommitFailure(error)
+    }
+}
 
 /// Result of checking a presented host key against the store.
 pub enum Verdict {
@@ -43,6 +74,40 @@ pub enum Verdict {
 
 fn known_hosts_path() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".ssh").join("known_hosts"))
+}
+
+fn manager_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn process_lock(path: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::fs::OpenOptions;
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::OpenOptionsExt;
+        let lock_path = path.with_file_name(".known_hosts.tunara.lock");
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(lock_path)?;
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(file)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "cross-process known_hosts locking is unsupported",
+        ))
+    }
 }
 
 /// Build the host token OpenSSH uses: `host` for port 22, `[host]:port` else.
@@ -276,20 +341,24 @@ fn verify_contents(contents: &str, token: &str, presented: &str) -> Verdict {
 /// Check the presented key against `~/.ssh/known_hosts`.
 pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
     let Some(path) = known_hosts_path() else {
-        return Verdict::Unknown;
+        return Verdict::Unverifiable;
     };
-    let contents = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            let verdict = verdict_for_read_error(e.kind());
+    let contents = match local_safe_write::read(&path) {
+        Ok(Some(bytes)) => match String::from_utf8(bytes) {
+            Ok(contents) => contents,
+            Err(_) => return Verdict::Unverifiable,
+        },
+        Ok(None) => return Verdict::Unknown,
+        Err(error) => {
+            let kind = match &error {
+                local_safe_write::Error::Io(error) => error.kind(),
+                _ => std::io::ErrorKind::PermissionDenied,
+            };
+            let verdict = verdict_for_read_error(kind);
             // Only the present-but-unreadable case is noteworthy; a genuinely
             // absent file is the normal first-use path and stays quiet.
             if !matches!(verdict, Verdict::Unknown) {
-                log::warn!(
-                    "ssh: known_hosts at {} unreadable ({e}) — treating host as \
-                     unverifiable rather than first-use",
-                    path.display()
-                );
+                log::warn!("ssh known_hosts unreadable — treating host as unverifiable");
             }
             return verdict;
         }
@@ -304,39 +373,253 @@ pub fn verify(host: &str, port: u16, key: &PublicKey) -> Verdict {
 /// Append a newly-trusted host key to `~/.ssh/known_hosts` (first-use).
 /// Best-effort: a write failure does not abort the connection, it just means
 /// the host will prompt as "unknown" again next time.
-pub fn remember(host: &str, port: u16, key: &PublicKey) -> std::io::Result<()> {
+pub fn remember(host: &str, port: u16, key: &PublicKey) -> Result<(), RememberError> {
     let Some(path) = known_hosts_path() else {
-        return Ok(());
+        return Err(std::io::Error::other("known_hosts path unavailable").into());
     };
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
+    let _guard = manager_lock()
+        .lock()
+        .map_err(|_| std::io::Error::other("known_hosts lock poisoned"))?;
+    local_safe_write::ensure_parent(&path)
+        .map_err(|error| RememberError::PreCommitFailure(std::io::Error::other(error)))?;
+    // Serialize with other Tunara processes. flock is attached to this open
+    // descriptor (no stale lock-file ownership heuristic or unsafe deletion).
+    let _process_lock = process_lock(&path).map_err(RememberError::PreCommitFailure)?;
     let Some(line) = key_line(key) else {
-        return Ok(());
+        return Err(RememberError::TrustChanged);
     };
     let entry = format!("{} {}\n", host_token(host, port), line);
-    append_entry(&path, entry.as_bytes())
-}
-
-fn append_entry(path: &std::path::Path, entry: &[u8]) -> std::io::Result<()> {
-    let mut f = fs::OpenOptions::new()
-        .create(true)
-        .read(true)
-        .append(true)
-        .open(path)?;
-    // Preserve the line-oriented format when another SSH client left the file
-    // without a trailing newline. Appending directly would merge two host
-    // records and make both unreadable.
-    let len = f.metadata()?.len();
-    if len > 0 {
-        f.seek(SeekFrom::End(-1))?;
-        let mut last = [0u8; 1];
-        f.read_exact(&mut last)?;
-        if last[0] != b'\n' {
-            f.write_all(b"\n")?;
+    let old: Vec<u8> = local_safe_write::read(&path)
+        .map_err(|error| RememberError::PreCommitFailure(std::io::Error::other(error)))?
+        .unwrap_or_default();
+    let current = std::str::from_utf8(&old).map_err(|_| RememberError::TrustChanged)?;
+    match verify_contents(current, &host_token(host, port), &line) {
+        Verdict::Match => return Ok(()),
+        Verdict::Unknown => {}
+        Verdict::Mismatch | Verdict::Revoked | Verdict::Unverifiable => {
+            return Err(RememberError::TrustChanged);
         }
     }
-    f.write_all(entry)
+    // Re-read under the process lock and avoid duplicate exact records.
+    if old
+        .split(|b| *b == b'\n')
+        .any(|line| line == entry.trim_ascii_end().as_bytes())
+    {
+        return Ok(());
+    }
+    let mut next = old.clone();
+    if !next.is_empty() && !next.ends_with(b"\n") {
+        next.push(b'\n');
+    }
+    next.extend_from_slice(entry.as_bytes());
+    let expected = match local_safe_write::read(&path)
+        .map_err(|error| RememberError::PreCommitFailure(std::io::Error::other(error)))?
+    {
+        Some(current) if current == old => local_safe_write::revision(&old),
+        Some(_) => return Err(RememberError::TrustChanged),
+        None if old.is_empty() => Revision::Missing,
+        None => return Err(RememberError::TrustChanged),
+    };
+    local_safe_write::replace(&path, &next, &expected).map_err(|error| match error {
+        local_safe_write::Error::Conflict => RememberError::TrustChanged,
+        local_safe_write::Error::DurabilityUnknown(error) => {
+            RememberError::CommittedButDurabilityUnknown(error)
+        }
+        error => RememberError::PreCommitFailure(std::io::Error::other(error)),
+    })
+}
+
+/// Re-evaluate the current trust store immediately before a caller accepts an
+/// unknown key for this process only. A newly added mismatch/revocation/CA or
+/// an unreadable store always cancels the connection.
+pub fn confirm_session_only(host: &str, port: u16, key: &PublicKey) -> bool {
+    let Some(path) = known_hosts_path() else {
+        return false;
+    };
+    let Ok(_guard) = manager_lock().lock() else {
+        return false;
+    };
+    let Ok(bytes) = local_safe_write::read(&path) else {
+        return false;
+    };
+    let Some(line) = key_line(key) else {
+        return false;
+    };
+    let verdict = match bytes {
+        None => Verdict::Unknown,
+        Some(bytes) => match std::str::from_utf8(&bytes) {
+            Ok(contents) => verify_contents(contents, &host_token(host, port), &line),
+            Err(_) => Verdict::Unverifiable,
+        },
+    };
+    matches!(verdict, Verdict::Unknown | Verdict::Match)
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownHostEntryV1 {
+    pub entry_id: String,
+    pub line: usize,
+    pub marker: Option<String>,
+    pub pattern_display: String,
+    pub key_type: String,
+    pub fingerprint: String,
+    pub manageable: bool,
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownHostsSnapshotV1 {
+    pub revision: String,
+    pub entries: Vec<KnownHostEntryV1>,
+}
+
+fn snapshot(bytes: &[u8]) -> KnownHostsSnapshotV1 {
+    let revision = format!("{:x}", Sha256::digest(bytes));
+    let mut entries = Vec::new();
+    for (index, raw) in bytes.split(|b| *b == b'\n').enumerate() {
+        let text = String::from_utf8_lossy(raw)
+            .trim_end_matches('\r')
+            .to_string();
+        let mut fields = text.split_whitespace();
+        let Some(first) = fields.next() else { continue };
+        if first.starts_with('#') {
+            continue;
+        }
+        let (marker, pattern) = if first.starts_with('@') {
+            (Some(first.to_string()), fields.next().unwrap_or_default())
+        } else {
+            (None, first)
+        };
+        let Some(key_type) = fields.next() else {
+            continue;
+        };
+        let Some(blob) = fields.next() else { continue };
+        let fingerprint = B64
+            .decode(blob)
+            .ok()
+            .map(|key| {
+                format!(
+                    "SHA256:{}",
+                    B64.encode(Sha256::digest(key)).trim_end_matches('=')
+                )
+            })
+            .unwrap_or_else(|| "invalid".into());
+        let mut identity = raw.to_vec();
+        identity.extend_from_slice(&((index + 1) as u64).to_le_bytes());
+        let entry_id = format!("{:x}", Sha256::digest(identity));
+        entries.push(KnownHostEntryV1 {
+            entry_id,
+            line: index + 1,
+            marker: marker.clone(),
+            pattern_display: pattern.to_string(),
+            key_type: key_type.to_string(),
+            fingerprint,
+            manageable: marker.as_deref() != Some("@cert-authority"),
+        });
+    }
+    KnownHostsSnapshotV1 { revision, entries }
+}
+
+fn fresh_bytes(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    match local_safe_write::read(path) {
+        Ok(Some(bytes)) => Ok(bytes),
+        Ok(None) => Ok(Vec::new()),
+        Err(local_safe_write::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(Vec::new())
+        }
+        Err(error) => Err(format!("SSH_KNOWN_HOSTS_READ: {error}")),
+    }
+}
+
+fn remove_entry_bytes(
+    old: &[u8],
+    expected_revision: &str,
+    entry_id: &str,
+) -> Result<Vec<u8>, &'static str> {
+    let old_snapshot = snapshot(old);
+    if old_snapshot.revision != expected_revision {
+        return Err("SSH_KNOWN_HOSTS_CONFLICT");
+    }
+    let entry = old_snapshot
+        .entries
+        .iter()
+        .find(|entry| entry.entry_id == entry_id)
+        .ok_or("SSH_KNOWN_HOSTS_ENTRY_NOT_FOUND")?;
+    if !entry.manageable {
+        return Err("SSH_KNOWN_HOSTS_UNMANAGEABLE");
+    }
+    let mut next = Vec::new();
+    for (index, segment) in old.split_inclusive(|byte| *byte == b'\n').enumerate() {
+        if index + 1 != entry.line {
+            next.extend_from_slice(segment);
+        }
+    }
+    Ok(next)
+}
+
+#[tauri::command]
+pub fn ssh_known_hosts_list_v1() -> Result<KnownHostsSnapshotV1, String> {
+    (|| {
+        let _guard = manager_lock()
+            .lock()
+            .map_err(|_| "SSH_KNOWN_HOSTS_LOCK".to_string())?;
+        let path = known_hosts_path().ok_or("SSH_KNOWN_HOSTS_UNSUPPORTED")?;
+        Ok(snapshot(&fresh_bytes(&path)?))
+    })()
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::KnownHosts, error)
+    })
+}
+#[tauri::command]
+pub fn ssh_known_hosts_refresh_v1() -> Result<KnownHostsSnapshotV1, String> {
+    (|| {
+        let _guard = manager_lock()
+            .lock()
+            .map_err(|_| "SSH_KNOWN_HOSTS_LOCK".to_string())?;
+        let path = known_hosts_path().ok_or("SSH_KNOWN_HOSTS_UNSUPPORTED")?;
+        Ok(snapshot(&fresh_bytes(&path)?))
+    })()
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::KnownHosts, error)
+    })
+}
+#[tauri::command]
+pub fn ssh_known_hosts_remove_v1(
+    expected_revision: String,
+    entry_id: String,
+) -> Result<KnownHostsSnapshotV1, String> {
+    (|| {
+        let _guard = manager_lock()
+            .lock()
+            .map_err(|_| "SSH_KNOWN_HOSTS_LOCK".to_string())?;
+        let path = known_hosts_path().ok_or("SSH_KNOWN_HOSTS_UNSUPPORTED")?;
+        local_safe_write::ensure_parent(&path)
+            .map_err(|_| "SSH_KNOWN_HOSTS_UNSUPPORTED".to_string())?;
+        let _process_lock =
+            process_lock(&path).map_err(|_| "SSH_KNOWN_HOSTS_UNSUPPORTED".to_string())?;
+        let old = fresh_bytes(&path)?;
+        let next = remove_entry_bytes(&old, &expected_revision, &entry_id)?;
+        let expected = if old.is_empty() {
+            match local_safe_write::read(&path) {
+                Ok(Some(_)) => local_safe_write::revision(&old),
+                Ok(None) => Revision::Missing,
+                Err(error) => return Err(format!("SSH_KNOWN_HOSTS_READ: {error}")),
+            }
+        } else {
+            local_safe_write::revision(&old)
+        };
+        local_safe_write::replace(&path, &next, &expected).map_err(|e| {
+            if matches!(e, local_safe_write::Error::Conflict) {
+                "SSH_KNOWN_HOSTS_CONFLICT".into()
+            } else {
+                format!("SSH_KNOWN_HOSTS_WRITE: {e}")
+            }
+        })?;
+        Ok(snapshot(&next))
+    })()
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::KnownHosts, error)
+    })
 }
 
 #[cfg(test)]
@@ -347,22 +630,6 @@ mod tests {
     fn host_token_omits_default_port() {
         assert_eq!(host_token("example.com", 22), "example.com");
         assert_eq!(host_token("example.com", 2222), "[example.com]:2222");
-    }
-
-    #[test]
-    fn appending_repairs_a_missing_trailing_newline() {
-        let path = std::env::temp_dir().join(format!(
-            "tunara-known-hosts-{}-{}",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("test")
-        ));
-        fs::write(&path, b"old.example ssh-ed25519 AAAAOLD").expect("write fixture");
-        append_entry(&path, b"new.example ssh-ed25519 AAAANEW\n").expect("append entry");
-        assert_eq!(
-            fs::read_to_string(&path).expect("read fixture"),
-            "old.example ssh-ed25519 AAAAOLD\nnew.example ssh-ed25519 AAAANEW\n"
-        );
-        let _ = fs::remove_file(path);
     }
 
     // Guard the security-relevant invariant: Unverifiable must stay a distinct
@@ -541,6 +808,38 @@ mod tests {
             verify_contents(contents, "host.example.com", "ssh-ed25519 AAAASERVER"),
             Verdict::Unverifiable
         ));
+    }
+
+    #[test]
+    fn manager_snapshot_is_stable_and_does_not_reverse_hashed_hosts() {
+        let bytes = concat!(
+            "# keep this comment\n",
+            "|1|salt|hash ssh-ed25519 AAAA comment\n",
+            "@cert-authority *.example.com ssh-ed25519 AAAA ca\n",
+            "plain.example ssh-rsa AQID no-newline",
+        )
+        .as_bytes();
+        let first = snapshot(bytes);
+        let second = snapshot(bytes);
+        assert_eq!(first.revision, second.revision);
+        assert_eq!(first.entries.len(), 3);
+        assert_eq!(first.entries[0].entry_id, second.entries[0].entry_id);
+        assert_eq!(first.entries[0].pattern_display, "|1|salt|hash");
+        assert!(!first.entries[1].manageable);
+        assert_eq!(first.entries[2].line, 4);
+    }
+
+    #[test]
+    fn manager_remove_uses_revision_cas_and_preserves_other_bytes() {
+        let old = b"# comment\r\nfirst ssh-ed25519 AAAA one\nsecond ssh-rsa AQID two";
+        let old_snapshot = snapshot(old);
+        let first_id = old_snapshot.entries[0].entry_id.clone();
+        assert_eq!(
+            remove_entry_bytes(old, "stale-revision", &first_id),
+            Err("SSH_KNOWN_HOSTS_CONFLICT")
+        );
+        let next = remove_entry_bytes(old, &old_snapshot.revision, &first_id).unwrap();
+        assert_eq!(next, b"# comment\r\nsecond ssh-rsa AQID two");
     }
 
     #[test]

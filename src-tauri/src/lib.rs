@@ -67,11 +67,14 @@ pub fn run() {
     let builder = builder.plugin(modules::ssh::m2_safe_write_benchmark::init());
     builder
         .manage(pty::PtyState::default())
+        .manage(modules::ssh::forwarding::ForwardingState::default())
         .manage(fs::grep::FsSearchCancellationState::default())
         .manage(ResolverState::default())
         .manage(modules::preview::PreviewWindowState::default())
         .manage(modules::git::GitWatcherState::default())
         .setup(|app| {
+            modules::ssh::transfer_journal::initialize(app.handle())
+                .map_err(std::io::Error::other)?;
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_all_bins 用（§3.7.2）。
             let resolver = app.state::<ResolverState>();
             resolver.init_login_path();
@@ -143,24 +146,53 @@ pub fn run() {
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,
+            modules::ssh::ssh_open_v2,
             modules::ssh::ssh_cancel_open,
+            modules::ssh::diagnostics::ssh_diagnostic_run_v1,
+            modules::ssh::diagnostics::ssh_diagnostic_cancel_v1,
             // §ssh-client 未知主机密钥 TOFU 指纹确认回传
             modules::ssh::ssh_host_key_decision,
             modules::ssh::ssh_keyboard_interactive_response,
+            modules::ssh::forwarding::ssh_local_forward_start,
+            modules::ssh::forwarding::ssh_local_forward_list,
+            modules::ssh::forwarding::ssh_local_forward_stop,
+            modules::ssh::forwarding::ssh_dynamic_forward_start,
+            modules::ssh::forwarding::ssh_dynamic_forward_list,
+            modules::ssh::forwarding::ssh_dynamic_forward_stop,
+            modules::ssh::forwarding::ssh_forwarding_reconnect_snapshot,
+            modules::ssh::forwarding::ssh_forwarding_reconnect_rebuild,
             // §ssh-client Phase 2 主机 profile 管理(无凭证存储)
             modules::ssh::hosts::ssh_hosts_load,
             modules::ssh::hosts::ssh_hosts_save,
             modules::ssh::hosts::ssh_hosts_remove,
             modules::ssh::hosts::ssh_hosts_import_config,
+            modules::ssh::known_hosts::ssh_known_hosts_list_v1,
+            modules::ssh::known_hosts::ssh_known_hosts_remove_v1,
+            modules::ssh::known_hosts::ssh_known_hosts_refresh_v1,
             // §ssh-client Phase 3 SFTP 远程文件(只读浏览 + 下载)
             modules::ssh::sftp::ssh_fs_read_dir,
             modules::ssh::sftp::ssh_fs_read_file,
             modules::ssh::sftp::ssh_fs_write_text_file,
             modules::ssh::sftp::ssh_fs_reconcile_text_write,
-            modules::ssh::sftp::ssh_fs_download,
-            modules::ssh::sftp::ssh_fs_upload,
-            modules::ssh::sftp::ssh_fs_cancel_upload,
+            modules::ssh::transfer::legacy::ssh_fs_download,
+            modules::ssh::transfer::legacy::ssh_fs_upload,
+            modules::ssh::transfer::legacy::ssh_fs_cancel_upload,
             modules::ssh::sftp::ssh_fs_home,
+            modules::ssh::transfer::engine::ssh_transfer_download,
+            modules::ssh::transfer::engine::ssh_transfer_upload,
+            modules::ssh::transfer::engine::ssh_transfer_cancel,
+            modules::ssh::transfer::manifest::validate_manifest,
+            modules::ssh::transfer_journal::ssh_transfer_journal_load,
+            modules::ssh::transfer_journal::ssh_transfer_journal_save,
+            modules::ssh::transfer_journal::ssh_transfer_journal_list_owned_partials,
+            modules::ssh::transfer_journal::ssh_transfer_journal_cleanup,
+            modules::ssh::transfer_journal::ssh_transfer_recovery_prepare,
+            modules::ssh::transfer_journal::ssh_transfer_recovery_reconcile,
+            modules::ssh::transfer_journal::ssh_transfer_recovery_dismiss,
+            modules::ssh::remote_fs::commands::ssh_fs_mutate_v1,
+            modules::ssh::remote_fs::commands::ssh_fs_reconcile_mutation_v1,
+            modules::ssh::remote_fs::metadata::ssh_fs_stat_v1,
+            modules::ssh::remote_fs::metadata::ssh_fs_chmod_v1,
             // Remote git status/diff over the SSH exec channel (review rail for
             // SSH sessions — complements the read-only local git2 path).
             modules::ssh::remote_git::ssh_git_status,
@@ -184,6 +216,8 @@ pub fn run() {
                 show_main_window(app, "reopen");
             }
             tauri::RunEvent::Exit => {
+                app.state::<modules::ssh::forwarding::ForwardingState>()
+                    .close_all();
                 app.state::<modules::preview::PreviewWindowState>()
                     .close_all_tunnels(app);
                 app.state::<pty::PtyState>().close_all();

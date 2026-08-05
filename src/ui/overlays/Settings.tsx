@@ -15,6 +15,7 @@ import { useAppUpdate } from "./useAppUpdate";
 import { WorkflowsSettings } from "./WorkflowsSettings";
 import { useWorkflowsStore } from "@/state/workflows";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
+import { analyzeTerminalKeybindingRisk, captureKeybinding, defaultKeybindingsForPlatform, findKeybindingConflict, KEYBINDING_ACTIONS, type KeybindingAction } from "@/modules/config/keybindings";
 
 interface SettingsProps {
   onClose: () => void;
@@ -155,6 +156,11 @@ export function Settings({ onClose }: SettingsProps) {
   const setLanguage = useUIStore((s) => s.setLanguage);
   const globalShortcut = useUIStore((s) => s.globalShortcut);
   const setGlobalShortcut = useUIStore((s) => s.setGlobalShortcut);
+  const keybindings = useUIStore((s) => s.keybindings);
+  const setKeybinding = useUIStore((s) => s.setKeybinding);
+  const resetKeybindings = useUIStore((s) => s.resetKeybindings);
+  const [pendingRisk, setPendingRisk] = useState<{ action: KeybindingAction; binding: string } | null>(null);
+  const [bindingMessage, setBindingMessage] = useState<string | null>(null);
   const [shortcutDraft, setShortcutDraft] = useState(globalShortcut);
   useEffect(() => setShortcutDraft(globalShortcut), [globalShortcut]);
   const theme = useUIStore((s) => s.theme);
@@ -185,8 +191,12 @@ export function Settings({ onClose }: SettingsProps) {
   const setTerminalClipboardWrite = useUIStore((s) => s.setTerminalClipboardWrite);
   const terminalInlineImages = useUIStore((s) => s.terminalInlineImages);
   const setTerminalInlineImages = useUIStore((s) => s.setTerminalInlineImages);
+  const terminalScreenReaderMode = useUIStore((s) => s.terminalScreenReaderMode);
+  const setTerminalScreenReaderMode = useUIStore((s) => s.setTerminalScreenReaderMode);
   const showPureModeFilesButton = useUIStore((s) => s.showPureModeFilesButton);
   const setShowPureModeFilesButton = useUIStore((s) => s.setShowPureModeFilesButton);
+  const terminalHostModifier = useUIStore((s) => s.terminalHostModifier);
+  const setTerminalHostModifier = useUIStore((s) => s.setTerminalHostModifier);
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
 
@@ -341,6 +351,15 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === "appearance" && (
             <div>
               <div style={{ marginBottom: 24 }}>
+                <label style={SECTION_LABEL_INLINE}>
+                  {t("settings.appearance.host_modifier")}
+                  <select value={terminalHostModifier} onChange={(event) => setTerminalHostModifier(event.target.value as "shift" | "meta" | "alt")}>
+                    <option value="shift">Shift</option><option value="meta">Cmd/Meta</option><option value="alt">Alt/Option</option>
+                  </select>
+                </label>
+                <div style={SECTION_HINT}>{t("settings.appearance.host_modifier.hint")}</div>
+              </div>
+              <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>{t("settings.appearance.theme")}</div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <ThemeCard label={t("settings.appearance.theme.light")} themeType="light" selected={theme === "light"} onClick={() => setTheme("light")} />
@@ -483,6 +502,21 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={TOGGLE_ROW}>
+                  <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.screen_reader_mode")}</span>
+                  <button
+                    onClick={() => setTerminalScreenReaderMode(!terminalScreenReaderMode)}
+                    role="switch"
+                    aria-checked={terminalScreenReaderMode}
+                    aria-label={t("settings.appearance.screen_reader_mode")}
+                    style={{ ...TOGGLE_BUTTON, background: terminalScreenReaderMode ? "var(--c-accent)" : "var(--c-bg-3)" }}
+                  >
+                    <div style={{ ...TOGGLE_KNOB, transform: terminalScreenReaderMode ? "translateX(16px)" : "translateX(0)" }} />
+                  </button>
+                </div>
+                <div style={SECTION_HINT}>{t("settings.appearance.screen_reader_mode.hint")}</div>
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <div style={TOGGLE_ROW}>
                   <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.pure_files_button")}</span>
                   <button onClick={() => setShowPureModeFilesButton(!showPureModeFilesButton)} role="switch" aria-checked={showPureModeFilesButton} aria-label={t("settings.appearance.pure_files_button")} style={{ ...TOGGLE_BUTTON, background: showPureModeFilesButton ? "var(--c-accent)" : "var(--c-bg-3)" }}>
                     <div style={{ ...TOGGLE_KNOB, transform: showPureModeFilesButton ? "translateX(16px)" : "translateX(0)" }} />
@@ -604,6 +638,39 @@ export function Settings({ onClose }: SettingsProps) {
                   spellCheck={false}
                   style={{ width: "100%", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", padding: "6px 10px", background: "var(--c-bg-1)", color: "var(--c-text-2)", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", outline: "none" }}
                 />
+              </div>
+              <div style={{ marginTop: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={SECTION_LABEL}>{t("settings.keybindings.title")}</div>
+                  <button onClick={() => { resetKeybindings(); setBindingMessage(null); }}>{t("settings.keybindings.reset_all")}</button>
+                </div>
+                <div style={SECTION_HINT}>{t("settings.keybindings.hint")}</div>
+                {bindingMessage && <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)" }}>{bindingMessage}</div>}
+                <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                  {KEYBINDING_ACTIONS.map((action) => (
+                    <div key={action} style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) 180px auto", gap: 8, alignItems: "center" }}>
+                      <label htmlFor={`binding-${action}`} style={{ fontSize: "var(--fs-secondary)" }}>{t(`settings.keybindings.action.${action}`)}</label>
+                      <input
+                        id={`binding-${action}`}
+                        readOnly
+                        value={keybindings[action]}
+                        onKeyDown={(event) => {
+                          event.preventDefault(); event.stopPropagation();
+                          const binding = captureKeybinding(event.nativeEvent);
+                          if (!binding) return;
+                          const conflict = findKeybindingConflict(keybindings, action, binding);
+                          if (conflict) { setBindingMessage(t("settings.keybindings.conflict", { action: t(`settings.keybindings.action.${conflict}`) })); return; }
+                          if (analyzeTerminalKeybindingRisk(binding).risky) { setPendingRisk({ action, binding }); setBindingMessage(t("settings.keybindings.risk")); return; }
+                          setKeybinding(action, binding); setPendingRisk(null); setBindingMessage(null);
+                        }}
+                        aria-label={t("settings.keybindings.capture", { action: t(`settings.keybindings.action.${action}`) })}
+                        style={{ fontFamily: "var(--font-mono)", padding: "5px 8px" }}
+                      />
+                      <button onClick={() => setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action])}>{t("settings.keybindings.reset_one")}</button>
+                      {pendingRisk?.action === action && <button style={{ gridColumn: "2 / 4" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); }}>{t("settings.keybindings.override")}</button>}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

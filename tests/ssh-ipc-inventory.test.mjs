@@ -1,0 +1,155 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const root = new URL("../", import.meta.url);
+const lib = await readFile(new URL("src-tauri/src/lib.rs", root), "utf8");
+
+const mapped = {
+  "mod.rs": {
+    ssh_open: "OpenLegacy",
+    ssh_host_key_decision: "HostDecision",
+    ssh_keyboard_interactive_response: "KeyboardInteractive",
+  },
+  "hosts.rs": Object.fromEntries(["ssh_hosts_load", "ssh_hosts_save", "ssh_hosts_remove", "ssh_hosts_import_config"].map((name) => [name, "Hosts"])),
+  "known_hosts.rs": Object.fromEntries(["ssh_known_hosts_list_v1", "ssh_known_hosts_remove_v1", "ssh_known_hosts_refresh_v1"].map((name) => [name, "KnownHosts"])),
+  "sftp.rs": {
+    ssh_fs_read_dir: "SftpRead", ssh_fs_read_file: "SftpRead", ssh_fs_home: "SftpRead",
+    ssh_fs_write_text_file: "SftpWrite", ssh_fs_reconcile_text_write: "SftpWrite",
+  },
+  "transfer/legacy.rs": { ssh_fs_download: "Transfer", ssh_fs_upload: "Transfer" },
+  "transfer/engine.rs": { ssh_transfer_download: "Transfer", ssh_transfer_upload: "Transfer" },
+  "transfer/manifest.rs": { validate_manifest: "Manifest" },
+  "transfer_journal.rs": Object.fromEntries([
+    "ssh_transfer_journal_load", "ssh_transfer_journal_save", "ssh_transfer_journal_list_owned_partials",
+    "ssh_transfer_journal_cleanup", "ssh_transfer_recovery_prepare",
+    "ssh_transfer_recovery_reconcile", "ssh_transfer_recovery_dismiss",
+  ].map((name) => [name, "Journal"])),
+  "remote_fs/commands.rs": { ssh_fs_mutate_v1: "RemoteFs", ssh_fs_reconcile_mutation_v1: "RemoteFs" },
+  "remote_fs/metadata.rs": { ssh_fs_stat_v1: "RemoteFs", ssh_fs_chmod_v1: "RemoteFs" },
+  "forwarding.rs": Object.fromEntries([
+    "ssh_local_forward_start", "ssh_local_forward_list", "ssh_local_forward_stop",
+    "ssh_dynamic_forward_start", "ssh_dynamic_forward_list", "ssh_dynamic_forward_stop",
+    "ssh_forwarding_reconnect_snapshot", "ssh_forwarding_reconnect_rebuild",
+  ].map((name) => [name, "Forwarding"])),
+  "remote_git.rs": Object.fromEntries([
+    "ssh_git_status", "ssh_git_diff", "ssh_git_ahead_behind", "ssh_git_workspace_context",
+    "ssh_fs_search", "ssh_fs_grep",
+  ].map((name) => [name, "RemoteGit"])),
+};
+
+// Strict exemptions: these commands cannot leak a Result<String> error. The two
+// run/open v2 commands return typed SshCommandErrorV1; cancel commands return
+// bool, while transfer cancellation returns the typed CancelResult enum.
+const exemptions = new Set([
+  "ssh_open_v2", "ssh_diagnostic_run_v1", "ssh_cancel_open",
+  "ssh_diagnostic_cancel_v1", "ssh_fs_cancel_upload", "ssh_transfer_cancel",
+]);
+
+const addedSshCommands = [
+  "ssh_open_v2", "ssh_diagnostic_run_v1", "ssh_diagnostic_cancel_v1",
+  "ssh_local_forward_start", "ssh_local_forward_list", "ssh_local_forward_stop",
+  "ssh_dynamic_forward_start", "ssh_dynamic_forward_list", "ssh_dynamic_forward_stop",
+  "ssh_forwarding_reconnect_snapshot", "ssh_forwarding_reconnect_rebuild",
+  "ssh_known_hosts_list_v1", "ssh_known_hosts_remove_v1", "ssh_known_hosts_refresh_v1",
+  "ssh_fs_mutate_v1", "ssh_fs_reconcile_mutation_v1", "ssh_fs_stat_v1", "ssh_fs_chmod_v1",
+  "ssh_transfer_download", "ssh_transfer_upload", "ssh_transfer_cancel",
+  "ssh_transfer_journal_load", "ssh_transfer_journal_save",
+  "ssh_transfer_journal_list_owned_partials", "ssh_transfer_journal_cleanup",
+  "ssh_transfer_recovery_prepare", "ssh_transfer_recovery_reconcile",
+  "ssh_transfer_recovery_dismiss", "validate_manifest",
+];
+
+function functionSource(source, name) {
+  const start = source.search(new RegExp(`pub\\s+(?:async\\s+)?fn\\s+${name}\\b`));
+  assert.notEqual(start, -1, `missing command function ${name}`);
+  const open = source.indexOf("{", start);
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    if (source[i] === "}" && --depth === 0) return source.slice(start, i + 1);
+  }
+  assert.fail(`unterminated command function ${name}`);
+}
+
+const block = lib.match(/tauri::generate_handler!\[([\s\S]*?)\]\)/)?.[1] ?? "";
+const registrations = [...block.matchAll(/modules::ssh(?:::[a-z_]+)*::([a-z_][a-z0-9_]+)/g)]
+  .map((match) => match[1]);
+const expected = new Set(Object.values(mapped).flatMap((commands) => Object.keys(commands)));
+
+test("registered SSH command inventory is explicit and complete", () => {
+  assert.deepEqual(new Set(registrations), new Set([...expected, ...exemptions]));
+});
+
+test("all 29 added SSH commands are registered, permitted, and present in generated ACL", async () => {
+  assert.equal(addedSshCommands.length, 29);
+  const permission = await readFile(new URL("src-tauri/permissions/main.toml", root), "utf8");
+  const acl = JSON.parse(await readFile(new URL("src-tauri/gen/schemas/acl-manifests.json", root), "utf8"));
+  const generated = acl["__app-acl__"].permissions["allow-main-commands"].commands.allow;
+  for (const command of addedSshCommands) {
+    assert.ok(registrations.includes(command), `${command} is not registered`);
+    assert.match(permission, new RegExp(`"${command}"`), `${command} is not permitted`);
+    assert.ok(generated.includes(command), `${command} is absent from generated ACL`);
+  }
+});
+
+test("every non-exempt registered SSH Result<String> command maps its final error", async () => {
+  for (const [file, commands] of Object.entries(mapped)) {
+    const source = await readFile(new URL(`src-tauri/src/modules/ssh/${file}`, root), "utf8");
+    for (const [name, kind] of Object.entries(commands)) {
+      assert.ok(registrations.includes(name), `${file}:${name} is not registered`);
+      const fn = functionSource(source, name);
+      assert.match(fn, new RegExp(`safe_ipc_error\\(\\s*(?:crate::modules::ssh::)?SshIpcErrorKind::${kind}\\b`),
+        `${file}:${name} must map its final Err as ${kind}`);
+    }
+  }
+});
+
+test("safe mapper has fixed output for every error class", async () => {
+  const ssh = await readFile(new URL("src-tauri/src/modules/ssh/mod.rs", root), "utf8");
+  for (const kind of new Set(Object.values(mapped).flatMap((commands) => Object.values(commands)))) {
+    assert.match(ssh, new RegExp(`SshIpcErrorKind::${kind}\\s*=>\\s*"[A-Z_]+"`));
+  }
+});
+
+test("forward cancellation and late channel close never shut down the shared transport", async () => {
+  const connection = await readFile(new URL("src-tauri/src/modules/ssh/connection.rs", root), "utf8");
+  const start = connection.indexOf("async fn close_forward_channel_owned");
+  const end = connection.indexOf("#[derive(Debug)]\npub enum RoutedOpenError", start);
+  const forwardingOwnership = connection.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(forwardingOwnership, /timeout\(Duration::from_secs\(2\), channel\.close\(\)\)/);
+  assert.doesNotMatch(forwardingOwnership, /transport_abort|Shutdown::Both|\.disconnect\(/);
+
+  const openStart = connection.indexOf("async fn await_pending_forward_open");
+  const openEnd = connection.indexOf("#[derive(Debug)]\npub enum RoutedOpenError", openStart);
+  const pendingOpen = connection.slice(openStart, openEnd);
+  assert.ok(openStart >= 0 && openEnd > openStart);
+  assert.match(pendingOpen, /local forward cancelled/);
+  assert.match(pendingOpen, /port forward channel timed out/);
+  assert.doesNotMatch(pendingOpen, /transport_abort|Shutdown::Both|\.disconnect\(/);
+  assert.match(connection, /async fn open_forward_channel[\s\S]*await_pending_forward_open\(/);
+});
+
+test("forward stop carries and atomically validates the complete SSH binding", async () => {
+  const bridge = await readFile(new URL("src/modules/ssh/forwarding-bridge.ts", root), "utf8");
+  const backend = await readFile(new URL("src-tauri/src/modules/ssh/forwarding.rs", root), "utf8");
+  for (const [kind, command] of [
+    ["Local", "ssh_local_forward_stop"],
+    ["Dynamic", "ssh_dynamic_forward_stop"],
+  ]) {
+    assert.match(bridge, new RegExp(`stop${kind}Forward\\(binding: SessionBindingV1, ruleId: string\\)`));
+    assert.match(bridge, new RegExp(`"${command}", \\{ binding, ruleId \\}`));
+    const commandSource = functionSource(backend, command);
+    assert.match(commandSource, /binding: SessionBindingV1/);
+    assert.match(commandSource, /cancel_bound_rule\(&pty, &state, &binding, &rule_id/);
+  }
+  const helperStart = backend.indexOf("fn cancel_bound_rule");
+  const helperEnd = backend.indexOf("async fn wait_for_rule_stop", helperStart);
+  const helper = backend.slice(helperStart, helperEnd);
+  assert.match(helper, /get_for_ssh_binding\(binding\)/);
+  assert.match(helper, /acquire_commit_lease\(binding\)/);
+  assert.match(helper, /rule\.view\.binding\(\) != binding/);
+  assert.match(helper, /Arc::ptr_eq\(&rule\.generation, &current\)/);
+  assert.match(helper, /rule\.cancel\.send\(true\)/);
+});

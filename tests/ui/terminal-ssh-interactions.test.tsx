@@ -1,6 +1,6 @@
 import type { Channel } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { expect, test, vi } from "vitest";
 import {
@@ -18,13 +18,21 @@ import { ContextMenu } from "@/ui/ContextMenu";
 import { SplitHandle } from "@/ui/SplitHandle";
 import { PtyErrorBanner, TerminalExitBanner } from "@/ui/TerminalExitBanner";
 import { TerminalQuickSelect } from "@/ui/TerminalQuickSelect";
+import { TerminalViewChrome } from "@/ui/TerminalViewChrome";
 import { ToastContainer } from "@/ui/Toast";
 import { SessionCard } from "@/ui/SessionCard";
 import { buildSessionMenuItems } from "@/ui/sidebar-session-menu";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
+import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { useTerminalQuickSelect } from "@/ui/useTerminalQuickSelect";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
+import { useTerminalSearch } from "@/ui/useTerminalSearch";
+import {
+  allocateTerminalInstanceEpoch,
+  recordTerminalFocusIntent,
+  registerTerminalBinding,
+} from "@/modules/terminal/lib/binding-aware-async-action";
 import type { Session } from "@/ui/types";
 import type { Terminal } from "@xterm/xterm";
 
@@ -52,14 +60,131 @@ test("local PTY events wait for generation publication before reaching the rende
   expect(pty.activate()).toBe(false);
 });
 
+test("ProxyJump v2 keeps hop credentials independent and accepts only backend binding generation", async () => {
+  let request: Record<string, unknown> | undefined;
+  mockIPC((command, payload) => {
+    if (command === "ssh_open_v2") {
+      request = (payload as { request: Record<string, unknown> }).request;
+      return {
+        physicalPtyId: 88,
+        transportGeneration: "tg-route",
+        warnings: [],
+        binding: {
+          logicalSessionId: "route-session",
+          physicalPtyId: 88,
+          transportGeneration: "tg-route",
+        },
+      };
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+
+  const pty = await openSshPty("route-session", 80, 24, { onData: vi.fn() }, {
+    host: "target.internal",
+    user: "target-user",
+    authMethod: "key",
+    identityFile: "/keys/target",
+    certificateFile: "/keys/target-cert.pub",
+    password: "must-not-cross-target-method",
+    jump: {
+      host: "jump.example",
+      user: "jump-user",
+      authMethod: "password",
+      password: "jump-one-shot",
+      identityFile: "/keys/must-not-cross-jump-method",
+      certificateFile: "/keys/must-not-cross-jump-method-cert.pub",
+    },
+  });
+
+  expect(pty.generation).toBe("tg-route");
+  expect(request).toMatchObject({
+    endpoint: {
+      host: "target.internal",
+      authMethod: "key",
+      identityFile: "/keys/target",
+      certificateFile: "/keys/target-cert.pub",
+      password: null,
+    },
+    jump: {
+      host: "jump.example",
+      authMethod: "password",
+      identityFile: null,
+      certificateFile: null,
+      password: "jump-one-shot",
+    },
+  });
+});
+
+test("ProxyJump prompts are labeled from the ordered jump and target handshake phases", async () => {
+  let channel: Channel<PtyEvent> | undefined;
+  let openAttemptId = "";
+  let resolveOpen!: (result: {
+    physicalPtyId: number;
+    transportGeneration: string;
+    warnings: string[];
+    binding: { logicalSessionId: string; physicalPtyId: number; transportGeneration: string };
+  }) => void;
+  mockIPC((command, payload) => {
+    if (command === "ssh_open_v2") {
+      channel = (payload as { onEvent: Channel<PtyEvent> }).onEvent;
+      openAttemptId = (payload as { request: { openAttemptId: string } }).request.openAttemptId;
+      return new Promise((resolve) => { resolveOpen = resolve; });
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  useUIStore.setState({ hostKeyPrompts: [], keyboardInteractivePrompts: [] });
+
+  const opening = openSshPty("hop-prompts", 80, 24, { onData: vi.fn() }, {
+    host: "target.internal",
+    user: "target",
+    authMethod: "keyboard-interactive",
+    jump: { host: "jump.example", user: "jump", authMethod: "agent" },
+  });
+  channel!.onmessage({ type: "connectionStatus", phase: "handshaking" });
+  channel!.onmessage({ type: "hostKeyPrompt", promptId: "jump-key", host: "jump.example", port: 22, fingerprint: "SHA256:jump", keyType: "ssh-ed25519", reason: "unknown" });
+  expect(useUIStore.getState().hostKeyPrompts[0]?.hopRole).toBe("jump");
+
+  channel!.onmessage({ type: "connectionStatus", phase: "handshaking" });
+  channel!.onmessage({
+    type: "keyboardInteractivePrompt",
+    promptId: "target-auth",
+    origin: { user: "target", host: "target.internal", port: 22, logicalSessionId: "hop-prompts", hopRole: "target", transportGeneration: openAttemptId },
+    name: "Target auth",
+    instructions: "",
+    prompts: [{ prompt: "Code", echo: false }],
+  });
+  expect(useUIStore.getState().keyboardInteractivePrompts[0]?.hopRole).toBe("target");
+
+  resolveOpen({
+    physicalPtyId: 89,
+    transportGeneration: "tg-hop-prompts",
+    warnings: [],
+    binding: { logicalSessionId: "hop-prompts", physicalPtyId: 89, transportGeneration: "tg-hop-prompts" },
+  });
+  await opening;
+  useUIStore.setState({ hostKeyPrompts: [], keyboardInteractivePrompts: [] });
+});
+
 test("superseded SSH channels cannot mutate the new connection generation", async () => {
   const channels: Array<Channel<PtyEvent>> = [];
-  const resolveOpen: Array<(id: number) => void> = [];
+  const openAttemptIds: string[] = [];
+  const keyboardResponses: unknown[] = [];
+  const resolveOpen: Array<(result: {
+    physicalPtyId: number;
+    transportGeneration: string;
+    warnings: string[];
+    binding: { logicalSessionId: string; physicalPtyId: number; transportGeneration: string };
+  }) => void> = [];
   const closed: number[] = [];
   mockIPC((command, payload) => {
-    if (command === "ssh_open") {
+    if (command === "ssh_open_v2") {
       channels.push((payload as { onEvent: Channel<PtyEvent> }).onEvent);
-      return new Promise<number>((resolve) => resolveOpen.push(resolve));
+      openAttemptIds.push((payload as { request: { openAttemptId: string } }).request.openAttemptId);
+      return new Promise((resolve) => resolveOpen.push(resolve));
+    }
+    if (command === "ssh_keyboard_interactive_response") {
+      keyboardResponses.push(payload);
+      return undefined;
     }
     if (command === "pty_close") {
       closed.push((payload as { id: number }).id);
@@ -95,17 +220,40 @@ test("superseded SSH channels cannot mutate the new connection generation", asyn
     keyType: "ssh-ed25519",
     reason: "unknown",
   });
+  channels[0].onmessage({
+    type: "keyboardInteractivePrompt",
+    promptId: "stale-kbi",
+    origin: {
+      user: "deploy", host: "ssh.example", port: 22, logicalSessionId: "generation-session",
+      hopRole: "direct", transportGeneration: openAttemptIds[0],
+    },
+    name: "Stale server name",
+    instructions: "Stale instructions",
+    prompts: [{ prompt: "Password", echo: false }],
+  });
 
   expect(newerHandlers.onConnectionStatus).not.toHaveBeenCalled();
   expect(newerHandlers.onPendingConnectionStatus).toHaveBeenCalledWith("ready");
   expect(olderHandlers.onConnectionStatus).not.toHaveBeenCalled();
   expect(useUIStore.getState().hostKeyPrompts).toEqual([]);
+  expect(useUIStore.getState().keyboardInteractivePrompts).toEqual([]);
+  expect(keyboardResponses).toContainEqual({ promptId: "stale-kbi", responses: null });
 
-  resolveOpen[1](202);
+  resolveOpen[1]({
+    physicalPtyId: 202,
+    transportGeneration: "tg-new",
+    warnings: [],
+    binding: { logicalSessionId: "generation-session", physicalPtyId: 202, transportGeneration: "tg-new" },
+  });
   const newer = await newerOpen;
   expect(newer.activate()).toBe(true);
   expect(newerHandlers.onConnectionStatus).toHaveBeenCalledWith("ready", newer.generation);
-  resolveOpen[0](101);
+  resolveOpen[0]({
+    physicalPtyId: 101,
+    transportGeneration: "tg-old",
+    warnings: [],
+    binding: { logicalSessionId: "generation-session", physicalPtyId: 101, transportGeneration: "tg-old" },
+  });
   const older = await olderOpen;
   expect(older.activate()).toBe(false);
   await older.close();
@@ -146,12 +294,20 @@ test("store-level generation checks reject old exit events during a reconnect re
 
 test("a failed replacement keeps the published SSH channel live and acknowledged", async () => {
   const channels: Array<Channel<PtyEvent>> = [];
-  const opens: Array<{ resolve: (id: number) => void; reject: (error: Error) => void }> = [];
+  const opens: Array<{
+    resolve: (result: {
+      physicalPtyId: number;
+      transportGeneration: string;
+      warnings: string[];
+      binding: { logicalSessionId: string; physicalPtyId: number; transportGeneration: string };
+    }) => void;
+    reject: (error: unknown) => void;
+  }> = [];
   const acknowledgements: Array<{ id: number; bytes: number }> = [];
   mockIPC((command, payload) => {
-    if (command === "ssh_open") {
+    if (command === "ssh_open_v2") {
       channels.push((payload as { onEvent: Channel<PtyEvent> }).onEvent);
-      return new Promise<number>((resolve, reject) => opens.push({ resolve, reject }));
+      return new Promise((resolve, reject) => opens.push({ resolve, reject }));
     }
     if (command === "pty_output_ack") {
       acknowledgements.push(payload as { id: number; bytes: number });
@@ -164,7 +320,16 @@ test("a failed replacement keeps the published SSH channel live and acknowledged
   const published = openSshPty("failed-replacement-session", 80, 24, {
     onData: publishedData,
   }, { host: "old.example", user: "deploy", authMethod: "agent" });
-  opens[0].resolve(301);
+  opens[0].resolve({
+    physicalPtyId: 301,
+    transportGeneration: "tg-published",
+    warnings: [],
+    binding: {
+      logicalSessionId: "failed-replacement-session",
+      physicalPtyId: 301,
+      transportGeneration: "tg-published",
+    },
+  });
   const publishedPty = await published;
   expect(publishedPty.activate()).toBe(true);
 
@@ -176,8 +341,18 @@ test("a failed replacement keeps the published SSH channel live and acknowledged
   expect(publishedData).toHaveBeenCalledOnce();
   expect(acknowledgements).toEqual([{ id: 301, bytes: 1 }]);
 
-  opens[1].reject(new Error("authentication failed"));
-  await expect(failedReplacement).rejects.toThrow("authentication failed");
+  opens[1].reject({
+    diagnostic: {
+      schemaVersion: 1,
+      stage: "jump",
+      code: "authenticationFailed",
+      severity: "error",
+      retryable: false,
+      hopRole: "jump",
+      timestamp: 1,
+    },
+  });
+  await expect(failedReplacement).rejects.toThrow("SSH jump hop authentication failed");
   channels[0].onmessage({ type: "data", data: "Yg==" });
   await Promise.resolve();
   expect(publishedData).toHaveBeenCalledTimes(2);
@@ -216,6 +391,86 @@ test("generation gate prioritizes transport loss and acknowledges every stale da
   expect(onTransportLost).toHaveBeenCalledOnce();
   expect(onExit).not.toHaveBeenCalled();
   expect(terminatedAck).toHaveBeenCalledOnce();
+});
+
+function TerminalViewChromeHarness({ mouseTrackingMode }: { mouseTrackingMode: "none" | "any" }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const search = useTerminalSearch("router-session");
+  const terminal = {
+    modes: { mouseTrackingMode },
+    hasSelection: () => false,
+    getSelection: () => "",
+  } as unknown as Terminal;
+  return (
+    <TerminalViewChrome
+      sessionId="router-session"
+      containerRef={containerRef}
+      getTerminal={() => terminal}
+      search={search}
+      capturePasteTarget={() => () => true}
+    />
+  );
+}
+
+function dispatchTerminalMouse(
+  surface: HTMLElement,
+  type: "mousedown" | "mouseup" | "contextmenu",
+  modifiers: MouseEventInit = {},
+) {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    button: 2,
+    ...modifiers,
+  });
+  act(() => { surface.dispatchEvent(event); });
+  return event;
+}
+
+test.each([
+  ["down → up → contextmenu", ["mousedown", "mouseup", "contextmenu"]],
+  ["down → contextmenu → up", ["mousedown", "contextmenu", "mouseup"]],
+] as const)("TerminalViewChrome suppresses the native menu without consuming a TUI-owned %s gesture", (_label, order) => {
+  useUIStore.setState({ terminalHostModifier: "shift", presentationMode: "workspace" });
+  render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
+  const surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
+  const onMouseDown = vi.fn();
+  const onMouseUp = vi.fn();
+  surface.addEventListener("mousedown", onMouseDown);
+  surface.addEventListener("mouseup", onMouseUp);
+
+  let contextMenu: MouseEvent | undefined;
+  const events = order.map((type) => {
+    const event = dispatchTerminalMouse(surface, type);
+    if (type === "contextmenu") contextMenu = event;
+    return event;
+  });
+
+  expect(contextMenu?.defaultPrevented).toBe(true);
+  expect(events.filter((event) => event.type === "mousedown" || event.type === "mouseup")
+    .every((event) => !event.defaultPrevented)).toBe(true);
+  expect(onMouseDown).toHaveBeenCalledOnce();
+  expect(onMouseUp).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test("TerminalViewChrome opens the Tunara menu when reporting is off or the host modifier is held", () => {
+  useUIStore.setState({ terminalHostModifier: "shift", presentationMode: "workspace" });
+  const view = render(<TerminalViewChromeHarness mouseTrackingMode="none" />);
+  let surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
+
+  dispatchTerminalMouse(surface, "mousedown");
+  dispatchTerminalMouse(surface, "mouseup");
+  expect(dispatchTerminalMouse(surface, "contextmenu").defaultPrevented).toBe(true);
+  expect(screen.getByRole("menu")).toBeTruthy();
+
+  view.unmount();
+  render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
+  surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
+  dispatchTerminalMouse(surface, "mousedown", { shiftKey: true });
+  dispatchTerminalMouse(surface, "mouseup", { shiftKey: true });
+  expect(dispatchTerminalMouse(surface, "contextmenu", { shiftKey: true }).defaultPrevented).toBe(true);
+  expect(screen.getByRole("menu")).toBeTruthy();
 });
 
 test("closing a context menu restores focus to the terminal trigger", async () => {
@@ -261,6 +516,32 @@ test("closing a context menu preserves focus claimed by its action", async () =>
   expect(document.activeElement).toBe(destination);
   trigger.remove();
   destination.remove();
+});
+
+test("token-aware context menu restores only the still-active terminal", async () => {
+  const focus = vi.fn();
+  const dispose = registerTerminalBinding({
+    logicalSessionId: "menu-session",
+    paneId: "menu-session",
+    physicalPtyId: 17,
+    transportGeneration: "menu-generation",
+    terminalInstanceEpoch: allocateTerminalInstanceEpoch(),
+  }, focus);
+  recordTerminalFocusIntent("menu-session");
+  const { issueFocusReturnToken } = await import("@/modules/terminal/lib/binding-aware-async-action");
+  const view = render(
+    <ContextMenu
+      items={[{ id: "copy", label: "Copy", action: vi.fn() }]}
+      position={{ x: 12, y: 12 }}
+      onClose={() => {}}
+      terminalFocusReturnToken={issueFocusReturnToken("menu-session")}
+    />,
+  );
+
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menu")));
+  view.unmount();
+  expect(focus).toHaveBeenCalledOnce();
+  dispose();
 });
 
 function SplitHandleHarness() {
@@ -441,6 +722,14 @@ test("Quick Select restores terminal focus after an asynchronous copy", async ()
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
   });
+  const dispose = registerTerminalBinding({
+    logicalSessionId: "quick-select-session",
+    paneId: "quick-select-session",
+    physicalPtyId: 21,
+    transportGeneration: "quick-select-generation",
+    terminalInstanceEpoch: allocateTerminalInstanceEpoch(),
+  }, focus);
+  recordTerminalFocusIntent("quick-select-session");
 
   function Harness() {
     const termRef = useRef<Terminal | null>(term);
@@ -456,6 +745,79 @@ test("Quick Select restores terminal focus after an asynchronous copy", async ()
   fireEvent.click(await screen.findByRole("button", { name: "Copy https://docs.example" }));
   await waitFor(() => expect(focus).toHaveBeenCalledOnce());
   expect(screen.queryByRole("listbox", { name: "Quick select" })).toBeNull();
+  dispose();
+});
+
+test("Quick Select ignores a deferred copy completion after switching sessions", async () => {
+  let resolveCopy!: () => void;
+  const focus = vi.fn();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn(() => new Promise<void>((resolve) => { resolveCopy = resolve; })) },
+  });
+  const term = {
+    rows: 24,
+    focus,
+    buffer: { active: { length: 1, viewportY: 0, getLine: () => ({ translateToString: () => "https://docs.example" }) } },
+  } as unknown as Terminal;
+  const dispose = registerTerminalBinding({
+    logicalSessionId: "quick-select-stale",
+    paneId: "quick-select-stale",
+    physicalPtyId: 22,
+    transportGeneration: "quick-select-stale-generation",
+    terminalInstanceEpoch: allocateTerminalInstanceEpoch(),
+  }, focus);
+  recordTerminalFocusIntent("quick-select-stale");
+
+  function Harness() {
+    const termRef = useRef<Terminal | null>(term);
+    return useTerminalQuickSelect(termRef, { active: true, cwd: "/repo", sessionId: "quick-select-stale" }).quickSelectOverlay;
+  }
+
+  render(<Harness />);
+  window.dispatchEvent(new Event(TERMINAL_QUICK_SELECT_EVENT));
+  fireEvent.click(await screen.findByRole("button", { name: "Copy https://docs.example" }));
+  recordTerminalFocusIntent("another-session");
+  await act(async () => { resolveCopy(); });
+  expect(focus).not.toHaveBeenCalled();
+  expect(screen.getByRole("listbox", { name: "Quick select" })).toBeTruthy();
+  dispose();
+});
+
+test("Quick Select opens an SSH file in its owning session instead of the local editor", async () => {
+  const owner: Session = {
+    id: "quick-select-ssh", title: "SSH", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,
+    remote: { host: "target.internal", port: 22, user: "deploy" },
+    ptyId: 77,
+    transportGeneration: "quick-select-generation",
+  };
+  useSessionsStore.setState({ sessions: [owner, { ...owner, id: "other-session", remote: undefined }], activeSessionId: "other-session" });
+  useUIStore.setState({ fileTabs: [], activeFileTabId: null });
+  const openedCommands: string[] = [];
+  mockIPC((command) => { openedCommands.push(command); return undefined; });
+  const term = {
+    rows: 24,
+    focus: vi.fn(),
+    buffer: {
+      active: {
+        length: 1,
+        viewportY: 0,
+        getLine: () => ({ translateToString: () => "src/app.ts:12" }),
+      },
+    },
+  } as unknown as Terminal;
+
+  function Harness() {
+    const termRef = useRef<Terminal | null>(term);
+    return useTerminalQuickSelect(termRef, { active: true, cwd: "/srv/app", sessionId: owner.id }).quickSelectOverlay;
+  }
+
+  render(<Harness />);
+  window.dispatchEvent(new Event(TERMINAL_QUICK_SELECT_EVENT));
+  fireEvent.click(await screen.findByRole("button", { name: "Open src/app.ts:12" }));
+  await waitFor(() => expect(useSessionsStore.getState().activeSessionId).toBe(owner.id));
+  expect(useUIStore.getState().fileTabs[0]).toMatchObject({ sessionId: owner.id, filePath: "/srv/app/src/app.ts", line: 12 });
+  expect(openedCommands).not.toContain("open_in_editor");
 });
 
 test("session cards announce lifecycle, unread, and transport state", () => {
@@ -527,6 +889,7 @@ test("workflow parameters keep a scrollable body and reachable footer", () => {
 test("host key prompt constrains height and safely focuses Reject", () => {
   useUIStore.setState({
     hostKeyPrompts: [{
+      hopRole: "direct",
       promptId: "host-key-overflow",
       host: "very-long-host.example",
       port: 22,
@@ -543,4 +906,70 @@ test("host key prompt constrains height and safely focuses Reject", () => {
   const body = screen.getByText(/very-long-host\.example/).parentElement as HTMLElement;
   expect(body.style.overflowY).toBe("auto");
   useUIStore.setState({ hostKeyPrompts: [] });
+});
+
+test("keyboard-interactive trust chrome is Tunara-owned and server text stays in the body", () => {
+  useUIStore.setState({
+    keyboardInteractivePrompts: [{
+      hopRole: "jump",
+      promptId: "trusted-origin",
+      origin: {
+        user: "ops", host: "jump.internal", port: 2202, logicalSessionId: "session-kbi",
+        hopRole: "jump", transportGeneration: "attempt-kbi",
+      },
+      name: "SERVER CONTROLLED TITLE",
+      instructions: "SERVER CONTROLLED INSTRUCTIONS",
+      prompts: [{ prompt: "SERVER CONTROLLED LABEL", echo: false }],
+    }],
+  });
+  render(<KeyboardInteractivePromptDialog />);
+
+  expect(screen.getByRole("dialog", { name: "Authentication required" })).toBeTruthy();
+  expect(screen.queryByRole("dialog", { name: "SERVER CONTROLLED TITLE" })).toBeNull();
+  expect(screen.getByText(/ops@jump\.internal:2202/)).toBeTruthy();
+  expect(screen.getByText("SERVER CONTROLLED TITLE")).toBeTruthy();
+  expect(screen.getByText("SERVER CONTROLLED INSTRUCTIONS")).toBeTruthy();
+  expect(screen.getByLabelText("SERVER CONTROLLED LABEL")).toBeTruthy();
+  useUIStore.setState({ keyboardInteractivePrompts: [] });
+});
+
+test.each([
+  ["host key", <HostKeyPromptDialog />, () => useUIStore.getState().enqueueHostKeyPrompt({
+    hopRole: "direct", promptId: "late-host", host: "late.example", port: 22,
+    fingerprint: "SHA256:late", keyType: "ssh-ed25519", reason: "unknown",
+  }), "Cancel", "Trust & connect", "ssh_host_key_decision"],
+  ["keyboard interactive", <KeyboardInteractivePromptDialog />, () => useUIStore.getState().enqueueKeyboardInteractivePrompt({
+    hopRole: "direct", promptId: "late-auth", name: "Late auth", instructions: "",
+    origin: { user: "deploy", host: "late.example", port: 22, logicalSessionId: "late-session", hopRole: "direct", transportGeneration: "late-generation" },
+    prompts: [{ prompt: "Password", echo: false }],
+  }), "Password", "Continue", "ssh_keyboard_interactive_response"],
+] as const)("a permanently mounted %s prompt traps focus and safely cancels", async (_name, dialog, enqueue, safeName, lastName, commandName) => {
+  useUIStore.setState({ hostKeyPrompts: [], keyboardInteractivePrompts: [] });
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    return undefined;
+  });
+  render(<><button type="button">Outside</button>{dialog}</>);
+  const outside = screen.getByRole("button", { name: "Outside" });
+  outside.focus();
+
+  act(enqueue);
+  const safe = safeName === "Password"
+    ? await screen.findByLabelText(safeName)
+    : await screen.findByRole("button", { name: safeName });
+  await waitFor(() => expect(document.activeElement).toBe(safe));
+  const last = screen.getByRole("button", { name: lastName });
+  last.focus();
+  fireEvent.keyDown(document, { key: "Tab" });
+  expect(document.activeElement).toBe(safe);
+  fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(last);
+
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(calls.find((call) => call.command === commandName)?.payload).toMatchObject(
+    commandName === "ssh_host_key_decision" ? { accept: false } : { responses: null },
+  );
+  expect(document.activeElement).toBe(outside);
 });

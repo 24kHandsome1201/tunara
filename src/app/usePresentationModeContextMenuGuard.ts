@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 /**
- * Suppress every WebView/Tunara context-menu path while leaving pointer down
+ * Suppress terminal-canvas context-menu paths while leaving pointer down
  * and up events untouched so xterm can still encode application mouse input.
  */
 export function usePresentationModeContextMenuGuard(active: boolean): void {
@@ -9,8 +9,8 @@ export function usePresentationModeContextMenuGuard(active: boolean): void {
     if (!active) return;
 
     const suppressContextMenu = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-terminal-canvas]")) return;
       event.preventDefault();
-      event.stopPropagation();
     };
 
     document.addEventListener("contextmenu", suppressContextMenu, { capture: true });

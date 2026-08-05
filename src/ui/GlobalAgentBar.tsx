@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { type Session, AGENT_NAMES } from "./types";
+import { type Session, AGENT_NAMES, reconnectPrefillFromSession } from "./types";
 import { AgentBadge } from "./agents";
 import { deriveSessionAttention, type SessionAttentionKind } from "@/modules/session/session-attention";
 import { useSessionsStore } from "@/state/sessions";
@@ -111,16 +111,8 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
   };
   const reconnect = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!session.remote) return;
-    useUIStore.getState().openSshConnect({
-      host: session.remote.host,
-      user: session.remote.user,
-      port: session.remote.port,
-      authMethod: session.remote.authMethod,
-      identityFile: session.remote.identityFile,
-      injectShellIntegration: session.remote.injectShellIntegration,
-      reconnectSessionId: session.id,
-    });
+    const prefill = reconnectPrefillFromSession(session);
+    if (prefill) useUIStore.getState().openSshConnect(prefill);
   };
 
   return (

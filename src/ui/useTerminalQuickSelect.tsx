@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { openInEditor } from "@/modules/editor/open";
+import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
+import { useSessionsStore } from "@/state/sessions";
 import { collectTerminalQuickSelectItems, TERMINAL_QUICK_SELECT_EVENT, type TerminalQuickSelectItem } from "@/modules/terminal/lib/terminal-quick-select";
 import { terminalQuickSelectRange } from "@/modules/terminal/lib/terminal-quick-select-scope";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { copyText } from "./lib/clipboard";
 import { TerminalQuickSelect } from "./TerminalQuickSelect";
+import { issueFocusReturnToken, runBindingAwareContinuation } from "@/modules/terminal/lib/binding-aware-async-action";
 
 interface TerminalQuickSelectOptions {
   active: boolean;
@@ -65,35 +67,42 @@ export function useTerminalQuickSelect(
   }, [presentationMode]);
 
   const closeQuickSelect = useCallback(() => {
+    const token = issueFocusReturnToken(sessionId);
     setItems(null);
-    termRef.current?.focus();
-  }, [termRef]);
+    if (token) runBindingAwareContinuation(token, () => termRef.current?.focus());
+  }, [sessionId, termRef]);
 
   const copyItem = useCallback((item: TerminalQuickSelectItem) => {
+    const token = issueFocusReturnToken(sessionId);
     void copyText(item.copyText).then((ok) => {
+      if (!token || !runBindingAwareContinuation(token, () => {})) return;
       if (ok) {
         notify(t("quick_select.copied.title"), item.copyText, "success");
         setItems(null);
       } else {
         notify(t("quick_select.copy_failed.title"), item.label, "error");
       }
-      termRef.current?.focus();
+      runBindingAwareContinuation(token, () => termRef.current?.focus());
     });
-  }, [notify, t, termRef]);
+  }, [notify, sessionId, t, termRef]);
 
   const openItem = useCallback((item: TerminalQuickSelectItem) => {
     if (item.kind === "text") {
       copyItem(item);
       return;
     }
+    const token = issueFocusReturnToken(sessionId);
+    const owner = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
     const run = item.kind === "url"
       ? openUrl(item.target)
-      : openInEditor(useUIStore.getState().externalEditor, item.target, item.line, item.column);
+      : owner
+        ? openResource(resourceRefForSession(owner, item.target, item.line, item.column))
+        : Promise.reject(new Error("missing resource owner"));
     run
-      .then(() => setItems(null))
-      .catch(() => notify(t("quick_select.open_failed.title"), item.label, "error"))
-      .finally(() => termRef.current?.focus());
-  }, [copyItem, notify, t, termRef]);
+      .then(() => { if (token) runBindingAwareContinuation(token, () => setItems(null)); })
+      .catch(() => { if (token) runBindingAwareContinuation(token, () => notify(t("quick_select.open_failed.title"), item.label, "error")); })
+      .finally(() => { if (token) runBindingAwareContinuation(token, () => termRef.current?.focus()); });
+  }, [copyItem, notify, sessionId, t, termRef]);
 
   return {
     openQuickSelect,

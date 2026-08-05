@@ -8,10 +8,12 @@ import type { TerminalWebglRenderer } from "./useTerminalWebgl";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { createWebglAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
+import { issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
 
 interface TerminalRuntimeSyncOptions {
+  sessionId: string;
   active: boolean;
   termRef: RefObject<Terminal | null>;
   fitRef: RefObject<FitAddon | null>;
@@ -23,12 +25,14 @@ interface TerminalRuntimeSyncOptions {
   scrollback: number;
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
+  screenReaderMode: boolean;
   theme: ThemeType;
   terminalTheme: TerminalThemeName;
   accent: string;
 }
 
 export function useTerminalRuntimeSync({
+  sessionId,
   active,
   termRef,
   fitRef,
@@ -40,6 +44,7 @@ export function useTerminalRuntimeSync({
   scrollback,
   cursorStyle,
   cursorBlink,
+  screenReaderMode,
   theme,
   terminalTheme,
   accent,
@@ -52,7 +57,10 @@ export function useTerminalRuntimeSync({
     const fit = fitRef.current;
     const pty = ptyRef.current;
     if (!term || !fit) return;
+    setLogicalActiveTerminalPane(sessionId);
+    const token = issueFocusReturnToken(sessionId);
     const timer = setTimeout(() => {
+      if (token && !runBindingAwareContinuation(token, () => {})) return;
       try {
         fit.fit();
         pty?.resize(term.cols, term.rows).catch(() => {});
@@ -62,7 +70,7 @@ export function useTerminalRuntimeSync({
       }
     }, 30);
     return () => clearTimeout(timer);
-  }, [active, fitRef, presentationMode, ptyRef, termRef]);
+  }, [active, fitRef, presentationMode, ptyRef, sessionId, termRef]);
 
   useEffect(() => {
     const term = termRef.current;
@@ -74,6 +82,7 @@ export function useTerminalRuntimeSync({
     term.options.scrollback = effectiveScrollback;
     term.options.cursorStyle = cursorStyle;
     term.options.cursorBlink = cursorBlink;
+    term.options.screenReaderMode = screenReaderMode;
     term.options.theme = getTerminalTheme(theme, terminalTheme, accent);
     try {
       fit?.fit();
@@ -88,5 +97,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, scrollback, termRef, terminalTheme, theme, webglRef]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, termRef, terminalTheme, theme, webglRef]);
 }

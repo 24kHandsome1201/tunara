@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { useUIStore } from "@/state/ui";
+import { useSessionsStore } from "@/state/sessions";
 import { usePresentationModeContextMenuGuard } from "@/app/usePresentationModeContextMenuGuard";
 import { Titlebar } from "@/ui/Titlebar";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
+import type { Session } from "@/ui/types";
 
 vi.mock("@/ui/lib/current-window", () => ({ tryGetCurrentWindow: () => null }));
 
@@ -39,6 +41,7 @@ function ContextMenuGuardHarness({
   return (
     <div
       data-testid="terminal-surface"
+      data-terminal-canvas
       onContextMenu={onContextMenu}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
@@ -63,7 +66,7 @@ test("pure mode suppresses contextmenu capture without blocking PTY mouse events
   const pureMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
   surface.dispatchEvent(pureMenu);
   expect(pureMenu.defaultPrevented).toBe(true);
-  expect(onContextMenu).toHaveBeenCalledTimes(1);
+  expect(onContextMenu).toHaveBeenCalledTimes(2);
 
   fireEvent.mouseDown(surface, { button: 2 });
   fireEvent.mouseUp(surface, { button: 2 });
@@ -74,7 +77,7 @@ test("pure mode suppresses contextmenu capture without blocking PTY mouse events
   const restoredMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
   surface.dispatchEvent(restoredMenu);
   expect(restoredMenu.defaultPrevented).toBe(false);
-  expect(onContextMenu).toHaveBeenCalledTimes(2);
+  expect(onContextMenu).toHaveBeenCalledTimes(3);
 });
 
 test("presentation mode is a reversible projection over workspace UI state", () => {
@@ -108,6 +111,7 @@ test("opening SSH leaves Pure Mode while blocking SSH challenges remain availabl
     presentationMode: "pure",
     overlay: null,
     hostKeyPrompts: [{
+      hopRole: "direct",
       promptId: "host-key-1",
       host: "example.com",
       port: 22,
@@ -116,7 +120,12 @@ test("opening SSH leaves Pure Mode while blocking SSH challenges remain availabl
       reason: "unknown",
     }],
     keyboardInteractivePrompts: [{
+      hopRole: "direct",
       promptId: "interactive-1",
+      origin: {
+        user: "deploy", host: "example.com", port: 22, logicalSessionId: "presentation-session",
+        hopRole: "direct", transportGeneration: "presentation-generation",
+      },
       name: "Verification",
       instructions: "Enter the current code",
       prompts: [{ prompt: "Code: ", echo: false }],
@@ -186,7 +195,8 @@ test("native fullscreen teaches the exit shortcut, fades, and reveals again at t
   }
 });
 
-test("Pure Mode Files button follows its setting while the command palette remains an alternate path", () => {
+test("Pure Mode Files action remains available in the action strip and command palette", () => {
+  useSessionsStore.setState({ activeSessionId: "pane-a" });
   useUIStore.setState({
     configLoaded: false,
     presentationMode: "pure",
@@ -199,9 +209,13 @@ test("Pure Mode Files button follows its setting while the command palette remai
 
   fireEvent.click(screen.getByRole("button", { name: "Open Files in Pure Mode" }));
   expect(useUIStore.getState()).toMatchObject({ panelVisible: true, inspectorTab: "files" });
+  expect(useSessionsStore.getState().activeSessionId).toBe("pane-a");
+  expect(useUIStore.getState().presentationMode).toBe("pure");
 
   act(() => useUIStore.getState().setShowPureModeFilesButton(false));
   expect(screen.queryByRole("button", { name: "Open Files in Pure Mode" })).toBeNull();
+  fireEvent.click(screen.getByLabelText("More actions"));
+  expect(screen.getByRole("menuitem", { name: "Files" })).toBeTruthy();
   view.unmount();
 
   useUIStore.setState({ overlay: "command-palette" });
@@ -209,6 +223,89 @@ test("Pure Mode Files button follows its setting while the command palette remai
   expect(screen.getByText("Open Files in Pure Mode")).toBeTruthy();
   fireEvent.click(screen.getByText("Open Files in Pure Mode"));
   expect(useUIStore.getState()).toMatchObject({ panelVisible: true, inspectorTab: "files", presentationMode: "pure" });
+});
+
+test("Pure Mode action strip is keyboard/AT reachable and exposes touch overflow", () => {
+  useUIStore.setState({ configLoaded: false, presentationMode: "pure", nativeFullscreen: false, overlay: null });
+  const { container } = renderTitlebar();
+  const strip = screen.getByRole("toolbar", { name: "Pure Mode actions" });
+  expect(strip.getAttribute("data-visible")).toBe("true");
+  expect(screen.getByRole("button", { name: "Safe Paste" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Command Palette" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Exit Pure Mode.+P/ })).toBeTruthy();
+  expect(container.querySelector("[data-touch-overflow]")).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Command Palette" }));
+  expect(useUIStore.getState()).toMatchObject({ presentationMode: "pure", overlay: "command-palette" });
+});
+
+test("Pure Mode action strip consumes terminal context announcements without switching session", () => {
+  const sessions: Session[] = [
+    { id: "pane-a", title: "First", dir: "/tmp/a", branch: "", runState: "idle", updatedAt: 1 },
+    { id: "pane-b", title: "Second", dir: "/tmp/b", branch: "", runState: "idle", updatedAt: 2 },
+  ];
+  useSessionsStore.setState({ sessions, activeSessionId: "pane-a" });
+  useUIStore.setState({ configLoaded: false, presentationMode: "pure", nativeFullscreen: false });
+  const view = render(
+    <Titlebar
+      sessions={sessions}
+      activeSessionId="pane-a"
+      panelVisible={false}
+      sidebarVisible
+      onToggleSidebar={() => {}}
+      onTogglePanel={() => {}}
+      onSelectSession={() => {}}
+      onCloseSession={() => {}}
+      onNewTerminal={() => {}}
+      onNewTerminalInDirectory={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
+
+  act(() => window.dispatchEvent(new CustomEvent("tunara:terminal-context-announcement", {
+    detail: { reason: "keyboard-navigation", logicalSessionId: "pane-b", index: 2, total: 2 },
+  })));
+
+  const status = screen.getByRole("status");
+  expect(status.textContent).toContain("Second");
+  expect(status.textContent).toContain("2/2");
+  expect(status.getAttribute("aria-live")).toBe("polite");
+  expect(useSessionsStore.getState().activeSessionId).toBe("pane-a");
+  expect(useUIStore.getState().presentationMode).toBe("pure");
+
+  view.rerender(
+    <Titlebar
+      sessions={sessions}
+      activeSessionId="pane-b"
+      panelVisible={false}
+      sidebarVisible
+      onToggleSidebar={() => {}}
+      onTogglePanel={() => {}}
+      onSelectSession={() => {}}
+      onCloseSession={() => {}}
+      onNewTerminal={() => {}}
+      onNewTerminalInDirectory={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
+  view.rerender(
+    <Titlebar
+      sessions={sessions}
+      activeSessionId="pane-a"
+      panelVisible={false}
+      sidebarVisible
+      onToggleSidebar={() => {}}
+      onTogglePanel={() => {}}
+      onSelectSession={() => {}}
+      onCloseSession={() => {}}
+      onNewTerminal={() => {}}
+      onNewTerminalInDirectory={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
+  expect(screen.getByRole("status").textContent).not.toContain("2/2");
 });
 
 test("the pure-mode exit button drags horizontally without turning the drag into an exit click", () => {

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p "$HOME/.local/bin" "$HOME/.local/opt"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+if ! pkg-config --exists gdk-3.0 webkit2gtk-4.1; then
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+fi
+
+if ! command -v node >/dev/null || [[ "$(node -p 'Number(process.versions.node.split(`.`)[0])')" -lt 22 ]]; then
+  node_version="22.18.0"
+  node_dir="$HOME/.local/opt/node-v${node_version}-linux-x64"
+  if [[ ! -x "$node_dir/bin/node" ]]; then
+    curl -fsSL "https://nodejs.org/dist/v${node_version}/node-v${node_version}-linux-x64.tar.xz" \
+      | tar -xJ -C "$HOME/.local/opt"
+  fi
+  ln -sf "$node_dir/bin/node" "$HOME/.local/bin/node"
+  ln -sf "$node_dir/bin/corepack" "$HOME/.local/bin/corepack"
+  ln -sf "$node_dir/bin/npm" "$HOME/.local/bin/npm"
+  ln -sf "$node_dir/bin/npx" "$HOME/.local/bin/npx"
+fi
+
+if ! command -v cargo >/dev/null; then
+  curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain stable
+fi
+rustup component add rustfmt
+
+corepack enable --install-directory "$HOME/.local/bin"
+pnpm install --frozen-lockfile

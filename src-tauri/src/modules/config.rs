@@ -36,7 +36,9 @@ pub struct AppearanceConfig {
     pub bell_notification: bool,
     pub terminal_clipboard_write: bool,
     pub terminal_inline_images: bool,
+    pub terminal_screen_reader_mode: bool,
     pub show_pure_mode_files_button: bool,
+    pub terminal_host_modifier: String,
     pub language: String,
     pub global_shortcut: String,
 }
@@ -60,7 +62,14 @@ impl Default for AppearanceConfig {
             bell_notification: true,
             terminal_clipboard_write: false,
             terminal_inline_images: true,
+            terminal_screen_reader_mode: false,
             show_pure_mode_files_button: true,
+            terminal_host_modifier: if cfg!(target_os = "macos") {
+                "meta"
+            } else {
+                "shift"
+            }
+            .into(),
             language: "system".into(),
             global_shortcut: "CmdOrCtrl+Shift+T".into(),
         }
@@ -69,6 +78,17 @@ impl Default for AppearanceConfig {
 
 impl AppearanceConfig {
     fn clamp(&mut self) {
+        if !matches!(
+            self.terminal_host_modifier.as_str(),
+            "shift" | "meta" | "alt"
+        ) {
+            self.terminal_host_modifier = if cfg!(target_os = "macos") {
+                "meta"
+            } else {
+                "shift"
+            }
+            .into();
+        }
         self.font_size = self.font_size.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE);
         self.scrollback = self.scrollback.clamp(MIN_SCROLLBACK, MAX_SCROLLBACK);
         self.sidebar_width = self
@@ -110,6 +130,21 @@ pub struct LoadedTunaraConfig {
 }
 
 fn default_keybindings() -> BTreeMap<String, String> {
+    default_keybindings_for(cfg!(target_os = "macos"))
+}
+
+fn default_keybindings_for(is_macos: bool) -> BTreeMap<String, String> {
+    let mut bindings: BTreeMap<String, String> = old_default_keybindings();
+    if !is_macos {
+        bindings.insert("new_terminal_alt".into(), "Ctrl+Shift+N".into());
+        bindings.insert("close_session".into(), "Ctrl+Shift+W".into());
+        bindings.insert("split_horizontal".into(), "Alt+Shift+D".into());
+        bindings.insert("command_palette".into(), "Ctrl+Shift+K".into());
+    }
+    bindings
+}
+
+fn old_default_keybindings() -> BTreeMap<String, String> {
     [
         ("new_terminal", "Mod+T"),
         ("new_terminal_alt", "Mod+N"),
@@ -121,6 +156,8 @@ fn default_keybindings() -> BTreeMap<String, String> {
         ("split_vertical", "Mod+Shift+D"),
         ("focus_split_left", "Mod+["),
         ("focus_split_right", "Mod+]"),
+        ("focus_split_up", "Mod+Shift+["),
+        ("focus_split_down", "Mod+Shift+]"),
         ("command_palette", "Mod+K"),
         ("toggle_presentation_mode", "Mod+Shift+P"),
         ("quick_select", "Mod+Shift+Space"),
@@ -136,10 +173,46 @@ fn default_keybindings() -> BTreeMap<String, String> {
         ("select_tab_7", "Mod+7"),
         ("select_tab_8", "Mod+8"),
         ("select_last_tab", "Mod+9"),
+        ("cycle_next_session", "Mod+Tab"),
+        ("cycle_prev_session", "Mod+Shift+Tab"),
+        ("navigate_prev_block", "Mod+Shift+ArrowUp"),
+        ("navigate_next_block", "Mod+Shift+ArrowDown"),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
     .collect()
+}
+
+fn old_backend_default_keybindings() -> BTreeMap<String, String> {
+    let mut bindings = old_default_keybindings();
+    for key in [
+        "focus_split_up",
+        "focus_split_down",
+        "cycle_next_session",
+        "cycle_prev_session",
+        "navigate_prev_block",
+        "navigate_next_block",
+    ] {
+        bindings.remove(key);
+    }
+    bindings
+}
+
+fn raw_has_complete_old_keybindings(raw: &str) -> bool {
+    let Ok(doc) = raw.parse::<DocumentMut>() else {
+        return false;
+    };
+    let Some(table) = doc.get("keybindings").and_then(Item::as_table) else {
+        return false;
+    };
+    [old_default_keybindings(), old_backend_default_keybindings()]
+        .into_iter()
+        .any(|old| {
+            table.len() == old.len()
+                && old.iter().all(|(key, expected)| {
+                    table.get(key).and_then(Item::as_str) == Some(expected.as_str())
+                })
+        })
 }
 
 fn config_path_for_dir(dir_name: &str) -> Result<PathBuf, String> {
@@ -171,7 +244,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 19] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 21] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -196,8 +269,16 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 1
             value(config.terminal_inline_images),
         ),
         (
+            "terminal_screen_reader_mode",
+            value(config.terminal_screen_reader_mode),
+        ),
+        (
             "show_pure_mode_files_button",
             value(config.show_pure_mode_files_button),
+        ),
+        (
+            "terminal_host_modifier",
+            value(config.terminal_host_modifier.clone()),
         ),
         ("language", value(config.language.clone())),
         ("global_shortcut", value(config.global_shortcut.clone())),
@@ -291,6 +372,11 @@ fn load_config_from_path(path: &Path) -> Result<LoadedTunaraConfig, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("read config failed: {e}"))?;
     match toml::from_str::<TunaraConfig>(&raw) {
         Ok(mut config) => {
+            // Pre-version configs are migrated only when the raw table proves it is the
+            // complete old built-in set. One changed/extra/missing value means user-owned.
+            if raw_has_complete_old_keybindings(&raw) {
+                config.keybindings = default_keybindings();
+            }
             config.clamp();
             Ok(LoadedTunaraConfig {
                 path: path_string,
@@ -358,6 +444,73 @@ mod tests {
             .join(format!("tunara-config-test-{name}-{unique}"))
             .join(dir_name)
             .join("config.toml")
+    }
+
+    #[test]
+    fn complete_old_defaults_migrate_but_a_custom_table_is_preserved() {
+        let old = TunaraConfig {
+            appearance: AppearanceConfig::default(),
+            keybindings: old_default_keybindings(),
+        };
+        let old_raw = toml::to_string_pretty(&old).expect("serialize old defaults");
+        assert!(raw_has_complete_old_keybindings(&old_raw));
+
+        let path = temp_config_path("old-keybindings");
+        ensure_parent(&path).expect("create temp config dir");
+        fs::write(&path, old_raw).expect("write old config");
+        let loaded = load_config_from_path(&path).expect("load old config");
+        assert_eq!(loaded.config.keybindings, default_keybindings());
+
+        let old_backend = TunaraConfig {
+            appearance: AppearanceConfig::default(),
+            keybindings: old_backend_default_keybindings(),
+        };
+        let old_backend_raw =
+            toml::to_string_pretty(&old_backend).expect("serialize old backend defaults");
+        assert!(raw_has_complete_old_keybindings(&old_backend_raw));
+
+        let mut custom = old;
+        custom
+            .keybindings
+            .insert("close_session".into(), "Alt+Q".into());
+        let custom_raw = toml::to_string_pretty(&custom).expect("serialize custom defaults");
+        assert!(!raw_has_complete_old_keybindings(&custom_raw));
+        fs::write(&path, custom_raw).expect("write custom config");
+        let loaded = load_config_from_path(&path).expect("load custom config");
+        assert_eq!(
+            loaded
+                .config
+                .keybindings
+                .get("close_session")
+                .map(String::as_str),
+            Some("Alt+Q")
+        );
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).expect("temp root"));
+    }
+
+    #[test]
+    fn platform_defaults_keep_macos_conventions_and_avoid_bare_control_elsewhere() {
+        let macos = default_keybindings_for(true);
+        let linux_or_windows = default_keybindings_for(false);
+        for (key, expected) in [
+            ("new_terminal_alt", "Mod+N"),
+            ("close_session", "Mod+W"),
+            ("split_horizontal", "Mod+D"),
+            ("command_palette", "Mod+K"),
+        ] {
+            assert_eq!(macos.get(key).map(String::as_str), Some(expected));
+        }
+        for (key, expected) in [
+            ("new_terminal_alt", "Ctrl+Shift+N"),
+            ("close_session", "Ctrl+Shift+W"),
+            ("split_horizontal", "Alt+Shift+D"),
+            ("command_palette", "Ctrl+Shift+K"),
+        ] {
+            assert_eq!(
+                linux_or_windows.get(key).map(String::as_str),
+                Some(expected)
+            );
+        }
     }
 
     #[test]
@@ -489,6 +642,7 @@ font_size = 15
         assert!(saved.contains("[keybindings]"));
         assert!(saved.contains("scrollback = 2000"));
         assert!(saved.contains("show_pure_mode_files_button = true"));
+        assert!(saved.contains("terminal_screen_reader_mode = false"));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }

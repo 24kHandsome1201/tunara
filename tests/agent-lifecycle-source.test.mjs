@@ -421,7 +421,7 @@ test("agent hook runtime files avoid predictable shared tmp paths", () => {
   assert.match(pty, /state\.remove_logical\(logical_id\);[\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
   assert.match(ssh, /hooks_state: tauri::State<'_, HookListenerState>/);
   assert.doesNotMatch(ssh, /state\.remove_logical\(logical_id\)/);
-  assert.match(ssh, /SshSession::open\(params, on_event\)[\s\S]*state\.insert\([\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
+  assert.match(ssh, /open_with_cancellation\([\s\S]*params,[\s\S]*jump_params,[\s\S]*on_event,[\s\S]*state\.insert_ssh\([\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
 });
 
 test("agent lifecycle policy preserves prompt state for Codex, Pi, and Amp", () => {
@@ -547,7 +547,7 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.doesNotMatch(terminal, /\blet hasAgent\b|\blet currentAgentCode\b|\blet agentStartupPending\b/);
   assert.doesNotMatch(terminal, /useSessionsStore\.subscribe/);
   assert.match(terminal, /const handleCwdChange = \(cwd: string\) => \{[\s\S]*lineCwdTracker\.record\(cwd, term\.registerMarker\(0\)\);[\s\S]*handleCwdChange\(sessionIdRef\.current, cwd\);[\s\S]*\};/);
-  assert.match(terminal, /registerCwdHandler\(term, handleCwdChange\)/);
+  assert.match(terminal, /registerCwdHandler\(term, handleCwdChange, transport\)/);
   assert.doesNotMatch(terminal, /registerCwdHandler\(term, \(cwd\) => \{[\s\S]{0,400}handleAgentExited/);
   assert.match(terminal, /const trackedSession = getCurrentSession\(\);[\s\S]*if \(trackedSession\?\.agent\) \{/);
   assert.match(terminal, /if \(PROMPT_READY_AGENTS\.has\(current\.agent\)\) \{[\s\S]*?promptAgentStateTracker\.schedule\(\);[\s\S]*?return;/);

@@ -16,16 +16,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use russh::client::{AuthResult, Handle, KeyboardInteractiveAuthResponse};
+#[cfg(unix)]
 use russh::keys::agent::client::AgentClient;
+#[cfg(unix)]
 use russh::keys::agent::AgentIdentity;
-use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
+use russh::keys::{load_openssh_certificate, load_secret_key, Algorithm, PrivateKeyWithHashAlg};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
 
 use super::connection::ClientHandler;
-use crate::modules::pty::{KeyboardInteractivePrompt, PtyEvent};
+use crate::modules::pty::{KeyboardInteractiveOrigin, KeyboardInteractivePrompt, PtyEvent};
 
+#[cfg(unix)]
 const AGENT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const IDENTITY_LOAD_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_IDENTITY_FILE_BYTES: u64 = 1024 * 1024;
@@ -50,6 +53,8 @@ pub struct AuthOptions {
     pub method: AuthMethod,
     /// Path to a private key file (e.g. ~/.ssh/id_ed25519). Used only by Key.
     pub identity_file: Option<String>,
+    /// Optional OpenSSH user certificate paired with `identity_file`.
+    pub certificate_file: Option<String>,
     /// Passphrase for an encrypted key file, if needed.
     pub key_passphrase: Option<String>,
     /// Password for password auth, if the user provided one.
@@ -61,6 +66,7 @@ enum SelectedAuth<'a> {
     Agent,
     Key {
         path: &'a str,
+        certificate: Option<&'a str>,
         passphrase: Option<&'a str>,
     },
     Password(&'a str),
@@ -75,6 +81,7 @@ fn selected_auth(opts: &AuthOptions) -> Result<SelectedAuth<'_>, String> {
                 .identity_file
                 .as_deref()
                 .ok_or("key authentication requires an identity file")?,
+            certificate: opts.certificate_file.as_deref(),
             passphrase: opts.key_passphrase.as_deref(),
         }),
         AuthMethod::Password => Ok(SelectedAuth::Password(
@@ -92,6 +99,7 @@ pub async fn authenticate(
     handle: &mut Handle<ClientHandler>,
     opts: &AuthOptions,
     on_event: Channel<PtyEvent>,
+    origin: KeyboardInteractiveOrigin,
 ) -> Result<(), String> {
     // OpenSSH starts with the "none" method both to discover allowed methods
     // and to support intentionally credential-free accounts. A rejection is
@@ -99,7 +107,7 @@ pub async fn authenticate(
     match handle.authenticate_none(&opts.user).await {
         Ok(result) if result.success() => return Ok(()),
         Ok(_) => {}
-        Err(error) => log::debug!("SSH none authentication probe failed: {error}"),
+        Err(_) => log::debug!("SSH none authentication probe failed"),
     }
 
     match selected_auth(opts)? {
@@ -108,13 +116,15 @@ pub async fn authenticate(
             Ok(false) => Err("agent authentication failed: no offered key accepted".into()),
             Err(error) => Err(format!("agent authentication failed: {error}")),
         },
-        SelectedAuth::Key { path, passphrase } => {
-            match try_key_file(handle, &opts.user, path, passphrase).await {
-                Ok(true) => Ok(()),
-                Ok(false) => Err("key authentication failed: rejected".into()),
-                Err(error) => Err(format!("key authentication failed: {error}")),
-            }
-        }
+        SelectedAuth::Key {
+            path,
+            certificate,
+            passphrase,
+        } => match try_key_file(handle, &opts.user, path, certificate, passphrase).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("key authentication failed: rejected".into()),
+            Err(error) => Err(format!("key authentication failed: {error}")),
+        },
         SelectedAuth::Password(password) => {
             let result = handle
                 .authenticate_password(&opts.user, password)
@@ -127,7 +137,7 @@ pub async fn authenticate(
             }
         }
         SelectedAuth::KeyboardInteractive => {
-            authenticate_keyboard_interactive(handle, &opts.user, on_event).await
+            authenticate_keyboard_interactive(handle, &opts.user, on_event, origin).await
         }
     }
 }
@@ -157,6 +167,7 @@ async fn request_keyboard_responses(
     name: String,
     instructions: String,
     prompts: Vec<russh::client::Prompt>,
+    origin: KeyboardInteractiveOrigin,
 ) -> Result<Vec<String>, String> {
     let prompt_id = format!(
         "kip-{}",
@@ -180,6 +191,7 @@ async fn request_keyboard_responses(
     on_event
         .send(PtyEvent::KeyboardInteractivePrompt {
             prompt_id,
+            origin,
             name,
             instructions,
             prompts: prompts
@@ -209,6 +221,7 @@ async fn authenticate_keyboard_interactive(
     handle: &mut Handle<ClientHandler>,
     user: &str,
     on_event: Channel<PtyEvent>,
+    origin: KeyboardInteractiveOrigin,
 ) -> Result<(), String> {
     let mut response = handle
         .authenticate_keyboard_interactive_start(user, None)
@@ -225,8 +238,14 @@ async fn authenticate_keyboard_interactive(
                 instructions,
                 prompts,
             } => {
-                let responses =
-                    request_keyboard_responses(&on_event, name, instructions, prompts).await?;
+                let responses = request_keyboard_responses(
+                    &on_event,
+                    name,
+                    instructions,
+                    prompts,
+                    origin.clone(),
+                )
+                .await?;
                 response = handle
                     .authenticate_keyboard_interactive_respond(responses)
                     .await
@@ -239,41 +258,64 @@ async fn authenticate_keyboard_interactive(
 }
 
 async fn try_agent(handle: &mut Handle<ClientHandler>, user: &str) -> Result<bool, String> {
-    let mut agent = connect_agent_client().await?;
-    let identities = agent
-        .request_identities()
-        .await
-        .map_err(|e| e.to_string())?;
-    if identities.is_empty() {
-        return Ok(false);
+    #[cfg(windows)]
+    {
+        // B3 intentionally has no native Pageant/named-pipe, CTAP/HID, or
+        // PKCS#11 transport. Windows hardware keys require a future supported
+        // agent adapter; never fall back to reading a hardware-key stub file.
+        let _ = (handle, user);
+        return Err("SSH agent authentication is not available on Windows in this build".into());
     }
-    // Prefer SHA-2 RSA; for non-RSA keys hash_alg is ignored. Outer Option =
-    // "server told us its sig algs", inner = "which hash" — flatten both.
-    let hash_alg = handle
-        .best_supported_rsa_hash()
-        .await
-        .ok()
-        .flatten()
-        .flatten();
-    for identity in identities {
-        // We sign through the agent, but auth still needs the public key.
-        let pubkey = match &identity {
-            AgentIdentity::PublicKey { key, .. } => key.clone(),
-            // Certificate-based agent identities aren't handled in Phase 1.
-            AgentIdentity::Certificate { .. } => continue,
-        };
-        match handle
-            .authenticate_publickey_with(user, pubkey, hash_alg, &mut agent)
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (handle, user);
+        return Err("SSH agent authentication is unsupported on this platform".into());
+    }
+    #[cfg(unix)]
+    {
+        let mut agent = connect_agent_client().await?;
+        let identities = agent
+            .request_identities()
             .await
-        {
-            Ok(r) if r.success() => return Ok(true),
-            Ok(_) => continue,
-            Err(e) => log::debug!("agent key auth error: {e}"),
+            .map_err(|e| e.to_string())?;
+        if identities.is_empty() {
+            return Ok(false);
         }
+        // Prefer SHA-2 RSA; for non-RSA keys hash_alg is ignored. Outer Option =
+        // "server told us its sig algs", inner = "which hash" — flatten both.
+        let hash_alg = handle
+            .best_supported_rsa_hash()
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+        for identity in identities {
+            // AgentIdentity::Certificate preserves the certificate on the wire;
+            // reducing it to its underlying public key would silently lose the CA
+            // authorization. Hardware/FIDO/smart-card signing remains agent-only.
+            let result = match identity {
+                AgentIdentity::PublicKey { key, .. } => {
+                    handle
+                        .authenticate_publickey_with(user, key, hash_alg, &mut agent)
+                        .await
+                }
+                AgentIdentity::Certificate { certificate, .. } => {
+                    handle
+                        .authenticate_certificate_with(user, certificate, hash_alg, &mut agent)
+                        .await
+                }
+            };
+            match result {
+                Ok(r) if r.success() => return Ok(true),
+                Ok(_) => continue,
+                Err(e) => log::debug!("agent key auth error: {e}"),
+            }
+        }
+        Ok(false)
     }
-    Ok(false)
 }
 
+#[cfg(unix)]
 fn push_agent_socket(candidates: &mut Vec<PathBuf>, value: impl AsRef<Path>) {
     let path = value.as_ref();
     if path.is_absolute() && !candidates.iter().any(|candidate| candidate == path) {
@@ -303,6 +345,10 @@ async fn launchd_agent_socket() -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
+/// macOS and Linux use Unix-domain SSH_AUTH_SOCK agents. Hardware-backed keys
+/// are supported only when such an agent exposes them; Tunara does not open
+/// CTAP/HID devices or PKCS#11 providers itself.
+#[cfg(unix)]
 async fn connect_agent_client() -> Result<AgentClient<tokio::net::UnixStream>, String> {
     let mut candidates = Vec::new();
     if let Some(path) = std::env::var_os("SSH_AUTH_SOCK") {
@@ -341,10 +387,25 @@ async fn try_key_file(
     handle: &mut Handle<ClientHandler>,
     user: &str,
     path: &str,
+    certificate_path: Option<&str>,
     passphrase: Option<&str>,
 ) -> Result<bool, String> {
     let expanded = expand_tilde(path);
     let key = load_identity_file(expanded, passphrase.map(str::to_owned)).await?;
+    if let Some(certificate_path) = certificate_path {
+        let certificate = load_certificate_file(expand_tilde(certificate_path)).await?;
+        if key.public_key().key_data() != certificate.public_key() {
+            return Err("certificate does not match the selected identity file".into());
+        }
+        if certificate.cert_type() != russh::keys::ssh_key::certificate::CertType::User {
+            return Err("certificate file is not an OpenSSH user certificate".into());
+        }
+        let result = handle
+            .authenticate_openssh_cert(user, Arc::new(key), certificate)
+            .await
+            .map_err(|error| error.to_string())?;
+        return Ok(result.success());
+    }
     // For RSA keys, negotiate a SHA-2 hash; plain ssh-rsa (SHA-1) is rejected
     // by modern servers. Double Option as in try_agent.
     let hash_alg = handle
@@ -359,6 +420,40 @@ async fn try_key_file(
         .await
         .map_err(|e| e.to_string())?;
     Ok(res.success())
+}
+
+async fn load_certificate_file(path: PathBuf) -> Result<russh::keys::Certificate, String> {
+    let metadata = tokio::time::timeout(IDENTITY_LOAD_TIMEOUT, tokio::fs::metadata(&path))
+        .await
+        .map_err(|_| format!("certificate metadata timed out: {}", path.display()))?
+        .map_err(|error| {
+            format!(
+                "cannot read certificate metadata {}: {error}",
+                path.display()
+            )
+        })?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "certificate is not a regular file: {}",
+            path.display()
+        ));
+    }
+    if metadata.len() > MAX_IDENTITY_FILE_BYTES {
+        return Err(format!(
+            "certificate file is too large ({} bytes, limit {}): {}",
+            metadata.len(),
+            MAX_IDENTITY_FILE_BYTES,
+            path.display()
+        ));
+    }
+    let display = path.display().to_string();
+    let task = tokio::task::spawn_blocking(move || {
+        load_openssh_certificate(&path).map_err(|error| error.to_string())
+    });
+    tokio::time::timeout(IDENTITY_LOAD_TIMEOUT, task)
+        .await
+        .map_err(|_| format!("certificate loading timed out: {display}"))?
+        .map_err(|error| format!("certificate loader failed for {display}: {error}"))?
 }
 
 async fn load_identity_file(
@@ -388,10 +483,17 @@ async fn load_identity_file(
     let task = tokio::task::spawn_blocking(move || {
         load_secret_key(&path, passphrase.as_deref()).map_err(|error| error.to_string())
     });
-    tokio::time::timeout(IDENTITY_LOAD_TIMEOUT, task)
+    let key = tokio::time::timeout(IDENTITY_LOAD_TIMEOUT, task)
         .await
         .map_err(|_| format!("identity loading timed out: {display}"))?
-        .map_err(|error| format!("identity loader failed for {display}: {error}"))?
+        .map_err(|error| format!("identity loader failed for {display}: {error}"))??;
+    if matches!(
+        key.algorithm(),
+        Algorithm::SkEd25519 | Algorithm::SkEcdsaSha2NistP256
+    ) {
+        return Err("hardware-backed OpenSSH keys are supported only through an SSH agent".into());
+    }
+    Ok(key)
 }
 
 // Expand a leading `~` against the user's home. Uses `dirs::home_dir()` (not
@@ -429,6 +531,7 @@ mod tests {
             user: "alice".into(),
             method: AuthMethod::Password,
             identity_file: Some("~/.ssh/should-not-be-read".into()),
+            certificate_file: Some("~/.ssh/should-not-be-read-cert.pub".into()),
             key_passphrase: Some("also-ignored".into()),
             password: Some("one-shot".into()),
         };
@@ -444,6 +547,7 @@ mod tests {
             user: "alice".into(),
             method: AuthMethod::Agent,
             identity_file: None,
+            certificate_file: None,
             key_passphrase: None,
             password: None,
         };
@@ -487,6 +591,7 @@ mod tests {
         assert_eq!(expand_tilde("/a/~/b"), Path::new("/a/~/b").to_path_buf());
     }
 
+    #[cfg(unix)]
     #[test]
     fn agent_socket_candidates_are_absolute_and_deduplicated() {
         let mut candidates = Vec::new();

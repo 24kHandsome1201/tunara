@@ -12,6 +12,8 @@ import {
   type SplitFocusDirection,
 } from "@/modules/session/split-layout";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
+import { announceTerminalContext } from "@/modules/terminal/lib/terminal-context-announcement";
+import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -29,6 +31,12 @@ export function useKeybindings() {
     const runAction = (action: KeybindingAction) => {
       const ui = useUIStore.getState();
       const st = useSessionsStore.getState();
+      const announcePureNavigation = (previousSessionId: string | null) => {
+        const current = useSessionsStore.getState();
+        if (ui.presentationMode !== "pure" || !current.activeSessionId || current.activeSessionId === previousSessionId) return;
+        const index = current.sessions.findIndex((session) => session.id === current.activeSessionId);
+        announceTerminalContext({ reason: "keyboard-navigation", logicalSessionId: current.activeSessionId, index: index + 1, total: current.sessions.length });
+      };
       switch (action) {
         case "newTerminal":
         case "newTerminalAlt":
@@ -71,7 +79,7 @@ export function useKeybindings() {
         case "focusSplitDown": {
           const direction = action.replace("focusSplit", "").toLowerCase() as SplitFocusDirection;
           const target = splitFocusTarget(ui.split, st.activeSessionId, direction);
-          if (target) st.setActive(target);
+          if (target) { const previous = st.activeSessionId; st.setActive(target); announcePureNavigation(previous); }
           break;
         }
         case "commandPalette":
@@ -95,19 +103,25 @@ export function useKeybindings() {
           ui.setFontSize(DEFAULT_SETTINGS.fontSize);
           break;
         case "selectLastTab":
-          if (st.sessions.length > 0) st.setActive(st.sessions[st.sessions.length - 1].id);
+          if (st.sessions.length > 0) { const previous = st.activeSessionId; st.setActive(st.sessions[st.sessions.length - 1].id); announcePureNavigation(previous); }
           break;
-        case "cycleNextSession":
+        case "cycleNextSession": {
+          const previous = st.activeSessionId;
           st.cycleSession("next");
+          announcePureNavigation(previous);
           break;
-        case "cyclePrevSession":
+        }
+        case "cyclePrevSession": {
+          const previous = st.activeSessionId;
           st.cycleSession("prev");
+          announcePureNavigation(previous);
           break;
+        }
         default: {
           const tabMatch = action.match(/^selectTab([1-8])$/);
           if (!tabMatch) break;
           const idx = Number(tabMatch[1]) - 1;
-          if (idx < st.sessions.length) st.setActive(st.sessions[idx].id);
+          if (idx < st.sessions.length) { const previous = st.activeSessionId; st.setActive(st.sessions[idx].id); announcePureNavigation(previous); }
         }
       }
     };
@@ -147,6 +161,7 @@ export function useKeybindings() {
         if (action === "navigatePrevBlock" || action === "navigateNextBlock") continue;
         if (!matchesKeybinding(e, bindings[action], isMac)) continue;
         e.preventDefault();
+        advanceTerminalFocusEpoch();
         runAction(action);
         return;
       }

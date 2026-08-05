@@ -20,6 +20,26 @@ pub struct KeyboardInteractivePrompt {
     pub echo: bool,
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyboardInteractiveOrigin {
+    pub user: String,
+    pub host: String,
+    pub port: u16,
+    pub logical_session_id: String,
+    pub hop_role: String,
+    pub transport_generation: String,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum HostKeyPersistenceStatus {
+    Saved,
+    SessionOnly,
+    PreCommitFailure,
+    CommittedButDurabilityUnknown,
+}
+
 const FLUSH_INTERVAL: Duration = Duration::from_millis(16);
 const READ_BUF: usize = 8 * 1024;
 // Reader-to-flusher memory is bounded to about 1 MiB. When it fills, the
@@ -67,8 +87,15 @@ pub enum PtyEvent {
         reason: String,
     },
     #[serde(rename_all = "camelCase")]
+    HostKeyPersistence {
+        host: String,
+        port: u16,
+        status: HostKeyPersistenceStatus,
+    },
+    #[serde(rename_all = "camelCase")]
     KeyboardInteractivePrompt {
         prompt_id: String,
+        origin: KeyboardInteractiveOrigin,
         name: String,
         instructions: String,
         prompts: Vec<KeyboardInteractivePrompt>,

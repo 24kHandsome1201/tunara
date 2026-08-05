@@ -9,7 +9,7 @@ import {
   parseSshWriteOutcomeUnknown,
   type SshWriteOutcomeUnknown,
 } from "@/modules/ssh/ssh-write-reconcile";
-import { formatSize } from "./types";
+import { formatSize, reconnectPrefillFromSession } from "./types";
 import { CloseIcon } from "./shared";
 import { useT, t as staticT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
@@ -899,15 +899,7 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
 
   const reconnectRemote = () => {
     if (!remoteSession?.remote) return;
-    useUIStore.getState().openSshConnect({
-      host: remoteSession.remote.host,
-      user: remoteSession.remote.user,
-      port: remoteSession.remote.port,
-      authMethod: remoteSession.remote.authMethod,
-      identityFile: remoteSession.remote.identityFile,
-      injectShellIntegration: remoteSession.remote.injectShellIntegration,
-      reconnectSessionId: remoteSession.id,
-    });
+    useUIStore.getState().openSshConnect(reconnectPrefillFromSession(remoteSession));
   };
 
   const readErrorBody = readError?.kind === "permission"

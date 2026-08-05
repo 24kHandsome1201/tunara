@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { answerKeyboardInteractivePrompt } from "@/modules/terminal/lib/pty-bridge";
-import { useFocusTrap } from "./useFocusTrap";
+import { useModalBehavior } from "./Modal";
 
 /** Server-driven keyboard-interactive authentication challenge. Secret values
  * live only in this component until the one-shot response invoke completes. */
@@ -13,17 +13,13 @@ export function KeyboardInteractivePromptDialog() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [responses, setResponses] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  useFocusTrap(dialogRef);
 
   useEffect(() => {
     setResponses(prompt?.prompts.map(() => "") ?? []);
-    requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLInputElement>("input")?.focus());
   }, [prompt?.promptId, prompt?.prompts]);
 
-  if (!prompt) return null;
-
   const decide = async (next: string[] | null) => {
-    if (submitting) return;
+    if (!prompt || submitting) return;
     setSubmitting(true);
     try {
       await answerKeyboardInteractivePrompt(prompt.promptId, next);
@@ -43,9 +39,20 @@ export function KeyboardInteractivePromptDialog() {
     }
   };
 
+  useModalBehavior(dialogRef, {
+    active: prompt !== null,
+    initialFocus: "input",
+    bindingKey: prompt?.promptId,
+    currentBindingKey: prompt?.promptId,
+    onRequestClose: () => { void decide(null); },
+  });
+
+  if (!prompt) return null;
+
   return (
     <>
       <div
+        aria-hidden="true"
         onClick={() => { void decide(null); }}
         style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 320, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }}
       />
@@ -54,9 +61,9 @@ export function KeyboardInteractivePromptDialog() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="ssh-keyboard-interactive-title"
+        aria-describedby={prompt.instructions.trim() ? "ssh-keyboard-interactive-hop ssh-keyboard-interactive-instructions" : "ssh-keyboard-interactive-hop"}
         tabIndex={0}
         onKeyDown={(event) => {
-          if (event.key === "Escape") void decide(null);
           if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
             event.preventDefault();
             void decide(responses);
@@ -83,10 +90,15 @@ export function KeyboardInteractivePromptDialog() {
       >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
           <span id="ssh-keyboard-interactive-title" style={{ display: "block", fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)" }}>
-            {prompt.name.trim() || t("ssh.keyboardInteractive.title")}
+            {t("ssh.keyboardInteractive.title")}
           </span>
+          <strong id="ssh-keyboard-interactive-hop">{t(`ssh.hop.${prompt.hopRole}`)}</strong>
+          <span style={{ display: "block", marginTop: 4, fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
+            {prompt.origin.user}@{prompt.origin.host}:{prompt.origin.port} · {t("ssh.keyboardInteractive.session", { session: prompt.origin.logicalSessionId })} · {t("ssh.keyboardInteractive.generation", { generation: prompt.origin.transportGeneration })}
+          </span>
+          {prompt.name.trim() && <span style={{ display: "block", marginTop: 5 }}>{prompt.name}</span>}
           {prompt.instructions.trim() && (
-            <span style={{ display: "block", marginTop: 5, fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+            <span id="ssh-keyboard-interactive-instructions" style={{ display: "block", marginTop: 5, fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
               {prompt.instructions}
             </span>
           )}

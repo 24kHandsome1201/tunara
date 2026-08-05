@@ -60,14 +60,16 @@ test("pure mode context-menu guard does not consume mouse down or up", () => {
 
   assert.match(guard, /addEventListener\("contextmenu", suppressContextMenu, \{ capture: true \}\)/);
   assert.match(guard, /event\.preventDefault\(\)/);
-  assert.match(guard, /event\.stopPropagation\(\)/);
+  assert.doesNotMatch(guard, /event\.stopPropagation\(\)/);
   assert.doesNotMatch(guard, /addEventListener\("mouse(?:down|up)"/);
   assert.match(terminalChrome, /if \(pure\) \{[\s\S]*e\.preventDefault\(\);[\s\S]*e\.stopPropagation\(\);[\s\S]*return;/);
   assert.match(terminalChrome, /!pure && menu &&/);
 });
 
-test("pure mode leaves the terminal Ctrl+F key available to the PTY", () => {
+test("pure mode keeps terminal search available", () => {
   const search = read("src/ui/useTerminalSearch.ts");
 
-  assert.match(search, /presentationMode === "pure"\) return true/);
+  assert.match(search, /const openSearch = useCallback/);
+  assert.match(search, /if \(\(e\.metaKey \|\| e\.ctrlKey\) && e\.key === "f"/);
+  assert.doesNotMatch(search, /presentationMode === "pure"\) return true/);
 });

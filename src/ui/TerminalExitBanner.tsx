@@ -3,11 +3,13 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
-import { SSH_DISCONNECTED_EXIT_CODE, sshFailureReason } from "@/modules/terminal/lib/pty-bridge";
-import type { Session } from "./types";
+import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
+import { reconnectPrefillFromSession, type Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 import { copyText } from "./lib/clipboard";
+import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
+import { SessionRemediationNotice } from "./SessionRemediationNotice";
 
 /**
  * banner 挂载时：把焦点从死终端的 xterm textarea 挪到 banner 主操作按钮
@@ -33,13 +35,8 @@ function useFocusPrimaryActionOnMount() {
 function ConnectionDiagnosticButton({ session }: { session: Session }) {
   const t = useT();
   const copy = async () => {
-    const endpoint = session.remote
-      ? `${session.remote.user}@${session.remote.host}:${session.remote.port}`
-      : undefined;
-    const ok = await copyText(connectionDiagnostic({
+    const ok = await copyText(session.remote ? diagnosticReportText(session.id) : connectionDiagnostic({
       sessionId: session.id,
-      endpoint,
-      authMethod: session.remote?.authMethod,
       evidence: session.connection,
     }));
     useUIStore.getState().addToast({
@@ -83,15 +80,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
       // Keep the dead session and its snapshot until the replacement is
       // configured. Cancelling the dialog must not destroy notes, split
       // placement, or scrollback.
-      useUIStore.getState().openSshConnect({
-        host: session.remote.host,
-        user: session.remote.user,
-        port: session.remote.port,
-        authMethod: session.remote.authMethod,
-        identityFile: session.remote.identityFile,
-        injectShellIntegration: session.remote.injectShellIntegration,
-        reconnectSessionId: session.id,
-      });
+      useUIStore.getState().openSshConnect(reconnectPrefillFromSession(session));
       return;
     }
     // Local: spawn a fresh terminal in the same cwd, then drop the dead one.
@@ -165,6 +154,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
       >
         {visibleLabel}
       </span>
+      <SessionRemediationNotice session={session} compact />
       {isRemote && <ConnectionDiagnosticButton session={session} />}
       <button
         type="button"
@@ -197,7 +187,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const isRemote = !!session.remote;
   const rootRef = useFocusPrimaryActionOnMount();
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
-  const detail = isRemote ? sshFailureReason(error) : t("pty.error.subtitle");
+  const detail = isRemote ? error : t("pty.error.subtitle");
   const phase = session.connection?.failedAtPhase;
   const phaseLabel = phase ? t(`connection.phase.${phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
@@ -208,15 +198,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
       // Remote open failure: route back to the SSH dialog so the user can
       // re-enter credentials (one-shot, never persisted).
       if (session.remote) {
-        useUIStore.getState().openSshConnect({
-          host: session.remote.host,
-          user: session.remote.user,
-          port: session.remote.port,
-          authMethod: session.remote.authMethod,
-          identityFile: session.remote.identityFile,
-          injectShellIntegration: session.remote.injectShellIntegration,
-          reconnectSessionId: session.id,
-        });
+        useUIStore.getState().openSshConnect(reconnectPrefillFromSession(session));
       }
       return;
     }
@@ -271,6 +253,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
       >
         {summary}
       </span>
+      <SessionRemediationNotice session={session} compact />
       <ConnectionDiagnosticButton session={session} />
       <button
         type="button"

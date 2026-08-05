@@ -1,10 +1,12 @@
 import type { IBufferLine, IDisposable, ILink, Terminal } from "@xterm/xterm";
-import { openInEditorWithToast } from "@/ui/lib/open-in-editor";
+import type { ResourceRef } from "@/modules/resources/resource-ref";
+import { openResource } from "@/modules/resources/resource-ref";
 import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
 
 interface TerminalFileLinkOptions {
   getCwd: (bufferLineNumber: number) => string | undefined;
-  getEditor: () => string;
+  shouldActivate?: (event: MouseEvent) => boolean;
+  createResource: (path: string, line?: number, column?: number) => ResourceRef;
 }
 
 export function registerTerminalFileLinkProvider(
@@ -33,10 +35,11 @@ export function registerTerminalFileLinkProvider(
         },
         decorations: { pointerCursor: true, underline: true },
         activate(event) {
+          if (options.shouldActivate && !options.shouldActivate(event)) return;
           event.preventDefault();
           event.stopPropagation();
           const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(bufferLineNumber));
-          void openInEditorWithToast(options.getEditor(), path, { line: match.line, column: match.column });
+          void openResource(options.createResource(path, match.line, match.column));
         },
       }));
       callback(links);

@@ -12,10 +12,12 @@ export function normalizeTerminalHyperlink(text: string): string | null {
 
 export function createTerminalHyperlinkHandler(
   openUrl: (url: string) => Promise<unknown> | unknown,
+  shouldActivate: (event: MouseEvent) => boolean = () => true,
 ): ILinkHandler {
   return {
     allowNonHttpProtocols: false,
     activate(event, text) {
+      if (!shouldActivate(event)) return;
       event.preventDefault();
       event.stopPropagation();
       const url = normalizeTerminalHyperlink(text);

@@ -1,4 +1,4 @@
-import type React from "react";
+import { useEffect, useState, type ReactNode, type KeyboardEvent } from "react";
 import { type Session } from "./types";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
@@ -12,8 +12,17 @@ import { CloseIcon } from "./shared";
 import { WorkspaceSourceChip } from "./WorkspaceSource";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
+import { TransferCenter } from "./TransferCenter";
+import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel";
+import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
+import { DiagnosticsCenter } from "@/modules/ssh/DiagnosticsCenter";
+import { diagnosticsCenter } from "@/modules/ssh/diagnostics-store";
+import { listKnownHostsV1, refreshKnownHostsV1, removeKnownHostV1, type KnownHostsSnapshotV1 } from "@/modules/ssh/known-hosts-bridge";
+import { ForwardingPanel } from "@/modules/ssh/ForwardingPanel";
+import { copyText } from "./lib/clipboard";
+import { INSPECTOR_TAB_DESCRIPTORS, resolveInspectorScope } from "./inspector-scope";
 
-const INSPECTOR_TAB_IDS: readonly InspectorTab[] = ["overview", "changes", "files", "preview", "notes"];
+const INSPECTOR_TAB_IDS: readonly InspectorTab[] = ["overview", "changes", "files", "transfers", "metadata", "forwarding", "diagnostics", "knownHosts", "preview", "notes"];
 const INSPECTOR_TABPANEL_ID = "inspector-tabpanel";
 
 interface InspectorPanelProps {
@@ -22,7 +31,7 @@ interface InspectorPanelProps {
   filesOnly?: boolean;
 }
 
-function TabButton({ active, onClick, children, tabId }: { active: boolean; onClick: () => void; children: React.ReactNode; tabId: InspectorTab }) {
+function TabButton({ active, onClick, children, tabId }: { active: boolean; onClick: () => void; children: ReactNode; tabId: InspectorTab }) {
   return (
     <button
       onClick={onClick}
@@ -54,25 +63,130 @@ function TabButton({ active, onClick, children, tabId }: { active: boolean; onCl
   );
 }
 
+function KnownHostsPanel() {
+  const t = useT();
+  const [snapshot, setSnapshot] = useState<KnownHostsSnapshotV1 | null>(null);
+  const [error, setError] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+  const load = (refresh = false) => {
+    setError(false);
+    void (refresh ? refreshKnownHostsV1() : listKnownHostsV1())
+      .then(setSnapshot)
+      .catch(() => setError(true));
+  };
+  useEffect(() => {
+    void listKnownHostsV1().then(setSnapshot).catch(() => setError(true));
+  }, []);
+  return (
+    <section aria-labelledby="known-hosts-title" style={{ padding: 12, overflow: "auto" }}>
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 id="known-hosts-title">{t("known_hosts.title")}</h2>
+        <button type="button" onClick={() => load(true)}>{t("known_hosts.refresh")}</button>
+      </header>
+      {!snapshot && !error && <div role="status">{t("known_hosts.loading")}</div>}
+      {error && <div role="alert">{t("known_hosts.failed")}</div>}
+      {snapshot?.entries.length === 0 && <p>{t("known_hosts.empty")}</p>}
+      <ul>
+        {snapshot?.entries.map((entry) => (
+          <li key={entry.entryId} style={{ marginBottom: 12 }}>
+            <div><strong>{entry.patternDisplay}</strong> · {entry.keyType}</div>
+            <code>{entry.fingerprint}</code>
+            <button
+              type="button"
+              disabled={!entry.manageable}
+              aria-label={pendingRemove === entry.entryId
+                ? t("known_hosts.confirm_remove_item", { host: entry.patternDisplay })
+                : t("known_hosts.remove_item", { host: entry.patternDisplay })}
+              onClick={() => {
+                if (pendingRemove !== entry.entryId) { setPendingRemove(entry.entryId); return; }
+                setPendingRemove(null);
+                void removeKnownHostV1(snapshot.revision, entry.entryId)
+                  .then(setSnapshot)
+                  .catch(() => setError(true));
+              }}
+            >
+              {pendingRemove === entry.entryId ? t("known_hosts.confirm_remove") : t("known_hosts.remove")}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function InspectorPanel({ session, onClose, filesOnly = false }: InspectorPanelProps) {
   const t = useT();
   const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
   const isRemote = !!session.remote;
-  const tab = filesOnly ? "files" : storeTab;
-  const tabIds = filesOnly ? (["files"] as const) : INSPECTOR_TAB_IDS;
+  const binding: SessionBindingV1 | null = isRemote && session.ptyId !== undefined && session.transportGeneration
+    ? { logicalSessionId: session.id, physicalPtyId: session.ptyId, transportGeneration: session.transportGeneration }
+    : null;
+  const forwardingBinding = session.connection?.phase === "ready" ? binding : null;
+  const [metadataPath, setMetadataPath] = useState(session.dir);
+  const tabIds: readonly InspectorTab[] = filesOnly
+    ? ["files"]
+    : INSPECTOR_TAB_IDS.filter((id) => (id !== "metadata" || binding !== null) && (id !== "forwarding" || isRemote));
+  const tab = filesOnly ? "files" : tabIds.includes(storeTab) ? storeTab : "overview";
+  const descriptor = INSPECTOR_TAB_DESCRIPTORS[tab];
+  const inspectorScope = resolveInspectorScope(descriptor, session, binding);
+  const scopeKey = inspectorScope.kind.replace("-", "_");
+  const scopeDescriptionKey = inspectorScope.kind === descriptor.scope
+    ? descriptor.descriptionKey
+    : `inspector.scope.description.${scopeKey}`;
   const showSourceSummary = Boolean(
     currentWorkspaceWorktree(session.workspace)
     || session.workspaceState === "unavailable"
     || (tab === "changes" && !session.workspace && session.branch),
   );
-  let activePanel: React.ReactNode;
+  let activePanel: ReactNode;
   switch (tab) {
     case "changes":
       activePanel = <DiffPanel session={session} embedded />;
       break;
     case "files":
-      activePanel = <FileExplorer sessionId={session.id} rootDir={session.dir} remotePtyId={isRemote ? session.ptyId : undefined} remote={isRemote} />;
+      activePanel = <FileExplorer
+        sessionId={session.id}
+        rootDir={session.dir}
+        remotePtyId={isRemote ? session.ptyId : undefined}
+        transportGeneration={session.transportGeneration}
+        remote={isRemote}
+        remoteHost={session.remote ? `${session.remote.user}@${session.remote.host}` : undefined}
+        onInspectRemotePath={(path) => { setMetadataPath(path); setTab("metadata"); }}
+      />;
+      break;
+    case "transfers":
+      activePanel = <TransferCenter inspectorScope={inspectorScope} />;
+      break;
+    case "metadata":
+      activePanel = binding
+        ? <RemoteMetadataPanel binding={binding} path={metadataPath} host={`${session.remote!.user}@${session.remote!.host}`} />
+        : <SessionOverviewPanel session={session} />;
+      break;
+    case "forwarding":
+      activePanel = <ForwardingPanel
+        key={`${session.id}:${forwardingBinding?.physicalPtyId ?? "offline"}:${forwardingBinding?.transportGeneration ?? "none"}`}
+        binding={forwardingBinding}
+        session={session}
+      />;
+      break;
+    case "diagnostics":
+      activePanel = <DiagnosticsCenter
+        sessionId={session.id}
+        onClose={() => setTab("overview")}
+        onCopyReport={async (report) => {
+          const copied = await copyText(report);
+          useUIStore.getState().addToast({
+            sessionId: session.id,
+            title: t(copied ? "diagnostics.copy_succeeded" : "diagnostics.copy_failed"),
+            subtitle: "",
+            variant: copied ? "success" : "error",
+          });
+        }}
+      />;
+      break;
+    case "knownHosts":
+      activePanel = <KnownHostsPanel />;
       break;
     case "preview":
       activePanel = <PreviewPanel session={session} />;
@@ -85,7 +199,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
       break;
   }
 
-  const handleTabListKeyDown = (e: React.KeyboardEvent) => {
+  const handleTabListKeyDown = (e: KeyboardEvent) => {
     const currentId = tabIdFromEventTarget(e.target);
     if (!currentId) return;
     const nextId = resolveRovingTabId(tabIds, currentId, e.key);
@@ -108,6 +222,11 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
           {!filesOnly && <TabButton tabId="overview" active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>}
           {!filesOnly && <TabButton tabId="changes" active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>}
           <TabButton tabId="files" active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
+          {!filesOnly && <TabButton tabId="transfers" active={tab === "transfers"} onClick={() => setTab("transfers")}>{t("inspector.tab.transfers")}</TabButton>}
+          {!filesOnly && binding && <TabButton tabId="metadata" active={tab === "metadata"} onClick={() => setTab("metadata")}>{t("inspector.tab.metadata")}</TabButton>}
+          {!filesOnly && isRemote && <TabButton tabId="forwarding" active={tab === "forwarding"} onClick={() => setTab("forwarding")}>{t("inspector.tab.forwarding")}</TabButton>}
+          {!filesOnly && <TabButton tabId="diagnostics" active={tab === "diagnostics"} onClick={() => { diagnosticsCenter.open(); setTab("diagnostics"); }}>{t("inspector.tab.diagnostics")}</TabButton>}
+          {!filesOnly && <TabButton tabId="knownHosts" active={tab === "knownHosts"} onClick={() => setTab("knownHosts")}>{t("inspector.tab.known_hosts")}</TabButton>}
           {!filesOnly && <TabButton tabId="preview" active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>}
           {!filesOnly && <TabButton tabId="notes" active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>}
         </div>
@@ -141,11 +260,38 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
       )}
 
       <div
+        id="inspector-scope-description"
+        style={{
+          padding: "6px 10px",
+          display: "flex",
+          alignItems: "baseline",
+          flexWrap: "wrap",
+          gap: "3px 8px",
+          borderBottom: "1px solid var(--c-border-1)",
+          background: "var(--c-bg-2)",
+          flexShrink: 0,
+          minWidth: 0,
+        }}
+      >
+        <strong id="inspector-panel-title" style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
+          {t(descriptor.titleKey)}
+        </strong>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
+          {t(`inspector.scope.${scopeKey}`)}
+        </span>
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", overflowWrap: "anywhere" }}>
+          {t(scopeDescriptionKey)}
+        </span>
+      </div>
+
+      <div
         role="tabpanel"
         id={INSPECTOR_TABPANEL_ID}
+        aria-labelledby="inspector-panel-title"
+        aria-describedby="inspector-scope-description"
         style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
       >
-        <div key={tab} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
+        <div key={`${tab}:${inspectorScope.key}`} data-scope-key={inspectorScope.key} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
           {activePanel}
         </div>
       </div>

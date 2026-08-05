@@ -23,6 +23,7 @@ import {
 } from "@/modules/terminal/lib/session-lifecycle";
 import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
+import { setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 import { pushRecentCommand } from "./recent-commands";
 import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
@@ -48,9 +49,11 @@ import {
 } from "@/modules/session/split-layout";
 import {
   initialConnectionEvidence,
+  readyBindingForSession,
   reduceConnectionEvidence,
   type ConnectionEvent,
 } from "@/modules/terminal/lib/connection-state";
+import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import {
   detectPreviewSources,
   markPreviewSourcesStale,
@@ -318,6 +321,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   setActive: (id) => {
     if (!get().sessions.some((session) => session.id === id)) return;
     const currentId = get().activeSessionId;
+    setLogicalActiveTerminalPane(id);
     let accepted = false;
     set((state) => {
       if (!state.sessions.some((s) => s.id === id)) return {};
@@ -912,3 +916,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (get().sessions.length === 0) get().addSession(createSession("~", { title: t("session.default_title") }));
   },
 }));
+
+/** Resolve a binding from the session store's current authoritative lifecycle. */
+export function currentReadySessionBinding(logicalSessionId: string | null): SessionBindingV1 | null {
+  if (!logicalSessionId) return null;
+  return readyBindingForSession(
+    useSessionsStore.getState().sessions.find((session) => session.id === logicalSessionId),
+  );
+}

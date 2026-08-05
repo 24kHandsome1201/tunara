@@ -18,7 +18,7 @@ use russh::keys::ssh_key::{HashAlg, PublicKey};
 use russh::ChannelMsg;
 use tauri::ipc::Channel as IpcChannel;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 use super::auth::{self, AuthOptions};
 use super::flow_control::{
@@ -27,7 +27,7 @@ use super::flow_control::{
 };
 use super::known_hosts::{self, Verdict};
 use crate::modules::pty::output_flow::OutputFlow;
-use crate::modules::pty::PtyEvent;
+use crate::modules::pty::{HostKeyPersistenceStatus, PtyEvent};
 
 #[derive(serde::Serialize)]
 struct PosixRenameRequest<'a> {
@@ -61,7 +61,13 @@ pub enum HostKeyPolicy {
 /// Pending host-key confirmations, keyed by a per-prompt id. `check_server_key`
 /// parks a oneshot here while the frontend dialog is up; `resolve_host_key_prompt`
 /// (driven by the `ssh_host_key_decision` command) wakes it.
-static PENDING_PROMPTS: OnceLock<Mutex<HashMap<String, oneshot::Sender<bool>>>> = OnceLock::new();
+#[derive(Clone, Copy, Debug)]
+pub struct HostKeyDecision {
+    accept: bool,
+    remember: bool,
+}
+static PENDING_PROMPTS: OnceLock<Mutex<HashMap<String, oneshot::Sender<HostKeyDecision>>>> =
+    OnceLock::new();
 const HOST_KEY_PROMPT_TIMEOUT: Duration = Duration::from_secs(120);
 const SSH_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const SSH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(135);
@@ -85,19 +91,19 @@ where
         .map_err(|e| format!("{label} failed: {e}"))
 }
 
-fn pending_prompts() -> &'static Mutex<HashMap<String, oneshot::Sender<bool>>> {
+fn pending_prompts() -> &'static Mutex<HashMap<String, oneshot::Sender<HostKeyDecision>>> {
     PENDING_PROMPTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// Resolve a host-key prompt the frontend answered. Returns false if the prompt
 /// id is unknown (already resolved / timed out).
-pub fn resolve_host_key_prompt(prompt_id: &str, accept: bool) -> bool {
+pub fn resolve_host_key_prompt(prompt_id: &str, accept: bool, remember: bool) -> bool {
     let tx = pending_prompts()
         .lock()
         .ok()
         .and_then(|mut m| m.remove(prompt_id));
     match tx {
-        Some(tx) => tx.send(accept).is_ok(),
+        Some(tx) => tx.send(HostKeyDecision { accept, remember }).is_ok(),
         None => false,
     }
 }
@@ -111,10 +117,33 @@ fn next_prompt_id(host: &str, port: u16) -> String {
     format!("hkp-{host}-{port}-{n}")
 }
 
-async fn await_host_key_decision(receiver: oneshot::Receiver<bool>, timeout: Duration) -> bool {
+async fn await_host_key_decision(
+    receiver: oneshot::Receiver<HostKeyDecision>,
+    timeout: Duration,
+) -> HostKeyDecision {
     match tokio::time::timeout(timeout, receiver).await {
         Ok(Ok(decision)) => decision,
-        Ok(Err(_)) | Err(_) => false,
+        Ok(Err(_)) | Err(_) => HostKeyDecision {
+            accept: false,
+            remember: false,
+        },
+    }
+}
+
+async fn await_host_key_decision_or_cancel(
+    receiver: oneshot::Receiver<HostKeyDecision>,
+    timeout: Duration,
+    mut cancel: tokio::sync::watch::Receiver<bool>,
+) -> HostKeyDecision {
+    if *cancel.borrow() {
+        return HostKeyDecision {
+            accept: false,
+            remember: false,
+        };
+    }
+    tokio::select! {
+        decision = await_host_key_decision(receiver, timeout) => decision,
+        _ = cancel.changed() => HostKeyDecision { accept: false, remember: false },
     }
 }
 
@@ -125,6 +154,13 @@ pub struct ClientHandler {
     policy: HostKeyPolicy,
     /// Used to emit a HostKeyPrompt to the frontend when policy is Prompt.
     on_event: IpcChannel<PtyEvent>,
+    verified_host_key: Arc<std::sync::Mutex<Option<String>>>,
+    /// Attempt-scoped cancellation also reaches russh's detached handshake
+    /// task, so a parked host-key prompt cannot retain a route after cancel.
+    cancel: tokio::sync::watch::Receiver<bool>,
+    /// Connection-level termination signal. Channel EOF alone is not proof
+    /// that the multiplexed SSH transport was lost.
+    disconnected: tokio::sync::watch::Sender<bool>,
 }
 
 impl ClientHandler {
@@ -133,7 +169,7 @@ impl ClientHandler {
     /// dialog whether this is genuine first-use (`"unknown"`) or a host already
     /// in known_hosts whose key we couldn't confirm (`"unverifiable"`), so the
     /// copy can differ and never falsely claim the key will be saved.
-    async fn prompt_user(&self, key: &PublicKey, reason: &str) -> bool {
+    async fn prompt_user(&self, key: &PublicKey, reason: &str) -> HostKeyDecision {
         let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
         let key_type = key.algorithm().to_string();
         let prompt_id = next_prompt_id(&self.host, self.port);
@@ -141,7 +177,10 @@ impl ClientHandler {
         if let Ok(mut m) = pending_prompts().lock() {
             m.insert(prompt_id.clone(), tx);
         } else {
-            return false;
+            return HostKeyDecision {
+                accept: false,
+                remember: false,
+            };
         }
         // Guard removes the registry entry on every exit path — normal return,
         // channel-send failure, sender-dropped, AND if this future is cancelled
@@ -164,83 +203,121 @@ impl ClientHandler {
             reason: reason.to_string(),
         });
         if sent.is_err() {
-            return false; // frontend channel gone; guard cleans up
+            return HostKeyDecision {
+                accept: false,
+                remember: false,
+            }; // frontend channel gone
         }
-        // A lost frontend event must not park ssh_open forever. Sender drop and
-        // timeout both fail closed; PromptGuard removes the registry entry.
-        await_host_key_decision(rx, HOST_KEY_PROMPT_TIMEOUT).await
+        // A lost frontend event must not park ssh_open forever. Cancellation
+        // is selected here because russh performs KEX in a detached task: just
+        // dropping connect_stream's caller is not enough to stop this waiter.
+        await_host_key_decision_or_cancel(rx, HOST_KEY_PROMPT_TIMEOUT, self.cancel.clone()).await
     }
 }
 
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
+    fn disconnected(
+        &mut self,
+        reason: client::DisconnectReason<Self::Error>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        let _ = self.disconnected.send(true);
+        async move {
+            match reason {
+                client::DisconnectReason::ReceivedDisconnect(_) => Ok(()),
+                client::DisconnectReason::Error(error) => Err(error),
+            }
+        }
+    }
+
     async fn check_server_key(&mut self, key: &PublicKey) -> Result<bool, Self::Error> {
-        match known_hosts::verify(&self.host, self.port, key) {
-            Verdict::Match => Ok(true),
+        let accepted = match known_hosts::verify(&self.host, self.port, key) {
+            Verdict::Match => Ok::<bool, russh::Error>(true),
             Verdict::Mismatch => {
-                log::warn!(
-                    "ssh host-key MISMATCH for {}:{} — refusing (possible MITM)",
-                    self.host,
-                    self.port
-                );
+                log::warn!("ssh host-key mismatch — refusing");
                 Ok(false)
             }
             Verdict::Revoked => {
-                log::warn!(
-                    "ssh host key for {}:{} is explicitly REVOKED — refusing",
-                    self.host,
-                    self.port
-                );
+                log::warn!("ssh host key revoked — refusing");
                 Ok(false)
             }
             Verdict::Unknown => match self.policy {
                 #[cfg(test)]
                 HostKeyPolicy::AcceptForTest => Ok(true),
                 HostKeyPolicy::AcceptUnknown => {
-                    if let Err(e) = known_hosts::remember(&self.host, self.port, key) {
-                        log::warn!("ssh: failed to persist new host key: {e}");
-                    }
+                    let status = match known_hosts::remember(&self.host, self.port, key) {
+                        Ok(()) => HostKeyPersistenceStatus::Saved,
+                        Err(known_hosts::RememberError::CommittedButDurabilityUnknown(_)) => {
+                            log::warn!("ssh host-key saved but directory durability is unknown");
+                            HostKeyPersistenceStatus::CommittedButDurabilityUnknown
+                        }
+                        Err(known_hosts::RememberError::TrustChanged)
+                        | Err(known_hosts::RememberError::PreCommitFailure(_)) => {
+                            log::warn!("ssh host-key persistence failed before commit");
+                            return Ok(false);
+                        }
+                    };
+                    let _ = self.on_event.send(PtyEvent::HostKeyPersistence {
+                        host: self.host.clone(),
+                        port: self.port,
+                        status,
+                    });
                     Ok(true)
                 }
                 HostKeyPolicy::Prompt => {
-                    if self.prompt_user(key, "unknown").await {
-                        // User confirmed first-use → trust and persist.
-                        if let Err(e) = known_hosts::remember(&self.host, self.port, key) {
-                            log::warn!("ssh: failed to persist new host key: {e}");
-                        }
-                        Ok(true)
-                    } else {
-                        Ok(false)
+                    let decision = self.prompt_user(key, "unknown").await;
+                    if !decision.accept {
+                        return Ok(false);
                     }
+                    let persistence = if decision.remember {
+                        match known_hosts::remember(&self.host, self.port, key) {
+                            Ok(()) => HostKeyPersistenceStatus::Saved,
+                            Err(known_hosts::RememberError::TrustChanged) => {
+                                log::warn!(
+                                    "ssh: known_hosts trust changed while prompting — refusing"
+                                );
+                                return Ok(false);
+                            }
+                            Err(known_hosts::RememberError::PreCommitFailure(_)) => {
+                                log::warn!("ssh host-key persistence failed");
+                                HostKeyPersistenceStatus::PreCommitFailure
+                            }
+                            Err(known_hosts::RememberError::CommittedButDurabilityUnknown(_)) => {
+                                log::warn!(
+                                    "ssh host-key saved but directory durability is unknown"
+                                );
+                                HostKeyPersistenceStatus::CommittedButDurabilityUnknown
+                            }
+                        }
+                    } else {
+                        if !known_hosts::confirm_session_only(&self.host, self.port, key) {
+                            log::warn!("ssh: known_hosts trust changed while prompting — refusing");
+                            return Ok(false);
+                        }
+                        HostKeyPersistenceStatus::SessionOnly
+                    };
+                    let _ = self.on_event.send(PtyEvent::HostKeyPersistence {
+                        host: self.host.clone(),
+                        port: self.port,
+                        status: persistence,
+                    });
+                    Ok(true)
                 }
             },
             Verdict::Unverifiable => {
-                // known_hosts has hashed/wildcard entries we can't match; this
-                // could be a rotated key on a known host. Accept only after an
-                // explicit decision, and deliberately do NOT remember it —
-                // persisting would mask a real mismatch on the next connection.
-                match self.policy {
-                    #[cfg(test)]
-                    HostKeyPolicy::AcceptForTest => Ok(true),
-                    HostKeyPolicy::AcceptUnknown => {
-                        log::warn!(
-                            "ssh host {}:{} not verifiable against hashed/wildcard known_hosts — \
-                             accepting without persisting (rotated-key risk)",
-                            self.host,
-                            self.port
-                        );
-                        Ok(true)
-                    }
-                    HostKeyPolicy::Prompt => {
-                        // Prompt, but never persist on Unverifiable. The
-                        // "unverifiable" reason makes the dialog say so instead
-                        // of falsely promising to save the key.
-                        Ok(self.prompt_user(key, "unverifiable").await)
-                    }
-                }
+                log::warn!("ssh host key cannot be safely verified — refusing");
+                Ok(false)
             }
+        }?;
+        if accepted {
+            let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
+            *self
+                .verified_host_key
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(fingerprint);
         }
+        Ok(accepted)
     }
 }
 
@@ -259,17 +336,29 @@ const SSH_TRANSPORT_LOST_REASON: &str = "transportClosed";
 enum PumpEnd {
     RemoteExit,
     LocalClose,
+    ChannelEnded,
     TransportLost,
 }
 
-fn classify_pump_end(exit_code: Option<i32>, local_close: bool) -> PumpEnd {
+fn classify_pump_end(
+    exit_code: Option<i32>,
+    local_close: bool,
+    _channel_ended: bool,
+    transport_disconnected: bool,
+) -> PumpEnd {
     if exit_code.is_some() {
         PumpEnd::RemoteExit
     } else if local_close {
         PumpEnd::LocalClose
-    } else {
+    } else if transport_disconnected {
         PumpEnd::TransportLost
+    } else {
+        PumpEnd::ChannelEnded
     }
+}
+
+fn direct_tcpip_relay_complete(local_closed: bool, remote_closed: bool) -> bool {
+    local_closed && remote_closed
 }
 
 /// Parameters to open an SSH session.
@@ -293,6 +382,8 @@ pub struct ConnectParams {
     /// will accept (parseAgentLifecycleOsc drops mismatched sessions). Empty
     /// when unknown (reopen-less path); the agent wrappers then self-disable.
     pub session_id: String,
+    pub transport_generation: String,
+    pub hop_role: String,
 }
 
 /// A connected, authenticated SSH session with a live shell channel.
@@ -300,16 +391,216 @@ pub struct ConnectParams {
 /// controls. The `Handle` stays alive so an SFTP channel can be opened on the
 /// same connection (Phase 3).
 pub struct SshSession {
-    handle: Handle<ClientHandler>,
+    handle: Arc<Handle<ClientHandler>>,
+    #[allow(dead_code)] // owns the duplicated socket for the transport lifetime
+    transport_abort: Arc<std::net::TcpStream>,
+    /// Retains the authenticated outer transport for a ProxyJump session. The
+    /// target Handle's stream is a direct-tcpip channel owned by this handle,
+    /// so dropping it would tear down the nested connection.
+    _jump_handle: Option<Handle<ClientHandler>>,
     control: Arc<SshControl>,
     output_flow: Arc<OutputFlow>,
+    transport_lost: Arc<AtomicBool>,
     host: String,
     port: u16,
     user: String,
+    verified_host_key: String,
     logical_session_id: String,
     /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
     sftp: tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>,
+}
+
+async fn close_forward_channel_owned(channel: russh::Channel<russh::client::Msg>) {
+    // A forwarding channel is multiplexed with the interactive shell. Never
+    // tear down the shared TCP transport merely because this channel's close
+    // is slow; dropping the channel after the bounded close attempt cancels
+    // only this open/relay.
+    let _ = tokio::time::timeout(Duration::from_secs(2), channel.close()).await;
+}
+
+struct ForwardChannel {
+    channel: Option<russh::Channel<russh::client::Msg>>,
+}
+
+impl ForwardChannel {
+    fn new(channel: russh::Channel<russh::client::Msg>) -> Self {
+        Self {
+            channel: Some(channel),
+        }
+    }
+
+    async fn finish(mut self) {
+        if let Some(channel) = self.channel.take() {
+            close_forward_channel_owned(channel).await;
+        }
+    }
+}
+
+impl std::ops::Deref for ForwardChannel {
+    type Target = russh::Channel<russh::client::Msg>;
+
+    fn deref(&self) -> &Self::Target {
+        self.channel.as_ref().expect("forward channel is present")
+    }
+}
+
+impl std::ops::DerefMut for ForwardChannel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.channel.as_mut().expect("forward channel is present")
+    }
+}
+
+impl Drop for ForwardChannel {
+    fn drop(&mut self) {
+        let Some(channel) = self.channel.take() else {
+            return;
+        };
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(close_forward_channel_owned(channel));
+        }
+    }
+}
+
+async fn await_pending_forward_open<C, F, S>(
+    open: F,
+    cancelled: &mut watch::Receiver<bool>,
+    session_closed: S,
+    timeout: Duration,
+) -> Result<C, String>
+where
+    C: Send + 'static,
+    F: Future<Output = Result<C, String>> + Send + 'static,
+    S: Future<Output = ()>,
+{
+    let mut worker = tokio::spawn(open);
+    tokio::select! {
+        biased;
+        _ = cancelled.changed() => {
+            // Dropping the JoinHandle detaches this single open. Its eventual
+            // channel value is dropped (and therefore channel-closed) without
+            // touching any other channel on the multiplexed transport.
+            Err("local forward cancelled".into())
+        },
+        _ = session_closed => Err("SSH session closed".into()),
+        _ = tokio::time::sleep(timeout) => Err("SSH port forward channel timed out".into()),
+        result = &mut worker => result
+            .map_err(|error| format!("SSH forward channel task failed: {error}"))?,
+    }
+}
+
+#[derive(Debug)]
+pub enum RoutedOpenError {
+    Jump(String),
+    Target(String),
+}
+
+async fn connect_authenticated_stream<S>(
+    params: &ConnectParams,
+    on_event: IpcChannel<PtyEvent>,
+    cancel: tokio::sync::watch::Receiver<bool>,
+    stream: S,
+) -> Result<
+    (
+        Handle<ClientHandler>,
+        watch::Receiver<bool>,
+        Arc<std::sync::Mutex<Option<String>>>,
+    ),
+    String,
+>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let config = Arc::new(client::Config {
+        keepalive_interval: Some(Duration::from_secs(30)),
+        keepalive_max: 3,
+        nodelay: true,
+        ..Default::default()
+    });
+    let verified_host_key = Arc::new(std::sync::Mutex::new(None));
+    let (disconnected, disconnected_rx) = watch::channel(false);
+    let handler = ClientHandler {
+        host: params.host.clone(),
+        port: params.port,
+        policy: params.policy,
+        on_event: on_event.clone(),
+        verified_host_key: Arc::clone(&verified_host_key),
+        cancel,
+        disconnected,
+    };
+    send_connection_status(&on_event, "handshaking");
+    let mut handle = await_stage(
+        &format!("SSH handshake {}:{}", params.host, params.port),
+        SSH_HANDSHAKE_TIMEOUT,
+        client::connect_stream(config, stream, handler),
+    )
+    .await?;
+    send_connection_status(&on_event, "authenticating");
+    await_stage(
+        "SSH authentication",
+        SSH_AUTH_TIMEOUT,
+        auth::authenticate(
+            &mut handle,
+            &params.auth,
+            on_event,
+            crate::modules::pty::KeyboardInteractiveOrigin {
+                user: params.auth.user.clone(),
+                host: params.host.clone(),
+                port: params.port,
+                logical_session_id: params.session_id.clone(),
+                hop_role: params.hop_role.clone(),
+                transport_generation: params.transport_generation.clone(),
+            },
+        ),
+    )
+    .await?;
+    Ok((handle, disconnected_rx, verified_host_key))
+}
+
+async fn connect_direct_authenticated(
+    params: &ConnectParams,
+    on_event: IpcChannel<PtyEvent>,
+    cancel: tokio::sync::watch::Receiver<bool>,
+) -> Result<
+    (
+        Handle<ClientHandler>,
+        watch::Receiver<bool>,
+        Arc<std::sync::Mutex<Option<String>>>,
+        Arc<std::net::TcpStream>,
+    ),
+    String,
+> {
+    send_connection_status(&on_event, "connecting");
+    let socket = tokio::time::timeout(
+        SSH_TCP_CONNECT_TIMEOUT,
+        tokio::net::TcpStream::connect((params.host.as_str(), params.port)),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "connect {}:{} timed out after {}s",
+            params.host,
+            params.port,
+            SSH_TCP_CONNECT_TIMEOUT.as_secs()
+        )
+    })?
+    .map_err(|e| format!("connect {}:{} failed: {e}", params.host, params.port))?;
+    if let Err(e) = socket.set_nodelay(true) {
+        log::debug!("ssh: set TCP_NODELAY failed: {e}");
+    }
+    let socket = socket
+        .into_std()
+        .map_err(|e| format!("prepare SSH transport abort failed: {e}"))?;
+    let transport_abort = Arc::new(
+        socket
+            .try_clone()
+            .map_err(|e| format!("prepare SSH transport abort failed: {e}"))?,
+    );
+    let socket = tokio::net::TcpStream::from_std(socket)
+        .map_err(|e| format!("prepare SSH transport failed: {e}"))?;
+    let (handle, disconnected, verified_host_key) =
+        connect_authenticated_stream(params, on_event, cancel, socket).await?;
+    Ok((handle, disconnected, verified_host_key, transport_abort))
 }
 
 async fn emit_output(
@@ -371,64 +662,77 @@ impl SshSession {
     /// Connect, authenticate, open a shell PTY, and start pumping output into
     /// `on_event`. Returns once the shell is live; output streaming continues
     /// on a background tokio task.
+    #[allow(dead_code)] // retained for real-sshd fixtures and direct connector consumers
     pub async fn open(
         params: ConnectParams,
         on_event: IpcChannel<PtyEvent>,
     ) -> Result<SshSession, String> {
-        send_connection_status(&on_event, "connecting");
-        let config = Arc::new(client::Config {
-            // Keep long-lived terminals alive; max>0 so a single missed reply
-            // doesn't drop the session (Tabby hit KeepaliveTimeout otherwise).
-            keepalive_interval: Some(Duration::from_secs(30)),
-            keepalive_max: 3,
-            nodelay: true,
-            ..Default::default()
-        });
+        let (_cancel_tx, cancel) = tokio::sync::watch::channel(false);
+        Self::open_with_cancel(params, on_event, cancel).await
+    }
 
-        let handler = ClientHandler {
-            host: params.host.clone(),
-            port: params.port,
-            policy: params.policy,
-            // Cloned so the handler can emit a HostKeyPrompt during connect;
-            // the original still feeds the output pump below.
-            on_event: on_event.clone(),
-        };
-
-        // Bound DNS/TCP establishment separately from the SSH handshake: the
-        // latter may legitimately wait for the user's host-key decision.
-        let socket = tokio::time::timeout(
-            SSH_TCP_CONNECT_TIMEOUT,
-            tokio::net::TcpStream::connect((params.host.as_str(), params.port)),
+    pub async fn open_with_cancel(
+        params: ConnectParams,
+        on_event: IpcChannel<PtyEvent>,
+        cancel: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<SshSession, String> {
+        let (handle, disconnected, verified_host_key, transport_abort) =
+            connect_direct_authenticated(&params, on_event.clone(), cancel.clone()).await?;
+        Self::open_authenticated(
+            params,
+            on_event,
+            handle,
+            disconnected,
+            None,
+            verified_host_key,
+            transport_abort,
         )
         .await
-        .map_err(|_| {
-            format!(
-                "connect {}:{} timed out after {}s",
-                params.host,
-                params.port,
-                SSH_TCP_CONNECT_TIMEOUT.as_secs()
-            )
-        })?
-        .map_err(|e| format!("connect {}:{} failed: {e}", params.host, params.port))?;
-        if let Err(e) = socket.set_nodelay(true) {
-            log::debug!("ssh: set TCP_NODELAY failed: {e}");
-        }
-        send_connection_status(&on_event, "handshaking");
-        let mut handle = await_stage(
-            &format!("SSH handshake {}:{}", params.host, params.port),
-            SSH_HANDSHAKE_TIMEOUT,
-            client::connect_stream(config, socket, handler),
-        )
-        .await?;
+    }
 
-        send_connection_status(&on_event, "authenticating");
-        await_stage(
-            "SSH authentication",
-            SSH_AUTH_TIMEOUT,
-            auth::authenticate(&mut handle, &params.auth, on_event.clone()),
+    /// Connect the jump and target as independent SSH transports, then open a
+    /// shell only on the target. Each hop runs its own host-key handler,
+    /// authentication, and bounded handshake/auth stages.
+    pub async fn open_via_jump(
+        target: ConnectParams,
+        jump: ConnectParams,
+        on_event: IpcChannel<PtyEvent>,
+        cancel: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<SshSession, RoutedOpenError> {
+        let (jump_handle, _jump_disconnected, _jump_verified_host_key, transport_abort) =
+            connect_direct_authenticated(&jump, on_event.clone(), cancel.clone())
+                .await
+                .map_err(RoutedOpenError::Jump)?;
+        let stream = super::direct_tcpip::into_stream(&jump_handle, &target.host, target.port)
+            .await
+            .map_err(RoutedOpenError::Jump)?;
+        let (target_handle, target_disconnected, verified_host_key) =
+            connect_authenticated_stream(&target, on_event.clone(), cancel, stream)
+                .await
+                .map_err(RoutedOpenError::Target)?;
+        Self::open_authenticated(
+            target,
+            on_event,
+            target_handle,
+            target_disconnected,
+            Some(jump_handle),
+            verified_host_key,
+            transport_abort,
         )
-        .await?;
+        .await
+        .map_err(RoutedOpenError::Target)
+    }
 
+    async fn open_authenticated(
+        params: ConnectParams,
+        on_event: IpcChannel<PtyEvent>,
+        handle: Handle<ClientHandler>,
+        mut disconnected: watch::Receiver<bool>,
+        jump_handle: Option<Handle<ClientHandler>>,
+        verified_host_key: Arc<std::sync::Mutex<Option<String>>>,
+        transport_abort: Arc<std::net::TcpStream>,
+    ) -> Result<SshSession, String> {
+        let handle = Arc::new(handle);
         send_connection_status(&on_event, "openingShell");
         let mut channel = await_stage(
             "open session channel",
@@ -490,11 +794,11 @@ impl SshSession {
                                 &completion_marker,
                             ));
                         }
-                        Err(e) => log::debug!("ssh bootstrap inject failed: {e}"),
+                        Err(_) => log::debug!("ssh bootstrap inject failed"),
                     }
                 }
-                Err(e) => {
-                    log::debug!("ssh bootstrap staging failed: {e}");
+                Err(_) => {
+                    log::debug!("ssh bootstrap staging failed");
                     if let Some(cwd) = params.initial_cwd.as_deref() {
                         let line = initial_cwd_fallback_line(cwd, &params.session_id);
                         match channel.data(line.as_bytes()).await {
@@ -504,8 +808,8 @@ impl SshSession {
                                     &completion_marker,
                                 ));
                             }
-                            Err(write_error) => {
-                                log::debug!("ssh initial cwd fallback failed: {write_error}");
+                            Err(_) => {
+                                log::debug!("ssh initial cwd fallback failed");
                             }
                         }
                     }
@@ -517,6 +821,9 @@ impl SshSession {
         let pump_control = control.clone();
         let output_flow = OutputFlow::new();
         let pump_output_flow = output_flow.clone();
+        let transport_lost = Arc::new(AtomicBool::new(false));
+        let pump_transport_lost = transport_lost.clone();
+        let pump_handle = handle.clone();
         send_connection_status(&on_event, "ready");
 
         // Pump: remote output is coalesced behind a strict byte/time bound;
@@ -538,6 +845,9 @@ impl SshSession {
             flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             flush_tick.tick().await;
             let mut local_close = false;
+            let mut confirmed_transport_lost = false;
+            let mut connection_signal_open = true;
+            let mut channel_ended = false;
             'pump: loop {
                 tokio::select! {
                     biased;
@@ -545,6 +855,12 @@ impl SshSession {
                         local_close = true;
                         let _ = channel.eof().await;
                         break;
+                    }
+                    changed = disconnected.changed(), if connection_signal_open => {
+                        connection_signal_open = false;
+                        if changed.is_ok() && *disconnected.borrow_and_update() {
+                            confirmed_transport_lost = true;
+                        }
                     }
                     _ = flush_tick.tick() => {
                         if let Some(bytes) = output.flush() {
@@ -592,7 +908,10 @@ impl SshSession {
                                 exit_code = Some(-1);
                                 accepting_input = false;
                             }
-                            ChannelMsg::Eof | ChannelMsg::Close => break,
+                            ChannelMsg::Eof | ChannelMsg::Close => {
+                                channel_ended = true;
+                                break;
+                            }
                             _ => {}
                         }
                     }
@@ -639,8 +958,14 @@ impl SshSession {
                     }
                 }
             }
-            let pump_end = classify_pump_end(exit_code, local_close || pump_control.is_closed());
+            let pump_end = classify_pump_end(
+                exit_code,
+                local_close || pump_control.is_closed(),
+                channel_ended,
+                confirmed_transport_lost || *disconnected.borrow() || pump_handle.is_closed(),
+            );
             if pump_end == PumpEnd::TransportLost {
+                pump_transport_lost.store(true, Ordering::Release);
                 let _ = on_event.send(PtyEvent::TransportLost {
                     reason: SSH_TRANSPORT_LOST_REASON.to_string(),
                 });
@@ -677,16 +1002,34 @@ impl SshSession {
             });
         });
 
+        let verified_host_key = verified_host_key
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+            .ok_or_else(|| "SSH server identity was not verified".to_string())?;
         Ok(SshSession {
             handle,
+            transport_abort,
+            _jump_handle: jump_handle,
             control,
             output_flow,
+            transport_lost,
             host: params.host,
             port: params.port,
             user: params.auth.user,
+            verified_host_key,
             logical_session_id: params.session_id,
             sftp: tokio::sync::Mutex::new(None),
         })
+    }
+
+    /// Immutable, non-secret identity used to bind transfer recovery records.
+    pub fn transfer_identity(&self) -> (String, String, String) {
+        (
+            format!("{}:{}", self.host.to_ascii_lowercase(), self.port),
+            self.user.clone(),
+            self.verified_host_key.clone(),
+        )
     }
 
     /// Get (opening on first use) the SFTP session for this connection. The
@@ -983,10 +1326,22 @@ impl SshSession {
         self.control.wait_for_close().await;
     }
 
+    pub fn transport_lost(&self) -> bool {
+        self.transport_lost.load(Ordering::Acquire)
+    }
+
     /// Open the exact RFC 4254 direct-tcpip target through this already
     /// authenticated SSH connection. The caller supplies only a validated
     /// loopback host and port; this API never invokes a remote shell.
     pub async fn probe_direct_tcpip(&self, host: &str, port: u16) -> Result<(), String> {
+        super::direct_tcpip::probe(self, host, port).await
+    }
+
+    pub(crate) async fn probe_direct_tcpip_inner(
+        &self,
+        host: &str,
+        port: u16,
+    ) -> Result<(), String> {
         if self.is_closed() {
             return Err("SSH session closed".into());
         }
@@ -1002,60 +1357,155 @@ impl SshSession {
         Ok(())
     }
 
-    /// Bridge one accepted local loopback socket to the exact remote
-    /// loopback target over a dedicated direct-tcpip channel.
+    /// Bridge one accepted local loopback socket to the exact caller-validated
+    /// remote target over a dedicated direct-tcpip channel.
     pub async fn forward_loopback_stream(
         &self,
-        mut stream: tokio::net::TcpStream,
+        stream: tokio::net::TcpStream,
         host: &str,
         port: u16,
     ) -> Result<(), String> {
-        if self.is_closed() {
+        let (cancel, cancelled) = watch::channel(false);
+        let result = super::direct_tcpip::relay(self, stream, host, port, cancelled).await;
+        drop(cancel);
+        result
+    }
+
+    async fn open_forward_channel(
+        &self,
+        host: &str,
+        port: u16,
+        origin: std::net::SocketAddr,
+        cancelled: &mut watch::Receiver<bool>,
+    ) -> Result<ForwardChannel, String> {
+        let handle = self.handle.clone();
+        let host = host.to_string();
+        let open = async move {
+            handle
+                .channel_open_direct_tcpip(
+                    host,
+                    u32::from(port),
+                    origin.ip().to_string(),
+                    u32::from(origin.port()),
+                )
+                .await
+                .map(ForwardChannel::new)
+                .map_err(|error| format!("SSH port forward channel failed: {error}"))
+        };
+        await_pending_forward_open(open, cancelled, self.wait_closed(), Duration::from_secs(5))
+            .await
+    }
+
+    pub(crate) async fn forward_loopback_stream_inner(
+        &self,
+        stream: tokio::net::TcpStream,
+        host: &str,
+        port: u16,
+        mut cancelled: watch::Receiver<bool>,
+    ) -> Result<(), String> {
+        if self.is_closed() || *cancelled.borrow() {
             return Err("SSH session closed".into());
         }
         let origin = stream
             .peer_addr()
             .map_err(|error| format!("local forward peer unavailable: {error}"))?;
-        let mut channel = tokio::time::timeout(
-            Duration::from_secs(5),
-            self.handle.channel_open_direct_tcpip(
-                host,
-                u32::from(port),
-                origin.ip().to_string(),
-                u32::from(origin.port()),
-            ),
-        )
-        .await
-        .map_err(|_| "SSH port forward channel timed out".to_string())?
-        .map_err(|error| format!("SSH port forward channel failed: {error}"))?;
+        let channel = self
+            .open_forward_channel(host, port, origin, &mut cancelled)
+            .await?;
+        self.relay_direct_tcpip(stream, channel, cancelled).await
+    }
+
+    /// Open a dynamic-forward target and acknowledge SOCKS only once the SSH
+    /// server has accepted the direct-tcpip channel.
+    pub(crate) async fn forward_socks_stream_inner(
+        &self,
+        mut stream: tokio::net::TcpStream,
+        host: &str,
+        port: u16,
+        mut cancelled: watch::Receiver<bool>,
+    ) -> Result<(), String> {
+        if self.is_closed() || *cancelled.borrow() {
+            let _ = stream.write_all(&[5, 1, 0, 1, 0, 0, 0, 0, 0, 0]).await;
+            return Err("SSH session closed".into());
+        }
+        let origin = match stream.peer_addr() {
+            Ok(origin) => origin,
+            Err(error) => {
+                let _ = stream.write_all(&[5, 1, 0, 1, 0, 0, 0, 0, 0, 0]).await;
+                return Err(format!("dynamic forward peer unavailable: {error}"));
+            }
+        };
+        let channel = match self
+            .open_forward_channel(host, port, origin, &mut cancelled)
+            .await
+        {
+            Ok(channel) => channel,
+            Err(error) => {
+                let _ = stream.write_all(&[5, 1, 0, 1, 0, 0, 0, 0, 0, 0]).await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = stream.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).await {
+            channel.finish().await;
+            return Err(format!("SOCKS success reply failed: {error}"));
+        }
+        self.relay_direct_tcpip(stream, channel, cancelled).await
+    }
+
+    async fn relay_direct_tcpip(
+        &self,
+        mut stream: tokio::net::TcpStream,
+        mut channel: ForwardChannel,
+        mut cancelled: watch::Receiver<bool>,
+    ) -> Result<(), String> {
         let mut local_closed = false;
+        let mut remote_closed = false;
         let mut buffer = vec![0_u8; 64 * 1024];
-        loop {
+        let result = loop {
+            if direct_tcpip_relay_complete(local_closed, remote_closed) {
+                break Ok(());
+            }
             tokio::select! {
                 biased;
-                _ = self.wait_closed() => {
-                    let _ = channel.close().await;
-                    return Err("SSH session closed".into());
-                }
+                _ = cancelled.changed() => break Err("local forward cancelled".into()),
+                _ = self.wait_closed() => break Err("SSH session closed".into()),
                 read = stream.read(&mut buffer), if !local_closed => match read {
                     Ok(0) => {
                         local_closed = true;
-                        channel.eof().await.map_err(|error| error.to_string())?;
+                        tokio::select! {
+                            biased;
+                            _ = cancelled.changed() => break Err("local forward cancelled".into()),
+                            _ = self.wait_closed() => break Err("SSH session closed".into()),
+                            result = channel.eof() => if let Err(error) = result { break Err(error.to_string()); },
+                        }
                     }
-                    Ok(count) => channel.data(&buffer[..count]).await.map_err(|error| error.to_string())?,
-                    Err(error) => return Err(format!("local forward read failed: {error}")),
+                    Ok(count) => tokio::select! {
+                        biased;
+                        _ = cancelled.changed() => break Err("local forward cancelled".into()),
+                        _ = self.wait_closed() => break Err("SSH session closed".into()),
+                        result = channel.data(&buffer[..count]) => if let Err(error) = result { break Err(error.to_string()); },
+                    },
+                    Err(error) => break Err(format!("local forward read failed: {error}")),
                 },
-                message = channel.wait() => match message {
-                    Some(ChannelMsg::Data { data }) => stream.write_all(&data).await.map_err(|error| format!("local forward write failed: {error}"))?,
-                    Some(ChannelMsg::ExtendedData { data, .. }) => stream.write_all(&data).await.map_err(|error| format!("local forward write failed: {error}"))?,
-                    Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                message = channel.wait(), if !remote_closed => match message {
+                    Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => tokio::select! {
+                        biased;
+                        _ = cancelled.changed() => break Err("local forward cancelled".into()),
+                        _ = self.wait_closed() => break Err("SSH session closed".into()),
+                        result = stream.write_all(&data) => if let Err(error) = result { break Err(format!("local forward write failed: {error}")); },
+                    },
+                    Some(ChannelMsg::Eof) => {
+                        remote_closed = true;
+                        if let Err(error) = stream.shutdown().await { break Err(format!("local forward half-close failed: {error}")); }
+                    }
+                    Some(ChannelMsg::Close) | None => break Ok(()),
                     _ => {}
                 }
             }
-        }
+        };
+        channel.finish().await;
         let _ = stream.shutdown().await;
-        let _ = channel.close().await;
-        Ok(())
+        result
     }
 
     /// Run a one-shot command on the remote host over a fresh exec channel on
@@ -1516,10 +1966,115 @@ mod tests {
 
     #[test]
     fn pump_end_classification_only_reports_unexpected_transport_loss() {
-        assert_eq!(classify_pump_end(Some(0), false), PumpEnd::RemoteExit);
-        assert_eq!(classify_pump_end(Some(-1), false), PumpEnd::RemoteExit);
-        assert_eq!(classify_pump_end(None, true), PumpEnd::LocalClose);
-        assert_eq!(classify_pump_end(None, false), PumpEnd::TransportLost);
+        assert_eq!(
+            classify_pump_end(Some(0), false, true, true),
+            PumpEnd::RemoteExit
+        );
+        assert_eq!(
+            classify_pump_end(Some(-1), false, true, true),
+            PumpEnd::RemoteExit
+        );
+        assert_eq!(
+            classify_pump_end(None, true, false, true),
+            PumpEnd::LocalClose
+        );
+        assert_eq!(
+            classify_pump_end(None, false, true, true),
+            PumpEnd::TransportLost
+        );
+        assert_eq!(
+            classify_pump_end(None, false, false, false),
+            PumpEnd::ChannelEnded
+        );
+        assert_eq!(
+            classify_pump_end(None, false, false, true),
+            PumpEnd::TransportLost
+        );
+    }
+
+    #[test]
+    fn direct_tcpip_relay_preserves_both_half_closes() {
+        assert!(!direct_tcpip_relay_complete(true, false));
+        assert!(!direct_tcpip_relay_complete(false, true));
+        assert!(direct_tcpip_relay_complete(true, true));
+    }
+
+    #[tokio::test]
+    async fn cancelling_pending_multiplex_open_closes_late_channel_only() {
+        #[derive(Clone, Debug)]
+        struct MockChannel {
+            closed: Arc<AtomicBool>,
+            transport_closed: Arc<AtomicBool>,
+            main_shell_closed: Arc<AtomicBool>,
+        }
+        impl Drop for MockChannel {
+            fn drop(&mut self) {
+                self.closed.store(true, Ordering::Release);
+                // Model CHANNEL_CLOSE: this channel owns neither shared state.
+                let _ = (&self.transport_closed, &self.main_shell_closed);
+            }
+        }
+
+        let transport_closed = Arc::new(AtomicBool::new(false));
+        let main_shell_closed = Arc::new(AtomicBool::new(false));
+        let late_closed = Arc::new(AtomicBool::new(false));
+        let (late_tx, late_rx) = oneshot::channel::<MockChannel>();
+        let (cancel_tx, mut cancel_rx) = watch::channel(false);
+        let (session_close_tx, session_close_rx) = oneshot::channel::<()>();
+
+        let pending = await_pending_forward_open(
+            async move { late_rx.await.map_err(|_| "mock open lost".to_string()) },
+            &mut cancel_rx,
+            async move {
+                let _ = session_close_rx.await;
+            },
+            Duration::from_secs(5),
+        );
+        tokio::pin!(pending);
+        tokio::task::yield_now().await;
+
+        // A second channel on the same mock multiplex remains genuinely usable
+        // while the first open is pending and then cancelled.
+        let (mut shell_client, mut shell_server) = tokio::io::duplex(64);
+        shell_client.write_all(b"ping").await.expect("shell write");
+        let mut input = [0; 4];
+        shell_server
+            .read_exact(&mut input)
+            .await
+            .expect("shell read");
+        assert_eq!(&input, b"ping");
+        shell_server.write_all(b"pong").await.expect("shell reply");
+        shell_client
+            .read_exact(&mut input)
+            .await
+            .expect("shell reply read");
+        assert_eq!(&input, b"pong");
+
+        cancel_tx.send(true).expect("pending open receiver alive");
+        let result = tokio::time::timeout(Duration::from_millis(100), &mut pending)
+            .await
+            .expect("only pending open cancellation completes");
+        assert_eq!(result.unwrap_err(), "local forward cancelled");
+
+        late_tx
+            .send(MockChannel {
+                closed: late_closed.clone(),
+                transport_closed: transport_closed.clone(),
+                main_shell_closed: main_shell_closed.clone(),
+            })
+            .map_err(drop)
+            .expect("detached open still receives late channel");
+        tokio::time::timeout(Duration::from_millis(100), async {
+            while !late_closed.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("late channel is closed by dropped open result");
+
+        assert!(!transport_closed.load(Ordering::Acquire));
+        assert!(!main_shell_closed.load(Ordering::Acquire));
+        drop(session_close_tx);
     }
 
     #[test]
@@ -1578,6 +2133,7 @@ mod tests {
                         user,
                         method: super::super::auth::AuthMethod::Agent,
                         identity_file: None,
+                        certificate_file: None,
                         key_passphrase: None,
                         password: None,
                     },
@@ -1587,6 +2143,8 @@ mod tests {
                     initial_cwd: None,
                     inject_shell_integration: false,
                     session_id: "m1-real-smoke".into(),
+                    transport_generation: "smoke".into(),
+                    hop_role: "direct".into(),
                 },
                 on_event,
             ),
@@ -1766,14 +2324,42 @@ mod tests {
     #[tokio::test]
     async fn host_key_prompt_accepts_an_explicit_decision() {
         let (tx, rx) = oneshot::channel();
-        tx.send(true).expect("decision receiver alive");
-        assert!(await_host_key_decision(rx, Duration::from_secs(1)).await);
+        tx.send(HostKeyDecision {
+            accept: true,
+            remember: true,
+        })
+        .expect("decision receiver alive");
+        assert!(
+            await_host_key_decision(rx, Duration::from_secs(1))
+                .await
+                .accept
+        );
     }
 
     #[tokio::test]
     async fn host_key_prompt_timeout_fails_closed() {
         let (_tx, rx) = oneshot::channel();
-        assert!(!await_host_key_decision(rx, Duration::from_millis(1)).await);
+        assert!(
+            !await_host_key_decision(rx, Duration::from_millis(1))
+                .await
+                .accept
+        );
+    }
+
+    #[tokio::test]
+    async fn host_key_prompt_attempt_cancellation_fails_closed_promptly() {
+        let (_decision_tx, decision_rx) = oneshot::channel();
+        let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+        let waiting =
+            await_host_key_decision_or_cancel(decision_rx, Duration::from_secs(120), cancel_rx);
+        tokio::pin!(waiting);
+        tokio::task::yield_now().await;
+        cancel_tx.send(true).expect("cancel receiver alive");
+        let decision = tokio::time::timeout(Duration::from_millis(50), waiting)
+            .await
+            .expect("attempt cancellation must wake host-key waiter");
+        assert!(!decision.accept);
+        assert!(!decision.remember);
     }
 
     #[tokio::test]

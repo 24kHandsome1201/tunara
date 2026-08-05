@@ -7,6 +7,8 @@ export interface TerminalPasteWarning {
   lineCount: number;
   large: boolean;
   multiline: boolean;
+  controlCharacters: boolean;
+  escapedPreview: string;
 }
 
 interface PasteTarget {
@@ -42,7 +44,8 @@ export function analyzeTerminalPaste(text: string): TerminalPasteWarning | null 
   const lineBreaks = (text.match(/\r\n|\r|\n/g) ?? []).length;
   const multiline = lineBreaks > 0;
   const large = text.length > TERMINAL_LARGE_PASTE_WARNING_LENGTH;
-  if (!multiline && !large) return null;
+  const controlCharacters = /[\u0000-\u001f\u007f-\u009f]/.test(text);
+  if (!multiline && !large && !controlCharacters) return null;
   // A single trailing newline is the Enter that submits the last line, not an
   // extra line — don't count it (so "echo hi\n" reports 1 line, not 2).
   const hasTrailingNewline = /\r\n$|[\r\n]$/.test(text);
@@ -51,6 +54,12 @@ export function analyzeTerminalPaste(text: string): TerminalPasteWarning | null 
     lineCount: hasTrailingNewline ? lineBreaks : lineBreaks + 1,
     large,
     multiline,
+    controlCharacters,
+    escapedPreview: text.slice(0, 160).replace(/[\u0000-\u001f\u007f-\u009f]/g, (character) => {
+      const code = character.charCodeAt(0);
+      if (code === 27) return "\\e";
+      return `\\x${code.toString(16).padStart(2, "0")}`;
+    }),
   };
 }
 
@@ -58,8 +67,9 @@ export function terminalPasteWarningMessage(warning: TerminalPasteWarning): stri
   const parts = [];
   if (warning.multiline) parts.push(t("paste.warning.lines", { count: warning.lineCount }));
   if (warning.large) parts.push(t("paste.warning.chars", { count: warning.charCount }));
+  if (warning.controlCharacters) parts.push(t("paste.warning.controls"));
   const summary = parts.join(", ") || t("paste.warning.summary_default");
-  return t("paste.warning.message", { summary });
+  return t("paste.warning.message", { summary }) + `\n${t("paste.warning.preview", { preview: warning.escapedPreview })}`;
 }
 
 /**
@@ -110,6 +120,7 @@ export function requestProtectedTerminalPaste(
 export function registerTerminalPasteProtection(
   term: PasteTarget,
   confirmPaste: TerminalPasteConfirmer,
+  captureCurrent: () => () => boolean = () => () => true,
 ) {
   const element = term.element;
   if (!element) return { dispose() {} };
@@ -117,7 +128,8 @@ export function registerTerminalPasteProtection(
 
   const onPaste = (event: ClipboardEvent) => {
     const text = event.clipboardData?.getData("text/plain") ?? "";
-    const protectedPaste = requestProtectedTerminalPaste(term, text, confirmPaste, () => active);
+    const targetIsCurrent = captureCurrent();
+    const protectedPaste = requestProtectedTerminalPaste(term, text, confirmPaste, () => active && targetIsCurrent());
     if (!protectedPaste) return;
     event.preventDefault();
     event.stopPropagation();

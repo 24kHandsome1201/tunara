@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { Terminal } from "@xterm/xterm";
+import { useCallback, useRef, useState } from "react";
 import { SearchAddon } from "@xterm/addon-search";
 import { getSearchDecorations } from "@/styles/terminalTheme";
 import { useUIStore } from "@/state/ui";
+import { bindingAwareAsyncAction, issueFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 
 // Remember the last terminal search query + options for this run so reopening
 // the search bar (in any terminal) restores the previous lookup instead of an
@@ -10,7 +10,7 @@ import { useUIStore } from "@/state/ui";
 // not worth persisting to disk.
 const lastTerminalSearch = { query: "", useRegex: false, caseSensitive: false };
 
-export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
+export function useTerminalSearch(sessionId: string) {
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchOpenRef = useRef(false);
@@ -19,8 +19,6 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
   const [searchCount, setSearchCount] = useState<{ current: number; total: number } | null>(null);
   const [useRegex, setUseRegex] = useState(lastTerminalSearch.useRegex);
   const [caseSensitive, setCaseSensitive] = useState(lastTerminalSearch.caseSensitive);
-  const presentationMode = useUIStore((s) => s.presentationMode);
-
   const optionsRef = useRef({ useRegex: lastTerminalSearch.useRegex, caseSensitive: lastTerminalSearch.caseSensitive });
   optionsRef.current = { useRegex, caseSensitive };
 
@@ -45,31 +43,37 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
   }, []);
 
   const closeSearch = useCallback(() => {
+    const token = issueFocusReturnToken(sessionId);
     searchOpenRef.current = false;
     setSearchOpen(false);
     setSearchCount(null);
     // Keep searchQuery in state and lastTerminalSearch so the next open restores
     // it; only drop the live highlights.
     searchAddonRef.current?.clearDecorations();
-    termRef.current?.focus();
-  }, [termRef]);
+    if (token) bindingAwareAsyncAction(token).focus();
+  }, [sessionId]);
 
-  useEffect(() => {
-    if (presentationMode === "pure" && searchOpenRef.current) closeSearch();
-  }, [closeSearch, presentationMode]);
+  const openSearch = useCallback(() => {
+    const token = issueFocusReturnToken(sessionId);
+    if (!token) return;
+    const action = bindingAwareAsyncAction(token);
+    if (!action.isCurrent()) return;
+    searchOpenRef.current = true;
+    setSearchOpen(true);
+    const restored = lastTerminalSearch.query;
+    if (restored && searchAddonRef.current) {
+      searchAddonRef.current.findNext(restored, getSearchOptions());
+    }
+    requestAnimationFrame(() => {
+      if (!action.isCurrent()) return;
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, [getSearchOptions, sessionId]);
 
   const handleCustomKeyEvent = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "f" && e.type === "keydown") {
-      if (useUIStore.getState().presentationMode === "pure") return true;
-      searchOpenRef.current = true;
-      setSearchOpen(true);
-      // Re-run the remembered query so reopening lands on live matches, and
-      // select the input text so typing replaces it.
-      const restored = lastTerminalSearch.query;
-      if (restored && searchAddonRef.current) {
-        searchAddonRef.current.findNext(restored, getSearchOptions());
-      }
-      requestAnimationFrame(() => searchInputRef.current?.select());
+      openSearch();
       return false;
     }
     if (e.key === "Escape" && e.type === "keydown" && searchOpenRef.current) {
@@ -77,7 +81,7 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
       return false;
     }
     return true;
-  }, [closeSearch, getSearchOptions]);
+  }, [closeSearch, openSearch]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
@@ -137,6 +141,7 @@ export function useTerminalSearch(termRef: RefObject<Terminal | null>) {
     handleSearchPrev,
     toggleRegex,
     toggleCaseSensitive,
+    openSearch,
     closeSearch,
   };
 }

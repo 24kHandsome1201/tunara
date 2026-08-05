@@ -33,6 +33,8 @@ import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
 import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
 import { usePresentationModeContextMenuGuard } from "./usePresentationModeContextMenuGuard";
+import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
+import { useTransferStore } from "@/modules/ssh/transfer-store";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -294,6 +296,10 @@ export default function App() {
   usePresentationModeContextMenuGuard(presentationMode === "pure");
 
   useEffect(() => {
+    void useTransferStore.getState().loadJournal();
+  }, []);
+
+  useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);
     syncWidth();
     window.addEventListener("resize", syncWidth);
@@ -326,6 +332,10 @@ export default function App() {
   return (
     <div
       data-presentation-mode={presentationMode}
+      onPointerDownCapture={(event) => {
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (!target?.closest('[role="menu"], [role="listbox"]')) advanceTerminalFocusEpoch();
+      }}
       style={{
         display: "flex",
         flexDirection: "column",

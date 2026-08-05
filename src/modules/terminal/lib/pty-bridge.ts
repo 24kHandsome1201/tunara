@@ -5,6 +5,9 @@ import { t } from "@/modules/i18n";
 import type { RemoteInfo } from "@/ui/types";
 import { classifySshFailure } from "@/modules/ssh/failure-reason";
 import type { SshAuthMethod } from "@/modules/ssh/hosts-model";
+import type { PendingSshCredentials } from "@/modules/ssh/pending-credentials";
+import { appendDiagnostic, recordSshLifecycleDiagnostic } from "@/modules/ssh/diagnostics-store";
+import { SSH_DIAGNOSTIC_CODES, SSH_DIAGNOSTIC_STAGES, type SshDiagnosticV1 } from "@/modules/ssh/diagnostics-schema";
 import type { BackendConnectionPhase } from "./connection-state";
 import { recordTerminalBenchmarkExit, TERMINAL_BENCHMARK_MODE } from "./terminal-benchmark";
 
@@ -24,20 +27,35 @@ export type PtyEvent =
        *  couldn't be confirmed against a relevant known_hosts record (not persisted). */
       reason: string;
     }
+  | { type: "hostKeyPersistence"; host: string; port: number; status: "saved" | "sessionOnly" | "preCommitFailure" | "committedButDurabilityUnknown" }
   | {
       type: "keyboardInteractivePrompt";
       promptId: string;
+      origin: {
+        user: string; host: string; port: number; logicalSessionId: string;
+        hopRole: "direct" | "jump" | "target"; transportGeneration: string;
+      };
       name: string;
       instructions: string;
       prompts: Array<{ prompt: string; echo: boolean }>;
     };
 
+function notifyHostKeyPersistence(event: Extract<PtyEvent, { type: "hostKeyPersistence" }>): void {
+  const host = event.port === 22 ? event.host : `${event.host}:${event.port}`;
+  useUIStore.getState().addToast({
+    title: t(`ssh.hostKey.persistence.${event.status}`),
+    subtitle: host,
+    variant: event.status === "saved" ? "success" : "warning",
+    durationMs: event.status === "saved" ? 3500 : 8000,
+  });
+}
+
 /** Backend sentinel for an SSH transport that ended without ExitStatus. */
 export const SSH_DISCONNECTED_EXIT_CODE = -2;
 
 /** Reply to a pending SSH host-key prompt (backend ssh_open is parked on it). */
-export async function answerHostKeyPrompt(promptId: string, accept: boolean): Promise<void> {
-  await invoke("ssh_host_key_decision", { promptId, accept });
+export async function answerHostKeyPrompt(promptId: string, accept: boolean, remember = true): Promise<void> {
+  await invoke("ssh_host_key_decision", { promptId, accept, remember });
 }
 
 export async function answerKeyboardInteractivePrompt(
@@ -82,6 +100,35 @@ export function sshFailureReason(error: string): string {
   return t(`ssh.fail.${classifySshFailure(error)}`);
 }
 
+/** Typed v2 errors are consumed directly; legacy strings are classified once and discarded. */
+export function safeSshFailure(error: unknown): { reason: ReturnType<typeof classifySshFailure>; message: string } {
+  const code = typeof error === "object" && error !== null && "diagnostic" in error
+    ? String((error as { diagnostic?: { code?: unknown } }).diagnostic?.code ?? "internal")
+    : undefined;
+  const reason = code === "authenticationFailed" ? "auth"
+    : code === "hostKeyRejected" ? "hostKey"
+      : code === "dnsFailed" || code === "connectionRefused" || code === "timeout" || code === "transportClosed" ? "connect"
+        : classifySshFailure(typeof error === "string" ? error : "");
+  return { reason, message: t(`ssh.fail.${reason}`) };
+}
+
+function typedSshDiagnostic(error: unknown): SshDiagnosticV1 | undefined {
+  if (typeof error !== "object" || error === null || !("diagnostic" in error)) return undefined;
+  const diagnostic = (error as { diagnostic?: Partial<SshDiagnosticV1> }).diagnostic;
+  if (diagnostic?.schemaVersion !== 1
+    || !SSH_DIAGNOSTIC_STAGES.includes(diagnostic.stage as SshDiagnosticV1["stage"])
+    || !SSH_DIAGNOSTIC_CODES.includes(diagnostic.code as SshDiagnosticV1["code"])
+    || !["info", "warning", "error"].includes(diagnostic.severity ?? "")
+    || typeof diagnostic.retryable !== "boolean"
+    || !["direct", "jump", "target"].includes(diagnostic.hopRole ?? "")
+    || typeof diagnostic.timestamp !== "number") return undefined;
+  return diagnostic as SshDiagnosticV1;
+}
+
+export function sshOpenDiagnostic(error: unknown): SshDiagnosticV1 | undefined {
+  return typedSshDiagnostic(error);
+}
+
 /**
  * Surface a failed SSH connection consistently: mark the session failed and
  * raise an error Toast (matching the rest of the app's error handling). No-op
@@ -90,17 +137,30 @@ export function sshFailureReason(error: string): string {
 export function reportSshOpenFailure(
   sessionId: string,
   remote: RemoteInfo | undefined,
-  error: string,
+  error: unknown,
 ): void {
   if (!remote) return;
-  const reason = classifySshFailure(error);
+  const { reason } = safeSshFailure(error);
   const store = useSessionsStore.getState();
+  const typed = typedSshDiagnostic(error);
+  const phase = store.sessions.find((session) => session.id === sessionId)?.connection?.phase;
+  const authFailure = ["password", "key", "agent", "keyboardInteractive", "auth"].includes(reason);
+  const stage = phase === "authenticating" || authFailure ? "auth"
+    : phase === "handshaking" ? "handshake"
+      : reason === "hostKey" ? "hostKey" : "TCP";
+  const code = authFailure ? "authenticationFailed"
+    : reason === "hostKey" ? "hostKeyRejected" : "transportClosed";
+  if (typed) {
+    appendDiagnostic(sessionId, { requestId: "ssh-open-v2", status: "failed", diagnostic: typed });
+  } else {
+    recordSshLifecycleDiagnostic(sessionId, stage, "failed", code);
+  }
   store.updateSession(sessionId, { runState: "failed" });
   store.handleConnectionEvent(sessionId, {
     type: "failed",
     transport: "ssh",
     reason,
-    detail: error,
+    detail: reason,
   });
   notifySshOpenFailure(sessionId, remote, error);
 }
@@ -108,13 +168,13 @@ export function reportSshOpenFailure(
 /** Show a failed replacement attempt without marking a still-live PTY failed. */
 export function notifySshOpenFailure(
   sessionId: string,
-  remote: RemoteInfo,
-  error: string,
+  _remote: RemoteInfo,
+  error: unknown,
 ): void {
   useUIStore.getState().addToast({
     sessionId,
-    title: `${remote.user}@${remote.host}`,
-    subtitle: sshFailureReason(error),
+    title: t("ssh.error.title"),
+    subtitle: safeSshFailure(error).message,
     variant: "error",
   });
 }
@@ -141,6 +201,7 @@ export function recordPtyConnectionStatus(
   generation: string,
 ): void {
   if (!acceptsTransportGeneration(sessionId, generation)) return;
+  recordConnectionStage(sessionId, phase);
   useSessionsStore.getState().handleConnectionEvent(
     sessionId,
     phase === "verifyingHostKey"
@@ -162,9 +223,38 @@ export function recordPendingPtyConnectionStatus(
   );
 }
 
+function recordConnectionStage(sessionId: string, phase: PtyConnectionStatusPhase): void {
+  const session = useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionId);
+  const binding = session?.ptyId !== undefined && session.transportGeneration
+    ? {
+        logicalSessionId: sessionId,
+        physicalPtyId: session.ptyId,
+        transportGeneration: session.transportGeneration,
+      }
+    : undefined;
+  if (phase === "handshaking") {
+    recordSshLifecycleDiagnostic(sessionId, "TCP", "passed", "ok", binding);
+  } else if (phase === "authenticating") {
+    recordSshLifecycleDiagnostic(sessionId, "handshake", "passed", "ok", binding);
+    recordSshLifecycleDiagnostic(sessionId, "hostKey", "passed", "ok", binding);
+  } else if (phase === "openingShell") {
+    recordSshLifecycleDiagnostic(sessionId, "auth", "passed", "ok", binding);
+  } else if (phase === "ready") {
+    recordSshLifecycleDiagnostic(sessionId, "openShell", "passed", "ok", binding);
+  }
+}
+
 export function recordPtyExit(sessionId: string, remote: boolean, code: number, generation: string): void {
   if (!acceptsTransportGeneration(sessionId, generation)) return;
   if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkExit(sessionId, code);
+  if (remote && code === SSH_DISCONNECTED_EXIT_CODE) {
+    recordSshLifecycleDiagnostic(
+      sessionId,
+      "reconnect",
+      "failed",
+      "transportClosed",
+    );
+  }
   useSessionsStore.getState().handleConnectionEvent(sessionId, {
     type: "exit",
     transport: remote ? "ssh" : "local",
@@ -254,6 +344,9 @@ export async function openPty(
       case "connectionStatus":
         handlers.onConnectionStatus?.(event.phase, generation);
         break;
+      case "hostKeyPersistence":
+        notifyHostKeyPersistence(event);
+        break;
       case "hostKeyPrompt":
       case "keyboardInteractivePrompt":
         break;
@@ -302,13 +395,32 @@ export type RemoteOpenInfo = {
   user: string;
   authMethod?: SshAuthMethod;
   identityFile?: string;
+  certificateFile?: string;
   /** 加密私钥口令，仅本次连接，绝不持久化。 */
   keyPassphrase?: string;
   /** 密码认证，仅本次连接，绝不持久化。 */
   password?: string;
+  jump?: SshConnectEndpointOptions;
   /** Phase 4：注入远程 shell 集成（远程 cwd / 命令边界 / agent 检测）。 */
   injectShellIntegration?: boolean;
 };
+
+/** Add one-shot secrets at the UI-to-bridge boundary without mutating persisted remote state. */
+export function toRemoteOpenInfo(
+  remote: RemoteInfo,
+  credentials?: PendingSshCredentials,
+): RemoteOpenInfo {
+  return {
+    ...remote,
+    password: credentials?.password,
+    keyPassphrase: credentials?.keyPassphrase,
+    jump: remote.route ? {
+      ...remote.route.jump,
+      password: credentials?.jumpPassword,
+      keyPassphrase: credentials?.jumpKeyPassphrase,
+    } : undefined,
+  };
+}
 
 /**
  * 按会话类型开 PTY：有 remote 走 SSH，否则走本地 shell。
@@ -329,9 +441,11 @@ export function openSessionPty(
       authMethod: opts.remote.authMethod,
       cwd: opts.cwd?.startsWith("/") ? opts.cwd : undefined,
       identityFile: opts.remote.identityFile,
+      certificateFile: opts.remote.certificateFile,
       keyPassphrase: opts.remote.keyPassphrase,
       password: opts.remote.password,
       injectShellIntegration: opts.remote.injectShellIntegration,
+      jump: opts.remote.jump,
     });
   }
   // A local reopen of the same logical session also supersedes any old SSH
@@ -340,8 +454,8 @@ export function openSessionPty(
   return openPty(logicalSessionId, cols, rows, handlers, opts.cwd);
 }
 
-/** SSH 连接参数（与后端 ssh_open 命令对齐）。无密码持久化。 */
-export type SshConnectOptions = {
+/** One independently authenticated SSH endpoint. Secrets are one-shot only. */
+export type SshConnectEndpointOptions = {
   host: string;
   port?: number;
   user: string;
@@ -352,15 +466,147 @@ export type SshConnectOptions = {
   cwd?: string;
   /** 私钥文件路径；仅在显式选择 key 时传给后端。 */
   identityFile?: string;
+  /** OpenSSH user certificate paired with identityFile. */
+  certificateFile?: string;
   /** 加密私钥的口令，仅本次连接使用。 */
   keyPassphrase?: string;
   /** 密码认证，仅本次连接使用，绝不持久化。 */
   password?: string;
   /** 是否无提示接受首连未知主机密钥；默认不接受并弹窗确认。 */
   acceptUnknownHostKey?: boolean;
+};
+
+/** SSH 连接参数（与后端 ssh_open_v2 命令对齐）。无密码持久化。 */
+export type SshConnectOptions = SshConnectEndpointOptions & {
   /** 注入远程 shell 集成（OSC 7 / OSC 133 / agent lifecycle），默认开启。 */
   injectShellIntegration?: boolean;
+  /** A single independently authenticated ProxyJump endpoint. */
+  jump?: SshConnectEndpointOptions;
 };
+
+export type SessionBindingV1 = {
+  logicalSessionId: string;
+  physicalPtyId: number;
+  transportGeneration: string;
+};
+
+export type ForwardReconnectIntent =
+  | {
+      kind: "local";
+      oldRuleId: string;
+      oldBinding: SessionBindingV1;
+      bindHost: string;
+      requestedLocalPort: number;
+      oldActualLocalPort: number;
+      targetHost: string;
+      targetPort: number;
+    }
+  | {
+      kind: "dynamic";
+      oldRuleId: string;
+      oldBinding: SessionBindingV1;
+      bindHost: string;
+      requestedLocalPort: number;
+      oldActualLocalPort: number;
+    };
+
+export interface ForwardRebuildResult {
+  oldRuleId: string;
+  oldActualLocalPort: number;
+  requestedLocalPort: number;
+  newActualLocalPort?: number | null;
+  newRuleId?: string | null;
+  failure?: "fixedPortUnavailable" | "staleBinding" | "limitExceeded" | "invalidIntent" | "internal" | null;
+}
+
+export function snapshotReconnectForwards(binding: SessionBindingV1): Promise<ForwardReconnectIntent[]> {
+  return invoke("ssh_forwarding_reconnect_snapshot", { binding });
+}
+
+export function rebuildReconnectForwards(
+  binding: SessionBindingV1,
+  intents: ForwardReconnectIntent[],
+): Promise<ForwardRebuildResult[]> {
+  return invoke("ssh_forwarding_reconnect_rebuild", { binding, intents });
+}
+
+export type SshOpenResultV2 = {
+  physicalPtyId: number;
+  transportGeneration: string;
+  warnings: string[];
+  binding?: SessionBindingV1;
+};
+
+export type SshCommandErrorV1 = {
+  diagnostic: {
+    schemaVersion: number;
+    stage: string;
+    code: string;
+    severity: string;
+    retryable: boolean;
+    hopRole: "direct" | "jump" | "target";
+  };
+};
+
+export class SshOpenCommandError extends Error {
+  constructor(public readonly diagnostic: SshCommandErrorV1["diagnostic"]) {
+    const hop = diagnostic.hopRole === "direct" ? "direct" : `${diagnostic.hopRole} hop`;
+    const category = diagnostic.code === "authenticationFailed"
+      ? "authentication failed"
+      : diagnostic.code === "hostKeyRejected"
+        ? "host key rejected"
+        : diagnostic.code === "connectionRefused"
+          ? "connection failed"
+          : diagnostic.code === "invalidRequest"
+            ? "request invalid"
+            : diagnostic.code;
+    super(`SSH ${hop} ${category}`);
+    this.name = "SshOpenCommandError";
+  }
+}
+
+function normalizeSshOpenError(error: unknown): Error | unknown {
+  if (typeof error !== "object" || error === null || !("diagnostic" in error)) return error;
+  const diagnostic = (error as Partial<SshCommandErrorV1>).diagnostic;
+  if (!diagnostic
+    || diagnostic.schemaVersion !== 1
+    || !["direct", "jump", "target"].includes(diagnostic.hopRole)
+    || typeof diagnostic.code !== "string") return error;
+  return new SshOpenCommandError(diagnostic);
+}
+
+export type SshEndpointV1 = {
+  host: string;
+  port?: number | null;
+  user: string;
+  identityFile?: string | null;
+  certificateFile?: string | null;
+  keyPassphrase?: string | null;
+  password?: string | null;
+  authMethod?: SshAuthMethod | null;
+  acceptUnknownHostKey?: boolean | null;
+};
+
+export type SshOpenRequestV2 = {
+  logicalSessionId?: string | null;
+  openAttemptId: string;
+  endpoint: SshEndpointV1;
+  jump?: SshEndpointV1 | null;
+  shell: {
+    cwd?: string | null;
+    injectShellIntegration?: boolean | null;
+    cols: number;
+    rows: number;
+  };
+};
+
+/** Typed v2 IPC adapter. `transportGeneration` is always backend-authored. */
+export function sshOpenV2(
+  request: SshOpenRequestV2,
+  onEvent: Channel<PtyEvent>,
+): Promise<SshOpenResultV2> {
+  return invoke<SshOpenResultV2>("ssh_open_v2", { request, onEvent });
+}
 
 /**
  * 打开一个 SSH 远程会话。返回与 openPty 相同的 PtySession 接口——
@@ -374,7 +620,21 @@ export async function openSshPty(
   conn: SshConnectOptions,
 ): Promise<PtySession> {
   const openAttemptId = nextSshOpenAttemptId();
-  const generation = `ssh:${openAttemptId}`;
+  for (const prompt of useUIStore.getState().keyboardInteractivePrompts) {
+    if (prompt.origin.logicalSessionId !== logicalSessionId) continue;
+    void answerKeyboardInteractivePrompt(prompt.promptId, null);
+    useUIStore.getState().dismissKeyboardInteractivePrompt(prompt.promptId);
+    useUIStore.getState().addToast({
+      sessionId: logicalSessionId,
+      title: t("ssh.keyboardInteractive.stale"),
+      subtitle: t("ssh.keyboardInteractive.stale_detail"),
+      variant: "warning",
+    });
+  }
+  // Pending events are buffered until ssh_open_v2 returns the authoritative
+  // backend generation. It replaces this private placeholder before any
+  // event can be activated into the terminal.
+  let generation = `pending:${openAttemptId}`;
   const previousGeneration = sshConnectionGenerations.get(logicalSessionId);
   sshOpenAttempts.set(logicalSessionId, openAttemptId);
   const channel = new Channel<PtyEvent>();
@@ -386,6 +646,26 @@ export async function openSshPty(
   let activated = false;
   let closed = false;
   let pendingEvents: PtyEvent[] = [];
+  let hostKeyHopRole: "direct" | "jump" | "target" = conn.jump ? "jump" : "direct";
+  let handshakeCount = 0;
+
+  const observeHostKeyHop = (event: PtyEvent) => {
+    if (conn.jump && event.type === "connectionStatus" && event.phase === "handshaking") {
+      handshakeCount += 1;
+      hostKeyHopRole = handshakeCount >= 2 ? "target" : "jump";
+    }
+  };
+
+  const keyboardOriginMatchesConnection = (origin: Extract<PtyEvent, { type: "keyboardInteractivePrompt" }>["origin"]) => {
+    const expectedRole = conn.jump ? (origin.hopRole === "jump" ? "jump" : "target") : "direct";
+    const endpoint = expectedRole === "jump" ? conn.jump! : conn;
+    return origin.logicalSessionId === logicalSessionId
+      && origin.transportGeneration === openAttemptId
+      && origin.hopRole === expectedRole
+      && origin.user === endpoint.user
+      && origin.host === endpoint.host
+      && origin.port === (endpoint.port ?? 22);
+  };
 
   const dispatch = (event: PtyEvent) => {
     switch (event.type) {
@@ -408,6 +688,9 @@ export async function openSshPty(
       case "connectionStatus":
         handlers.onConnectionStatus?.(event.phase, generation);
         break;
+      case "hostKeyPersistence":
+        notifyHostKeyPersistence(event);
+        break;
       case "hostKeyPrompt":
       case "keyboardInteractivePrompt":
         break;
@@ -421,6 +704,7 @@ export async function openSshPty(
   };
 
   channel.onmessage = (event) => {
+    observeHostKeyHop(event);
     const published = sshConnectionGenerations.get(logicalSessionId) === openAttemptId;
     const latestPending = sshOpenAttempts.get(logicalSessionId) === openAttemptId;
     if (published && activated) {
@@ -429,6 +713,16 @@ export async function openSshPty(
     }
     const currentCandidate = !closed && (latestPending || publishable);
     if (!currentCandidate) {
+      if (event.type === "keyboardInteractivePrompt") {
+        void answerKeyboardInteractivePrompt(event.promptId, null);
+        useUIStore.getState().dismissKeyboardInteractivePrompt(event.promptId);
+        useUIStore.getState().addToast({
+          sessionId: logicalSessionId,
+          title: t("ssh.keyboardInteractive.stale"),
+          subtitle: t("ssh.keyboardInteractive.stale_detail"),
+          variant: "warning",
+        });
+      }
       acknowledgeDiscardedData(event);
       return;
     }
@@ -442,6 +736,9 @@ export async function openSshPty(
         handlers.onPendingConnectionStatus?.(event.phase);
         pendingEvents.push(event);
         break;
+      case "hostKeyPersistence":
+        notifyHostKeyPersistence(event);
+        break;
       case "hostKeyPrompt":
         handlers.onPendingConnectionStatus?.("verifyingHostKey");
         // Queue the confirmation in the UI store; an app-level dialog renders
@@ -452,6 +749,7 @@ export async function openSshPty(
         // own answer or it stays blocked until the session is closed.
         pendingPromptIds.add(event.promptId);
         useUIStore.getState().enqueueHostKeyPrompt({
+          hopRole: hostKeyHopRole,
           promptId: event.promptId,
           host: event.host,
           port: event.port,
@@ -461,8 +759,15 @@ export async function openSshPty(
         });
         break;
       case "keyboardInteractivePrompt":
+        if (!keyboardOriginMatchesConnection(event.origin)) {
+          void answerKeyboardInteractivePrompt(event.promptId, null);
+          useUIStore.getState().addToast({ sessionId: logicalSessionId, title: t("ssh.keyboardInteractive.stale"), subtitle: t("ssh.keyboardInteractive.stale_detail"), variant: "warning" });
+          break;
+        }
         pendingKeyboardPromptIds.add(event.promptId);
         useUIStore.getState().enqueueKeyboardInteractivePrompt({
+          origin: event.origin,
+          hopRole: event.origin.hopRole,
           promptId: event.promptId,
           name: event.name,
           instructions: event.instructions,
@@ -472,7 +777,7 @@ export async function openSshPty(
     }
   };
 
-  let id: number;
+  let result: SshOpenResultV2;
   try {
     // Strip every credential outside the explicitly selected strategy at the
     // IPC boundary. In particular, Password never forwards an identity path,
@@ -480,23 +785,37 @@ export async function openSshPty(
     const identityFile = conn.authMethod === "key" ? conn.identityFile ?? null : null;
     const keyPassphrase = conn.authMethod === "key" ? conn.keyPassphrase ?? null : null;
     const password = conn.authMethod === "password" ? conn.password ?? null : null;
-    id = await invoke<number>("ssh_open", {
-      logicalSessionId,
-      openAttemptId,
+    const endpoint: SshEndpointV1 = {
       host: conn.host,
       port: conn.port ?? null,
       user: conn.user,
-      cwd: conn.cwd ?? null,
       identityFile,
+      certificateFile: conn.authMethod === "key" ? conn.certificateFile ?? null : null,
       keyPassphrase,
       password,
       authMethod: conn.authMethod ?? null,
       acceptUnknownHostKey: conn.acceptUnknownHostKey ?? null,
-      injectShellIntegration: conn.injectShellIntegration ?? null,
-      cols,
-      rows,
-      onEvent: channel,
-    });
+    };
+    const jump = conn.jump ? endpointForSelectedAuth(conn.jump) : null;
+    result = await sshOpenV2({
+      logicalSessionId,
+      openAttemptId,
+      endpoint,
+      jump,
+      shell: {
+        cwd: conn.cwd ?? null,
+        injectShellIntegration: conn.injectShellIntegration ?? null,
+        cols,
+        rows,
+      },
+    }, channel);
+    if (!result.binding
+      || result.binding.logicalSessionId !== logicalSessionId
+      || result.binding.physicalPtyId !== result.physicalPtyId
+      || result.binding.transportGeneration !== result.transportGeneration) {
+      await invoke("pty_close", { id: result.physicalPtyId });
+      throw new Error("SSH backend returned an inconsistent session binding");
+    }
   } catch (error) {
     // A host-key prompt can time out or its connection can fail while the
     // dialog is still queued. Remove only prompts owned by this open attempt;
@@ -508,13 +827,15 @@ export async function openSshPty(
     for (const promptId of pendingKeyboardPromptIds) {
       useUIStore.getState().dismissKeyboardInteractivePrompt(promptId);
     }
-    throw error;
+    throw normalizeSshOpenError(error);
   } finally {
     if (sshOpenAttempts.get(logicalSessionId) === openAttemptId) {
       sshOpenAttempts.delete(logicalSessionId);
     }
     cancelledSshOpenAttempts.delete(openAttemptId);
   }
+  const id = result.physicalPtyId;
+  generation = result.transportGeneration;
   physicalId = id;
   acknowledger.setId(id);
   publishable = true;
@@ -554,5 +875,19 @@ export async function openSshPty(
       // logical map; it must never leak an older backend connection.
       return invoke("pty_close", { id });
     },
+  };
+}
+
+function endpointForSelectedAuth(conn: SshConnectEndpointOptions): SshEndpointV1 {
+  return {
+    host: conn.host,
+    port: conn.port ?? null,
+    user: conn.user,
+    identityFile: conn.authMethod === "key" ? conn.identityFile ?? null : null,
+    certificateFile: conn.authMethod === "key" ? conn.certificateFile ?? null : null,
+    keyPassphrase: conn.authMethod === "key" ? conn.keyPassphrase ?? null : null,
+    password: conn.authMethod === "password" ? conn.password ?? null : null,
+    authMethod: conn.authMethod ?? null,
+    acceptUnknownHostKey: conn.acceptUnknownHostKey ?? null,
   };
 }

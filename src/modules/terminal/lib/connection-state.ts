@@ -1,4 +1,6 @@
 import type { SshFailureReason } from "../../ssh/failure-reason.ts";
+import type { Session } from "@/ui/types";
+import type { SessionBindingV1 } from "./pty-bridge";
 
 export type ConnectionTransport = "local" | "ssh";
 
@@ -11,6 +13,7 @@ export type ConnectionPhase =
   | "authenticating"
   | "openingShell"
   | "reconnecting"
+  | "needsUserAction"
   | "ready"
   | "disconnected"
   | "failed"
@@ -44,10 +47,68 @@ export interface ConnectionEvidence {
   failedAtPhase?: Exclude<ConnectionPhase, "failed">;
 }
 
+export type ConnectionRemediation = {
+  kind: "credentials" | "hostKey" | "reconnect";
+  sessionId: string;
+  endpoint: string;
+} & (
+  | { source: "binding"; binding: { logicalSessionId: string; physicalPtyId: number; transportGeneration: string } }
+  | { source: "reconnect"; lifecycle: number }
+);
+
+/** Returns the authoritative binding only while the current SSH lifecycle is ready. */
+export function readyBindingForSession(session: Session | undefined): SessionBindingV1 | null {
+  return session?.remote
+    && session.ptyId !== undefined
+    && session.transportGeneration
+    && session.connection?.phase === "ready"
+    ? {
+        logicalSessionId: session.id,
+        physicalPtyId: session.ptyId,
+        transportGeneration: session.transportGeneration,
+      }
+    : null;
+}
+
+/** Derives an action only from the session's current generation. Callers must
+ * re-derive immediately before execution; retaining this value is unsafe. */
+export function remediationForSession(session: Session): ConnectionRemediation | null {
+  if (!session.remote || session.connection?.phase !== "needsUserAction") return null;
+  const proof = session.ptyId !== undefined && session.transportGeneration
+    ? { source: "binding" as const, binding: { logicalSessionId: session.id, physicalPtyId: session.ptyId, transportGeneration: session.transportGeneration } }
+    : session.sshReconnectLifecycle !== undefined
+      ? { source: "reconnect" as const, lifecycle: session.sshReconnectLifecycle }
+      : null;
+  if (!proof) return null;
+  const source = {
+    sessionId: session.id,
+    endpoint: `${session.remote.user}@${session.remote.host}:${session.remote.port}`,
+    ...proof,
+  };
+  return session.connection.reason === "hostKey"
+    ? { kind: "hostKey", ...source }
+    : session.connection.reason === "auth"
+      ? { kind: "credentials", ...source }
+      : { kind: "reconnect", ...source };
+}
+
+export function remediationIsCurrent(session: Session, remediation: ConnectionRemediation): boolean {
+  const current = remediationForSession(session);
+  if (!current || current.kind !== remediation.kind || current.sessionId !== remediation.sessionId || current.endpoint !== remediation.endpoint || current.source !== remediation.source) return false;
+  return current.source === "binding" && remediation.source === "binding"
+    ? current.binding.logicalSessionId === remediation.binding.logicalSessionId
+      && current.binding.physicalPtyId === remediation.binding.physicalPtyId
+      && current.binding.transportGeneration === remediation.binding.transportGeneration
+    : current.source === "reconnect" && remediation.source === "reconnect" && current.lifecycle === remediation.lifecycle;
+}
+
 export type ConnectionEvent =
   | { type: "queued"; transport: ConnectionTransport; source?: "user" | "restore" }
   | { type: "openRequested"; transport: ConnectionTransport; source?: "user" | "renderer" }
   | { type: "reconnectRequested" }
+  | { type: "transportLost" }
+  | { type: "reconnectScheduled" }
+  | { type: "needsUserAction"; reason: ConnectionFailureReason }
   | { type: "backendPhase"; transport: "ssh"; phase: BackendConnectionPhase }
   | { type: "hostKeyPrompt" }
   | { type: "ready"; transport: ConnectionTransport; source?: "renderer" | "backend" }
@@ -102,11 +163,30 @@ export function reduceConnectionEvidence(
       };
       break;
     case "reconnectRequested":
+    case "reconnectScheduled":
       next = {
         transport: "ssh",
         phase: "reconnecting",
         source: "user",
         updatedAt: now,
+      };
+      break;
+    case "transportLost":
+      next = {
+        transport: "ssh",
+        phase: "disconnected",
+        source: "transport",
+        updatedAt: now,
+        exitCode: -2,
+      };
+      break;
+    case "needsUserAction":
+      next = {
+        transport: "ssh",
+        phase: "needsUserAction",
+        source: "user",
+        updatedAt: now,
+        reason: event.reason,
       };
       break;
     case "backendPhase":
@@ -178,8 +258,8 @@ export function connectionDiagnostic(input: {
 }): string {
   const evidence = input.evidence;
   const rows = [
-    `session=${input.sessionId}`,
-    `endpoint=${input.endpoint ?? "local"}`,
+    `session=${input.sessionId ? "SESSION_1" : "unknown"}`,
+    `endpoint=${input.endpoint ? "HOST_1" : "local"}`,
     `transport=${evidence?.transport ?? "unknown"}`,
     ...(input.authMethod ? [`authMethod=${input.authMethod}`] : []),
     `phase=${evidence?.phase ?? "unknown"}`,
@@ -189,6 +269,5 @@ export function connectionDiagnostic(input: {
   if (evidence?.reason) rows.push(`reason=${evidence.reason}`);
   if (evidence?.failedAtPhase) rows.push(`failedAtPhase=${evidence.failedAtPhase}`);
   if (evidence?.exitCode !== undefined) rows.push(`exitCode=${evidence.exitCode}`);
-  if (evidence?.detail) rows.push(`detail=${evidence.detail}`);
   return rows.join("\n");
 }

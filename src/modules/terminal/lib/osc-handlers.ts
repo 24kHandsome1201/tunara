@@ -4,9 +4,10 @@ import { sanitizeTerminalTitle } from "./terminal-utils.ts";
 export function registerCwdHandler(
   term: Terminal,
   onCwd: (cwd: string) => void,
+  transport: "local" | "ssh" = "local",
 ): () => void {
   const d = term.parser.registerOscHandler(7, (data) => {
-    const cwd = parseOsc7(data);
+    const cwd = parseOsc7(data, transport);
     if (cwd) onCwd(cwd);
     return true;
   });
@@ -56,10 +57,12 @@ export function registerPromptTracker(term: Terminal): PromptTracker {
   };
 }
 
-export function parseOsc7(data: string): string | null {
+export function parseOsc7(data: string, transport: "local" | "ssh" = "local"): string | null {
   const m = data.match(/^file:\/\/([^/]*)(\/.*)$/);
   if (!m) return null;
-  if (!isLocalOscHost(m[1])) return null;
+  // The OSC is already confined to the current PTY. SSH hostnames are remote
+  // provenance, not candidates for local-host trust checks.
+  if (transport === "local" && !isLocalOscHost(m[1])) return null;
   try {
     return decodeURIComponent(m[2]);
   } catch {

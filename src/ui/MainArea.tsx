@@ -12,6 +12,7 @@ import { useSessionGitContext } from "./useSessionGitContext";
 import { useWorkspaceHydration } from "./useWorkspaceHydration";
 import { splitLayoutGeometry, splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { PanelLoadingState } from "./shared";
+import { recordTerminalFocusIntent } from "@/modules/terminal/lib/binding-aware-async-action";
 
 const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 
@@ -203,6 +204,10 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         {mountedSessions.map((s) => (
           <div
             key={s.id}
+            onPointerDownCapture={() => {
+              recordTerminalFocusIntent(s.id);
+              if (s.id !== useSessionsStore.getState().activeSessionId) useSessionsStore.getState().setActive(s.id);
+            }}
             onClick={() => {
               if (s.id !== activeSessionId) useSessionsStore.getState().setActive(s.id);
             }}

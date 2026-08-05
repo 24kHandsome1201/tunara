@@ -6,8 +6,9 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { cancelSshOpen, openSessionPty, recordPendingPtyConnectionStatus, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, SSH_DISCONNECTED_EXIT_CODE, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
+import { cancelSshOpen, openSessionPty, recordPendingPtyConnectionStatus, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, safeSshFailure, SSH_DISCONNECTED_EXIT_CODE, toRemoteOpenInfo, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
+import { completeSshAutoReconnect, handleSshReconnectFailure, handleSshTransportLost, markSshOneShotCredentialConsumed } from "@/modules/ssh/auto-reconnect";
 import { registerCwdHandler, registerTitleHandlers } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
 import type { AgentCode } from "./types";
@@ -19,6 +20,7 @@ import { createTerminalHyperlinkHandler } from "@/modules/terminal/lib/terminal-
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { handleCopyKeyEvent } from "@/modules/terminal/lib/terminal-copy";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
+import { resourceRefForSession } from "@/modules/resources/resource-ref";
 import { createTerminalLineCwdTracker } from "@/modules/terminal/lib/terminal-line-cwd";
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
@@ -37,10 +39,13 @@ import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; 
 import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-history";
 import { createTerminalOscGuard } from "@/modules/terminal/lib/terminal-osc-guard";
 import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
+import { createTerminalLinkInputOwnership, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
+import { captureTerminalActionTarget, registerTerminalActions } from "@/modules/terminal/lib/terminal-action-registry";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
+import { allocateTerminalInstanceEpoch, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -59,9 +64,17 @@ function TerminalViewImpl({
 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const linkInputRef = useRef(createTerminalLinkInputOwnership({
+    getMouseTrackingMode: () => (termRef.current?.modes.mouseTrackingMode ?? "none") as TerminalMouseTrackingMode,
+    hasSelection: () => !!termRef.current?.hasSelection(),
+    isPure: () => useUIStore.getState().presentationMode === "pure",
+    getPlatform: () => /Mac/.test(navigator.platform) ? "macos" : /Win/.test(navigator.platform) ? "windows" : "linux",
+    getHostModifier: () => useUIStore.getState().terminalHostModifier,
+  }));
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
   const initRef = useRef(false);
+  const terminalInstanceEpochRef = useRef(allocateTerminalInstanceEpoch());
   // Gates the pendingInput effect to fire once when the PTY is ready.
   const [ptyReady, setPtyReady] = useState(false);
   const webglRef = useRef<TerminalWebglRenderer | null>(null);
@@ -70,7 +83,7 @@ function TerminalViewImpl({
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId));
-  const search = useTerminalSearch(termRef);
+  const search = useTerminalSearch(sessionId);
   const blocks = useTerminalBlocks(termRef);
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
   const sessionIdRef = useRef(sessionId);
@@ -82,10 +95,9 @@ function TerminalViewImpl({
   const scrollback = useUIStore((s) => s.scrollback);
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
-  const terminalTheme = useUIStore((s) => s.terminalTheme);
-  const accent = useUIStore((s) => s.accent);
+  const screenReaderMode = useUIStore((s) => s.terminalScreenReaderMode); const terminalTheme = useUIStore((s) => s.terminalTheme); const accent = useUIStore((s) => s.accent);
   useTerminalRuntimeSync({
-    active, termRef, fitRef, ptyRef, webglRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, theme, terminalTheme, accent,
+    sessionId, active, termRef, fitRef, ptyRef, webglRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, terminalTheme, accent,
   });
   useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady);
   useEffect(() => {
@@ -116,17 +128,28 @@ function TerminalViewImpl({
         accent,
         cursorBlink,
         cursorStyle,
-        linkHandler: createTerminalHyperlinkHandler(openUrl),
+        screenReaderMode,
+        linkHandler: createTerminalHyperlinkHandler(openUrl, linkInputRef.current.shouldActivate),
       });
       termRef.current = term;
       const fit = new FitAddon();
       fitRef.current = fit;
       term.loadAddon(fit);
       term.open(containerRef.current);
+      const terminalScreen = term.element?.querySelector<HTMLElement>(".xterm-screen");
+      if (terminalScreen) cleanups.push(linkInputRef.current.attach(terminalScreen));
+      cleanups.push(registerTerminalActions(sessionIdRef.current, {
+        terminal: term,
+        openSearch: search.openSearch,
+      }));
       // Confirmer must be the Tauri dialog: window.confirm never renders in
       // wry's WKWebView and would silently drop every multiline/large paste.
       cleanups.push(registerTerminalPasteProtection(term, (message) =>
-        tauriConfirmDialog(message, { kind: "warning" })).dispose);
+        tauriConfirmDialog(message, { kind: "warning" }), () =>
+        {
+          const action = captureTerminalActionTarget(sessionIdRef.current, term);
+          return () => action?.isCurrent() === true;
+        }).dispose);
       cleanups.push(registerTerminalClipboardHandler(term, {
         isWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
       }));
@@ -139,6 +162,7 @@ function TerminalViewImpl({
       const serializeAddon = new SerializeAddon();
       term.loadAddon(serializeAddon);
       term.loadAddon(new WebLinksAddon((_event, uri) => {
+        if (!linkInputRef.current.shouldActivate(_event)) return;
         try {
           const url = new URL(uri);
           if (url.protocol === "http:" || url.protocol === "https:") {
@@ -146,13 +170,14 @@ function TerminalViewImpl({
           }
         } catch (e) { console.debug("[TerminalView] malformed URL in web link, ignoring", uri, e); }
       }));
-      const lineCwdTracker = createTerminalLineCwdTracker();
-      const initialCwd = dir === "~" ? undefined : dir;
+      const transport = useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionIdRef.current)?.remote ? "ssh" : "local";
+      const lineCwdTracker = createTerminalLineCwdTracker(); const initialCwd = dir === "~" ? undefined : dir;
       if (initialCwd) lineCwdTracker.record(initialCwd, term.registerMarker(0));
       cleanups.push(lineCwdTracker.dispose);
       const fileLinkDisposable = registerTerminalFileLinkProvider(term, {
         getCwd: (line) => lineCwdTracker.getCwdForLine(line, useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)?.dir ?? dir),
-        getEditor: () => useUIStore.getState().externalEditor,
+        shouldActivate: linkInputRef.current.shouldActivate,
+        createResource: (path, line, column) => resourceRefForSession(useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)!, path, line, column),
       });
       cleanups.push(() => fileLinkDisposable.dispose());
       const rebuildWebglAtlas = createWebglAtlasRebuilder(webglRef);
@@ -254,7 +279,7 @@ function TerminalViewImpl({
         }
         return true;
       };
-      cleanups.push(registerCwdHandler(term, handleCwdChange));
+      cleanups.push(registerCwdHandler(term, handleCwdChange, transport));
       cleanups.push(registerTitleHandlers(term, (title) => {
         useSessionsStore.getState().handleShellTitle(sessionIdRef.current, title);
       }));
@@ -346,7 +371,6 @@ function TerminalViewImpl({
       });
       cleanups.push(snapshotScheduler.dispose);
       const cwd = dir === "~" ? undefined : dir;
-      const transport = getCurrentSession()?.remote ? "ssh" : "local";
       useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
         type: "openRequested",
         transport,
@@ -355,8 +379,7 @@ function TerminalViewImpl({
       const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined, onWritten: (bytes) => { previewScanner.push(bytes); recordTerminalAtlasOutputPressure(bytes.byteLength); } });
       cleanups.push(() => outputBuffer.dispose()); cleanups.push(previewScanner.dispose);
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkSnapshotReader(sessionIdRef.current, async () => { await outputBuffer.drain(); return serializeAddon.serialize(); }));
-      // Declared before ptyHandlers so onExit can flip it even if exit races the
-      // await openSessionPty() return.
+      // Declared before ptyHandlers so exit can disable input even if it races openSessionPty.
       let inputToPtyEnabled = true;
       const finishGeneration = (code: number, generation: string) => {
         if (disposed) return;
@@ -386,21 +409,12 @@ function TerminalViewImpl({
             }
           }
         },
-        onTransportLost: (_reason: string, generation: string) => {
-          finishGeneration(SSH_DISCONNECTED_EXIT_CODE, generation);
-        },
-        onExit: (code: number, generation: string) => {
-          finishGeneration(code, generation);
-        },
-        onConnectionStatus: (phase: PtyConnectionStatusPhase, generation: string) => {
-          if (!disposed) recordPtyConnectionStatus(sessionIdRef.current, phase, generation);
-        },
-        onPendingConnectionStatus: (phase: PtyConnectionStatusPhase) => {
-          if (!disposed) recordPendingPtyConnectionStatus(sessionIdRef.current, phase);
-        },
+        onTransportLost: (_reason: string, generation: string) => { handleSshTransportLost(sessionIdRef.current, generation, (cleanup) => cleanups.push(cleanup)); finishGeneration(SSH_DISCONNECTED_EXIT_CODE, generation); },
+        onExit: (code: number, generation: string) => { finishGeneration(code, generation); },
+        onConnectionStatus: (phase: PtyConnectionStatusPhase, generation: string) => { if (!disposed) recordPtyConnectionStatus(sessionIdRef.current, phase, generation); },
+        onPendingConnectionStatus: (phase: PtyConnectionStatusPhase) => { if (!disposed) recordPendingPtyConnectionStatus(sessionIdRef.current, phase); },
       });
-      const ptyHandlers = generationGate.handlers;
-      let pty;
+      const ptyHandlers = generationGate.handlers; let pty;
       try {
         // Remote (SSH) and local sessions share the PtySession interface and
         // the pty_write/resize/close commands; openSessionPty picks the opener.
@@ -408,18 +422,25 @@ function TerminalViewImpl({
         // One-shot credentials (password / passphrase) live outside the Session
         // object so they're never persisted; merge them in only for this open.
         const creds = sessionRemote ? takeSshCredentials(sessionIdRef.current) : undefined;
+        if (sessionRemote) markSshOneShotCredentialConsumed(sessionIdRef.current, creds);
         pty = await openSessionPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
           cwd,
-          remote: sessionRemote
-            ? { ...sessionRemote, password: creds?.password, keyPassphrase: creds?.keyPassphrase }
-            : undefined,
+          remote: sessionRemote ? toRemoteOpenInfo(sessionRemote, creds) : undefined,
         });
       } catch (e) {
         if (disposed) return;
-        term.write(`\r\n\x1b[31m${t("pty.error.inline", { error: String(e) })}\x1b[0m\r\n`);
-        setOpenError(String(e));
         const cur = getCurrentSession();
-        reportSshOpenFailure(sessionIdRef.current, cur?.remote, String(e));
+        const safeError = cur?.remote ? safeSshFailure(e).message : String(e);
+        if (handleSshReconnectFailure(sessionIdRef.current, e, (cleanup) => cleanups.push(cleanup))) {
+          if (useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionIdRef.current)?.connection?.phase === "needsUserAction") {
+            term.write(`\r\n\x1b[31m${t("pty.error.inline", { error: safeError })}\x1b[0m\r\n`);
+            setOpenError(safeError);
+          }
+          return;
+        }
+        term.write(`\r\n\x1b[31m${t("pty.error.inline", { error: safeError })}\x1b[0m\r\n`);
+        setOpenError(safeError);
+        reportSshOpenFailure(sessionIdRef.current, cur?.remote, e);
         if (!cur?.remote) {
           useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
             type: "failed",
@@ -437,6 +458,14 @@ function TerminalViewImpl({
       }
       generationGate.publish(pty.generation);
       ptyRef.current = pty;
+      cleanups.push(registerTerminalBinding({
+        logicalSessionId: sessionIdRef.current,
+        paneId: sessionIdRef.current,
+        physicalPtyId: pty.id,
+        transportGeneration: pty.generation,
+        terminalInstanceEpoch: terminalInstanceEpochRef.current,
+      }, () => term.focus()));
+      if (activeRef.current) setLogicalActiveTerminalPane(sessionIdRef.current);
       useSessionsStore.getState().updateSession(sessionIdRef.current, {
         ptyId: pty.id,
         transportGeneration: pty.generation,
@@ -449,6 +478,9 @@ function TerminalViewImpl({
         });
         setOpenError(t("pty.error.subtitle"));
         return;
+      }
+      if (getCurrentSession()?.sshReconnectForwards !== undefined) {
+        completeSshAutoReconnect(sessionIdRef.current, { logicalSessionId: sessionIdRef.current, physicalPtyId: pty.id, transportGeneration: pty.generation });
       }
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkWriter(sessionIdRef.current, (data) => ptyRef.current?.write(data) ?? Promise.reject(new Error("PTY unavailable"))));
       setPtyReady(true); // triggers the pendingInput effect once, now that pty is live
@@ -535,7 +567,10 @@ function TerminalViewImpl({
       // visibility regain (see terminal-atlas-refresh for the root cause).
       cleanups.push(registerTerminalAtlasRefresh(rebuildWebglAtlas));
       cleanups.push(resetAgentObservers);
-      if (active) term.focus();
+      if (activeRef.current) {
+        const focusToken = issueFocusReturnToken(sessionIdRef.current);
+        if (focusToken) returnTerminalFocus(focusToken);
+      }
     })().catch((error) => {
       if (!disposed) setOpenError(reportTerminalInitializationFailure(sessionIdRef.current, Boolean(session?.remote), error));
     });
@@ -563,7 +598,17 @@ function TerminalViewImpl({
   }, []);
   return (
     <>
-      <TerminalViewChrome sessionId={sessionId} containerRef={containerRef} getTerminal={() => termRef.current} search={search} quickSelectOverlay={quickSelect.quickSelectOverlay} />
+      <TerminalViewChrome
+        sessionId={sessionId}
+        containerRef={containerRef}
+        getTerminal={() => termRef.current}
+        search={search}
+        capturePasteTarget={(terminal) => {
+          const action = captureTerminalActionTarget(sessionIdRef.current, terminal);
+          return () => action?.isCurrent() === true;
+        }}
+        quickSelectOverlay={quickSelect.quickSelectOverlay}
+      />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {
         void cancelSshOpen(sessionId);
         useSessionsStore.getState().closeSession(sessionId);
@@ -573,6 +618,5 @@ function TerminalViewImpl({
     </>
   );
 }
-// Memoized (with stable props from MainArea) so a MainArea re-render on each
-// agent heartbeat doesn't re-render every mounted terminal.
+// Memoized so a MainArea agent heartbeat doesn't re-render every mounted terminal.
 export const TerminalView = memo(TerminalViewImpl);

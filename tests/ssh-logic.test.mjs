@@ -19,9 +19,12 @@ import {
 import {
   toProfile,
   toRaw,
+  toImportResult,
   makeHostId,
   normalizeSshPort,
   parseSshPort,
+  resolveSshProfileRoute,
+  toProfilesPanelModel,
 } from "../src/modules/ssh/hosts-model.ts";
 import {
   stashSshCredentials,
@@ -158,6 +161,7 @@ test("toProfile and toRaw are inverses (round-trip preserves all fields)", () =>
     user: "root",
     authMethod: "key",
     identityFile: "~/.ssh/id_rsa",
+    certificateFile: "~/.ssh/id_rsa-cert.pub",
   };
   const roundTripped = toProfile(toRaw(original));
   assert.deepEqual(roundTripped, original);
@@ -175,6 +179,102 @@ test("legacy profiles remain without an inferred authentication method", () => {
   assert.equal(profile.identityFile, "");
   assert.equal(profile.label, "");
   assert.equal(profile.authMethod, undefined);
+});
+
+test("profile and importer boundaries preserve optional route diagnostics", () => {
+  const result = toImportResult({
+    imported: [{
+      id: "target",
+      label: "target",
+      host: "private.example",
+      port: 22,
+      user: "deploy",
+      identity_file: "",
+      proxy_jump_profile_id: "jump",
+    }],
+    skipped: 1,
+    diagnostics: [{
+      source: "/home/test/.ssh/config",
+      line: 7,
+      alias: "unsafe",
+      code: "include_dependency",
+      directive: "Include",
+    }],
+  });
+  assert.equal(result.imported[0].proxyJumpProfileId, "jump");
+  assert.equal(result.diagnostics[0].line, 7);
+  assert.equal(result.diagnostics[0].severity, "error");
+  assert.equal(toRaw(result.imported[0]).proxy_jump_profile_id, "jump");
+});
+
+test("profile panel contract resolves one direct jump without flattening it", () => {
+  const jump = {
+    id: "jump",
+    label: "jump",
+    host: "jump.example",
+    port: 22,
+    user: "ops",
+    identityFile: "",
+  };
+  const target = {
+    id: "target",
+    label: "target",
+    host: "target.internal",
+    port: 22,
+    user: "deploy",
+    identityFile: "",
+    proxyJumpProfileId: "jump",
+  };
+  const model = toProfilesPanelModel([jump], {
+    imported: [target],
+    skipped: 1,
+    diagnostics: [{
+      source: "/home/test/.ssh/config",
+      line: 9,
+      alias: "unsafe",
+      code: "proxy_jump_cycle",
+      directive: "ProxyJump",
+      severity: "error",
+    }],
+  });
+  const resolution = resolveSshProfileRoute("target", "sshConfig", model);
+  assert.equal(model.schemaVersion, 1);
+  assert.equal(model.configDiagnostics[0].code, "proxy_jump_cycle");
+  assert.equal(resolution.status, "ready");
+  assert.equal(resolution.route.target.id, "target");
+  assert.equal(resolution.route.jump.id, "jump");
+});
+
+test("profile panel contract fails closed with all four exact rejected codes", () => {
+  const target = {
+    id: "target",
+    label: "target",
+    host: "target.internal",
+    port: 22,
+    user: "deploy",
+    identityFile: "",
+    proxyJumpProfileId: "jump",
+  };
+  const base = {
+    schemaVersion: 1,
+    savedProfiles: [],
+    configProfiles: [target],
+    configSkipped: 0,
+    configDiagnostics: [],
+  };
+  assert.equal(resolveSshProfileRoute("gone", "sshConfig", base).code, "profileMissing");
+  assert.equal(resolveSshProfileRoute("target", "sshConfig", base).code, "jumpMissing");
+
+  const jump = { ...target, id: "jump", proxyJumpProfileId: undefined };
+  assert.equal(resolveSshProfileRoute("target", "sshConfig", {
+    ...base,
+    savedProfiles: [jump],
+    configProfiles: [target, { ...jump }],
+  }).code, "jumpAmbiguous");
+  assert.equal(resolveSshProfileRoute("target", "sshConfig", {
+    ...base,
+    savedProfiles: [{ ...jump, proxyJumpProfileId: "outer" }],
+  }).code, "jumpRouted");
 });
 
 test("makeHostId produces a host- prefixed unique-looking id", () => {
@@ -205,11 +305,33 @@ test("stashSshCredentials with no secrets stores nothing (no empty entry)", () =
   assert.equal(takeSshCredentials("s2"), undefined);
 });
 
+test("a new attempt without secrets revokes older unconsumed hop credentials", () => {
+  stashSshCredentials("session-replaced", {
+    keyPassphrase: "old-target-secret",
+    jumpKeyPassphrase: "old-jump-secret",
+  });
+  stashSshCredentials("session-replaced", {});
+  assert.equal(takeSshCredentials("session-replaced"), undefined);
+});
+
 test("stashSshCredentials with only a key passphrase is retained and consumed once", () => {
   stashSshCredentials("s3", { keyPassphrase: "secret" });
   const first = takeSshCredentials("s3");
   assert.equal(first?.keyPassphrase, "secret");
   assert.equal(takeSshCredentials("s3"), undefined);
+});
+
+test("jump-hop credentials remain separate and one-shot", () => {
+  stashSshCredentials("routed", {
+    password: "target-password",
+    jumpPassword: "jump-password",
+    jumpKeyPassphrase: "jump-passphrase",
+  });
+  const first = takeSshCredentials("routed");
+  assert.equal(first?.password, "target-password");
+  assert.equal(first?.jumpPassword, "jump-password");
+  assert.equal(first?.jumpKeyPassphrase, "jump-passphrase");
+  assert.equal(takeSshCredentials("routed"), undefined);
 });
 
 test("credentials for different sessions are independent", () => {

@@ -29,7 +29,12 @@ export type PersistedSession = Pick<
 
 export type PersistedSessionV2 = PersistedSession;
 
-function sanitizeRemoteInfo(remote: unknown): Session["remote"] | undefined {
+type SanitizedRemoteEndpoint = Pick<
+  NonNullable<Session["remote"]>,
+  "host" | "port" | "user" | "authMethod" | "identityFile" | "certificateFile"
+>;
+
+function sanitizeRemoteEndpoint(remote: unknown): SanitizedRemoteEndpoint | undefined {
   if (!remote || typeof remote !== "object") return undefined;
   const r = remote as Record<string, unknown>;
   const host = typeof r.host === "string" ? r.host.trim() : "";
@@ -37,16 +42,40 @@ function sanitizeRemoteInfo(remote: unknown): Session["remote"] | undefined {
   const port = parseSshPort(r.port);
   if (!host || !user || port === null) return undefined;
 
-  const identityFile = typeof r.identityFile === "string" ? r.identityFile.trim() : "";
+  const rawIdentityFile = typeof r.identityFile === "string" ? r.identityFile.trim() : "";
+  const identityFile = rawIdentityFile.length <= 1024 && !/[\0\r\n]/.test(rawIdentityFile)
+    ? rawIdentityFile
+    : "";
+  const rawCertificateFile = typeof r.certificateFile === "string" ? r.certificateFile.trim() : "";
+  const certificateFile = rawCertificateFile.length <= 1024 && !/[\0\r\n]/.test(rawCertificateFile)
+    ? rawCertificateFile
+    : "";
   const authMethod = isSshAuthMethod(r.authMethod) ? r.authMethod : undefined;
   return {
     host,
     port,
     user,
     ...(authMethod ? { authMethod } : {}),
-    // Keep a legacy key path as a visible suggestion for the reconnect sheet,
-    // but never infer Key from it. The user must choose an auth method first.
     ...((authMethod === "key" || !authMethod) && identityFile ? { identityFile } : {}),
+    ...((authMethod === "key" || !authMethod) && identityFile && certificateFile
+      ? { certificateFile }
+      : {}),
+  };
+}
+
+function sanitizeRemoteInfo(remote: unknown): Session["remote"] | undefined {
+  const endpoint = sanitizeRemoteEndpoint(remote);
+  if (!endpoint || !remote || typeof remote !== "object") return undefined;
+  const r = remote as Record<string, unknown>;
+  const rawRoute = r.route && typeof r.route === "object" ? r.route as Record<string, unknown> : null;
+  const rawJump = rawRoute?.jump && typeof rawRoute.jump === "object" ? rawRoute.jump as Record<string, unknown> : null;
+  const sanitizedJump = rawJump ? sanitizeRemoteEndpoint(rawJump) : undefined;
+  const profileId = typeof rawRoute?.profileId === "string" ? rawRoute.profileId.trim() : "";
+  const route = profileId && profileId.length <= 1024 && !/[\0\r\n]/.test(profileId) && sanitizedJump
+    ? { profileId, jump: sanitizedJump }
+    : undefined;
+  return {
+    ...endpoint,
     // Persist the explicit boolean both ways: the backend now defaults a
     // missing value to `true`, so an opt-OUT (`false`) must survive a reopen —
     // dropping it would silently re-enable injection. Only an undefined value
@@ -54,6 +83,8 @@ function sanitizeRemoteInfo(remote: unknown): Session["remote"] | undefined {
     ...(typeof r.injectShellIntegration === "boolean"
       ? { injectShellIntegration: r.injectShellIntegration }
       : {}),
+    ...(r.autoReconnect === true ? { autoReconnect: true } : {}),
+    ...(route ? { route } : {}),
   };
 }
 
@@ -67,7 +98,7 @@ export interface PersistedUILayoutV2 {
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   split: SplitState;
-  inspectorTab: "overview" | "changes" | "files" | "preview" | "notes";
+  inspectorTab: "overview" | "changes" | "files" | "transfers" | "metadata" | "forwarding" | "diagnostics" | "knownHosts" | "preview" | "notes";
 }
 
 export interface PersistedTerminalSnapshot {
@@ -248,7 +279,7 @@ function sanitizePersistedSplit(raw: unknown, sessionIds: ReadonlySet<string>): 
 }
 
 function isValidInspectorTab(v: unknown): v is PersistedUILayoutV2["inspectorTab"] {
-  return v === "overview" || v === "changes" || v === "files" || v === "preview" || v === "notes";
+  return v === "overview" || v === "changes" || v === "files" || v === "transfers" || v === "metadata" || v === "forwarding" || v === "diagnostics" || v === "knownHosts" || v === "preview" || v === "notes";
 }
 
 function sanitizeTrueRecord(raw: unknown): Record<string, true> {

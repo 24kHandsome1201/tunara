@@ -112,8 +112,8 @@ impl Drop for UploadRegistration {
 
 #[derive(Clone, Serialize)]
 pub struct UploadProgress {
-    transferred: u64,
-    total: u64,
+    pub(crate) transferred: u64,
+    pub(crate) total: u64,
 }
 
 #[derive(Serialize)]
@@ -359,15 +359,11 @@ fn shell_quote(value: &str) -> String {
 }
 
 /// Resolve the SshSession behind a session id, or a descriptive error.
-async fn sftp_for(
+pub(crate) async fn sftp_for(
     state: &tauri::State<'_, PtyState>,
     id: u32,
 ) -> Result<std::sync::Arc<russh_sftp::client::SftpSession>, String> {
-    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
-    match session.as_ref() {
-        Session::Ssh(ssh) => ssh.sftp().await,
-        Session::Local(_) => Err("not a remote session".to_string()),
-    }
+    super::sftp_common::session(state.inner(), id).await
 }
 
 /// List a remote directory. Mirrors fs_read_dir: dirs first, hidden filtered
@@ -379,56 +375,62 @@ pub async fn ssh_fs_read_dir(
     path: String,
     include_hidden: Option<bool>,
 ) -> Result<Vec<RemoteDirEntry>, String> {
-    let include_hidden = include_hidden.unwrap_or(false);
-    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
-    let entries = match session.as_ref() {
-        Session::Ssh(ssh) => {
-            ssh.read_dir_bounded(
-                &path,
-                MAX_REMOTE_DIR_ENTRIES,
-                MAX_REMOTE_DIR_NAME_BYTES,
-                SFTP_DIRECTORY_TIMEOUT,
-            )
-            .await?
-        }
-        Session::Local(_) => return Err("not a remote session".to_string()),
-    };
-
-    let mut out: Vec<RemoteDirEntry> = Vec::new();
-    for entry in entries {
-        let name = entry.filename;
-        if name == "." || name == ".." {
-            continue;
-        }
-        if !include_hidden && name.starts_with('.') {
-            continue;
-        }
-        let meta = entry.attrs;
-        let kind = if meta.is_dir() {
-            EntryKind::Dir
-        } else if meta.is_symlink() {
-            EntryKind::Symlink
-        } else {
-            EntryKind::File
+    (async {
+        let include_hidden = include_hidden.unwrap_or(false);
+        let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+        let entries = match session.as_ref() {
+            Session::Ssh(ssh) => {
+                ssh.read_dir_bounded(
+                    &path,
+                    MAX_REMOTE_DIR_ENTRIES,
+                    MAX_REMOTE_DIR_NAME_BYTES,
+                    SFTP_DIRECTORY_TIMEOUT,
+                )
+                .await?
+            }
+            Session::Local(_) => return Err("not a remote session".to_string()),
         };
-        out.push(RemoteDirEntry {
-            name,
-            kind,
-            size: meta.size.unwrap_or(0),
-            mtime: remote_mtime_millis(meta.mtime.unwrap_or(0)),
+
+        let mut out: Vec<RemoteDirEntry> = Vec::new();
+        for entry in entries {
+            let name = entry.filename;
+            if name == "." || name == ".." {
+                continue;
+            }
+            if !include_hidden && name.starts_with('.') {
+                continue;
+            }
+            let meta = entry.attrs;
+            let kind = if meta.is_dir() {
+                EntryKind::Dir
+            } else if meta.is_symlink() {
+                EntryKind::Symlink
+            } else {
+                EntryKind::File
+            };
+            out.push(RemoteDirEntry {
+                name,
+                kind,
+                size: meta.size.unwrap_or(0),
+                mtime: remote_mtime_millis(meta.mtime.unwrap_or(0)),
+            });
+        }
+
+        // Dirs first, then case-insensitive by name. Cache the lowercased key so
+        // to_lowercase() runs once per entry (n) instead of per comparison (n log n).
+        out.sort_by_cached_key(|e| {
+            let rank: u8 = match e.kind {
+                EntryKind::Dir => 0,
+                _ => 1,
+            };
+            (rank, e.name.to_lowercase())
         });
-    }
-
-    // Dirs first, then case-insensitive by name. Cache the lowercased key so
-    // to_lowercase() runs once per entry (n) instead of per comparison (n log n).
-    out.sort_by_cached_key(|e| {
-        let rank: u8 = match e.kind {
-            EntryKind::Dir => 0,
-            _ => 1,
-        };
-        (rank, e.name.to_lowercase())
-    });
-    Ok(out)
+        Ok(out)
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpRead, error)
+    })
 }
 
 /// Read a remote file for preview. Same caps/behavior as fs_read_file:
@@ -440,72 +442,79 @@ pub async fn ssh_fs_read_file(
     id: u32,
     path: String,
 ) -> Result<RemoteReadResult, String> {
-    let sftp = sftp_for(&state, id).await?;
+    (async {
+        let sftp = sftp_for(&state, id).await?;
 
-    let link_meta = await_stage(
-        "lstat remote file",
-        SFTP_CONTROL_TIMEOUT,
-        sftp.symlink_metadata(&path),
-    )
-    .await?;
-    let editable_regular = link_meta.is_regular() && !link_meta.is_symlink();
-    let meta = await_stage(
-        "stat remote file",
-        SFTP_CONTROL_TIMEOUT,
-        sftp.metadata(&path),
-    )
-    .await?;
-    let size = meta.size.unwrap_or(0);
-    if size > MAX_READ_BYTES {
-        return Ok(RemoteReadResult::TooLarge {
-            size,
-            limit: MAX_READ_BYTES,
-        });
-    }
+        let link_meta = await_stage(
+            "lstat remote file",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.symlink_metadata(&path),
+        )
+        .await?;
+        let editable_regular = link_meta.is_regular() && !link_meta.is_symlink();
+        let meta = await_stage(
+            "stat remote file",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.metadata(&path),
+        )
+        .await?;
+        let size = meta.size.unwrap_or(0);
+        if size > MAX_READ_BYTES {
+            return Ok(RemoteReadResult::TooLarge {
+                size,
+                limit: MAX_READ_BYTES,
+            });
+        }
 
-    // Stream into a BOUNDED buffer rather than `sftp.read()` (which buffers the
-    // whole file before any cap applies). The stat size above is server-
-    // controlled and may under-report (special/growing files) or be a lie, so a
-    // compromised peer could otherwise OOM us by streaming gigabytes. `take`
-    // caps in-memory bytes at MAX_READ_BYTES + 1 regardless of what stat said;
-    // reading exactly one byte past the cap lets us still report TooLarge.
-    let mut file = await_stage("open remote file", SFTP_CONTROL_TIMEOUT, sftp.open(&path)).await?;
-    let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_READ_BYTES + 1) as usize);
-    await_stage(
-        "read remote file",
-        SFTP_PREVIEW_TIMEOUT,
-        (&mut file).take(MAX_READ_BYTES + 1).read_to_end(&mut bytes),
-    )
-    .await?;
+        // Stream into a BOUNDED buffer rather than `sftp.read()` (which buffers the
+        // whole file before any cap applies). The stat size above is server-
+        // controlled and may under-report (special/growing files) or be a lie, so a
+        // compromised peer could otherwise OOM us by streaming gigabytes. `take`
+        // caps in-memory bytes at MAX_READ_BYTES + 1 regardless of what stat said;
+        // reading exactly one byte past the cap lets us still report TooLarge.
+        let mut file =
+            await_stage("open remote file", SFTP_CONTROL_TIMEOUT, sftp.open(&path)).await?;
+        let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_READ_BYTES + 1) as usize);
+        await_stage(
+            "read remote file",
+            SFTP_PREVIEW_TIMEOUT,
+            (&mut file).take(MAX_READ_BYTES + 1).read_to_end(&mut bytes),
+        )
+        .await?;
 
-    // If we hit the +1 byte, the real file is larger than the cap (stat
-    // under-reported or lied). Don't hand back a preview we meant to refuse.
-    let real_size = bytes.len() as u64;
-    if real_size > MAX_READ_BYTES {
-        return Ok(RemoteReadResult::TooLarge {
-            size: real_size,
-            limit: MAX_READ_BYTES,
-        });
-    }
+        // If we hit the +1 byte, the real file is larger than the cap (stat
+        // under-reported or lied). Don't hand back a preview we meant to refuse.
+        let real_size = bytes.len() as u64;
+        if real_size > MAX_READ_BYTES {
+            return Ok(RemoteReadResult::TooLarge {
+                size: real_size,
+                limit: MAX_READ_BYTES,
+            });
+        }
 
-    // Null-byte heuristic for binary detection, like the local reader.
-    let preview_len = bytes.len().min(MAX_TEXT_PREVIEW_BYTES as usize);
-    let slice = &bytes[..preview_len];
-    if slice.contains(&0) {
-        return Ok(RemoteReadResult::Binary { size });
-    }
-    match std::str::from_utf8(slice) {
-        Ok(content) => Ok(RemoteReadResult::Text {
-            fingerprint: (editable_regular
-                && bytes.len() as u64 <= MAX_TEXT_PREVIEW_BYTES
-                && bytes.len() as u64 == size)
-                .then(|| content_fingerprint(&bytes)),
-            content: content.to_string(),
-            size,
-            truncated: bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES,
-        }),
-        Err(_) => Ok(RemoteReadResult::Binary { size }),
-    }
+        // Null-byte heuristic for binary detection, like the local reader.
+        let preview_len = bytes.len().min(MAX_TEXT_PREVIEW_BYTES as usize);
+        let slice = &bytes[..preview_len];
+        if slice.contains(&0) {
+            return Ok(RemoteReadResult::Binary { size });
+        }
+        match std::str::from_utf8(slice) {
+            Ok(content) => Ok(RemoteReadResult::Text {
+                fingerprint: (editable_regular
+                    && bytes.len() as u64 <= MAX_TEXT_PREVIEW_BYTES
+                    && bytes.len() as u64 == size)
+                    .then(|| content_fingerprint(&bytes)),
+                content: content.to_string(),
+                size,
+                truncated: bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES,
+            }),
+            Err(_) => Ok(RemoteReadResult::Binary { size }),
+        }
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpRead, error)
+    })
 }
 
 async fn read_remote_editable_bytes(
@@ -570,6 +579,7 @@ pub async fn ssh_fs_write_text_file(
     content: String,
     expected_fingerprint: String,
 ) -> Result<crate::modules::fs::file::WriteResult, String> {
+    (async {
     if content.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
         return Err(format!(
             "editable content exceeds {MAX_TEXT_PREVIEW_BYTES} bytes"
@@ -634,6 +644,8 @@ pub async fn ssh_fs_write_text_file(
             "outcomeUnknown:{attempted_fingerprint}:{expected_mode:o}:lockOwner={replace_lock_owner}:cleanupPending={cleanup_pending}"
         )),
     }
+
+    }).await.map_err(|error: String| crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpWrite, error))
 }
 
 struct SftpWriteAdapter<'a> {
@@ -991,15 +1003,21 @@ pub async fn ssh_fs_reconcile_text_write(
     expected_mode: u32,
     replace_lock_owner: String,
 ) -> Result<crate::modules::fs::file::WriteResult, String> {
-    let sftp = sftp_for(&state, id).await?;
-    reconcile_text_write_with_sftp(
-        &sftp,
-        &path,
-        &attempted_fingerprint,
-        expected_mode,
-        &replace_lock_owner,
-    )
+    (async {
+        let sftp = sftp_for(&state, id).await?;
+        reconcile_text_write_with_sftp(
+            &sftp,
+            &path,
+            &attempted_fingerprint,
+            expected_mode,
+            &replace_lock_owner,
+        )
+        .await
+    })
     .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpWrite, error)
+    })
 }
 
 async fn reconcile_text_write_with_sftp(
@@ -1034,7 +1052,7 @@ async fn reconcile_text_write_with_sftp(
 // Cap a single download so a malicious/compromised remote can't exhaust memory
 // (whole file is buffered before writing). 100 MiB is generous for a file
 // browser's download affordance.
-const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
+pub(crate) const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
 
 /// Validate the caller-supplied local destination. The remote fully controls
 /// the downloaded bytes, so an unvetted `local_path` would let a compromised
@@ -1049,7 +1067,7 @@ const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
 /// and a symlinked subdir (e.g. `~/Downloads -> /Volumes/ext`) would let bytes
 /// escape home. Canonicalizing the parent collapses `..` and resolves symlinks,
 /// so the prefix test runs against the real on-disk location.
-fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, String> {
+pub(crate) fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, String> {
     let path = std::path::Path::new(local_path);
     if !path.is_absolute() {
         return Err("download path must be absolute".into());
@@ -1135,7 +1153,7 @@ fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, Stri
 
     let target = real_parent.join(file_name);
     // UX guard: refuse an existing destination so a download doesn't silently
-    // clobber. The write itself uses create_new (see ssh_fs_download) so the
+    // clobber. The write itself uses create_new (see legacy_download_file) so the
     // no-overwrite guarantee is atomic; this is just an earlier friendly error.
     if target.exists() {
         return Err("destination already exists".into());
@@ -1147,8 +1165,7 @@ fn validate_download_target(local_path: &str) -> Result<std::path::PathBuf, Stri
 /// safe location (see `validate_download_target`) because the bytes are
 /// remote-controlled. Streamed chunk-by-chunk (O(chunk) memory) and aborted
 /// once a byte counter exceeds MAX_DOWNLOAD_BYTES.
-#[tauri::command]
-pub async fn ssh_fs_download(
+pub(crate) async fn legacy_download_file(
     state: tauri::State<'_, PtyState>,
     id: u32,
     remote_path: String,
@@ -1236,8 +1253,7 @@ pub async fn ssh_fs_download(
 
 /// Cancel an active upload. The transfer loop checks the flag before each
 /// local read and remote write, then removes its partial remote file.
-#[tauri::command]
-pub fn ssh_fs_cancel_upload(transfer_id: String) -> bool {
+pub(crate) fn cancel_upload(transfer_id: String) -> bool {
     let Some(table) = UPLOAD_CANCELLATIONS.get() else {
         return false;
     };
@@ -1260,15 +1276,21 @@ pub fn ssh_fs_cancel_upload(transfer_id: String) -> bool {
 /// transfer when that safe primitive is unavailable. Cancellation and I/O
 /// failures never truncate the existing destination,
 /// and a racing directory cannot capture the temporary file as a child.
-#[tauri::command]
-pub async fn ssh_fs_upload(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn upload_file(
     state: tauri::State<'_, PtyState>,
     id: u32,
     transfer_id: String,
     local_path: String,
+    opened_source: Option<std::fs::File>,
     remote_path: String,
     overwrite: bool,
-    on_progress: Channel<UploadProgress>,
+    mode: UploadMode,
+    mut on_progress: impl FnMut(UploadProgress),
+    external_cancel: Option<Arc<AtomicBool>>,
+    mut on_allocated: impl FnMut(&str, u64) -> Result<(), String>,
+    mut on_checkpoint: impl FnMut(&str, u64, String) -> Result<(), String>,
+    mut on_commit: impl FnMut(String) -> Result<Option<crate::modules::pty::CommitLease>, String>,
 ) -> Result<u64, String> {
     let registration = UploadRegistration::register(&transfer_id)?;
     validate_remote_edit_path(&remote_path)?;
@@ -1282,15 +1304,23 @@ pub async fn ssh_fs_upload(
     {
         return Err("upload source path must not contain '..'".into());
     }
-    let path_metadata = tokio::fs::symlink_metadata(local)
-        .await
-        .map_err(|error| format!("read upload source metadata failed: {error}"))?;
-    if !path_metadata.file_type().is_file() {
-        return Err("upload source must be a regular file (symlinks are not followed)".into());
-    }
-    let mut source = tokio::fs::File::open(local)
-        .await
-        .map_err(|error| format!("open upload source failed: {error}"))?;
+    let path_metadata = if opened_source.is_none() {
+        let metadata = tokio::fs::symlink_metadata(local)
+            .await
+            .map_err(|error| format!("read upload source metadata failed: {error}"))?;
+        if !metadata.file_type().is_file() {
+            return Err("upload source must be a regular file (symlinks are not followed)".into());
+        }
+        Some(metadata)
+    } else {
+        None
+    };
+    let mut source = match opened_source {
+        Some(file) => tokio::fs::File::from_std(file),
+        None => tokio::fs::File::open(local)
+            .await
+            .map_err(|error| format!("open upload source failed: {error}"))?,
+    };
     let opened_metadata = source
         .metadata()
         .await
@@ -1299,7 +1329,7 @@ pub async fn ssh_fs_upload(
         return Err("opened upload source is not a regular file".into());
     }
     #[cfg(unix)]
-    {
+    if let Some(path_metadata) = path_metadata {
         use std::os::unix::fs::MetadataExt;
         if path_metadata.dev() != opened_metadata.dev()
             || path_metadata.ino() != opened_metadata.ino()
@@ -1307,6 +1337,8 @@ pub async fn ssh_fs_upload(
             return Err("upload source changed while it was being opened".into());
         }
     }
+    #[cfg(not(unix))]
+    let _ = path_metadata;
     let total = opened_metadata.len();
 
     let session = state.get(id).ok_or_else(|| "no session".to_string())?;
@@ -1391,16 +1423,28 @@ pub async fn ssh_fs_upload(
         (remote_path.clone(), file)
     };
     let (partial_path, mut destination) = upload_path;
-    let _ = on_progress.send(UploadProgress {
+    if let Err(error) = on_allocated(&partial_path, total) {
+        return Err(encode_upload_error(
+            "failed",
+            &format!("upload journal allocation failed: {error}"),
+            Some(&partial_path),
+        ));
+    }
+    on_progress(UploadProgress {
         transferred: 0,
         total,
     });
     let mut transferred = 0_u64;
+    let mut content_hash = Sha256::new();
     let mut buffer = vec![0_u8; 64 * 1024];
 
     let transfer_result: Result<(), String> = async {
         loop {
-            if registration.cancelled.load(Ordering::Acquire) {
+            if registration.cancelled.load(Ordering::Acquire)
+                || external_cancel
+                    .as_ref()
+                    .is_some_and(|cancelled| cancelled.load(Ordering::Acquire))
+            {
                 return Err("upload cancelled".into());
             }
             let count = source
@@ -1417,7 +1461,13 @@ pub async fn ssh_fs_upload(
             )
             .await?;
             transferred = transferred.saturating_add(count as u64);
-            let _ = on_progress.send(UploadProgress { transferred, total });
+            content_hash.update(&buffer[..count]);
+            on_checkpoint(
+                &partial_path,
+                transferred,
+                format!("{:x}", content_hash.clone().finalize()),
+            )?;
+            on_progress(UploadProgress { transferred, total });
         }
         if let Some(initial_mode) = replacement_mode {
             let final_mode = validate_upload_replace_target(&sftp, &remote_path).await?;
@@ -1438,7 +1488,11 @@ pub async fn ssh_fs_upload(
             destination.shutdown(),
         )
         .await?;
-        if registration.cancelled.load(Ordering::Acquire) {
+        if registration.cancelled.load(Ordering::Acquire)
+            || external_cancel
+                .as_ref()
+                .is_some_and(|cancelled| cancelled.load(Ordering::Acquire))
+        {
             return Err("upload cancelled".into());
         }
         Ok(())
@@ -1449,7 +1503,47 @@ pub async fn ssh_fs_upload(
     if let Err(error) = transfer_result {
         return Err(upload_residue_error(&partial_path, error));
     }
+    let final_hash = format!("{:x}", content_hash.finalize());
+    if overwrite && mode == UploadMode::Journaled {
+        // Mandatory full SFTP readback proves the server-side partial bytes
+        // before any rename mutation is attempted.
+        let mut readback = await_stage(
+            "open remote upload readback",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.open(&partial_path),
+        )
+        .await?;
+        let mut remote_hash = Sha256::new();
+        let mut remote_bytes = 0_u64;
+        loop {
+            let count = await_stage(
+                "read remote upload readback",
+                SFTP_CHUNK_TIMEOUT,
+                readback.read(&mut buffer),
+            )
+            .await?;
+            if count == 0 {
+                break;
+            }
+            remote_bytes = remote_bytes.saturating_add(count as u64);
+            if remote_bytes > transferred {
+                return Err(upload_residue_error(
+                    &partial_path,
+                    "remote upload readback exceeded expected size".into(),
+                ));
+            }
+            remote_hash.update(&buffer[..count]);
+        }
+        if remote_bytes != transferred || format!("{:x}", remote_hash.finalize()) != final_hash {
+            return Err(upload_residue_error(
+                &partial_path,
+                "remote upload readback SHA-256 mismatch".into(),
+            ));
+        }
+    }
     if overwrite {
+        let _commit_lease =
+            on_commit(final_hash).map_err(|error| upload_residue_error(&partial_path, error))?;
         if let Err(error) = registration.begin_commit() {
             return Err(upload_residue_error(&partial_path, error));
         }
@@ -1462,10 +1556,51 @@ pub async fn ssh_fs_upload(
             // not unlink either pathname: SFTP cannot prove path ownership.
             return Err(uncertain_upload_error(&partial_path));
         }
-    } else if let Err(error) = registration.begin_commit() {
-        return Err(upload_residue_error(&partial_path, error));
+    } else {
+        let _commit_lease =
+            on_commit(final_hash).map_err(|error| upload_residue_error(&partial_path, error))?;
+        if let Err(error) = registration.begin_commit() {
+            return Err(upload_residue_error(&partial_path, error));
+        }
     }
     Ok(transferred)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum UploadMode {
+    Legacy,
+    Journaled,
+}
+
+/// Legacy single-file upload IPC adapter. New callers should use
+/// `ssh_transfer_upload`, which adds attempts and typed terminal outcomes.
+pub(crate) async fn legacy_upload_file(
+    state: tauri::State<'_, PtyState>,
+    id: u32,
+    transfer_id: String,
+    local_path: String,
+    remote_path: String,
+    overwrite: bool,
+    on_progress: Channel<UploadProgress>,
+) -> Result<u64, String> {
+    upload_file(
+        state,
+        id,
+        transfer_id,
+        local_path,
+        None,
+        remote_path,
+        overwrite,
+        UploadMode::Legacy,
+        |progress| {
+            let _ = on_progress.send(progress);
+        },
+        None,
+        |_, _| Ok(()),
+        |_, _, _| Ok(()),
+        |_| Ok(None),
+    )
+    .await
 }
 
 /// Pick the better of an SFTP-derived path and an `echo $HOME` exec result.
@@ -1512,48 +1647,54 @@ fn choose_remote_home(sftp_home: Option<&str>, exec_home: Option<&str>) -> Optio
 /// filesystem root (see `choose_remote_home`).
 #[tauri::command]
 pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<String, String> {
-    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
-    let ssh = match session.as_ref() {
-        Session::Ssh(ssh) => ssh,
-        Session::Local(_) => return Err("not a remote session".to_string()),
-    };
+    (async {
+        let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+        let ssh = match session.as_ref() {
+            Session::Ssh(ssh) => ssh,
+            Session::Local(_) => return Err("not a remote session".to_string()),
+        };
 
-    let sftp = ssh.sftp().await?;
-    let sftp_home = await_stage(
-        "resolve remote home",
-        SFTP_CONTROL_TIMEOUT,
-        sftp.canonicalize("."),
-    )
+        let sftp = ssh.sftp().await?;
+        let sftp_home = await_stage(
+            "resolve remote home",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.canonicalize("."),
+        )
+        .await
+        .ok();
+
+        // Skip the extra exec round-trip when SFTP already gave a usable home.
+        let needs_fallback = sftp_home
+            .as_deref()
+            .map(|h| h.trim().is_empty() || h.trim() == "/")
+            .unwrap_or(true);
+        let exec_home = if needs_fallback {
+            // `printf` avoids the trailing-newline-plus-quirks of some shells' echo;
+            // a small cap is plenty for a path. Failures collapse to None.
+            ssh.exec("printf '%s' \"$HOME\"", 4096).await.ok()
+        } else {
+            None
+        };
+
+        choose_remote_home(sftp_home.as_deref(), exec_home.as_deref())
+            .ok_or_else(|| "resolve remote home failed".to_string())
+    })
     .await
-    .ok();
-
-    // Skip the extra exec round-trip when SFTP already gave a usable home.
-    let needs_fallback = sftp_home
-        .as_deref()
-        .map(|h| h.trim().is_empty() || h.trim() == "/")
-        .unwrap_or(true);
-    let exec_home = if needs_fallback {
-        // `printf` avoids the trailing-newline-plus-quirks of some shells' echo;
-        // a small cap is plenty for a path. Failures collapse to None.
-        ssh.exec("printf '%s' \"$HOME\"", 4096).await.ok()
-    } else {
-        None
-    };
-
-    choose_remote_home(sftp_home.as_deref(), exec_home.as_deref())
-        .ok_or_else(|| "resolve remote home failed".to_string())
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpRead, error)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        choose_remote_home, preserved_upload_mode, read_remote_editable_bytes,
+        cancel_upload, choose_remote_home, preserved_upload_mode, read_remote_editable_bytes,
         reconcile_text_write_with_sftp, remote_mtime_millis, remote_replace_lock_owner_path,
         remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock, shell_quote,
-        ssh_fs_cancel_upload, stale_replace_lock_error, uncertain_upload_error,
-        upload_residue_error, validate_download_target, validate_fingerprint,
-        validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
-        TransactionOutcome, UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
+        stale_replace_lock_error, uncertain_upload_error, upload_residue_error,
+        validate_download_target, validate_fingerprint, validate_remote_edit_path,
+        write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome,
+        UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
     };
     use crate::modules::pty::PtyEvent;
     use crate::modules::ssh::auth::AuthOptions;
@@ -1573,14 +1714,14 @@ mod tests {
     #[test]
     fn upload_cancellation_registry_distinguishes_cancel_from_commit() {
         let cancelled = UploadRegistration::register("test-upload-cancel").unwrap();
-        assert!(ssh_fs_cancel_upload("test-upload-cancel".into()));
+        assert!(cancel_upload("test-upload-cancel".into()));
         assert_eq!(cancelled.begin_commit().unwrap_err(), "upload cancelled");
         drop(cancelled);
-        assert!(!ssh_fs_cancel_upload("test-upload-cancel".into()));
+        assert!(!cancel_upload("test-upload-cancel".into()));
 
         let committed = UploadRegistration::register("test-upload-commit").unwrap();
         committed.begin_commit().unwrap();
-        assert!(!ssh_fs_cancel_upload("test-upload-commit".into()));
+        assert!(!cancel_upload("test-upload-commit".into()));
     }
 
     #[test]
@@ -1672,6 +1813,7 @@ mod tests {
                         user,
                         method: crate::modules::ssh::auth::AuthMethod::Agent,
                         identity_file: None,
+                        certificate_file: None,
                         key_passphrase: None,
                         password: None,
                     },
@@ -1681,6 +1823,8 @@ mod tests {
                     initial_cwd: None,
                     inject_shell_integration: false,
                     session_id: label.into(),
+                    transport_generation: "smoke".into(),
+                    hop_role: "direct".into(),
                 },
                 Channel::<PtyEvent>::new(|_| Ok(())),
             ),

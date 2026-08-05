@@ -1,4 +1,4 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import type { DirEntry, GrepResponse, ReadResult, SearchHit, WriteTextResult } from "@/modules/fs/fs-bridge";
 import { RemoteOperationCache, remoteOperationCacheKey } from "./remote-operation-cache.ts";
 import {
@@ -6,6 +6,11 @@ import {
   requireSshWriteReconcileFields,
   type SshWriteOutcomeUnknown,
 } from "./ssh-write-reconcile.ts";
+
+// Temporary compatibility surface: existing FileExplorer imports keep working
+// while transfer ownership moves to transfer-bridge.
+export { sshCancelUpload, sshDownload, sshUpload } from "./transfer-bridge.ts";
+export type { SshUploadProgress } from "./transfer-bridge.ts";
 
 /**
  * 远程 SFTP 文件操作。返回类型与本地 fs-bridge 完全一致，
@@ -83,41 +88,6 @@ export async function sshReconcileOutcomeUnknownTextWrite(
 /** 解析远程 home 目录，作为文件面板初始路径。 */
 export function sshHome(id: number): Promise<string> {
   return invoke<string>("ssh_fs_home", { id });
-}
-
-/** 下载远程文件到本地路径，返回写入字节数。 */
-export function sshDownload(id: number, remotePath: string, localPath: string): Promise<number> {
-  return invoke<number>("ssh_fs_download", { id, remotePath, localPath });
-}
-
-export interface SshUploadProgress {
-  transferred: number;
-  total: number;
-}
-
-/** Stream a local file to an absolute remote path over the session's SFTP channel. */
-export function sshUpload(
-  id: number,
-  transferId: string,
-  localPath: string,
-  remotePath: string,
-  overwrite: boolean,
-  onProgress: (progress: SshUploadProgress) => void,
-): Promise<number> {
-  const progress = new Channel<SshUploadProgress>();
-  progress.onmessage = onProgress;
-  return invoke<number>("ssh_fs_upload", {
-    id,
-    transferId,
-    localPath,
-    remotePath,
-    overwrite,
-    onProgress: progress,
-  });
-}
-
-export function sshCancelUpload(transferId: string): Promise<boolean> {
-  return invoke<boolean>("ssh_fs_cancel_upload", { transferId });
 }
 
 // ── Remote file search (over the SSH exec channel) ────────────────────────

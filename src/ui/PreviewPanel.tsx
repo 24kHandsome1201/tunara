@@ -8,6 +8,7 @@ import type { PreviewSource } from "@/modules/preview/preview-source";
 import { copyText } from "./lib/clipboard";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { issueFocusReturnToken, returnTerminalFocus } from "@/modules/terminal/lib/binding-aware-async-action";
 
 function SourceCard({ source, session }: { source: PreviewSource; session: Session }) {
   const t = useT();
@@ -140,10 +141,9 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   const viewSourceTerminal = () => {
     useSessionsStore.getState().setActive(source.sessionId);
     useUIStore.getState().setPanelVisible(false);
+    const token = issueFocusReturnToken(source.sessionId);
     window.setTimeout(() => {
-      const pane = [...document.querySelectorAll<HTMLElement>("[data-terminal-session-id]")]
-        .find((element) => element.dataset.terminalSessionId === source.sessionId);
-      pane?.querySelector<HTMLElement>(".xterm-helper-textarea")?.focus();
+      if (token) returnTerminalFocus(token);
     }, 0);
   };
 
