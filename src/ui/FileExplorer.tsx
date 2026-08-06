@@ -649,11 +649,17 @@ export function FileExplorer({
   const uploadToRemoteDirectory = async (directory: string) => {
     if (remotePtyId === undefined || uploadTransferRef.current) return;
     if (binding) {
-      const selected = await openDialog({
-        title: t("explorer.upload.choose_file"),
-        directory: false,
-        multiple: true,
-      });
+      let selected: string | string[] | null;
+      try {
+        selected = await openDialog({
+          title: t("explorer.upload.choose_file"),
+          directory: false,
+          multiple: true,
+        });
+      } catch {
+        useUIStore.getState().addToast({ sessionId, title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
+        return;
+      }
       const paths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
       try {
         await queueLocalPaths(paths, directory);
@@ -669,7 +675,7 @@ export function FileExplorer({
       selected = await openDialog({
         title: t("explorer.upload.choose_file"),
         directory: false,
-        multiple: false,
+        multiple: true,
       });
     } catch {
       if (!transfer.disposed) {
@@ -678,104 +684,109 @@ export function FileExplorer({
       if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
       return;
     }
-    const localPath = Array.isArray(selected) ? selected[0] : selected;
-    if (!localPath || transfer.cancelled) {
+    const localPaths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
+    if (localPaths.length === 0 || transfer.cancelled) {
       if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
       return;
     }
-    const fileName = localPath.split(/[\\/]/).filter(Boolean).pop();
-    if (!fileName) {
-      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
-      return;
-    }
-    const remotePath = joinPath(directory, fileName);
-    const transferId = globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    transfer.transferId = transferId;
-    transfer.lastAnnouncementAt = Date.now();
-    transfer.lastAnnouncementPercent = 0;
-    setUpload({ transferId, fileName, transferred: 0, total: 0, cancelling: false });
-    setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent: 0 }));
-
-    const throwIfCancelled = () => {
-      if (transfer.cancelled) throw new Error("upload cancelled");
-    };
-
-    const run = async (overwrite: boolean) => {
-      throwIfCancelled();
-      transfer.backendActive = true;
-      try {
-        return await sshUpload(
-          remotePtyId,
-          transferId,
-          localPath,
-          remotePath,
-          overwrite,
-          ({ transferred, total }) => {
-            if (!transfer.disposed) {
-              setUpload((current) => current?.transferId === transferId
-                ? { ...current, transferred, total }
-                : current);
-              const percent = total > 0 ? Math.min(100, Math.floor(transferred / total * 100)) : 0;
-              const percentBucket = Math.floor(percent / 10) * 10;
-              const now = Date.now();
-              const crossedTenPercent = percentBucket >= (transfer.lastAnnouncementPercent ?? 0) + 10;
-              const waitedTwoSeconds = now - (transfer.lastAnnouncementAt ?? now) >= 2_000;
-              if (crossedTenPercent || waitedTwoSeconds) {
-                transfer.lastAnnouncementAt = now;
-                transfer.lastAnnouncementPercent = percentBucket;
-                setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent }));
-              }
-            }
-          },
-        );
-      } finally {
-        transfer.backendActive = false;
-      }
-    };
-
     try {
-      let bytes: number;
-      try {
-        bytes = await run(false);
-      } catch (error) {
-        if (!String(error).includes("SSH_TRANSFER_DESTINATION_EXISTS")) throw error;
-        throwIfCancelled();
-        const overwrite = await confirmDialog(t("explorer.upload.overwrite_message", { file: fileName }), {
-          title: t("explorer.upload.overwrite_title"),
-          kind: "warning",
-        });
-        if (!overwrite) return;
-        throwIfCancelled();
-        bytes = await run(true);
-      }
-      if (!transfer.disposed) {
-        setTransferAnnouncement("");
-        useUIStore.getState().addToast({
-          sessionId,
-          title: t("explorer.upload.complete"),
-          subtitle: `${fileName} · ${formatSize(bytes)}`,
-          variant: "success",
-        });
-        refresh();
-      }
-    } catch (error) {
-      const failure = parseUploadFailure(error);
-      if (!transfer.disposed && (failure.kind !== "cancelled" || failure.residuePath)) {
-        setTransferAnnouncement("");
-        const primary = t(uploadFailureKey(error));
-        const residue = failure.residuePath
-          ? ` ${t("explorer.upload.error_residue", { path: failure.residuePath })}`
-          : "";
-        useUIStore.getState().addToast({
-          sessionId,
-          title: t("explorer.upload.failed"),
-          subtitle: `${primary}${residue}`,
-          variant: "error",
-        });
+      for (const localPath of localPaths) {
+        if (transfer.cancelled) break;
+        const fileName = localPath.split(/[\\/]/).filter(Boolean).pop();
+        if (!fileName) continue;
+        const remotePath = joinPath(directory, fileName);
+        const transferId = globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        transfer.transferId = transferId;
+        transfer.lastAnnouncementAt = Date.now();
+        transfer.lastAnnouncementPercent = 0;
+        setUpload({ transferId, fileName, transferred: 0, total: 0, cancelling: false });
+        setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent: 0 }));
+
+        const throwIfCancelled = () => {
+          if (transfer.cancelled) throw new Error("upload cancelled");
+        };
+
+        const run = async (overwrite: boolean) => {
+          throwIfCancelled();
+          transfer.backendActive = true;
+          try {
+            return await sshUpload(
+              remotePtyId,
+              transferId,
+              localPath,
+              remotePath,
+              overwrite,
+              ({ transferred, total }) => {
+                if (!transfer.disposed) {
+                  setUpload((current) => current?.transferId === transferId
+                    ? { ...current, transferred, total }
+                    : current);
+                  const percent = total > 0 ? Math.min(100, Math.floor(transferred / total * 100)) : 0;
+                  const percentBucket = Math.floor(percent / 10) * 10;
+                  const now = Date.now();
+                  const crossedTenPercent = percentBucket >= (transfer.lastAnnouncementPercent ?? 0) + 10;
+                  const waitedTwoSeconds = now - (transfer.lastAnnouncementAt ?? now) >= 2_000;
+                  if (crossedTenPercent || waitedTwoSeconds) {
+                    transfer.lastAnnouncementAt = now;
+                    transfer.lastAnnouncementPercent = percentBucket;
+                    setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent }));
+                  }
+                }
+              },
+            );
+          } finally {
+            transfer.backendActive = false;
+          }
+        };
+
+        try {
+          let bytes: number;
+          try {
+            bytes = await run(false);
+          } catch (error) {
+            if (!String(error).includes("SSH_TRANSFER_DESTINATION_EXISTS")) throw error;
+            throwIfCancelled();
+            const overwrite = await confirmDialog(t("explorer.upload.overwrite_message", { file: fileName }), {
+              title: t("explorer.upload.overwrite_title"),
+              kind: "warning",
+            });
+            if (!overwrite) continue;
+            throwIfCancelled();
+            bytes = await run(true);
+          }
+          if (!transfer.disposed) {
+            setTransferAnnouncement("");
+            useUIStore.getState().addToast({
+              sessionId,
+              title: t("explorer.upload.complete"),
+              subtitle: `${fileName} · ${formatSize(bytes)}`,
+              variant: "success",
+            });
+            refresh();
+          }
+        } catch (error) {
+          const failure = parseUploadFailure(error);
+          if (!transfer.disposed && (failure.kind !== "cancelled" || failure.residuePath)) {
+            setTransferAnnouncement("");
+            const primary = t(uploadFailureKey(error));
+            const residue = failure.residuePath
+              ? ` ${t("explorer.upload.error_residue", { path: failure.residuePath })}`
+              : "";
+            useUIStore.getState().addToast({
+              sessionId,
+              title: t("explorer.upload.failed"),
+              subtitle: `${primary}${residue}`,
+              variant: "error",
+            });
+          }
+        } finally {
+          setUpload((current) => current?.transferId === transferId ? null : current);
+        }
       }
     } finally {
       if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
-      setUpload((current) => current?.transferId === transferId ? null : current);
+      transfer.transferId = undefined;
+      setTransferAnnouncement("");
     }
   };
 

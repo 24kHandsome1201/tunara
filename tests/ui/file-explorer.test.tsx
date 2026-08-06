@@ -197,6 +197,44 @@ describe("FileExplorer workspace files", () => {
     expect(toasts[toasts.length - 1]).toMatchObject({ sessionId: "remote", title: "Upload complete", variant: "success" });
   });
 
+  test("uploads every file selected by a legacy SSH session and continues after one fails", async () => {
+    useUIStore.setState({ toasts: [] });
+    const uploads: Array<{ localPath: string; remotePath: string; overwrite: boolean }> = [];
+    let pickerPayload: unknown;
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_read_dir") return [];
+      if (command === "plugin:dialog|open") {
+        pickerPayload = payload;
+        return ["/tmp/a.txt", "/tmp/b.txt", "/tmp/c.txt"];
+      }
+      if (command === "ssh_fs_upload") {
+        const upload = payload as { localPath: string; remotePath: string; overwrite: boolean };
+        uploads.push(upload);
+        if (upload.localPath.endsWith("b.txt")) throw new Error("SSH connection lost");
+        return 4;
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={143} />);
+    await screen.findByText("Directory is empty");
+    fireEvent.click(screen.getByRole("button", { name: "Upload file…" }));
+
+    await waitFor(() => expect(uploads).toHaveLength(3));
+    expect(JSON.stringify(pickerPayload)).toContain('"multiple":true');
+    expect(uploads.map(({ localPath, remotePath, overwrite }) => [localPath, remotePath, overwrite])).toEqual([
+      ["/tmp/a.txt", "/srv/app/a.txt", false],
+      ["/tmp/b.txt", "/srv/app/b.txt", false],
+      ["/tmp/c.txt", "/srv/app/c.txt", false],
+    ]);
+    await waitFor(() => expect(useUIStore.getState().toasts).toHaveLength(3));
+    expect(useUIStore.getState().toasts.map(({ title, variant }) => [title, variant])).toEqual([
+      ["Upload complete", "success"],
+      ["Upload failed", "error"],
+      ["Upload complete", "success"],
+    ]);
+  });
+
   test("throttles upload live announcements without duplicating terminal toasts", async () => {
     let progress: ((event: { transferred: number; total: number }) => void) | undefined;
     let rejectUpload: ((error: Error) => void) | undefined;
