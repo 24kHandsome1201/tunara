@@ -3,7 +3,11 @@ import { describe, expect, test, vi } from "vitest";
 import type { Session } from "@/ui/types";
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
-import { registerDirtyDraft } from "@/modules/editor/dirty-draft-guard";
+import {
+  cancelDirtyDraftAction,
+  confirmDirtyDraftDiscard,
+  registerDirtyDraft,
+} from "@/modules/editor/dirty-draft-guard";
 
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "macos" }));
 vi.mock("@/ui/lib/current-window", () => ({ tryGetCurrentWindow: () => null }));
@@ -96,8 +100,9 @@ describe("workspace file and terminal tabs", () => {
     const fileTabId = useUIStore.getState().activeFileTabId!;
     useUIStore.getState().setFileTabDirty(fileTabId, true);
     let confirmations = 0;
+    const owner = Symbol("notes");
     registerDirtyDraft({
-      owner: Symbol("notes"),
+      owner,
       sessionId: session.id,
       filePath: "/tmp/project/notes.txt",
       dirty: true,
@@ -108,6 +113,29 @@ describe("workspace file and terminal tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close notes.txt" }));
     expect(confirmations).toBe(1);
     expect(useUIStore.getState().fileTabs).toHaveLength(1);
+
+    expect(cancelDirtyDraftAction(owner)).toBe(true);
+    expect(useUIStore.getState().fileTabs).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Close notes.txt" }));
+    expect(confirmations).toBe(2);
+    expect(confirmDirtyDraftDiscard(owner)).toBe(true);
+    expect(useUIStore.getState()).toMatchObject({ fileTabs: [], activeFileTabId: null });
+  });
+
+  test("closing a background file leaves the active tab and session unchanged", () => {
+    const secondSession = { ...session, id: "terminal-2", title: "Second" };
+    useSessionsStore.setState({ sessions: [session, secondSession], activeSessionId: secondSession.id });
+    useUIStore.getState().openFileTab({ sessionId: session.id, filePath: "/tmp/project/a.txt", fileName: "a.txt" });
+    useUIStore.getState().openFileTab({ sessionId: secondSession.id, filePath: "/tmp/project/b.txt", fileName: "b.txt" });
+    const activeFileTabId = useUIStore.getState().activeFileTabId;
+    renderTitlebar();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close a.txt" }));
+    expect(useSessionsStore.getState().activeSessionId).toBe(secondSession.id);
+    expect(useUIStore.getState()).toMatchObject({
+      activeFileTabId,
+      fileTabs: [{ fileName: "b.txt" }],
+    });
   });
 
   test("closing an active file selects the adjacent file's owning session", () => {
@@ -137,6 +165,16 @@ describe("workspace file and terminal tabs", () => {
       activeFileTabId: `${session.id}\0/tmp/project/a.txt`,
       fileTabs: [{ fileName: "a.txt" }],
     });
+  });
+
+  test("closing the last file returns to its owning terminal", () => {
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+    useUIStore.getState().openFileTab({ sessionId: session.id, filePath: "/tmp/project/only.txt", fileName: "only.txt" });
+    renderTitlebar();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close only.txt" }));
+    expect(useSessionsStore.getState().activeSessionId).toBe(session.id);
+    expect(useUIStore.getState()).toMatchObject({ fileTabs: [], activeFileTabId: null });
   });
 
   test("keeps the terminal component mounted while a file surface is active", async () => {

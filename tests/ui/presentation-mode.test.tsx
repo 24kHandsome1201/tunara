@@ -39,17 +39,21 @@ function ContextMenuGuardHarness({
   const pure = useUIStore((state) => state.presentationMode === "pure");
   usePresentationModeContextMenuGuard(pure);
   return (
-    <div
-      data-testid="terminal-surface"
-      data-terminal-canvas
-      onContextMenu={onContextMenu}
-      onMouseDown={onMouseDown}
-      onMouseUp={onMouseUp}
-    />
+    <div data-testid="workspace-chrome" onContextMenu={onContextMenu}>
+      <div
+        data-testid="terminal-surface"
+        data-terminal-canvas
+        onMouseDown={onMouseDown}
+        onMouseUp={onMouseUp}
+      />
+      <div data-testid="file-tree-item" data-explorer-item />
+      <textarea data-testid="editor" defaultValue="draft" />
+      <a data-testid="link" href="https://example.com">example</a>
+    </div>
   );
 }
 
-test("pure mode suppresses contextmenu capture without blocking PTY mouse events", () => {
+test("workspace mode suppresses native chrome menus without consuming component contextmenu events", () => {
   useUIStore.setState({ presentationMode: "workspace", configLoaded: false });
   const onContextMenu = vi.fn();
   const onMouseDown = vi.fn();
@@ -57,27 +61,55 @@ test("pure mode suppresses contextmenu capture without blocking PTY mouse events
   render(<ContextMenuGuardHarness onContextMenu={onContextMenu} onMouseDown={onMouseDown} onMouseUp={onMouseUp} />);
   const surface = screen.getByTestId("terminal-surface");
 
-  const workspaceMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
-  surface.dispatchEvent(workspaceMenu);
-  expect(workspaceMenu.defaultPrevented).toBe(false);
+  const chromeMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  screen.getByTestId("workspace-chrome").dispatchEvent(chromeMenu);
+  expect(chromeMenu.defaultPrevented).toBe(true);
   expect(onContextMenu).toHaveBeenCalledTimes(1);
 
-  act(() => useUIStore.getState().setPresentationMode("pure"));
-  const pureMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
-  surface.dispatchEvent(pureMenu);
-  expect(pureMenu.defaultPrevented).toBe(true);
+  const workspaceMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  surface.dispatchEvent(workspaceMenu);
+  expect(workspaceMenu.defaultPrevented).toBe(true);
   expect(onContextMenu).toHaveBeenCalledTimes(2);
+
+  const treeMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  screen.getByTestId("file-tree-item").dispatchEvent(treeMenu);
+  expect(treeMenu.defaultPrevented).toBe(true);
+  expect(onContextMenu).toHaveBeenCalledTimes(3);
+
+  for (const testId of ["editor", "link"]) {
+    const nativeMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+    screen.getByTestId(testId).dispatchEvent(nativeMenu);
+    expect(nativeMenu.defaultPrevented).toBe(false);
+  }
+  expect(onContextMenu).toHaveBeenCalledTimes(5);
 
   fireEvent.mouseDown(surface, { button: 2 });
   fireEvent.mouseUp(surface, { button: 2 });
   expect(onMouseDown).toHaveBeenCalledTimes(1);
   expect(onMouseUp).toHaveBeenCalledTimes(1);
+});
 
-  act(() => useUIStore.getState().setPresentationMode("workspace"));
-  const restoredMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
-  surface.dispatchEvent(restoredMenu);
-  expect(restoredMenu.defaultPrevented).toBe(false);
-  expect(onContextMenu).toHaveBeenCalledTimes(3);
+test("pure mode suppresses only terminal contextmenu without blocking PTY mouse events", () => {
+  useUIStore.setState({ presentationMode: "pure", configLoaded: false });
+  const onContextMenu = vi.fn();
+  const onMouseDown = vi.fn();
+  const onMouseUp = vi.fn();
+  render(<ContextMenuGuardHarness onContextMenu={onContextMenu} onMouseDown={onMouseDown} onMouseUp={onMouseUp} />);
+  const surface = screen.getByTestId("terminal-surface");
+
+  const pureMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  surface.dispatchEvent(pureMenu);
+  expect(pureMenu.defaultPrevented).toBe(true);
+  expect(onContextMenu).toHaveBeenCalledTimes(1);
+
+  const chromeMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+  screen.getByTestId("workspace-chrome").dispatchEvent(chromeMenu);
+  expect(chromeMenu.defaultPrevented).toBe(false);
+
+  fireEvent.mouseDown(surface, { button: 2 });
+  fireEvent.mouseUp(surface, { button: 2 });
+  expect(onMouseDown).toHaveBeenCalledTimes(1);
+  expect(onMouseUp).toHaveBeenCalledTimes(1);
 });
 
 test("presentation mode is a reversible projection over workspace UI state", () => {
