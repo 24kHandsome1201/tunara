@@ -79,11 +79,11 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   chooseSecondaryPanel("Preview");
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
-  expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
 
   chooseSecondaryPanel("Transfers");
   expect(screen.queryByTestId("preview-panel")).toBeNull();
-  expect(screen.getByRole("tab", { name: "Transfers" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Transfers" }).getAttribute("aria-selected")).toBe("true");
   expect(screen.getByTestId("transfers-panel")).toMatchObject({
     dataset: { scopeKind: "logical-session", scopeKey: `session:${session.id}`, session: session.id },
   });
