@@ -17,10 +17,10 @@ export const PRIMARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
   "overview",
   "changes",
   "files",
-  "preview",
 ];
 
 export const SECONDARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
+  "preview",
   "notes",
   "transfers",
   "metadata",
