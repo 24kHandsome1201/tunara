@@ -58,7 +58,7 @@ beforeEach(() => {
 });
 
 test("mounts only the active Inspector panel and keeps specialist tools in overflow", async () => {
-  render(<InspectorPanel session={session} />);
+  render(<InspectorPanel session={session} filesOnly={false} />);
 
   expect(screen.getByTestId("overview-panel")).toBeTruthy();
   expect(screen.queryByTestId("changes-panel")).toBeNull();
@@ -79,11 +79,11 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   chooseSecondaryPanel("Preview");
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
-  expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
 
   chooseSecondaryPanel("Transfers");
   expect(screen.queryByTestId("preview-panel")).toBeNull();
-  expect(screen.getByRole("tab", { name: "Transfers" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Transfers" }).getAttribute("aria-selected")).toBe("true");
   expect(screen.getByTestId("transfers-panel")).toMatchObject({
     dataset: { scopeKind: "logical-session", scopeKey: `session:${session.id}`, session: session.id },
   });
@@ -110,7 +110,7 @@ test("projects only Files controls in Pure Mode", () => {
 });
 
 test("flushes a pending note when switching away before the debounce", () => {
-  render(<InspectorPanel session={session} />);
+  render(<InspectorPanel session={session} filesOnly={false} />);
   chooseSecondaryPanel("Notes");
 
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "pending note" } });
@@ -128,13 +128,13 @@ test("offers forwarding only to SSH sessions and withholds the binding while rec
     transportGeneration: "tg-live",
     connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 2 },
   };
-  const view = render(<InspectorPanel session={remoteSession} />);
+  const view = render(<InspectorPanel session={remoteSession} filesOnly={false} />);
   chooseSecondaryPanel("Forwarding");
   expect(screen.getByTestId("forwarding-panel").textContent).toBe("live");
 
   view.rerender(<InspectorPanel session={{
     ...remoteSession,
     connection: { transport: "ssh", phase: "reconnecting", source: "user", updatedAt: 3 },
-  }} />);
+  }} filesOnly={false} />);
   expect(screen.getByTestId("forwarding-panel").textContent).toBe("offline");
 });
