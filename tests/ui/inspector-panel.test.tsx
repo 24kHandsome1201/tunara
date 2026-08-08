@@ -43,6 +43,11 @@ const session: Session = {
   updatedAt: 1,
 };
 
+function chooseSecondaryPanel(name: string) {
+  fireEvent.click(screen.getByRole("button", { name: "Inspector panels" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(name) }));
+}
+
 beforeEach(() => {
   useUIStore.setState({ configLoaded: false, inspectorTab: "overview" });
   useSessionsStore.setState({
@@ -52,13 +57,16 @@ beforeEach(() => {
   });
 });
 
-test("mounts only the active Inspector tab", async () => {
+test("mounts only the active Inspector panel and keeps specialist tools in overflow", async () => {
   render(<InspectorPanel session={session} />);
 
   expect(screen.getByTestId("overview-panel")).toBeTruthy();
   expect(screen.queryByTestId("changes-panel")).toBeNull();
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.queryByTestId("preview-panel")).toBeNull();
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Overview", "Changes", "Files"]);
+  expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+  expect(screen.queryByRole("tab", { name: "Transfers" })).toBeNull();
 
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   expect(screen.queryByTestId("overview-panel")).toBeNull();
@@ -68,26 +76,28 @@ test("mounts only the active Inspector tab", async () => {
   expect(screen.queryByTestId("changes-panel")).toBeNull();
   expect(screen.getByTestId("files-panel")).toBeTruthy();
 
-  fireEvent.click(screen.getByRole("tab", { name: "Transfers" }));
+  chooseSecondaryPanel("Preview");
   expect(screen.queryByTestId("files-panel")).toBeNull();
+  expect(screen.getByTestId("preview-panel")).toBeTruthy();
+  expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
+
+  chooseSecondaryPanel("Transfers");
+  expect(screen.queryByTestId("preview-panel")).toBeNull();
+  expect(screen.getByRole("tab", { name: "Transfers" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByTestId("transfers-panel")).toMatchObject({
     dataset: { scopeKind: "logical-session", scopeKey: `session:${session.id}`, session: session.id },
   });
 
-  fireEvent.click(screen.getByRole("tab", { name: "Diagnostics" }));
+  chooseSecondaryPanel("Diagnostics");
   const diagnostics = screen.getByRole("dialog", { name: "SSH diagnostics" });
   fireEvent.keyDown(diagnostics, { key: "Escape" });
   expect(screen.getByTestId("overview-panel")).toBeTruthy();
 
-  fireEvent.click(screen.getByRole("tab", { name: "Known hosts" }));
+  chooseSecondaryPanel("Known hosts");
   expect(await screen.findByText("example.com")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Remove example.com" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm removal of example.com" }));
   expect(await screen.findByText("No known hosts")).toBeTruthy();
-
-  fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
-  expect(screen.queryByTestId("files-panel")).toBeNull();
-  expect(screen.getByTestId("preview-panel")).toBeTruthy();
 });
 
 test("projects only Files controls in Pure Mode", () => {
@@ -95,12 +105,13 @@ test("projects only Files controls in Pure Mode", () => {
 
   expect(screen.getByTestId("files-panel")).toBeTruthy();
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Files"]);
+  expect(screen.queryByRole("button", { name: "Inspector panels" })).toBeNull();
   expect(useUIStore.getState().inspectorTab).toBe("overview");
 });
 
 test("flushes a pending note when switching away before the debounce", () => {
   render(<InspectorPanel session={session} />);
-  fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+  chooseSecondaryPanel("Notes");
 
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "pending note" } });
   fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
@@ -118,7 +129,7 @@ test("offers forwarding only to SSH sessions and withholds the binding while rec
     connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 2 },
   };
   const view = render(<InspectorPanel session={remoteSession} />);
-  fireEvent.click(screen.getByRole("tab", { name: "Forwarding" }));
+  chooseSecondaryPanel("Forwarding");
   expect(screen.getByTestId("forwarding-panel").textContent).toBe("live");
 
   view.rerender(<InspectorPanel session={{
