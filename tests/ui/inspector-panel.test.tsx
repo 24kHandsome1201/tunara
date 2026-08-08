@@ -1,34 +1,34 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
-import { InspectorPanel } from "@/ui/InspectorPanel";
-import { useSessionsStore } from "@/state/sessions";
-import { useUIStore } from "@/state/ui";
-import type { Session } from "@/ui/types";
+import { InspectorPanel } from "../../src/ui/InspectorPanel";
+import { useSessionsStore } from "../../src/state/sessions";
+import { useUIStore } from "../../src/state/ui";
+import type { Session } from "../../src/ui/types";
 
-vi.mock("@/ui/SessionOverviewPanel", () => ({
+vi.mock("../../src/ui/SessionOverviewPanel", () => ({
   SessionOverviewPanel: () => <div data-testid="overview-panel" />,
 }));
-vi.mock("@/ui/DiffPanel", () => ({
+vi.mock("../../src/ui/DiffPanel", () => ({
   DiffPanel: () => <div data-testid="changes-panel" />,
 }));
-vi.mock("@/ui/FileExplorer", () => ({
+vi.mock("../../src/ui/FileExplorer", () => ({
   FileExplorer: () => <div data-testid="files-panel" />,
 }));
-vi.mock("@/ui/PreviewPanel", () => ({
+vi.mock("../../src/ui/PreviewPanel", () => ({
   PreviewPanel: () => <div data-testid="preview-panel" />,
 }));
-vi.mock("@/ui/TransferCenter", () => ({
+vi.mock("../../src/ui/TransferCenter", () => ({
   TransferCenter: ({ inspectorScope }: { inspectorScope: { kind: string; key: string; logicalSessionId?: string } }) => (
     <div data-testid="transfers-panel" data-scope-kind={inspectorScope.kind} data-scope-key={inspectorScope.key} data-session={inspectorScope.logicalSessionId} />
   ),
 }));
-vi.mock("@/modules/ssh/remote-fs/RemoteMetadataPanel", () => ({
+vi.mock("../../src/modules/ssh/remote-fs/RemoteMetadataPanel", () => ({
   RemoteMetadataPanel: ({ path }: { path: string }) => <div data-testid="metadata-panel">{path}</div>,
 }));
-vi.mock("@/modules/ssh/ForwardingPanel", () => ({
+vi.mock("../../src/modules/ssh/ForwardingPanel", () => ({
   ForwardingPanel: ({ binding }: { binding: unknown }) => <div data-testid="forwarding-panel">{binding ? "live" : "offline"}</div>,
 }));
-vi.mock("@/modules/ssh/known-hosts-bridge", () => ({
+vi.mock("../../src/modules/ssh/known-hosts-bridge", () => ({
   listKnownHostsV1: async () => ({ revision: "r1", entries: [{ entryId: "e1", line: 1, marker: null, patternDisplay: "example.com", keyType: "ssh-ed25519", fingerprint: "SHA256:safe", manageable: true }] }),
   refreshKnownHostsV1: async () => ({ revision: "r1", entries: [] }),
   removeKnownHostV1: async () => ({ revision: "r2", entries: [] }),
