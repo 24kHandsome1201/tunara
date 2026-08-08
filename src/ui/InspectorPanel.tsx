@@ -1,4 +1,12 @@
-import { useEffect, useState, type ReactNode, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { type Session } from "./types";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
@@ -17,12 +25,18 @@ import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { DiagnosticsCenter } from "@/modules/ssh/DiagnosticsCenter";
 import { diagnosticsCenter } from "@/modules/ssh/diagnostics-store";
-import { listKnownHostsV1, refreshKnownHostsV1, removeKnownHostV1, type KnownHostsSnapshotV1 } from "@/modules/ssh/known-hosts-bridge";
+import {
+  listKnownHostsV1,
+  refreshKnownHostsV1,
+  removeKnownHostV1,
+  type KnownHostsSnapshotV1,
+} from "@/modules/ssh/known-hosts-bridge";
 import { ForwardingPanel } from "@/modules/ssh/ForwardingPanel";
 import { copyText } from "./lib/clipboard";
 import { INSPECTOR_TAB_DESCRIPTORS, resolveInspectorScope } from "./inspector-scope";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { resolveInspectorNavigation } from "./inspector-navigation";
 
-const INSPECTOR_TAB_IDS: readonly InspectorTab[] = ["overview", "changes", "files", "transfers", "metadata", "forwarding", "diagnostics", "knownHosts", "preview", "notes"];
 const INSPECTOR_TABPANEL_ID = "inspector-tabpanel";
 
 interface InspectorPanelProps {
@@ -31,7 +45,17 @@ interface InspectorPanelProps {
   filesOnly?: boolean;
 }
 
-function TabButton({ active, onClick, children, tabId }: { active: boolean; onClick: () => void; children: ReactNode; tabId: InspectorTab }) {
+function TabButton({
+  active,
+  onClick,
+  children,
+  tabId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  tabId: InspectorTab;
+}) {
   return (
     <button
       onClick={onClick}
@@ -63,20 +87,69 @@ function TabButton({ active, onClick, children, tabId }: { active: boolean; onCl
   );
 }
 
+function MoreToolsButton({
+  expanded,
+  label,
+  buttonRef,
+  onClick,
+}: {
+  expanded: boolean;
+  label: string;
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      aria-haspopup="menu"
+      aria-expanded={expanded}
+      aria-label={label}
+      title={label}
+      data-inspector-overflow-trigger
+      onClick={onClick}
+      className="hover-bg"
+      style={{
+        width: 34,
+        height: 34,
+        marginRight: 2,
+        borderRadius: "var(--r-btn)",
+        border: "none",
+        background: expanded ? "var(--c-accent-bg-soft)" : "transparent",
+        color: expanded ? "var(--c-text-primary)" : "var(--c-text-5)",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor" aria-hidden="true">
+        <circle cx="3" cy="7.5" r="1.15" />
+        <circle cx="7.5" cy="7.5" r="1.15" />
+        <circle cx="12" cy="7.5" r="1.15" />
+      </svg>
+    </button>
+  );
+}
+
 function KnownHostsPanel() {
   const t = useT();
   const [snapshot, setSnapshot] = useState<KnownHostsSnapshotV1 | null>(null);
   const [error, setError] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
+
   const load = (refresh = false) => {
     setError(false);
     void (refresh ? refreshKnownHostsV1() : listKnownHostsV1())
       .then(setSnapshot)
       .catch(() => setError(true));
   };
+
   useEffect(() => {
     void listKnownHostsV1().then(setSnapshot).catch(() => setError(true));
   }, []);
+
   return (
     <section aria-labelledby="known-hosts-title" style={{ padding: 12, overflow: "auto" }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -98,7 +171,10 @@ function KnownHostsPanel() {
                 ? t("known_hosts.confirm_remove_item", { host: entry.patternDisplay })
                 : t("known_hosts.remove_item", { host: entry.patternDisplay })}
               onClick={() => {
-                if (pendingRemove !== entry.entryId) { setPendingRemove(entry.entryId); return; }
+                if (pendingRemove !== entry.entryId) {
+                  setPendingRemove(entry.entryId);
+                  return;
+                }
                 setPendingRemove(null);
                 void removeKnownHostV1(snapshot.revision, entry.entryId)
                   .then(setSnapshot)
@@ -124,36 +200,88 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     : null;
   const forwardingBinding = session.connection?.phase === "ready" ? binding : null;
   const [metadataPath, setMetadataPath] = useState(session.dir);
-  const tabIds: readonly InspectorTab[] = filesOnly
-    ? ["files"]
-    : INSPECTOR_TAB_IDS.filter((id) => (id !== "metadata" || binding !== null) && (id !== "forwarding" || isRemote));
-  const tab = filesOnly ? "files" : tabIds.includes(storeTab) ? storeTab : "overview";
+  const [moreMenu, setMoreMenu] = useState<{
+    items: MenuEntry[];
+    position: { x: number; y: number };
+  } | null>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+
+  const navigation = resolveInspectorNavigation({
+    filesOnly,
+    isRemote,
+    hasBinding: binding !== null,
+  });
+  const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "overview";
+  const secondaryTabActive = navigation.secondary.includes(tab);
+  const visibleTabIds = secondaryTabActive ? [...navigation.primary, tab] : navigation.primary;
   const descriptor = INSPECTOR_TAB_DESCRIPTORS[tab];
   const inspectorScope = resolveInspectorScope(descriptor, session, binding);
   const scopeKey = inspectorScope.kind.replace("-", "_");
   const scopeDescriptionKey = inspectorScope.kind === descriptor.scope
     ? descriptor.descriptionKey
     : `inspector.scope.description.${scopeKey}`;
-  const showSourceSummary = Boolean(
+  const showSourceSummary = tab === "changes" && Boolean(
     currentWorkspaceWorktree(session.workspace)
     || session.workspaceState === "unavailable"
-    || (tab === "changes" && !session.workspace && session.branch),
+    || (!session.workspace && session.branch),
   );
+  const showContextBar = showSourceSummary || inspectorScope.kind !== "logical-session";
+
+  useEffect(() => {
+    setMetadataPath(session.dir);
+    setMoreMenu(null);
+  }, [filesOnly, session.dir, session.id]);
+
+  const selectTab = (nextTab: InspectorTab) => {
+    if (nextTab === "diagnostics") diagnosticsCenter.open();
+    setTab(nextTab);
+    setMoreMenu(null);
+  };
+
+  const toggleMoreMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    if (moreMenu) {
+      setMoreMenu(null);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const items = navigation.secondary.flatMap<MenuEntry>((id, index) => {
+      const current = id === tab;
+      const item: MenuEntry = {
+        id: `inspector:${id}`,
+        label: `${current ? "✓ " : ""}${t(INSPECTOR_TAB_DESCRIPTORS[id].titleKey)}`,
+        action: () => selectTab(id),
+      };
+      const addSeparator = index > 0 && (id === "transfers" || id === "diagnostics");
+      return addSeparator ? [null, item] : [item];
+    });
+
+    setMoreMenu({
+      items,
+      position: { x: Math.max(8, rect.right - 192), y: rect.bottom },
+    });
+  };
+
   let activePanel: ReactNode;
   switch (tab) {
     case "changes":
       activePanel = <DiffPanel session={session} embedded />;
       break;
     case "files":
-      activePanel = <FileExplorer
-        sessionId={session.id}
-        rootDir={session.dir}
-        remotePtyId={isRemote ? session.ptyId : undefined}
-        transportGeneration={session.transportGeneration}
-        remote={isRemote}
-        remoteHost={session.remote ? `${session.remote.user}@${session.remote.host}` : undefined}
-        onInspectRemotePath={(path) => { setMetadataPath(path); setTab("metadata"); }}
-      />;
+      activePanel = (
+        <FileExplorer
+          sessionId={session.id}
+          rootDir={session.dir}
+          remotePtyId={isRemote ? session.ptyId : undefined}
+          transportGeneration={session.transportGeneration}
+          remote={isRemote}
+          remoteHost={session.remote ? `${session.remote.user}@${session.remote.host}` : undefined}
+          onInspectRemotePath={(path) => {
+            setMetadataPath(path);
+            selectTab("metadata");
+          }}
+        />
+      );
       break;
     case "transfers":
       activePanel = <TransferCenter inspectorScope={inspectorScope} />;
@@ -164,26 +292,30 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
         : <SessionOverviewPanel session={session} />;
       break;
     case "forwarding":
-      activePanel = <ForwardingPanel
-        key={`${session.id}:${forwardingBinding?.physicalPtyId ?? "offline"}:${forwardingBinding?.transportGeneration ?? "none"}`}
-        binding={forwardingBinding}
-        session={session}
-      />;
+      activePanel = (
+        <ForwardingPanel
+          key={`${session.id}:${forwardingBinding?.physicalPtyId ?? "offline"}:${forwardingBinding?.transportGeneration ?? "none"}`}
+          binding={forwardingBinding}
+          session={session}
+        />
+      );
       break;
     case "diagnostics":
-      activePanel = <DiagnosticsCenter
-        sessionId={session.id}
-        onClose={() => setTab("overview")}
-        onCopyReport={async (report) => {
-          const copied = await copyText(report);
-          useUIStore.getState().addToast({
-            sessionId: session.id,
-            title: t(copied ? "diagnostics.copy_succeeded" : "diagnostics.copy_failed"),
-            subtitle: "",
-            variant: copied ? "success" : "error",
-          });
-        }}
-      />;
+      activePanel = (
+        <DiagnosticsCenter
+          sessionId={session.id}
+          onClose={() => selectTab("overview")}
+          onCopyReport={async (report) => {
+            const copied = await copyText(report);
+            useUIStore.getState().addToast({
+              sessionId: session.id,
+              title: t(copied ? "diagnostics.copy_succeeded" : "diagnostics.copy_failed"),
+              subtitle: "",
+              variant: copied ? "success" : "error",
+            });
+          }}
+        />
+      );
       break;
     case "knownHosts":
       activePanel = <KnownHostsPanel />;
@@ -199,37 +331,74 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
       break;
   }
 
-  const handleTabListKeyDown = (e: KeyboardEvent) => {
-    const currentId = tabIdFromEventTarget(e.target);
+  const handleTabListKeyDown = (event: KeyboardEvent) => {
+    const currentId = tabIdFromEventTarget(event.target);
     if (!currentId) return;
-    const nextId = resolveRovingTabId(tabIds, currentId, e.key);
+    const nextId = resolveRovingTabId(visibleTabIds, currentId, event.key);
     if (!nextId || nextId === currentId) return;
-    e.preventDefault();
-    setTab(nextId as InspectorTab);
-    focusTabById(e.currentTarget as HTMLElement, nextId);
+    event.preventDefault();
+    selectTab(nextId as InspectorTab);
+    focusTabById(event.currentTarget as HTMLElement, nextId);
   };
 
   return (
-    <div style={{ width: "100%", background: "var(--c-bg-2)", borderLeft: "1px solid var(--c-border-1)", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-      <div style={{ minHeight: "var(--h-titlebar)", background: "var(--c-bg-1)", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", paddingLeft: 8, gap: 0, flexShrink: 0 }}>
+    <div
+      style={{
+        width: "100%",
+        background: "var(--c-bg-2)",
+        borderLeft: "1px solid var(--c-border-1)",
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          minHeight: "var(--h-titlebar)",
+          background: "var(--c-bg-1)",
+          borderBottom: "1px solid var(--c-border-1)",
+          display: "flex",
+          alignItems: "center",
+          paddingLeft: 8,
+          gap: 0,
+          flexShrink: 0,
+        }}
+      >
         <div
           className="no-scrollbar"
           role="tablist"
           aria-label={t("inspector.tab.aria_label")}
           onKeyDown={handleTabListKeyDown}
-          style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flex: 1,
+            minWidth: 0,
+            overflowX: "auto",
+            overflowY: "hidden",
+          }}
         >
-          {!filesOnly && <TabButton tabId="overview" active={tab === "overview"} onClick={() => setTab("overview")}>{t("inspector.tab.overview")}</TabButton>}
-          {!filesOnly && <TabButton tabId="changes" active={tab === "changes"} onClick={() => setTab("changes")}>{t("diff.title")}</TabButton>}
-          <TabButton tabId="files" active={tab === "files"} onClick={() => setTab("files")}>{t("inspector.tab.files")}</TabButton>
-          {!filesOnly && <TabButton tabId="transfers" active={tab === "transfers"} onClick={() => setTab("transfers")}>{t("inspector.tab.transfers")}</TabButton>}
-          {!filesOnly && binding && <TabButton tabId="metadata" active={tab === "metadata"} onClick={() => setTab("metadata")}>{t("inspector.tab.metadata")}</TabButton>}
-          {!filesOnly && isRemote && <TabButton tabId="forwarding" active={tab === "forwarding"} onClick={() => setTab("forwarding")}>{t("inspector.tab.forwarding")}</TabButton>}
-          {!filesOnly && <TabButton tabId="diagnostics" active={tab === "diagnostics"} onClick={() => { diagnosticsCenter.open(); setTab("diagnostics"); }}>{t("inspector.tab.diagnostics")}</TabButton>}
-          {!filesOnly && <TabButton tabId="knownHosts" active={tab === "knownHosts"} onClick={() => setTab("knownHosts")}>{t("inspector.tab.known_hosts")}</TabButton>}
-          {!filesOnly && <TabButton tabId="preview" active={tab === "preview"} onClick={() => setTab("preview")}>{t("inspector.tab.preview")}</TabButton>}
-          {!filesOnly && <TabButton tabId="notes" active={tab === "notes"} onClick={() => setTab("notes")}>{t("inspector.tab.notes")}</TabButton>}
+          {navigation.primary.map((id) => (
+            <TabButton key={id} tabId={id} active={tab === id} onClick={() => selectTab(id)}>
+              {t(INSPECTOR_TAB_DESCRIPTORS[id].titleKey)}
+            </TabButton>
+          ))}
+          {secondaryTabActive && (
+            <TabButton key={`secondary:${tab}`} tabId={tab} active onClick={() => selectTab(tab)}>
+              {t(descriptor.titleKey)}
+            </TabButton>
+          )}
         </div>
+
+        {!filesOnly && navigation.secondary.length > 0 && (
+          <MoreToolsButton
+            expanded={moreMenu !== null}
+            label={t("inspector.tab.aria_label")}
+            buttonRef={moreButtonRef}
+            onClick={toggleMoreMenu}
+          />
+        )}
 
         {onClose && (
           <button
@@ -238,9 +407,16 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
             aria-label={t("diff.close_panel")}
             className="hover-bg"
             style={{
-              width: "var(--h-titlebar-control)", height: "var(--h-titlebar-control)",
-              borderRadius: "var(--r-btn)", border: "none", background: "transparent",
-              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              width: "var(--h-titlebar-control)",
+              height: "var(--h-titlebar-control)",
+              borderRadius: "var(--r-btn)",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
             }}
           >
             <CloseIcon size={13} strokeWidth={2.2} />
@@ -248,53 +424,107 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
         )}
       </div>
 
-      {showSourceSummary && (
-        <div style={{ minHeight: 28, padding: "4px 8px", display: "flex", alignItems: "center", gap: 6, background: "var(--c-bg-2)", borderBottom: "1px solid var(--c-border-1)", overflow: "hidden", flexShrink: 0 }}>
-          <WorkspaceSourceChip session={session} />
-          {tab === "changes" && !session.workspace && session.branch && (
-            <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-              ⎇ {session.branch}
-            </span>
+      {showContextBar && (
+        <div
+          id="inspector-context-bar"
+          style={{
+            minHeight: 28,
+            padding: "3px 9px 3px 10px",
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            borderBottom: "1px solid var(--c-border-1)",
+            background: "var(--c-bg-2)",
+            flexShrink: 0,
+            minWidth: 0,
+            overflow: "hidden",
+            position: "relative",
+          }}
+        >
+          <span
+            title={t(scopeDescriptionKey)}
+            style={{
+              flexShrink: 0,
+              padding: "1px 6px",
+              borderRadius: "var(--r-pill)",
+              background: "var(--c-bg-3)",
+              color: "var(--c-text-5)",
+              fontSize: "var(--fs-badge)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            {t(`inspector.scope.${scopeKey}`)}
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }} />
+          {showSourceSummary && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
+              <WorkspaceSourceChip session={session} />
+              {!session.workspace && session.branch && (
+                <span
+                  style={{
+                    fontSize: "var(--fs-meta)",
+                    color: "var(--c-text-5)",
+                    fontFamily: "var(--font-mono)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                  }}
+                >
+                  ⎇ {session.branch}
+                </span>
+              )}
+            </div>
           )}
+          <span
+            id="inspector-scope-description"
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              padding: 0,
+              margin: -1,
+              overflow: "hidden",
+              clip: "rect(0, 0, 0, 0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+          >
+            {t(scopeDescriptionKey)}
+          </span>
         </div>
       )}
 
       <div
-        id="inspector-scope-description"
-        style={{
-          padding: "6px 10px",
-          display: "flex",
-          alignItems: "baseline",
-          flexWrap: "wrap",
-          gap: "3px 8px",
-          borderBottom: "1px solid var(--c-border-1)",
-          background: "var(--c-bg-2)",
-          flexShrink: 0,
-          minWidth: 0,
-        }}
-      >
-        <strong id="inspector-panel-title" style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
-          {t(descriptor.titleKey)}
-        </strong>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)" }}>
-          {t(`inspector.scope.${scopeKey}`)}
-        </span>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", overflowWrap: "anywhere" }}>
-          {t(scopeDescriptionKey)}
-        </span>
-      </div>
-
-      <div
         role="tabpanel"
         id={INSPECTOR_TABPANEL_ID}
-        aria-labelledby="inspector-panel-title"
-        aria-describedby="inspector-scope-description"
+        aria-label={t(descriptor.titleKey)}
+        aria-describedby={showContextBar ? "inspector-scope-description" : undefined}
         style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
       >
-        <div key={`${tab}:${inspectorScope.key}`} data-scope-key={inspectorScope.key} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
+        <div
+          key={`${tab}:${inspectorScope.key}`}
+          data-scope-key={inspectorScope.key}
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            animation: "contentIn var(--duration-normal) var(--ease-out-expo)",
+          }}
+        >
           {activePanel}
         </div>
       </div>
+
+      {moreMenu && (
+        <ContextMenu
+          items={moreMenu.items}
+          position={moreMenu.position}
+          onClose={() => setMoreMenu(null)}
+          returnFocusToken={moreButtonRef}
+        />
+      )}
     </div>
   );
 }
