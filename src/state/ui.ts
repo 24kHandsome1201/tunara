@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectPrefill } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
-import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
+import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, TERMINAL_KEYBINDING_ACTIONS, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
 import { persistBootAppearance } from "@/styles/shell-tint-boot";
@@ -16,7 +16,7 @@ import {
   type SplitPath,
   type SplitState,
 } from "@/modules/session/split-layout";
-import type { TerminalHostModifier } from "@/modules/terminal/lib/terminal-input-router";
+import type { TerminalHostModifier, TerminalSecondaryClickMode } from "@/modules/terminal/lib/terminal-input-router";
 
 export type CursorStyle = "bar" | "block" | "underline";
 export type PresentationMode = "workspace" | "pure";
@@ -42,6 +42,7 @@ export interface AppearanceSettings {
   terminalScreenReaderMode: boolean;
   showPureModeFilesButton: boolean;
   terminalHostModifier: TerminalHostModifier;
+  terminalSecondaryClick: TerminalSecondaryClickMode;
   keybindings: KeybindingConfig;
   language: Language;
   globalShortcut: string;
@@ -78,6 +79,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   // Cmd on macOS still needs real-hardware/WKWebView verification; Option is
   // available as an alternative. Shift is the conservative Win/Linux choice.
   terminalHostModifier: typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "meta" : "shift",
+  terminalSecondaryClick: "smart",
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
@@ -154,8 +156,18 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
 
 function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
   const appearance = sanitizeRawAppearance(config?.appearance);
+  const terminalInteractions = config?.terminal_interactions;
+  // Do not interpret a future schema with this version's semantics. The Rust
+  // merge path preserves the future table, while this client falls back to the
+  // conservative smart policy until it understands that version.
+  const secondaryClick = terminalInteractions?.version === undefined || terminalInteractions.version === 1
+    ? terminalInteractions?.secondary_click
+    : undefined;
   return {
     ...appearance,
+    terminalSecondaryClick: secondaryClick === "menu" || secondaryClick === "disabled" || secondaryClick === "smart"
+      ? secondaryClick
+      : DEFAULT_SETTINGS.terminalSecondaryClick,
     keybindings: sanitizeKeybindings(config?.keybindings),
   };
 }
@@ -186,6 +198,10 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       global_shortcut: s.globalShortcut,
     },
     keybindings: keybindingsToConfigKeys(s.keybindings),
+    terminal_interactions: {
+      version: 1,
+      secondary_click: s.terminalSecondaryClick,
+    },
   };
 }
 
@@ -367,6 +383,8 @@ interface UIState extends AppearanceSettings {
   setTerminalInlineImages: (enabled: boolean) => void;
   setShowPureModeFilesButton: (enabled: boolean) => void;
   setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
+  setTerminalSecondaryClick: (mode: TerminalSecondaryClickMode) => void;
+  resetTerminalInteractions: () => void;
   setGlobalShortcut: (shortcut: string) => void;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
@@ -561,6 +579,16 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setTerminalInlineImages: (terminalInlineImages) => set({ terminalInlineImages: typeof terminalInlineImages === "boolean" ? terminalInlineImages : DEFAULT_SETTINGS.terminalInlineImages }),
     setShowPureModeFilesButton: (showPureModeFilesButton) => set({ showPureModeFilesButton: typeof showPureModeFilesButton === "boolean" ? showPureModeFilesButton : DEFAULT_SETTINGS.showPureModeFilesButton }),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
+    setTerminalSecondaryClick: (terminalSecondaryClick) => set({ terminalSecondaryClick }),
+    resetTerminalInteractions: () => set((state) => {
+      const keybindings = { ...state.keybindings };
+      for (const action of TERMINAL_KEYBINDING_ACTIONS) keybindings[action] = DEFAULT_KEYBINDINGS[action];
+      return {
+        terminalSecondaryClick: DEFAULT_SETTINGS.terminalSecondaryClick,
+        terminalHostModifier: DEFAULT_SETTINGS.terminalHostModifier,
+        keybindings,
+      };
+    }),
     setGlobalShortcut: (globalShortcut) => set({ globalShortcut: typeof globalShortcut === "string" ? globalShortcut : DEFAULT_SETTINGS.globalShortcut }),
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
@@ -614,7 +642,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
-import { KEYBINDING_ACTIONS, hasPlatformModKey, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
+import { KEYBINDING_ACTIONS, hasPlatformModKey, isFixedTerminalMenuEvent, isTerminalKeybindingAction, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { isMac } from "@/ui/lib/platform";
 import {
@@ -154,8 +154,15 @@ export function useKeybindings() {
         }
       }
       if (isEditableTarget(e.target) && !hasPlatformModKey(e, isMac)) return;
+      // These exact chords are fixed terminal-menu recovery paths. Do not let
+      // a hand-edited app binding run first in capture phase and double-execute
+      // with the terminal menu. Modified variants remain configurable.
+      if (isFixedTerminalMenuEvent(e)) return;
       const bindings = useUIStore.getState().keybindings;
       for (const action of KEYBINDING_ACTIONS) {
+        // Terminal-scoped Copy/Safe Paste/Menu actions are resolved by the
+        // registered xterm instance, which owns selection and paste identity.
+        if (isTerminalKeybindingAction(action)) continue;
         // Block navigation is handled per-terminal via xterm's custom key handler
         // because it needs the active terminal instance. Leave the event alone here.
         if (action === "navigatePrevBlock" || action === "navigateNextBlock") continue;

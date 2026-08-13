@@ -245,6 +245,29 @@ test("registered paste protection invalidates an in-flight confirmation on dispo
   assert.deepEqual(pasted, []);
 });
 
+test("registered paste protection rejects safe text delivered to a stale target", () => {
+  let pasteListener;
+  const element = {
+    isConnected: true,
+    addEventListener: (_type, listener) => { pasteListener = listener; },
+    removeEventListener() {},
+  };
+  registerTerminalPasteProtection({
+    element,
+    paste() {},
+  }, () => true, () => () => false);
+  let prevented = 0;
+  let stopped = 0;
+  pasteListener({
+    clipboardData: { getData: () => "echo safe" },
+    preventDefault: () => { prevented += 1; },
+    stopPropagation: () => { stopped += 1; },
+  });
+
+  assert.equal(prevented, 1);
+  assert.equal(stopped, 1);
+});
+
 // ── structural guard ─────────────────────────────────────────────────────
 
 test("no window.confirm/alert/prompt anywhere in src (silent no-ops in wry)", () => {
@@ -265,9 +288,12 @@ test("no window.confirm/alert/prompt anywhere in src (silent no-ops in wry)", ()
   assert.deepEqual(offenders, [], "use @tauri-apps/plugin-dialog instead");
 });
 
-test("context-menu paste invalidates confirmation when its terminal is replaced", () => {
+test("context-menu paste delegates to the binding-aware safe-paste registry", () => {
   const chrome = readFileSync(join(import.meta.dirname, "..", "src/ui/TerminalViewChrome.tsx"), "utf8");
-  assert.match(chrome, /const isCurrent = capturePasteTarget\(term\)/);
-  assert.match(chrome, /if \(!text \|\| !isCurrent\(\)\) return/);
-  assert.match(chrome, /requestProtectedTerminalPaste\(term, text,[\s\S]*?isCurrent\)/);
+  const registry = readFileSync(join(import.meta.dirname, "..", "src/modules/terminal/lib/terminal-action-registry.ts"), "utf8");
+  assert.match(chrome, /safePasteActiveTerminal\(sessionId\)/);
+  assert.doesNotMatch(chrome, /navigator\.clipboard|\.paste\(text\)|requestProtectedTerminalPaste/);
+  assert.match(registry, /const action = captureTerminalActionTarget\(sessionId, registration\.terminal\);[\s\S]*?await navigator\.clipboard\.readText\(\)/);
+  assert.match(registry, /requestProtectedTerminalPaste\([\s\S]*?\(\) => action\.isCurrent\(\)/);
+  assert.match(registry, /if \(!protectedPaste && action\.isCurrent\(\)\) \{[\s\S]*?pasteWithCapturedBracketedMode\(registration\.terminal, text, bracketedPasteRequired\)/);
 });

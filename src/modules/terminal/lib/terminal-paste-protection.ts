@@ -109,8 +109,8 @@ export function requestProtectedTerminalPaste(
   text: string,
   confirmPaste: TerminalPasteConfirmer,
   isCurrent: () => boolean,
+  bracketedPasteRequired = term.modes?.bracketedPasteMode === true,
 ): boolean {
-  const bracketedPasteRequired = term.modes?.bracketedPasteMode === true;
   return confirmProtectedTerminalPaste(text, confirmPaste, (value) => {
     if (!isCurrent()) return;
     pasteWithCapturedBracketedMode(term, value, bracketedPasteRequired);
@@ -129,6 +129,15 @@ export function registerTerminalPasteProtection(
   const onPaste = (event: ClipboardEvent) => {
     const text = event.clipboardData?.getData("text/plain") ?? "";
     const targetIsCurrent = captureCurrent();
+    // Safe single-line input is delegated to xterm synchronously, so it would
+    // otherwise skip the continuation check used by warning-confirmed pastes.
+    // Reject a paste event delivered to a stale/inactive terminal before either
+    // path can write to the PTY.
+    if (!targetIsCurrent()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const protectedPaste = requestProtectedTerminalPaste(term, text, confirmPaste, () => active && targetIsCurrent());
     if (!protectedPaste) return;
     event.preventDefault();

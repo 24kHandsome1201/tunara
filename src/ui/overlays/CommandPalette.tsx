@@ -14,6 +14,7 @@ import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { canSplitLayout } from "@/modules/session/split-layout";
+import { copyActiveTerminal, openTerminalMenu, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 
 interface Command {
   id: string;
@@ -152,6 +153,51 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     });
 
     if (activeSession) {
+      cmds.push({
+        id: "copy-terminal-selection",
+        label: t("palette.cmd.copy_selection"),
+        shortcut: formatShortcut(keybindings.copySelection),
+        icon: <CmdIcon d="M8 8h11v11H8zM5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "terminal"],
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("copy-terminal-selection");
+          copyActiveTerminal(activeSession.id);
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "safe-paste-terminal",
+        label: t("palette.cmd.safe_paste"),
+        shortcut: formatShortcut(keybindings.safePaste),
+        icon: <CmdIcon d="M9 5h6M9 3h6v4H9zM7 5H5v16h14V5h-2M9 12h6M9 16h6" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "terminal"],
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("safe-paste-terminal");
+          void safePasteActiveTerminal(activeSession.id);
+          onClose();
+        },
+      });
+
+      cmds.push({
+        id: "open-terminal-menu",
+        label: t("palette.cmd.open_terminal_menu"),
+        shortcut: formatShortcut(keybindings.terminalMenu || "Shift+F10"),
+        icon: <CmdIcon d="M4 6h16M4 12h16M4 18h16" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "terminal"],
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("open-terminal-menu");
+          onClose();
+          globalThis.setTimeout(() => { openTerminalMenu(activeSession.id); }, 0);
+        },
+      });
+
       const openInspectorTab = (tab: "overview" | "notes", usageId: string) => {
         uiStore.getState().recordCommandUse(usageId);
         uiStore.getState().setPanelVisible(true);

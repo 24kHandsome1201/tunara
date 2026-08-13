@@ -396,3 +396,27 @@ test("the pure-mode command palette is a focused exit path", () => {
     overlay: null,
   });
 });
+
+test("workspace command palette keeps mouse-free terminal recovery actions", () => {
+  const session: Session = {
+    id: "palette-terminal",
+    title: "Palette terminal",
+    dir: "/tmp",
+    branch: "",
+    runState: "idle",
+    updatedAt: 1,
+  };
+  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+  useUIStore.setState({
+    configLoaded: false,
+    presentationMode: "workspace",
+    overlay: "command-palette",
+  });
+
+  render(<CommandPalette onClose={() => useUIStore.getState().setOverlay(null)} />);
+
+  expect(screen.getByText("Copy terminal selection")).toBeTruthy();
+  expect(screen.getByText("Safe Paste into terminal")).toBeTruthy();
+  expect(screen.getByText("Open terminal shortcut menu")).toBeTruthy();
+  expect(screen.getByText("New terminal")).toBeTruthy();
+});

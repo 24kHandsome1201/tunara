@@ -24,9 +24,15 @@ export interface RawAppearanceConfig {
   global_shortcut: string;
 }
 
+export interface RawTerminalInteractionsConfig {
+  version?: number;
+  secondary_click?: string;
+}
+
 export interface RawTunaraConfig {
   appearance: RawAppearanceConfig;
   keybindings: Record<string, string>;
+  terminal_interactions?: RawTerminalInteractionsConfig;
 }
 
 export interface LoadedTunaraConfig {

@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { ReactNode } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { ContextMenu } from "./ContextMenu";
-import { copyText } from "./lib/clipboard";
 import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
-import { requestProtectedTerminalPaste } from "@/modules/terminal/lib/terminal-paste-protection";
 import { canSplitLayout } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { TerminalInputRouter, type TerminalInputEventKind, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
+import { TerminalInputRouter, type TerminalInputEventKind, type TerminalInputOwner, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
 import { issueFocusReturnToken, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
+import { copyActiveTerminal, registerTerminalMenuAction, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
+import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
 interface TerminalViewChromeProps {
   sessionId: string;
@@ -20,7 +19,6 @@ interface TerminalViewChromeProps {
   /** Returns the live xterm instance for copy/paste actions, or null before init. */
   getTerminal: () => Terminal | null;
   search: ReturnType<typeof useTerminalSearch>;
-  capturePasteTarget: (terminal: Terminal) => () => boolean;
   quickSelectOverlay?: ReactNode;
 }
 
@@ -29,14 +27,15 @@ export function TerminalViewChrome({
   containerRef,
   getTerminal,
   search,
-  capturePasteTarget,
   quickSelectOverlay,
 }: TerminalViewChromeProps) {
   const t = useT();
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean; focusToken: TerminalFocusReturnToken | null } | null>(null);
   const pure = useUIStore((s) => s.presentationMode === "pure");
   const hostModifier = useUIStore((s) => s.terminalHostModifier);
+  const secondaryClickMode = useUIStore((s) => s.terminalSecondaryClick);
   const inputRouter = useRef(new TerminalInputRouter());
+  const contextMenuOwners = useRef(new WeakMap<Event, TerminalInputOwner>());
 
   const isOnTerminalCanvas = (event: React.SyntheticEvent) =>
     event.target instanceof Node && !!containerRef.current?.contains(event.target);
@@ -49,7 +48,7 @@ export function TerminalViewChrome({
       kind, mouseTrackingMode: mode as TerminalMouseTrackingMode,
       selection: !!term?.hasSelection(), pure,
       platform: /Mac/.test(navigator.platform) ? "macos" : /Win/.test(navigator.platform) ? "windows" : "linux",
-      hostModifier,
+      hostModifier, secondaryClickMode,
       modifiers: { shift: event.shiftKey, meta: event.metaKey, alt: event.altKey, ctrl: event.ctrlKey },
       button: "button" in event ? event.button : undefined,
     });
@@ -57,7 +56,16 @@ export function TerminalViewChrome({
 
   const captureRightGesture = (kind: TerminalInputEventKind) => (event: React.MouseEvent) => {
     if (event.button !== 2 || !isOnTerminalCanvas(event)) return;
-    if (ownerFor(kind, event) === "tui") return;
+    const owner = ownerFor(kind, event);
+    if (kind === "mouse-down") {
+      const term = getTerminal();
+      // xterm handles rightClickSelectsWord on contextmenu in desktop WebViews,
+      // but on Firefox it runs from mousedown. Disable that host-only behavior
+      // before a TUI-owned down reaches xterm, then restore it on the next
+      // host-owned gesture. This keeps one gesture from acting on both sides.
+      if (term) term.options.rightClickSelectsWord = owner === "tunara";
+    }
+    if (owner === "tui") return;
     event.preventDefault();
     event.stopPropagation();
   };
@@ -67,11 +75,47 @@ export function TerminalViewChrome({
     setMenu(null);
   }, [pure]);
 
+  const openMenu = useCallback((x: number, y: number) => {
+    if (useUIStore.getState().presentationMode === "pure") return;
+    const term = getTerminal();
+    if (!term) return;
+    setMenu({
+      x,
+      y,
+      hasSelection: !!term.getSelection(),
+      canSplit: canSplitLayout(useUIStore.getState().split),
+      focusToken: issueFocusReturnToken(sessionId),
+    });
+  }, [getTerminal, sessionId]);
+
+  const openKeyboardMenu = useCallback(() => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    openMenu(rect.left + 24, rect.top + 24);
+  }, [containerRef, openMenu]);
+
+  useEffect(() => registerTerminalMenuAction(sessionId, openKeyboardMenu), [openKeyboardMenu, sessionId]);
+
+  const handleContextMenuCapture = (e: React.MouseEvent) => {
+    if (!isOnTerminalCanvas(e)) return;
+    const owner = ownerFor("contextmenu", e);
+    contextMenuOwners.current.set(e.nativeEvent, owner);
+    const term = getTerminal();
+    if (term) term.options.rightClickSelectsWord = owner === "tunara";
+    if (owner === "tui") {
+      // Stop before xterm's bubble-phase rightClickSelectsWord handler. The PTY
+      // already owns the latched down/up stream; host selection here would make
+      // one gesture execute on both sides.
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
   const handleContextMenu = (e: React.MouseEvent) => {
     if (!isOnTerminalCanvas(e)) return;
-    if (ownerFor("contextmenu", e) === "tui") {
-      // xterm owns the already-delivered mouse gesture, but the WebView must
-      // not add its native context menu on top of the TUI response.
+    const owner = contextMenuOwners.current.get(e.nativeEvent) ?? ownerFor("contextmenu", e);
+    contextMenuOwners.current.delete(e.nativeEvent);
+    if (owner === "tui") {
       e.preventDefault();
       return;
     }
@@ -83,68 +127,28 @@ export function TerminalViewChrome({
     const term = getTerminal();
     if (!term) return; // before init: let the browser's default menu through (dev only)
     e.preventDefault();
+    e.stopPropagation();
     // xterm's rightClickSelectsWord has already selected the word under the cursor
     // by the time this contextmenu event fires, so getSelection() reflects it.
     // Capture split capability together with this pane's session id. Like HerdR,
     // the eventual action must not infer its target from whichever pane is active.
-    setMenu({
-      x: e.clientX,
-      y: e.clientY,
-      hasSelection: !!term.getSelection(),
-      canSplit: canSplitLayout(useUIStore.getState().split),
-      focusToken: issueFocusReturnToken(sessionId),
-    });
-  };
-
-  const copySelection = () => {
-    const term = getTerminal();
-    const sel = term?.getSelection();
-    if (sel) void copyText(sel);
+    openMenu(e.clientX, e.clientY);
   };
 
   // Shift+F10 / ContextMenu 键：右键菜单的键盘入口（WCAG 键盘可操作性）。
   // 菜单锚定在终端区左上内侧，和鼠标右键走同一套菜单状态。
   const handleMenuKeyDown = (e: React.KeyboardEvent) => {
     if (pure) return;
-    const isMenuKey = e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
-    if (!isMenuKey) return;
-    const term = getTerminal();
-    if (!term) return;
+    if (!isFixedTerminalMenuEvent(e)) return;
     e.preventDefault();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({
-      x: rect.left + 24,
-      y: rect.top + 24,
-      hasSelection: !!term.getSelection(),
-      canSplit: canSplitLayout(useUIStore.getState().split),
-      focusToken: issueFocusReturnToken(sessionId),
-    });
-  };
-
-  const pasteClipboard = async () => {
-    const term = getTerminal();
-    if (!term) return;
-    const isCurrent = capturePasteTarget(term);
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text || !isCurrent()) return;
-      const protectedPaste = requestProtectedTerminalPaste(term, text, (message) =>
-        tauriConfirmDialog(message, { kind: "warning" }), isCurrent);
-      if (!protectedPaste && isCurrent()) term.paste(text);
-    } catch {
-      // 剪贴板读取被拒/不可用：静默 catch 用户会以为菜单坏了，给明确反馈
-      useUIStore.getState().addToast({
-        title: t("term.paste_clipboard_denied"),
-        subtitle: "",
-        variant: "warning",
-      });
-    }
+    openKeyboardMenu();
   };
 
   return (
     <div
       style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}
       onContextMenu={handleContextMenu}
+      onContextMenuCapture={handleContextMenuCapture}
       onMouseDownCapture={captureRightGesture("mouse-down")}
       onMouseUpCapture={captureRightGesture("mouse-up")}
       onKeyDown={handleMenuKeyDown}
@@ -175,8 +179,8 @@ export function TerminalViewChrome({
           terminalFocusReturnToken={menu.focusToken}
           onClose={() => setMenu(null)}
           items={[
-            { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: copySelection },
-            { id: "paste", label: t("term.paste"), action: pasteClipboard },
+            { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: () => { copyActiveTerminal(sessionId); } },
+            { id: "paste", label: t("pure.action.safe_paste"), action: () => { void safePasteActiveTerminal(sessionId); } },
             null,
             {
               id: "split-right",

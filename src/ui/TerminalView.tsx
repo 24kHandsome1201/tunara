@@ -18,7 +18,6 @@ import { isMeaningfulCommand } from "@/modules/terminal/lib/terminal-command";
 import { waitForTerminalFontReady } from "@/modules/terminal/lib/terminal-font";
 import { createTerminalHyperlinkHandler } from "@/modules/terminal/lib/terminal-hyperlinks";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
-import { handleCopyKeyEvent } from "@/modules/terminal/lib/terminal-copy";
 import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
 import { resourceRefForSession } from "@/modules/resources/resource-ref";
 import { createTerminalLineCwdTracker } from "@/modules/terminal/lib/terminal-line-cwd";
@@ -40,7 +39,8 @@ import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-his
 import { createTerminalOscGuard } from "@/modules/terminal/lib/terminal-osc-guard";
 import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
 import { createTerminalLinkInputOwnership, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
-import { captureTerminalActionTarget, registerTerminalActions } from "@/modules/terminal/lib/terminal-action-registry";
+import { captureTerminalActionTarget, handleTerminalInteractionKeyEvent, registerTerminalActions } from "@/modules/terminal/lib/terminal-action-registry";
+import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
@@ -194,9 +194,9 @@ function TerminalViewImpl({
       const searchResultDisposable = search.registerSearchAddon(searchAddon);
       cleanups.push(() => searchResultDisposable.dispose());
       cleanups.push(blocks.registerScrollTracking(term));
-      // ⌘C with a selection and workspace context-menu keys return false before
-      // search/blocks so xterm neither consumes them nor forwards them to the PTY.
-      term.attachCustomKeyEventHandler((e) => !((e.type === "keydown" && (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey))) && useUIStore.getState().presentationMode !== "pure") && handleCopyKeyEvent(term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
+      // Terminal-scoped actions and workspace context-menu keys return false
+      // before search/blocks so xterm neither consumes nor forwards them.
+      term.attachCustomKeyEventHandler((e) => !((e.type === "keydown" && isFixedTerminalMenuEvent(e)) && useUIStore.getState().presentationMode !== "pure") && handleTerminalInteractionKeyEvent(sessionIdRef.current, term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
       // OSC 133: A prompt start, B input start, C command start, D;N command end.
       let osc133Active = false;
       let osc133InputFallback = false;
@@ -603,10 +603,6 @@ function TerminalViewImpl({
         containerRef={containerRef}
         getTerminal={() => termRef.current}
         search={search}
-        capturePasteTarget={(terminal) => {
-          const action = captureTerminalActionTarget(sessionIdRef.current, terminal);
-          return () => action?.isCurrent() === true;
-        }}
         quickSelectOverlay={quickSelect.quickSelectOverlay}
       />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {

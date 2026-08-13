@@ -4,6 +4,7 @@ export type TerminalInputEventKind =
 export type TerminalMouseTrackingMode = "none" | "x10" | "vt200" | "drag" | "any" | (string & {});
 export type TerminalHostModifier = "shift" | "meta" | "alt";
 export type TerminalPlatform = "macos" | "windows" | "linux" | "unknown";
+export type TerminalSecondaryClickMode = "smart" | "menu" | "disabled";
 
 export interface TerminalInputModifiers { shift: boolean; meta: boolean; alt: boolean; ctrl?: boolean }
 export interface TerminalInputRoute {
@@ -13,6 +14,7 @@ export interface TerminalInputRoute {
   pure: boolean;
   platform: TerminalPlatform;
   hostModifier: TerminalHostModifier;
+  secondaryClickMode?: TerminalSecondaryClickMode;
   modifiers: TerminalInputModifiers;
   button?: number;
   explicitHostAction?: boolean;
@@ -26,6 +28,20 @@ function hostRequested(input: TerminalInputRoute): boolean {
   return !!input.explicitHostAction || input.modifiers[input.hostModifier];
 }
 
+function secondaryClickOwner(input: TerminalInputRoute, reporting: boolean): TerminalInputOwner {
+  // Pure Mode has no context menu. Never consume a PTY gesture for hidden host
+  // UI, even when the persisted workspace preset normally claims right-click.
+  if (input.pure) return "tui";
+  switch (input.secondaryClickMode ?? "smart") {
+    case "menu":
+      return "tunara";
+    case "disabled":
+      return "tui";
+    case "smart":
+      return hostRequested(input) || !reporting ? "tunara" : "tui";
+  }
+}
+
 /** Process-independent ownership policy with a latch for the complete right-click gesture. */
 export class TerminalInputRouter {
   private rightGesture: { owner: TerminalInputOwner; sawMouseUp: boolean; sawContextMenu: boolean } | null = null;
@@ -33,12 +49,12 @@ export class TerminalInputRouter {
   route(input: TerminalInputRoute): TerminalInputOwner {
     const reporting = input.mouseTrackingMode !== "none";
     if (input.kind === "mouse-down" && input.button === 2) {
-      const owner = hostRequested(input) || !reporting ? "tunara" : "tui";
+      const owner = secondaryClickOwner(input, reporting);
       this.rightGesture = { owner, sawMouseUp: false, sawContextMenu: false };
       return owner;
     }
     if ((input.kind === "mouse-up" && input.button === 2) || input.kind === "contextmenu") {
-      const owner = this.rightGesture?.owner ?? (hostRequested(input) || !reporting ? "tunara" : "tui");
+      const owner = this.rightGesture?.owner ?? secondaryClickOwner(input, reporting);
       if (this.rightGesture) {
         if (input.kind === "contextmenu") this.rightGesture.sawContextMenu = true;
         else this.rightGesture.sawMouseUp = true;

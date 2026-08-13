@@ -1,6 +1,9 @@
 export const KEYBINDING_ACTIONS = [
   "newTerminal",
   "newTerminalAlt",
+  "terminalMenu",
+  "copySelection",
+  "safePaste",
   "closeSession",
   "openSettings",
   "toggleSidebar",
@@ -35,11 +38,28 @@ export const KEYBINDING_ACTIONS = [
 export type KeybindingAction = typeof KEYBINDING_ACTIONS[number];
 export type KeybindingConfig = Record<KeybindingAction, string>;
 
+export const TERMINAL_KEYBINDING_ACTIONS = [
+  "terminalMenu",
+  "copySelection",
+  "safePaste",
+] as const satisfies readonly KeybindingAction[];
+
+export type TerminalKeybindingAction = typeof TERMINAL_KEYBINDING_ACTIONS[number];
+
+export function isTerminalKeybindingAction(action: KeybindingAction): action is TerminalKeybindingAction {
+  return (TERMINAL_KEYBINDING_ACTIONS as readonly KeybindingAction[]).includes(action);
+}
+
 export type KeybindingPlatform = "macos" | "windows" | "linux";
 
 const COMMON_DEFAULT_KEYBINDINGS: KeybindingConfig = {
   newTerminal: "Mod+T",
   newTerminalAlt: "Mod+N",
+  // Shift+F10 and the ContextMenu key remain fixed recovery paths. This is an
+  // optional additional menu binding, so no extra chord is claimed by default.
+  terminalMenu: "",
+  copySelection: "Mod+C",
+  safePaste: "Mod+V",
   closeSession: "Mod+W",
   openSettings: "Mod+,",
   toggleSidebar: "Mod+\\",
@@ -76,6 +96,8 @@ export function defaultKeybindingsForPlatform(platform: KeybindingPlatform): Key
   const defaults = { ...COMMON_DEFAULT_KEYBINDINGS };
   if (platform !== "macos") {
     defaults.newTerminalAlt = "Ctrl+Shift+N";
+    defaults.copySelection = "Ctrl+Shift+C";
+    defaults.safePaste = "Ctrl+Shift+V";
     defaults.closeSession = "Ctrl+Shift+W";
     defaults.splitHorizontal = "Alt+Shift+D";
     defaults.commandPalette = "Ctrl+Shift+K";
@@ -95,6 +117,9 @@ export const DEFAULT_KEYBINDINGS: Readonly<KeybindingConfig> = defaultKeybinding
 export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
   newTerminal: "new_terminal",
   newTerminalAlt: "new_terminal_alt",
+  terminalMenu: "terminal_menu",
+  copySelection: "copy_selection",
+  safePaste: "safe_paste",
   closeSession: "close_session",
   openSettings: "open_settings",
   toggleSidebar: "toggle_sidebar",
@@ -202,6 +227,20 @@ export function findKeybindingConflict(config: KeybindingConfig, action: Keybind
   return KEYBINDING_ACTIONS.find((candidate) => candidate !== action && keybindingSignature(config[candidate], platform) === normalized) ?? null;
 }
 
+export function isFixedTerminalMenuKeybinding(binding: string, platform: KeybindingPlatform = runtimePlatform()): boolean {
+  const signature = keybindingSignature(binding, platform);
+  return signature === keybindingSignature("Shift+F10", platform)
+    || signature === keybindingSignature("ContextMenu", platform);
+}
+
+export function isFixedTerminalMenuEvent(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
+): boolean {
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  return (event.key === "F10" && event.shiftKey)
+    || (event.key === "ContextMenu" && !event.shiftKey);
+}
+
 export type TerminalKeybindingRisk = { risky: boolean; reason?: "bare-control" | "shell-tui" };
 export function analyzeTerminalKeybindingRisk(binding: string, platform: KeybindingPlatform = runtimePlatform()): TerminalKeybindingRisk {
   const parsed = parseKeybinding(binding);
@@ -212,6 +251,22 @@ export function analyzeTerminalKeybindingRisk(binding: string, platform: Keybind
   if (bareCtrl && (parsed.key.length === 1 || ["[", "]", "\\", "space"].includes(parsed.key))) return { risky: true, reason: "bare-control" };
   const common = new Set(["Ctrl+c", "Ctrl+d", "Ctrl+z", "Ctrl+l", "Ctrl+r", "Ctrl+a", "Ctrl+e", "Ctrl+k", "Ctrl+u", "Ctrl+w"]);
   return common.has(keybindingSignature(binding, platform) ?? "") ? { risky: true, reason: "shell-tui" } : { risky: false };
+}
+
+export function analyzeTerminalScopedKeybindingRisk(binding: string, platform: KeybindingPlatform = runtimePlatform()): TerminalKeybindingRisk {
+  const existingRisk = analyzeTerminalKeybindingRisk(binding, platform);
+  if (existingRisk.risky) return existingRisk;
+  const parsed = parseKeybinding(binding);
+  if (!parsed) return { risky: false };
+  const effectiveCtrl = parsed.ctrl || (parsed.mod && platform !== "macos");
+  const effectiveMeta = parsed.meta || (parsed.mod && platform === "macos");
+  // Terminal-scoped handlers run inside xterm rather than at the app shell.
+  // Require the platform's conventional host chord; plain, Alt-only, and
+  // macOS Control chords can otherwise steal ordinary shell/TUI input.
+  const conventionalHostChord = platform === "macos"
+    ? effectiveMeta
+    : effectiveCtrl && parsed.shift;
+  return conventionalHostChord ? { risky: false } : { risky: true, reason: "shell-tui" };
 }
 
 export function parseKeybinding(def: string): ParsedKeybinding | null {
@@ -244,7 +299,9 @@ export function sanitizeKeybindings(raw: unknown): KeybindingConfig {
   if (!raw || typeof raw !== "object") return next;
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const action = configActionForKey(key);
-    if (action && isValidKeybinding(value)) next[action] = value;
+    if (action && (isValidKeybinding(value) || (isTerminalKeybindingAction(action) && value === ""))) {
+      next[action] = value;
+    }
   }
   return next;
 }

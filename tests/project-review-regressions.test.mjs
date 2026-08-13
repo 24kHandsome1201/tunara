@@ -1449,10 +1449,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /quickSelectOverlay=\{quickSelect\.quickSelectOverlay\}/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
-  assert.match(terminal, /e\.key === "ContextMenu" \|\| \(e\.key === "F10" && e\.shiftKey\)/);
+  assert.match(terminal, /isFixedTerminalMenuEvent\(e\)/);
   assert.match(terminal, /useUIStore\.getState\(\)\.presentationMode !== "pure"/);
-  assert.match(terminal, /handleCopyKeyEvent\(term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
-  assert.match(terminal, /import \{ handleCopyKeyEvent \} from "@\/modules\/terminal\/lib\/terminal-copy"/);
+  assert.match(terminal, /handleTerminalInteractionKeyEvent\(sessionIdRef\.current, term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
+  assert.match(terminal, /handleTerminalInteractionKeyEvent, registerTerminalActions/);
   assert.match(terminal, /const search = useTerminalSearch\(sessionId\)/);
   assert.match(terminal, /observeTerminalResize\(\{/);
   assert.match(terminal, /scanTerminalInputBuffer\(inputState\.buffer, data, inputState\.bracketedPasteActive\)/);
@@ -1462,7 +1462,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalChrome, /quickSelectOverlay\?: ReactNode/);
   assert.match(terminalChrome, /\{!pure && quickSelectOverlay\}/);
   assert.match(terminalChrome, /onContextMenu=\{handleContextMenu\}/);
-  assert.match(terminalChrome, /requestProtectedTerminalPaste\(term, text/);
+  assert.match(terminalChrome, /onContextMenuCapture=\{handleContextMenuCapture\}/);
+  assert.match(terminalChrome, /safePasteActiveTerminal\(sessionId\)/);
   assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalQuickSelect, /export type TerminalQuickSelectKind = "url" \| "file" \| "text"/);
   assert.match(terminalQuickSelect, /export function collectTerminalQuickSelectItems/);

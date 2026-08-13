@@ -11,6 +11,7 @@ import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
 import { formatElapsed } from "./lib/elapsed";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
+import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
 function StatusDot({ runState, unread, waitingConfirmation = false }: { runState: RunState; unread?: boolean; waitingConfirmation?: boolean }) {
   if (waitingConfirmation) {
@@ -358,7 +359,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const handleClick = () => onSelect(session.id);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
-    if (!editing && ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu")) {
+    if (!editing && isFixedTerminalMenuEvent(e)) {
       e.preventDefault();
       const rect = e.currentTarget.getBoundingClientRect();
       e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.top + rect.height / 2 }));

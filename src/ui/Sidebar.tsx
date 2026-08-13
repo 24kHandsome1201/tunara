@@ -13,6 +13,7 @@ import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-di
 import { useT } from "@/modules/i18n";
 import { SidebarNewTerminalControl } from "./SidebarNewTerminalControl";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
+import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
 // Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
 interface DragState {
@@ -341,7 +342,7 @@ export function Sidebar({
                 });
               }}
               onKeyDown={(e) => {
-                if ((e.shiftKey && e.key === "F10") || e.key === "ContextMenu") {
+                if (isFixedTerminalMenuEvent(e)) {
                   e.preventDefault();
                   const rect = e.currentTarget.getBoundingClientRect();
                   e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.bottom }));

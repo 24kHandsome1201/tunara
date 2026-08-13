@@ -15,7 +15,7 @@ import { useAppUpdate } from "./useAppUpdate";
 import { WorkflowsSettings } from "./WorkflowsSettings";
 import { useWorkflowsStore } from "@/state/workflows";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
-import { analyzeTerminalKeybindingRisk, captureKeybinding, defaultKeybindingsForPlatform, findKeybindingConflict, KEYBINDING_ACTIONS, type KeybindingAction } from "@/modules/config/keybindings";
+import { analyzeTerminalKeybindingRisk, analyzeTerminalScopedKeybindingRisk, captureKeybinding, defaultKeybindingsForPlatform, findKeybindingConflict, isFixedTerminalMenuKeybinding, isTerminalKeybindingAction, KEYBINDING_ACTIONS, TERMINAL_KEYBINDING_ACTIONS, type KeybindingAction } from "@/modules/config/keybindings";
 
 interface SettingsProps {
   onClose: () => void;
@@ -161,6 +161,8 @@ export function Settings({ onClose }: SettingsProps) {
   const resetKeybindings = useUIStore((s) => s.resetKeybindings);
   const [pendingRisk, setPendingRisk] = useState<{ action: KeybindingAction; binding: string } | null>(null);
   const [bindingMessage, setBindingMessage] = useState<string | null>(null);
+  const [bindingMessageScope, setBindingMessageScope] = useState<"terminal" | "app" | null>(null);
+  const [pendingRightClickRisk, setPendingRightClickRisk] = useState(false);
   const [shortcutDraft, setShortcutDraft] = useState(globalShortcut);
   useEffect(() => setShortcutDraft(globalShortcut), [globalShortcut]);
   const theme = useUIStore((s) => s.theme);
@@ -197,6 +199,9 @@ export function Settings({ onClose }: SettingsProps) {
   const setShowPureModeFilesButton = useUIStore((s) => s.setShowPureModeFilesButton);
   const terminalHostModifier = useUIStore((s) => s.terminalHostModifier);
   const setTerminalHostModifier = useUIStore((s) => s.setTerminalHostModifier);
+  const terminalSecondaryClick = useUIStore((s) => s.terminalSecondaryClick);
+  const setTerminalSecondaryClick = useUIStore((s) => s.setTerminalSecondaryClick);
+  const resetTerminalInteractions = useUIStore((s) => s.resetTerminalInteractions);
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
 
@@ -351,13 +356,84 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === "appearance" && (
             <div>
               <div style={{ marginBottom: 24 }}>
-                <label style={SECTION_LABEL_INLINE}>
-                  {t("settings.appearance.host_modifier")}
-                  <select value={terminalHostModifier} onChange={(event) => setTerminalHostModifier(event.target.value as "shift" | "meta" | "alt")}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={SECTION_LABEL}>{t("settings.terminal_interactions.title")}</div>
+                  <button onClick={() => { resetTerminalInteractions(); setPendingRightClickRisk(false); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>
+                    {t("settings.terminal_interactions.reset")}
+                  </button>
+                </div>
+                <div style={{ ...SECTION_HINT, marginBottom: 10 }}>{t("settings.terminal_interactions.hint")}</div>
+                <label htmlFor="terminal-secondary-click" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, fontSize: "var(--fs-secondary)" }}>
+                  <span>{t("settings.terminal_interactions.secondary_click")}</span>
+                  <select
+                    id="terminal-secondary-click"
+                    value={terminalSecondaryClick}
+                    onChange={(event) => {
+                      const mode = event.target.value as "smart" | "menu" | "disabled";
+                      if (mode === "menu" && terminalSecondaryClick !== "menu") {
+                        setPendingRightClickRisk(true);
+                        return;
+                      }
+                      setPendingRightClickRisk(false);
+                      setTerminalSecondaryClick(mode);
+                    }}
+                  >
+                    <option value="smart">{t("settings.terminal_interactions.secondary_click.smart")}</option>
+                    <option value="menu">{t("settings.terminal_interactions.secondary_click.menu")}</option>
+                    <option value="disabled">{t("settings.terminal_interactions.secondary_click.disabled")}</option>
+                  </select>
+                </label>
+                {(pendingRightClickRisk || terminalSecondaryClick === "menu") && (
+                  <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)", marginTop: 8 }}>
+                    {t("settings.terminal_interactions.mouse_risk")}
+                    {pendingRightClickRisk && (
+                      <button style={{ marginLeft: 8 }} onClick={() => { setTerminalSecondaryClick("menu"); setPendingRightClickRisk(false); }}>
+                        {t("settings.terminal_interactions.mouse_risk_confirm")}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <label htmlFor="terminal-host-modifier" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, marginTop: 10, fontSize: "var(--fs-secondary)" }}>
+                  <span>{t("settings.appearance.host_modifier")}</span>
+                  <select id="terminal-host-modifier" value={terminalHostModifier} onChange={(event) => setTerminalHostModifier(event.target.value as "shift" | "meta" | "alt")}>
                     <option value="shift">Shift</option><option value="meta">Cmd/Meta</option><option value="alt">Alt/Option</option>
                   </select>
                 </label>
                 <div style={SECTION_HINT}>{t("settings.appearance.host_modifier.hint")}</div>
+                <div style={SECTION_HINT}>{t("settings.terminal_interactions.safe_paste_hint")}</div>
+                <div style={SECTION_HINT}>{t("settings.terminal_interactions.recovery_hint")}</div>
+                <details style={{ marginTop: 12 }}>
+                  <summary style={{ cursor: "pointer", fontSize: "var(--fs-secondary)", fontWeight: 600 }}>{t("settings.terminal_interactions.advanced")}</summary>
+                  {bindingMessage && bindingMessageScope === "terminal" && <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)" }}>{bindingMessage}</div>}
+                  <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                    {TERMINAL_KEYBINDING_ACTIONS.map((action) => (
+                      <div key={action} style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) 170px auto auto", gap: 8, alignItems: "center" }}>
+                        <label htmlFor={`binding-${action}`} style={{ fontSize: "var(--fs-secondary)" }}>{t(`settings.keybindings.action.${action}`)}</label>
+                        <input
+                          id={`binding-${action}`}
+                          readOnly
+                          value={keybindings[action]}
+                          placeholder={t("settings.terminal_interactions.disabled")}
+                          onKeyDown={(event) => {
+                            event.preventDefault(); event.stopPropagation();
+                            const binding = captureKeybinding(event.nativeEvent);
+                            if (!binding) return;
+                            if (isFixedTerminalMenuKeybinding(binding)) { setBindingMessageScope("terminal"); setBindingMessage(t("settings.keybindings.fixed_menu_conflict")); return; }
+                            const conflict = findKeybindingConflict(keybindings, action, binding);
+                            if (conflict) { setBindingMessageScope("terminal"); setBindingMessage(t("settings.keybindings.conflict", { action: t(`settings.keybindings.action.${conflict}`) })); return; }
+                            if (analyzeTerminalScopedKeybindingRisk(binding).risky) { setPendingRisk({ action, binding }); setBindingMessageScope("terminal"); setBindingMessage(t("settings.keybindings.risk")); return; }
+                            setKeybinding(action, binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null);
+                          }}
+                          aria-label={t("settings.keybindings.capture", { action: t(`settings.keybindings.action.${action}`) })}
+                          style={{ fontFamily: "var(--font-mono)", padding: "5px 8px" }}
+                        />
+                        <button onClick={() => { setKeybinding(action, ""); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.terminal_interactions.disable")}</button>
+                        <button onClick={() => { setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action]); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_one")}</button>
+                        {pendingRisk?.action === action && <button style={{ gridColumn: "2 / 5" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.override")}</button>}
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </div>
               <div style={{ marginBottom: 24 }}>
                 <div style={SECTION_LABEL}>{t("settings.appearance.theme")}</div>
@@ -642,12 +718,12 @@ export function Settings({ onClose }: SettingsProps) {
               <div style={{ marginTop: 24 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={SECTION_LABEL}>{t("settings.keybindings.title")}</div>
-                  <button onClick={() => { resetKeybindings(); setBindingMessage(null); }}>{t("settings.keybindings.reset_all")}</button>
+                  <button onClick={() => { resetKeybindings(); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_all")}</button>
                 </div>
                 <div style={SECTION_HINT}>{t("settings.keybindings.hint")}</div>
-                {bindingMessage && <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)" }}>{bindingMessage}</div>}
+                {bindingMessage && bindingMessageScope === "app" && <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)" }}>{bindingMessage}</div>}
                 <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
-                  {KEYBINDING_ACTIONS.map((action) => (
+                  {KEYBINDING_ACTIONS.filter((action) => !isTerminalKeybindingAction(action)).map((action) => (
                     <div key={action} style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) 180px auto", gap: 8, alignItems: "center" }}>
                       <label htmlFor={`binding-${action}`} style={{ fontSize: "var(--fs-secondary)" }}>{t(`settings.keybindings.action.${action}`)}</label>
                       <input
@@ -658,16 +734,17 @@ export function Settings({ onClose }: SettingsProps) {
                           event.preventDefault(); event.stopPropagation();
                           const binding = captureKeybinding(event.nativeEvent);
                           if (!binding) return;
+                          if (isFixedTerminalMenuKeybinding(binding)) { setBindingMessageScope("app"); setBindingMessage(t("settings.keybindings.fixed_menu_conflict")); return; }
                           const conflict = findKeybindingConflict(keybindings, action, binding);
-                          if (conflict) { setBindingMessage(t("settings.keybindings.conflict", { action: t(`settings.keybindings.action.${conflict}`) })); return; }
-                          if (analyzeTerminalKeybindingRisk(binding).risky) { setPendingRisk({ action, binding }); setBindingMessage(t("settings.keybindings.risk")); return; }
-                          setKeybinding(action, binding); setPendingRisk(null); setBindingMessage(null);
+                          if (conflict) { setBindingMessageScope("app"); setBindingMessage(t("settings.keybindings.conflict", { action: t(`settings.keybindings.action.${conflict}`) })); return; }
+                          if (analyzeTerminalKeybindingRisk(binding).risky) { setPendingRisk({ action, binding }); setBindingMessageScope("app"); setBindingMessage(t("settings.keybindings.risk")); return; }
+                          setKeybinding(action, binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null);
                         }}
                         aria-label={t("settings.keybindings.capture", { action: t(`settings.keybindings.action.${action}`) })}
                         style={{ fontFamily: "var(--font-mono)", padding: "5px 8px" }}
                       />
-                      <button onClick={() => setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action])}>{t("settings.keybindings.reset_one")}</button>
-                      {pendingRisk?.action === action && <button style={{ gridColumn: "2 / 4" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); }}>{t("settings.keybindings.override")}</button>}
+                      <button onClick={() => { setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action]); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_one")}</button>
+                      {pendingRisk?.action === action && <button style={{ gridColumn: "2 / 4" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.override")}</button>}
                     </div>
                   ))}
                 </div>

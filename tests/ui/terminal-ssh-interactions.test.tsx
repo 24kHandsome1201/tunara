@@ -393,11 +393,18 @@ test("generation gate prioritizes transport loss and acknowledges every stale da
   expect(terminatedAck).toHaveBeenCalledOnce();
 });
 
-function TerminalViewChromeHarness({ mouseTrackingMode }: { mouseTrackingMode: "none" | "any" }) {
+function TerminalViewChromeHarness({
+  mouseTrackingMode,
+  terminal: suppliedTerminal,
+}: {
+  mouseTrackingMode: "none" | "any";
+  terminal?: Terminal;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const search = useTerminalSearch("router-session");
-  const terminal = {
+  const terminal = suppliedTerminal ?? {
     modes: { mouseTrackingMode },
+    options: { rightClickSelectsWord: true },
     hasSelection: () => false,
     getSelection: () => "",
   } as unknown as Terminal;
@@ -407,7 +414,6 @@ function TerminalViewChromeHarness({ mouseTrackingMode }: { mouseTrackingMode: "
       containerRef={containerRef}
       getTerminal={() => terminal}
       search={search}
-      capturePasteTarget={() => () => true}
     />
   );
 }
@@ -431,13 +437,15 @@ test.each([
   ["down → up → contextmenu", ["mousedown", "mouseup", "contextmenu"]],
   ["down → contextmenu → up", ["mousedown", "contextmenu", "mouseup"]],
 ] as const)("TerminalViewChrome suppresses the native menu without consuming a TUI-owned %s gesture", (_label, order) => {
-  useUIStore.setState({ terminalHostModifier: "shift", presentationMode: "workspace" });
+  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "smart", presentationMode: "workspace" });
   render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
   const surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
   const onMouseDown = vi.fn();
   const onMouseUp = vi.fn();
+  const onContextMenu = vi.fn();
   surface.addEventListener("mousedown", onMouseDown);
   surface.addEventListener("mouseup", onMouseUp);
+  surface.addEventListener("contextmenu", onContextMenu);
 
   let contextMenu: MouseEvent | undefined;
   const events = order.map((type) => {
@@ -451,11 +459,12 @@ test.each([
     .every((event) => !event.defaultPrevented)).toBe(true);
   expect(onMouseDown).toHaveBeenCalledOnce();
   expect(onMouseUp).toHaveBeenCalledOnce();
+  expect(onContextMenu).not.toHaveBeenCalled();
   expect(screen.queryByRole("menu")).toBeNull();
 });
 
 test("TerminalViewChrome opens the Tunara menu when reporting is off or the host modifier is held", () => {
-  useUIStore.setState({ terminalHostModifier: "shift", presentationMode: "workspace" });
+  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "smart", presentationMode: "workspace" });
   const view = render(<TerminalViewChromeHarness mouseTrackingMode="none" />);
   let surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
 
@@ -471,6 +480,77 @@ test("TerminalViewChrome opens the Tunara menu when reporting is off or the host
   dispatchTerminalMouse(surface, "mouseup", { shiftKey: true });
   expect(dispatchTerminalMouse(surface, "contextmenu", { shiftKey: true }).defaultPrevented).toBe(true);
   expect(screen.getByRole("menu")).toBeTruthy();
+});
+
+test("TerminalViewChrome preset ownership claims or forwards the complete gesture", () => {
+  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "menu", presentationMode: "workspace" });
+  const alwaysMenu = render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
+  let surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
+  const hostDown = vi.fn();
+  const hostUp = vi.fn();
+  const hostContext = vi.fn();
+  surface.addEventListener("mousedown", hostDown);
+  surface.addEventListener("mouseup", hostUp);
+  surface.addEventListener("contextmenu", hostContext);
+
+  expect(dispatchTerminalMouse(surface, "mousedown").defaultPrevented).toBe(true);
+  expect(dispatchTerminalMouse(surface, "mouseup").defaultPrevented).toBe(true);
+  dispatchTerminalMouse(surface, "contextmenu");
+  expect(hostDown).not.toHaveBeenCalled();
+  expect(hostUp).not.toHaveBeenCalled();
+  expect(hostContext).toHaveBeenCalledOnce();
+  expect(screen.getByRole("menu")).toBeTruthy();
+
+  alwaysMenu.unmount();
+  useUIStore.setState({ terminalSecondaryClick: "disabled" });
+  render(<TerminalViewChromeHarness mouseTrackingMode="none" />);
+  surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
+  const forwardedDown = vi.fn();
+  const forwardedUp = vi.fn();
+  const blockedContext = vi.fn();
+  surface.addEventListener("mousedown", forwardedDown);
+  surface.addEventListener("mouseup", forwardedUp);
+  surface.addEventListener("contextmenu", blockedContext);
+
+  dispatchTerminalMouse(surface, "mousedown", { shiftKey: true });
+  dispatchTerminalMouse(surface, "mouseup", { shiftKey: true });
+  expect(dispatchTerminalMouse(surface, "contextmenu", { shiftKey: true }).defaultPrevented).toBe(true);
+  expect(forwardedDown).toHaveBeenCalledOnce();
+  expect(forwardedUp).toHaveBeenCalledOnce();
+  expect(blockedContext).not.toHaveBeenCalled();
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test("TerminalViewChrome disables xterm word selection before a TUI-owned right mousedown", () => {
+  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "smart", presentationMode: "workspace" });
+  const terminal = {
+    modes: { mouseTrackingMode: "any" },
+    options: { rightClickSelectsWord: true },
+    hasSelection: () => false,
+    getSelection: () => "",
+  } as unknown as Terminal;
+  render(<TerminalViewChromeHarness mouseTrackingMode="any" terminal={terminal} />);
+  const surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
+
+  dispatchTerminalMouse(surface, "mousedown");
+  expect(terminal.options.rightClickSelectsWord).toBe(false);
+
+  dispatchTerminalMouse(surface, "mousedown", { shiftKey: true });
+  expect(terminal.options.rightClickSelectsWord).toBe(true);
+});
+
+test.each([
+  ["Shift+F10", { key: "F10", shiftKey: true }],
+  ["ContextMenu", { key: "ContextMenu" }],
+] as const)("TerminalViewChrome keeps the fixed %s keyboard menu recovery path", (_label, key) => {
+  useUIStore.setState({ terminalSecondaryClick: "disabled", presentationMode: "workspace" });
+  render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
+  const surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
+
+  fireEvent.keyDown(surface, key);
+
+  expect(screen.getByRole("menu")).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Safe Paste" })).toBeTruthy();
 });
 
 test("closing a context menu restores focus to the terminal trigger", async () => {
@@ -493,6 +573,38 @@ test("closing a context menu restores focus to the terminal trigger", async () =
   view.unmount();
   expect(document.activeElement).toBe(trigger);
   trigger.remove();
+});
+
+test("terminal context menu exposes APG keyboard navigation and skips disabled Copy", async () => {
+  const paste = vi.fn();
+  const split = vi.fn();
+  const onClose = vi.fn();
+  render(
+    <ContextMenu
+      items={[
+        { id: "copy", label: "Copy", disabled: true, action: vi.fn() },
+        { id: "paste", label: "Safe Paste", action: paste },
+        null,
+        { id: "split", label: "Split right", action: split },
+      ]}
+      position={{ x: 12, y: 12 }}
+      onClose={onClose}
+    />,
+  );
+  const menu = screen.getByRole("menu");
+  await waitFor(() => expect(document.activeElement).toBe(menu));
+  expect(menu.getAttribute("aria-activedescendant")).toMatch(/item-1$/);
+
+  fireEvent.keyDown(menu, { key: "End" });
+  expect(menu.getAttribute("aria-activedescendant")).toMatch(/item-3$/);
+  fireEvent.keyDown(menu, { key: "Home" });
+  expect(menu.getAttribute("aria-activedescendant")).toMatch(/item-1$/);
+  fireEvent.keyDown(menu, { key: "ArrowUp" });
+  expect(menu.getAttribute("aria-activedescendant")).toMatch(/item-3$/);
+  fireEvent.keyDown(menu, { key: " " });
+  expect(split).toHaveBeenCalledOnce();
+  expect(paste).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledOnce();
 });
 
 test("closing a context menu preserves focus claimed by its action", async () => {

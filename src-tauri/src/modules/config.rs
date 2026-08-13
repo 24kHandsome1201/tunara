@@ -100,11 +100,30 @@ impl AppearanceConfig {
     }
 }
 
+const TERMINAL_INTERACTIONS_VERSION: u16 = 1;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct TerminalInteractionsConfig {
+    pub version: u16,
+    pub secondary_click: String,
+}
+
+impl Default for TerminalInteractionsConfig {
+    fn default() -> Self {
+        Self {
+            version: TERMINAL_INTERACTIONS_VERSION,
+            secondary_click: "smart".into(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct TunaraConfig {
     pub appearance: AppearanceConfig,
     pub keybindings: BTreeMap<String, String>,
+    pub terminal_interactions: TerminalInteractionsConfig,
 }
 
 impl Default for TunaraConfig {
@@ -112,6 +131,7 @@ impl Default for TunaraConfig {
         Self {
             appearance: AppearanceConfig::default(),
             keybindings: default_keybindings(),
+            terminal_interactions: TerminalInteractionsConfig::default(),
         }
     }
 }
@@ -135,6 +155,15 @@ fn default_keybindings() -> BTreeMap<String, String> {
 
 fn default_keybindings_for(is_macos: bool) -> BTreeMap<String, String> {
     let mut bindings: BTreeMap<String, String> = old_default_keybindings();
+    bindings.insert("terminal_menu".into(), "".into());
+    bindings.insert(
+        "copy_selection".into(),
+        if is_macos { "Mod+C" } else { "Ctrl+Shift+C" }.into(),
+    );
+    bindings.insert(
+        "safe_paste".into(),
+        if is_macos { "Mod+V" } else { "Ctrl+Shift+V" }.into(),
+    );
     if !is_macos {
         bindings.insert("new_terminal_alt".into(), "Ctrl+Shift+N".into());
         bindings.insert("close_session".into(), "Ctrl+Shift+W".into());
@@ -324,6 +353,29 @@ fn merge_known_config(raw: &str, config: &TunaraConfig) -> Result<String, String
         }
     }
 
+    // A newer Tunara may own fields and semantics this binary does not know.
+    // Keep that table byte-for-byte instead of downgrading it on an unrelated
+    // appearance/keybinding save.
+    let future_terminal_interactions = doc
+        .get("terminal_interactions")
+        .and_then(Item::as_table)
+        .and_then(|table| table.get("version"))
+        .and_then(Item::as_integer)
+        .is_some_and(|version| version > i64::from(TERMINAL_INTERACTIONS_VERSION));
+    if !future_terminal_interactions {
+        let terminal_interactions = ensure_document_table(&mut doc, "terminal_interactions")?;
+        set_table_item(
+            terminal_interactions,
+            "version",
+            value(i64::from(config.terminal_interactions.version)),
+        );
+        set_table_item(
+            terminal_interactions,
+            "secondary_click",
+            value(config.terminal_interactions.secondary_click.clone()),
+        );
+    }
+
     Ok(doc.to_string())
 }
 
@@ -451,6 +503,7 @@ mod tests {
         let old = TunaraConfig {
             appearance: AppearanceConfig::default(),
             keybindings: old_default_keybindings(),
+            terminal_interactions: TerminalInteractionsConfig::default(),
         };
         let old_raw = toml::to_string_pretty(&old).expect("serialize old defaults");
         assert!(raw_has_complete_old_keybindings(&old_raw));
@@ -464,6 +517,7 @@ mod tests {
         let old_backend = TunaraConfig {
             appearance: AppearanceConfig::default(),
             keybindings: old_backend_default_keybindings(),
+            terminal_interactions: TerminalInteractionsConfig::default(),
         };
         let old_backend_raw =
             toml::to_string_pretty(&old_backend).expect("serialize old backend defaults");
@@ -493,6 +547,8 @@ mod tests {
         let macos = default_keybindings_for(true);
         let linux_or_windows = default_keybindings_for(false);
         for (key, expected) in [
+            ("copy_selection", "Mod+C"),
+            ("safe_paste", "Mod+V"),
             ("new_terminal_alt", "Mod+N"),
             ("close_session", "Mod+W"),
             ("split_horizontal", "Mod+D"),
@@ -501,6 +557,8 @@ mod tests {
             assert_eq!(macos.get(key).map(String::as_str), Some(expected));
         }
         for (key, expected) in [
+            ("copy_selection", "Ctrl+Shift+C"),
+            ("safe_paste", "Ctrl+Shift+V"),
             ("new_terminal_alt", "Ctrl+Shift+N"),
             ("close_session", "Ctrl+Shift+W"),
             ("split_horizontal", "Alt+Shift+D"),
@@ -643,6 +701,8 @@ font_size = 15
         assert!(saved.contains("scrollback = 2000"));
         assert!(saved.contains("show_pure_mode_files_button = true"));
         assert!(saved.contains("terminal_screen_reader_mode = false"));
+        assert!(saved.contains("[terminal_interactions]"));
+        assert!(saved.contains("secondary_click = \"smart\""));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
@@ -671,6 +731,53 @@ accent = "#abcdef"
         let saved = fs::read_to_string(&path).expect("read saved config");
         assert!(saved.contains("language = \"en\""));
         assert!(saved.contains("accent = \"#abcdef\""));
+
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
+
+    #[test]
+    fn terminal_interactions_merge_preserves_unknown_fields_and_future_versions() {
+        let path = temp_config_path("terminal-interactions");
+        ensure_parent(&path).expect("create temp config dir");
+        fs::write(
+            &path,
+            r##"[appearance]
+theme = "dark"
+
+[terminal_interactions]
+version = 1
+secondary_click = "disabled"
+future_same_version = "keep"
+"##,
+        )
+        .expect("write current terminal interactions");
+
+        let mut config = TunaraConfig::default();
+        config.terminal_interactions.secondary_click = "menu".into();
+        write_config(&path, &config).expect("merge current terminal interactions");
+        let saved = fs::read_to_string(&path).expect("read current merge");
+        assert!(saved.contains("secondary_click = \"menu\""));
+        assert!(saved.contains("future_same_version = \"keep\""));
+
+        fs::write(
+            &path,
+            r##"[appearance]
+theme = "dark"
+
+[terminal_interactions]
+version = 99
+secondary_click = "future-gesture"
+future_field = true
+"##,
+        )
+        .expect("write future terminal interactions");
+        config.appearance.theme = "light".into();
+        write_config(&path, &config).expect("save around future table");
+        let future_saved = fs::read_to_string(&path).expect("read future merge");
+        assert!(future_saved.contains("version = 99"));
+        assert!(future_saved.contains("secondary_click = \"future-gesture\""));
+        assert!(future_saved.contains("future_field = true"));
+        assert!(future_saved.contains("theme = \"light\""));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
