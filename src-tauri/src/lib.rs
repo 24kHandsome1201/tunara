@@ -226,3 +226,32 @@ pub fn run() {
             _ => {}
         });
 }
+
+#[cfg(test)]
+mod window_config_tests {
+    use serde_json::Value;
+
+    #[test]
+    fn linux_override_preserves_the_resizable_main_window_contract() {
+        let base: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let linux: Value = serde_json::from_str(include_str!("../tauri.linux.conf.json")).unwrap();
+        let base_window = &base["app"]["windows"][0];
+        let linux_window = &linux["app"]["windows"][0];
+
+        // Platform window arrays replace the base array instead of merging
+        // individual descriptors, so Linux must repeat the native contract.
+        for key in [
+            "width",
+            "height",
+            "minWidth",
+            "minHeight",
+            "resizable",
+            "visible",
+        ] {
+            assert_eq!(linux_window[key], base_window[key], "{key} drifted");
+        }
+        assert_eq!(linux_window["label"], "main");
+        assert_eq!(linux_window["decorations"], false);
+        assert_eq!(linux_window["transparent"], true);
+    }
+}

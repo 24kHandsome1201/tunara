@@ -6,8 +6,8 @@ import "./styles/globals.css";
 
 import ReactDOM from "react-dom/client";
 
-const isLinux = navigator.userAgent.includes("Linux");
-if (isLinux) {
+const isLinuxTauri = navigator.userAgent.includes("Linux") && "__TAURI_INTERNALS__" in window;
+if (isLinuxTauri) {
   document.documentElement.dataset.chrome = "borderless";
 }
 

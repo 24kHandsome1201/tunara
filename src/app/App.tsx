@@ -35,6 +35,7 @@ import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
 import { usePresentationModeContextMenuGuard } from "./usePresentationModeContextMenuGuard";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
+import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -72,6 +73,38 @@ const togglePanelWithoutStacking = () => {
   }
   s.togglePanel();
 };
+
+const WINDOW_RESIZE_EDGES = [
+  ["North", "n"],
+  ["NorthEast", "ne"],
+  ["East", "e"],
+  ["SouthEast", "se"],
+  ["South", "s"],
+  ["SouthWest", "sw"],
+  ["West", "w"],
+  ["NorthWest", "nw"],
+] as const;
+
+function WindowResizeHandles() {
+  if (document.documentElement.dataset.chrome !== "borderless") return null;
+  const win = tryGetCurrentWindow();
+  if (!win) return null;
+
+  return WINDOW_RESIZE_EDGES.map(([direction, edge]) => (
+    <div
+      key={direction}
+      aria-hidden="true"
+      className={`window-resize-handle window-resize-${edge}`}
+      data-window-resize-direction={direction}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void win.startResizeDragging(direction);
+      }}
+    />
+  ));
+}
 
 interface ResizeHandleProps {
   edge: "left" | "right";
@@ -345,6 +378,7 @@ export default function App() {
         background: workspaceMode ? "var(--c-bg-white)" : "var(--terminal-canvas-bg, var(--c-bg-white))",
       }}
     >
+      <WindowResizeHandles />
       <Titlebar
         sessions={sessions}
         activeSessionId={activeSessionId ?? ""}
