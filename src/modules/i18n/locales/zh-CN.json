@@ -161,6 +161,7 @@
   "titlebar.new_menu": "新建…",
   "settings.title": "设置",
   "settings.tabs.appearance": "外观",
+  "settings.tabs.shortcuts": "快捷键",
   "settings.tabs.workflows": "工作流",
   "settings.tabs.cli": "CLI",
   "settings.tabs.app": "应用",

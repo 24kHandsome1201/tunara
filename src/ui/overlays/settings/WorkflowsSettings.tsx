@@ -3,8 +3,8 @@ import { useWorkflowsStore } from "@/state/workflows";
 import { extractParams, type Workflow } from "@/modules/workflows/template";
 import { missingStarterWorkflows } from "@/modules/workflows/starters";
 import { useT } from "@/modules/i18n";
-import { useDestructiveConfirm } from "../lib/destructive-confirm";
-import { CloseIcon } from "../shared";
+import { useDestructiveConfirm } from "../../lib/destructive-confirm";
+import { CloseIcon } from "../../shared";
 
 const SECTION_LABEL: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 10 };
 const SECTION_HINT: React.CSSProperties = { fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: 6, lineHeight: 1.5 };

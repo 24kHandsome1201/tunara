@@ -4,6 +4,19 @@ import test from "node:test";
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
+// The settings overlay is split across a shell and per-tab modules; scan them
+// together so source assertions keep covering the whole settings surface.
+const readSettingsSources = () => [
+  "src/ui/overlays/Settings.tsx",
+  "src/ui/overlays/settings/AppearanceSettings.tsx",
+  "src/ui/overlays/settings/ShortcutsSettings.tsx",
+  "src/ui/overlays/settings/CliSettings.tsx",
+  "src/ui/overlays/settings/AppSettings.tsx",
+  "src/ui/overlays/settings/WorkflowsSettings.tsx",
+  "src/ui/overlays/settings/useCliStatus.ts",
+  "src/ui/overlays/settings/controls.tsx",
+].map(read).join("\n");
+
 test("waiting confirmation uses a dedicated readable text token", () => {
   const tokens = read("src/styles/tokens.css");
   const card = read("src/ui/SessionCard.tsx");
@@ -15,7 +28,7 @@ test("waiting confirmation uses a dedicated readable text token", () => {
 });
 
 test("settings shortcuts and terminal interaction controls define every visual state", () => {
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
   const styles = read("src/styles/globals.css");
   const palettes = read("src/styles/terminalTheme.ts");
 

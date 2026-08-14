@@ -21,7 +21,7 @@ vi.mock("@/ui/overlays/useAppUpdate", () => ({
 test("shortcut and terminal interaction controls opt into theme-aware styling", () => {
   useUIStore.setState({
     configLoaded: false,
-    settingsTab: "appearance",
+    settingsTab: "shortcuts",
     theme: "dark",
     terminalSecondaryClick: "smart",
     terminalHostModifier: "shift",
@@ -49,7 +49,7 @@ test("shortcut and terminal interaction controls opt into theme-aware styling", 
 test("terminal interaction presets warn before TUI override and keep recovery instructions", () => {
   useUIStore.setState({
     configLoaded: false,
-    settingsTab: "appearance",
+    settingsTab: "shortcuts",
     terminalSecondaryClick: "smart",
     terminalHostModifier: "shift",
     keybindings: defaultKeybindingsForPlatform("linux"),
@@ -72,7 +72,7 @@ test("terminal interaction presets warn before TUI override and keep recovery in
 test("advanced terminal bindings detect conflicts, require risky-key override, disable, and reset", () => {
   useUIStore.setState({
     configLoaded: false,
-    settingsTab: "appearance",
+    settingsTab: "shortcuts",
     terminalSecondaryClick: "disabled",
     terminalHostModifier: "alt",
     keybindings: {
@@ -121,7 +121,7 @@ test("advanced terminal bindings detect conflicts, require risky-key override, d
 test("app bindings cannot take the fixed terminal menu recovery keys", () => {
   useUIStore.setState({
     configLoaded: false,
-    settingsTab: "appearance",
+    settingsTab: "shortcuts",
     keybindings: defaultKeybindingsForPlatform("linux"),
   });
   render(<Settings onClose={() => {}} />);

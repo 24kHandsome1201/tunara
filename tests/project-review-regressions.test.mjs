@@ -7,6 +7,18 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
+// The settings dialog is split into a shell plus per-tab panels; assertions
+// about "the settings UI" scan the concatenated sources of all of them.
+const readSettingsSources = () => [
+  "src/ui/overlays/Settings.tsx",
+  "src/ui/overlays/settings/AppearanceSettings.tsx",
+  "src/ui/overlays/settings/ShortcutsSettings.tsx",
+  "src/ui/overlays/settings/CliSettings.tsx",
+  "src/ui/overlays/settings/AppSettings.tsx",
+  "src/ui/overlays/settings/useCliStatus.ts",
+  "src/ui/overlays/settings/controls.tsx",
+].map(read).join("\n");
+
 test("dead IPC commands are removed from the Tauri invoke handler", () => {
   const lib = read("src-tauri/src/lib.rs");
 
@@ -26,7 +38,7 @@ test("persistent Agent Timeline is absent while lightweight Agent lifecycle rema
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const sessions = read("src/state/sessions.ts");
   const workspaceStore = read("src-tauri/src/modules/workspace_store.rs");
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
 
   assert.equal(existsSync(resolve(root, "src-tauri/src/modules/agent_event_store.rs")), false);
   assert.equal(existsSync(resolve(root, "src/ui/AgentTimelinePanel.tsx")), false);
@@ -308,7 +320,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const terminalLigatures = read("src/modules/terminal/lib/terminal-ligatures.ts");
   const terminalLigatureSync = read("src/modules/terminal/lib/terminal-ligature-sync.ts");
   const terminalFont = read("src/modules/terminal/lib/terminal-font.ts");
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
   const agentBadge = read("src/ui/agents/badge.tsx");
   const sessionCard = read("src/ui/SessionCard.tsx");
 
@@ -398,7 +410,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
 });
 
 test("settings exposes the signed updater flow and restart permission", () => {
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
   const appUpdate = read("src/ui/overlays/useAppUpdate.ts");
   const lib = read("src-tauri/src/lib.rs");
   const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
@@ -416,7 +428,7 @@ test("settings exposes the signed updater flow and restart permission", () => {
 });
 
 test("settings defers expensive CLI probes until the CLI tab is opened", () => {
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
 
   assert.match(settings, /const cliLoadStartedRef = useRef\(false\)/);
   assert.match(settings, /if \(activeTab !== "cli" \|\| cliLoadStartedRef\.current\) return;/);
@@ -802,7 +814,7 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   const keys = read("src/app/useKeybindings.ts");
   const main = read("src/ui/MainArea.tsx");
   const gitContext = read("src/ui/useSessionGitContext.ts");
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
 
   assert.match(app, /import \{[^}]*resolveAppShellLayout[^}]*\} from "\.\/lib\/app-shell-layout"/);
   assert.match(app, /\{[\s\S]*sidebarOverlay,[\s\S]*panelOverlay,[\s\S]*sidebarEffectiveWidth,[\s\S]*panelEffectiveWidth,[\s\S]*\} = resolveAppShellLayout\(\{/);
@@ -1047,7 +1059,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   const sessions = read("src/state/sessions.ts");
   const ui = read("src/state/ui.ts");
   const contextMenu = read("src/ui/ContextMenu.tsx");
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
   const contributing = read("CONTRIBUTING.md");
   const shared = read("src/ui/shared.tsx");
 
@@ -1125,7 +1137,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
 test("follow-up review fixes keep agent registry and batch close behavior centralized", () => {
   const registry = read("src/modules/agent/registry.ts");
   const lifecycle = read("src/modules/terminal/lib/agent-lifecycle.ts");
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
   const types = read("src/ui/types.ts");
   const ui = read("src/state/ui.ts");
   const keys = read("src/app/useKeybindings.ts");
@@ -1214,7 +1226,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   const sidebarHeader = read("src/ui/SidebarDirGroupHeader.tsx");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const main = read("src/ui/MainArea.tsx");
-  const settings = read("src/ui/overlays/Settings.tsx");
+  const settings = readSettingsSources();
   const diff = read("src/ui/DiffPanel.tsx");
   const explorer = read("src/ui/FileExplorer.tsx");
   const filePreview = read("src/ui/FilePreview.tsx");

@@ -161,6 +161,7 @@
   "titlebar.new_menu": "New…",
   "settings.title": "Settings",
   "settings.tabs.appearance": "Appearance",
+  "settings.tabs.shortcuts": "Shortcuts",
   "settings.tabs.workflows": "Workflows",
   "settings.tabs.cli": "CLI",
   "settings.tabs.app": "App",
