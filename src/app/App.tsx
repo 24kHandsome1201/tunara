@@ -13,20 +13,6 @@ import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { useInit } from "./useInit";
-import { useTheme } from "./useTheme";
-import { useKeybindings } from "./useKeybindings";
-import { useDockBadge } from "./useDockBadge";
-import { useGlobalShortcut } from "./useGlobalShortcut";
-import { useUpdateReminder } from "./useUpdateReminder";
-import { useTerminalBenchmark } from "./useTerminalBenchmark";
-import { usePhase3TelemetryBenchmark } from "./usePhase3TelemetryBenchmark";
-import { usePhase3RestartBenchmark } from "./usePhase3RestartBenchmark";
-import { usePhase3TunnelBenchmark } from "./usePhase3TunnelBenchmark";
-import { usePhase3CaptureBenchmark } from "./usePhase3CaptureBenchmark";
-import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
-import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
-import { useM2NativeCloseBenchmark } from "./useM2NativeCloseBenchmark";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import {
@@ -36,10 +22,9 @@ import {
 } from "./lib/app-shell-layout";
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
 import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
-import { usePresentationModeContextMenuGuard } from "./usePresentationModeContextMenuGuard";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
-import { useTransferStore } from "@/modules/ssh/transfer-store";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
+import { useAppServices } from "./useAppServices";
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -316,25 +301,7 @@ export default function App() {
   const terminalColumnCount = useUIStore((s) => splitHorizontalPaneCount(s.split));
   const setViewportWidth = useUIStore((s) => s.setViewportWidth);
 
-  useInit();
-  useTheme();
-  useKeybindings();
-  useDockBadge();
-  useGlobalShortcut();
-  useUpdateReminder(ready);
-  useTerminalBenchmark(ready);
-  usePhase3TelemetryBenchmark(ready);
-  usePhase3RestartBenchmark(ready);
-  usePhase3TunnelBenchmark(ready);
-  usePhase3CaptureBenchmark(ready);
-  useM2SafeWriteBenchmark(ready);
-  useM2LocalSafeWriteBenchmark(ready);
-  useM2NativeCloseBenchmark(ready);
-  usePresentationModeContextMenuGuard(presentationMode === "pure");
-
-  useEffect(() => {
-    void useTransferStore.getState().loadJournal();
-  }, []);
+  useAppServices(ready, presentationMode === "pure");
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);

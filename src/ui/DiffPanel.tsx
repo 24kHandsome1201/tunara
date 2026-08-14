@@ -17,7 +17,7 @@ import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
-import { CloseIcon, RefreshIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { CloseIcon, RefreshIcon, PanelEmptyState, PanelIconButton, PanelLoadingState } from "./shared";
 import { copyText } from "./lib/clipboard";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
 import { computeVirtualSlice } from "./lib/diff-virtual";
@@ -689,47 +689,23 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
           {hasChanges && summary && (
             <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", fontWeight: 600, color: "var(--c-text-3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{summary}</span>
           )}
-          <button
+          <PanelIconButton
             onClick={refresh}
             title={t("diff.refresh")}
-            className="hover-bg"
             style={{
               marginLeft: hasChanges && summary ? 4 : "auto",
-              width: "var(--h-titlebar-control)",
-              height: "var(--h-titlebar-control)",
-              borderRadius: "var(--r-btn)",
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
             }}
           >
             <RefreshIcon />
-          </button>
+          </PanelIconButton>
           {onClose && (
-            <button
+            <PanelIconButton
               onClick={onClose}
               title={t("diff.close_panel")}
-              style={{
-                marginLeft: 4,
-                width: "var(--h-titlebar-control)",
-                height: "var(--h-titlebar-control)",
-                borderRadius: "var(--r-btn)",
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-              className="hover-bg"
+              style={{ marginLeft: 4 }}
             >
               <CloseIcon size={13} strokeWidth={2.2} />
-            </button>
+            </PanelIconButton>
           )}
         </div>
       )}

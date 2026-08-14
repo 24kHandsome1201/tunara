@@ -81,7 +81,7 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
   const fileCount = session.changes?.files.length ?? 0;
   const isSshAttention = attentionKind === "ssh-failed" || attentionKind === "ssh-disconnected";
   const tagColor = variant === "run"
-    ? "var(--c-accent)"
+    ? "var(--c-text-4)"
     : attentionKind === "agent-ready" || attentionKind === "agent-confirmation"
       ? "var(--c-warning-text)"
       : "var(--c-error)";
@@ -276,7 +276,7 @@ export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProp
             />
             <CountChip
               count={groups.running.length}
-              color="var(--c-accent)"
+              color="var(--c-text-4)"
               label={t("gbar.count.run", { count: groups.running.length })}
             />
             {liveCount === 0 && (

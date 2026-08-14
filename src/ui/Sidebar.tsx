@@ -229,14 +229,14 @@ export function Sidebar({
         <div
           className="sidebar-search"
           style={{
-            background: "var(--c-bg-3)",
+            background: "transparent",
             borderRadius: "var(--r-input)",
             display: "flex",
             alignItems: "center",
             gap: 7,
             padding: "6px 10px",
-            border: "1px solid transparent",
-            transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease",
+            border: "1px solid var(--c-border-1)",
+            transition: "background var(--duration-fast) ease, border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease",
           }}
         >
           <SidebarSearchIcon />
