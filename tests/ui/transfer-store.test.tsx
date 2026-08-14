@@ -24,6 +24,7 @@ const recoveryRecord: TransferJournalRecord = {
 };
 
 beforeEach(() => {
+  useTransferStore.setState({ items: [], recoveries: [] });
   useSessionsStore.setState({ sessions: [{
     id: "session-1", title: "one", dir: "/", branch: "", runState: "idle", updatedAt: 1,
     remote: { host: "one.example", port: 22, user: "deploy", authMethod: "agent" },
@@ -215,6 +216,16 @@ describe("transfer queue", () => {
 });
 
 describe("Transfer Center announcements", () => {
+  it("shows an explanatory empty state without meaningless bulk actions", () => {
+    render(<TransferCenter inspectorScope={{ kind: "logical-session", key: "session:session-1", logicalSessionId: "session-1" }} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "Session transfers" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("No transfers");
+    expect(screen.queryByRole("button", { name: "View all sessions" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel all transfers in this session" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear finished" })).toBeNull();
+  });
+
   it("shows and cancels only transfers in the declared logical-session scope", async () => {
     mockIPC((command) => command === "plugin:dialog|message" ? "Ok" : undefined);
     const first: TransferItem = { ...request(1), source: "first", transferId: "first", attempt: 1, status: "queued", cancelRequested: false };

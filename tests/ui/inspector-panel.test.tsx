@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { InspectorPanel } from "../../src/ui/InspectorPanel";
 import { useSessionsStore } from "../../src/state/sessions";
 import { useUIStore } from "../../src/state/ui";
 import type { Session } from "../../src/ui/types";
+import { appendDiagnostic, clearDiagnostics } from "../../src/modules/ssh/diagnostics-store";
 
 vi.mock("../../src/ui/SessionOverviewPanel", () => ({
   SessionOverviewPanel: () => <div data-testid="overview-panel" />,
@@ -49,6 +50,7 @@ function chooseSecondaryPanel(name: string) {
 }
 
 beforeEach(() => {
+  clearDiagnostics();
   useUIStore.setState({ configLoaded: false, inspectorTab: "overview" });
   useSessionsStore.setState({
     activeSessionId: session.id,
@@ -89,7 +91,10 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   });
 
   chooseSecondaryPanel("Diagnostics");
-  const diagnostics = screen.getByRole("dialog", { name: "SSH diagnostics" });
+  const diagnostics = screen.getByRole("region", { name: "SSH diagnostics" });
+  expect(screen.getByRole("status").textContent).toContain("No diagnostics for this session");
+  expect(screen.queryByRole("button", { name: "Copy de-identified report" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
   fireEvent.keyDown(diagnostics, { key: "Escape" });
   expect(screen.getByTestId("overview-panel")).toBeTruthy();
 
@@ -98,6 +103,64 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   fireEvent.click(screen.getByRole("button", { name: "Remove example.com" }));
   fireEvent.click(screen.getByRole("button", { name: "Confirm removal of example.com" }));
   expect(await screen.findByText("No known hosts")).toBeTruthy();
+});
+
+test("keeps the active tab visible and preserves APG roving focus navigation", async () => {
+  const scrollIntoView = vi.fn();
+  const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+  try {
+    render(<InspectorPanel session={session} filesOnly={false} />);
+    const overview = screen.getByRole("tab", { name: "Overview" });
+    const changes = screen.getByRole("tab", { name: "Changes" });
+    const files = screen.getByRole("tab", { name: "Files" });
+
+    overview.focus();
+    fireEvent.keyDown(overview, { key: "End" });
+    await waitFor(() => expect(document.activeElement).toBe(files));
+    expect(files.getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(files, { key: "ArrowLeft" });
+    await waitFor(() => expect(document.activeElement).toBe(changes));
+    expect(changes.getAttribute("aria-selected")).toBe("true");
+
+    chooseSecondaryPanel("Known hosts");
+    const knownHosts = screen.getByRole("tab", { name: "Known hosts" });
+    await waitFor(() => expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" }));
+    expect(knownHosts.getAttribute("aria-selected")).toBe("true");
+
+    knownHosts.focus();
+    fireEvent.keyDown(knownHosts, { key: "Home" });
+    await waitFor(() => expect(document.activeElement).toBe(overview));
+    expect(overview.getAttribute("aria-selected")).toBe("true");
+  } finally {
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+  }
+});
+
+test("diagnostic actions appear only when there is a report to copy or clear", () => {
+  appendDiagnostic(session.id, {
+    requestId: "request-1",
+    status: "failed",
+    diagnostic: {
+      schemaVersion: 1,
+      stage: "auth",
+      code: "authenticationFailed",
+      severity: "error",
+      retryable: false,
+      hopRole: "direct",
+      timestamp: 1,
+    },
+  });
+  useUIStore.setState({ inspectorTab: "diagnostics" });
+  render(<InspectorPanel session={session} filesOnly={false} />);
+
+  expect(screen.getByRole("button", { name: "Copy de-identified report" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  expect(screen.getByRole("status").textContent).toContain("No diagnostics for this session");
+  expect(screen.queryByRole("button", { name: "Copy de-identified report" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
 });
 
 test("projects only Files controls in Pure Mode", () => {

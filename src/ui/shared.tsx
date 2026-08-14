@@ -1,3 +1,5 @@
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+
 export function RefreshIcon({ size = 13 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -40,6 +42,56 @@ export type PanelAsyncState =
   | { kind: "empty"; label: string; detail?: string }
   | { kind: "error"; label: string; detail?: string; retryLabel?: string; onRetry?: () => void; remediation?: string };
 
+export function PanelToolbar({
+  title,
+  titleId,
+  children,
+}: {
+  title: ReactNode;
+  titleId?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <header style={{ minHeight: 38, padding: "5px 10px", display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", flexShrink: 0 }}>
+      <h2 id={titleId} style={{ minWidth: 0, margin: 0, color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 650, lineHeight: 1.35 }}>
+        {title}
+      </h2>
+      {children && <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5, flexWrap: "wrap" }}>{children}</div>}
+    </header>
+  );
+}
+
+export function PanelActionButton({
+  className,
+  style,
+  disabled,
+  type = "button",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...props}
+      type={type}
+      disabled={disabled}
+      className={["hover-bg", className].filter(Boolean).join(" ")}
+      style={{
+        minHeight: 26,
+        padding: "3px 8px",
+        border: "1px solid var(--c-border-2)",
+        borderRadius: "var(--r-btn)",
+        background: "var(--c-bg-white)",
+        color: "var(--c-text-3)",
+        fontFamily: "var(--font-ui)",
+        fontSize: "var(--fs-meta)",
+        lineHeight: 1.25,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        ...style,
+      }}
+    />
+  );
+}
+
 export function PanelState({ state, icon }: { state: PanelAsyncState; icon?: React.ReactNode }) {
   const defaultIcon = (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -49,7 +101,7 @@ export function PanelState({ state, icon }: { state: PanelAsyncState; icon?: Rea
   return (
     <div
       role={state.kind === "error" ? "alert" : "status"}
-      aria-live={state.kind === "loading" ? "polite" : "off"}
+      aria-live={state.kind === "loading" || state.kind === "empty" ? "polite" : undefined}
       aria-busy={state.kind === "loading" ? true : undefined}
       style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 8 }}
     >
@@ -61,7 +113,7 @@ export function PanelState({ state, icon }: { state: PanelAsyncState; icon?: Rea
       <strong style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", fontWeight: 600 }}>{state.label}</strong>
       {state.kind !== "loading" && state.detail && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: "90%", overflowWrap: "anywhere" }}>{state.detail}</span>}
       {state.kind === "error" && state.remediation && <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", maxWidth: 440 }}>{state.remediation}</span>}
-      {state.kind === "error" && state.onRetry && <button type="button" onClick={state.onRetry}>{state.retryLabel ?? "Retry"}</button>}
+      {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? "Retry"}</PanelActionButton>}
     </div>
   );
 }

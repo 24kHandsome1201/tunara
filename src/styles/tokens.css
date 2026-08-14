@@ -16,7 +16,7 @@
   --c-text-5: oklch(49% 0.009 48);
   /* Small normal text: conservative AA contrast on the lightest used surface. */
   --c-text-6: oklch(48% 0.009 48);
-  --c-text-7: oklch(75% 0.007 48);
+  --c-text-7: oklch(48% 0.009 48);
 
   /* ── 面/底 ── */
   --c-bg-white: oklch(99.4% 0.003 55);
@@ -192,11 +192,11 @@
   --c-text-primary: oklch(91% 0.008 55);
   --c-text-2: oklch(84% 0.008 55);
   --c-text-3: oklch(72% 0.008 55);
-  --c-text-4: oklch(62% 0.008 55);
+  --c-text-4: oklch(65% 0.008 55);
   --c-text-5: oklch(68% 0.008 55);
   /* Small normal text: conservative AA contrast on dark panel surfaces. */
   --c-text-6: oklch(68% 0.008 55);
-  --c-text-7: oklch(29% 0.008 55);
+  --c-text-7: oklch(68% 0.008 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);
   --c-bg-white-glass: var(--c-bg-white);

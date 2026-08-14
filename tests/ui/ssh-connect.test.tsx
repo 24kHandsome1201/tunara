@@ -87,6 +87,25 @@ describe("SSH connection sheet", () => {
     expect(takeSshCredentials(session.id)).toBeUndefined();
   });
 
+  test("keeps an invalid Port description on the full endpoint row in a narrow window", () => {
+    mockEmptySources();
+    useUIStore.setState({ viewportWidth: 640 });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    const port = screen.getByLabelText("Port");
+    fireEvent.change(port, { target: { value: "99999" } });
+    const error = screen.getByText("Port must be a number between 1 and 65535");
+    const endpoint = document.getElementById("ssh-endpoint-label")?.parentElement;
+
+    expect(error.getAttribute("role")).toBe("alert");
+    expect(port.getAttribute("aria-invalid")).toBe("true");
+    expect(port.getAttribute("aria-describedby")).toBe("ssh-connect-port-error");
+    expect(error.textContent).toBe("Port must be a number between 1 and 65535");
+    expect(error.parentElement).toBe(endpoint);
+    expect(error.parentElement).not.toBe(port.parentElement);
+    expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   test("a config key suggestion is discarded when Password is selected and never saved", async () => {
     const saves: Array<Record<string, unknown>> = [];
     mockIPC((command, payload) => {

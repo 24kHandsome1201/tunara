@@ -673,13 +673,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
               <div style={{ flex: 1 }}>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
                 <input id="ssh-connect-port" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} />
-                {portInvalid && (
-                  <span id="ssh-connect-port-error" role="alert" style={{ display: "block", marginTop: 4, fontSize: "var(--fs-meta)", color: "var(--c-warning-text)", lineHeight: 1.35 }}>
-                    {t("ssh.port_invalid")}
-                  </span>
-                )}
               </div>
             </div>
+            {portInvalid && (
+              <span id="ssh-connect-port-error" role="alert" style={{ display: "block", marginTop: -5, fontSize: "var(--fs-meta)", color: "var(--c-warning-text)", lineHeight: 1.35 }}>
+                {t("ssh.port_invalid")}
+              </span>
+            )}
             <div>
               <label htmlFor="ssh-connect-user" style={labelStyle}>{t("ssh.user")}</label>
               <input id="ssh-connect-user" style={fieldStyle} value={user} placeholder={t("ssh.user_placeholder")} onChange={(event) => setUser(event.target.value)} spellCheck={false} autoCapitalize="off" />

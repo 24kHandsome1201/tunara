@@ -31,23 +31,56 @@ export function contrastRatio(fg: string, bg: string): number {
 }
 
 const MIN_SHELL_TINT_CONTRAST = 4.5;
+const MIN_CONTROL_CONTRAST = 3;
+const TEXT_KEYS = [
+  "--c-text-primary",
+  "--c-text-2",
+  "--c-text-3",
+  "--c-text-4",
+  "--c-text-5",
+  "--c-text-6",
+  "--c-text-7",
+] as const;
+const SURFACE_KEYS = [
+  "--c-bg-white",
+  "--c-bg-1",
+  "--c-bg-2",
+  "--c-bg-3",
+  "--c-bg-hover",
+] as const;
 
-/** Ensure every shell tint preset meets WCAG AA for primary text on base surface. */
+/** Ensure normal text and control boundaries remain perceivable on every shell surface. */
 export function assertShellTintContrast(
   shellTints: Record<string, Record<string, string>>,
   minRatio = MIN_SHELL_TINT_CONTRAST,
 ): void {
   for (const [preset, vars] of Object.entries(shellTints)) {
-    const fg = vars["--c-text-primary"];
-    const bg = vars["--c-bg-1"];
-    if (!fg || !bg) {
-      throw new Error(`Shell tint "${preset}" is missing --c-text-primary or --c-bg-1`);
+    for (const key of [...TEXT_KEYS, ...SURFACE_KEYS, "--c-border-2"] as const) {
+      if (!vars[key]) throw new Error(`Shell tint "${preset}" is missing ${key}`);
     }
-    const ratio = contrastRatio(fg, bg);
-    if (ratio < minRatio) {
-      throw new Error(
-        `Shell tint "${preset}" contrast ${ratio.toFixed(2)}:1 is below ${minRatio}:1 (${fg} on ${bg})`,
-      );
+
+    for (const textKey of TEXT_KEYS) {
+      for (const surfaceKey of SURFACE_KEYS) {
+        const fg = vars[textKey];
+        const bg = vars[surfaceKey];
+        const ratio = contrastRatio(fg, bg);
+        if (ratio < minRatio) {
+          throw new Error(
+            `Shell tint "${preset}" ${textKey} contrast ${ratio.toFixed(2)}:1 is below ${minRatio}:1 on ${surfaceKey} (${fg} on ${bg})`,
+          );
+        }
+      }
+    }
+
+    for (const surfaceKey of SURFACE_KEYS) {
+      const border = vars["--c-border-2"];
+      const bg = vars[surfaceKey];
+      const ratio = contrastRatio(border, bg);
+      if (ratio < MIN_CONTROL_CONTRAST) {
+        throw new Error(
+          `Shell tint "${preset}" --c-border-2 contrast ${ratio.toFixed(2)}:1 is below ${MIN_CONTROL_CONTRAST}:1 on ${surfaceKey} (${border} on ${bg})`,
+        );
+      }
     }
   }
 }

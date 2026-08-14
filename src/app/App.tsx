@@ -27,9 +27,13 @@ import { usePhase3CaptureBenchmark } from "./usePhase3CaptureBenchmark";
 import { useM2SafeWriteBenchmark } from "./useM2SafeWriteBenchmark";
 import { useM2LocalSafeWriteBenchmark } from "./useM2LocalSafeWriteBenchmark";
 import { useM2NativeCloseBenchmark } from "./useM2NativeCloseBenchmark";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
-import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
+import {
+  auxiliarySurfaceToCloseOnCompactResize,
+  auxiliarySurfaceToCloseOnOpen,
+  resolveAppShellLayout,
+} from "./lib/app-shell-layout";
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
 import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
 import { usePresentationModeContextMenuGuard } from "./usePresentationModeContextMenuGuard";
@@ -338,6 +342,19 @@ export default function App() {
     window.addEventListener("resize", syncWidth);
     return () => window.removeEventListener("resize", syncWidth);
   }, [setViewportWidth]);
+
+  useLayoutEffect(() => {
+    if (presentationMode !== "workspace") return;
+    const surface = auxiliarySurfaceToCloseOnCompactResize({
+      viewportWidth,
+      sidebarVisible,
+      panelVisible,
+      sidebarWidth,
+      panelWidth,
+      terminalColumnCount,
+    });
+    if (surface === "panel") useUIStore.getState().setPanelVisible(false);
+  }, [panelVisible, panelWidth, presentationMode, sidebarVisible, sidebarWidth, terminalColumnCount, viewportWidth]);
 
   if (!ready) return <AppSplash />;
 

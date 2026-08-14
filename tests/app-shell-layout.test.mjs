@@ -7,6 +7,7 @@ import {
   MIN_SIDEBAR_OVERLAY_WIDTH,
   MIN_TERMINAL_PANE_WIDTH,
   SPLIT_HANDLE_WIDTH,
+  auxiliarySurfaceToCloseOnCompactResize,
   auxiliarySurfaceToCloseOnOpen,
   resolveAppShellLayout,
 } from "../src/app/lib/app-shell-layout.ts";
@@ -125,4 +126,11 @@ test("opening a compact drawer closes its overlapping sibling", () => {
   const wide = { ...defaults, viewportWidth: 1280, terminalColumnCount: 1 };
   assert.equal(auxiliarySurfaceToCloseOnOpen({ ...wide, sidebarVisible: false }, "sidebar"), null);
   assert.equal(auxiliarySurfaceToCloseOnOpen({ ...wide, panelVisible: false }, "panel"), null);
+});
+
+test("resizing into compact mode closes the Inspector before two drawers can cover the workspace", () => {
+  const compact = { ...defaults, viewportWidth: 640, terminalColumnCount: 1 };
+  assert.equal(auxiliarySurfaceToCloseOnCompactResize(compact), "panel");
+  assert.equal(auxiliarySurfaceToCloseOnCompactResize({ ...compact, panelVisible: false }), null);
+  assert.equal(auxiliarySurfaceToCloseOnCompactResize({ ...defaults, viewportWidth: 1200 }), null);
 });

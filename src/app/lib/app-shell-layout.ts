@@ -28,6 +28,19 @@ export interface AppShellLayout {
 export type AuxiliarySurface = "sidebar" | "panel";
 
 /**
+ * A resize can make two previously docked surfaces become drawers without a
+ * user toggle. Close the Inspector first so compact windows never retain two
+ * opposing drawers over the terminal or an open file.
+ */
+export function auxiliarySurfaceToCloseOnCompactResize(
+  input: AppShellLayoutInput,
+): AuxiliarySurface | null {
+  if (!input.sidebarVisible || !input.panelVisible) return null;
+  const layout = resolveAppShellLayout(input);
+  return layout.sidebarOverlay && layout.panelOverlay ? "panel" : null;
+}
+
+/**
  * Compact drawers are mutually exclusive. Opening one closes the other before
  * it can cover the full terminal, while wide docked panels remain independent.
  */
