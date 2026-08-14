@@ -55,6 +55,7 @@ test("Pure Mode Files button defaults on and restores its persisted value", asyn
     configLoaded: true,
     showPureModeFilesButton: false,
     terminalSecondaryClick: "smart",
+    localUsageLoggingEnabled: false,
   });
   useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
 });
@@ -74,6 +75,37 @@ test("changing the Pure Mode Files setting persists the snake-case config field"
 
   await waitFor(() => expect(saved).toMatchObject({ appearance: { show_pure_mode_files_button: false } }));
   useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
+});
+
+test("local usage logging is opt-in and persists only after native enable succeeds", async () => {
+  let saved: unknown;
+  mockIPC((command, payload) => {
+    if (command === "local_usage_log_set_enabled") {
+      return {
+        enabled: true,
+        directory: "/private/tunara/usage",
+        fileCount: 1,
+        totalBytes: 128,
+        retentionDays: 7,
+        maxTotalBytes: 20 * 1024 * 1024,
+        maxFileBytes: 2 * 1024 * 1024,
+      };
+    }
+    if (command === "save_config") {
+      saved = (payload as { config: unknown }).config;
+      return undefined;
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  useUIStore.setState({ configLoaded: true, localUsageLoggingEnabled: false, configError: null });
+
+  await useUIStore.getState().setLocalUsageLoggingEnabled(true);
+
+  expect(useUIStore.getState().localUsageLoggingEnabled).toBe(true);
+  await waitFor(() => expect(saved).toMatchObject({
+    local_usage_logging: { version: 1, enabled: true },
+  }));
+  useUIStore.setState({ configLoaded: false, localUsageLoggingEnabled: false });
 });
 
 test("terminal interaction preset and disabled bindings hydrate and persist without replacing legacy keybindings", async () => {

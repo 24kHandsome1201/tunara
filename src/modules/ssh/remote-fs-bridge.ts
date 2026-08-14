@@ -6,11 +6,42 @@ import {
   requireSshWriteReconcileFields,
   type SshWriteOutcomeUnknown,
 } from "./ssh-write-reconcile.ts";
+import { localUsageDuration, localUsageErrorCategory, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 // Temporary compatibility surface: existing FileExplorer imports keep working
 // while transfer ownership moves to transfer-bridge.
 export { sshCancelUpload, sshDownload, sshUpload } from "./transfer-bridge.ts";
 export type { SshUploadProgress } from "./transfer-bridge.ts";
+
+function withFileUsage<T>(
+  ptyId: number,
+  operation: "home" | "read_directory" | "read_file" | "write_file" | "reconcile_write" | "search" | "grep",
+  action: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  return action().then((result) => {
+    recordLocalUsageEvent({
+      event: "ssh.files.operation",
+      sessionId: `pty:${ptyId}`,
+      durationMs: localUsageDuration(startedAt),
+      success: true,
+      outcome: "completed",
+      attributes: { operation },
+    });
+    return result;
+  }).catch((error) => {
+    recordLocalUsageEvent({
+      event: "ssh.files.operation",
+      sessionId: `pty:${ptyId}`,
+      durationMs: localUsageDuration(startedAt),
+      success: false,
+      outcome: "failed",
+      errorCategory: localUsageErrorCategory(error),
+      attributes: { operation },
+    });
+    throw error;
+  });
+}
 
 /**
  * 远程 SFTP 文件操作。返回类型与本地 fs-bridge 完全一致，
@@ -20,11 +51,11 @@ export type { SshUploadProgress } from "./transfer-bridge.ts";
  * 浏览、下载，以及带指纹冲突检测的安全文本保存。
  */
 export function sshReadDir(id: number, path: string, includeHidden = false): Promise<DirEntry[]> {
-  return invoke<DirEntry[]>("ssh_fs_read_dir", { id, path, includeHidden });
+  return withFileUsage(id, "read_directory", () => invoke<DirEntry[]>("ssh_fs_read_dir", { id, path, includeHidden }));
 }
 
 export function sshReadFile(id: number, path: string): Promise<ReadResult> {
-  return invoke<ReadResult>("ssh_fs_read_file", { id, path });
+  return withFileUsage(id, "read_file", () => invoke<ReadResult>("ssh_fs_read_file", { id, path }));
 }
 
 export function sshWriteTextFile(
@@ -33,12 +64,12 @@ export function sshWriteTextFile(
   content: string,
   expectedFingerprint: string,
 ): Promise<WriteTextResult> {
-  return invoke<WriteTextResult>("ssh_fs_write_text_file", {
+  return withFileUsage(id, "write_file", () => invoke<WriteTextResult>("ssh_fs_write_text_file", {
     id,
     path,
     content,
     expectedFingerprint,
-  });
+  }));
 }
 
 export function sshReconcileTextWrite(
@@ -49,13 +80,13 @@ export function sshReconcileTextWrite(
   replaceLockOwner: string,
 ): Promise<WriteTextResult> {
   requireSshWriteReconcileFields(attemptedFingerprint, expectedMode, replaceLockOwner);
-  return invoke<WriteTextResult>("ssh_fs_reconcile_text_write", {
+  return withFileUsage(id, "reconcile_write", () => invoke<WriteTextResult>("ssh_fs_reconcile_text_write", {
     id,
     path,
     attemptedFingerprint,
     expectedMode,
     replaceLockOwner,
-  });
+  }));
 }
 
 export interface SshWriteReconcileResult {
@@ -87,7 +118,7 @@ export async function sshReconcileOutcomeUnknownTextWrite(
 
 /** 解析远程 home 目录，作为文件面板初始路径。 */
 export function sshHome(id: number): Promise<string> {
-  return invoke<string>("ssh_fs_home", { id });
+  return withFileUsage(id, "home", () => invoke<string>("ssh_fs_home", { id }));
 }
 
 // ── Remote file search (over the SSH exec channel) ────────────────────────
@@ -144,9 +175,9 @@ export function sshSearch(
   }
   const generation = searchCache.sessionGeneration(ptyId);
   const requestId = beginRemoteSearch(ptyId);
-  return invoke<SearchHit[]>("ssh_fs_search", {
+  return withFileUsage(ptyId, "search", () => invoke<SearchHit[]>("ssh_fs_search", {
     request: { sessionId: ptyId, root, query, limit, requestId },
-  })
+  }))
     .then((hits) => {
       searchCache.setIfCurrent(key, ptyId, generation, hits);
       return hits;
@@ -177,7 +208,7 @@ export function sshGrep(
   }
   const generation = grepCache.sessionGeneration(ptyId);
   const requestId = beginRemoteSearch(ptyId);
-  return invoke<GrepResponse>("ssh_fs_grep", {
+  return withFileUsage(ptyId, "grep", () => invoke<GrepResponse>("ssh_fs_grep", {
     request: {
       sessionId: ptyId,
       root,
@@ -185,7 +216,7 @@ export function sshGrep(
       maxResults,
       requestId,
     },
-  }).then((resp) => {
+  })).then((resp) => {
     grepCache.setIfCurrent(key, ptyId, generation, resp);
     return resp;
   }).finally(() => finishRemoteSearch(ptyId, requestId));

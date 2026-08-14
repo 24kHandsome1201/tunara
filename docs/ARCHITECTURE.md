@@ -70,7 +70,7 @@ The Rust side is a single library crate, [`src-tauri/src/lib.rs`](../src-tauri/s
 that wires up plugins, registers the IPC handlers, manages shared state, and runs
 the event loop. Backend logic is split into modules under
 [`src-tauri/src/modules/`](../src-tauri/src/modules/): `pty`, `ssh`, `fs`, `git`,
-`agent`, `preview`, `resolver`, `editor`, `config`,
+`agent`, `preview`, `resolver`, `editor`, `config`, `local_usage_log`,
 `process`, `workspace_store`.
 
 ## IPC surface
@@ -166,12 +166,26 @@ the shell PATH.
 
 ### `config` — text config file [`modules/config`](../src-tauri/src/modules/config.rs)
 
-Reads/writes `~/.config/tunara/config.toml`.
+Reads/writes `~/.config/tunara/config.toml`, including the default-off local
+usage logging preference.
 
 | Command | Does | Frontend caller |
 |---|---|---|
 | `load_config` | Load appearance + keybindings config (with parse-error surfaced) | `loadTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
 | `save_config` | Write the config back to disk | `saveTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
+
+### `local_usage_log` — opt-in local SSH diagnostics [`modules/local_usage_log`](../src-tauri/src/modules/local_usage_log.rs)
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `local_usage_log_record` | Best-effort validation, anonymization, rotation, and JSONL append for one allowlisted event | `recordLocalUsageEvent`, [`local-usage-log.ts`](../src/modules/usage-log/local-usage-log.ts) |
+| `local_usage_log_set_enabled` / `local_usage_log_status` | Atomically change native emission state or inspect location/capacity | Settings and UI config store via [`local-usage-log.ts`](../src/modules/usage-log/local-usage-log.ts) |
+| `local_usage_log_ensure_directory` | Create the private local directory before revealing it in the file manager | Settings |
+| `local_usage_log_export` / `local_usage_log_clear` | Manually export complete valid JSONL records or remove only managed log files | Settings |
+
+The Rust writer is the final privacy boundary: event names, outcomes, error
+categories, and attributes are allowlisted, while session/correlation values
+are salted and hashed per app run. See [Local usage logging](LOCAL_USAGE_LOGGING.md).
 
 ### `preview` — tunneled preview webview windows [`modules/preview`](../src-tauri/src/modules/preview.rs)
 
@@ -294,17 +308,20 @@ For backend-originated notifications with no single waiting caller, the backend
 
 ## Managed state
 
-`lib.rs` registers six shared state objects. Five are `.manage()`d at builder
-time; one is created in `.setup()` because it needs the `AppHandle`. All are
+`lib.rs` registers eight shared state objects. Six are `.manage()`d at builder
+time; two are created in `.setup()` because they need resolved app paths or the
+`AppHandle`. All are
 retrieved in commands via `tauri::State<'_, T>`.
 
 | State | Holds | Lifecycle |
 |---|---|---|
 | [`PtyState`](../src-tauri/src/modules/pty/mod.rs) | All live sessions: `HashMap<u32, Arc<Session>>` (physical id → session), a `logical_id → physical_id` map for reopen/replace, and a monotonic `next_id` (starts at 1, never reused) | `.manage(PtyState::default())`; `close_all()` on `RunEvent::Exit` kills every session |
+| [`ForwardingState`](../src-tauri/src/modules/ssh/forwarding.rs) | Active SSH local-forward listeners and their cancellation handles | `.manage(ForwardingState::default())`; forward commands create and close entries |
 | [`FsSearchCancellationState`](../src-tauri/src/modules/fs/grep.rs) | Pending, pre-cancelled, and recently finished filesystem-search request IDs | `.manage(FsSearchCancellationState::default())`; each request unregisters itself on completion |
 | [`ResolverState`](../src-tauri/src/modules/resolver/mod.rs) | User path overrides + the login-shell PATH dirs probed at startup | `.manage(ResolverState::default())`; `init_login_path()` called early in `.setup()` so `resolve_all_bins` works for GUI launches |
 | [`PreviewWindowState`](../src-tauri/src/modules/preview.rs) | Preview window generations, source/runtime status, tunnels, captures, and restart provenance | `.manage(PreviewWindowState::default())`; all tunnels close on `RunEvent::Exit` |
 | [`GitWatcherState`](../src-tauri/src/modules/git/watcher.rs) | Refcounted per-repo filesystem debouncers + the `git_status` result cache | `.manage(GitWatcherState::default())`; entries created by `git_watch`, removed at refcount 0 by `git_unwatch` |
+| [`LocalUsageLogState`](../src-tauri/src/modules/local_usage_log.rs) | Default-off emission state, per-run anonymous-ID salt, active JSONL file, sequence, and rotation limits behind one mutex | Created fail-closed and `app.manage()`d in `.setup()` after resolving the native app log directory; disk failures never block startup or SSH flows |
 | [`HookListenerState`](../src-tauri/src/modules/agent/hooks.rs) | The agent-hook Unix socket path + a shutdown flag for its listener thread | Created by `start_listener(app.handle())` and `app.manage()`d in `.setup()`; `shutdown()` (removes the socket, stops the thread) on `RunEvent::Exit` |
 
 Teardown lives in the `RunEvent::Exit` arm of the `.run(|app, event| …)` closure

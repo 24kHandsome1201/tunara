@@ -159,8 +159,9 @@ pnpm test             # all tests (Node + UI + Rust)
 
 Deeper developer docs live under [`docs/`](docs/):
 
-- [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: every Tauri command, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and the six managed state objects.
+- [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: every Tauri command, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and the eight managed state objects.
 - [Testing](docs/TESTING.md) — the `.mjs`-imports-`.ts` pure-logic convention, UI component gate, Node/UI/Cargo split, and how to add a test.
+- [Local usage logging & privacy](docs/LOCAL_USAGE_LOGGING.md) — opt-in SSH diagnostics, JSONL schema, data exclusions, rotation, export, and failure behavior.
 - [Agent detection](docs/AGENT_DETECTION.md) — how agent detection & lifecycle work, plus a step-by-step checklist for adding a new agent.
 - [State & persistence](docs/STATE_AND_PERSISTENCE.md) — the three Zustand stores, persisted workspace snapshot, and contributor gotchas around restore-on-restart.
 

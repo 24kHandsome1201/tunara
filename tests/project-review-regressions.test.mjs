@@ -1130,7 +1130,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /activeTab === "appearance"/);
   assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
   assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
-  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language \}\)\)/);
+  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language, localUsageLoggingEnabled: s\.localUsageLoggingEnabled \}\)\)/);
   assert.doesNotMatch(ui, /resetAppearance: \(\) => set\(\{ \.\.\.DEFAULT_SETTINGS, keybindings: \{ \.\.\.DEFAULT_KEYBINDINGS \} \}\)/);
 });
 

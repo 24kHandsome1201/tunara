@@ -1,5 +1,6 @@
 pub mod config;
 pub mod fs;
+pub mod local_usage_log;
 pub mod preview;
 pub mod pty;
 

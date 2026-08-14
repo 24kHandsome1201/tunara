@@ -73,6 +73,25 @@ pub fn run() {
         .manage(modules::preview::PreviewWindowState::default())
         .manage(modules::git::GitWatcherState::default())
         .setup(|app| {
+            let usage_log_state = app
+                .path()
+                .app_log_dir()
+                .map_err(|error| format!("resolve local usage log directory failed: {error}"))
+                .and_then(|directory| {
+                    modules::local_usage_log::LocalUsageLogState::new(
+                        directory.join("usage"),
+                        modules::config::local_usage_logging_enabled(),
+                    )
+                })
+                .unwrap_or_else(|error| {
+                    // Usage logging is an optional diagnostic aid. Path,
+                    // randomness, and disk failures must never block startup.
+                    log::warn!("local usage logging is unavailable: {error}");
+                    modules::local_usage_log::LocalUsageLogState::unavailable()
+                });
+            app.manage(usage_log_state);
+            app.state::<modules::local_usage_log::LocalUsageLogState>()
+                .record_startup();
             modules::ssh::transfer_journal::initialize(app.handle())
                 .map_err(std::io::Error::other)?;
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_all_bins 用（§3.7.2）。
@@ -116,6 +135,12 @@ pub fn run() {
             // Text config: ~/.config/tunara/config.toml
             modules::config::load_config,
             modules::config::save_config,
+            modules::local_usage_log::local_usage_log_record,
+            modules::local_usage_log::local_usage_log_set_enabled,
+            modules::local_usage_log::local_usage_log_status,
+            modules::local_usage_log::local_usage_log_ensure_directory,
+            modules::local_usage_log::local_usage_log_clear,
+            modules::local_usage_log::local_usage_log_export,
             modules::workspace_store::workspace_store_file_state,
             modules::workspace_store::legacy_agent_data_status,
             modules::workspace_store::legacy_agent_data_delete,

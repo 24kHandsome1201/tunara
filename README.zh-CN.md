@@ -156,8 +156,9 @@ pnpm test             # 全部测试（Node + UI + Rust）
 
 更深入的开发者文档在 [`docs/`](docs/)：
 
-- [架构 Architecture](docs/ARCHITECTURE.md) —— 前后端 IPC 全貌：所有 Tauri 命令、三种传输（`invoke` / `Channel<PtyEvent>` / `git-changed` 与 `agent-hook` 事件）、以及 6 个被托管的 state 对象。
+- [架构 Architecture](docs/ARCHITECTURE.md) —— 前后端 IPC 全貌：所有 Tauri 命令、三种传输（`invoke` / `Channel<PtyEvent>` / `git-changed` 与 `agent-hook` 事件）、以及 8 个被托管的 state 对象。
 - [测试 Testing](docs/TESTING.md) —— `.mjs` 直接 import `.ts` 的纯逻辑约定、UI 组件门、Node/UI/Cargo 分工，以及如何加测试。
+- [本地使用日志与隐私](docs/LOCAL_USAGE_LOGGING.md) —— 明确选择开启的 SSH 诊断、JSONL schema、敏感数据排除、轮转、导出与失败行为。
 - [Agent 识别](docs/AGENT_DETECTION.md) —— agent 识别与生命周期原理，以及新增一个 agent 的分步清单。
 - [状态与持久化 State & persistence](docs/STATE_AND_PERSISTENCE.md) —— 三个 Zustand store、持久化的 workspace 快照，以及恢复重启相关的注意点。
 

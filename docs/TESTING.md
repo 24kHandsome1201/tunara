@@ -138,6 +138,25 @@ Both use a `SystemTime::now()` nanosecond suffix so parallel tests never collide
 
 Before opening a PR, run the full gate from [`CONTRIBUTING.md`](../CONTRIBUTING.md): `pnpm typecheck`, `pnpm build`, `cargo fmt --check`, `cargo clippy ... -D warnings`, and `pnpm test`.
 
+## Local usage logging privacy gate
+
+Changes to the local usage log must preserve the native Rust writer as the
+final privacy boundary. Run these targeted checks while iterating:
+
+```bash
+pnpm vitest run --config vitest.config.ts tests/ui/local-usage-log.test.tsx tests/ui/settings-local-usage-log.test.tsx tests/ui/config-persistence.test.tsx
+cargo test --manifest-path src-tauri/Cargo.toml local_usage_log
+cargo test --manifest-path src-tauri/Cargo.toml local_usage_logging_is_opt_in
+```
+
+The Rust suite verifies default-off and immediate disable behavior, identifier
+anonymization, unknown-field rejection, sensitive-value exclusion, rotation,
+retention, managed-file-only clear, and crash-truncated export. UI tests verify
+renderer gating, bounded classification, persisted opt-in, privacy copy, and
+the Settings actions. Manual native smoke should additionally verify the real
+log directory permissions, enable → write → disable behavior, open/export/clear
+dialogs, and inspect an exported JSONL sample for forbidden raw values.
+
 ## Future: visual smoke
 
 End-to-end browser/Tauri automation (Playwright or similar) is intentionally

@@ -17,6 +17,7 @@ import {
   type SplitState,
 } from "@/modules/session/split-layout";
 import type { TerminalHostModifier, TerminalSecondaryClickMode } from "@/modules/terminal/lib/terminal-input-router";
+import { hydrateLocalUsageLoggingEnabled, setLocalUsageLoggingEnabled } from "@/modules/usage-log/local-usage-log";
 
 export type CursorStyle = "bar" | "block" | "underline";
 export type PresentationMode = "workspace" | "pure";
@@ -46,6 +47,7 @@ export interface AppearanceSettings {
   keybindings: KeybindingConfig;
   language: Language;
   globalShortcut: string;
+  localUsageLoggingEnabled: boolean;
 }
 
 const MIN_FONT_SIZE = 10;
@@ -83,6 +85,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
+  localUsageLoggingEnabled: false,
 };
 
 function isExternalEditor(v: unknown): v is ExternalEditor {
@@ -157,6 +160,7 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
 function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
   const appearance = sanitizeRawAppearance(config?.appearance);
   const terminalInteractions = config?.terminal_interactions;
+  const localUsageLogging = config?.local_usage_logging;
   // Do not interpret a future schema with this version's semantics. The Rust
   // merge path preserves the future table, while this client falls back to the
   // conservative smart policy until it understands that version.
@@ -168,6 +172,8 @@ function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings
     terminalSecondaryClick: secondaryClick === "menu" || secondaryClick === "disabled" || secondaryClick === "smart"
       ? secondaryClick
       : DEFAULT_SETTINGS.terminalSecondaryClick,
+    localUsageLoggingEnabled: (localUsageLogging?.version === undefined || localUsageLogging.version === 1)
+      && localUsageLogging?.enabled === true,
     keybindings: sanitizeKeybindings(config?.keybindings),
   };
 }
@@ -201,6 +207,10 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
     terminal_interactions: {
       version: 1,
       secondary_click: s.terminalSecondaryClick,
+    },
+    local_usage_logging: {
+      version: 1,
+      enabled: s.localUsageLoggingEnabled,
     },
   };
 }
@@ -386,6 +396,7 @@ interface UIState extends AppearanceSettings {
   setTerminalSecondaryClick: (mode: TerminalSecondaryClickMode) => void;
   resetTerminalInteractions: () => void;
   setGlobalShortcut: (shortcut: string) => void;
+  setLocalUsageLoggingEnabled: (enabled: boolean) => Promise<void>;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
   resetAppearance: () => void;
@@ -590,10 +601,15 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       };
     }),
     setGlobalShortcut: (globalShortcut) => set({ globalShortcut: typeof globalShortcut === "string" ? globalShortcut : DEFAULT_SETTINGS.globalShortcut }),
+    setLocalUsageLoggingEnabled: async (enabled) => {
+      const normalized = enabled === true;
+      await setLocalUsageLoggingEnabled(normalized);
+      set({ localUsageLoggingEnabled: normalized });
+    },
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
     resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
-    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings, language: s.language })),
+    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings, language: s.language, localUsageLoggingEnabled: s.localUsageLoggingEnabled })),
     setLanguage: (language) => {
       const next = isLanguage(language) ? language : DEFAULT_SETTINGS.language;
       applyLanguage(next);
@@ -609,6 +625,7 @@ export async function loadUserConfig(): Promise<void> {
     const loaded = await loadTunaraConfig();
     const sanitized = sanitizeConfig(loaded.config);
     configHydrating = true;
+    hydrateLocalUsageLoggingEnabled(sanitized.localUsageLoggingEnabled);
     applyLanguage(sanitized.language);
     useUIStore.setState({
       ...sanitized,
@@ -624,6 +641,7 @@ export async function loadUserConfig(): Promise<void> {
     configHydrating = false;
   } catch (e) {
     configHydrating = true;
+    hydrateLocalUsageLoggingEnabled(false);
     useUIStore.setState({
       configLoaded: true,
       configError: e instanceof Error ? e.message : String(e),
@@ -642,7 +660,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut", "localUsageLoggingEnabled"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

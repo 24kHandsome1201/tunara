@@ -7,14 +7,16 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { resetDirtyDraftGuardForTests } from "@/modules/editor/dirty-draft-guard";
 import { resetTerminalBindingsForTests } from "@/modules/terminal/lib/binding-aware-async-action";
+import { hydrateLocalUsageLoggingEnabled } from "@/modules/usage-log/local-usage-log";
 
 beforeEach(() => {
   setLanguage("en");
   resetEditorDraftRegistryForTests();
   resetDirtyDraftGuardForTests();
   resetTerminalBindingsForTests();
+  hydrateLocalUsageLoggingEnabled(false);
   useSessionsStore.setState({ activeSessionId: "ui-test-session" });
-  useUIStore.setState({ presentationMode: "workspace", fileTabs: [], activeFileTabId: null });
+  useUIStore.setState({ presentationMode: "workspace", fileTabs: [], activeFileTabId: null, localUsageLoggingEnabled: false });
 });
 
 afterEach(() => {

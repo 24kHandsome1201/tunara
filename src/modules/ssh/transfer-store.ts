@@ -7,6 +7,7 @@ import {
 } from "./transfer-bridge";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { currentReadySessionBinding } from "@/state/sessions";
+import { localUsageDuration, localUsageErrorCategory, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 export type TransferConflict = "skip" | "replace" | "rename";
 export type TransferDirection = "upload" | "download";
@@ -64,6 +65,30 @@ const recoveryError = (error: unknown): TransferRecoveryItem["error"] => {
   return "failed";
 };
 
+function recordTransferRecovery(
+  record: TransferJournalRecord,
+  recoveryId: string,
+  operation: "reconcile" | "delete_partial" | "restart" | "dismiss",
+  outcome: "completed" | "failed" | "scheduled" | "skipped" | "outcome_unknown",
+  startedAt: number,
+  errorCategory?: "disconnected" | "io" | "unsupported" | "unknown",
+): void {
+  recordLocalUsageEvent({
+    event: "ssh.transfer.recovery",
+    sessionId: record.session ?? undefined,
+    correlationId: recoveryId,
+    durationMs: localUsageDuration(startedAt),
+    success: outcome === "completed" || outcome === "scheduled",
+    outcome,
+    errorCategory,
+    attributes: {
+      direction: record.direction === "upload" ? "upload" : "download",
+      operation,
+      attempt: String(record.attempt),
+    },
+  });
+}
+
 /** UI scheduling is advisory; Rust independently enforces the same limits. */
 export function createTransferStore(run: Runner = defaultRunner) {
   let pumping = false;
@@ -84,15 +109,41 @@ export function createTransferStore(run: Runner = defaultRunner) {
           if (count >= 2) continue;
           global++; connections.set(item.binding.physicalPtyId, count + 1);
           set((s) => ({ items: s.items.map((x) => x === item ? { ...x, status: "running" } : x) }));
+          const startedAt = Date.now();
           void run(item, (event) => set((s) => ({ items: s.items.map((x) => x.transferId === item.transferId && x.attempt === item.attempt
             ? { ...x, event: acceptSshTransferEvent(x.event, event) } : x) })))
             .then(({ outcome }) => {
+              const outcomeName = outcome.status === "completed" ? "completed"
+                : outcome.status === "cancelled" ? "cancelled"
+                  : outcome.status === "outcomeUnknown" ? "outcome_unknown" : "failed";
+              recordLocalUsageEvent({
+                event: "ssh.transfer.finished",
+                sessionId: item.binding.logicalSessionId,
+                correlationId: item.transferId,
+                durationMs: localUsageDuration(startedAt),
+                success: outcome.status === "completed",
+                outcome: outcomeName,
+                errorCategory: outcome.status === "completed" ? undefined : outcome.status === "cancelled" ? "cancelled" : "io",
+                attributes: { direction: item.direction, operation: item.direction, attempt: String(item.attempt) },
+              });
               set((s) => ({ items: boundHistory(s.items.map((x) => x.transferId === item.transferId && x.attempt === item.attempt
                 ? { ...x, outcome, status: outcome.status === "completed" ? "completed" : outcome.status === "cancelled" ? "cancelled" : outcome.status === "outcomeUnknown" ? "needsReconcile" : "failed" } : x)) }));
               if (outcome.status === "outcomeUnknown" || ("residuePath" in outcome && outcome.residuePath)) void get().loadJournal();
             })
-            .catch((error: unknown) => set((s) => ({ items: boundHistory(s.items.map((x) => x.transferId === item.transferId && x.attempt === item.attempt
-              ? { ...x, status: "failed", error: error instanceof Error ? error.message : String(error) } : x)) })))
+            .catch((error: unknown) => {
+              recordLocalUsageEvent({
+                event: "ssh.transfer.finished",
+                sessionId: item.binding.logicalSessionId,
+                correlationId: item.transferId,
+                durationMs: localUsageDuration(startedAt),
+                success: false,
+                outcome: "failed",
+                errorCategory: localUsageErrorCategory(error),
+                attributes: { direction: item.direction, operation: item.direction, attempt: String(item.attempt) },
+              });
+              set((s) => ({ items: boundHistory(s.items.map((x) => x.transferId === item.transferId && x.attempt === item.attempt
+                ? { ...x, status: "failed", error: error instanceof Error ? error.message : String(error) } : x)) }));
+            })
             .finally(pump);
         }
       });
@@ -100,6 +151,14 @@ export function createTransferStore(run: Runner = defaultRunner) {
     const enqueue = (request: TransferRequest) => {
       const transferId = request.transferId ?? id();
       const item: TransferItem = { ...request, transferId, attempt: 1, status: request.conflict === "skip" ? "cancelled" : "queued", cancelRequested: false };
+      recordLocalUsageEvent({
+        event: "ssh.transfer.queued",
+        sessionId: request.binding.logicalSessionId,
+        correlationId: transferId,
+        success: request.conflict !== "skip",
+        outcome: request.conflict === "skip" ? "skipped" : "scheduled",
+        attributes: { direction: request.direction, operation: request.direction, attempt: "1" },
+      });
       set((s) => ({ items: boundHistory([...s.items, item]) })); pump(); return transferId;
     };
     return {
@@ -109,6 +168,14 @@ export function createTransferStore(run: Runner = defaultRunner) {
         const item = get().items.find((x) => x.transferId === transferId); if (!item) return;
         set((s) => ({ items: boundHistory(s.items.map((x) => x.transferId === transferId ? { ...x, cancelRequested: true, status: x.status === "queued" ? "cancelled" : x.status } : x)) }));
         if (item.status === "running") await sshTransferCancel(item.transferId, item.attempt); pump();
+        recordLocalUsageEvent({
+          event: "ssh.transfer.cancelled",
+          sessionId: item.binding.logicalSessionId,
+          correlationId: item.transferId,
+          success: true,
+          outcome: "cancelled",
+          attributes: { direction: item.direction, operation: "cancel", attempt: String(item.attempt) },
+        });
       },
       cancelAll: async (logicalSessionId) => { await Promise.all(get().items.filter((x) => (!logicalSessionId || x.binding.logicalSessionId === logicalSessionId) && (x.status === "queued" || x.status === "running")).map((x) => get().cancel(x.transferId))); },
       retry: async (transferId, confirmFresh) => {
@@ -138,6 +205,14 @@ export function createTransferStore(run: Runner = defaultRunner) {
           set((s) => ({ items: s.items.map((x) => x.transferId === transferId && x.attempt === originalAttempt
             && (x.status === "failed" || x.status === "cancelled")
             ? { ...x, binding, attempt: x.attempt + 1, status: "queued", outcome: undefined, error: undefined, event: undefined, cancelRequested: false } : x) }));
+          recordLocalUsageEvent({
+            event: "ssh.transfer.retry",
+            sessionId: binding.logicalSessionId,
+            correlationId: transferId,
+            success: true,
+            outcome: "scheduled",
+            attributes: { direction: item.direction, operation: "retry", attempt: String(originalAttempt + 1) },
+          });
           pump(); return "queued";
         } finally {
           pendingRetries.delete(transferId);
@@ -156,9 +231,11 @@ export function createTransferStore(run: Runner = defaultRunner) {
       reconcileRecovery: async (recoveryId) => {
         const recovery = get().recoveries.find((item) => item.record.recoveryId === recoveryId);
         if (!recovery) return "failed";
+        const startedAt = Date.now();
         const resolved = currentReadySessionBinding(recovery.record.session);
         if (!resolved) {
           set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery ? { ...item, error: "offline" } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "reconcile", "failed", startedAt, "disconnected");
           return "offline";
         }
         set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery ? { ...item, busy: true, error: undefined } : item) }));
@@ -176,46 +253,59 @@ export function createTransferStore(run: Runner = defaultRunner) {
                     error: undefined,
                   } : item)),
             }));
+            recordTransferRecovery(recovery.record, recoveryId, "reconcile", "completed", startedAt);
             return "completed";
           }
           set((s) => ({ recoveries: s.recoveries.map((item) => item.record.recoveryId === recoveryId
             ? { ...item, record: result.record, observation: result.observation, busy: false } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "reconcile", "outcome_unknown", startedAt);
           return "partial";
         } catch (error) {
           set((s) => ({ recoveries: s.recoveries.map((item) => item.record.recoveryId === recoveryId
             ? { ...item, busy: false, error: recoveryError(error) } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "reconcile", "failed", startedAt, localUsageErrorCategory(error) === "disconnected" ? "disconnected" : "io");
           return "failed";
         }
       },
       deleteRecoveryPartial: async (recoveryId) => {
         const recovery = get().recoveries.find((item) => item.record.recoveryId === recoveryId);
         if (!recovery) return "failed";
+        const startedAt = Date.now();
         if (recovery.record.partial.kind === "remote") {
           set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery ? { ...item, error: "unsupported" } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "delete_partial", "skipped", startedAt, "unsupported");
           return "unsupported";
         }
         try {
           const deleted = await sshTransferJournalCleanup(recoveryId, recovery.record.partial);
-          if (!deleted) return "unsupported";
+          if (!deleted) {
+            recordTransferRecovery(recovery.record, recoveryId, "delete_partial", "skipped", startedAt, "unsupported");
+            return "unsupported";
+          }
           set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));
+          recordTransferRecovery(recovery.record, recoveryId, "delete_partial", "completed", startedAt);
           return "deleted";
         } catch (error) {
           set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery ? { ...item, error: recoveryError(error) } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "delete_partial", "failed", startedAt, "io");
           return "failed";
         }
       },
       restartRecovery: async (recoveryId) => {
         const recovery = get().recoveries.find((item) => item.record.recoveryId === recoveryId);
         if (!recovery) return "failed";
+        const startedAt = Date.now();
         const resolved = currentReadySessionBinding(recovery.record.session);
         if (!resolved) {
           set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery
             ? { ...item, busy: false, error: "offline" } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "failed", startedAt, "disconnected");
           return "offline";
         }
         if (recovery.record.partial.kind === "remote") {
           set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery
             ? { ...item, busy: false, error: "unsupported" } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "skipped", startedAt, "unsupported");
           return "unsupported";
         }
         set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery ? { ...item, busy: true, error: undefined } : item) }));
@@ -223,6 +313,7 @@ export function createTransferStore(run: Runner = defaultRunner) {
           if (!await sshTransferJournalCleanup(recoveryId, recovery.record.partial)) {
             set((s) => ({ recoveries: s.recoveries.map((item) => item.record.recoveryId === recoveryId
               ? { ...item, busy: false, error: "unsupported" } : item) }));
+            recordTransferRecovery(recovery.record, recoveryId, "restart", "skipped", startedAt, "unsupported");
             return "unsupported";
           }
           // Prefer the newest authoritative lifecycle binding after cleanup.
@@ -238,16 +329,26 @@ export function createTransferStore(run: Runner = defaultRunner) {
             conflict: "rename",
           });
           set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "scheduled", startedAt);
           return "queued";
         } catch (error) {
           set((s) => ({ recoveries: s.recoveries.map((item) => item.record.recoveryId === recoveryId
             ? { ...item, busy: false, error: recoveryError(error) } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "failed", startedAt, "io");
           return "failed";
         }
       },
       dismissRecovery: async (recoveryId) => {
-        await sshTransferRecoveryDismiss(recoveryId);
-        set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));
+        const recovery = get().recoveries.find((item) => item.record.recoveryId === recoveryId);
+        const startedAt = Date.now();
+        try {
+          await sshTransferRecoveryDismiss(recoveryId);
+          set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));
+          if (recovery) recordTransferRecovery(recovery.record, recoveryId, "dismiss", "completed", startedAt);
+        } catch (error) {
+          if (recovery) recordTransferRecovery(recovery.record, recoveryId, "dismiss", "failed", startedAt, "io");
+          throw error;
+        }
       },
     };
   });

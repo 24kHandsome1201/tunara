@@ -3,8 +3,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useT } from "@/modules/i18n";
+import {
+  clearLocalUsageLogs,
+  ensureLocalUsageLogDirectory,
+  exportLocalUsageLogs,
+  localUsageLogStatus,
+  type LocalUsageLogStatus,
+} from "@/modules/usage-log/local-usage-log";
+import { useUIStore } from "@/state/ui";
 import type { useAppUpdate } from "../useAppUpdate";
-import { SECTION_LABEL, SECTION_HINT } from "./controls";
+import { SECTION_LABEL, SECTION_HINT, Toggle } from "./controls";
 
 type LegacyAgentDataState = "loading" | "missing" | "present" | "deleting" | "error";
 
@@ -12,10 +20,21 @@ type LegacyAgentDataState = "loading" | "missing" | "present" | "deleting" | "er
  * in-progress download survives tab switches; this tab only renders it. */
 type AppUpdateState = ReturnType<typeof useAppUpdate>;
 
+function formatLogBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 /** App tab: version, signed updater flow, and legacy Agent data cleanup. */
 export function AppSettings({ appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate }: AppUpdateState) {
   const t = useT();
+  const localUsageLoggingEnabled = useUIStore((s) => s.localUsageLoggingEnabled);
+  const setLocalUsageLoggingEnabled = useUIStore((s) => s.setLocalUsageLoggingEnabled);
   const [legacyAgentDataState, setLegacyAgentDataState] = useState<LegacyAgentDataState>("loading");
+  const [usageLogStatus, setUsageLogStatus] = useState<LocalUsageLogStatus | null>(null);
+  const [usageLogBusy, setUsageLogBusy] = useState(false);
+  const [usageLogMessage, setUsageLogMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const updateBusy = updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting";
 
   const loadLegacyAgentDataStatus = useCallback(() => {
@@ -28,7 +47,21 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
   // This tab is only mounted while active, so mount = tab opened.
   useEffect(() => {
     loadLegacyAgentDataStatus();
+    localUsageLogStatus().then(setUsageLogStatus).catch(() => setUsageLogStatus(null));
   }, [loadLegacyAgentDataStatus]);
+
+  const runUsageLogAction = useCallback(async (action: () => Promise<void>) => {
+    setUsageLogBusy(true);
+    setUsageLogMessage(null);
+    try {
+      await action();
+      setUsageLogStatus(await localUsageLogStatus());
+    } catch {
+      setUsageLogMessage({ kind: "error", text: t("settings.app.usage_logs.action_failed") });
+    } finally {
+      setUsageLogBusy(false);
+    }
+  }, [t]);
 
   const deleteLegacyAgentData = useCallback(async () => {
     const confirmed = await tauriConfirmDialog(t("settings.app.legacy_agent_data.confirm"), { kind: "warning" });
@@ -99,6 +132,97 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
               {canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("settings.app.updates.retry") : t("settings.app.updates.check")}
             </button>
           </div>
+        </div>
+      </div>
+      <div style={{ paddingTop: 20 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...SECTION_LABEL, marginBottom: 4 }}>{t("settings.app.usage_logs.title")}</div>
+            <div style={{ ...SECTION_HINT, marginTop: 0 }}>{t("settings.app.usage_logs.hint")}</div>
+          </div>
+          <div aria-disabled={usageLogBusy} style={{ flexShrink: 0, opacity: usageLogBusy ? 0.6 : 1 }}>
+            <Toggle
+              checked={localUsageLoggingEnabled}
+              onChange={(enabled) => {
+                if (usageLogBusy) return;
+                void runUsageLogAction(async () => {
+                  await setLocalUsageLoggingEnabled(enabled);
+                  setUsageLogMessage({ kind: "success", text: t(enabled ? "settings.app.usage_logs.enabled" : "settings.app.usage_logs.disabled") });
+                });
+              }}
+              ariaLabel={t("settings.app.usage_logs.title")}
+            />
+          </div>
+        </div>
+        <div style={{ padding: "10px 12px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-1)" }}>
+          <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.5 }}>
+            {t("settings.app.usage_logs.privacy")}
+          </div>
+          <div style={{ ...SECTION_HINT, marginTop: 8 }}>
+            {t("settings.app.usage_logs.location")}
+          </div>
+          <div title={usageLogStatus?.directory} style={{ marginTop: 3, fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {usageLogStatus?.directory || t("settings.app.usage_logs.location_unavailable")}
+          </div>
+          {usageLogStatus && (
+            <div style={{ ...SECTION_HINT, marginTop: 6 }}>
+              {t("settings.app.usage_logs.retention", {
+                days: usageLogStatus.retentionDays,
+                size: formatLogBytes(usageLogStatus.maxTotalBytes),
+                files: usageLogStatus.fileCount,
+                used: formatLogBytes(usageLogStatus.totalBytes),
+              })}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+            <button
+              disabled={usageLogBusy}
+              className="hover-bg"
+              onClick={() => { void runUsageLogAction(async () => {
+                const directory = await ensureLocalUsageLogDirectory();
+                const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+                await revealItemInDir(directory);
+              }); }}
+            >
+              {t("settings.app.usage_logs.open_directory")}
+            </button>
+            <button
+              disabled={usageLogBusy || usageLogStatus?.fileCount === 0}
+              className="hover-bg"
+              onClick={() => { void runUsageLogAction(async () => {
+                const { save } = await import("@tauri-apps/plugin-dialog");
+                const destination = await save({
+                  defaultPath: "tunara-usage-logs.jsonl",
+                  filters: [{ name: "JSON Lines", extensions: ["jsonl"] }],
+                });
+                if (!destination) return;
+                const bytes = await exportLocalUsageLogs(destination);
+                setUsageLogMessage({ kind: "success", text: t("settings.app.usage_logs.exported", { size: formatLogBytes(bytes) }) });
+              }); }}
+            >
+              {t("settings.app.usage_logs.export")}
+            </button>
+            <button
+              disabled={usageLogBusy || usageLogStatus?.fileCount === 0}
+              className="hover-bg"
+              onClick={() => { void (async () => {
+                const confirmed = await tauriConfirmDialog(t("settings.app.usage_logs.clear_confirm"), { kind: "warning" });
+                if (!confirmed) return;
+                await runUsageLogAction(async () => {
+                  await clearLocalUsageLogs();
+                  setUsageLogMessage({ kind: "success", text: t("settings.app.usage_logs.cleared") });
+                });
+              })(); }}
+              style={{ color: "var(--c-error)", borderColor: "var(--c-error)" }}
+            >
+              {t("settings.app.usage_logs.clear")}
+            </button>
+          </div>
+          {usageLogMessage && (
+            <div role="status" style={{ ...SECTION_HINT, color: usageLogMessage.kind === "error" ? "var(--c-error)" : "var(--c-success)", marginTop: 8 }}>
+              {usageLogMessage.text}
+            </div>
+          )}
         </div>
       </div>
       {(legacyAgentDataState === "present" || legacyAgentDataState === "deleting" || legacyAgentDataState === "error") && (

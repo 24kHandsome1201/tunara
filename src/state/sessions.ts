@@ -68,6 +68,7 @@ import {
   previewTerminalExited,
 } from "@/modules/preview/preview-window";
 import { terminalFileViewerCommand } from "@/modules/terminal/lib/shell-command";
+import { localUsageAuthMethod, localUsageDuration, localUsageErrorCategory, localUsagePhase, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 let previewCommandSequence = 0;
 
@@ -272,11 +273,34 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       // of the recent-dirs affordance.
       recentDirs: s.remote ? state.recentDirs : pushRecentDir(state.recentDirs, s.dir),
     }));
+    if (s.remote) {
+      recordLocalUsageEvent({
+        event: "ssh.session.created",
+        sessionId: s.id,
+        success: true,
+        outcome: "completed",
+        attributes: {
+          transport: "ssh",
+          auth_method: localUsageAuthMethod(s.remote.authMethod),
+          route: s.remote.route ? "jump" : "direct",
+        },
+      });
+    }
     ensureSessionVisibleInSplit(s.id, previousActiveSessionId);
   },
 
   removeSession: (id) => {
     if (!requestDirtyDraftAction([id], () => get().removeSession(id))) return;
+    const removedSession = get().sessions.find((session) => session.id === id);
+    if (removedSession?.remote) {
+      recordLocalUsageEvent({
+        event: "ssh.session.closed",
+        sessionId: id,
+        success: true,
+        outcome: "completed",
+        attributes: { transport: "ssh" },
+      });
+    }
     cancelCloseConfirmationTimer(id);
     cancelPendingGitRefresh(id);
     // A bump queued in this same tick would otherwise re-create the session's
@@ -415,6 +439,44 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const previousPhase = session.connection?.phase;
     const connection = reduceConnectionEvidence(session.connection, event);
     if (connection === session.connection) return;
+    if (connection.transport === "ssh") {
+      const outcome = connection.phase === "failed" ? "failed"
+        : connection.phase === "needsUserAction" ? "needs_user_action"
+          : connection.phase === "disconnected" ? "failed"
+            : connection.phase === "reconnecting" ? "started"
+              : connection.phase === "ready" ? "completed" : "started";
+      recordLocalUsageEvent({
+        event: "ssh.connection.phase",
+        sessionId: id,
+        durationMs: session.connection?.updatedAt ? localUsageDuration(session.connection.updatedAt) : undefined,
+        success: connection.phase === "ready" ? true : connection.phase === "failed" || connection.phase === "disconnected" ? false : undefined,
+        outcome,
+        errorCategory: connection.phase === "failed"
+          ? localUsageErrorCategory(connection.reason ?? connection.source)
+          : connection.phase === "disconnected" ? "disconnected" : undefined,
+        attributes: {
+          transport: "ssh",
+          phase: localUsagePhase(connection.phase),
+          reason: connection.source === "hostKey" ? "host_key" : connection.source,
+        },
+      });
+      if (event.type === "reconnectRequested") {
+        recordLocalUsageEvent({ event: "ssh.reconnect.started", sessionId: id, outcome: "started" });
+      } else if (event.type === "reconnectScheduled") {
+        recordLocalUsageEvent({
+          event: "ssh.reconnect.scheduled",
+          sessionId: id,
+          outcome: "scheduled",
+          attributes: session.sshReconnectAttempt ? { attempt: String(session.sshReconnectAttempt) } : undefined,
+        });
+      } else if (connection.phase === "ready" && previousPhase === "reconnecting") {
+        recordLocalUsageEvent({ event: "ssh.reconnect.completed", sessionId: id, success: true, outcome: "completed" });
+      } else if (connection.phase === "failed" && previousPhase === "reconnecting") {
+        recordLocalUsageEvent({ event: "ssh.reconnect.failed", sessionId: id, success: false, outcome: "failed", errorCategory: "connect" });
+      } else if (connection.phase === "disconnected") {
+        recordLocalUsageEvent({ event: "ssh.disconnected", sessionId: id, success: false, outcome: "failed", errorCategory: "disconnected" });
+      }
+    }
     if (connection.phase === "ready" && previousPhase !== "ready") {
       get().appendTimeline(id, "connection_ready", connection.transport);
     } else if (connection.phase === "failed") {
@@ -666,6 +728,16 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     const update = commandDetectedUpdate(session, command);
     if (update) {
+      if (session?.remote) {
+        recordLocalUsageEvent({
+          event: "ssh.terminal.command_started",
+          sessionId: id,
+          correlationId: update.patch.startedAt ? `command:${update.patch.startedAt}` : undefined,
+          success: true,
+          outcome: "started",
+          attributes: { transport: "ssh" },
+        });
+      }
       get().recordRecentCommand(command);
       get().appendTimeline(id, "command_start", command);
       get().updateSession(id, update.patch);
@@ -677,6 +749,20 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = isSessionObserved(get().activeSessionId, id);
     const update = commandFinishedUpdate(session, exitCode, isActive);
     if (!update) return;
+    if (session?.remote) {
+      recordLocalUsageEvent({
+        event: "ssh.terminal.command_finished",
+        sessionId: id,
+        correlationId: session.startedAt ? `command:${session.startedAt}` : undefined,
+        durationMs: session.startedAt ? localUsageDuration(session.startedAt) : undefined,
+        success: exitCode === 0,
+        outcome: exitCode === 0 ? "completed" : "failed",
+        attributes: {
+          transport: "ssh",
+          exit_status: exitCode === 0 ? "zero" : "nonzero",
+        },
+      });
+    }
     if (session?.previewCommandProvenance) {
       void previewTerminalCommandFinished(previewSourceContext(session), session.previewCommandProvenance).catch(() => {
         // A missing native completion record keeps restart fail-closed.
