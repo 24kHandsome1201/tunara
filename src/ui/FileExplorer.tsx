@@ -1619,7 +1619,7 @@ export function FileExplorer({
           {t("explorer.remote_disconnected")}
         </div>
       )}
-      <div style={{ height: 36, borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", padding: "0 var(--sp-2)", gap: 4, flexShrink: 0 }}>
+      <div className="explorer-toolbar">
         <button
           onClick={() => { if (canGoUp) goUp(); }}
           disabled={!canGoUp}
@@ -1638,7 +1638,7 @@ export function FileExplorer({
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <div title={currentPath} style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, minWidth: 0, padding: "0 var(--sp-1)", overflow: "hidden", whiteSpace: "nowrap" }}>
+        <div className="explorer-breadcrumbs" title={currentPath}>
           {breadcrumbSegments(currentPath, breadcrumbRoot).map((seg, idx, arr) => {
             const isLast = idx === arr.length - 1;
             const isCurrent = seg.targetPath === currentPath;
@@ -1761,7 +1761,7 @@ export function FileExplorer({
       </div>
 
       {upload && (
-        <div style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", flexShrink: 0 }}>
+        <div className="explorer-transfer-status">
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {upload.cancelling ? t("explorer.upload.cancelling") : t("explorer.upload.progress", { file: upload.fileName, percent: upload.total > 0 ? Math.min(100, Math.round(upload.transferred / upload.total * 100)) : 0 })}
@@ -1775,7 +1775,7 @@ export function FileExplorer({
         {transferAnnouncement}
       </div>
       {download && (
-        <div role="status" aria-live="polite" aria-busy="true" style={{ padding: "7px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={download.fileName}>
+        <div className="explorer-transfer-status" role="status" aria-live="polite" aria-busy="true" title={download.fileName}>
           {t("explorer.download.progress", { file: download.fileName })}
           <progress className="ui-progress" aria-label={t("explorer.download.progress_label")} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
         </div>

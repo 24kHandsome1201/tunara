@@ -46,8 +46,14 @@ describe("FilePreview editor behavior", () => {
     expect(screen.getByRole("button", { name: "Reset zoom" }).textContent).toBe("100%");
     fireEvent.keyDown(surface, { key: "f" });
     expect(screen.getByRole("dialog", { name: "Fullscreen image preview" })).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(surface));
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Zoom out" }));
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(surface);
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(surface);
 
     view.unmount();
     expect(createObjectURL).toHaveBeenCalledOnce();

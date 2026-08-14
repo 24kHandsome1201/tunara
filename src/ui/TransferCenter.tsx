@@ -74,7 +74,6 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
   const hasVisibleContent = visibleItems.length > 0 || visibleRecoveries.length > 0;
   const canCancel = visibleItems.some((item) => item.status === "queued" || item.status === "running");
   const canClear = visibleItems.some((item) => ["completed", "cancelled", "failed"].includes(item.status));
-  const cardStyle = { padding: 9, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-1)", display: "flex", flexDirection: "column", gap: 7 } as const;
   return (
     <section aria-label={t("transfer.center.aria_label")} data-inspector-scope={inspectorScope?.key} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
@@ -102,14 +101,14 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
           sublabel={t(global ? "transfer.center.empty_global" : "transfer.center.empty_session")}
         />
       ) : (
-        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 10 }}>
+        <div className="transfer-center-content">
           {visibleBatches.length > 0 && (
-            <section aria-label={t("transfer.batch.title")} style={{ marginBottom: 12 }}>
-              <h3 style={{ margin: "0 0 7px", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)" }}>{t("transfer.batch.title")}</h3>
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            <section aria-label={t("transfer.batch.title")} className="transfer-section">
+              <h3 className="transfer-section-title">{t("transfer.batch.title")}</h3>
+              <ul className="transfer-list">
                 {visibleBatches.map((batch) => (
-                  <li key={batch.batchId} style={cardStyle}>
-                    <span style={{ color: "var(--c-text-3)", fontSize: "var(--fs-meta)" }}>
+                  <li key={batch.batchId} className="transfer-card transfer-card--batch">
+                    <span className="transfer-card-summary">
                       {t("transfer.batch.summary", batch)}
                     </span>
                     {(batch.running > 0 || batch.queued > 0) && (
@@ -133,34 +132,41 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
             </section>
           )}
           {visibleItems.length > 0 && (
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            <ul className="transfer-list">
               {visibleItems.map((item) => (
-                <li key={`${item.transferId}-${item.attempt}`} style={cardStyle}>
-                  <span style={{ color: "var(--c-text-3)", fontSize: "var(--fs-meta)", overflowWrap: "anywhere" }}>
-                    {t(`transfer.direction.${item.direction}`)} · {item.binding.logicalSessionId} / PTY {item.binding.physicalPtyId} · {item.source} → {item.destination} · {t("transfer.attempt", { attempt: item.attempt })} · {t(`transfer.status.${item.status}`)}
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <li key={`${item.transferId}-${item.attempt}`} className="transfer-card" data-status={item.status}>
+                  <div className="transfer-card-heading">
+                    <strong title={item.source}>{item.source.split(/[\\/]/).pop() || item.source}</strong>
+                    <span className="transfer-status" data-status={item.status}>{t(`transfer.status.${item.status}`)}</span>
+                  </div>
+                  <div className="transfer-path" title={`${item.source} → ${item.destination}`}>
+                    <span>{item.source}</span><span aria-hidden="true">→</span><span>{item.destination}</span>
+                  </div>
+                  <div className="transfer-meta">
+                    {t(`transfer.direction.${item.direction}`)} · {item.binding.logicalSessionId} / PTY {item.binding.physicalPtyId} · {t("transfer.attempt", { attempt: item.attempt })}
+                  </div>
+                  <div className="transfer-card-actions">
                     {(item.status === "queued" || item.status === "running") && <PanelActionButton aria-label={t("transfer.cancel_item", { file: item.source })} onClick={() => void cancel(item.transferId)}>{t("transfer.cancel")}</PanelActionButton>}
                     {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") setAnnouncement(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
                   </div>
-                  {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" style={{ color: "var(--c-warning-text)", fontSize: "var(--fs-meta)" }}>{t("transfer.residue", { path: item.outcome.residuePath })}</div>}
+                  {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" className="transfer-warning">{t("transfer.residue", { path: item.outcome.residuePath })}</div>}
                   {item.event?.totalBytes != null && <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
                 </li>
               ))}
             </ul>
           )}
           {visibleRecoveries.length > 0 && (
-            <section aria-label={t("transfer.recovery.title")} style={{ marginTop: visibleItems.length > 0 ? 14 : 0 }}>
-              <h3 style={{ margin: "0 0 7px", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)" }}>{t("transfer.recovery.title")}</h3>
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            <section aria-label={t("transfer.recovery.title")} className="transfer-section" style={{ marginTop: visibleItems.length > 0 ? 14 : 0 }}>
+              <h3 className="transfer-section-title">{t("transfer.recovery.title")}</h3>
+              <ul className="transfer-list">
                 {visibleRecoveries.map(({ record, observation, busy, error }) => (
-                  <li key={record.recoveryId} style={cardStyle}>
-                    <span style={{ color: "var(--c-text-3)", fontSize: "var(--fs-meta)", overflowWrap: "anywhere" }}>
+                  <li key={record.recoveryId} className="transfer-card" data-status="needsReconcile">
+                    <span className="transfer-card-summary">
                       {record.endpoint} · {record.source} → {record.finalPath} · {t("transfer.attempt", { attempt: record.attempt })} · {record.needsReconcile ? t("transfer.status.needsReconcile") : t("transfer.recovery.paused")}
                       {observation && <> · {t(`transfer.recovery.observation.${observation}`)}</>}
                     </span>
-                    {error && <div role="alert" style={{ color: "var(--c-warning-text)", fontSize: "var(--fs-meta)" }}>{t(`transfer.recovery.error.${error}`)}</div>}
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {error && <div role="alert" className="transfer-warning">{t(`transfer.recovery.error.${error}`)}</div>}
+                    <div className="transfer-card-actions">
                       <PanelActionButton disabled={busy} onClick={() => void reconcileRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.reconcile.${result}`)))}>{t("transfer.recovery.reconcile")}</PanelActionButton>
                       <PanelActionButton disabled title={t("transfer.recovery.resume_unavailable")}>{t("transfer.recovery.resume")}</PanelActionButton>
                       <PanelActionButton disabled={busy || record.partial.kind === "remote"} title={record.partial.kind === "remote" ? t("transfer.recovery.remote_cleanup_unavailable") : undefined} onClick={() => void confirmAction(t("transfer.confirm.restart")).then((approved) => { if (approved) return restartRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.restart.${result}`))); })}>{t("transfer.recovery.restart")}</PanelActionButton>

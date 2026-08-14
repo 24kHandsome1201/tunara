@@ -1,10 +1,8 @@
-import { useEffect, useRef } from "react";
 import { useUIStore, type SettingsTab } from "@/state/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { CloseIcon } from "../shared";
 import { useT } from "@/modules/i18n";
-import { useFocusTrap } from "./useFocusTrap";
 import { useAppUpdate } from "./useAppUpdate";
 import { useWorkflowsStore } from "@/state/workflows";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
@@ -14,6 +12,7 @@ import { WorkflowsSettings } from "./settings/WorkflowsSettings";
 import { CliSettings } from "./settings/CliSettings";
 import { AppSettings } from "./settings/AppSettings";
 import { useCliStatus } from "./settings/useCliStatus";
+import { Modal } from "./Modal";
 
 interface SettingsProps {
   onClose: () => void;
@@ -37,10 +36,6 @@ export function Settings({ onClose }: SettingsProps) {
   // disabled state stays reactive (getState() in render wouldn't re-render
   // when workflows change, leaving the button enabled after a clear).
   const workflowCount = useWorkflowsStore((s) => s.workflows.length);
-  const sheetRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { sheetRef.current?.focus(); }, []);
-  useFocusTrap(sheetRef);
-
   const appUpdate = useAppUpdate(activeTab);
   const cliStatus = useCliStatus(activeTab);
 
@@ -58,16 +53,16 @@ export function Settings({ onClose }: SettingsProps) {
   const footerButtonStyle: React.CSSProperties = { padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" };
 
   return (
-    <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
-      <div
-        ref={sheetRef} tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Escape") onClose(); }}
-        style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 600, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 201, animation: "sheetIn var(--duration-normal) var(--ease-out-back)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "80vh", outline: "none" }}>
-        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}>
+    <Modal
+      labelledBy="settings-title"
+      onRequestClose={onClose}
+      initialFocus="container"
+      backdropZIndex={200}
+      zIndex={201}
+      className="settings-dialog"
+      style={{ width: 620, maxWidth: "calc(100vw - 32px)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "min(82dvh, 760px)", animation: "sheetIn var(--duration-normal) var(--ease-out-back)" }}
+    >
+        <div className="settings-dialog-header">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <span id="settings-title" style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>{t("settings.title")}</span>
             <button onClick={onClose} aria-label={t("common.close")} style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }} className="hover-bg">
@@ -100,7 +95,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
         </div>
 
-        <div role="tabpanel" id="settings-tabpanel" style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
+        <div role="tabpanel" id="settings-tabpanel" className="no-scrollbar scroll-fade-y">
           {activeTab === "appearance" && <AppearanceSettings />}
           {activeTab === "shortcuts" && <ShortcutsSettings />}
           {activeTab === "workflows" && <WorkflowsSettings />}
@@ -108,7 +103,7 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === "app" && <AppSettings {...appUpdate} />}
         </div>
 
-        <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <div className="settings-dialog-footer">
           {activeTab === "appearance" ? (
             <button
               onClick={async () => {
@@ -164,7 +159,6 @@ export function Settings({ onClose }: SettingsProps) {
             </button>
           </div>
         </div>
-      </div>
-    </>
+    </Modal>
   );
 }

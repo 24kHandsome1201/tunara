@@ -10,6 +10,7 @@ body {
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
+  line-height: var(--lh-ui);
 }
 html, body, #root {
   height: 100%;
@@ -443,6 +444,154 @@ select.ui-control {
   color: var(--c-text-primary);
   background: var(--c-accent-bg-soft);
 }
+
+/* Shared panel language: one compact header and one state treatment across
+   files, transfers, diagnostics and lazily loaded workspace surfaces. */
+.panel-toolbar {
+  min-height: var(--h-panel-header);
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--c-border-1);
+  background: var(--c-bg-1);
+}
+.panel-toolbar-title {
+  min-width: 0;
+  margin: 0;
+  color: var(--c-text-2);
+  font-size: var(--fs-secondary);
+  font-weight: 650;
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+.panel-toolbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.panel-state {
+  padding: 28px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--c-text-5);
+}
+.panel-state[data-density="compact"] { padding: 14px; flex-direction: row; justify-content: flex-start; gap: 10px; text-align: left; }
+.panel-state-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-pill);
+  background: var(--c-bg-2);
+  display: grid;
+  place-items: center;
+  color: var(--c-text-5);
+  flex-shrink: 0;
+}
+.panel-state[data-density="compact"] .panel-state-icon { width: 28px; height: 28px; }
+.panel-state[data-state="error"] .panel-state-icon { color: var(--c-error); background: var(--c-error-bg-light); }
+.panel-state-copy { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.panel-state[data-density="compact"] .panel-state-copy { align-items: flex-start; }
+.panel-state-copy strong { color: var(--c-text-4); font-size: var(--fs-secondary); font-weight: 600; }
+.panel-state-detail { max-width: min(90%, 440px); color: var(--c-text-5); font: var(--fs-meta)/var(--lh-copy) var(--font-mono); overflow-wrap: anywhere; }
+.panel-state[data-density="compact"] .panel-state-detail { max-width: 100%; }
+.panel-state-remediation { max-width: 440px; color: var(--c-text-4); font-size: var(--fs-secondary); line-height: var(--lh-copy); }
+
+/* Settings uses the shared modal lifecycle; only its information architecture
+   and responsive spacing live here. */
+.settings-dialog { container: settings-dialog / inline-size; }
+.settings-dialog-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--c-border-1); flex-shrink: 0; }
+#settings-tabpanel { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px; }
+.settings-dialog-footer {
+  min-height: 54px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--c-border-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  background: var(--c-bg-1);
+}
+@container settings-dialog (max-width: 520px) {
+  .settings-dialog-header, #settings-tabpanel { padding-inline: 16px; }
+  .settings-dialog-footer { padding-inline: 16px; align-items: stretch; flex-direction: column-reverse; }
+  .settings-dialog-footer > div { justify-content: flex-end; }
+}
+
+/* File explorer chrome remains usable in a narrow Inspector: the path yields
+   first while every icon action keeps a consistent target. */
+.explorer-toolbar {
+  min-height: 38px;
+  padding: 4px var(--sp-2);
+  border-bottom: 1px solid var(--c-border-1);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  background: var(--c-bg-1);
+}
+.explorer-toolbar > button { flex-shrink: 0; }
+.explorer-toolbar > button:disabled { color: var(--c-text-6) !important; opacity: .45 !important; pointer-events: none; }
+.explorer-breadcrumbs { display: flex; align-items: center; gap: 1px; flex: 1; min-width: 32px; padding: 0 2px; overflow: hidden; white-space: nowrap; }
+.explorer-transfer-status {
+  padding: 7px var(--sp-2);
+  border-bottom: 1px solid var(--c-border-1);
+  background: var(--c-bg-1);
+  color: var(--c-text-3);
+  flex-shrink: 0;
+  font-size: var(--fs-meta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Transfer cards expose the file and state first, then transport details. */
+.transfer-center-content { flex: 1; min-height: 0; overflow: auto; padding: 10px; }
+.transfer-section { margin-bottom: 12px; }
+.transfer-section-title { margin: 0 0 7px; color: var(--c-text-4); font-size: var(--fs-meta); font-weight: 650; letter-spacing: .02em; }
+.transfer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.transfer-card {
+  position: relative;
+  padding: 9px 10px;
+  border: 1px solid var(--c-border-1);
+  border-radius: var(--r-card);
+  background: var(--c-bg-white);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+.transfer-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--c-border-2); }
+.transfer-card[data-status="running"]::before, .transfer-card[data-status="queued"]::before { background: var(--c-accent); }
+.transfer-card[data-status="completed"]::before { background: var(--c-success); }
+.transfer-card[data-status="failed"]::before, .transfer-card[data-status="needsReconcile"]::before { background: var(--c-error); }
+.transfer-card-heading { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.transfer-card-heading strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-2); font: 600 var(--fs-secondary) var(--font-mono); }
+.transfer-status { padding: 1px 6px; border-radius: var(--r-pill); background: var(--c-bg-2); color: var(--c-text-4); font-size: var(--fs-badge); flex-shrink: 0; }
+.transfer-status[data-status="completed"] { color: var(--c-success); background: var(--c-success-bg-light); }
+.transfer-status[data-status="failed"], .transfer-status[data-status="needsReconcile"] { color: var(--c-error); background: var(--c-error-bg-light); }
+.transfer-path { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; color: var(--c-text-4); font: var(--fs-meta)/var(--lh-ui) var(--font-mono); }
+.transfer-path span:not([aria-hidden]) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-meta, .transfer-card-summary { color: var(--c-text-5); font-size: var(--fs-meta); line-height: var(--lh-copy); overflow-wrap: anywhere; }
+.transfer-card-actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.transfer-warning { padding: 6px 8px; border-radius: var(--r-btn); background: var(--c-warning-bg); color: var(--c-warning-text); font-size: var(--fs-meta); overflow-wrap: anywhere; }
+
+.large-file-controls { padding: 10px 12px; border-bottom: 1px solid var(--c-border-1); background: var(--c-bg-1); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.large-file-description { flex: 1 1 220px; color: var(--c-text-4); font-size: var(--fs-secondary); line-height: var(--lh-copy); text-wrap: pretty; }
+.large-file-line-limit { display: flex; align-items: center; gap: 6px; color: var(--c-text-4); font-size: var(--fs-secondary); white-space: nowrap; }
+.large-file-error { flex-basis: 100%; color: var(--c-error); font-size: var(--fs-secondary); line-height: var(--lh-copy); }
+
+.toast-title, .toast-subtitle { display: -webkit-box; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; }
+.toast-title { -webkit-line-clamp: 2; line-height: var(--lh-ui); }
+.toast-subtitle { -webkit-line-clamp: 2; line-height: var(--lh-copy); }
+.toast-item[data-variant="error"] { border-color: color-mix(in srgb, var(--c-error) 28%, var(--c-border-1)) !important; }
 
 /* Panel resize handle: visible line on hover */
 .panel-resize-handle::after,

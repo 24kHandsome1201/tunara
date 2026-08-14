@@ -52,11 +52,11 @@ export function PanelToolbar({
   children?: ReactNode;
 }) {
   return (
-    <header style={{ minHeight: 38, padding: "5px 10px", display: "flex", alignItems: "center", gap: 6, borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", flexShrink: 0 }}>
-      <h2 id={titleId} style={{ minWidth: 0, margin: 0, color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 650, lineHeight: 1.35 }}>
+    <header className="panel-toolbar">
+      <h2 id={titleId} className="panel-toolbar-title">
         {title}
       </h2>
-      {children && <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5, flexWrap: "wrap" }}>{children}</div>}
+      {children && <div className="panel-toolbar-actions">{children}</div>}
     </header>
   );
 }
@@ -112,25 +112,18 @@ export function PanelState({ state, icon, compact = false }: { state: PanelAsync
       aria-live={state.kind === "loading" || state.kind === "empty" ? "polite" : undefined}
       aria-busy={state.kind === "loading" ? true : undefined}
       data-density={compact ? "compact" : "regular"}
-      style={{
-        padding: compact ? "12px 14px" : "28px 14px",
-        display: "flex",
-        flexDirection: compact ? "row" : "column",
-        alignItems: "center",
-        justifyContent: compact ? "flex-start" : undefined,
-        textAlign: compact ? "left" : "center",
-        gap: compact ? 10 : 8,
-      }}
+      data-state={state.kind}
+      className="panel-state"
     >
-      <div style={{ width: compact ? 28 : 36, height: compact ? 28 : 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)", flexShrink: 0 }}>
+      <div className="panel-state-icon">
         {state.kind === "loading"
           ? <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", animation: "loadPulse 1.5s var(--ease-in-out) infinite" }} />
           : icon ?? defaultIcon}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: compact ? "flex-start" : "center", gap: 4, minWidth: 0 }}>
-        <strong style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", fontWeight: 600 }}>{state.label}</strong>
-        {state.kind !== "loading" && state.detail && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: compact ? "100%" : "90%", overflowWrap: "anywhere" }}>{state.detail}</span>}
-        {state.kind === "error" && state.remediation && <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", maxWidth: 440 }}>{state.remediation}</span>}
+      <div className="panel-state-copy">
+        <strong>{state.label}</strong>
+        {state.kind !== "loading" && state.detail && <span className="panel-state-detail">{state.detail}</span>}
+        {state.kind === "error" && state.remediation && <span className="panel-state-remediation">{state.remediation}</span>}
         {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? "Retry"}</PanelActionButton>}
       </div>
     </div>

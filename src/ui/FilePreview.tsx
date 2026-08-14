@@ -46,6 +46,7 @@ import {
   type FileHeadResultV1,
   type FileViewErrorV1,
 } from "@/modules/fs/file-view-bridge";
+import { useModalBehavior } from "./overlays/Modal";
 
 /** 值防抖：delayMs 内连续变化只取最后一个，用于高开销派生的计算闸门。 */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -376,6 +377,7 @@ function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, 
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState<string | null>(null);
 
@@ -386,19 +388,11 @@ function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, 
     setFailed(false);
     return () => URL.revokeObjectURL(nextUrl);
   }, [result.bytes, result.mime]);
-  useEffect(() => {
-    if (!fullscreen) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    surfaceRef.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFullscreen(false);
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("keydown", closeOnEscape);
-      previous?.focus();
-    };
-  }, [fullscreen]);
+  useModalBehavior(previewRef, {
+    active: fullscreen,
+    onRequestClose: () => setFullscreen(false),
+    initialFocus: surfaceRef,
+  });
 
   const changeZoom = (next: number) => setZoom(Math.min(400, Math.max(25, next)));
   const handleKeys = (event: React.KeyboardEvent) => {
@@ -446,6 +440,7 @@ function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, 
 
   return (
     <div
+      ref={previewRef}
       className={fullscreen ? "image-preview image-preview-fullscreen" : "image-preview"}
       style={{ flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
       role={fullscreen ? "dialog" : undefined}
@@ -486,14 +481,14 @@ function LargeFileHeadControls({
             ? t("preview.read_failed_body")
             : null;
   return (
-    <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <span style={{ flex: "1 1 240px", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>
+    <div className="large-file-controls">
+      <span className="large-file-description">
         {t("preview.head.description")}
       </span>
-      <label style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
+      <label className="large-file-line-limit">
         {t("preview.head.lines")}
         <select
-          className="ui-native-control"
+          className="ui-control"
           aria-label={t("preview.head.lines")}
           value={lineLimit}
           disabled={loading}
@@ -503,9 +498,9 @@ function LargeFileHeadControls({
         </select>
       </label>
       {loading
-        ? <button onClick={onCancel}>{t("preview.head.cancel")}</button>
-        : <button onClick={onView}>{t("preview.head.view")}</button>}
-      {errorText ? <span role="alert" style={{ flexBasis: "100%", color: "var(--c-text-5)", fontSize: "var(--fs-secondary)" }}>{errorText}</span> : null}
+        ? <button className="ui-button" onClick={onCancel}>{t("preview.head.cancel")}</button>
+        : <button className="ui-button ui-button--primary" onClick={onView}>{t("preview.head.view")}</button>}
+      {errorText ? <span role="alert" className="large-file-error">{errorText}</span> : null}
     </div>
   );
 }

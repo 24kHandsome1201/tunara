@@ -95,6 +95,8 @@ function ToastItem({ toast }: { toast: Toast }) {
 
   return (
     <div
+      className="toast-item"
+      data-variant={toast.variant}
       role={toast.variant === "error" ? "alert" : "status"}
       aria-live={toast.variant === "error" ? "assertive" : "polite"}
       onMouseEnter={() => { hoveredRef.current = true; pauseCountdown(); }}
@@ -154,24 +156,18 @@ function ToastItem({ toast }: { toast: Toast }) {
       )}
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
+        <div className="toast-title" style={{
           fontSize: "var(--fs-secondary)",
           fontWeight: 600,
           color: "var(--c-text-primary)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
           fontFamily: toast.agentCode ? "var(--font-ui)" : "var(--font-mono)",
         }}>
           {toast.title}
         </div>
-        <div style={{
+        <div className="toast-subtitle" style={{
           fontSize: "var(--fs-meta)",
           color: "var(--c-text-5)",
           marginTop: 1,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
         }}>
           {toast.subtitle}
         </div>
