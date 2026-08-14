@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThemeType, TerminalThemeName } from "../types";
 import { useUIStore, type CursorStyle, type ExternalEditor, type SettingsTab, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
-import { getShellTint, isDarkTheme } from "@/styles/terminalTheme";
+import { getShellTint, getTerminalTheme, isDarkTheme } from "@/styles/terminalTheme";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -38,45 +38,72 @@ type LegacyAgentDataState = "loading" | "missing" | "present" | "deleting" | "er
 
 const TABS = ["appearance", "workflows", "cli", "app"] as const;
 
+type ColorSchemeId = ThemeType | Exclude<TerminalThemeName, "default">;
+
 function terminalThemePreviewColors(
-  id: TerminalThemeName,
-  appIsDark: boolean,
-): { bg: string; fg: string } {
-  if (id === "default") {
-    return {
-      bg: appIsDark ? "#18181b" : "#ffffff",
-      fg: appIsDark ? "#e4e4e7" : "#27272a",
-    };
-  }
-  const tint = getShellTint(id);
+  id: ColorSchemeId,
+  systemIsDark: boolean,
+) {
+  const usesDefaultPalette = id === "light" || id === "dark" || id === "system";
+  const appTheme = usesDefaultPalette ? id : (systemIsDark ? "dark" : "light");
+  const terminalTheme = usesDefaultPalette ? "default" : id;
+  const dark = id === "dark" || (id === "system" && systemIsDark);
+  const tint = getShellTint(terminalTheme);
+  const terminalPalette = getTerminalTheme(appTheme, terminalTheme);
+
   return {
-    bg: tint?.["--c-bg-1"] ?? (appIsDark ? "#18181b" : "#ffffff"),
-    fg: tint?.["--c-text-primary"] ?? (appIsDark ? "#e4e4e7" : "#27272a"),
+    deepest: tint?.["--c-bg-white"] ?? (dark ? "#18181b" : "#fefdfc"),
+    sidebar: tint?.["--c-bg-2"] ?? (dark ? "#252529" : "#f2f0ed"),
+    raised: tint?.["--c-bg-3"] ?? (dark ? "#303035" : "#e9e6e2"),
+    terminal: terminalPalette.background,
+    text: terminalPalette.foreground,
+    secondaryText: tint?.["--c-text-4"] ?? (dark ? "#a1a1aa" : "#71717a"),
+    border: tint?.["--c-border-2"] ?? (dark ? "#52525b" : "#c9c5bf"),
   };
 }
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
 
-function ThemeCard({ label, themeType, selected, onClick }: { label: string; themeType: ThemeType; selected: boolean; onClick: () => void }) {
-  const isDark = themeType === "dark";
-  const isSystem = themeType === "system";
-  const previewBg = isDark ? "#1a1a1f" : isSystem ? "linear-gradient(135deg, #fbfbfc 50%, #1a1a1f 50%)" : "#fbfbfc";
-  const sidebarBg = isDark ? "rgba(255,255,255,0.08)" : isSystem ? "rgba(194,104,60,0.16)" : "#f0eff2";
-  const contentBg = isDark ? "rgba(255,255,255,0.12)" : isSystem ? "rgba(255,255,255,0.72)" : "#ffffff";
+function ColorSchemeCard({ id, label, selected, systemIsDark, onClick }: { id: ColorSchemeId; label: string; selected: boolean; systemIsDark: boolean; onClick: () => void }) {
+  const colors = terminalThemePreviewColors(id, systemIsDark);
+
   return (
-    <button onClick={onClick} style={{ flex: 1, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}>
-      <div style={{ height: 62, background: previewBg, borderBottom: "1px solid var(--c-border-2)", padding: 6, display: "flex", gap: 5 }}>
-        <div style={{ width: 28, borderRadius: 4, background: sidebarBg }} />
-        <div style={{ flex: 1, minWidth: 0, borderRadius: 4, background: contentBg, position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", left: 6, top: 8, width: 16, height: 2, borderRadius: 1, background: "var(--c-accent)", opacity: 0.7 }} />
-          <div style={{ position: "absolute", left: 6, right: 6, top: 16, height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(20,20,24,0.05)" }} />
-          <div style={{ position: "absolute", left: 6, right: "40%", bottom: 8, height: 2, borderRadius: 1, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(20,20,24,0.05)" }} />
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      aria-label={label}
+      tabIndex={selected ? 0 : -1}
+      data-color-scheme={id}
+      onClick={onClick}
+      style={{ width: "100%", minWidth: 0, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}
+    >
+      <div aria-hidden="true" data-color-scheme-preview="window" style={{ height: 62, background: colors.deepest, borderBottom: `1px solid ${colors.border}`, display: "flex", flexDirection: "column" }}>
+        <div data-preview-region="titlebar" style={{ height: 10, flexShrink: 0, borderBottom: `1px solid ${colors.border}`, display: "flex", alignItems: "center", padding: "0 5px", gap: 2 }}>
+          <div style={{ width: 12, height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.65 }} />
+          <div style={{ width: 6, height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.35 }} />
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          <div data-preview-region="sidebar" style={{ width: 28, flexShrink: 0, background: colors.sidebar, borderRight: `1px solid ${colors.border}`, padding: "6px 4px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ width: "72%", height: 2, borderRadius: 1, background: colors.text, opacity: 0.72 }} />
+            <div style={{ width: "100%", height: 5, borderRadius: 2, background: colors.raised }} />
+            <div style={{ width: "85%", height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.7 }} />
+          </div>
+          <div data-preview-region="terminal" style={{ flex: 1, minWidth: 0, background: colors.terminal, padding: "7px 6px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ width: "48%", height: 2, borderRadius: 1, background: colors.text, opacity: 0.9 }} />
+            <div style={{ width: "78%", height: 2, borderRadius: 1, background: colors.text, opacity: 0.55 }} />
+            <div style={{ width: "62%", height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.7 }} />
+          </div>
+          <div data-preview-region="panel" style={{ width: 20, flexShrink: 0, background: colors.sidebar, borderLeft: `1px solid ${colors.border}`, padding: "6px 3px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ width: "100%", height: 4, borderRadius: 1, background: colors.raised }} />
+            <div style={{ width: "72%", height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.65 }} />
+          </div>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px" }}>
-        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontWeight: selected ? 600 : 400 }}>{label}</span>
-        <div style={{ width: 14, height: 14, borderRadius: "50%", border: selected ? `5px solid var(--c-accent)` : "1.5px solid var(--c-radio-ring)" }} />
+        <span aria-hidden="true" style={{ minWidth: 0, fontSize: "var(--fs-secondary)", lineHeight: 1.25, color: "var(--c-text-primary)", fontWeight: selected ? 600 : 400 }}>{label}</span>
+        <div aria-hidden="true" style={{ width: 14, height: 14, marginLeft: 6, borderRadius: "50%", border: selected ? "5px solid var(--c-accent)" : "1.5px solid var(--c-radio-ring)", flexShrink: 0 }} />
       </div>
     </button>
   );
@@ -205,7 +232,35 @@ export function Settings({ onClose }: SettingsProps) {
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
 
-  const isDark = isDarkTheme(theme);
+  const [systemIsDark, setSystemIsDark] = useState(() => isDarkTheme("system"));
+  useEffect(() => {
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!media) return;
+    const onChange = (event: MediaQueryListEvent) => setSystemIsDark(event.matches);
+    setSystemIsDark(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  const colorSchemeOptions: { id: ColorSchemeId; label: string }[] = [
+    { id: "system", label: t("settings.appearance.theme.system") },
+    { id: "light", label: t("settings.appearance.theme.light") },
+    { id: "dark", label: t("settings.appearance.theme.dark") },
+    { id: "github-light", label: "GitHub Light" },
+    { id: "rose-pine-dawn", label: "Rose Pine Dawn" },
+    { id: "catppuccin", label: "Catppuccin" },
+    { id: "tokyo-night", label: "Tokyo Night" },
+    { id: "one-dark", label: "One Dark" },
+    { id: "solarized", label: "Solarized" },
+  ];
+  const selectedColorScheme: ColorSchemeId = terminalTheme === "default" ? theme : terminalTheme;
+  const selectColorScheme = (id: ColorSchemeId) => {
+    if (id === "light" || id === "dark" || id === "system") {
+      setTheme(id);
+      setTerminalTheme("default");
+      return;
+    }
+    setTerminalTheme(id);
+  };
   // Subscribe to the workflow count so the footer "clear all" button's
   // disabled state stays reactive (getState() in render wouldn't re-render
   // when workflows change, leaving the button enabled after a clear).
@@ -307,6 +362,24 @@ export function Settings({ onClose }: SettingsProps) {
     e.preventDefault();
     setActiveTab(nextId as SettingsTab);
     focusTabById(e.currentTarget as HTMLElement, nextId);
+  };
+
+  const handleColorSchemeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-color-scheme]");
+    const currentIndex = colorSchemeOptions.findIndex(({ id }) => id === target?.dataset.colorScheme);
+    if (currentIndex < 0) return;
+
+    let nextIndex: number | undefined;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") nextIndex = (currentIndex + 1) % colorSchemeOptions.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") nextIndex = (currentIndex - 1 + colorSchemeOptions.length) % colorSchemeOptions.length;
+    else if (e.key === "Home") nextIndex = 0;
+    else if (e.key === "End") nextIndex = colorSchemeOptions.length - 1;
+    if (nextIndex === undefined) return;
+
+    e.preventDefault();
+    const nextId = colorSchemeOptions[nextIndex].id;
+    selectColorScheme(nextId);
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-color-scheme="${nextId}"]`)?.focus();
   };
 
   return (
@@ -436,11 +509,27 @@ export function Settings({ onClose }: SettingsProps) {
                 </details>
               </div>
               <div style={{ marginBottom: 24 }}>
-                <div style={SECTION_LABEL}>{t("settings.appearance.theme")}</div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <ThemeCard label={t("settings.appearance.theme.light")} themeType="light" selected={theme === "light"} onClick={() => setTheme("light")} />
-                  <ThemeCard label={t("settings.appearance.theme.dark")} themeType="dark" selected={theme === "dark"} onClick={() => setTheme("dark")} />
-                  <ThemeCard label={t("settings.appearance.theme.system")} themeType="system" selected={theme === "system"} onClick={() => setTheme("system")} />
+                <div id="color-scheme-label" style={SECTION_LABEL}>{t("settings.appearance.terminal_theme")}</div>
+                <div id="color-scheme-description" style={{ fontSize: "var(--fs-secondary)", lineHeight: 1.45, color: "var(--c-text-4)", marginBottom: 10, marginTop: -4 }}>
+                  {t("settings.appearance.terminal_theme.hint")}
+                </div>
+                <div
+                  role="radiogroup"
+                  aria-labelledby="color-scheme-label"
+                  aria-describedby="color-scheme-description"
+                  onKeyDown={handleColorSchemeKeyDown}
+                  style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 8 }}
+                >
+                  {colorSchemeOptions.map((entry) => (
+                    <ColorSchemeCard
+                      key={entry.id}
+                      id={entry.id}
+                      label={entry.label}
+                      selected={selectedColorScheme === entry.id}
+                      systemIsDark={systemIsDark}
+                      onClick={() => selectColorScheme(entry.id)}
+                    />
+                  ))}
                 </div>
               </div>
               <div style={{ marginBottom: 24 }}>
@@ -622,49 +711,6 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               )}
               <div>
-                <div style={SECTION_LABEL}>{t("settings.appearance.terminal_theme")}</div>
-                <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 8, marginTop: -4 }}>{t("settings.appearance.terminal_theme.hint")}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 8 }}>
-                  {([
-                    { id: "default" as TerminalThemeName, label: t("settings.appearance.terminal_theme.default") },
-                    { id: "github-light" as TerminalThemeName, label: "GitHub" },
-                    { id: "rose-pine-dawn" as TerminalThemeName, label: "Dawn" },
-                    { id: "catppuccin" as TerminalThemeName, label: "Catppuccin" },
-                    { id: "tokyo-night" as TerminalThemeName, label: "Tokyo Night" },
-                    { id: "one-dark" as TerminalThemeName, label: "One Dark" },
-                    { id: "solarized" as TerminalThemeName, label: "Solarized" },
-                  ]).map((entry) => {
-                    const { bg, fg } = terminalThemePreviewColors(entry.id, isDark);
-                    return (
-                    <button
-                      key={entry.id}
-                      onClick={() => setTerminalTheme(entry.id)}
-                      style={{
-                        width: "100%",
-                        border: terminalTheme === entry.id ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)",
-                        borderRadius: "var(--r-card)",
-                        padding: 0,
-                        cursor: "pointer",
-                        background: "transparent",
-                        overflow: "hidden",
-                        textAlign: "left",
-                      }}
-                    >
-                      <div style={{ height: 40, background: bg, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 8px", gap: 2.5 }}>
-                        {[{ w: 18, o: 0.35 }, { w: 45, o: 0.6 }, { w: 60, o: 0.45 }, { w: 35, o: 0.5 }, { w: 25, o: 0.3 }].map((line) => (
-                          <div key={`${line.w}-${line.o}`} style={{ height: 2.5, width: `${line.w}%`, borderRadius: 1, background: fg, opacity: line.o }} />
-                        ))}
-                      </div>
-                      <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-primary)", fontWeight: terminalTheme === entry.id ? 600 : 400 }}>{entry.label}</span>
-                        {terminalTheme === entry.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)" }} />}
-                      </div>
-                    </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div style={{ marginTop: 24 }}>
                 <div style={SECTION_LABEL}>{t("settings.appearance.external_editor")}</div>
                 <div style={{ display: "flex", background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2, gap: 0 }}>
                   {EXTERNAL_EDITORS.map((ed: ExternalEditor) => (

@@ -29,6 +29,14 @@ release without identity collisions.
 
 ## Shell tint and paper surfaces
 
+- [ ] Appearance shows one “Terminal & interface color scheme” radio group with
+      nine mutually exclusive choices; no separate Theme or Terminal palette
+      selector remains.
+- [ ] Every choice previews a miniature titlebar, sidebar, terminal, panel,
+      borders, and text hierarchy rather than terminal lines alone.
+- [ ] Selecting Catppuccin recolors both xterm and the shell immediately;
+      selecting Light afterward restores the default light terminal and shell.
+- [ ] System follows the OS appearance only while the System choice is active.
 - [ ] Sidebar, review panel, and titlebar tints match the active theme preset.
 - [ ] Sidebar, terminal, and inspector have distinct solid surface levels.
 - [ ] Narrow the window: layout does not clip traffic lights or panel tabs.

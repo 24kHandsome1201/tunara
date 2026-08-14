@@ -54,7 +54,7 @@ The terminal is the product, not an accessory. Sessions run real `portable-pty`;
 - Command-block history follows live scrollback, with navigation and output filters for text / regex / case / invert / context lines
 - Clickable URLs, configurable scrollback (1k–20k lines)
 - OSC 7 cwd tracking, OSC 133 shell integration
-- 7 terminal themes: default, catppuccin, tokyo-night, one-dark, solarized, github-light, rose-pine-dawn
+- 9 synchronized interface & terminal color schemes: System, Light, Dark, GitHub Light, Rose Pine Dawn, Catppuccin, Tokyo Night, One Dark, Solarized
 
 ### Smart sidebar
 

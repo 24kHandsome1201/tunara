@@ -54,7 +54,7 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 - 命令块输出筛选：文本 / 正则 / 大小写 / 反选 / 上下文行
 - 可点击 URL，可配置 scrollback（1k 到 20k 行）
 - OSC 7 跟踪 cwd，OSC 133 接 shell integration
-- 7 套终端配色：default、catppuccin、tokyo-night、one-dark、solarized、github-light、rose-pine-dawn
+- 9 套同步作用于界面与终端的配色：跟随系统、浅色、深色、GitHub Light、Rose Pine Dawn、Catppuccin、Tokyo Night、One Dark、Solarized
 
 ### 智能侧栏
 
