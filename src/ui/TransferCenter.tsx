@@ -9,6 +9,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
   const t = useT();
   const items = useTransferStore((state) => state.items);
   const cancel = useTransferStore((state) => state.cancel);
+  const cancelBatch = useTransferStore((state) => state.cancelBatch);
   const cancelAll = useTransferStore((state) => state.cancelAll);
   const retry = useTransferStore((state) => state.retry);
   const clearFinished = useTransferStore((state) => state.clearFinished);
@@ -21,6 +22,29 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
   const [global, setGlobal] = useState(!logicalSessionId);
   const visibleItems = useMemo(() => global || !logicalSessionId ? items : items.filter((item) => item.binding.logicalSessionId === logicalSessionId), [global, items, logicalSessionId]);
   const visibleRecoveries = useMemo(() => global || !logicalSessionId ? recoveries : recoveries.filter((item) => item.record.session === logicalSessionId), [global, recoveries, logicalSessionId]);
+  const visibleBatches = useMemo(() => {
+    const grouped = new Map<string, typeof visibleItems>();
+    for (const item of visibleItems) {
+      if (!item.batchId) continue;
+      grouped.set(item.batchId, [...(grouped.get(item.batchId) ?? []), item]);
+    }
+    return [...grouped.entries()]
+      .filter(([, batchItems]) => batchItems.length > 1)
+      .map(([batchId, batchItems]) => {
+        const completed = batchItems.filter((item) => item.status === "completed").length;
+        const running = batchItems.filter((item) => item.status === "running").length;
+        const queued = batchItems.filter((item) => item.status === "queued").length;
+        const failed = batchItems.filter((item) => item.status === "failed" || item.status === "needsReconcile").length;
+        const cancelled = batchItems.filter((item) => item.status === "cancelled").length;
+        const progress = batchItems.reduce((total, item) => {
+          if (["completed", "failed", "cancelled", "needsReconcile"].includes(item.status)) return total + 1;
+          const bytes = item.event?.bytesTransferred ?? 0;
+          const itemTotal = item.event?.totalBytes ?? 0;
+          return total + (itemTotal > 0 ? Math.min(1, bytes / itemTotal) : 0);
+        }, 0);
+        return { batchId, total: batchItems.length, completed, running, queued, failed, cancelled, progress };
+      });
+  }, [visibleItems]);
   const [announcement, setAnnouncement] = useState("");
   const announced = useRef(new Map<string, { status: string; bucket: number; at: number }>());
   useEffect(() => {
@@ -79,6 +103,35 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
         />
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 10 }}>
+          {visibleBatches.length > 0 && (
+            <section aria-label={t("transfer.batch.title")} style={{ marginBottom: 12 }}>
+              <h3 style={{ margin: "0 0 7px", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)" }}>{t("transfer.batch.title")}</h3>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                {visibleBatches.map((batch) => (
+                  <li key={batch.batchId} style={cardStyle}>
+                    <span style={{ color: "var(--c-text-3)", fontSize: "var(--fs-meta)" }}>
+                      {t("transfer.batch.summary", batch)}
+                    </span>
+                    {(batch.running > 0 || batch.queued > 0) && (
+                      <PanelActionButton
+                        aria-label={t("transfer.batch.cancel_label", { count: batch.total })}
+                        onClick={() => void confirmAction(t("transfer.confirm.cancel_batch", { count: batch.total })).then((approved) => { if (approved) return cancelBatch(batch.batchId); })}
+                      >
+                        {t("transfer.batch.cancel")}
+                      </PanelActionButton>
+                    )}
+                    <progress
+                      className="ui-progress"
+                      style={{ width: "100%" }}
+                      aria-label={t("transfer.batch.progress", { count: batch.total })}
+                      max={batch.total}
+                      value={batch.progress}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {visibleItems.length > 0 && (
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
               {visibleItems.map((item) => (

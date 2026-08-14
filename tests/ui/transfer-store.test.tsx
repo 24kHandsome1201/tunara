@@ -80,6 +80,28 @@ describe("transfer queue", () => {
     expect(store.getState().items.find((item) => item.transferId === "second")?.status).not.toBe("cancelled");
   });
 
+  it("cancels only queued and running items in one upload batch", async () => {
+    const store = createTransferStore(async () => new Promise(() => {}));
+    store.setState({ items: [
+      { ...request(1), transferId: "running", batchId: "batch-a", attempt: 1, status: "running", cancelRequested: false },
+      { ...request(1), transferId: "queued", batchId: "batch-a", attempt: 1, status: "queued", cancelRequested: false },
+      { ...request(1), transferId: "done", batchId: "batch-a", attempt: 1, status: "completed", cancelRequested: false },
+      { ...request(1), transferId: "other", batchId: "batch-b", attempt: 1, status: "queued", cancelRequested: false },
+    ] });
+    mockIPC((command) => command === "ssh_transfer_cancel" ? "accepted" : undefined);
+
+    await store.getState().cancelBatch("batch-a");
+
+    expect(store.getState().items.map(({ transferId, status }) => [transferId, status])).toEqual([
+      ["running", "running"],
+      ["queued", "cancelled"],
+      ["done", "completed"],
+      ["other", "running"],
+    ]);
+    expect(store.getState().items.find((item) => item.transferId === "running")?.cancelRequested).toBe(true);
+    expect(store.getState().items.find((item) => item.transferId === "other")?.cancelRequested).toBe(false);
+  });
+
   it("resolves a replacement binding for a fresh retry and rejects offline retry", async () => {
     const runner = vi.fn(async () => ({ outcome: { status: "failed" as const, bytesTransferred: 0, code: "transferFailed" as const, message: "failed", residuePath: null } }));
     const store = createTransferStore(runner);
@@ -216,6 +238,27 @@ describe("transfer queue", () => {
 });
 
 describe("Transfer Center announcements", () => {
+  it("summarizes batch completion and concurrency with aggregate progress", () => {
+    const first: TransferItem = {
+      ...request(1), transferId: "first", batchId: "batch", attempt: 1, status: "running", cancelRequested: false,
+      event: { transferId: "first", attempt: 1, sequence: 1, phase: "transferring", bytesTransferred: 25, totalBytes: 100 },
+    };
+    const second: TransferItem = {
+      ...request(1), transferId: "second", batchId: "batch", attempt: 1, status: "completed", cancelRequested: false,
+      event: { transferId: "second", attempt: 1, sequence: 2, phase: "terminal", bytesTransferred: 50, totalBytes: 50 },
+    };
+    const third: TransferItem = { ...request(1), transferId: "third", batchId: "batch", attempt: 1, status: "queued", cancelRequested: false };
+    useTransferStore.setState({ items: [first, second, third] });
+
+    render(<TransferCenter />);
+
+    expect(screen.getByText("1/3 complete · 1 active · 1 queued · 0 failed · 0 cancelled")).toBeTruthy();
+    const progress = screen.getByRole("progressbar", { name: "Batch upload progress for 3 files" });
+    expect(progress.getAttribute("max")).toBe("3");
+    expect(progress.getAttribute("value")).toBe("1.25");
+    expect(screen.getByRole("button", { name: "Cancel batch of 3 files" })).toBeTruthy();
+  });
+
   it("shows an explanatory empty state without meaningless bulk actions", () => {
     render(<TransferCenter inspectorScope={{ kind: "logical-session", key: "session:session-1", logicalSessionId: "session-1" }} />);
 

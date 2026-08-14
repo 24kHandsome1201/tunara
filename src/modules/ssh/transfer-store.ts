@@ -31,7 +31,7 @@ export interface TransferState {
   items: TransferItem[];
   recoveries: TransferRecoveryItem[]; journalLoaded: boolean;
   enqueue(request: TransferRequest): string; enqueueBatch(requests: TransferRequest[], batchId?: string): string[];
-  cancel(transferId: string): Promise<void>; cancelAll(logicalSessionId?: string): Promise<void>;
+  cancel(transferId: string): Promise<void>; cancelBatch(batchId: string): Promise<void>; cancelAll(logicalSessionId?: string): Promise<void>;
   retry(transferId: string, confirmFresh?: (reason: "replacement" | "replace") => boolean | Promise<boolean>): Promise<"queued" | "offline" | "replacementDeclined" | "notRetryable">;
   clearFinished(logicalSessionId?: string): void;
   loadJournal(): Promise<void>;
@@ -176,6 +176,11 @@ export function createTransferStore(run: Runner = defaultRunner) {
           outcome: "cancelled",
           attributes: { direction: item.direction, operation: "cancel", attempt: String(item.attempt) },
         });
+      },
+      cancelBatch: async (batchId) => {
+        await Promise.all(get().items
+          .filter((item) => item.batchId === batchId && active(item))
+          .map((item) => get().cancel(item.transferId)));
       },
       cancelAll: async (logicalSessionId) => { await Promise.all(get().items.filter((x) => (!logicalSessionId || x.binding.logicalSessionId === logicalSessionId) && (x.status === "queued" || x.status === "running")).map((x) => get().cancel(x.transferId))); },
       retry: async (transferId, confirmFresh) => {
