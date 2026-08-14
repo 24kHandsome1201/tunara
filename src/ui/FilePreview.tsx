@@ -357,6 +357,94 @@ function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   );
 }
 
+function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, { kind: "image" }>; fileName: string; fill: boolean }) {
+  const t = useT();
+  const [zoom, setZoom] = useState(100);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextUrl = URL.createObjectURL(new Blob([new Uint8Array(result.bytes)], { type: result.mime }));
+    setUrl(nextUrl);
+    setLoaded(false);
+    setFailed(false);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [result.bytes, result.mime]);
+  useEffect(() => {
+    if (!fullscreen) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    surfaceRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      previous?.focus();
+    };
+  }, [fullscreen]);
+
+  const changeZoom = (next: number) => setZoom(Math.min(400, Math.max(25, next)));
+  const handleKeys = (event: React.KeyboardEvent) => {
+    if (event.key === "+" || event.key === "=") { event.preventDefault(); changeZoom(zoom + 25); }
+    if (event.key === "-") { event.preventDefault(); changeZoom(zoom - 25); }
+    if (event.key === "0") { event.preventDefault(); setZoom(100); }
+    if (event.key.toLocaleLowerCase() === "f") { event.preventDefault(); setFullscreen((value) => !value); }
+  };
+  const image = url ? (
+    <img
+      src={url}
+      alt={fileName}
+      draggable={false}
+      onLoad={() => setLoaded(true)}
+      onError={() => setFailed(true)}
+      style={{
+        width: zoom === 100 ? "auto" : result.width * zoom / 100,
+        height: zoom === 100 ? "auto" : result.height * zoom / 100,
+        maxWidth: zoom === 100 ? "100%" : "none",
+        maxHeight: zoom === 100 ? "100%" : "none",
+      }}
+    />
+  ) : null;
+  const controls = (
+    <div className="image-preview-toolbar" role="toolbar" aria-label={t("preview.image.controls")}>
+      <button type="button" onClick={() => changeZoom(zoom - 25)} disabled={zoom <= 25} aria-label={t("preview.image.zoom_out")}>−</button>
+      <button type="button" onClick={() => setZoom(100)} aria-label={t("preview.image.reset_zoom")}>{zoom}%</button>
+      <button type="button" onClick={() => changeZoom(zoom + 25)} disabled={zoom >= 400} aria-label={t("preview.image.zoom_in")}>+</button>
+      <span>{result.width} × {result.height} · {formatSize(result.size)}</span>
+      <button type="button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("preview.image.exit_fullscreen") : t("preview.image.fullscreen")}>{fullscreen ? "↙" : "↗"}</button>
+    </div>
+  );
+  const surface = (
+    <div
+      ref={surfaceRef}
+      className="image-preview-surface"
+      tabIndex={0}
+      onKeyDown={handleKeys}
+      aria-label={t("preview.image.surface", { file: fileName })}
+    >
+      {!loaded && !failed && <span role="status">{t("preview.image.loading")}</span>}
+      {failed ? <div role="alert">{t("preview.image.failed")}</div> : image}
+    </div>
+  );
+
+  return (
+    <div
+      className={fullscreen ? "image-preview image-preview-fullscreen" : "image-preview"}
+      style={{ flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
+      role={fullscreen ? "dialog" : undefined}
+      aria-modal={fullscreen ? "true" : undefined}
+      aria-label={fullscreen ? t("preview.image.fullscreen_dialog") : undefined}
+    >
+      {controls}
+      {surface}
+    </div>
+  );
+}
+
 type SaveState = EditorDraftSaveState;
 type OperationError = { operation: "save" | "reload"; kind: FileOperationErrorKind; detail: string };
 
@@ -990,8 +1078,12 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
         </div>
       ) : result.kind === "binary" ? (
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
+      ) : result.kind === "imagetoolarge" ? (
+        <PreviewMessage icon="⊘" text={t("preview.image.too_large", { width: result.width, height: result.height })} />
       ) : result.kind === "toolarge" ? (
         <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
+      ) : result.kind === "image" ? (
+        <ImagePreview result={result} fileName={fileName} fill={fill} />
       ) : isNotebook ? (
         <NotebookPreview content={textContent} />
       ) : isMarkdown ? (

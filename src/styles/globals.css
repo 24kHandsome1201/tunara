@@ -813,6 +813,48 @@ select.ui-control {
 .notebook-invalid span { font-size: var(--fs-secondary); }
 .notebook-invalid code { max-width: 70ch; color: var(--c-text-5); font: var(--fs-meta) var(--font-mono); overflow-wrap: anywhere; }
 
+.image-preview { display: flex; flex-direction: column; overflow: hidden; background: var(--c-bg-white); }
+.image-preview-toolbar {
+  min-height: 36px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  background: var(--c-bg-1);
+  box-shadow: inset 0 -1px var(--c-border-1);
+}
+.image-preview-toolbar button {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--c-border-1);
+  border-radius: var(--r-btn);
+  background: var(--c-bg-white);
+  color: var(--c-text-3);
+  cursor: pointer;
+}
+.image-preview-toolbar button:disabled { opacity: .35; cursor: default; }
+.image-preview-toolbar span { margin-left: auto; color: var(--c-text-5); font: var(--fs-meta) var(--font-mono); }
+.image-preview-surface {
+  flex: 1;
+  min-height: 160px;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background-color: var(--c-bg-white);
+  background-image: linear-gradient(45deg, var(--c-bg-1) 25%, transparent 25%), linear-gradient(-45deg, var(--c-bg-1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--c-bg-1) 75%), linear-gradient(-45deg, transparent 75%, var(--c-bg-1) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  color: var(--c-text-5);
+  font-size: var(--fs-secondary);
+}
+.image-preview-surface:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -2px; }
+.image-preview-surface img { display: block; object-fit: contain; user-select: none; }
+.image-preview-fullscreen { position: fixed; inset: 0; z-index: 10020; display: flex; flex-direction: column; background: var(--c-bg-white); }
+.image-preview-fullscreen .image-preview-surface { min-height: 0; }
+
 .file-editor-footer {
   min-height: 38px;
   padding: 0 var(--sp-3);

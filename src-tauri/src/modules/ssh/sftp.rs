@@ -237,6 +237,20 @@ pub enum RemoteReadResult {
     Binary {
         size: u64,
     },
+    Image {
+        bytes: Vec<u8>,
+        size: u64,
+        mime: &'static str,
+        width: u32,
+        height: u32,
+    },
+    ImageTooLarge {
+        size: u64,
+        width: u32,
+        height: u32,
+        #[serde(rename = "maxPixels")]
+        max_pixels: u64,
+    },
     TooLarge {
         size: u64,
         limit: u64,
@@ -489,6 +503,26 @@ pub async fn ssh_fs_read_file(
             return Ok(RemoteReadResult::TooLarge {
                 size: real_size,
                 limit: MAX_READ_BYTES,
+            });
+        }
+
+        if let Some(image) = crate::modules::fs::file::image_preview(&bytes) {
+            if u64::from(image.width).saturating_mul(u64::from(image.height))
+                > crate::modules::fs::file::MAX_IMAGE_PIXELS
+            {
+                return Ok(RemoteReadResult::ImageTooLarge {
+                    size,
+                    width: image.width,
+                    height: image.height,
+                    max_pixels: crate::modules::fs::file::MAX_IMAGE_PIXELS,
+                });
+            }
+            return Ok(RemoteReadResult::Image {
+                bytes,
+                size,
+                mime: image.mime,
+                width: image.width,
+                height: image.height,
             });
         }
 

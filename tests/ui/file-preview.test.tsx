@@ -22,6 +22,53 @@ function renderSsh(fileName = "notes.txt") {
 }
 
 describe("FilePreview editor behavior", () => {
+  test("previews image bytes with loading, zoom, keyboard, and fullscreen states", async () => {
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:image-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    mockIPC((command) => {
+      if (command === "fs_read_file") {
+        return { kind: "image", bytes: [137, 80, 78, 71], size: 4, mime: "image/png", width: 640, height: 480 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const view = render(<FilePreview filePath="/tmp/photo.png" fileName="photo.png" fill onClose={() => {}} />);
+    expect((await screen.findByRole("status")).textContent).toContain("Loading image");
+    const image = await screen.findByRole("img", { name: "photo.png" });
+    expect(image.getAttribute("src")).toBe("blob:image-preview");
+    fireEvent.load(image);
+    expect(screen.queryByRole("status")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByRole("button", { name: "Reset zoom" }).textContent).toBe("125%");
+    const surface = screen.getByLabelText(/Image preview for photo.png/);
+    fireEvent.keyDown(surface, { key: "0" });
+    expect(screen.getByRole("button", { name: "Reset zoom" }).textContent).toBe("100%");
+    fireEvent.keyDown(surface, { key: "f" });
+    expect(screen.getByRole("dialog", { name: "Fullscreen image preview" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    view.unmount();
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:image-preview");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  test("refuses images whose decoded dimensions exceed the memory budget", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") {
+        return { kind: "imagetoolarge", size: 1024, width: 20_000, height: 20_000, maxPixels: 40_000_000 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("oversized.png");
+    expect((await screen.findByText(/dimensions are too large/i)).textContent).toContain("20000 × 20000");
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
   test("renders notebooks as inert read-only previews", async () => {
     const script = "<script>globalThis.PWNED = true</script>";
     const notebook = JSON.stringify({

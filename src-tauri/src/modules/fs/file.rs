@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -8,6 +8,125 @@ use sha2::{Digest, Sha256};
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const MAX_TEXT_PREVIEW_BYTES: u64 = 256 * 1024; // UI preview cap
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
+pub(crate) const MAX_IMAGE_PIXELS: u64 = 40_000_000;
+
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub(crate) struct ImagePreview {
+    pub mime: &'static str,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Recognize only inert raster formats from their bytes. SVG is deliberately
+/// excluded because it can reference external resources and carry active
+/// content. Dimensions are parsed before bytes cross IPC, preventing tiny
+/// compressed files from expanding into unbounded browser allocations.
+pub(crate) fn image_preview(bytes: &[u8]) -> Option<ImagePreview> {
+    let (mime, width, height) = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") && bytes.len() >= 24 {
+        (
+            "image/png",
+            u32::from_be_bytes(bytes[16..20].try_into().ok()?),
+            u32::from_be_bytes(bytes[20..24].try_into().ok()?),
+        )
+    } else if (bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")) && bytes.len() >= 10 {
+        (
+            "image/gif",
+            u16::from_le_bytes(bytes[6..8].try_into().ok()?) as u32,
+            u16::from_le_bytes(bytes[8..10].try_into().ok()?) as u32,
+        )
+    } else if bytes.starts_with(b"BM") && bytes.len() >= 26 {
+        let width = i32::from_le_bytes(bytes[18..22].try_into().ok()?).unsigned_abs();
+        let height = i32::from_le_bytes(bytes[22..26].try_into().ok()?).unsigned_abs();
+        ("image/bmp", width, height)
+    } else if bytes.starts_with(b"\0\0\x01\0") && bytes.len() >= 8 {
+        let count = u16::from_le_bytes(bytes[4..6].try_into().ok()?) as usize;
+        if count == 0 || bytes.len() < 6 + count * 16 {
+            return None;
+        }
+        let (width, height) = (0..count).fold((0, 0), |largest, index| {
+            let offset = 6 + index * 16;
+            let width = if bytes[offset] == 0 {
+                256
+            } else {
+                bytes[offset] as u32
+            };
+            let height = if bytes[offset + 1] == 0 {
+                256
+            } else {
+                bytes[offset + 1] as u32
+            };
+            if u64::from(width) * u64::from(height) > u64::from(largest.0) * u64::from(largest.1) {
+                (width, height)
+            } else {
+                largest
+            }
+        });
+        ("image/x-icon", width, height)
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") && bytes.len() >= 30 {
+        match bytes.get(12..16)? {
+            b"VP8X" => (
+                "image/webp",
+                1 + u32::from_le_bytes([bytes[24], bytes[25], bytes[26], 0]),
+                1 + u32::from_le_bytes([bytes[27], bytes[28], bytes[29], 0]),
+            ),
+            b"VP8L" if bytes.get(20) == Some(&0x2f) => {
+                let bits = u32::from_le_bytes(bytes[21..25].try_into().ok()?);
+                (
+                    "image/webp",
+                    (bits & 0x3fff) + 1,
+                    ((bits >> 14) & 0x3fff) + 1,
+                )
+            }
+            b"VP8 " if bytes.len() >= 30 && bytes[23..26] == [0x9d, 0x01, 0x2a] => (
+                "image/webp",
+                u16::from_le_bytes(bytes[26..28].try_into().ok()?) as u32 & 0x3fff,
+                u16::from_le_bytes(bytes[28..30].try_into().ok()?) as u32 & 0x3fff,
+            ),
+            _ => return None,
+        }
+    } else if bytes.starts_with(b"\xff\xd8") {
+        let mut offset = 2;
+        let mut dimensions = None;
+        while offset + 4 <= bytes.len() {
+            if bytes[offset] != 0xff {
+                offset += 1;
+                continue;
+            }
+            while offset < bytes.len() && bytes[offset] == 0xff {
+                offset += 1;
+            }
+            let marker = *bytes.get(offset)?;
+            offset += 1;
+            if marker == 0xd8 || marker == 0xd9 {
+                continue;
+            }
+            let length =
+                u16::from_be_bytes(bytes.get(offset..offset + 2)?.try_into().ok()?) as usize;
+            if length < 2 || offset + length > bytes.len() {
+                return None;
+            }
+            if matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf)
+                && length >= 7
+            {
+                dimensions = Some((
+                    u16::from_be_bytes(bytes[offset + 5..offset + 7].try_into().ok()?) as u32,
+                    u16::from_be_bytes(bytes[offset + 3..offset + 5].try_into().ok()?) as u32,
+                ));
+                break;
+            }
+            offset += length;
+        }
+        let (width, height) = dimensions?;
+        ("image/jpeg", width, height)
+    } else {
+        return None;
+    };
+    (width > 0 && height > 0).then_some(ImagePreview {
+        mime,
+        width,
+        height,
+    })
+}
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -23,6 +142,20 @@ pub enum ReadResult {
     },
     Binary {
         size: u64,
+    },
+    Image {
+        bytes: Vec<u8>,
+        size: u64,
+        mime: &'static str,
+        width: u32,
+        height: u32,
+    },
+    ImageTooLarge {
+        size: u64,
+        width: u32,
+        height: u32,
+        #[serde(rename = "maxPixels")]
+        max_pixels: u64,
     },
     /// File exceeds MAX_READ_BYTES. UI decides whether to offer "open anyway".
     TooLarge {
@@ -121,6 +254,28 @@ pub fn fs_read_file(path: String) -> Result<ReadResult, String> {
         size > MAX_TEXT_PREVIEW_BYTES || bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES;
     if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
         bytes.truncate(MAX_TEXT_PREVIEW_BYTES as usize);
+    }
+
+    if let Some(image) = image_preview(&bytes) {
+        if u64::from(image.width).saturating_mul(u64::from(image.height)) > MAX_IMAGE_PIXELS {
+            return Ok(ReadResult::ImageTooLarge {
+                size,
+                width: image.width,
+                height: image.height,
+                max_pixels: MAX_IMAGE_PIXELS,
+            });
+        }
+        file.rewind().map_err(|e| e.to_string())?;
+        let mut image_bytes = Vec::with_capacity(size as usize);
+        file.read_to_end(&mut image_bytes)
+            .map_err(|e| e.to_string())?;
+        return Ok(ReadResult::Image {
+            bytes: image_bytes,
+            size,
+            mime: image.mime,
+            width: image.width,
+            height: image.height,
+        });
     }
 
     // Null-byte sniff on the first chunk. Not perfect (misses UTF-16 BOM
@@ -251,7 +406,10 @@ pub fn fs_write_text_file(
 
 #[cfg(test)]
 mod write_tests {
-    use super::{content_fingerprint, fs_read_file, fs_write_text_file, ReadResult, WriteResult};
+    use super::{
+        content_fingerprint, fs_read_file, fs_write_text_file, image_preview, ReadResult,
+        WriteResult,
+    };
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -285,6 +443,73 @@ mod write_tests {
                     .then(|| entry.path())
             })
             .collect()
+    }
+
+    #[test]
+    fn recognizes_supported_raster_headers_without_trusting_extensions() {
+        let mut png = vec![0; 24];
+        png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        png[16..20].copy_from_slice(&640_u32.to_be_bytes());
+        png[20..24].copy_from_slice(&480_u32.to_be_bytes());
+        let preview = image_preview(&png).unwrap();
+        assert_eq!(
+            (preview.mime, preview.width, preview.height),
+            ("image/png", 640, 480)
+        );
+
+        let gif = b"GIF89a\x20\x03\x58\x02";
+        let preview = image_preview(gif).unwrap();
+        assert_eq!(
+            (preview.mime, preview.width, preview.height),
+            ("image/gif", 800, 600)
+        );
+        assert!(image_preview(b"<svg><script /></svg>").is_none());
+    }
+
+    #[test]
+    fn oversized_image_dimensions_are_rejected_before_returning_payload_bytes() {
+        let path = fixture("oversized.png");
+        let mut png = vec![0; 24];
+        png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        png[16..20].copy_from_slice(&20_000_u32.to_be_bytes());
+        png[20..24].copy_from_slice(&20_000_u32.to_be_bytes());
+        fs::write(&path, png).unwrap();
+        let result = fs_read_file(path.to_string_lossy().into_owned()).unwrap();
+        assert!(matches!(
+            result,
+            ReadResult::ImageTooLarge {
+                width: 20_000,
+                height: 20_000,
+                ..
+            }
+        ));
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn supported_image_reads_return_the_complete_bounded_payload() {
+        let path = fixture("preview.png");
+        let mut png = vec![0; 300 * 1024];
+        png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        png[16..20].copy_from_slice(&640_u32.to_be_bytes());
+        png[20..24].copy_from_slice(&480_u32.to_be_bytes());
+        fs::write(&path, &png).unwrap();
+        let result = fs_read_file(path.to_string_lossy().into_owned()).unwrap();
+        match result {
+            ReadResult::Image {
+                bytes,
+                size,
+                mime,
+                width,
+                height,
+            } => {
+                assert_eq!(bytes, png);
+                assert_eq!(size, 300 * 1024);
+                assert_eq!((mime, width, height), ("image/png", 640, 480));
+            }
+            _ => panic!("supported raster image should return its complete payload"),
+        }
+        fs::remove_file(path).unwrap();
     }
 
     #[test]

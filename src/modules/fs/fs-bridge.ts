@@ -29,6 +29,8 @@ function cancelSearchRequest(requestId: string): Promise<boolean> {
 export type ReadResult =
   | { kind: "text"; content: string; size: number; truncated?: boolean; fingerprint?: string }
   | { kind: "binary"; size: number }
+  | { kind: "image"; bytes: number[]; size: number; mime: string; width: number; height: number }
+  | { kind: "imagetoolarge"; size: number; width: number; height: number; maxPixels: number }
   | { kind: "toolarge"; size: number; limit: number };
 
 export function fsReadDir(path: string, includeHidden = false): Promise<DirEntry[]> {
