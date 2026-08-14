@@ -18,6 +18,25 @@ Dev builds use `src-tauri/tauri.conf.dev.json` (`productName: "Tuna"`,
 `identifier: dev.tunara.app.dev`) so they can run beside an installed Tunara
 release without identity collisions.
 
+## Release visual baseline
+
+Capture the matrix below from the same release bundle before and after shell or
+design-token changes. Keep terminal content identical between captures: Agent
+TUIs draw their own chrome, so their ASCII boxes and prompts are not Tunara UI.
+
+| State | Width | Theme | Evidence to compare |
+|---|---:|---|---|
+| One local terminal, sidebar open | 1280px | light + dark | titlebar alignment, active session, terminal remains dominant |
+| Two split terminals | 1440px | light | active split marker, usable terminal rows, no overlapping controls |
+| Changes inspector with files | 1440px | light + dark | tab hierarchy, diff contrast, resize handle |
+| Clean and non-Git inspector | 1280px | light | compact empty state, no misleading full-panel placeholder |
+| Remote SSH session | 1440px | dark | attention vs running status, remote tools in overflow |
+| Compact shell | 640px minimum | light | sidebar overlay, terminal width, close/toggle hit targets |
+
+For every capture, also verify keyboard focus for the sidebar session list,
+Inspector tabs, overflow menu, and close controls. A visual match does not
+replace those interaction checks.
+
 ## Titlebar and traffic lights
 
 - [ ] Native traffic lights sit on the overlay titlebar centerline (no large blank

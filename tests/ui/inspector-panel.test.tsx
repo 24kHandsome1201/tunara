@@ -44,6 +44,14 @@ const session: Session = {
   updatedAt: 1,
 };
 
+const remoteSession: Session = {
+  ...session,
+  remote: { host: "example.com", port: 22, user: "deploy", authMethod: "agent" },
+  ptyId: 42,
+  transportGeneration: "tg-live",
+  connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 2 },
+};
+
 function chooseSecondaryPanel(name: string) {
   fireEvent.click(screen.getByRole("button", { name: "Inspector panels" }));
   fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(name) }));
@@ -60,7 +68,7 @@ beforeEach(() => {
 });
 
 test("mounts only the active Inspector panel and keeps specialist tools in overflow", async () => {
-  render(<InspectorPanel session={session} filesOnly={false} />);
+  render(<InspectorPanel session={remoteSession} filesOnly={false} />);
 
   expect(screen.getByTestId("overview-panel")).toBeTruthy();
   expect(screen.queryByTestId("changes-panel")).toBeNull();
@@ -111,7 +119,7 @@ test("keeps the active tab visible and preserves APG roving focus navigation", a
   HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
   try {
-    render(<InspectorPanel session={session} filesOnly={false} />);
+    render(<InspectorPanel session={remoteSession} filesOnly={false} />);
     const overview = screen.getByRole("tab", { name: "Overview" });
     const changes = screen.getByRole("tab", { name: "Changes" });
     const files = screen.getByRole("tab", { name: "Files" });
@@ -154,7 +162,7 @@ test("diagnostic actions appear only when there is a report to copy or clear", (
     },
   });
   useUIStore.setState({ inspectorTab: "diagnostics" });
-  render(<InspectorPanel session={session} filesOnly={false} />);
+  render(<InspectorPanel session={remoteSession} filesOnly={false} />);
 
   expect(screen.getByRole("button", { name: "Copy de-identified report" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Clear" }));
@@ -184,13 +192,6 @@ test("flushes a pending note when switching away before the debounce", () => {
 });
 
 test("offers forwarding only to SSH sessions and withholds the binding while reconnecting", () => {
-  const remoteSession: Session = {
-    ...session,
-    remote: { host: "example.com", port: 22, user: "deploy", authMethod: "agent" },
-    ptyId: 42,
-    transportGeneration: "tg-live",
-    connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 2 },
-  };
   const view = render(<InspectorPanel session={remoteSession} filesOnly={false} />);
   chooseSecondaryPanel("Forwarding");
   expect(screen.getByTestId("forwarding-panel").textContent).toBe("live");

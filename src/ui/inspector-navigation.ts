@@ -29,6 +29,14 @@ export const SECONDARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
   "knownHosts",
 ];
 
+const REMOTE_ONLY_INSPECTOR_TAB_IDS = new Set<InspectorTab>([
+  "transfers",
+  "metadata",
+  "forwarding",
+  "diagnostics",
+  "knownHosts",
+]);
+
 interface InspectorNavigationOptions {
   filesOnly: boolean;
   isRemote: boolean;
@@ -51,8 +59,8 @@ export function resolveInspectorNavigation({
   }
 
   const all = INSPECTOR_TAB_IDS.filter((id) =>
-    (id !== "metadata" || hasBinding)
-    && (id !== "forwarding" || isRemote)
+    (!REMOTE_ONLY_INSPECTOR_TAB_IDS.has(id) || isRemote)
+    && (id !== "metadata" || hasBinding)
   );
   const available = new Set(all);
 

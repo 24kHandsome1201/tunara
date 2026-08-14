@@ -8,9 +8,9 @@ describe("inspector navigation", () => {
       isRemote: false,
       hasBinding: false,
     })).toEqual({
-      all: ["overview", "changes", "files", "preview", "notes", "transfers", "diagnostics", "knownHosts"],
+      all: ["overview", "changes", "files", "preview", "notes"],
       primary: ["overview", "changes", "files"],
-      secondary: ["preview", "notes", "transfers", "diagnostics", "knownHosts"],
+      secondary: ["preview", "notes"],
     });
   });
 

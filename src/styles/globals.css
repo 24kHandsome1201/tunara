@@ -223,6 +223,28 @@ html[data-chrome="borderless"] {
   color: var(--c-text-2);
 }
 
+/* Shared compact icon actions use a larger hit target than their glyphs.
+   Keeping this geometry global prevents panel headers from drifting apart. */
+.panel-icon-button {
+  width: var(--h-titlebar-control);
+  height: var(--h-titlebar-control);
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--c-text-4);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.panel-icon-button[data-active="true"] {
+  color: var(--c-text-primary);
+  background: var(--c-accent-bg-soft);
+}
+
 /* Panel resize handle: visible line on hover */
 .panel-resize-handle::after,
 .sidebar-resize-handle::after {

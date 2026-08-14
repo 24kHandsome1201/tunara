@@ -9,12 +9,12 @@ const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 test("background update checks wait for a usable workspace and stay non-blocking", () => {
   const hook = read("src/app/useUpdateReminder.ts");
-  const app = read("src/app/App.tsx");
+  const appServices = read("src/app/useAppServices.ts");
   assert.match(hook, /UPDATE_REMINDER_DELAY_MS = 18_000/);
   assert.match(hook, /if \(!ready \|\| import\.meta\.env\.DEV\) return/);
   assert.match(hook, /check\(\{ timeout: 15_000 \}\)/);
   assert.match(hook, /\.catch\(\(\) => \{/);
-  assert.match(app, /useUpdateReminder\(ready\)/);
+  assert.match(appServices, /useUpdateReminder\(ready\)/);
 });
 
 test("update reminders route directly to the App settings tab", () => {

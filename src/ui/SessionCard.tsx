@@ -20,7 +20,7 @@ function StatusDot({ runState, unread, waitingConfirmation = false }: { runState
   const showDone = (runState === "done" || runState === "failed") && unread;
   if (runState === "idle" || ((runState === "done" || runState === "failed") && !unread)) return null;
   const color = runState === "running"
-    ? "var(--c-accent)"
+    ? "var(--c-text-4)"
     : showDone && runState === "done"
       ? "var(--c-success)"
       : "var(--c-error)";
@@ -133,7 +133,7 @@ function StatusMark({ runState, exitCode, waitingLabel }: { runState: RunState; 
   if (runState === "running") {
     return (
       <span style={{ width: 13, height: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-accent)" }} />
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-4)" }} />
       </span>
     );
   }
@@ -399,12 +399,12 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
       className="session-card"
       style={{
         position: "relative",
-        padding: "6px 10px 6px 12px",
+        padding: "7px 10px 7px 12px",
         borderRadius: "var(--r-card)",
         // cursor 由外层 wrapper 控制（grab / grabbing / pointer），允许 inherit
         userSelect: "none",
-        background: active ? "var(--c-bg-white)" : "transparent",
-        border: active ? "1px solid var(--c-border-1)" : "1px solid transparent",
+        background: "transparent",
+        border: "1px solid transparent",
         outline: focused ? "2px solid color-mix(in srgb, var(--c-accent) 70%, transparent)" : "none",
         outlineOffset: focused ? "-1px" : 0,
         transition: "background var(--duration-fast) ease, border-color var(--duration-fast) ease, outline-color var(--duration-fast) var(--ease-smooth)",

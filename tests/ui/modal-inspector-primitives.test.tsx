@@ -9,6 +9,7 @@ import {
   resolveInspectorScope,
 } from "@/ui/inspector-scope";
 import type { Session } from "@/ui/types";
+import { PanelEmptyState, PanelIconButton } from "@/ui/shared";
 
 function ModalHarness({ binding = "one", currentBinding = "one", onClose }: {
   binding?: string;
@@ -157,4 +158,15 @@ function BehaviorHarness() {
 test("a modal with no controls keeps focus on its dialog container", () => {
   render(<BehaviorHarness />);
   expect(document.activeElement).toBe(screen.getByRole("dialog", { name: "No controls" }));
+});
+
+test("panel primitives keep empty states compact and icon actions keyboard reachable", () => {
+  render(<>
+    <PanelEmptyState label="Nothing here" sublabel="Choose another directory" />
+    <PanelIconButton aria-label="Refresh panel">↻</PanelIconButton>
+  </>);
+
+  expect(screen.getByRole("status").getAttribute("data-density")).toBe("compact");
+  expect(screen.getByText("Choose another directory")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Refresh panel" }).getAttribute("type")).toBe("button");
 });

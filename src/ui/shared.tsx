@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ComponentPropsWithRef, ReactNode } from "react";
 
 export function RefreshIcon({ size = 13 }: { size?: number }) {
   return (
@@ -92,7 +92,21 @@ export function PanelActionButton({
   );
 }
 
-export function PanelState({ state, icon }: { state: PanelAsyncState; icon?: React.ReactNode }) {
+export function PanelIconButton({
+  className,
+  type = "button",
+  ...props
+}: ComponentPropsWithRef<"button">) {
+  return (
+    <button
+      {...props}
+      type={type}
+      className={["panel-icon-button", "hover-bg", className].filter(Boolean).join(" ")}
+    />
+  );
+}
+
+export function PanelState({ state, icon, compact = false }: { state: PanelAsyncState; icon?: React.ReactNode; compact?: boolean }) {
   const defaultIcon = (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       {state.kind === "error" ? <><path d="M12 3 2.8 20h18.4Z" /><path d="M12 9v5" /><path d="M12 17h.01" /></> : <><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></>}
@@ -103,23 +117,34 @@ export function PanelState({ state, icon }: { state: PanelAsyncState; icon?: Rea
       role={state.kind === "error" ? "alert" : "status"}
       aria-live={state.kind === "loading" || state.kind === "empty" ? "polite" : undefined}
       aria-busy={state.kind === "loading" ? true : undefined}
-      style={{ padding: "28px 14px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 8 }}
+      data-density={compact ? "compact" : "regular"}
+      style={{
+        padding: compact ? "12px 14px" : "28px 14px",
+        display: "flex",
+        flexDirection: compact ? "row" : "column",
+        alignItems: "center",
+        justifyContent: compact ? "flex-start" : undefined,
+        textAlign: compact ? "left" : "center",
+        gap: compact ? 10 : 8,
+      }}
     >
-      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)" }}>
+      <div style={{ width: compact ? 28 : 36, height: compact ? 28 : 36, borderRadius: "50%", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)", flexShrink: 0 }}>
         {state.kind === "loading"
           ? <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", animation: "loadPulse 1.5s var(--ease-in-out) infinite" }} />
           : icon ?? defaultIcon}
       </div>
-      <strong style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", fontWeight: 600 }}>{state.label}</strong>
-      {state.kind !== "loading" && state.detail && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: "90%", overflowWrap: "anywhere" }}>{state.detail}</span>}
-      {state.kind === "error" && state.remediation && <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", maxWidth: 440 }}>{state.remediation}</span>}
-      {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? "Retry"}</PanelActionButton>}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: compact ? "flex-start" : "center", gap: 4, minWidth: 0 }}>
+        <strong style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", fontWeight: 600 }}>{state.label}</strong>
+        {state.kind !== "loading" && state.detail && <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: compact ? "100%" : "90%", overflowWrap: "anywhere" }}>{state.detail}</span>}
+        {state.kind === "error" && state.remediation && <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", maxWidth: 440 }}>{state.remediation}</span>}
+        {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? "Retry"}</PanelActionButton>}
+      </div>
     </div>
   );
 }
 
-export function PanelEmptyState({ icon, label, sublabel }: { icon?: React.ReactNode; label: string; sublabel?: string }) {
-  return <PanelState state={{ kind: "empty", label, detail: sublabel }} icon={icon} />;
+export function PanelEmptyState({ icon, label, sublabel, compact = true }: { icon?: React.ReactNode; label: string; sublabel?: string; compact?: boolean }) {
+  return <PanelState state={{ kind: "empty", label, detail: sublabel }} icon={icon} compact={compact} />;
 }
 
 export function PanelLoadingState({ label }: { label: string }) {

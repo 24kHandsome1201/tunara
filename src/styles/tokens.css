@@ -96,19 +96,19 @@
   --c-diff-add-text: #1a7a4f;
 
   /* ── 字体族 ── */
-  --font-ui: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', 'Noto Sans SC', monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
   --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', monospace;
 
   /* ── 字体尺寸 ── */
   --fs-title: 16px;
-  --fs-body: 13px;
-  --fs-secondary: 12px;
-  --fs-meta: 11px;
-  --fs-meta-sm: 10.5px;
+  --fs-body: 13.5px;
+  --fs-secondary: 12.5px;
+  --fs-meta: 11.5px;
+  --fs-meta-sm: 11px;
   --fs-reader-h1: 17px;
   --fs-reader-h2: 14px;
   --fs-reader-h3: 12px;
-  --fs-badge: 9px;
+  --fs-badge: 10px;
 
   /* ── 圆角 ── */
   --r-btn: 7px;
@@ -166,15 +166,15 @@
 
   /* ── 尺寸 ── */
   --h-titlebar: 36px;
-  --h-titlebar-control: 24px;
-  --w-titlebar-control: 28px;
+  --h-titlebar-control: 28px;
+  --w-titlebar-control: 30px;
   --h-titlebar-tab: 36px;
   --w-sidebar: 272px;
   --w-panel: 300px;
   --h-statusbar: 28px;
   --h-inline-bar: 28px;
-  --h-btn-sm: 22px;
-  --h-btn-md: 30px;
+  --h-btn-sm: 24px;
+  --h-btn-md: 32px;
   --r-badge-sm: 4px;
 
   /* ── 命令面板 ── */
@@ -375,10 +375,10 @@
               transform var(--duration-fast) var(--ease-out-expo);
   cursor: inherit;
 }
-.session-card:hover { background: var(--c-bg-hover); box-shadow: var(--shadow-card); }
+.session-card:hover { background: var(--c-bg-hover); }
 .session-card:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
-.session-card[aria-current="page"] { border-color: color-mix(in srgb, var(--c-accent) 42%, var(--c-border-2)) !important; box-shadow: var(--shadow-card); }
-.session-card[aria-current="page"]:hover { box-shadow: var(--shadow-card-hover); }
+.session-card:has(.session-card-select[aria-current="page"]) { background: var(--c-accent-bg-soft); }
+.session-card:has(.session-card-select[aria-current="page"]):hover { background: var(--c-accent-bg-light); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .session-card:hover .session-card-close,
 .session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
@@ -417,7 +417,7 @@
 .ctx-item-disabled { color: var(--c-text-6); pointer-events: none; }
 .ctx-divider { height: 1px; background: var(--c-border-2); margin: var(--sp-1) 0; }
 
-.sidebar-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 16%, transparent); }
+.sidebar-search:focus-within { background: var(--c-bg-white) !important; border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent); }
 .explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 16%, transparent); }
 
 /* ── Utility classes ── */
