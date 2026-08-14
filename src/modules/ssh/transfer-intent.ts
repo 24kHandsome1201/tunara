@@ -2,6 +2,12 @@ import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import type { FolderManifest } from "./transfer-bridge";
 import type { TransferConflict, TransferDirection, TransferRequest } from "./transfer-store";
 
+export const BATCH_DOWNLOAD_LIMITS = {
+  maxFiles: 100,
+  maxTotalBytes: 1024 ** 3,
+  maxFileBytes: 100 * 1024 ** 2,
+} as const;
+
 export type DragDropIntent =
   | { kind: "upload"; localPaths: string[] }
   | { kind: "download"; remotePaths: string[] }
@@ -35,6 +41,50 @@ export function renamedSibling(path: string, occupied: ReadonlySet<string>, maxB
 
 export interface FolderTransferPlan { directories: string[]; requests: TransferRequest[] }
 export type ConflictDecision = { conflict: TransferConflict; applyAll?: boolean };
+
+export interface BatchDownloadSource { path: string; name: string; size: number }
+
+/**
+ * Remote names become local path components in a batch download, so they must
+ * not be allowed to introduce separators, control characters, or Windows
+ * device names. Single-file downloads are named explicitly by the user.
+ */
+export function safeDownloadLeaf(name: string, fallbackIndex: number): string {
+  let leaf = name.replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_").replace(/[. ]+$/g, "").trim();
+  if (!leaf || leaf === "." || leaf === "..") leaf = `download-${fallbackIndex}`;
+  if (leaf.startsWith(".")) leaf = `_${leaf.replace(/^\.+/, "") || `download-${fallbackIndex}`}`;
+  const stem = leaf.split(".", 1)[0].toLocaleLowerCase();
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(stem)) leaf = `_${leaf}`;
+  const characters = Array.from(leaf);
+  while (characters.length > 1 && utf8.encode(characters.join("")).length > 240) characters.pop();
+  leaf = characters.join("");
+  return leaf;
+}
+
+/** Build bounded, no-overwrite download requests with deterministic siblings. */
+export function planBatchDownloads(options: {
+  sources: readonly BatchDownloadSource[];
+  destinationRoot: string;
+  existingNames: readonly string[];
+  binding: SessionBindingV1;
+}): TransferRequest[] {
+  const { sources, destinationRoot, binding } = options;
+  if (sources.length === 0) return [];
+  if (sources.length > BATCH_DOWNLOAD_LIMITS.maxFiles) throw new Error("batch download file limit exceeded");
+  let totalBytes = 0;
+  const occupied = new Set(options.existingNames.map((name) => join(destinationRoot, name)));
+  return sources.map((source, index) => {
+    if (!Number.isFinite(source.size) || source.size < 0 || source.size > BATCH_DOWNLOAD_LIMITS.maxFileBytes) {
+      throw new Error("batch download contains an oversized file");
+    }
+    totalBytes += source.size;
+    if (totalBytes > BATCH_DOWNLOAD_LIMITS.maxTotalBytes) throw new Error("batch download total size limit exceeded");
+    let destination = join(destinationRoot, safeDownloadLeaf(source.name, index + 1));
+    if (occupied.has(destination)) destination = renamedSibling(destination, occupied);
+    occupied.add(destination);
+    return { binding, direction: "download", source: source.path, destination, conflict: "rename" };
+  });
+}
 
 /** Apply an ask-dialog's decisions without ever upgrading an undecided item to replace. */
 export function resolveTransferConflicts<T extends { destination: string }>(

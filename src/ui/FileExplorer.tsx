@@ -42,7 +42,14 @@ import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
 import { FileSearchGeneration } from "./lib/file-search-session";
-import { classifyTransferDrop, expandFolderTransfer, renamedSibling } from "@/modules/ssh/transfer-intent";
+import {
+  BATCH_DOWNLOAD_LIMITS,
+  classifyTransferDrop,
+  expandFolderTransfer,
+  planBatchDownloads,
+  renamedSibling,
+  type BatchDownloadSource,
+} from "@/modules/ssh/transfer-intent";
 import { validateManifest } from "@/modules/ssh/transfer-bridge";
 import { useTransferStore, type TransferRequest } from "@/modules/ssh/transfer-store";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
@@ -330,6 +337,9 @@ export function FileExplorer({
   const [transferAnnouncement, setTransferAnnouncement] = useState("");
   const [download, setDownload] = useState<{ fileName: string } | null>(null);
   const downloadTransferRef = useRef<DownloadTransfer | null>(null);
+  const [selectedDownloads, setSelectedDownloads] = useState<Map<string, BatchDownloadSource>>(() => new Map());
+  const [batchDownloadPreparing, setBatchDownloadPreparing] = useState(false);
+  const selectionAnchorRef = useRef<string | null>(null);
   const copyPathWithFeedback = async (path: string) => {
     const ok = await copyText(path);
     useUIStore.getState().addToast({
@@ -433,6 +443,11 @@ export function FileExplorer({
   const treeRequestContextRef = useRef(treeRequestContext);
   // Render-time assignment closes the window before passive effect cleanup.
   treeRequestContextRef.current = treeRequestContext;
+  useEffect(() => {
+    setSelectedDownloads(new Map());
+    selectionAnchorRef.current = null;
+    setBatchDownloadPreparing(false);
+  }, [treeRequestContext]);
   const mutationComposerRef = useRef<HTMLDivElement>(null);
   const menuReturnFocusRef = useRef<HTMLElement>(null);
   useModalBehavior(mutationComposerRef, {
@@ -1022,6 +1037,9 @@ export function FileExplorer({
     append(entries, currentPath, 1, null);
     return result;
   }, [entries, currentPath, expandedPaths, treeChildren, sort]);
+  const selectableDownloadNodes = useMemo(() => binding
+    ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= BATCH_DOWNLOAD_LIMITS.maxFileBytes)
+    : [], [binding, visibleTreeNodes]);
   const isSearching = searchQuery.trim().length > 0;
   const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
 
@@ -1313,12 +1331,107 @@ export function FileExplorer({
         ];
   }
 
+  function toggleDownloadSelection(node: ExplorerTreeNode, range: boolean) {
+    if (!binding || node.entry.kind !== "file" || node.entry.size > BATCH_DOWNLOAD_LIMITS.maxFileBytes) return;
+    const nextSource = { path: node.path, name: node.entry.name, size: node.entry.size };
+    setSelectedDownloads((current) => {
+      const next = new Map(current);
+      let totalBytes = [...next.values()].reduce((total, source) => total + source.size, 0);
+      if (range && selectionAnchorRef.current) {
+        const anchor = selectableDownloadNodes.findIndex(({ path }) => path === selectionAnchorRef.current);
+        const target = selectableDownloadNodes.findIndex(({ path }) => path === node.path);
+        if (anchor >= 0 && target >= 0) {
+          for (const candidate of selectableDownloadNodes.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)) {
+            if (next.has(candidate.path)) continue;
+            if (next.size >= BATCH_DOWNLOAD_LIMITS.maxFiles
+              || totalBytes + candidate.entry.size > BATCH_DOWNLOAD_LIMITS.maxTotalBytes) break;
+            next.set(candidate.path, { path: candidate.path, name: candidate.entry.name, size: candidate.entry.size });
+            totalBytes += candidate.entry.size;
+          }
+        }
+      } else if (next.has(node.path)) {
+        next.delete(node.path);
+      } else if (next.size < BATCH_DOWNLOAD_LIMITS.maxFiles
+        && totalBytes + node.entry.size <= BATCH_DOWNLOAD_LIMITS.maxTotalBytes) {
+        next.set(node.path, nextSource);
+      }
+      return next;
+    });
+    selectionAnchorRef.current = node.path;
+  }
+
+  function toggleAllVisibleDownloads() {
+    const allSelected = selectableDownloadNodes.length > 0
+      && selectableDownloadNodes.every(({ path }) => selectedDownloads.has(path));
+    if (allSelected) {
+      setSelectedDownloads((current) => {
+        const next = new Map(current);
+        for (const node of selectableDownloadNodes) next.delete(node.path);
+        return next;
+      });
+      return;
+    }
+    const next = new Map<string, BatchDownloadSource>();
+    let total = 0;
+    for (const node of selectableDownloadNodes) {
+      if (next.size >= BATCH_DOWNLOAD_LIMITS.maxFiles || total + node.entry.size > BATCH_DOWNLOAD_LIMITS.maxTotalBytes) break;
+      next.set(node.path, { path: node.path, name: node.entry.name, size: node.entry.size });
+      total += node.entry.size;
+    }
+    setSelectedDownloads(next);
+  }
+
+  async function downloadSelectedFiles() {
+    if (!binding || selectedDownloads.size === 0 || batchDownloadPreparing) return;
+    const requestContext = treeRequestContext;
+    setBatchDownloadPreparing(true);
+    try {
+      const selected = await openDialog({
+        title: t("explorer.download.batch_choose_destination"),
+        directory: true,
+        multiple: false,
+      });
+      const destinationRoot = Array.isArray(selected) ? selected[0] : selected;
+      if (!destinationRoot || treeRequestContextRef.current !== requestContext) return;
+      const existing = await fsReadDir(destinationRoot, true);
+      if (treeRequestContextRef.current !== requestContext) return;
+      const requests = planBatchDownloads({
+        sources: [...selectedDownloads.values()],
+        destinationRoot,
+        existingNames: existing.map(({ name }) => name),
+        binding,
+      });
+      useTransferStore.getState().enqueueBatch(requests);
+      setSelectedDownloads(new Map());
+      selectionAnchorRef.current = null;
+      useUIStore.getState().addToast({
+        sessionId,
+        title: t("explorer.download.batch_queued"),
+        subtitle: t("explorer.download.batch_queued_hint", { count: requests.length }),
+        variant: "success",
+      });
+    } catch {
+      if (treeRequestContextRef.current === requestContext) {
+        useUIStore.getState().addToast({
+          sessionId,
+          title: t("explorer.download.failed"),
+          subtitle: t("explorer.download.batch_prepare_failed"),
+          variant: "error",
+        });
+      }
+    } finally {
+      if (treeRequestContextRef.current === requestContext) setBatchDownloadPreparing(false);
+    }
+  }
+
   function renderTreeNode(node: ExplorerTreeNode) {
     const listingIndex = visibleTreeNodes.findIndex((candidate) => candidate.path === node.path);
     const isDir = node.entry.kind === "dir";
     const expanded = isDir && expandedPaths.has(node.path);
     const children = visibleTreeNodes.filter((candidate) => candidate.parentPath === node.path);
     const active = activeFilePath === node.path;
+    const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= BATCH_DOWNLOAD_LIMITS.maxFileBytes;
+    const batchSelected = selectedDownloads.has(node.path);
     const openMenu = (x: number, y: number, opener: HTMLElement) => {
       menuReturnPathRef.current = node.path;
       menuReturnFocusRef.current = opener;
@@ -1328,10 +1441,12 @@ export function FileExplorer({
       <div
         key={node.path}
         role="treeitem"
+        aria-label={node.entry.name}
         aria-level={node.level}
         aria-expanded={isDir ? expanded : undefined}
         aria-setsize={node.setSize}
         aria-posinset={node.posInSet}
+        aria-selected={batchSelectable ? batchSelected : undefined}
         data-explorer-item
         data-listing-index={listingIndex}
         data-tree-path={node.path}
@@ -1344,6 +1459,10 @@ export function FileExplorer({
         }}
         onClick={(event) => {
           if (event.target !== event.currentTarget && (event.target as HTMLElement).closest("[role=group]")) return;
+          if (batchSelectable && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+            toggleDownloadSelection(node, event.shiftKey);
+            return;
+          }
           if (isDir) { setNavDir("in"); setCurrentPath(node.path); } else openFile(node.path);
         }}
         onContextMenu={(event) => { event.preventDefault(); openMenu(event.clientX, event.clientY, event.currentTarget); }}
@@ -1359,6 +1478,11 @@ export function FileExplorer({
           if (event.key === "Enter") {
             event.preventDefault(); event.stopPropagation();
             if (isDir) { setNavDir("in"); setCurrentPath(node.path); } else openFile(node.path);
+            return;
+          }
+          if (event.key === " " && batchSelectable) {
+            event.preventDefault(); event.stopPropagation();
+            toggleDownloadSelection(node, event.shiftKey);
             return;
           }
           if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
@@ -1401,8 +1525,21 @@ export function FileExplorer({
           }
         }}
         className="hover-bg"
-        style={{ width: "100%", minHeight: 30, padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`, borderRadius: "var(--r-btn)", border: "none", background: active ? "var(--c-accent-bg-light)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(42px, 92px) 28px", columnGap: 4, alignItems: "center", textAlign: "left", marginBottom: 2 }}
+        style={{ width: "100%", minHeight: 30, padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`, borderRadius: "var(--r-btn)", border: "none", background: batchSelected || active ? "var(--c-accent-bg-light)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: binding ? "20px minmax(0, 1fr) minmax(42px, 92px) 28px" : "minmax(0, 1fr) minmax(42px, 92px) 28px", columnGap: 4, alignItems: "center", textAlign: "left", marginBottom: 2 }}
       >
+        {binding && (
+          <input
+            type="checkbox"
+            className="ui-choice"
+            aria-label={node.entry.kind === "file" ? t("explorer.download.select_file", { file: node.entry.name }) : undefined}
+            checked={batchSelected}
+            disabled={!batchSelectable}
+            title={node.entry.kind === "file" && node.entry.size > BATCH_DOWNLOAD_LIMITS.maxFileBytes ? t("explorer.download.too_large") : undefined}
+            onClick={(event) => { event.stopPropagation(); toggleDownloadSelection(node, event.shiftKey); }}
+            onChange={() => {}}
+            style={{ margin: 0, visibility: node.entry.kind === "file" ? "visible" : "hidden" }}
+          />
+        )}
         <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, height: 30, pointerEvents: "none" }}>
           {isDir ? <FolderIcon /> : <FileIcon />}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)" }}>{node.entry.name}</span>
@@ -1568,16 +1705,29 @@ export function FileExplorer({
               ↑
             </button>
             {binding && (
-              <button
-                onClick={() => { void uploadFolderToRemoteDirectory(currentPath); }}
-                disabled={remoteDisconnected}
-                className="hover-bg"
-                title={t("explorer.upload_folder")}
-                aria-label={t("explorer.upload_folder")}
-                style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-              >
-                <span aria-hidden="true">↥▣</span>
-              </button>
+              <>
+                <button
+                  onClick={() => { void uploadFolderToRemoteDirectory(currentPath); }}
+                  disabled={remoteDisconnected}
+                  className="hover-bg"
+                  title={t("explorer.upload_folder")}
+                  aria-label={t("explorer.upload_folder")}
+                  style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                >
+                  <span aria-hidden="true">↥▣</span>
+                </button>
+                <button
+                  onClick={() => { void downloadSelectedFiles(); }}
+                  disabled={remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing}
+                  className="hover-bg"
+                  title={t("explorer.download.batch_action", { count: selectedDownloads.size })}
+                  aria-label={t("explorer.download.batch_action", { count: selectedDownloads.size })}
+                  style={{ minWidth: 26, height: 26, padding: "0 4px", borderRadius: "var(--r-btn)", border: "none", background: selectedDownloads.size > 0 ? "var(--c-accent-bg-light)" : "transparent", color: selectedDownloads.size > 0 ? "var(--c-accent)" : "var(--c-text-4)", cursor: remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 2, flexShrink: 0 }}
+                >
+                  <span aria-hidden="true">↓</span>
+                  {selectedDownloads.size > 0 && <span aria-hidden="true" style={{ fontSize: "var(--fs-meta)" }}>{selectedDownloads.size}</span>}
+                </button>
+              </>
             )}
           </>
         )}
@@ -1838,7 +1988,18 @@ export function FileExplorer({
           <PanelEmptyState icon={folderEmptyIcon} label={t("explorer.dir_empty")} />
         ) : (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", height: 24, padding: "0 var(--sp-2)", marginBottom: 3, borderBottom: "1px solid var(--c-border-1)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: binding ? "20px minmax(0, 1fr) 92px" : "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", height: 24, padding: "0 var(--sp-2)", marginBottom: 3, borderBottom: "1px solid var(--c-border-1)" }}>
+              {binding && (
+                <input
+                  type="checkbox"
+                  className="ui-choice"
+                  aria-label={t("explorer.download.select_all")}
+                  checked={selectableDownloadNodes.length > 0 && selectableDownloadNodes.every(({ path }) => selectedDownloads.has(path))}
+                  disabled={selectableDownloadNodes.length === 0}
+                  onChange={toggleAllVisibleDownloads}
+                  style={{ margin: 0 }}
+                />
+              )}
               {(["name", "modified"] as const).map((key) => {
                 const active = sort.key === key;
                 const label = t(key === "name" ? "explorer.column.name" : "explorer.column.modified");
@@ -1862,7 +2023,7 @@ export function FileExplorer({
                 );
               })}
             </div>
-            <div role="tree" aria-label={t("explorer.file_list")}>
+            <div role="tree" aria-label={t("explorer.file_list")} aria-multiselectable={binding ? "true" : undefined}>
               {virtualizeListing && <div aria-hidden="true" role="presentation" style={{ height: listingSlice.topPad }} />}
               {visibleTreeNodes
                 .filter((node) => node.parentPath === null)

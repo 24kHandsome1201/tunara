@@ -1350,7 +1350,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(zhDict, /"sidebar\.dir\.new_terminal": "在此目录新建终端"/);
   assert.match(zhDict, /"sidebar\.dir\.copy_path": "复制路径"/);
   assert.doesNotMatch(explorer, /function SearchIcon/);
-  assert.match(explorer, /gridTemplateColumns: "minmax\(0, 1fr\) 92px"/);
+  assert.match(explorer, /gridTemplateColumns: binding \? "20px minmax\(0, 1fr\) 92px" : "minmax\(0, 1fr\) 92px"/);
   assert.match(explorer, /formatModifiedTime\(node\.entry\.mtime\)/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);

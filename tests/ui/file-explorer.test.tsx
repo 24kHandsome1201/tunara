@@ -559,6 +559,43 @@ describe("FileExplorer workspace files", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  test("selects multiple remote files and queues safe typed downloads into one folder", async () => {
+    useTransferStore.setState({ items: [] });
+    const downloads: Array<{ remotePath: string; localPath: string; binding: { transportGeneration: string } }> = [];
+    mockIPC((command, payload) => {
+      const path = (payload as { path?: string }).path;
+      if (command === "ssh_fs_read_dir") return [
+        { name: "report.txt", kind: "file", size: 8, mtime: 0 },
+        { name: "notes.txt", kind: "file", size: 12, mtime: 0 },
+        { name: "huge.bin", kind: "file", size: 100 * 1024 * 1024 + 1, mtime: 0 },
+      ];
+      if (command === "plugin:dialog|open") return "/home/alice/Downloads";
+      if (command === "fs_read_dir" && path === "/home/alice/Downloads") {
+        return [{ name: "report.txt", kind: "file", size: 1, mtime: 0 }];
+      }
+      if (command === "ssh_transfer_download") {
+        downloads.push(payload as typeof downloads[number]);
+        return { outcome: { status: "completed", bytesTransferred: 8 } };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />);
+    await screen.findByRole("treeitem", { name: /^report\.txt/ });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all downloadable files" }));
+
+    expect(screen.getByRole("checkbox", { name: "Select report.txt for download" }).getAttribute("aria-checked")).not.toBe("false");
+    expect((screen.getByRole("checkbox", { name: "Select huge.bin for download" }) as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Download selected files (2)" }));
+
+    await waitFor(() => expect(downloads).toHaveLength(2));
+    expect(downloads.map(({ remotePath, localPath, binding }) => [remotePath, localPath, binding.transportGeneration])).toEqual([
+      ["/srv/app/notes.txt", "/home/alice/Downloads/notes.txt", "download-generation"],
+      ["/srv/app/report.txt", "/home/alice/Downloads/report (1).txt", "download-generation"],
+    ]);
+    expect(useTransferStore.getState().items.every(({ batchId }) => typeof batchId === "string")).toBe(true);
+  });
+
   test("shows an immediate indeterminate download state and clears it on completion", async () => {
     let finish: ((bytes: number) => void) | undefined;
     mockIPC((command) => {

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { classifyTransferDrop, expandFolderTransfer, renamedSibling, resolveTransferConflicts } from "@/modules/ssh/transfer-intent";
+import {
+  BATCH_DOWNLOAD_LIMITS,
+  classifyTransferDrop,
+  expandFolderTransfer,
+  planBatchDownloads,
+  renamedSibling,
+  resolveTransferConflicts,
+  safeDownloadLeaf,
+} from "@/modules/ssh/transfer-intent";
 
 const binding = { logicalSessionId: "logical", physicalPtyId: 7, transportGeneration: "generation" };
 
@@ -35,5 +43,36 @@ describe("folder transfer intents", () => {
     expect(resolveTransferConflicts(items, new Set(["/to/a", "/to/b", "/to/c"]), [
       { conflict: "replace" }, { conflict: "skip" },
     ])).toEqual([{ destination: "/to/a", conflict: "replace" }]);
+  });
+
+  it("plans batch downloads with safe, distinct, non-overwriting names", () => {
+    const requests = planBatchDownloads({
+      sources: [
+        { path: "/one/report.txt", name: "report.txt", size: 2 },
+        { path: "/two/report.txt", name: "report.txt", size: 3 },
+        { path: "/bad/name", name: "../bad:name", size: 4 },
+      ],
+      destinationRoot: "/home/alice/Downloads",
+      existingNames: ["report.txt"],
+      binding,
+    });
+    expect(requests.map(({ source, destination }) => [source, destination])).toEqual([
+      ["/one/report.txt", "/home/alice/Downloads/report (1).txt"],
+      ["/two/report.txt", "/home/alice/Downloads/report (2).txt"],
+      ["/bad/name", "/home/alice/Downloads/__bad_name"],
+    ]);
+    expect(requests.every(({ direction, conflict }) => direction === "download" && conflict === "rename")).toBe(true);
+    expect(safeDownloadLeaf("CON", 1)).toBe("_CON");
+  });
+
+  it("rejects batch plans beyond file and total resource limits", () => {
+    expect(() => planBatchDownloads({
+      sources: Array.from({ length: BATCH_DOWNLOAD_LIMITS.maxFiles + 1 }, (_, index) => ({ path: `/${index}`, name: `${index}`, size: 0 })),
+      destinationRoot: "/home/alice/Downloads", existingNames: [], binding,
+    })).toThrow("file limit");
+    expect(() => planBatchDownloads({
+      sources: Array.from({ length: 11 }, (_, index) => ({ path: `/${index}`, name: `${index}`, size: BATCH_DOWNLOAD_LIMITS.maxFileBytes })),
+      destinationRoot: "/home/alice/Downloads", existingNames: [], binding,
+    })).toThrow("total size limit");
   });
 });
