@@ -448,4 +448,92 @@ describe("FilePreview editor behavior", () => {
     expect(restored.value).toBe("preserved remote draft\n");
     expect(calls.filter((command) => command === "ssh_fs_read_file")).toHaveLength(2);
   });
+
+  test("offers a 1000-line bounded local view without using download", async () => {
+    const calls: Array<{ command: string; payload: Record<string, unknown> }> = [];
+    mockIPC((command, payload) => {
+      calls.push({ command, payload: payload as Record<string, unknown> });
+      if (command === "fs_read_file") return { kind: "toolarge", size: 50_000_000, limit: 10_485_760 };
+      if (command === "fs_file_view_head_v1") {
+        return {
+          kind: "text",
+          content: "line one\nline two\n",
+          size: 50_000_000,
+          revision: "r1",
+          lineCount: 2,
+          lineLimit: 1000,
+          byteLimit: 262_144,
+          truncated: true,
+        };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("server.log");
+    await screen.findByRole("button", { name: "View beginning" });
+    expect((screen.getByRole("combobox", { name: "First lines" }) as HTMLSelectElement).value).toBe("1000");
+    fireEvent.click(screen.getByRole("button", { name: "View beginning" }));
+
+    await screen.findByText(/Showing 2 of up to 1000 lines/);
+    expect(screen.getByText(/line one/)).toBeTruthy();
+    const headCall = calls.find((call) => call.command === "fs_file_view_head_v1");
+    expect(headCall?.payload).toMatchObject({ path: "/tmp/server.log", lineLimit: 1000 });
+    expect(calls.some((call) => call.command.includes("download"))).toBe(false);
+  });
+
+  test("uses the complete ResourceRef SSH binding for a bounded view", async () => {
+    const calls: Array<{ command: string; payload: Record<string, unknown> }> = [];
+    const binding = {
+      logicalSessionId: "ssh-session",
+      physicalPtyId: 41,
+      transportGeneration: "generation-7",
+    };
+    mockIPC((command, payload) => {
+      calls.push({ command, payload: payload as Record<string, unknown> });
+      if (command === "ssh_fs_read_file") return { kind: "toolarge", size: 12_000_000, limit: 10_485_760 };
+      if (command === "ssh_file_view_head_v1") {
+        return { kind: "text", content: "remote\n", size: 12_000_000, revision: "r2", lineCount: 1, lineLimit: 1000, byteLimit: 262_144, truncated: true };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilePreview
+      sessionId="ssh-session"
+      filePath="/var/log/app.log"
+      fileName="app.log"
+      fill
+      remote
+      remotePtyId={41}
+      resource={{ transport: "ssh", logicalSessionId: "ssh-session", binding, path: "/var/log/app.log" }}
+      onClose={() => {}}
+    />);
+    fireEvent.click(await screen.findByRole("button", { name: "View beginning" }));
+    await screen.findByText(/Showing 1 of up to 1000 lines/);
+
+    expect(calls.find((call) => call.command === "ssh_file_view_head_v1")?.payload).toMatchObject({
+      binding,
+      path: "/var/log/app.log",
+      lineLimit: 1000,
+    });
+  });
+
+  test("cancels an in-flight bounded view through the server cancellation API", async () => {
+    let resolveHead: ((value: unknown) => void) | undefined;
+    const pendingHead = new Promise((resolve) => { resolveHead = resolve; });
+    const commands: string[] = [];
+    mockIPC((command) => {
+      commands.push(command);
+      if (command === "fs_read_file") return { kind: "toolarge", size: 20_000_000, limit: 10_485_760 };
+      if (command === "fs_file_view_head_v1") return pendingHead;
+      if (command === "fs_cancel_file_view_v1") return true;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("stream.log");
+    fireEvent.click(await screen.findByRole("button", { name: "View beginning" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await screen.findByText("The bounded view was cancelled.");
+    expect(commands).toContain("fs_cancel_file_view_v1");
+    resolveHead?.({ kind: "text", content: "late", size: 1, revision: "late", lineCount: 1, lineLimit: 1000, byteLimit: 262_144, truncated: false });
+  });
 });

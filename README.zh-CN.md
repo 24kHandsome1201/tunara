@@ -161,6 +161,7 @@ pnpm test             # 全部测试（Node + UI + Rust）
 - [本地使用日志与隐私](docs/LOCAL_USAGE_LOGGING.md) —— 明确选择开启的 SSH 诊断、JSONL schema、敏感数据排除、轮转、导出与失败行为。
 - [Agent 识别](docs/AGENT_DETECTION.md) —— agent 识别与生命周期原理，以及新增一个 agent 的分步清单。
 - [状态与持久化 State & persistence](docs/STATE_AND_PERSISTENCE.md) —— 三个 Zustand store、持久化的 workspace 快照，以及恢复重启相关的注意点。
+- [大文件受限查看](docs/LIMITED_LARGE_FILE_VIEWING.md) —— 本地与 SSH 文本/日志的前 N 行受限查看、IPC 限额与安全行为。
 
 ## 快捷键
 

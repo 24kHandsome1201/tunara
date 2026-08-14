@@ -35,6 +35,17 @@ import {
 import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor/scroll-position";
 import { classifyFileOperationError, type FileOperationErrorKind } from "@/modules/editor/file-operation-error";
 import { parseNotebook, type NotebookCell } from "@/modules/editor/notebook";
+import type { ResourceRef } from "@/modules/resources/resource-ref";
+import {
+  cancelFileHeadViewV1,
+  createFileViewRequestId,
+  DEFAULT_FILE_HEAD_LINES,
+  FILE_HEAD_LINE_PRESETS,
+  parseFileViewError,
+  readFileHeadV1,
+  type FileHeadResultV1,
+  type FileViewErrorV1,
+} from "@/modules/fs/file-view-bridge";
 
 /** 值防抖：delayMs 内连续变化只取最后一个，用于高开销派生的计算闸门。 */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -50,6 +61,8 @@ interface FilePreviewProps {
   sessionId?: string;
   filePath: string;
   fileName: string;
+  /** Transport-safe resource identity. Required for bounded SSH viewing. */
+  resource?: ResourceRef;
   onClose: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onNeedsAttention?: () => void;
@@ -441,6 +454,58 @@ function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, 
     >
       {controls}
       {surface}
+    </div>
+  );
+}
+
+function LargeFileHeadControls({
+  lineLimit,
+  loading,
+  error,
+  onLineLimitChange,
+  onView,
+  onCancel,
+}: {
+  lineLimit: number;
+  loading: boolean;
+  error: FileViewErrorV1 | null;
+  onLineLimitChange: (lineLimit: number) => void;
+  onView: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  const errorText = error?.code === "FILE_CHANGED"
+    ? t("preview.head.changed")
+    : error?.code === "CANCELLED"
+      ? t("preview.head.cancelled")
+      : error?.code === "PERMISSION_DENIED"
+        ? t("preview.read_failed_permission")
+        : error?.code === "STALE_BINDING"
+          ? t("preview.read_failed_disconnected")
+          : error
+            ? t("preview.read_failed_body")
+            : null;
+  return (
+    <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      <span style={{ flex: "1 1 240px", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>
+        {t("preview.head.description")}
+      </span>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
+        {t("preview.head.lines")}
+        <select
+          className="ui-native-control"
+          aria-label={t("preview.head.lines")}
+          value={lineLimit}
+          disabled={loading}
+          onChange={(event) => onLineLimitChange(Number(event.target.value))}
+        >
+          {FILE_HEAD_LINE_PRESETS.map((preset) => <option key={preset} value={preset}>{preset}</option>)}
+        </select>
+      </label>
+      {loading
+        ? <button onClick={onCancel}>{t("preview.head.cancel")}</button>
+        : <button onClick={onView}>{t("preview.head.view")}</button>}
+      {errorText ? <span role="alert" style={{ flexBasis: "100%", color: "var(--c-text-5)", fontSize: "var(--fs-secondary)" }}>{errorText}</span> : null}
     </div>
   );
 }
@@ -944,11 +1009,16 @@ function EditorSurface({
   );
 }
 
-export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId, remote = remotePtyId !== undefined }: FilePreviewProps) {
+export function FilePreview({ sessionId, filePath, fileName, resource, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId, remote = remotePtyId !== undefined }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
   const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
   const [readAttempt, setReadAttempt] = useState(0);
+  const [headLineLimit, setHeadLineLimit] = useState(DEFAULT_FILE_HEAD_LINES);
+  const [headResult, setHeadResult] = useState<FileHeadResultV1 | null>(null);
+  const [headError, setHeadError] = useState<FileViewErrorV1 | null>(null);
+  const [headLoading, setHeadLoading] = useState(false);
+  const activeHeadRequestRef = useRef<string | null>(null);
   const readingRef = useRef(false);
   const remoteSession = useSessionsStore((state) => !remote
     ? undefined
@@ -981,6 +1051,58 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
     return () => { cancelled = true; };
   }, [filePath, readAttempt, remote, remotePtyId]);
 
+  useEffect(() => {
+    setHeadResult(null);
+    setHeadError(null);
+    setHeadLoading(false);
+    const requestId = activeHeadRequestRef.current;
+    activeHeadRequestRef.current = null;
+    if (requestId) void cancelFileHeadViewV1(requestId).catch(() => {});
+    return () => {
+      const activeRequestId = activeHeadRequestRef.current;
+      activeHeadRequestRef.current = null;
+      if (activeRequestId) void cancelFileHeadViewV1(activeRequestId).catch(() => {});
+    };
+  }, [filePath, resource?.binding?.physicalPtyId, resource?.binding?.transportGeneration]);
+
+  const startHeadView = () => {
+    if (headLoading) return;
+    const target: ResourceRef | null = resource ?? (!remote
+      ? { transport: "local", logicalSessionId: sessionId ?? "local-preview", path: filePath }
+      : null);
+    if (!target) {
+      setHeadError({ code: "STALE_BINDING", message: "The SSH session binding is no longer current." });
+      return;
+    }
+    const requestId = createFileViewRequestId();
+    activeHeadRequestRef.current = requestId;
+    setHeadResult(null);
+    setHeadError(null);
+    setHeadLoading(true);
+    void readFileHeadV1(target, headLineLimit, requestId)
+      .then((next) => {
+        if (activeHeadRequestRef.current === requestId) setHeadResult(next);
+      })
+      .catch((error) => {
+        if (activeHeadRequestRef.current === requestId) setHeadError(parseFileViewError(error));
+      })
+      .finally(() => {
+        if (activeHeadRequestRef.current === requestId) {
+          activeHeadRequestRef.current = null;
+          setHeadLoading(false);
+        }
+      });
+  };
+
+  const cancelHeadView = () => {
+    const requestId = activeHeadRequestRef.current;
+    if (!requestId) return;
+    activeHeadRequestRef.current = null;
+    setHeadLoading(false);
+    setHeadError({ code: "CANCELLED", message: "The bounded file view was cancelled." });
+    void cancelFileHeadViewV1(requestId).catch(() => {});
+  };
+
   const retryRead = () => {
     if (readingRef.current) return;
     readingRef.current = true;
@@ -1005,6 +1127,7 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
   const textContent = result?.kind === "text"
     ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
     : "";
+  const canViewHead = result?.kind === "toolarge" || (result?.kind === "text" && Boolean(result.truncated));
 
   if (fill && result?.kind === "text" && result.fingerprint) {
     return (
@@ -1076,20 +1199,34 @@ export function FilePreview({ sessionId, filePath, fileName, onClose, onDirtyCha
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "loadPulse 1.2s var(--ease-in-out) infinite", flexShrink: 0 }} />
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("preview.reading")}</span>
         </div>
+      ) : headResult?.kind === "binary" ? (
+        <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(headResult.size) })} />
+      ) : headResult?.kind === "text" ? (
+        <>
+          <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} />
+          <div style={{ padding: "7px 14px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>
+            {t("preview.head.result", { count: headResult.lineCount, limit: headResult.lineLimit })}
+            {headResult.truncated ? ` · ${t("preview.head.bounded", { size: formatSize(headResult.byteLimit) })}` : ""}
+          </div>
+          <TextPreview content={headResult.content} fill={fill} />
+        </>
       ) : result.kind === "binary" ? (
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
       ) : result.kind === "imagetoolarge" ? (
         <PreviewMessage icon="⊘" text={t("preview.image.too_large", { width: result.width, height: result.height })} />
       ) : result.kind === "toolarge" ? (
-        <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
+        <>
+          <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
+          <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} />
+        </>
       ) : result.kind === "image" ? (
         <ImagePreview result={result} fileName={fileName} fill={fill} />
       ) : isNotebook ? (
-        <NotebookPreview content={textContent} />
+        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} /> : null}<NotebookPreview content={textContent} /></>
       ) : isMarkdown ? (
-        <MarkdownPreview content={textContent} fill={fill} />
+        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} /> : null}<MarkdownPreview content={textContent} fill={fill} /></>
       ) : (
-        <TextPreview content={textContent} fill={fill} />
+        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} /> : null}<TextPreview content={textContent} fill={fill} /></>
       )}
     </div>
   );

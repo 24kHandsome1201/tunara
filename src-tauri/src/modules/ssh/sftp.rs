@@ -21,9 +21,14 @@ use tauri::ipc::Channel;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::connection::await_stage;
+use super::diagnostics::SessionBindingV1;
 use super::safe_write::{
     write_text_transaction, IoError, RemoteFile, RemoteFileKind, RemoteWriteIo, ReplaceError,
     TransactionOutcome, TransactionStage, WriteRequest,
+};
+use crate::modules::fs::head::{
+    remote_revision, validate_line_limit, FileHeadResultV1, FileViewErrorV1, HeadAccumulator,
+    RequestRegistration, HEAD_CHUNK_BYTES,
 };
 use crate::modules::pty::{PtyState, Session};
 
@@ -480,30 +485,25 @@ pub async fn ssh_fs_read_file(
             });
         }
 
-        // Stream into a BOUNDED buffer rather than `sftp.read()` (which buffers the
-        // whole file before any cap applies). The stat size above is server-
-        // controlled and may under-report (special/growing files) or be a lie, so a
-        // compromised peer could otherwise OOM us by streaming gigabytes. `take`
-        // caps in-memory bytes at MAX_READ_BYTES + 1 regardless of what stat said;
-        // reading exactly one byte past the cap lets us still report TooLarge.
+        // Stream only the UI preview budget. The old implementation buffered up
+        // to 10 MiB before returning a 256 KiB slice, which made opening a large
+        // remote log needlessly expensive before the user chose a bounded view.
         let mut file =
             await_stage("open remote file", SFTP_CONTROL_TIMEOUT, sftp.open(&path)).await?;
-        let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_READ_BYTES + 1) as usize);
+        let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_TEXT_PREVIEW_BYTES + 1) as usize);
         await_stage(
             "read remote file",
             SFTP_PREVIEW_TIMEOUT,
-            (&mut file).take(MAX_READ_BYTES + 1).read_to_end(&mut bytes),
+            (&mut file)
+                .take(MAX_TEXT_PREVIEW_BYTES + 1)
+                .read_to_end(&mut bytes),
         )
         .await?;
 
-        // If we hit the +1 byte, the real file is larger than the cap (stat
-        // under-reported or lied). Don't hand back a preview we meant to refuse.
-        let real_size = bytes.len() as u64;
-        if real_size > MAX_READ_BYTES {
-            return Ok(RemoteReadResult::TooLarge {
-                size: real_size,
-                limit: MAX_READ_BYTES,
-            });
+        let truncated =
+            size > MAX_TEXT_PREVIEW_BYTES || bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES;
+        if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
+            bytes.truncate(MAX_TEXT_PREVIEW_BYTES as usize);
         }
 
         if let Some(image) = crate::modules::fs::file::image_preview(&bytes) {
@@ -517,8 +517,29 @@ pub async fn ssh_fs_read_file(
                     max_pixels: crate::modules::fs::file::MAX_IMAGE_PIXELS,
                 });
             }
+            // Raster previews intentionally need the complete payload, unlike
+            // large text. Reopen after sniffing so the byte dropped by the
+            // text-preview +1 probe cannot corrupt the image, and retain the
+            // existing 10 MiB hard bound if remote metadata under-reported.
+            let mut image_file =
+                await_stage("open remote image", SFTP_CONTROL_TIMEOUT, sftp.open(&path)).await?;
+            let mut image_bytes = Vec::with_capacity(size.min(MAX_READ_BYTES + 1) as usize);
+            await_stage(
+                "read remote image",
+                SFTP_PREVIEW_TIMEOUT,
+                (&mut image_file)
+                    .take(MAX_READ_BYTES + 1)
+                    .read_to_end(&mut image_bytes),
+            )
+            .await?;
+            if image_bytes.len() as u64 > MAX_READ_BYTES {
+                return Ok(RemoteReadResult::TooLarge {
+                    size: image_bytes.len() as u64,
+                    limit: MAX_READ_BYTES,
+                });
+            }
             return Ok(RemoteReadResult::Image {
-                bytes,
+                bytes: image_bytes,
                 size,
                 mime: image.mime,
                 width: image.width,
@@ -527,21 +548,28 @@ pub async fn ssh_fs_read_file(
         }
 
         // Null-byte heuristic for binary detection, like the local reader.
-        let preview_len = bytes.len().min(MAX_TEXT_PREVIEW_BYTES as usize);
-        let slice = &bytes[..preview_len];
-        if slice.contains(&0) {
+        if bytes.contains(&0) {
             return Ok(RemoteReadResult::Binary { size });
         }
-        match std::str::from_utf8(slice) {
+        match String::from_utf8(bytes) {
             Ok(content) => Ok(RemoteReadResult::Text {
-                fingerprint: (editable_regular
-                    && bytes.len() as u64 <= MAX_TEXT_PREVIEW_BYTES
-                    && bytes.len() as u64 == size)
-                    .then(|| content_fingerprint(&bytes)),
-                content: content.to_string(),
+                fingerprint: (editable_regular && !truncated && content.len() as u64 == size)
+                    .then(|| content_fingerprint(content.as_bytes())),
+                content,
                 size,
-                truncated: bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES,
+                truncated,
             }),
+            Err(error) if truncated && error.utf8_error().error_len().is_none() => {
+                let valid = error.utf8_error().valid_up_to();
+                let mut bytes = error.into_bytes();
+                bytes.truncate(valid);
+                Ok(RemoteReadResult::Text {
+                    content: String::from_utf8(bytes).expect("valid UTF-8 prefix"),
+                    size,
+                    truncated: true,
+                    fingerprint: None,
+                })
+            }
             Err(_) => Ok(RemoteReadResult::Binary { size }),
         }
     })
@@ -549,6 +577,88 @@ pub async fn ssh_fs_read_file(
     .map_err(|error: String| {
         crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpRead, error)
     })
+}
+
+/// Read only the first requested lines through the current, fully validated
+/// SSH binding. Both the line count and buffered bytes have backend hard caps.
+#[tauri::command]
+pub async fn ssh_file_view_head_v1(
+    state: tauri::State<'_, PtyState>,
+    binding: SessionBindingV1,
+    path: String,
+    line_limit: u32,
+    request_id: String,
+) -> Result<FileHeadResultV1, FileViewErrorV1> {
+    validate_line_limit(line_limit)?;
+    let registration = RequestRegistration::register(request_id)?;
+    let sftp = super::sftp_common::session_for_binding(state.inner(), &binding)
+        .await
+        .map_err(|_| FileViewErrorV1::stale_binding())?;
+    let before = await_stage(
+        "stat bounded remote file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.metadata(&path),
+    )
+    .await
+    .map_err(|error| remote_file_view_error(&error))?;
+    if !before.is_regular() {
+        return Err(FileViewErrorV1::read_failed());
+    }
+    let size = before.size.unwrap_or(0);
+    let before_revision = remote_revision(size, before.mtime);
+    let mut file = await_stage(
+        "open bounded remote file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.open(&path),
+    )
+    .await
+    .map_err(|error| remote_file_view_error(&error))?;
+    let mut accumulator = HeadAccumulator::new();
+    let mut chunk = [0_u8; HEAD_CHUNK_BYTES];
+    let reached_eof = tokio::time::timeout(SFTP_PREVIEW_TIMEOUT, async {
+        loop {
+            if registration.cancelled.load(Ordering::Acquire) {
+                return Err(FileViewErrorV1::cancelled());
+            }
+            let count = tokio::time::timeout(SFTP_CHUNK_TIMEOUT, file.read(&mut chunk))
+                .await
+                .map_err(|_| FileViewErrorV1::read_failed())?
+                .map_err(|error| remote_file_view_error(&error.to_string()))?;
+            if count == 0 {
+                break Ok(true);
+            }
+            accumulator.push(&chunk[..count], line_limit);
+            if accumulator.is_complete() {
+                break Ok(false);
+            }
+        }
+    })
+    .await
+    .map_err(|_| FileViewErrorV1::read_failed())??;
+    if registration.cancelled.load(Ordering::Acquire) {
+        return Err(FileViewErrorV1::cancelled());
+    }
+    let after = await_stage(
+        "restat bounded remote file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.metadata(&path),
+    )
+    .await
+    .map_err(|_| FileViewErrorV1::changed())?;
+    let after_size = after.size.unwrap_or(0);
+    let after_revision = remote_revision(after_size, after.mtime);
+    if before_revision != after_revision {
+        return Err(FileViewErrorV1::changed());
+    }
+    Ok(accumulator.finish(size, before_revision, line_limit, reached_eof))
+}
+
+fn remote_file_view_error(raw: &str) -> FileViewErrorV1 {
+    if raw.to_ascii_lowercase().contains("permission") {
+        FileViewErrorV1::permission_denied()
+    } else {
+        FileViewErrorV1::read_failed()
+    }
 }
 
 async fn read_remote_editable_bytes(

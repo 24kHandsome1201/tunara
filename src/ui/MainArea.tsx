@@ -13,6 +13,7 @@ import { useWorkspaceHydration } from "./useWorkspaceHydration";
 import { splitLayoutGeometry, splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { PanelLoadingState } from "./shared";
 import { recordTerminalFocusIntent } from "@/modules/terminal/lib/binding-aware-async-action";
+import { resourceRefForSession } from "@/modules/resources/resource-ref";
 
 const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 
@@ -233,6 +234,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                   sessionId={tab.sessionId}
                   filePath={tab.filePath}
                   fileName={tab.fileName}
+                  resource={resourceRefForSession(owner, tab.filePath, tab.line, tab.column)}
                   remotePtyId={owner.remote ? owner.ptyId : undefined}
                   remote={Boolean(owner.remote)}
                   onClose={() => useUIStore.getState().closeFileTab(tab.id)}

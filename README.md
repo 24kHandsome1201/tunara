@@ -164,6 +164,7 @@ Deeper developer docs live under [`docs/`](docs/):
 - [Local usage logging & privacy](docs/LOCAL_USAGE_LOGGING.md) — opt-in SSH diagnostics, JSONL schema, data exclusions, rotation, export, and failure behavior.
 - [Agent detection](docs/AGENT_DETECTION.md) — how agent detection & lifecycle work, plus a step-by-step checklist for adding a new agent.
 - [State & persistence](docs/STATE_AND_PERSISTENCE.md) — the three Zustand stores, persisted workspace snapshot, and contributor gotchas around restore-on-restart.
+- [Limited large-file viewing](docs/LIMITED_LARGE_FILE_VIEWING.md) — bounded first-N-line viewing for local and SSH text/log files, including IPC limits and safety behavior.
 
 ## Keybindings
 

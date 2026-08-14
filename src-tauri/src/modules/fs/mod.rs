@@ -12,6 +12,7 @@
 //! counterparts live in [`crate::modules::ssh::sftp`] with matching shapes.
 pub mod file;
 pub mod grep;
+pub mod head;
 pub mod search;
 pub mod tree;
 

@@ -39,11 +39,12 @@ const mapped = {
 };
 
 // Strict exemptions: these commands cannot leak a Result<String> error. The two
-// run/open v2 commands return typed SshCommandErrorV1; cancel commands return
-// bool, while transfer cancellation returns the typed CancelResult enum.
+// run/open and bounded-view v1 commands return typed errors; cancel commands
+// return bool, while transfer cancellation returns the typed CancelResult enum.
 const exemptions = new Set([
   "ssh_open_v2", "ssh_diagnostic_run_v1", "ssh_cancel_open",
   "ssh_diagnostic_cancel_v1", "ssh_fs_cancel_upload", "ssh_transfer_cancel",
+  "ssh_file_view_head_v1",
 ]);
 
 const addedSshCommands = [
