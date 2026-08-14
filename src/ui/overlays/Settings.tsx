@@ -428,10 +428,10 @@ export function Settings({ onClose }: SettingsProps) {
         <div role="tabpanel" id="settings-tabpanel" style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }} className="no-scrollbar scroll-fade-y">
           {activeTab === "appearance" && (
             <div>
-              <div style={{ marginBottom: 24 }}>
+              <div className="settings-terminal-interactions" style={{ marginBottom: 24 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                   <div style={SECTION_LABEL}>{t("settings.terminal_interactions.title")}</div>
-                  <button onClick={() => { resetTerminalInteractions(); setPendingRightClickRisk(false); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>
+                  <button className="settings-action-button" onClick={() => { resetTerminalInteractions(); setPendingRightClickRisk(false); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>
                     {t("settings.terminal_interactions.reset")}
                   </button>
                 </div>
@@ -440,6 +440,7 @@ export function Settings({ onClose }: SettingsProps) {
                   <span>{t("settings.terminal_interactions.secondary_click")}</span>
                   <select
                     id="terminal-secondary-click"
+                    className="settings-control"
                     value={terminalSecondaryClick}
                     onChange={(event) => {
                       const mode = event.target.value as "smart" | "menu" | "disabled";
@@ -460,7 +461,7 @@ export function Settings({ onClose }: SettingsProps) {
                   <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)", marginTop: 8 }}>
                     {t("settings.terminal_interactions.mouse_risk")}
                     {pendingRightClickRisk && (
-                      <button style={{ marginLeft: 8 }} onClick={() => { setTerminalSecondaryClick("menu"); setPendingRightClickRisk(false); }}>
+                      <button className="settings-action-button" style={{ marginLeft: 8 }} onClick={() => { setTerminalSecondaryClick("menu"); setPendingRightClickRisk(false); }}>
                         {t("settings.terminal_interactions.mouse_risk_confirm")}
                       </button>
                     )}
@@ -468,7 +469,7 @@ export function Settings({ onClose }: SettingsProps) {
                 )}
                 <label htmlFor="terminal-host-modifier" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, marginTop: 10, fontSize: "var(--fs-secondary)" }}>
                   <span>{t("settings.appearance.host_modifier")}</span>
-                  <select id="terminal-host-modifier" value={terminalHostModifier} onChange={(event) => setTerminalHostModifier(event.target.value as "shift" | "meta" | "alt")}>
+                  <select id="terminal-host-modifier" className="settings-control" value={terminalHostModifier} onChange={(event) => setTerminalHostModifier(event.target.value as "shift" | "meta" | "alt")}>
                     <option value="shift">Shift</option><option value="meta">Cmd/Meta</option><option value="alt">Alt/Option</option>
                   </select>
                 </label>
@@ -487,6 +488,7 @@ export function Settings({ onClose }: SettingsProps) {
                           readOnly
                           value={keybindings[action]}
                           placeholder={t("settings.terminal_interactions.disabled")}
+                          className="settings-shortcut-input"
                           onKeyDown={(event) => {
                             event.preventDefault(); event.stopPropagation();
                             const binding = captureKeybinding(event.nativeEvent);
@@ -498,11 +500,10 @@ export function Settings({ onClose }: SettingsProps) {
                             setKeybinding(action, binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null);
                           }}
                           aria-label={t("settings.keybindings.capture", { action: t(`settings.keybindings.action.${action}`) })}
-                          style={{ fontFamily: "var(--font-mono)", padding: "5px 8px" }}
                         />
-                        <button onClick={() => { setKeybinding(action, ""); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.terminal_interactions.disable")}</button>
-                        <button onClick={() => { setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action]); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_one")}</button>
-                        {pendingRisk?.action === action && <button style={{ gridColumn: "2 / 5" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.override")}</button>}
+                        <button className="settings-action-button" onClick={() => { setKeybinding(action, ""); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.terminal_interactions.disable")}</button>
+                        <button className="settings-action-button" onClick={() => { setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action]); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_one")}</button>
+                        {pendingRisk?.action === action && <button className="settings-action-button" style={{ gridColumn: "2 / 5" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.override")}</button>}
                       </div>
                     ))}
                   </div>
@@ -764,7 +765,7 @@ export function Settings({ onClose }: SettingsProps) {
               <div style={{ marginTop: 24 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={SECTION_LABEL}>{t("settings.keybindings.title")}</div>
-                  <button onClick={() => { resetKeybindings(); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_all")}</button>
+                  <button className="settings-action-button" onClick={() => { resetKeybindings(); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_all")}</button>
                 </div>
                 <div style={SECTION_HINT}>{t("settings.keybindings.hint")}</div>
                 {bindingMessage && bindingMessageScope === "app" && <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)" }}>{bindingMessage}</div>}
@@ -776,6 +777,7 @@ export function Settings({ onClose }: SettingsProps) {
                         id={`binding-${action}`}
                         readOnly
                         value={keybindings[action]}
+                        className="settings-shortcut-input"
                         onKeyDown={(event) => {
                           event.preventDefault(); event.stopPropagation();
                           const binding = captureKeybinding(event.nativeEvent);
@@ -787,10 +789,9 @@ export function Settings({ onClose }: SettingsProps) {
                           setKeybinding(action, binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null);
                         }}
                         aria-label={t("settings.keybindings.capture", { action: t(`settings.keybindings.action.${action}`) })}
-                        style={{ fontFamily: "var(--font-mono)", padding: "5px 8px" }}
                       />
-                      <button onClick={() => { setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action]); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_one")}</button>
-                      {pendingRisk?.action === action && <button style={{ gridColumn: "2 / 4" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.override")}</button>}
+                      <button className="settings-action-button" onClick={() => { setKeybinding(action, defaultKeybindingsForPlatform(_isMac ? "macos" : (navigator.platform.toLowerCase().includes("win") ? "windows" : "linux"))[action]); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.reset_one")}</button>
+                      {pendingRisk?.action === action && <button className="settings-action-button" style={{ gridColumn: "2 / 4" }} onClick={() => { setKeybinding(action, pendingRisk.binding); setPendingRisk(null); setBindingMessage(null); setBindingMessageScope(null); }}>{t("settings.keybindings.override")}</button>}
                     </div>
                   ))}
                 </div>
@@ -1070,7 +1071,7 @@ export function Settings({ onClose }: SettingsProps) {
             ) : configPath ? (
               <span title={configPath} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{configPath}</span>
             ) : null}
-            <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-5)", background: "var(--c-bg-3)", padding: "2px 6px", borderRadius: "var(--r-btn)" }}>ESC</span>
+            <kbd className="settings-key-hint" style={{ padding: "2px 6px" }}>ESC</kbd>
             <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)" }}>
               {t("common.done")}
             </button>

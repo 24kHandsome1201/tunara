@@ -18,6 +18,34 @@ vi.mock("@/ui/overlays/useAppUpdate", () => ({
   }),
 }));
 
+test("shortcut and terminal interaction controls opt into theme-aware styling", () => {
+  useUIStore.setState({
+    configLoaded: false,
+    settingsTab: "appearance",
+    theme: "dark",
+    terminalSecondaryClick: "smart",
+    terminalHostModifier: "shift",
+    keybindings: defaultKeybindingsForPlatform("linux"),
+  });
+  render(<Settings onClose={() => {}} />);
+
+  expect(screen.getByLabelText("Open shortcut menu with secondary click").classList).toContain("settings-control");
+  expect(screen.getByLabelText("Terminal host modifier").classList).toContain("settings-control");
+  expect(screen.getByRole("button", { name: "Restore platform defaults" }).classList).toContain("settings-action-button");
+  expect(screen.getByText("ESC").tagName).toBe("KBD");
+  expect(screen.getByText("ESC").classList).toContain("settings-key-hint");
+
+  fireEvent.click(screen.getByText("Advanced terminal shortcuts"));
+  const terminalShortcut = screen.getByLabelText("Capture shortcut for Copy terminal selection");
+  expect(terminalShortcut.classList).toContain("settings-shortcut-input");
+  for (const button of within(terminalShortcut.parentElement!).getAllByRole("button")) {
+    expect(button.classList).toContain("settings-action-button");
+  }
+
+  expect(screen.getByLabelText("Capture shortcut for New terminal").classList).toContain("settings-shortcut-input");
+  expect(screen.getByRole("button", { name: "Reset all" }).classList).toContain("settings-action-button");
+});
+
 test("terminal interaction presets warn before TUI override and keep recovery instructions", () => {
   useUIStore.setState({
     configLoaded: false,

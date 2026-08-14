@@ -32,6 +32,8 @@
   --c-border-1: oklch(89.8% 0.008 55);
   --c-border-2: oklch(85.5% 0.009 55);
   --c-border-3: oklch(93% 0.006 55);
+  /* Interactive control boundary: >= 3:1 against every neutral surface. */
+  --c-control-border: oklch(60% 0.009 55);
 
   /* ── 语义色 ── */
   --c-success: #187257;
@@ -210,6 +212,7 @@
   --c-border-1: oklch(25% 0.009 55);
   --c-border-2: oklch(31% 0.01 55);
   --c-border-3: oklch(22% 0.008 55);
+  --c-control-border: oklch(55% 0.009 55);
 
   --c-success: #4ade80;
   --c-success-bg: #1a2e22;

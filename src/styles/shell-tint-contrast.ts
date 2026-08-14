@@ -48,6 +48,7 @@ const SURFACE_KEYS = [
   "--c-bg-3",
   "--c-bg-hover",
 ] as const;
+const CONTROL_BORDER_KEYS = ["--c-border-2", "--c-control-border"] as const;
 
 /** Ensure normal text and control boundaries remain perceivable on every shell surface. */
 export function assertShellTintContrast(
@@ -55,7 +56,7 @@ export function assertShellTintContrast(
   minRatio = MIN_SHELL_TINT_CONTRAST,
 ): void {
   for (const [preset, vars] of Object.entries(shellTints)) {
-    for (const key of [...TEXT_KEYS, ...SURFACE_KEYS, "--c-border-2"] as const) {
+    for (const key of [...TEXT_KEYS, ...SURFACE_KEYS, ...CONTROL_BORDER_KEYS] as const) {
       if (!vars[key]) throw new Error(`Shell tint "${preset}" is missing ${key}`);
     }
 
@@ -72,14 +73,16 @@ export function assertShellTintContrast(
       }
     }
 
-    for (const surfaceKey of SURFACE_KEYS) {
-      const border = vars["--c-border-2"];
-      const bg = vars[surfaceKey];
-      const ratio = contrastRatio(border, bg);
-      if (ratio < MIN_CONTROL_CONTRAST) {
-        throw new Error(
-          `Shell tint "${preset}" --c-border-2 contrast ${ratio.toFixed(2)}:1 is below ${MIN_CONTROL_CONTRAST}:1 on ${surfaceKey} (${border} on ${bg})`,
-        );
+    for (const borderKey of CONTROL_BORDER_KEYS) {
+      for (const surfaceKey of SURFACE_KEYS) {
+        const border = vars[borderKey];
+        const bg = vars[surfaceKey];
+        const ratio = contrastRatio(border, bg);
+        if (ratio < MIN_CONTROL_CONTRAST) {
+          throw new Error(
+            `Shell tint "${preset}" ${borderKey} contrast ${ratio.toFixed(2)}:1 is below ${MIN_CONTROL_CONTRAST}:1 on ${surfaceKey} (${border} on ${bg})`,
+          );
+        }
       }
     }
   }

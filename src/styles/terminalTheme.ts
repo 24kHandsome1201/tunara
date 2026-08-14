@@ -107,7 +107,7 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
   catppuccin: {
     "--c-bg-white": "#11111b", "--c-bg-1": "#1e1e2e", "--c-bg-2": "#181825",
     "--c-bg-3": "#313244", "--c-bg-hover": "#45475a",
-    "--c-border-1": "#313244", "--c-border-2": "#9399b2", "--c-border-3": "#28283a",
+    "--c-border-1": "#313244", "--c-border-2": "#9399b2", "--c-border-3": "#28283a", "--c-control-border": "#9399b2",
     "--c-text-primary": "#cdd6f4", "--c-text-2": "#bac2de", "--c-text-3": "#b7bfda",
     "--c-text-4": "#b4bcd7", "--c-text-5": "#b1b9d4", "--c-text-6": "#afb7d2", "--c-text-7": "#aeb6d1",
     "--c-bg-white-glass": "#11111b", "--c-bg-1-glass": "#1e1e2e",
@@ -116,7 +116,7 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
   "tokyo-night": {
     "--c-bg-white": "#16161e", "--c-bg-1": "#1a1b26", "--c-bg-2": "#1f2335",
     "--c-bg-3": "#292e42", "--c-bg-hover": "#343a52",
-    "--c-border-1": "#292e42", "--c-border-2": "#828bb8", "--c-border-3": "#222230",
+    "--c-border-1": "#292e42", "--c-border-2": "#828bb8", "--c-border-3": "#222230", "--c-control-border": "#828bb8",
     "--c-text-primary": "#c0caf5", "--c-text-2": "#a9b1d6", "--c-text-3": "#a5afd4",
     "--c-text-4": "#a2acd2", "--c-text-5": "#a0aad1", "--c-text-6": "#9da7cf", "--c-text-7": "#9aa5ce",
     "--c-bg-white-glass": "#16161e", "--c-bg-1-glass": "#1a1b26",
@@ -125,7 +125,7 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
   "one-dark": {
     "--c-bg-white": "#21252b", "--c-bg-1": "#282c34", "--c-bg-2": "#2c313a",
     "--c-bg-3": "#3b4048", "--c-bg-hover": "#3e4451",
-    "--c-border-1": "#3b4048", "--c-border-2": "#89919f", "--c-border-3": "#31363f",
+    "--c-border-1": "#3b4048", "--c-border-2": "#89919f", "--c-border-3": "#31363f", "--c-control-border": "#89919f",
     "--c-text-primary": "#b4bbc7", "--c-text-2": "#b2b9c5", "--c-text-3": "#b0b7c3",
     "--c-text-4": "#aeb5c1", "--c-text-5": "#adb4c0", "--c-text-6": "#acb3bf", "--c-text-7": "#abb2bf",
     "--c-bg-white-glass": "#21252b", "--c-bg-1-glass": "#282c34",
@@ -134,7 +134,7 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
   solarized: {
     "--c-bg-white": "#002129", "--c-bg-1": "#002b36", "--c-bg-2": "#073642",
     "--c-bg-3": "#0a4250", "--c-bg-hover": "#0e4a59",
-    "--c-border-1": "#073642", "--c-border-2": "#7e9597", "--c-border-3": "#05303b",
+    "--c-border-1": "#073642", "--c-border-2": "#7e9597", "--c-border-3": "#05303b", "--c-control-border": "#7e9597",
     "--c-text-primary": "#c2cccc", "--c-text-2": "#bec9c9", "--c-text-3": "#bbc6c6",
     "--c-text-4": "#b8c3c3", "--c-text-5": "#b7c2c2", "--c-text-6": "#b6c1c1", "--c-text-7": "#b5c0c0",
     "--c-bg-white-glass": "#002129", "--c-bg-1-glass": "#002b36",
@@ -143,7 +143,7 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
   "github-light": {
     "--c-bg-white": "#ffffff", "--c-bg-1": "#ffffff", "--c-bg-2": "#f6f8fa",
     "--c-bg-3": "#eaeef2", "--c-bg-hover": "#eef1f4",
-    "--c-border-1": "#d0d7de", "--c-border-2": "#747d87", "--c-border-3": "#e4e8ec",
+    "--c-border-1": "#d0d7de", "--c-border-2": "#747d87", "--c-border-3": "#e4e8ec", "--c-control-border": "#747d87",
     "--c-text-primary": "#1f2328", "--c-text-2": "#24292f", "--c-text-3": "#57606a",
     "--c-text-4": "#5a636d", "--c-text-5": "#5d6670", "--c-text-6": "#606973", "--c-text-7": "#636c76",
     "--c-bg-white-glass": "#ffffff", "--c-bg-1-glass": "#ffffff",
@@ -152,7 +152,7 @@ export const SHELL_TINTS: Record<string, Record<string, string>> = {
   "rose-pine-dawn": {
     "--c-bg-white": "#fffaf3", "--c-bg-1": "#faf4ed", "--c-bg-2": "#fffaf3",
     "--c-bg-3": "#f2e9e1", "--c-bg-hover": "#f4ede8",
-    "--c-border-1": "#f2e9e1", "--c-border-2": "#797593", "--c-border-3": "#f4ede8",
+    "--c-border-1": "#f2e9e1", "--c-border-2": "#797593", "--c-border-3": "#f4ede8", "--c-control-border": "#797593",
     "--c-text-primary": "#575279", "--c-text-2": "#625d7b", "--c-text-3": "#645f7d",
     "--c-text-4": "#66617f", "--c-text-5": "#676280", "--c-text-6": "#696482", "--c-text-7": "#6a6583",
     "--c-bg-white-glass": "#fffaf3", "--c-bg-1-glass": "#faf4ed",

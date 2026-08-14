@@ -56,7 +56,7 @@ function oklchContrast(first, second) {
     / (Math.min(firstLuminance, secondLuminance) + 0.05);
 }
 
-test("default light and dark shell tokens keep every text level AA on every surface", () => {
+test("default light and dark shell tokens keep text AA and control boundaries at 3:1", () => {
   const css = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
   const lightBlock = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
   const darkBlock = css.slice(css.indexOf(".dark {"), css.indexOf(".hover-bg"));
@@ -69,6 +69,12 @@ test("default light and dark shell tokens keep every text level AA on every surf
         const ratio = oklchContrast(parseOklch(block, textKey), parseOklch(block, surfaceKey));
         assert.ok(ratio >= 4.5, `${theme} ${textKey} is ${ratio.toFixed(2)}:1 on ${surfaceKey}`);
       }
+    }
+
+    const controlBorder = parseOklch(block, "--c-control-border");
+    for (const surfaceKey of surfaceKeys) {
+      const ratio = oklchContrast(controlBorder, parseOklch(block, surfaceKey));
+      assert.ok(ratio >= 3, `${theme} --c-control-border is ${ratio.toFixed(2)}:1 on ${surfaceKey}`);
     }
   }
 });
@@ -88,6 +94,7 @@ test("assertShellTintContrast rejects presets below the AA threshold", () => {
     "--c-text-5": "#ffffff",
     "--c-text-6": "#ffffff",
     "--c-text-7": "#002b36",
+    "--c-control-border": "#ffffff",
   };
   assert.throws(
     () => assertShellTintContrast({ bad: dark }),
