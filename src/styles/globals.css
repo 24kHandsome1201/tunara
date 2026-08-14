@@ -14,6 +14,8 @@ body {
 html, body, #root {
   height: 100%;
 }
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
 
 /* Custom window chrome (Linux/Windows) */
 html[data-chrome="borderless"],
@@ -185,8 +187,12 @@ html[data-chrome="borderless"] {
 }
 @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
 
-/* Settings native controls must consume shell tokens explicitly. WebKitGTK's
-   defaults otherwise stay white when the app or a terminal palette is dark. */
+/* Native controls must consume shell tokens explicitly. WebKitGTK's defaults
+   otherwise stay white when the app or a terminal palette is dark. The
+   settings-* names remain for compatibility; ui-* is shared by the rest of
+   the application. */
+.ui-control,
+.ui-button,
 .settings-control,
 .settings-shortcut-input,
 .settings-action-button {
@@ -203,14 +209,28 @@ html[data-chrome="borderless"] {
     transform var(--duration-fast) var(--ease-out-expo),
     box-shadow var(--duration-fast) var(--ease-smooth);
 }
-.settings-control,
+.ui-control,
 .settings-shortcut-input { min-height: 30px; }
+.ui-control,
 .settings-control {
   padding: 0 8px;
   color-scheme: light;
+  appearance: none;
 }
+.dark .ui-control,
 .dark .settings-control { color-scheme: dark; }
+.ui-control::placeholder { color: var(--c-text-5); opacity: 1; }
+.ui-control option,
 .settings-control option { background: var(--c-bg-1); color: var(--c-text-2); }
+select.ui-control {
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+}
 .settings-shortcut-input {
   width: 100%;
   padding: 5px 8px;
@@ -218,11 +238,15 @@ html[data-chrome="borderless"] {
   font-family: var(--font-mono);
 }
 .settings-shortcut-input::placeholder { color: var(--c-text-5); opacity: 1; }
+.ui-button,
 .settings-action-button {
+  appearance: none;
   min-height: 28px;
   padding: 0 9px;
   cursor: pointer;
 }
+.ui-control:hover:not(:disabled),
+.ui-button:hover:not(:disabled),
 .settings-control:hover:not(:disabled),
 .settings-shortcut-input:hover:not(:disabled),
 .settings-action-button:hover:not(:disabled) {
@@ -230,13 +254,18 @@ html[data-chrome="borderless"] {
   background: var(--c-bg-hover);
   color: var(--c-text-primary);
 }
+.ui-control:active:not(:disabled),
 .settings-control:active:not(:disabled),
 .settings-shortcut-input:active:not(:disabled) { background: var(--c-bg-2); }
+.ui-button:active:not(:disabled),
 .settings-action-button:active:not(:disabled) {
   background: var(--c-bg-3);
   transform: scale(var(--scale-press));
   transition-duration: 60ms;
 }
+.ui-control:focus-visible,
+.ui-button:focus-visible,
+.ui-choice:focus-visible,
 .settings-control:focus-visible,
 .settings-shortcut-input:focus-visible,
 .settings-action-button:focus-visible {
@@ -245,6 +274,9 @@ html[data-chrome="borderless"] {
   border-color: var(--c-control-border) !important;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 18%, transparent);
 }
+.ui-control:disabled,
+.ui-button:disabled,
+.ui-choice:disabled,
 .settings-control:disabled,
 .settings-shortcut-input:disabled,
 .settings-action-button:disabled {
@@ -254,6 +286,7 @@ html[data-chrome="borderless"] {
   opacity: .55;
   transform: none;
 }
+.ui-kbd,
 .settings-key-hint {
   display: inline-flex;
   align-items: center;
@@ -265,6 +298,91 @@ html[data-chrome="borderless"] {
   color: var(--c-text-2);
   font: 600 var(--fs-meta) var(--font-mono);
 }
+
+.ui-button--primary {
+  border-color: var(--c-control-border);
+  background: color-mix(in srgb, var(--c-accent) 55%, var(--c-btn-primary-bg));
+  color: var(--c-btn-primary-text);
+}
+.ui-button--primary:hover:not(:disabled) {
+  border-color: var(--c-control-border);
+  background: color-mix(in srgb, var(--c-accent) 60%, var(--c-btn-primary-bg));
+  color: var(--c-btn-primary-text);
+}
+.ui-button--primary:disabled {
+  border-color: var(--c-border-2);
+  background: var(--c-bg-2);
+  color: var(--c-text-6);
+}
+.ui-button--danger { color: var(--c-error); }
+
+.ui-choice {
+  appearance: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  border: 1px solid var(--c-control-border);
+  border-radius: var(--r-badge-sm);
+  background: var(--c-bg-1);
+  color: var(--c-btn-primary-text);
+  display: inline-grid;
+  place-content: center;
+  color-scheme: light;
+  transition:
+    background var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    box-shadow var(--duration-fast) var(--ease-smooth);
+}
+.dark .ui-choice { color-scheme: dark; }
+.ui-choice[type="radio"] { border-radius: 999px; }
+.ui-choice::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  transform: scale(0);
+  transition: transform 100ms var(--ease-smooth);
+}
+.ui-choice[type="radio"]::before { border-radius: 999px; }
+.ui-choice[type="checkbox"]::before {
+  width: 8px;
+  height: 5px;
+  border: solid currentColor;
+  border-width: 0 0 2px 2px;
+  background: transparent;
+  transform: translateY(-1px) rotate(-45deg) scale(0);
+}
+.ui-choice:checked {
+  border-color: var(--c-control-border);
+  background: color-mix(in srgb, var(--c-accent) 55%, var(--c-btn-primary-bg));
+}
+.ui-choice:checked::before { transform: scale(1); }
+.ui-choice[type="checkbox"]:checked::before {
+  transform: translateY(-1px) rotate(-45deg) scale(1);
+}
+
+.ui-progress {
+  appearance: none;
+  color-scheme: light;
+  overflow: hidden;
+  border: 1px solid var(--c-control-border);
+  border-radius: var(--r-pill);
+  background: var(--c-bg-2);
+  accent-color: var(--c-accent);
+}
+.dark .ui-progress { color-scheme: dark; }
+.ui-progress::-webkit-progress-bar { background: var(--c-bg-2); }
+.ui-progress::-webkit-progress-value { background: var(--c-accent); }
+
+/* Native inputs embedded in owner-drawn search/editor surfaces keep that
+   geometry while still opting into WebKitGTK's active color scheme. */
+.ui-native-control {
+  color-scheme: light;
+  font: inherit;
+}
+.dark .ui-native-control { color-scheme: dark; }
 
 /* Settings segmented controls: light/dark adaptive surface for selected state */
 .settings-segment[data-active="true"] {
@@ -536,7 +654,7 @@ html[data-chrome="borderless"] {
   flex: 1;
   min-width: 80px;
   height: 28px;
-  border: 1px solid var(--c-border-2);
+  border: 1px solid var(--c-control-border);
   border-radius: var(--r-input);
   padding: 0 9px;
   outline: none;
@@ -789,7 +907,7 @@ textarea:focus-visible {
 .preview-source-card input {
   min-height: 26px;
   box-sizing: border-box;
-  border: 1px solid var(--c-border-2);
+  border: 1px solid var(--c-control-border);
   border-radius: var(--r-btn);
   background: var(--c-bg-white);
   color: var(--c-text-2);

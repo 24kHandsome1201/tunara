@@ -122,6 +122,7 @@ export function RemoteMetadataPanel({ binding, path, host }: RemoteMetadataPanel
           <label>
             Permissions (0000–0777)
             <input
+              className="ui-control"
               aria-label="Permissions (0000–0777)"
               value={modeInput}
               onChange={(event) => setModeInput(event.target.value)}
@@ -134,7 +135,7 @@ export function RemoteMetadataPanel({ binding, path, host }: RemoteMetadataPanel
           {metadata.kind !== "symlink" && metadata.capability.chmod === "unsupported" && (
             <p>chmod is unavailable because this SFTP connection cannot prove a no-follow, identity-bound update.</p>
           )}
-          <button type="button" disabled={!canChmod || busy} onClick={() => { void chmod(); }}>
+          <button type="button" className="ui-button ui-button--primary" disabled={!canChmod || busy} onClick={() => { void chmod(); }}>
             {busy ? "Checking…" : "Apply permissions"}
           </button>
           <p>Capability: chmod {metadata.capability.chmod}; handle SETSTAT {metadata.capability.handleSetstat}; posix rename {metadata.capability.posixRename}.</p>

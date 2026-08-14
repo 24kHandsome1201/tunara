@@ -600,7 +600,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           maxWidth: "90vw",
           maxHeight: "60vh",
           background: "var(--c-bg-white)",
-          border: "1px solid var(--c-border-2)",
+          border: "1px solid var(--c-control-border)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
           zIndex: 1000,
@@ -613,6 +613,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
           <SearchIcon size={14} />
           <input
+            className="ui-control"
             ref={inputRef}
             type="text"
             role="combobox"
@@ -735,13 +736,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                       )}
                     </div>
                     {cmd.shortcut && (
-                      <span style={{
+                      <span className="ui-kbd" style={{
                         fontSize: "var(--fs-meta)",
-                        color: "var(--c-text-5)",
                         fontFamily: "var(--font-mono)",
-                        background: "var(--c-bg-3)",
                         padding: "1px 5px",
-                        borderRadius: 4,
                         flexShrink: 0,
                       }}>
                         {cmd.shortcut}

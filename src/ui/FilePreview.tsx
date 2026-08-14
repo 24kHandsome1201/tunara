@@ -779,6 +779,7 @@ function EditorSurface({
       {findOpen && (
         <div className="file-editor-find">
           <input
+            className="ui-native-control"
             autoFocus
             value={findQuery}
             onChange={(event) => { setFindQuery(event.target.value); setFindIndex(-1); }}
@@ -820,6 +821,7 @@ function EditorSurface({
                 </pre>
               )}
               <textarea
+                className="ui-native-control"
                 ref={textareaRef}
                 value={content}
                 onChange={(event) => { setContent(event.target.value); setSaveState("idle"); }}

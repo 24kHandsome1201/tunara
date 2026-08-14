@@ -435,6 +435,7 @@ function DiffFileRow({
           {diffs[key]?.kind === "text" && (
             <div style={{ padding: "4px 8px 2px", borderBottom: "1px solid var(--c-border-3)" }}>
               <input
+                className="ui-native-control"
                 type="text"
                 placeholder={t("diff.search.placeholder")}
                 value={searchQuery}
@@ -458,7 +459,7 @@ function DiffFileRow({
                   padding: "3px 6px",
                   background: "var(--c-bg-1)",
                   color: "var(--c-text-2)",
-                  border: "1px solid var(--c-border-2)",
+                  border: "1px solid var(--c-control-border)",
                   borderRadius: "var(--r-btn)",
                   outline: "none",
                 }}

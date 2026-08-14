@@ -75,6 +75,7 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
       </div>
 
       <textarea
+        className="ui-control"
         value={value}
         onChange={(e) => handleEdit(sanitizeSessionNote(e.target.value))}
         onBlur={flush}
@@ -85,7 +86,7 @@ export function SessionNotesPanel({ session }: SessionNotesPanelProps) {
           flex: 1,
           minHeight: 0,
           resize: "none",
-          border: "1px solid var(--c-border-1)",
+          border: "1px solid var(--c-control-border)",
           borderRadius: "var(--r-card)",
           background: "var(--c-bg-white)",
           color: "var(--c-text-primary)",

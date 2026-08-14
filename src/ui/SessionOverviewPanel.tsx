@@ -49,14 +49,9 @@ function ActionButton({ children, onClick }: { children: React.ReactNode; onClic
   return (
     <button
       onClick={onClick}
-      className="hover-bg"
+      className="ui-button"
       style={{
         height: 30,
-        border: "1px solid var(--c-border-1)",
-        borderRadius: "var(--r-btn)",
-        background: "var(--c-bg-white)",
-        color: "var(--c-text-primary)",
-        cursor: "pointer",
         padding: "0 10px",
         fontSize: "var(--fs-secondary)",
         fontWeight: 600,

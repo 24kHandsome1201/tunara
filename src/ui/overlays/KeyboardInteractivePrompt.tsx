@@ -109,6 +109,7 @@ export function KeyboardInteractivePromptDialog() {
             <label key={`${prompt.promptId}:${index}`} style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>
               <span>{item.prompt || t("ssh.keyboardInteractive.response")}</span>
               <input
+                className="ui-control"
                 type={item.echo ? "text" : "password"}
                 value={responses[index] ?? ""}
                 onChange={(event) => setResponses((current) => current.map((value, i) => i === index ? event.target.value : value))}
@@ -117,13 +118,7 @@ export function KeyboardInteractivePromptDialog() {
                 style={{
                   width: "100%",
                   padding: "8px 10px",
-                  borderRadius: "var(--r-btn)",
-                  border: "1px solid var(--c-border-2)",
-                  background: "var(--c-bg-input, var(--c-bg-white))",
-                  color: "var(--c-text-primary)",
                   fontSize: "var(--fs-body)",
-                  outline: "none",
-                  boxSizing: "border-box",
                 }}
               />
             </label>
@@ -138,8 +133,8 @@ export function KeyboardInteractivePromptDialog() {
             type="button"
             onClick={() => { void decide(null); }}
             disabled={submitting}
-            className="hover-bg"
-            style={{ padding: "6px 16px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-primary)", fontSize: "var(--fs-body)", cursor: submitting ? "wait" : "pointer" }}
+            className="ui-button"
+            style={{ padding: "6px 16px", fontSize: "var(--fs-body)" }}
           >
             {t("common.cancel")}
           </button>
@@ -147,8 +142,8 @@ export function KeyboardInteractivePromptDialog() {
             type="button"
             onClick={() => { void decide(responses); }}
             disabled={submitting}
-            className="hover-primary"
-            style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: submitting ? "wait" : "pointer", opacity: submitting ? 0.6 : 1 }}
+            className="ui-button ui-button--primary"
+            style={{ padding: "6px 18px", fontSize: "var(--fs-body)", fontWeight: 500 }}
           >
             {t("ssh.keyboardInteractive.continue")}
           </button>

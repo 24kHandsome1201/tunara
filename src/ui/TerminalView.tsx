@@ -97,7 +97,7 @@ function TerminalViewImpl({
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const screenReaderMode = useUIStore((s) => s.terminalScreenReaderMode); const terminalTheme = useUIStore((s) => s.terminalTheme); const accent = useUIStore((s) => s.accent);
   useTerminalRuntimeSync({
-    sessionId, active, termRef, fitRef, ptyRef, webglRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, terminalTheme, accent,
+    sessionId, active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, terminalTheme, accent,
   });
   useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady);
   useEffect(() => {

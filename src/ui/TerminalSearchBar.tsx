@@ -68,7 +68,7 @@ export function TerminalSearchBar({
         maxWidth: "max-content",
         zIndex: 30,
         background: "var(--c-bg-white)",
-        border: "1px solid var(--c-border-2)",
+        border: "1px solid var(--c-control-border)",
         borderRadius: "var(--r-input)",
         padding: "5px 6px 5px 10px",
         display: "flex",
@@ -81,6 +81,7 @@ export function TerminalSearchBar({
     >
       <SearchIcon size={13} color={hasResults ? "var(--c-accent)" : noMatch ? "var(--c-error)" : "var(--c-text-5)"} />
       <input
+        className="ui-native-control"
         ref={inputRef}
         type="text"
         value={query}

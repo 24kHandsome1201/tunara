@@ -4,9 +4,8 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { useUIStore, type CursorStyle } from "@/state/ui";
 import type { TerminalThemeName, ThemeType } from "./types";
-import type { TerminalWebglRenderer } from "./useTerminalWebgl";
 import { getTerminalTheme } from "@/styles/terminalTheme";
-import { createWebglAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
+import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 import { issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 
@@ -18,7 +17,6 @@ interface TerminalRuntimeSyncOptions {
   termRef: RefObject<Terminal | null>;
   fitRef: RefObject<FitAddon | null>;
   ptyRef: RefObject<PtySession | null>;
-  webglRef: RefObject<TerminalWebglRenderer | null>;
   fontSize: number;
   fontFamily: string;
   nerdFontFallback: boolean;
@@ -37,7 +35,6 @@ export function useTerminalRuntimeSync({
   termRef,
   fitRef,
   ptyRef,
-  webglRef,
   fontSize,
   fontFamily,
   nerdFontFallback,
@@ -91,11 +88,17 @@ export function useTerminalRuntimeSync({
       // WebGL texture atlas. fit() only rebuilds the atlas when the cell grid
       // actually changes size, so a same-size font/theme swap leaves stale
       // glyphs until the next resize. Force a rebuild here. No-op under DOM.
-      // Route through the shared rebuilder so this invalidation path carries
-      // the same torn-down-renderer guard as every other one.
-      createWebglAtlasRebuilder(webglRef)();
+      // The WebGL atlas is shared by terminals with the same font config. Clear
+      // every live renderer synchronously; rebuilding only this pane can leave
+      // an inactive pane holding the previous palette in the shared cache.
+      requestGlobalTerminalAtlasRebuild();
+      // WebKitGTK's WebGL renderer can otherwise keep the previous theme's
+      // clear color until a later resize or settings change. Repaint the
+      // current buffer after rebuilding so palette switches are not one step
+      // behind the surrounding shell.
+      if (term.rows > 0) term.refresh(0, term.rows - 1);
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, termRef, terminalTheme, theme, webglRef]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, termRef, terminalTheme, theme]);
 }

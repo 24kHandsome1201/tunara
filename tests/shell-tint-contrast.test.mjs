@@ -79,6 +79,32 @@ test("default light and dark shell tokens keep text AA and control boundaries at
   }
 });
 
+function mixHex(foreground, background, amount) {
+  const channels = (hex) => hex.match(/[\da-f]{2}/gi).map((channel) => Number.parseInt(channel, 16));
+  const front = channels(foreground);
+  const back = channels(background);
+  return `#${front.map((channel, index) => Math.round(channel * amount + back[index] * (1 - amount)).toString(16).padStart(2, "0")).join("")}`;
+}
+
+test("theme-aware primary controls stay AA for every accent and named palette", () => {
+  const controls = readFileSync(new URL("../src/ui/overlays/settings/controls.tsx", import.meta.url), "utf8");
+  const accentStart = controls.indexOf("export const ACCENT_COLORS");
+  const accentBlock = controls.slice(accentStart, controls.indexOf("];", accentStart));
+  const accents = [...accentBlock.matchAll(/color: "(#[\da-f]{6})"/gi)].map((match) => match[1]);
+  assert.equal(accents.length, 8);
+  for (const name of Object.keys(SHELL_TINTS)) {
+    const dark = isTerminalThemeDark(name);
+    const base = dark ? "#e4e4e7" : "#27272a";
+    const text = dark ? "#18181b" : "#ffffff";
+    for (const accent of accents) {
+      for (const amount of [0.55, 0.60]) {
+        const background = mixHex(accent, base, amount);
+        assert.ok(contrastRatio(background, text) >= 4.5, `${name} ${accent} primary text is below 4.5:1`);
+      }
+    }
+  }
+});
+
 test("assertShellTintContrast rejects presets below the AA threshold", () => {
   const dark = {
     "--c-bg-white": "#002b36",

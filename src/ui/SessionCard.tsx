@@ -502,6 +502,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             )}
             {editing ? (
               <input
+                className="ui-native-control"
                 ref={inputRef}
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}

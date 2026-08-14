@@ -235,12 +235,12 @@ export function Sidebar({
             alignItems: "center",
             gap: 7,
             padding: "6px 10px",
-            border: "1px solid var(--c-border-1)",
+            border: "1px solid var(--c-control-border)",
             transition: "background var(--duration-fast) ease, border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease",
           }}
         >
           <SidebarSearchIcon />
-          <input
+          <input className="ui-native-control"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}

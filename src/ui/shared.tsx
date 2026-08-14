@@ -73,19 +73,13 @@ export function PanelActionButton({
       {...props}
       type={type}
       disabled={disabled}
-      className={["hover-bg", className].filter(Boolean).join(" ")}
+      className={["ui-button", className].filter(Boolean).join(" ")}
       style={{
         minHeight: 26,
         padding: "3px 8px",
-        border: "1px solid var(--c-border-2)",
-        borderRadius: "var(--r-btn)",
-        background: "var(--c-bg-white)",
-        color: "var(--c-text-3)",
         fontFamily: "var(--font-ui)",
         fontSize: "var(--fs-meta)",
         lineHeight: 1.25,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
         ...style,
       }}
     />

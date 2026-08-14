@@ -3,24 +3,23 @@ import { render, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { t } from "@/modules/i18n";
 import { DEFAULT_SETTINGS, loadUserConfig, useUIStore } from "@/state/ui";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
+import { registerTerminalAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { useTerminalRuntimeSync } from "@/ui/useTerminalRuntimeSync";
 
-function ScreenReaderRuntimeHarness({ enabled, terminal }: { enabled: boolean; terminal: Terminal }) {
+function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light" }: { enabled: boolean; terminal: Terminal; theme?: "light" | "dark" }) {
   const termRef = useRef<Terminal | null>(terminal);
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef(null);
-  const webglRef = useRef(null);
   useTerminalRuntimeSync({
     sessionId: "screen-reader-runtime",
     active: true,
     termRef,
     fitRef,
     ptyRef,
-    webglRef,
     fontSize: 14,
     fontFamily: "JetBrains Mono",
     nerdFontFallback: true,
@@ -28,7 +27,7 @@ function ScreenReaderRuntimeHarness({ enabled, terminal }: { enabled: boolean; t
     cursorStyle: "bar",
     cursorBlink: true,
     screenReaderMode: enabled,
-    theme: "light",
+    theme,
     terminalTheme: "default",
     accent: "#c2683c",
   });
@@ -226,6 +225,34 @@ test("screen reader mode persists and applies to open and new terminals", async 
   existing.dispose();
   createdAfterToggle.dispose();
   useUIStore.setState({ configLoaded: false, terminalScreenReaderMode: false });
+});
+
+test("runtime theme swaps repaint the current terminal frame", async () => {
+  const terminal = createTerminalInstance({
+    fontSize: 14,
+    fontFamily: "JetBrains Mono",
+    nerdFontFallback: true,
+    scrollback: 2000,
+    theme: "light",
+    terminalTheme: "default",
+    accent: "#c2683c",
+    cursorBlink: true,
+    cursorStyle: "bar",
+    screenReaderMode: false,
+  });
+  const refresh = vi.spyOn(terminal, "refresh");
+  const rebuild = vi.fn();
+  const unregisterRebuild = registerTerminalAtlasRebuilder(rebuild);
+  const view = render(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} />);
+  rebuild.mockClear();
+
+  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="dark" />);
+
+  await waitFor(() => expect(terminal.options.theme?.background).toBe("#18181b"));
+  expect(rebuild).toHaveBeenCalled();
+  expect(refresh).toHaveBeenCalledWith(0, terminal.rows - 1);
+  unregisterRebuild();
+  terminal.dispose();
 });
 
 test("a save failure still raises an app toast when config loading already reported an error", async () => {

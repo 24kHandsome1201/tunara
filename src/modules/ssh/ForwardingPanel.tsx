@@ -165,24 +165,24 @@ export function ForwardingPanel({ binding, session }: ForwardingPanelProps) {
         <form onSubmit={(event) => { void submit(event); }} style={{ display: "grid", gap: 8, marginBottom: 16 }}>
           <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
             <legend>{t("forwarding.kind")}</legend>
-            <label><input type="radio" name="forward-kind" checked={kind === "local"} onChange={() => setKind("local")} /> {t("forwarding.local")}</label>{" "}
-            <label><input type="radio" name="forward-kind" checked={kind === "dynamic"} onChange={() => setKind("dynamic")} /> {t("forwarding.dynamic")}</label>
+            <label><input className="ui-choice" type="radio" name="forward-kind" checked={kind === "local"} onChange={() => setKind("local")} /> {t("forwarding.local")}</label>{" "}
+            <label><input className="ui-choice" type="radio" name="forward-kind" checked={kind === "dynamic"} onChange={() => setKind("dynamic")} /> {t("forwarding.dynamic")}</label>
           </fieldset>
-          <label>{t("forwarding.local_port")} <input inputMode="numeric" value={localPort} onChange={(event) => setLocalPort(event.target.value)} aria-describedby="forwarding-port-hint" /></label>
+          <label>{t("forwarding.local_port")} <input className="ui-control" inputMode="numeric" value={localPort} onChange={(event) => setLocalPort(event.target.value)} aria-describedby="forwarding-port-hint" /></label>
           <span id="forwarding-port-hint" style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("forwarding.port_hint")}</span>
           {kind === "local" && (
             <>
-              <label>{t("forwarding.target_host")} <input value={targetHost} onChange={(event) => setTargetHost(event.target.value)} /></label>
-              <label>{t("forwarding.target_port")} <input inputMode="numeric" value={targetPort} onChange={(event) => setTargetPort(event.target.value)} /></label>
+              <label>{t("forwarding.target_host")} <input className="ui-control" value={targetHost} onChange={(event) => setTargetHost(event.target.value)} /></label>
+              <label>{t("forwarding.target_port")} <input className="ui-control" inputMode="numeric" value={targetPort} onChange={(event) => setTargetPort(event.target.value)} /></label>
             </>
           )}
-          <label><input type="checkbox" checked={recreateOnReconnect} onChange={(event) => setRecreateOnReconnect(event.target.checked)} /> {t("forwarding.recreate")}</label>
-          <button type="submit" disabled={loading}>{t("forwarding.start")}</button>
+          <label><input className="ui-choice" type="checkbox" checked={recreateOnReconnect} onChange={(event) => setRecreateOnReconnect(event.target.checked)} /> {t("forwarding.recreate")}</label>
+          <button type="submit" className="ui-button ui-button--primary" disabled={loading}>{t("forwarding.start")}</button>
         </form>
       )}
       {errorCode && <div role="alert">{t(`forwarding.error.${errorCode}`)}</div>}
       {loading && <div role="status">{t("forwarding.loading")}</div>}
-      <button type="button" onClick={() => { void refresh(); }} disabled={!binding || loading}>{t("forwarding.refresh")}</button>
+      <button type="button" className="ui-button" onClick={() => { void refresh(); }} disabled={!binding || loading}>{t("forwarding.refresh")}</button>
       <h3>{t("forwarding.active")}</h3>
       {localRules.length + dynamicRules.length === 0 && !loading && <p>{t("forwarding.empty")}</p>}
       <ul>
@@ -192,7 +192,7 @@ export function ForwardingPanel({ binding, session }: ForwardingPanelProps) {
             <code>{rule.bindHost}:{rule.localPort} → {rule.targetHost}:{rule.targetPort}</code>{" "}
             <span>{rule.requestedLocalPort === 0 ? t("forwarding.ephemeral") : t("forwarding.requested", { port: rule.requestedLocalPort })}</span>{" "}
             {rule.recreateOnReconnect && <span>{t("forwarding.recreate_badge")}</span>}{" "}
-            <button type="button" onClick={() => { void stop(rule, "local"); }} disabled={loading}>{t("forwarding.stop")}</button>
+            <button type="button" className="ui-button ui-button--danger" onClick={() => { void stop(rule, "local"); }} disabled={loading}>{t("forwarding.stop")}</button>
           </li>
         ))}
         {dynamicRules.map((rule) => (
@@ -201,7 +201,7 @@ export function ForwardingPanel({ binding, session }: ForwardingPanelProps) {
             <code>SOCKS5 {rule.bindHost}:{rule.localPort}</code>{" "}
             <span>{rule.requestedLocalPort === 0 ? t("forwarding.ephemeral") : t("forwarding.requested", { port: rule.requestedLocalPort })}</span>{" "}
             {rule.recreateOnReconnect && <span>{t("forwarding.recreate_badge")}</span>}{" "}
-            <button type="button" onClick={() => { void stop(rule, "dynamic"); }} disabled={loading}>{t("forwarding.stop")}</button>
+            <button type="button" className="ui-button ui-button--danger" onClick={() => { void stop(rule, "dynamic"); }} disabled={loading}>{t("forwarding.stop")}</button>
           </li>
         ))}
       </ul>

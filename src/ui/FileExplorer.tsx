@@ -1432,10 +1432,10 @@ export function FileExplorer({
         )}
         {isDir && expanded && treeErrors[node.path]?.kind === "readFailed" && (
           <div role="group" style={{ gridColumn: "1 / -1", padding: "2px 0 4px 22px" }}>
-            <div role="alert" style={{ color: "var(--c-danger)", fontSize: "var(--fs-meta)" }}>
+            <div role="alert" style={{ color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
               {t("explorer.read_dir_failed")}
             </div>
-            <button type="button" onClick={() => expandDirectory(node.path)}>
+            <button type="button" className="ui-button" onClick={() => expandDirectory(node.path)}>
               {t("explorer.search_retry")}
             </button>
           </div>
@@ -1618,7 +1618,7 @@ export function FileExplorer({
             </span>
             <button type="button" onClick={cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("explorer.upload.cancel")}</button>
           </div>
-          <progress aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5, accentColor: "var(--c-accent)" }} />
+          <progress className="ui-progress" aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
         </div>
       )}
       <div aria-live="polite" aria-atomic="true" className="sr-only" data-transfer-announcement>
@@ -1627,14 +1627,14 @@ export function FileExplorer({
       {download && (
         <div role="status" aria-live="polite" aria-busy="true" style={{ padding: "7px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-2)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={download.fileName}>
           {t("explorer.download.progress", { file: download.fileName })}
-          <progress aria-label={t("explorer.download.progress_label")} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
+          <progress className="ui-progress" aria-label={t("explorer.download.progress_label")} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
         </div>
       )}
 
       <div
         style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}
       >
-        <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px var(--sp-2)", border: "1px solid transparent", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
+        <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px var(--sp-2)", border: "1px solid var(--c-control-border)", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
           <button
             onClick={() => {
               setSearchMode((m) => {
@@ -1655,6 +1655,7 @@ export function FileExplorer({
           </button>
           <SearchIcon />
           <input
+            className="ui-native-control"
             type="text"
             value={searchQuery}
             onChange={(e) => {
@@ -1887,6 +1888,7 @@ export function FileExplorer({
             <label>
               {t("explorer.mutation.name")}
               <input
+                className="ui-control"
                 autoFocus
                 value={mutationComposer.value}
                 onChange={(event) => setMutationComposer((current) => current ? { ...current, value: event.target.value } : current)}
@@ -1894,8 +1896,8 @@ export function FileExplorer({
               />
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" onClick={() => { setMutationComposer(null); restoreMenuFocus(); }} disabled={mutationBusy}>{t("common.cancel")}</button>
-              <button type="button" onClick={() => { void prepareNamedMutation(); }} disabled={mutationBusy || !mutationComposer.value.trim()}>{t("common.continue")}</button>
+              <button type="button" className="ui-button" onClick={() => { setMutationComposer(null); restoreMenuFocus(); }} disabled={mutationBusy}>{t("common.cancel")}</button>
+              <button type="button" className="ui-button ui-button--primary" onClick={() => { void prepareNamedMutation(); }} disabled={mutationBusy || !mutationComposer.value.trim()}>{t("common.continue")}</button>
             </div>
           </div>
         </>

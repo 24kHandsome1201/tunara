@@ -91,7 +91,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") setAnnouncement(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
                   </div>
                   {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" style={{ color: "var(--c-warning-text)", fontSize: "var(--fs-meta)" }}>{t("transfer.residue", { path: item.outcome.residuePath })}</div>}
-                  {item.event?.totalBytes != null && <progress style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
+                  {item.event?.totalBytes != null && <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
                 </li>
               ))}
             </ul>

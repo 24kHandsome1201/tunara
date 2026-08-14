@@ -243,14 +243,14 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
     <section className="preview-source-card" style={{ padding: 10, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-1)", display: "flex", flexDirection: "column", gap: 7, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ fontWeight: 650, color: "var(--c-text-primary)" }}>{t(isRemote ? "inspector.preview.remote_source" : "inspector.preview.source")}</span>
-        <span role="status" style={{ marginLeft: "auto", color: displayStatus === "failed" ? "var(--c-danger)" : blocked || displayStatus === "stale" ? "var(--c-warning)" : displayStatus === "ready" ? "var(--c-success)" : "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>
+        <span role="status" style={{ marginLeft: "auto", color: displayStatus === "failed" ? "var(--c-error)" : blocked || displayStatus === "stale" ? "var(--c-warning)" : displayStatus === "ready" ? "var(--c-success)" : "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>
           {t(`inspector.preview.status.${displayStatus}`)}
         </span>
       </div>
       {isOpen && <form className="preview-toolbar" aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run("navigate", () => previewNavigate(effectiveSource, address), "loading"); }} style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
         <button className="preview-control" type="button" aria-label={t("inspector.preview.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run("navigate", () => previewGoBack(effectiveSource), "loading")}>←</button>
         <button className="preview-control" type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run("navigate", () => previewGoForward(effectiveSource), "loading")}>→</button>
-        <input className="preview-control" aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: "1 1 180px", fontFamily: "var(--font-mono)" }} />
+        <input className="preview-control ui-native-control" aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: "1 1 180px", fontFamily: "var(--font-mono)" }} />
         <button className="preview-control" type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
       </form>}
       <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "var(--fs-meta)", color: "var(--c-text-3)", minWidth: 0 }}>
@@ -323,16 +323,16 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         {!hasTelemetry ? <div style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("inspector.preview.telemetry.empty")}</div> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {telemetry?.events.map((event, index) => <div key={`${event.kind}\0${event.message}\0${index}`} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflowWrap: "anywhere" }}>
-              <span style={{ color: event.kind === "network-failure" ? "var(--c-warning)" : "var(--c-danger)" }}>[{event.kind}]</span> {event.message}{event.count > 1 ? ` ×${event.count}` : ""}
+              <span style={{ color: event.kind === "network-failure" ? "var(--c-warning)" : "var(--c-error)" }}>[{event.kind}]</span> {event.message}{event.count > 1 ? ` ×${event.count}` : ""}
             </div>)}
             {!!telemetry?.dropped && <div style={{ color: "var(--c-warning)", fontSize: "var(--fs-meta)" }}>{t("inspector.preview.telemetry.dropped")} {telemetry.dropped}</div>}
           </div>
         )}
       </section>}
-      {displayStatus === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{t("inspector.preview.failed_help")}</div>}
-      {isRemote && tunnelState?.status === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{tunnelState.reason ?? t("inspector.preview.tunnel.failed")}</div>}
+      {displayStatus === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)" }}>{t("inspector.preview.failed_help")}</div>}
+      {isRemote && tunnelState?.status === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)" }}>{tunnelState.reason ?? t("inspector.preview.tunnel.failed")}</div>}
       {displayStatus === "stale" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning)" }}>{t("inspector.preview.stale_help")}</div>}
-      {error && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-danger)" }}>{error}</div>}
+      {error && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)" }}>{error}</div>}
     </section>
   );
 }

@@ -142,16 +142,10 @@ export function HostKeyPromptDialog() {
             ref={rejectRef}
             onClick={() => { void decide(false); }}
             disabled={submitting}
-            className="hover-bg"
+            className="ui-button"
             style={{
               padding: "6px 16px",
-              borderRadius: "var(--r-btn)",
-              border: "1px solid var(--c-border-2)",
-              background: "transparent",
-              color: "var(--c-text-primary)",
               fontSize: "var(--fs-body)",
-              cursor: submitting ? "wait" : "pointer",
-              opacity: submitting ? 0.6 : 1,
             }}
           >
             {t("ssh.hostKey.reject")}
@@ -159,17 +153,11 @@ export function HostKeyPromptDialog() {
           <button
             onClick={() => { void decide(true); }}
             disabled={submitting}
-            className="hover-primary"
+            className="ui-button ui-button--primary"
             style={{
               padding: "6px 18px",
-              borderRadius: "var(--r-btn)",
-              border: "none",
-              background: "var(--c-btn-primary-bg)",
-              color: "var(--c-btn-primary-text)",
               fontSize: "var(--fs-body)",
               fontWeight: 500,
-              cursor: submitting ? "wait" : "pointer",
-              opacity: submitting ? 0.6 : 1,
             }}
           >
             {t("ssh.hostKey.accept")}

@@ -105,18 +105,18 @@ export function RemoteFsMutationDialog({
               {outcome.reconciled && " (reconciled after a lost response; no retry was sent)"}
             </div>
           )}
-          {error && <div role="alert" style={{ color: "var(--c-danger, #c33)" }}>{error}</div>}
+          {error && <div role="alert" style={{ color: "var(--c-error)" }}>{error}</div>}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)" }}>
-          <button type="button" onClick={onClose} disabled={submitting} autoFocus>
+          <button type="button" className="ui-button" onClick={onClose} disabled={submitting} autoFocus>
             {outcome ? "Close" : "Cancel"}
           </button>
           {!outcome && (
             <button
               type="button"
+              className={`ui-button ${destructive ? "ui-button--danger" : "ui-button--primary"}`}
               onClick={() => { void submit(); }}
               disabled={submitting}
-              style={destructive ? { color: "var(--c-danger, #c33)" } : undefined}
             >
               {submitting ? "Checking…" : operationLabel(request)}
             </button>

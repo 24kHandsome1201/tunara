@@ -45,13 +45,7 @@ const EMPTY_PANEL_MODEL: SshProfilesPanelModelV1 = {
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "8px 10px",
-  borderRadius: "var(--r-btn)",
-  border: "1px solid var(--c-border-2)",
-  background: "var(--c-bg-input, var(--c-bg-white))",
-  color: "var(--c-text-primary)",
   fontSize: "var(--fs-body)",
-  outline: "none",
-  boxSizing: "border-box",
 };
 
 const labelStyle: React.CSSProperties = {
@@ -619,7 +613,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               <>
                 <div style={{ position: "relative" }}>
                   <span aria-hidden="true" style={{ position: "absolute", left: 9, top: 9, color: "var(--c-text-5)", display: "flex" }}><SearchIcon /></span>
-                  <input id="ssh-profile-search" aria-label={t("ssh.search_placeholder")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("ssh.search_placeholder")} spellCheck={false} style={{ ...fieldStyle, paddingLeft: 30 }} />
+                  <input id="ssh-profile-search" className="ui-control" aria-label={t("ssh.search_placeholder")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("ssh.search_placeholder")} spellCheck={false} style={{ ...fieldStyle, paddingLeft: 30 }} />
                 </div>
                 <div role="list" aria-label={t("ssh.quick_connect")} style={{ maxHeight: 132, overflowY: "auto", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-input)", padding: 3 }}>
                   {filteredHosts.map((profile) => (
@@ -668,11 +662,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <div style={{ display: "flex", gap: 10 }}>
               <div style={{ flex: 3 }}>
                 <label htmlFor="ssh-connect-host" style={labelStyle}>{t("ssh.host")}</label>
-                <input ref={hostRef} id="ssh-connect-host" style={fieldStyle} value={host} placeholder={t("ssh.host_placeholder")} onChange={(event) => setHost(event.target.value)} spellCheck={false} autoCapitalize="off" />
+                <input ref={hostRef} id="ssh-connect-host" className="ui-control" style={fieldStyle} value={host} placeholder={t("ssh.host_placeholder")} onChange={(event) => setHost(event.target.value)} spellCheck={false} autoCapitalize="off" />
               </div>
               <div style={{ flex: 1 }}>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} />
+                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} />
               </div>
             </div>
             {portInvalid && (
@@ -682,14 +676,14 @@ export function SshConnect({ onClose }: SshConnectProps) {
             )}
             <div>
               <label htmlFor="ssh-connect-user" style={labelStyle}>{t("ssh.user")}</label>
-              <input id="ssh-connect-user" style={fieldStyle} value={user} placeholder={t("ssh.user_placeholder")} onChange={(event) => setUser(event.target.value)} spellCheck={false} autoCapitalize="off" />
+              <input id="ssh-connect-user" className="ui-control" style={fieldStyle} value={user} placeholder={t("ssh.user_placeholder")} onChange={(event) => setUser(event.target.value)} spellCheck={false} autoCapitalize="off" />
             </div>
           </section>
 
           <fieldset style={{ margin: 0, padding: 0, border: "none" }}>
             <legend style={labelStyle}>{t("ssh.route.legend")}</legend>
             <label htmlFor="ssh-jump-profile" style={labelStyle}>{t("ssh.route.selector")}</label>
-            <select id="ssh-jump-profile" value={jumpProfileId} style={fieldStyle} onChange={(event) => {
+            <select id="ssh-jump-profile" className="ui-control" value={jumpProfileId} style={fieldStyle} onChange={(event) => {
               const nextId = event.target.value;
               setJumpProfileId(nextId);
               setRouteResolution(null);
@@ -705,26 +699,26 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 <div role="radiogroup" aria-label={t("ssh.route.jump_auth_method")} style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                   {AUTH_METHODS.map((method) => (
                     <label key={`jump:${method}`} className="hover-bg" style={{ display: "flex", alignItems: "center", gap: 6, padding: 6, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)" }}>
-                      <input type="radio" name="ssh-jump-auth-method" value={method} checked={jumpAuthMethod === method} onChange={() => chooseJumpAuthMethod(method)} />
+                      <input className="ui-choice" type="radio" name="ssh-jump-auth-method" value={method} checked={jumpAuthMethod === method} onChange={() => chooseJumpAuthMethod(method)} />
                       <span>{t(`ssh.auth.${method}.label`)}</span>
                     </label>
                   ))}
                 </div>
                 {!jumpAuthMethod && <p role="alert">{t("ssh.route.jump_auth_required")}</p>}
-                {jumpAuthMethod === "password" && <label htmlFor="ssh-jump-password">{t("ssh.route.jump_password")}<input id="ssh-jump-password" type="password" style={fieldStyle} value={jumpPassword} onChange={(event) => setJumpPassword(event.target.value)} autoComplete="off" spellCheck={false} /></label>}
+                {jumpAuthMethod === "password" && <label htmlFor="ssh-jump-password">{t("ssh.route.jump_password")}<input id="ssh-jump-password" className="ui-control" type="password" style={fieldStyle} value={jumpPassword} onChange={(event) => setJumpPassword(event.target.value)} autoComplete="off" spellCheck={false} /></label>}
                 {jumpAuthMethod === "key" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                     <label htmlFor="ssh-jump-identity">{t("ssh.identityFile")}</label>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <input id="ssh-jump-identity" style={fieldStyle} value={jumpIdentityFile} onChange={(event) => setJumpIdentityFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
-                      <button type="button" onClick={() => { void chooseJumpIdentityFile(); }}>{t("ssh.identity_picker.choose")}</button>
+                      <input id="ssh-jump-identity" className="ui-control" style={fieldStyle} value={jumpIdentityFile} onChange={(event) => setJumpIdentityFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
+                      <button type="button" className="ui-button" onClick={() => { void chooseJumpIdentityFile(); }}>{t("ssh.identity_picker.choose")}</button>
                     </div>
                     <label htmlFor="ssh-jump-passphrase">{t("ssh.route.jump_passphrase")}</label>
-                    <input id="ssh-jump-passphrase" type="password" style={fieldStyle} value={jumpKeyPassphrase} onChange={(event) => setJumpKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
+                    <input id="ssh-jump-passphrase" className="ui-control" type="password" style={fieldStyle} value={jumpKeyPassphrase} onChange={(event) => setJumpKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
                     <label htmlFor="ssh-jump-certificate">{t("ssh.certificateFile")}</label>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <input id="ssh-jump-certificate" style={fieldStyle} value={jumpCertificateFile} onChange={(event) => setJumpCertificateFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
-                      <button type="button" onClick={() => { void chooseJumpCertificateFile(); }}>{t("ssh.identity_picker.choose")}</button>
+                      <input id="ssh-jump-certificate" className="ui-control" style={fieldStyle} value={jumpCertificateFile} onChange={(event) => setJumpCertificateFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
+                      <button type="button" className="ui-button" onClick={() => { void chooseJumpCertificateFile(); }}>{t("ssh.identity_picker.choose")}</button>
                     </div>
                   </div>
                 )}
@@ -740,7 +734,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 const selected = authMethod === method;
                 return (
                   <label key={method} className="hover-bg" style={{ display: "flex", alignItems: "flex-start", gap: 7, minWidth: 0, padding: "8px 9px", border: `1px solid ${selected ? "var(--c-accent)" : "var(--c-border-2)"}`, borderRadius: "var(--r-btn)", background: selected ? "var(--c-accent-bg-soft)" : "var(--c-bg-white)", cursor: "pointer" }}>
-                    <input type="radio" name="ssh-auth-method" value={method} checked={selected} onChange={() => chooseAuthMethod(method)} style={{ margin: "2px 0 0", accentColor: "var(--c-accent)" }} />
+                    <input className="ui-choice" type="radio" name="ssh-auth-method" value={method} checked={selected} onChange={() => chooseAuthMethod(method)} style={{ margin: "2px 0 0" }} />
                     <span style={{ minWidth: 0 }}>
                       <span style={{ display: "block", color: "var(--c-text-primary)", fontSize: "var(--fs-secondary)", fontWeight: 600 }}>{t(`ssh.auth.${method}.label`)}</span>
                       <span style={{ display: "block", marginTop: 2, color: "var(--c-text-5)", fontSize: "var(--fs-meta)", lineHeight: 1.35 }}>{t(`ssh.auth.${method}.hint`)}</span>
@@ -755,7 +749,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             {authMethod === "password" && (
               <div>
                 <label htmlFor="ssh-connect-password" style={labelStyle}>{t("ssh.password")}</label>
-                <input ref={passwordRef} id="ssh-connect-password" style={fieldStyle} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} />
+                <input ref={passwordRef} id="ssh-connect-password" className="ui-control" style={fieldStyle} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} />
                 <span style={{ display: "block", marginTop: 5, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.4 }}>{t("ssh.auth.password.strict")}</span>
               </div>
             )}
@@ -765,19 +759,19 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 <div>
                   <label htmlFor="ssh-connect-identity" style={labelStyle}>{t("ssh.identityFile")}</label>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <input id="ssh-connect-identity" style={fieldStyle} value={identityFile} placeholder={t("ssh.identity_placeholder")} onChange={(event) => setIdentityFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
-                    <button type="button" onClick={() => { void chooseIdentityFile(); }} className="hover-bg" style={{ flexShrink: 0, padding: "0 11px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("ssh.identity_picker.choose")}</button>
+                    <input id="ssh-connect-identity" className="ui-control" style={fieldStyle} value={identityFile} placeholder={t("ssh.identity_placeholder")} onChange={(event) => setIdentityFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
+                    <button type="button" onClick={() => { void chooseIdentityFile(); }} className="ui-button" style={{ flexShrink: 0, padding: "0 11px", fontSize: "var(--fs-secondary)" }}>{t("ssh.identity_picker.choose")}</button>
                   </div>
                 </div>
                 <div>
                   <label htmlFor="ssh-connect-passphrase" style={labelStyle}>{t("ssh.keyPassphrase")}</label>
-                  <input id="ssh-connect-passphrase" style={fieldStyle} type="password" value={keyPassphrase} onChange={(event) => setKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
+                  <input id="ssh-connect-passphrase" className="ui-control" style={fieldStyle} type="password" value={keyPassphrase} onChange={(event) => setKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
                 </div>
                 <div>
                   <label htmlFor="ssh-connect-certificate" style={labelStyle}>{t("ssh.certificateFile")}</label>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <input id="ssh-connect-certificate" style={fieldStyle} value={certificateFile} placeholder={t("ssh.certificate_placeholder")} onChange={(event) => setCertificateFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
-                    <button type="button" onClick={() => { void chooseCertificateFile(); }} className="hover-bg" style={{ flexShrink: 0, padding: "0 11px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>{t("ssh.identity_picker.choose")}</button>
+                    <input id="ssh-connect-certificate" className="ui-control" style={fieldStyle} value={certificateFile} placeholder={t("ssh.certificate_placeholder")} onChange={(event) => setCertificateFile(event.target.value)} spellCheck={false} autoCapitalize="off" />
+                    <button type="button" onClick={() => { void chooseCertificateFile(); }} className="ui-button" style={{ flexShrink: 0, padding: "0 11px", fontSize: "var(--fs-secondary)" }}>{t("ssh.identity_picker.choose")}</button>
                   </div>
                 </div>
               </div>
@@ -789,18 +783,18 @@ export function SshConnect({ onClose }: SshConnectProps) {
           </fieldset>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
-            <input type="checkbox" checked={saveProfile} onChange={(event) => setSaveProfile(event.target.checked)} />
+            <input className="ui-choice" type="checkbox" checked={saveProfile} onChange={(event) => setSaveProfile(event.target.checked)} />
             <span>{t("ssh.saveProfile")}<span style={{ display: "block", marginTop: 1, color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.saveProfileHint")}</span></span>
           </label>
 
           <details>
             <summary style={{ cursor: "pointer", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>{t("ssh.advanced")}</summary>
             <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 10, cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
-              <input type="checkbox" checked={injectIntegration} onChange={(event) => setInjectIntegration(event.target.checked)} style={{ marginTop: 2 }} />
+              <input className="ui-choice" type="checkbox" checked={injectIntegration} onChange={(event) => setInjectIntegration(event.target.checked)} style={{ marginTop: 2 }} />
               <span>{t("ssh.injectIntegration")}<span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.4 }}>{t("ssh.injectIntegrationHint")}</span></span>
             </label>
             <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 10, cursor: "pointer", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)" }}>
-              <input type="checkbox" checked={autoReconnect} onChange={(event) => setAutoReconnect(event.target.checked)} style={{ marginTop: 2 }} />
+              <input className="ui-choice" type="checkbox" checked={autoReconnect} onChange={(event) => setAutoReconnect(event.target.checked)} style={{ marginTop: 2 }} />
               <span>{t("ssh.autoReconnect")}<span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.4 }}>{t("ssh.autoReconnectHint")}</span></span>
             </label>
           </details>
@@ -809,8 +803,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)", flexShrink: 0 }}>
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.credentialsHint")}</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={onClose} className="hover-bg" style={{ padding: "6px 16px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-primary)", fontSize: "var(--fs-body)", cursor: "pointer" }}>{t("common.cancel")}</button>
-            <button type="button" onClick={connect} disabled={!canConnect} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: canConnect ? "pointer" : "not-allowed", opacity: canConnect ? 1 : 0.5 }}>
+            <button type="button" onClick={onClose} className="ui-button" style={{ padding: "6px 16px", fontSize: "var(--fs-body)" }}>{t("common.cancel")}</button>
+            <button type="button" onClick={connect} disabled={!canConnect} className="ui-button ui-button--primary" style={{ padding: "6px 18px", fontSize: "var(--fs-body)", fontWeight: 500 }}>
               {prefill?.reconnectSessionId ? t("terminal.exited.reconnect") : t("ssh.connect")}
             </button>
           </div>

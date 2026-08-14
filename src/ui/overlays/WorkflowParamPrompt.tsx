@@ -79,14 +79,8 @@ export function WorkflowParamPrompt() {
   const fieldStyle: React.CSSProperties = {
     width: "100%",
     padding: "8px 10px",
-    borderRadius: "var(--r-btn)",
-    border: "1px solid var(--c-border-2)",
-    background: "var(--c-bg-input, var(--c-bg-white))",
-    color: "var(--c-text-primary)",
     fontSize: "var(--fs-body)",
     fontFamily: "var(--font-mono)",
-    outline: "none",
-    boxSizing: "border-box",
   };
 
   return (
@@ -146,6 +140,7 @@ export function WorkflowParamPrompt() {
                 {p.key}
               </label>
               <input
+                className="ui-control"
                 id={`workflow-param-${index}`}
                 style={fieldStyle}
                 value={values[p.key] ?? ""}
@@ -184,31 +179,21 @@ export function WorkflowParamPrompt() {
         >
           <button
             onClick={() => setPendingWorkflow(null)}
-            className="hover-bg"
+            className="ui-button"
             style={{
               padding: "6px 16px",
-              borderRadius: "var(--r-btn)",
-              border: "1px solid var(--c-border-2)",
-              background: "transparent",
-              color: "var(--c-text-primary)",
               fontSize: "var(--fs-body)",
-              cursor: "pointer",
             }}
           >
             {t("common.cancel")}
           </button>
           <button
             onClick={run}
-            className="hover-primary"
+            className="ui-button ui-button--primary"
             style={{
               padding: "6px 18px",
-              borderRadius: "var(--r-btn)",
-              border: "none",
-              background: "var(--c-btn-primary-bg)",
-              color: "var(--c-btn-primary-text)",
               fontSize: "var(--fs-body)",
               fontWeight: 500,
-              cursor: "pointer",
             }}
           >
             {t("workflow.run")}
