@@ -54,3 +54,5 @@ Agent 支持只服务于“看见当前状态并回到真实终端”：
 ## 完成与回归
 
 当前主线没有自动进入的“下一阶段”。后续产品扩张必须先证明高频用户价值、明确数据与权限边界，并重新批准；现有回归重点是 PTY/SSH、Preview、safe-write、轻量 Agent Attention/resume、Overview 最近活动，以及三套自动测试门。
+
+用户可见能力与代码入口对照见 [FEATURES.md](./FEATURES.md)。

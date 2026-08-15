@@ -49,11 +49,12 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 
 终端是主角，不是配件。跑的是真实 `portable-pty`，前端用 xterm.js 6 加 WebGL renderer，滚动和大批量输出都不掉帧。输出经过 RAF 合批和双层背压（PTY 1MiB / 前端 2MiB），即使 `cat` 一个大日志也不会卡住界面。
 
-- 多会话 PTY，水平/垂直分栏，最深 2 pane（不做递归 tile，保持可预测）
+- 多会话 PTY；可在任意 pane 右侧或下方继续拆分，最多 4 个 pane
 - ⌘F 终端内搜索 + 匹配计数
 - 命令块输出筛选：文本 / 正则 / 大小写 / 反选 / 上下文行
 - 可点击 URL，可配置 scrollback（1k 到 20k 行）
 - OSC 7 跟踪 cwd，OSC 133 接 shell integration
+- 可选行内图片（SIXEL / iTerm IIP）
 - 9 套同步作用于界面与终端的配色：跟随系统、浅色、深色、GitHub Light、Rose Pine Dawn、Catppuccin、Tokyo Night、One Dark、Solarized
 
 ### 智能侧栏
@@ -76,7 +77,30 @@ Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话�
 - 起步工作流可以一键加入 review、测试和排查类常用命令
 - Overview 保留有上限、仅当前运行期的会话最近活动；它不是持久 Agent 历史
 
-后续方向和功能记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。
+后续方向和功能记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。功能与代码对照见 [docs/FEATURES.md](docs/FEATURES.md)。
+
+### SSH
+
+远程会话走 russh 长连接，不是包一层 `/usr/bin/ssh`。主机 profile 只保存地址和认证*偏好*，密码和口令只在单次连接的内存里使用。
+
+- 显式认证：SSH Agent、单个私钥、密码或 keyboard-interactive
+- TOFU 主机密钥（`unknown` 可写入 known_hosts；`unverifiable` 仅本次）
+- 可选远程 bash/zsh 集成，用于目录、命令边界和 agent 状态
+- SFTP 浏览、搜索、grep、冲突检测文本保存、mkdir/rename/delete
+- 批量上传/下载：进度、取消、journal 恢复
+- 只读远程 Git review（一次性 exec channel）
+- 本地/动态端口转发、重连快照、连接诊断
+- 可选本地 SSH 使用日志（默认关闭）
+
+### 文件与检查器
+
+右栏是按上下文裁剪的检查器，不只是 diff。本地与 SSH 文件可以和工作区终端标签并列打开。
+
+- 页签：Overview、Changes、Files、Preview、Notes；SSH 另有 Transfers、Metadata、Forwarding、Diagnostics、Known hosts
+- Markdown/MDX 阅读与有边界的单文件编辑（UTF-8、≤256 KiB、fingerprint 校验）
+- 只读 Jupyter notebook 预览（不执行代码，不渲染 HTML/脚本/富输出）
+- 安全图片预览，以及超大文本/日志的受限“查看开头”
+- 绑定工作区的 Preview 窗口（loopback；SSH tunnel 必须显式建立，不扫端口）
 
 ### AI Agent 识别
 
@@ -91,10 +115,10 @@ Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话�
 
 ### Review 面板
 
-右栏是只读的 Git diff，给你"在 commit 之前再看一眼"用。读 git 走 git2（零进程开销），写永远走系统 `git` CLI，也就是说，**Tunara 自己永远不会替你 commit 或 push**。
+右栏 Changes 页签是只读的 Git diff，给你"在 commit 之前再看一眼"用。读 git 走 git2（零进程开销），写永远走系统 `git` CLI，也就是说，**Tunara 自己永远不会替你 commit 或 push**。
 
 - Staged / Unstaged / Untracked 三段式分区
-- 文件浏览器 + 代码预览，语法高亮 + Markdown 渲染
+- 按文件展开的 diff 预览与语法高亮；Markdown 阅读在 Files 页签
 - 一键跳转外部编辑器：VS Code / Cursor / Zed / Sublime
 - 二进制 / 超大文件友好降级
 - Ahead/Behind 远程状态展示
@@ -102,11 +126,14 @@ Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话�
 ### 桌面体验
 
 - ⌘K Command Palette，权重排序，覆盖所有动作和会话切换
-- 深浅色模式 + 跟随系统，5 色 accent
+- 深浅色模式 + 跟随系统，8 色 accent
+- 纯净模式（⌘⇧P）只收起壳层，不卸载 PTY
 - 实色纸面层级 + macOS 原生覆盖标题栏
 - Toast 通知：退出动画、hover 暂停、进度条
+- 低打扰的签名更新提醒：仅在确有新版本时出现
+- 设置页签：外观、快捷键、工作流、CLI、应用
 - 右键菜单覆盖会话、目录组、文件
-- 响应式布局：窄窗自动收起侧栏 / 右栏
+- 响应式布局：终端可用宽度不足时，侧栏/检查器改为覆盖层
 - 窗口状态持久化（位置、尺寸）
 
 ## 安装
@@ -154,9 +181,10 @@ pnpm test:ui          # happy-dom 组件测试
 pnpm test             # 全部测试（Node + UI + Rust）
 ```
 
-更深入的开发者文档在 [`docs/`](docs/)：
+更深入的开发者文档在 [`docs/`](docs/)，先看 [文档索引](docs/README.md)。
 
-- [架构 Architecture](docs/ARCHITECTURE.md) —— 前后端 IPC 全貌：所有 Tauri 命令、三种传输（`invoke` / `Channel<PtyEvent>` / `git-changed` 与 `agent-hook` 事件）、以及 8 个被托管的 state 对象。
+- [功能与代码地图](docs/FEATURES.md) —— 用户可见能力对应到前端/后端入口。
+- [架构 Architecture](docs/ARCHITECTURE.md) —— 前后端 IPC：Tauri 命令、三种传输（`invoke` / `Channel<PtyEvent>` / `git-changed` 与 `agent-hook` 事件）、以及被托管的 state。
 - [测试 Testing](docs/TESTING.md) —— `.mjs` 直接 import `.ts` 的纯逻辑约定、UI 组件门、Node/UI/Cargo 分工，以及如何加测试。
 - [本地使用日志与隐私](docs/LOCAL_USAGE_LOGGING.md) —— 明确选择开启的 SSH 诊断、JSONL schema、敏感数据排除、轮转、导出与失败行为。
 - [Agent 识别](docs/AGENT_DETECTION.md) —— agent 识别与生命周期原理，以及新增一个 agent 的分步清单。
@@ -165,26 +193,32 @@ pnpm test             # 全部测试（Node + UI + Rust）
 
 ## 快捷键
 
-| 操作 | macOS | Windows / Linux 实验性构建 |
-|------|-------|-----------------|
-| 新建终端 | ⌘T | Ctrl+T |
-| 关闭会话 | ⌘W | Ctrl+W |
-| 水平分栏 | ⌘D | Ctrl+D |
-| 垂直分栏 | ⌘⇧D | Ctrl+Shift+D |
-| 切换 pane 焦点 | ⌘] / ⌘[ | Ctrl+] / Ctrl+[ |
-| Command Palette | ⌘K | Ctrl+K |
-| 终端内搜索 | ⌘F | Ctrl+F |
-| 切到第 N 个会话 | ⌘1 ~ ⌘9 | Ctrl+1 ~ Ctrl+9 |
-| 字号 +/- | ⌘+ / ⌘- | Ctrl++ / Ctrl+- |
-| 切换侧栏 | ⌘\ | Ctrl+\ |
-| 设置 | ⌘, | Ctrl+, |
+下表是 macOS 默认。Windows / Linux 实验性构建会改掉若干组合，避免抢走普通 Ctrl 序列（例如命令面板是 Ctrl+Shift+K）。全部可在“设置 > 快捷键”修改。
+
+| 操作 | macOS 默认 |
+|------|-------------|
+| 新建终端 | ⌘T（备选 ⌘N） |
+| 关闭会话 | ⌘W |
+| 水平 / 垂直分栏 | ⌘D / ⌘⇧D |
+| 切换相邻 pane | ⌘[ ⌘] ⌘⇧[ ⌘⇧] |
+| Command Palette | ⌘K |
+| 终端内搜索 | ⌘F |
+| 快速选择 | ⌘⇧Space |
+| 纯净模式 | ⌘⇧P |
+| 切到会话 1–8 / 最后一个 | ⌘1 – ⌘8 / ⌘9 |
+| 最近会话循环 | ⌘Tab |
+| 命令块上一条 / 下一条 | ⌘⇧↑ / ⌘⇧↓ |
+| 字号 +/- / 重置 | ⌘+ / ⌘- / ⌘0 |
+| 切换侧栏 / 检查器 | ⌘\ / ⌘⇧\ |
+| 设置 | ⌘, |
+| 全局唤起 / 隐藏 | ⌘⇧T |
 
 ## 技术栈
 
 | 层 | 选型 |
 |----|------|
-| 前端 | React 19、Zustand 5、xterm.js 6 + WebGL、Vite 7、TypeScript 5.8 |
-| 后端 | Tauri 2、Rust、portable-pty、git2、tokio、which |
+| 前端 | React 19、Zustand 5、xterm.js 6 + WebGL、Vite 7、TypeScript 6 |
+| 后端 | Tauri 2、Rust、portable-pty、russh、git2、tokio、which |
 | 字体 | JetBrains Mono（UI / 终端 / 代码）、PingFang SC 中文回退 |
 | 构建 | pnpm 9 |
 
@@ -194,23 +228,27 @@ pnpm test             # 全部测试（Node + UI + Rust）
 
 ```
 src/                    # React 前端
-├── app/                # 入口、初始化、快捷键、主题
-├── modules/            # terminal / git / fs / agent / editor
-├── state/              # Zustand（sessions + ui + persist）
-├── styles/             # CSS tokens + 终端配色
-└── ui/                 # Sidebar、MainArea、DiffPanel 等组件
+├── app/                # 入口、初始化、快捷键、主题、壳层布局
+├── modules/            # terminal、ssh、fs、git、agent、editor、preview 等
+├── state/              # Zustand（sessions + ui + workflows）；persist 只做快照 I/O
+├── styles/             # CSS tokens + 终端 / 外壳配色
+└── ui/                 # Sidebar、MainArea、Inspector、overlays
 
 src-tauri/src/          # Rust 后端
 ├── modules/
 │   ├── pty/            # portable-pty 会话管理
+│   ├── ssh/            # russh、SFTP、传输、转发、远程 Git
 │   ├── git/            # git2 只读操作
-│   ├── fs/             # 目录树、搜索、grep
+│   ├── fs/             # 目录树、搜索、grep、受限 head
 │   ├── agent/          # CLI 预检 + hooks 监听
+│   ├── preview/        # Preview WebView 与 tunnel
 │   ├── editor/         # 外部编辑器跳转
 │   ├── resolver/       # 二进制路径解析
 │   └── process/        # 子进程管理
 └── lib.rs              # Tauri 命令注册
 ```
+
+完整对照（含检查器页签与 IPC 入口）见 [docs/FEATURES.md](docs/FEATURES.md)。
 
 ## 路线图
 
@@ -229,9 +267,10 @@ src-tauri/src/          # Rust 后端
 | P2 Command Palette | done | ⌘K、模糊匹配、权重排序 |
 | P3 Agent 状态条 | done | 上下文条 + 改动计数 |
 | Session Recovery | done (1.2) | xterm buffer 快照 + 滚动恢复 |
-| SSH Client | done (1.7) | russh 长连接、SFTP 浏览 + 下载、主机 profile、可选远程 shell 集成 |
+| SSH Client | done (1.7+) | russh 长连接、SFTP、传输、主机 profile、转发、诊断 |
+| 文件 / Preview | done (1.15–1.17) | 工作区文件标签、Markdown 安全编辑、notebook 预览、Preview 窗口 |
 
-详见 [CHANGELOG](CHANGELOG.md)。
+详见 [CHANGELOG](CHANGELOG.md) 与 [docs/FEATURES.md](docs/FEATURES.md)。
 
 ## 明确不做
 
@@ -241,7 +280,7 @@ src-tauri/src/          # Rust 后端
 - Agent catalog、agent 启动器、批量启动入口
 - Agent stdout 结构化解析、持久 Agent 事件历史/搜索或富 Agent 时间线
 - DiffPanel 里的 stage、commit、push 等写操作
-- 插件系统、自研渲染、递归 tile 分栏
+- 插件系统、自研渲染、无上限递归 tile 分栏（硬上限 4 pane）
 - 遥测、analytics、任何回传数据
 
 判断标准很简单：让终端继续是终端，而不是变成下一个 IDE 或下一个 agent 控制台。

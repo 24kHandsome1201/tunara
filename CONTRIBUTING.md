@@ -95,34 +95,40 @@ chore(deps): bump xterm to 6.x
 
 ## 项目结构
 
-前后端如何通过 IPC 协作（命令面、事件通道、被托管的 state、启动顺序），见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+前后端如何通过 IPC 协作（命令面、事件通道、被托管的 state、启动顺序），见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。用户可见功能对应到代码入口，见 [docs/FEATURES.md](docs/FEATURES.md)。文档索引：[docs/README.md](docs/README.md)。
 
 ```
 src/                    # React 前端
-├── app/                # 应用入口、初始化、快捷键、主题
+├── app/                # 应用入口、初始化、快捷键、主题、壳层布局
 ├── modules/
 │   ├── terminal/       # xterm.js 会话、OSC handler、agent 生命周期
 │   ├── fs/             # 文件系统桥接
 │   ├── git/            # Git 桥接
 │   ├── agent/          # Agent 注册表
-│   ├── ssh/            # SSH 主机 profile / 凭证桥接 / SFTP 桥接
-│   └── editor/         # 外部编辑器跳转
-├── state/              # Zustand store（sessions + ui + persist）
-├── styles/             # CSS tokens + 终端主题
-└── ui/                 # UI 组件
+│   ├── ssh/            # 主机 profile、SFTP、传输、转发、诊断
+│   ├── preview/        # Preview 窗口桥接
+│   ├── editor/         # 外部编辑器跳转
+│   ├── session/        # 分栏、笔记、吉祥物、选目录新建
+│   └── workflows/      # 命令模板
+├── state/              # Zustand store（sessions + ui + workflows）
+├── styles/             # CSS tokens + 终端 / 外壳配色
+└── ui/                 # UI 组件与 overlays
 
 src-tauri/src/          # Rust 后端
 ├── modules/
 │   ├── pty/            # PTY 会话管理（portable-pty）
 │   ├── git/            # Git 操作（git2）
-│   ├── fs/             # 文件系统（目录树、搜索、grep）
+│   ├── fs/             # 文件系统（目录树、搜索、grep、受限 head）
 │   ├── agent/          # Agent CLI 预检 + hooks
-│   ├── ssh/            # SSH 客户端（russh、SFTP、host profile、known_hosts TOFU）
+│   ├── ssh/            # SSH 客户端（russh、SFTP、传输、转发、TOFU）
+│   ├── preview/        # Preview WebView 与 tunnel
 │   ├── editor/         # 编辑器启动
 │   ├── resolver/       # 二进制路径解析
 │   └── process/        # 子进程管理
 └── lib.rs              # Tauri 命令注册
 ```
+
+功能与代码对照见 [docs/FEATURES.md](docs/FEATURES.md)。前后端 IPC 全貌见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 安全问题
 
