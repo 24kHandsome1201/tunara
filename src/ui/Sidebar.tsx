@@ -217,6 +217,7 @@ export function Sidebar({
         overflow: "hidden",
       }}
       aria-label={t("sidebar.aria_label")}
+      role="navigation"
     >
       {onNewTerminal && (
         <SidebarNewTerminalControl
@@ -259,10 +260,11 @@ export function Sidebar({
           />
           {search && (
             <button
+              type="button"
               onClick={() => setSearch("")}
               className="hover-bg"
-              title={t("common.close")}
-              aria-label={t("common.close")}
+              title={t("common.clear_search")}
+              aria-label={t("common.clear_search")}
               style={{
                 width: 18,
                 height: 18,
@@ -297,8 +299,17 @@ export function Sidebar({
         aria-label={t("sidebar.list.aria_label")}
       >
         {filtered.length === 0 && (
-          <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-            {q ? t("sidebar.empty.no_match") : t("sidebar.empty.none")}
+          <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <span>{q ? t("sidebar.empty.no_match") : t("sidebar.empty.none")}</span>
+            {q ? (
+              <button type="button" className="ui-button" onClick={() => setSearch("")}>
+                {t("common.clear_search")}
+              </button>
+            ) : onNewTerminal ? (
+              <button type="button" className="ui-button ui-button--primary" onClick={onNewTerminal}>
+                {t("sidebar.new_terminal")}
+              </button>
+            ) : null}
           </div>
         )}
 

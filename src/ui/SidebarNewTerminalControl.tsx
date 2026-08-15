@@ -39,7 +39,7 @@ export function SidebarNewTerminalControl({
         style={{
           width: "100%",
           height: "var(--h-btn-md)",
-          border: "1px solid var(--c-border-2)",
+          border: "1px solid var(--c-control-border)",
           borderRadius: "var(--r-btn)",
           background: "var(--c-bg-white)",
           display: "flex",
@@ -48,6 +48,7 @@ export function SidebarNewTerminalControl({
         }}
       >
         <button
+          type="button"
           onClick={onNewTerminal}
           className="hover-accent-bg"
           style={{
@@ -91,6 +92,7 @@ export function SidebarNewTerminalControl({
         </button>
         {onNewTerminalInDirectory && (
           <button
+            type="button"
             onClick={onNewTerminalInDirectory}
             title={t("sidebar.new_terminal_in_directory")}
             aria-label={t("sidebar.new_terminal_in_directory")}

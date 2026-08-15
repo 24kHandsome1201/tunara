@@ -1421,9 +1421,9 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
           <span title={readError.detail} style={{ display: "block", maxWidth: "100%", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{readError.detail}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={retryRead}>{t("preview.retry")}</button>
+            <button type="button" className="ui-button" onClick={retryRead}>{t("preview.retry")}</button>
             {readError.kind === "disconnected" && remoteSession?.remote ? (
-              <button onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+              <button type="button" className="ui-button ui-button--primary" onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
             ) : null}
           </div>
         </div>

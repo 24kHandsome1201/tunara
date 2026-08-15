@@ -330,7 +330,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
         {!filesOnly && navigation.secondary.length > 0 && (
           <MoreToolsButton
             expanded={moreMenu !== null}
-            label={t("inspector.tab.aria_label")}
+            label={t("inspector.tab.more")}
             buttonRef={moreButtonRef}
             onClick={toggleMoreMenu}
           />

@@ -94,7 +94,7 @@ export function KeyboardInteractivePromptDialog() {
           </span>
           <strong id="ssh-keyboard-interactive-hop">{t(`ssh.hop.${prompt.hopRole}`)}</strong>
           <span style={{ display: "block", marginTop: 4, fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
-            {prompt.origin.user}@{prompt.origin.host}:{prompt.origin.port} · {t("ssh.keyboardInteractive.session", { session: prompt.origin.logicalSessionId })} · {t("ssh.keyboardInteractive.generation", { generation: prompt.origin.transportGeneration })}
+            {prompt.origin.user}@{prompt.origin.host}:{prompt.origin.port}
           </span>
           {prompt.name.trim() && <span style={{ display: "block", marginTop: 5 }}>{prompt.name}</span>}
           {prompt.instructions.trim() && (

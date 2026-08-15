@@ -24,7 +24,7 @@ test("waiting confirmation uses a dedicated readable text token", () => {
   const global = read("src/ui/GlobalAgentBar.tsx");
   assert.match(tokens, /--c-warning-text:\s*oklch\(43%/);
   assert.match(tokens, /--c-warning-bg:/);
-  assert.match(card, /var\(--c-warning-text\)/);
+  assert.match(card, /data-confirm=\{confirmClose \? "true" : undefined\}/);
   assert.match(global, /var\(--c-warning-text\)/);
 });
 
@@ -89,6 +89,7 @@ test("non-settings native controls opt into the shared theme contract", () => {
 
   assert.deepEqual(missing, []);
   assert.match(styles, /html \{ color-scheme: light; \}[\s\S]*html\.dark \{ color-scheme: dark; \}/);
+  assert.match(styles, /\.sr-only \{/);
   assert.match(styles, /\.ui-button:hover:not\(:disabled\)/);
   assert.match(styles, /\.ui-button:active:not\(:disabled\)/);
   assert.match(styles, /\.ui-button:focus-visible/);

@@ -394,6 +394,7 @@
 .session-card:has(.session-card-select[aria-current="page"]):hover { background: var(--c-accent-bg-light); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .session-card:hover .session-card-close,
+.session-card:has(.session-card-close[data-confirm="true"]) .session-card-close,
 .session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
 .session-card-close:active { transform: scale(var(--scale-press)); }
 

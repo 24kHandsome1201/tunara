@@ -340,6 +340,8 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
       aria-label={t("pure.action_strip")}
       data-pure-action-strip
       data-visible={String(visible)}
+      inert={!visible || undefined}
+      aria-hidden={!visible}
       onPointerEnter={keepVisible}
       onPointerLeave={releaseVisible}
       onFocusCapture={keepVisible}
@@ -475,7 +477,7 @@ function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabe
       </button>
       <button
         type="button"
-        tabIndex={0}
+        tabIndex={tabIndex ?? 0}
         title={confirmClose ? confirmCloseLabel : closeLabel}
         aria-label={confirmClose ? confirmCloseLabel : closeLabel}
         onClick={(e) => { e.stopPropagation(); onClose(); }}

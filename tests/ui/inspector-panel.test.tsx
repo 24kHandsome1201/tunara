@@ -53,7 +53,7 @@ const remoteSession: Session = {
 };
 
 function chooseSecondaryPanel(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: "Inspector panels" }));
+  fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
   fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(name) }));
 }
 
@@ -176,7 +176,7 @@ test("projects only Files controls in Pure Mode", () => {
 
   expect(screen.getByTestId("files-panel")).toBeTruthy();
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Files"]);
-  expect(screen.queryByRole("button", { name: "Inspector panels" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "More inspector tools" })).toBeNull();
   expect(useUIStore.getState().inspectorTab).toBe("overview");
 });
 

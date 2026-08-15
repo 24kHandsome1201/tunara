@@ -153,7 +153,7 @@ export function Settings({ onClose }: SettingsProps) {
             ) : configPath ? (
               <span title={configPath} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{configPath}</span>
             ) : null}
-            <kbd className="settings-key-hint" style={{ padding: "2px 6px" }}>ESC</kbd>
+            <kbd className="settings-key-hint" style={{ padding: "2px 6px" }}>{t("common.escape")}</kbd>
             <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)" }}>
               {t("common.done")}
             </button>

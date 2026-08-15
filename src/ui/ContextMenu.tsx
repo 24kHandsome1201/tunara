@@ -209,7 +209,11 @@ export function ContextMenu({
       if (ref.current && !ref.current.contains(e.target as Node)) onCloseRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onCloseRef.current();
+      }
     };
     const onResize = () => onCloseRef.current();
     document.addEventListener("pointerdown", onDown);
