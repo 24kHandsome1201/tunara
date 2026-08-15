@@ -1517,7 +1517,7 @@ export function FileExplorer({
           setListingFocusIndex(listingIndex);
         }}
         onClick={(event) => {
-          if (event.target !== event.currentTarget && (event.target as HTMLElement).closest("[role=group]")) return;
+          if (event.target !== event.currentTarget && (event.target as HTMLElement).closest("[role=group], button, input")) return;
           if (batchSelectable && (event.ctrlKey || event.metaKey || event.shiftKey)) {
             toggleDownloadSelection(node, event.shiftKey);
             return;
@@ -1599,10 +1599,34 @@ export function FileExplorer({
             style={{ margin: 0, visibility: node.entry.kind === "file" ? "visible" : "hidden" }}
           />
         )}
-        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, height: 30, pointerEvents: "none" }}>
-          {isDir ? <FolderIcon /> : <FileIcon />}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)" }}>{node.entry.name}</span>
-          {isDir && <span aria-hidden="true" style={{ fontSize: 10 }}>{expanded ? "⌄" : "›"}</span>}
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, height: 30 }}>
+          {isDir ? (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="explorer-tree-toggle hover-bg"
+              aria-label={expanded ? t("dir_group.collapse_named", { name: node.entry.name }) : t("dir_group.expand_named", { name: node.entry.name })}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (expanded) {
+                  setExpandedPaths((current) => {
+                    const next = new Set(current);
+                    next.delete(node.path);
+                    return next;
+                  });
+                } else {
+                  expandDirectory(node.path);
+                }
+              }}
+            >
+              <FolderIcon />
+              <span aria-hidden="true" style={{ fontSize: 11, width: 10, textAlign: "center" }}>{expanded ? "⌄" : "›"}</span>
+            </button>
+          ) : (
+            <span aria-hidden="true" style={{ display: "flex", pointerEvents: "none" }}><FileIcon /></span>
+          )}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)", pointerEvents: "none" }}>{node.entry.name}</span>
         </span>
         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", textAlign: "right", pointerEvents: "none" }}>{formatModifiedTime(node.entry.mtime)}</span>
         <button
@@ -1809,8 +1833,35 @@ export function FileExplorer({
             </select>
           </>
         )}
+        <button
+          onClick={() => setIncludeHidden((v) => !v)}
+          className="hover-bg"
+          title={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
+          aria-label={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
+          aria-pressed={includeHidden}
+          style={{
+            height: 26,
+            minWidth: 26,
+            padding: "0 var(--sp-2)",
+            borderRadius: "var(--r-btn)",
+            border: "none",
+            background: includeHidden ? "var(--c-accent-bg-light)" : "transparent",
+            color: includeHidden ? "var(--c-accent)" : "var(--c-text-5)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "var(--fs-meta)",
+            lineHeight: "16px",
+            fontFamily: "var(--font-mono)",
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          .*
+        </button>
         {isRemote && (
-          <>
+          <div className="explorer-toolbar-transfers">
             <button
               onClick={() => { void uploadToRemoteDirectory(currentPath); }}
               disabled={remoteDisconnected || upload !== null}
@@ -1846,35 +1897,8 @@ export function FileExplorer({
                 </button>
               </>
             )}
-          </>
+          </div>
         )}
-        <button
-          onClick={() => setIncludeHidden((v) => !v)}
-          className="hover-bg"
-          title={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
-          aria-label={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
-          aria-pressed={includeHidden}
-          style={{
-            height: 26,
-            minWidth: 26,
-            padding: "0 var(--sp-2)",
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: includeHidden ? "var(--c-accent-bg-light)" : "transparent",
-            color: includeHidden ? "var(--c-accent)" : "var(--c-text-5)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "var(--fs-meta)",
-            lineHeight: "16px",
-            fontFamily: "var(--font-mono)",
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          .*
-        </button>
       </div>
 
       {upload && (

@@ -12,11 +12,10 @@
   --c-text-primary: oklch(24% 0.012 48);
   --c-text-2: oklch(34% 0.012 48);
   --c-text-3: oklch(43% 0.011 48);
-  --c-text-4: oklch(48% 0.01 48);
-  --c-text-5: oklch(49% 0.009 48);
-  /* Small normal text: conservative AA contrast on the lightest used surface. */
-  --c-text-6: oklch(48% 0.009 48);
-  --c-text-7: oklch(48% 0.009 48);
+  --c-text-4: oklch(45.5% 0.01 48);
+  --c-text-5: oklch(47.5% 0.009 48);
+  --c-text-6: oklch(49.5% 0.008 48);
+  --c-text-7: oklch(51% 0.007 48);
 
   /* ── 面/底 ── */
   --c-bg-white: oklch(99.4% 0.003 55);
@@ -110,6 +109,7 @@
   --fs-reader-h1: 17px;
   --fs-reader-h2: 14px;
   --fs-reader-h3: 12px;
+  /* Ornament / kicker only. Status and scope chrome uses --fs-meta. */
   --fs-badge: 10px;
 
   /* ── 行高：界面信息保持紧凑，说明文字仍可舒适换行 ── */
@@ -204,11 +204,10 @@
   --c-text-primary: oklch(91% 0.008 55);
   --c-text-2: oklch(84% 0.008 55);
   --c-text-3: oklch(72% 0.008 55);
-  --c-text-4: oklch(65% 0.008 55);
-  --c-text-5: oklch(68% 0.008 55);
-  /* Small normal text: conservative AA contrast on dark panel surfaces. */
-  --c-text-6: oklch(68% 0.008 55);
-  --c-text-7: oklch(68% 0.008 55);
+  --c-text-4: oklch(69% 0.008 55);
+  --c-text-5: oklch(67% 0.008 55);
+  --c-text-6: oklch(65.5% 0.008 55);
+  --c-text-7: oklch(65% 0.008 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);
   --c-bg-white-glass: var(--c-bg-white);
@@ -430,6 +429,14 @@
 .ctx-item-danger:hover, .ctx-item-danger[data-active='true'] { background: var(--c-error-bg-light); color: var(--c-error); }
 .ctx-item-disabled { color: var(--c-text-6); pointer-events: none; }
 .ctx-divider { height: 1px; background: var(--c-border-2); margin: var(--sp-1) 0; }
+.ctx-heading {
+  padding: 7px 12px 3px;
+  font: 700 var(--fs-meta) / 1.3 var(--font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-5);
+  user-select: none;
+}
 
 .sidebar-search:focus-within { background: var(--c-bg-white) !important; border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent); }
 .explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 16%, transparent); }

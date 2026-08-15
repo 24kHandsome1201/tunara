@@ -7,6 +7,8 @@ import { useAppUpdate } from "./useAppUpdate";
 import { useWorkflowsStore } from "@/state/workflows";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
+import { TerminalSettings } from "./settings/TerminalSettings";
+import { AccessibilitySettings } from "./settings/AccessibilitySettings";
 import { ShortcutsSettings } from "./settings/ShortcutsSettings";
 import { WorkflowsSettings } from "./settings/WorkflowsSettings";
 import { CliSettings } from "./settings/CliSettings";
@@ -18,7 +20,7 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-const TABS = ["appearance", "shortcuts", "workflows", "cli", "app"] as const;
+const TABS = ["appearance", "terminal", "accessibility", "shortcuts", "workflows", "cli", "app"] as const;
 
 /**
  * Settings dialog shell: chrome (backdrop, focus trap, tab list, footer) plus
@@ -97,6 +99,8 @@ export function Settings({ onClose }: SettingsProps) {
 
         <div role="tabpanel" id="settings-tabpanel" className="no-scrollbar scroll-fade-y">
           {activeTab === "appearance" && <AppearanceSettings />}
+          {activeTab === "terminal" && <TerminalSettings />}
+          {activeTab === "accessibility" && <AccessibilitySettings />}
           {activeTab === "shortcuts" && <ShortcutsSettings />}
           {activeTab === "workflows" && <WorkflowsSettings />}
           {activeTab === "cli" && <CliSettings {...cliStatus} />}
@@ -104,7 +108,7 @@ export function Settings({ onClose }: SettingsProps) {
         </div>
 
         <div className="settings-dialog-footer">
-          {activeTab === "appearance" ? (
+          {activeTab === "appearance" || activeTab === "terminal" || activeTab === "accessibility" ? (
             <button
               onClick={async () => {
                 const ok = await tauriConfirmDialog(t("settings.appearance.reset_confirm"), { kind: "warning" });

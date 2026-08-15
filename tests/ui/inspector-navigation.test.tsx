@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { resolveInspectorNavigation } from "@/ui/inspector-navigation";
+import { INSPECTOR_OVERFLOW_SECTION, resolveInspectorNavigation } from "@/ui/inspector-navigation";
 
 describe("inspector navigation", () => {
   test("keeps everyday local tools visible and moves specialist tools into overflow", () => {
@@ -34,6 +34,13 @@ describe("inspector navigation", () => {
       isRemote: true,
       hasBinding: false,
     }).secondary).not.toContain("metadata");
+  });
+
+  test("groups overflow tools into workspace, transfer, and SSH sections", () => {
+    expect(INSPECTOR_OVERFLOW_SECTION.preview).toBe("workspace");
+    expect(INSPECTOR_OVERFLOW_SECTION.notes).toBe("workspace");
+    expect(INSPECTOR_OVERFLOW_SECTION.transfers).toBe("transfer");
+    expect(INSPECTOR_OVERFLOW_SECTION.diagnostics).toBe("ssh");
   });
 
   test("preserves the dedicated files-only projection", () => {

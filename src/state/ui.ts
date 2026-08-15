@@ -217,7 +217,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
 
 export type InspectorTab = "overview" | "changes" | "files" | "transfers" | "metadata" | "forwarding" | "diagnostics" | "knownHosts" | "preview" | "notes";
 
-export type SettingsTab = "appearance" | "shortcuts" | "workflows" | "cli" | "app";
+export type SettingsTab = "appearance" | "terminal" | "accessibility" | "shortcuts" | "workflows" | "cli" | "app";
 
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
 

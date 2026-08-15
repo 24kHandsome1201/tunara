@@ -537,21 +537,43 @@ select.ui-control {
   .settings-dialog-footer > div { justify-content: flex-end; }
 }
 
-/* File explorer chrome remains usable in a narrow Inspector: the path yields
-   first while every icon action keeps a consistent target. */
+/* File explorer chrome keeps go-up, breadcrumbs, and refresh on the first
+   row. Remote transfer actions wrap onto a second row so the path stays visible. */
 .explorer-toolbar {
   min-height: 38px;
   padding: 4px var(--sp-2);
   border-bottom: 1px solid var(--c-border-1);
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 2px;
   flex-shrink: 0;
   background: var(--c-bg-1);
 }
 .explorer-toolbar > button { flex-shrink: 0; }
-.explorer-toolbar > button:disabled { color: var(--c-text-6) !important; opacity: .45 !important; pointer-events: none; }
-.explorer-breadcrumbs { display: flex; align-items: center; gap: 1px; flex: 1; min-width: 32px; padding: 0 2px; overflow: hidden; white-space: nowrap; }
+.explorer-toolbar button:disabled { color: var(--c-text-6) !important; opacity: .45 !important; pointer-events: none; }
+.explorer-breadcrumbs { display: flex; align-items: center; gap: 1px; flex: 1 1 120px; min-width: 88px; padding: 0 2px; overflow: hidden; white-space: nowrap; }
+.explorer-toolbar-transfers {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: 1 0 100%;
+}
+.explorer-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 3px;
+  margin-left: -3px;
+  border: none;
+  background: transparent;
+  color: var(--c-text-4);
+  cursor: pointer;
+  border-radius: var(--r-btn);
+  flex-shrink: 0;
+}
 .explorer-transfer-status {
   padding: 7px var(--sp-2);
   border-bottom: 1px solid var(--c-border-1);
@@ -586,7 +608,7 @@ select.ui-control {
 .transfer-card[data-status="failed"]::before, .transfer-card[data-status="needsReconcile"]::before { background: var(--c-error); }
 .transfer-card-heading { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .transfer-card-heading strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-2); font: 600 var(--fs-secondary) var(--font-mono); }
-.transfer-status { padding: 1px 6px; border-radius: var(--r-pill); background: var(--c-bg-2); color: var(--c-text-4); font-size: var(--fs-badge); flex-shrink: 0; }
+.transfer-status { padding: 1px 6px; border-radius: var(--r-pill); background: var(--c-bg-2); color: var(--c-text-4); font-size: var(--fs-meta); flex-shrink: 0; }
 .transfer-status[data-status="completed"] { color: var(--c-success); background: var(--c-success-bg-light); }
 .transfer-status[data-status="failed"], .transfer-status[data-status="needsReconcile"] { color: var(--c-error); background: var(--c-error-bg-light); }
 .transfer-path { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; color: var(--c-text-4); font: var(--fs-meta)/var(--lh-ui) var(--font-mono); }
@@ -1106,6 +1128,25 @@ textarea:focus-visible {
 /* Preview controls deliberately inherit the same compact surface treatment as
    Tunara's other inspector controls instead of falling back to WebView-native
    buttons and inputs. All action groups wrap in the component for narrow rails. */
+.preview-disclosure {
+  min-width: 0;
+}
+.preview-disclosure > summary {
+  cursor: pointer;
+  font-size: var(--fs-meta);
+  font-weight: 650;
+  color: var(--c-text-4);
+  list-style: none;
+}
+.preview-disclosure > summary::-webkit-details-marker { display: none; }
+.preview-disclosure > summary::before {
+  content: "› ";
+  display: inline-block;
+  width: 10px;
+  color: var(--c-text-5);
+}
+.preview-disclosure[open] > summary::before { content: "⌄ "; }
+
 .preview-source-card button,
 .preview-source-card input {
   min-height: 26px;
