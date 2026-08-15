@@ -76,6 +76,11 @@ const SSH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(135);
 const SSH_AUTH_TIMEOUT: Duration = Duration::from_secs(135);
 const SSH_CHANNEL_SETUP_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// GUI clients have no local tty whose termios we can copy. sshd applies only
+/// the listed codes and leaves the rest at pty defaults; IUTF8 is the flag
+/// that keeps CJK/IME input as UTF-8 instead of 8-bit garbage.
+pub(crate) const SSH_PTY_MODES: [(russh::Pty, u32); 1] = [(russh::Pty::IUTF8, 1)];
+
 pub(super) async fn await_stage<T, E, F>(
     label: &str,
     timeout: Duration,
@@ -750,7 +755,7 @@ impl SshSession {
                 params.rows as u32,
                 0,
                 0,
-                &[],
+                &SSH_PTY_MODES,
             ),
         )
         .await
@@ -1990,6 +1995,11 @@ mod tests {
             classify_pump_end(None, false, false, true),
             PumpEnd::TransportLost
         );
+    }
+
+    #[test]
+    fn ssh_pty_modes_enable_utf8_input() {
+        assert_eq!(SSH_PTY_MODES, [(russh::Pty::IUTF8, 1)]);
     }
 
     #[test]

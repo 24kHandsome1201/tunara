@@ -14,6 +14,8 @@ interface ObserveTerminalResizeOptions {
   rebuildAtlas?: () => void;
 }
 
+export const TERMINAL_PTY_RESIZE_DEBOUNCE_MS = 32;
+
 export function observeTerminalResize({
   element,
   terminal,
@@ -44,7 +46,7 @@ export function observeTerminalResize({
       resizeTimer = setTimeout(() => {
         resizeTimer = null;
         if (!isDisposed()) resizePty(terminal.cols, terminal.rows);
-      }, 250);
+      }, TERMINAL_PTY_RESIZE_DEBOUNCE_MS);
     }, 8);
   });
 
