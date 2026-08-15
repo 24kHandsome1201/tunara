@@ -2,9 +2,9 @@
 
 ## 产品判断
 
-Tunara 已经有终端、会话、Git 审查、远程 SSH、文件浏览和 Agent 状态识别。后续最值得发展的方向是把远程修复闭环补齐，以及在终端本职内做更扎实的会话管理。
+Tunara 已经有终端、会话、Git 审查、远程 SSH、文件浏览/轻编辑、Preview 和 Agent 状态识别。后续最值得发展的方向是把远程修复闭环补齐，以及在终端本职内做更扎实的会话管理。
 
-当前体验继续围绕“少切换、少记忆、少迷路”收敛：终端可从原生目录选择器直接起步，侧栏用一层统一会话动态聚合 SSH 故障、后台完成、运行中和可恢复状态。
+当前体验继续围绕“少切换、少记忆、少迷路”收敛：终端可从原生目录选择器直接起步，侧栏用一层统一会话动态聚合 SSH 故障、后台完成、运行中和可恢复状态。功能与代码对照见 [FEATURES.md](./FEATURES.md)。
 
 ## 已落地能力
 
@@ -81,6 +81,34 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 ### 17. 与滚屏一致的命令历史
 
 命令块历史跟随 xterm scrollback marker 生命周期，不再固定截断为 24 条。最近命令保持紧凑展示，更早记录通过可滚动历史菜单访问，已经离开滚屏的命令自动淘汰。
+
+### 18. 最多四栏递归分屏（1.16.0）
+
+可在任意 pane 右侧或下方继续拆分，硬上限 4 个叶子；焦点按实际几何方向切换，而不是固定的左右两个槽位。
+
+### 19. 工作区文件标签与 Notebook（1.17.0）
+
+本地与 SSH 文件可与终端标签并列打开。`.ipynb` 只读预览 Markdown/代码/原始单元格和纯文本输出，不执行代码，也不渲染 HTML、脚本或富输出。
+
+### 20. SSH 传输与远端变更（1.17.1 及之后）
+
+文件面板支持覆盖确认的上传、批量上传/下载、真实进度、取消和 journal 恢复。远端 mkdir / rename / delete 走带前置条件的 `ssh_fs_mutate_v1`。检查器为 SSH 会话提供 Transfers、Metadata、Forwarding、Diagnostics、Known hosts 页签。
+
+### 21. 设置快捷键页与终端交互触发器
+
+设置拆成外观 / 快捷键 / 工作流 / CLI / 应用。右键三档（smart / menu / disabled），Copy Selection 与 Safe Paste 可配置；Shift+F10 与 ContextMenu 键保持不可改写的恢复路径。
+
+### 22. 统一界面与终端配色
+
+九套配色互斥选择：命名方案同时染终端和外壳；浅色 / 深色 / 跟随系统使用 Tunara 默认 palette。Accent 与配色正交。规范见 [THEME_SHELL_TINTING.md](./THEME_SHELL_TINTING.md)。
+
+### 23. 安全图片预览与大文本开头查看
+
+常见图片在 Files 表面安全解码预览；超大像素拒绝。对截断或过大的文本/日志提供显式“查看开头”（最多 2000 行 / 256 KiB）。合同见 [LIMITED_LARGE_FILE_VIEWING.md](./LIMITED_LARGE_FILE_VIEWING.md)。
+
+### 24. 可选本地 SSH 使用日志
+
+默认关闭。开启后只把 allowlist 事件写入本机 JSONL，不回传。见 [LOCAL_USAGE_LOGGING.md](./LOCAL_USAGE_LOGGING.md)。
 
 ## 下一阶段建议
 

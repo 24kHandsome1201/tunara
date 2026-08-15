@@ -10,8 +10,22 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 新功能
+- 大文本/日志新增显式“查看开头”：本地与 SFTP 共用最多 2000 行 / 256 KiB 的受限读取，可取消，变更中的文件会拒绝过期结果。
+- 文件预览支持安全图片解码；超大像素返回明确的 oversized 状态，不把整文件读进编辑器路径。
+- SSH 传输升级为可 journal 的批量上传/下载：进度、取消、部分失败恢复，以及文件夹 manifest 上限。
+- 设置新增独立“快捷键”页签；外观、工作流、CLI、应用拆成各自面板。
+- 终端右键与 Copy / Safe Paste 改为可配置触发器（smart / menu / disabled），并保留 Shift+F10 与 ContextMenu 键作为不可改写的恢复路径。
+- 可选本地 SSH 使用日志（默认关闭）：allowlist 事件写入本机 JSONL，失败不影响终端。
+
+### 产品与体验
+- 界面与终端配色合并为互斥选择器；命名方案同时染外壳与 xterm。
+- 检查器导航分层：Overview / Changes / Files 为一级，Preview、Notes 与 SSH 专用页签为二级。
+- 统一桌面控件在各配色下的对比度、焦点与窄面板布局；文件表面快捷键不再误伤会话标签。
+
 ### 稳定性
 - 修复 SSH 下多分屏同时跑 Codex / Grok 等 TUI 一段时间后出现的乱码：每个会话使用独立 WebGL glyph atlas，避免 addon-webgl 0.19 共享纹理在 page merge 后把相邻 pane 画花；WebGL 替换 renderer 后立即重新 fit 并同步 PTY 尺寸；SSH PTY 启用 IUTF8，中文输入不再被当成 8-bit 字节。
+- 修复 Linux 窗口尺寸与原生缩放合同，避免平台 overlay 配置覆盖 `resizable`。
 
 ## [1.17.1] - 2026-08-01
 

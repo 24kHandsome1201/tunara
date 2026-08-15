@@ -2,7 +2,8 @@
 
 How the React frontend and the Rust (Tauri 2) backend fit together, and where
 to look when you need to change something. This is a map of the boundary, not a
-feature list — for what Tunara *is*, see the [README](../README.md).
+feature list — for what Tunara *is*, see the [README](../README.md); for
+capabilities mapped to code, see [FEATURES.md](./FEATURES.md).
 
 ## The shell
 
@@ -33,15 +34,21 @@ fixed three-pane layout under a custom titlebar:
   overview, read-only git diff ([`DiffPanel`](../src/ui/DiffPanel.tsx)),
   file tree ([`FileExplorer`](../src/ui/FileExplorer.tsx)), bounded text/Markdown
   reading and safe editing ([`FilePreview`](../src/ui/FilePreview.tsx)), Preview
-  controls, and session notes. Only the active Inspector tab is mounted.
+  controls, session notes, and SSH-only tabs (transfers, metadata, forwarding,
+  diagnostics, known hosts). Tab availability is computed in
+  [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Only the
+  active Inspector tab is mounted.
 
-Both side panes collapse to width `0` and switch to floating overlays below
-viewport breakpoints (720px for the sidebar, 900px for the panel). Overlays
-(`Settings`, `CommandPalette`, `SshConnect`, `HostKeyPromptDialog`,
-`WorkflowParamPrompt`, `ToastContainer`) are rendered as siblings, gated on
-`useUIStore`. The three Zustand stores under [`src/state/`](../src/state/) are
-`sessions`, `ui`, and `workflows`; `persist` provides snapshot I/O rather than
-a fourth store.
+Auxiliary panes switch to floating overlays when docking them would shrink the
+terminal workspace below a usable width (280px per split column, 480px for a
+single pane). The decision lives in
+[`src/app/lib/app-shell-layout.ts`](../src/app/lib/app-shell-layout.ts) and is
+not a pair of fixed 720/900px viewport cliffs. Overlays (`Settings`,
+`CommandPalette`, `SshConnect`, `HostKeyPromptDialog`,
+`KeyboardInteractivePromptDialog`, `WorkflowParamPrompt`, `ToastContainer`)
+are rendered as siblings, gated on `useUIStore`. The three Zustand stores
+under [`src/state/`](../src/state/) are `sessions`, `ui`, and `workflows`;
+`persist` provides snapshot I/O rather than a fourth store.
 
 ### macOS titlebar contract
 
@@ -88,8 +95,9 @@ module.
 
 | Command | Does | Frontend caller |
 |---|---|---|
-| `pty_open` | Spawn a local login shell over a PTY; returns physical id, streams `data`, `exit`, and `connectionStatus` events on a `Channel<PtyEvent>` | `openPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `pty_open` | Spawn a local login shell over a PTY; returns physical id, streams `data`, `exit`, `connectionStatus`, and SSH-only prompt events on a `Channel<PtyEvent>` | `openPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `pty_write` | Write input bytes to a session (local or SSH) | `PtySession.write`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `pty_output_ack` | Acknowledge consumed output bytes so the backend can release its flow-control window | output buffer / SSH flow control via [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `pty_resize` | Resize a session's PTY/SSH window | `PtySession.resize`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `pty_close` | Kill/close a session and drop it from `PtyState` | `PtySession.close`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 
@@ -101,18 +109,30 @@ their own commands.
 
 | Command | Does | Frontend caller |
 |---|---|---|
-| `ssh_open` | Open a russh interactive shell; same `Channel<PtyEvent>` contract as `pty_open`, with backend `connectionStatus` phases plus the `hostKeyPrompt` variant | `openSshPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `ssh_open` | Legacy flat adapter: same handshake as `ssh_open_v2`, returns only the physical PTY id | kept for wire compatibility; current UI uses `ssh_open_v2` |
+| `ssh_open_v2` | Open a russh interactive shell; returns physical id + backend-issued transport generation; same `Channel<PtyEvent>` contract as `pty_open` | `openSshPty` in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_cancel_open` | Cancel an in-flight handshake/auth/shell-open attempt by generation id | `cancelSshOpen`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_host_key_decision` | Reply to a parked TOFU host-key prompt (accept/reject by `promptId`) | `answerHostKeyPrompt`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `ssh_keyboard_interactive_response` | Reply to a parked keyboard-interactive prompt by `promptId` | [`KeyboardInteractivePrompt.tsx`](../src/ui/overlays/KeyboardInteractivePrompt.tsx) via [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
+| `ssh_diagnostic_run_v1` / `ssh_diagnostic_cancel_v1` | Run or cancel an explicit connection/config diagnostic | [`diagnostics-store.ts`](../src/modules/ssh/diagnostics-store.ts) |
+| `ssh_local_forward_*` / `ssh_dynamic_forward_*` | Start, list, and stop local or dynamic (SOCKS) forwards | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
+| `ssh_forwarding_reconnect_snapshot` / `ssh_forwarding_reconnect_rebuild` | Snapshot forwarding intent across a reconnect, then rebuild | SSH reconnect path in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_hosts_load` | Read saved host profiles (no credentials) | `loadHosts`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_save` | Upsert a host profile, return the new list | `saveHost`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_remove` | Delete a host profile by id | `removeHost`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_import_config` | Import static host profiles from `~/.ssh/config` | `importSshConfig`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
+| `ssh_known_hosts_list_v1` / `ssh_known_hosts_remove_v1` / `ssh_known_hosts_refresh_v1` | Inspect and prune the app known_hosts file | [`KnownHostsPanel.tsx`](../src/modules/ssh/KnownHostsPanel.tsx) |
 | `ssh_fs_read_dir` | List a remote directory over SFTP | `sshReadDir`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_read_file` | Read a remote file over SFTP | `sshReadFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_file_view_head_v1` | Bounded remote text head (same limits as local `fs_file_view_head_v1`) | [`LIMITED_LARGE_FILE_VIEWING.md`](./LIMITED_LARGE_FILE_VIEWING.md) |
 | `ssh_fs_write_text_file` | Conflict-checked, atomic remote text save | `sshWriteTextFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_reconcile_text_write` | Reconcile an outcome-unknown remote save after reconnect | `sshReconcileTextWrite`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
-| `ssh_fs_download` | Download a remote file to a local path, return bytes written | `sshDownload`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_fs_download` / `ssh_fs_upload` / `ssh_fs_cancel_upload` | Legacy single-file transfer adapters (unchanged wire names) | [`transfer-bridge.ts`](../src/modules/ssh/transfer-bridge.ts) |
+| `ssh_transfer_download` / `ssh_transfer_upload` / `ssh_transfer_cancel` | Journaled transfers with progress channels | [`transfer-store.ts`](../src/modules/ssh/transfer-store.ts) |
+| `validate_manifest` | Expand a local or remote folder into a bounded transfer manifest | [`transfer-bridge.ts`](../src/modules/ssh/transfer-bridge.ts) |
+| `ssh_transfer_journal_*` / `ssh_transfer_recovery_*` | Persist, list, clean, and reconcile interrupted transfers | [`transfer_journal.rs`](../src-tauri/src/modules/ssh/transfer_journal.rs) |
+| `ssh_fs_mutate_v1` / `ssh_fs_reconcile_mutation_v1` | Precondition-checked mkdir / rename / delete | [`remote-fs/bridge.ts`](../src/modules/ssh/remote-fs/bridge.ts) |
+| `ssh_fs_stat_v1` / `ssh_fs_chmod_v1` | Remote metadata and chmod when the server supports it | [`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx) |
 | `ssh_fs_home` | Resolve the remote home dir when no OSC 7 absolute cwd is known | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_search` / `ssh_fs_grep` | Cancellable remote filename/content search over exec channels | `sshSearch` / `sshGrep`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_git_status` / `ssh_git_diff` / `ssh_git_ahead_behind` | Read-only remote Git inspection over exec channels | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
@@ -123,8 +143,9 @@ their own commands.
 | Command | Does | Frontend caller |
 |---|---|---|
 | `fs_read_dir` | List a local directory | `fsReadDir`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
-| `fs_read_file` | Read a file (text/binary/too-large classified) | `fsReadFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
+| `fs_read_file` | Read a file (text/binary/image/too-large classified) | `fsReadFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_write_text_file` | Fingerprint-checked atomic text save | `fsWriteTextFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
+| `fs_file_view_head_v1` / `fs_cancel_file_view_v1` | Bounded first-N-line text view (local; SSH uses `ssh_file_view_head_v1`) | [`LIMITED_LARGE_FILE_VIEWING.md`](./LIMITED_LARGE_FILE_VIEWING.md) |
 | `fs_search` | Fuzzy filename search under a root | `fsSearch`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_grep` | Content grep under a root | `fsGrep`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) (via [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx)) |
 | `fs_cancel_search` | Cancel the active local or remote search generation | `fsCancelGrep` / `cancelRemoteSearch` in the filesystem bridges |
@@ -237,14 +258,14 @@ Data crosses the boundary three different ways. Picking the right one matters.
 The default. The frontend calls a typed wrapper in a `*-bridge.ts` file; that
 wrapper calls `invoke("command_name", args)`; the Rust `#[tauri::command]`
 returns `Result<T, String>` which resolves/rejects the promise. Everything in
-the table above except the streaming `pty_open`/`ssh_open` outputs works this way.
+the table above except the streaming `pty_open`/`ssh_open_v2` outputs works this way.
 
 ### 2. Per-session `Channel<PtyEvent>` — PTY + SSH output
 
 Terminal output is too high-volume and too push-shaped for request/response, so
 each session gets its own [`Channel`](https://v2.tauri.app/develop/calling-frontend/#channels).
 The frontend creates a `Channel<PtyEvent>` and passes it as the `onEvent` arg to
-`pty_open` / `ssh_open`; the backend holds it and pushes events for the life of
+`pty_open` / `ssh_open_v2`; the backend holds it and pushes events for the life of
 the session.
 
 `PtyEvent` is defined identically on both sides
@@ -254,8 +275,12 @@ the session.
 | Variant | Payload | Meaning |
 |---|---|---|
 | `data` | `{ data: string }` | A chunk of terminal output, **base64-encoded** |
-| `exit` | `{ code: number }` | The session ended (always the last event on the channel) |
-| `hostKeyPrompt` | `{ promptId, host, port, fingerprint, keyType }` | SSH only: an unknown host key needs TOFU confirmation |
+| `transportLost` | `{ reason: string }` | SSH only: the transport disappeared without a remote exit or a local close. `reason` is a stable machine-readable token, never a raw network error |
+| `exit` | `{ code: number }` | The session ended (always the last event on the channel). SSH disconnects without `ExitStatus` use sentinel `-2` |
+| `connectionStatus` | `{ phase: string }` | Fine-grained SSH open progress. Local PTYs keep opening/ready evidence on the renderer because spawn is synchronous |
+| `hostKeyPrompt` | `{ promptId, host, port, fingerprint, keyType, reason }` | SSH only: an unknown (`reason: "unknown"`) or unverifiable (`"unverifiable"`) host key needs TOFU confirmation |
+| `hostKeyPersistence` | `{ host, port, status }` | SSH only: whether accepting the key was saved, session-only, or durability-unknown |
+| `keyboardInteractivePrompt` | `{ promptId, origin, name, instructions, prompts }` | SSH only: server-driven auth questions; the frontend replies with `ssh_keyboard_interactive_response` |
 
 **Base64 encoding** ([`session.rs`](../src-tauri/src/modules/pty/session.rs)): a
 Tauri `Channel<T>` serializes via JSON, where a raw `Vec<u8>` would become a JSON
@@ -271,10 +296,13 @@ base64-encodes and `send`s a `data` event every 16 ms (`FLUSH_INTERVAL`), and a
 terminal-reset notice rather than slicing through an escape sequence.
 
 **`hostKeyPrompt` flow**: on the SSH path, when a host key can't be verified the
-backend emits `hostKeyPrompt` and *parks* the `ssh_open` call inside the key
+backend emits `hostKeyPrompt` and *parks* the `ssh_open_v2` call inside the key
 check. The frontend stashes the prompt in `useUIStore`, renders
 `HostKeyPromptDialog`, and the user's decision flows back via the
-`ssh_host_key_decision` command (transport #1), which unparks `ssh_open`.
+`ssh_host_key_decision` command (transport #1), which unparks the open.
+`reason: "unknown"` may persist into known_hosts; `reason: "unverifiable"`
+never does. Keyboard-interactive auth uses the same park/unpark pattern with
+`keyboardInteractivePrompt` / `ssh_keyboard_interactive_response`.
 
 ### 3. Global broadcast — `listen()` events
 
@@ -311,7 +339,10 @@ For backend-originated notifications with no single waiting caller, the backend
 `lib.rs` registers eight shared state objects. Six are `.manage()`d at builder
 time; two are created in `.setup()` because they need resolved app paths or the
 `AppHandle`. All are
-retrieved in commands via `tauri::State<'_, T>`.
+retrieved in commands via `tauri::State<'_, T>`. Transfer journals are
+file-backed (initialized in `.setup()` via `transfer_journal::initialize`)
+rather than a ninth managed object. Bounded file-view cancellation uses a
+process-wide table inside [`fs/head.rs`](../src-tauri/src/modules/fs/head.rs).
 
 | State | Holds | Lifecycle |
 |---|---|---|
@@ -329,6 +360,7 @@ in [`lib.rs`](../src-tauri/src/lib.rs):
 
 ```rust
 tauri::RunEvent::Exit => {
+    app.state::<ForwardingState>().close_all();
     app.state::<PreviewWindowState>().close_all_tunnels(app);
     app.state::<pty::PtyState>().close_all();
     app.state::<HookListenerState>().shutdown();
@@ -345,6 +377,8 @@ tauri::RunEvent::Exit => {
 2. **`loadWorkspaceSnapshot()`** — restore the persisted workspace: sessions,
    active session, UI layout (sidebar/panel/split/inspector), terminal
    scrollback snapshots, agent-resume data, recent dirs/commands, workflows.
+   Split layout is a recursive tree capped at four panes
+   ([`split-layout.ts`](../src/modules/session/split-layout.ts)).
    If no snapshot exists, seed a single `~` terminal. Sets `ui.ready = true`,
    which flips `App` from the splash screen to the shell.
 3. **Window wiring** — read `platform()`, size the macOS traffic-light inset,

@@ -14,6 +14,12 @@ import {
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 import { announceTerminalContext } from "@/modules/terminal/lib/terminal-context-announcement";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
+import {
+  handleFileSurfaceClose,
+  handleFileSurfaceCycle,
+  handleFileSurfaceSelectIndex,
+  handleFileSurfaceSelectLast,
+} from "@/ui/lib/workspace-tab-actions";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -43,6 +49,7 @@ export function useKeybindings() {
           st.newTerminal();
           break;
         case "closeSession": {
+          if (handleFileSurfaceClose()) break;
           const splitSessionIds = splitLayoutSessionIds(ui.split);
           const targetId = st.activeSessionId ?? splitSessionIds[splitSessionIds.length - 1] ?? null;
           if (targetId) st.closeSession(targetId);
@@ -103,15 +110,18 @@ export function useKeybindings() {
           ui.setFontSize(DEFAULT_SETTINGS.fontSize);
           break;
         case "selectLastTab":
+          if (handleFileSurfaceSelectLast()) break;
           if (st.sessions.length > 0) { const previous = st.activeSessionId; st.setActive(st.sessions[st.sessions.length - 1].id); announcePureNavigation(previous); }
           break;
         case "cycleNextSession": {
+          if (handleFileSurfaceCycle("next")) break;
           const previous = st.activeSessionId;
           st.cycleSession("next");
           announcePureNavigation(previous);
           break;
         }
         case "cyclePrevSession": {
+          if (handleFileSurfaceCycle("prev")) break;
           const previous = st.activeSessionId;
           st.cycleSession("prev");
           announcePureNavigation(previous);
@@ -121,6 +131,7 @@ export function useKeybindings() {
           const tabMatch = action.match(/^selectTab([1-8])$/);
           if (!tabMatch) break;
           const idx = Number(tabMatch[1]) - 1;
+          if (handleFileSurfaceSelectIndex(idx)) break;
           if (idx < st.sessions.length) { const previous = st.activeSessionId; st.setActive(st.sessions[idx].id); announcePureNavigation(previous); }
         }
       }

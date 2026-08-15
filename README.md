@@ -49,11 +49,12 @@ It is not a Warp replacement. It is for people who **switched back to iTerm and 
 
 The terminal is the product, not an accessory. Sessions run real `portable-pty`; the frontend uses xterm.js 6 with the WebGL renderer, so scrolling and bursty output stay smooth. Output is batched with `requestAnimationFrame` and protected by a two-layer backpressure budget (1 MiB PTY / 2 MiB frontend), so `cat`-ing a large log will not lock the UI.
 
-- Multi-session PTYs, horizontal/vertical split, max two panes (no recursive tiling — predictability wins)
+- Multi-session PTYs; split any pane right or below, up to four panes
 - ⌘F in-terminal search with match counts
 - Command-block history follows live scrollback, with navigation and output filters for text / regex / case / invert / context lines
 - Clickable URLs, configurable scrollback (1k–20k lines)
 - OSC 7 cwd tracking, OSC 133 shell integration
+- Optional inline images (SIXEL / iTerm IIP)
 - 9 synchronized interface & terminal color schemes: System, Light, Dark, GitHub Light, Rose Pine Dawn, Catppuccin, Tokyo Night, One Dark, Solarized
 
 ### Smart sidebar
@@ -76,7 +77,30 @@ Tunara now has a small cockpit layer for people who keep several sessions open a
 - Starter workflows can add common review, test, and diagnostic commands in one click
 - Overview keeps a bounded, runtime-only list of recent session activity; it is not a persistent Agent history
 
-Future direction and feature notes live in [docs/ROADMAP.md](docs/ROADMAP.md).
+Future direction and feature notes live in [docs/ROADMAP.md](docs/ROADMAP.md). A feature-to-code map is in [docs/FEATURES.md](docs/FEATURES.md).
+
+### SSH
+
+Remote sessions use a long-lived russh connection, not a wrapper around `/usr/bin/ssh`. Host profiles store addresses and auth *preference* only — passwords and passphrases stay in memory for one connect.
+
+- Explicit auth: SSH agent, one private key, password, or keyboard-interactive
+- TOFU host-key prompts (`unknown` can be saved; `unverifiable` is session-only)
+- Optional remote bash/zsh integration for cwd, command bounds, and agent state
+- SFTP browse, search, grep, conflict-checked text saves, mkdir/rename/delete
+- Batch upload/download with progress, cancel, and journaled recovery
+- Read-only remote Git review over a one-shot exec channel
+- Local and dynamic port forwarding, reconnect snapshots, connection diagnostics
+- Opt-in local SSH usage logs (off by default)
+
+### Files and Inspector
+
+The right rail is a contextual Inspector, not only a diff. Local and SSH files can open as workspace tabs beside the terminal.
+
+- Tabs: Overview, Changes, Files, Preview, Notes; SSH adds Transfers, Metadata, Forwarding, Diagnostics, Known hosts
+- Markdown/MDX reading and bounded single-file edits (UTF-8, ≤256 KiB, fingerprint-checked)
+- Read-only Jupyter notebook preview (no code execution, no HTML/script/rich output)
+- Safe image previews and bounded “view beginning” for oversized text/logs
+- Workspace-bound Preview windows for loopback web apps (explicit SSH tunnel, no port scans)
 
 ### AI agent detection
 
@@ -91,10 +115,10 @@ What it explicitly does **not** do: bundled AI chat, model integration, MCP orch
 
 ### Review rail
 
-The right pane is a read-only git diff for "one more look before commit." Reads go through git2 (zero-process overhead); writes always go through the system `git` CLI — meaning, **Tunara will never commit or push on your behalf**.
+The right pane is a read-only git diff for "one more look before commit" — the Inspector **Changes** tab. Reads go through git2 (zero-process overhead); writes always go through the system `git` CLI — meaning, **Tunara will never commit or push on your behalf**.
 
 - Staged / Unstaged / Untracked, three-section layout
-- File browser + code preview, syntax highlighting + Markdown rendering
+- Per-file diff preview with syntax highlighting; Markdown files can be read in Files
 - One-click jump to an external editor: VS Code / Cursor / Zed / Sublime
 - Graceful fallback for binary / oversized files
 - Ahead / behind remote indicator
@@ -102,12 +126,14 @@ The right pane is a read-only git diff for "one more look before commit." Reads 
 ### Desktop experience
 
 - ⌘K Command Palette with weighted ranking, covers every action and session switch
-- Light/dark mode + system follow, 5 accent colors
+- Light/dark mode + system follow, 8 accent colors
+- Pure Mode (⌘⇧P) hides chrome without tearing down PTYs
 - Solid paper surfaces + native macOS overlay titlebar
 - Toast notifications: exit animation, hover pause, progress bar
 - Delayed signed-update reminders that stay silent until a release is actually available
+- Settings tabs: Appearance, Shortcuts, Workflows, CLI, App
 - Right-click menus on sessions, directory groups, and files
-- Responsive layout: narrow windows auto-collapse sidebar / right rail
+- Responsive layout: auxiliary panes overlay when the terminal would otherwise shrink below a usable width
 - Window-state persistence (position, size)
 
 ## Install
@@ -157,9 +183,10 @@ pnpm test:ui          # happy-dom component tests
 pnpm test             # all tests (Node + UI + Rust)
 ```
 
-Deeper developer docs live under [`docs/`](docs/):
+Deeper developer docs live under [`docs/`](docs/). Start with the [docs index](docs/README.md).
 
-- [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: every Tauri command, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and the eight managed state objects.
+- [Features & code map](docs/FEATURES.md) — user-visible capabilities mapped to frontend and backend entry points.
+- [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: Tauri commands, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and managed state.
 - [Testing](docs/TESTING.md) — the `.mjs`-imports-`.ts` pure-logic convention, UI component gate, Node/UI/Cargo split, and how to add a test.
 - [Local usage logging & privacy](docs/LOCAL_USAGE_LOGGING.md) — opt-in SSH diagnostics, JSONL schema, data exclusions, rotation, export, and failure behavior.
 - [Agent detection](docs/AGENT_DETECTION.md) — how agent detection & lifecycle work, plus a step-by-step checklist for adding a new agent.
@@ -168,26 +195,32 @@ Deeper developer docs live under [`docs/`](docs/):
 
 ## Keybindings
 
-| Action | macOS | Windows / Linux experimental builds |
-|--------|-------|-----------------|
-| New terminal | ⌘T | Ctrl+T |
-| Close session | ⌘W | Ctrl+W |
-| Split horizontal | ⌘D | Ctrl+D |
-| Split vertical | ⌘⇧D | Ctrl+Shift+D |
-| Switch pane focus | ⌘] / ⌘[ | Ctrl+] / Ctrl+[ |
-| Command Palette | ⌘K | Ctrl+K |
-| Find in terminal | ⌘F | Ctrl+F |
-| Switch to session N | ⌘1 – ⌘9 | Ctrl+1 – Ctrl+9 |
-| Font size +/- | ⌘+ / ⌘- | Ctrl++ / Ctrl+- |
-| Toggle sidebar | ⌘\ | Ctrl+\ |
-| Settings | ⌘, | Ctrl+, |
+Defaults below are macOS. Windows / Linux experimental builds remap several chords so they do not steal ordinary Ctrl sequences (for example command palette is Ctrl+Shift+K). All of these are editable in Settings > Shortcuts.
+
+| Action | macOS default |
+|--------|-----------------|
+| New terminal | ⌘T (alternate ⌘N) |
+| Close session | ⌘W |
+| Split horizontal / vertical | ⌘D / ⌘⇧D |
+| Focus adjacent pane | ⌘[ ⌘] ⌘⇧[ ⌘⇧] |
+| Command Palette | ⌘K |
+| Find in terminal | ⌘F |
+| Quick select | ⌘⇧Space |
+| Pure Mode | ⌘⇧P |
+| Switch to session 1–8 / last | ⌘1 – ⌘8 / ⌘9 |
+| Cycle recent sessions | ⌘Tab |
+| Command-block prev / next | ⌘⇧↑ / ⌘⇧↓ |
+| Font size +/- / reset | ⌘+ / ⌘- / ⌘0 |
+| Toggle sidebar / Inspector | ⌘\ / ⌘⇧\ |
+| Settings | ⌘, |
+| Global show / hide | ⌘⇧T |
 
 ## Stack
 
 | Layer | Choice |
 |-------|--------|
-| Frontend | React 19, Zustand 5, xterm.js 6 + WebGL, Vite 7, TypeScript 5.8 |
-| Backend | Tauri 2, Rust, portable-pty, git2, tokio, which |
+| Frontend | React 19, Zustand 5, xterm.js 6 + WebGL, Vite 7, TypeScript 6 |
+| Backend | Tauri 2, Rust, portable-pty, russh, git2, tokio, which |
 | Fonts | JetBrains Mono (UI / terminal / code), PingFang SC fallback |
 | Build | pnpm 9 |
 
@@ -197,23 +230,27 @@ Final installer is around 30 MB, against Warp's ~150 MB.
 
 ```
 src/                    # React frontend
-├── app/                # entry, init, keybindings, theme
-├── modules/            # terminal / git / fs / agent / editor
-├── state/              # Zustand (sessions + ui + persist)
-├── styles/             # CSS tokens + terminal themes
-└── ui/                 # Sidebar, MainArea, DiffPanel, etc.
+├── app/                # entry, init, keybindings, theme, shell layout
+├── modules/            # terminal, ssh, fs, git, agent, editor, preview, …
+├── state/              # Zustand (sessions + ui + workflows); persist I/O
+├── styles/             # CSS tokens + terminal / shell themes
+└── ui/                 # Sidebar, MainArea, Inspector, overlays
 
 src-tauri/src/          # Rust backend
 ├── modules/
 │   ├── pty/            # portable-pty session management
+│   ├── ssh/            # russh, SFTP, transfer, forwarding, remote git
 │   ├── git/            # git2 read-only operations
-│   ├── fs/             # directory tree, search, grep
+│   ├── fs/             # directory tree, search, grep, bounded head
 │   ├── agent/          # CLI pre-check + hooks listener
+│   ├── preview/        # tunneled preview webviews
 │   ├── editor/         # external editor jump
 │   ├── resolver/       # binary path resolution
 │   └── process/        # subprocess management
 └── lib.rs              # Tauri command registration
 ```
+
+The full map, including Inspector tabs and IPC entry points, is in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Roadmap
 
@@ -232,9 +269,10 @@ src-tauri/src/          # Rust backend
 | P2 Command Palette | done | ⌘K, fuzzy match, weighted ranking |
 | P3 Agent status bar | done | Contextual strip + change counts |
 | Session Recovery | done (1.2) | xterm buffer snapshot + scrollback restore |
-| SSH Client | done (1.7) | russh long-lived conn, SFTP browse + download, host profiles, opt-in remote shell integration |
+| SSH Client | done (1.7+) | russh long-lived conn, SFTP, transfers, host profiles, forwarding, diagnostics |
+| Files / Preview | done (1.15–1.17) | workspace file tabs, Markdown safe-edit, notebook preview, Preview webviews |
 
-See [CHANGELOG](CHANGELOG.md).
+See [CHANGELOG](CHANGELOG.md) and [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Explicit non-goals
 
@@ -244,7 +282,7 @@ What we will not build matters as much as what we will. These are off the roadma
 - Agent catalog, agent launcher, batch-launch entry points
 - Structured parsing of agent stdout, persistent Agent event history/search, or a rich Agent timeline
 - Stage / commit / push or any write operations in the DiffPanel
-- Plugin system, custom renderer, recursive tile splits
+- Plugin system, custom renderer, unbounded recursive tile splits (hard cap: 4 panes)
 - Telemetry, analytics, any kind of phone-home
 
 The test is simple: keep the terminal a terminal, not the next IDE or the next agent console.
