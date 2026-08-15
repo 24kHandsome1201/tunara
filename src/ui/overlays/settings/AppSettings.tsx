@@ -176,8 +176,9 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
           )}
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
             <button
+              type="button"
               disabled={usageLogBusy}
-              className="hover-bg"
+              className="settings-action-button"
               onClick={() => { void runUsageLogAction(async () => {
                 const directory = await ensureLocalUsageLogDirectory();
                 const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
@@ -187,8 +188,9 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
               {t("settings.app.usage_logs.open_directory")}
             </button>
             <button
+              type="button"
               disabled={usageLogBusy || usageLogStatus?.fileCount === 0}
-              className="hover-bg"
+              className="settings-action-button"
               onClick={() => { void runUsageLogAction(async () => {
                 const { save } = await import("@tauri-apps/plugin-dialog");
                 const destination = await save({
@@ -203,8 +205,9 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
               {t("settings.app.usage_logs.export")}
             </button>
             <button
+              type="button"
               disabled={usageLogBusy || usageLogStatus?.fileCount === 0}
-              className="hover-bg"
+              className="settings-action-button"
               onClick={() => { void (async () => {
                 const confirmed = await tauriConfirmDialog(t("settings.app.usage_logs.clear_confirm"), { kind: "warning" });
                 if (!confirmed) return;

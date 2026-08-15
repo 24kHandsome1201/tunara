@@ -201,8 +201,10 @@ function MiniDiff({
             >
               {renderHighlighted(line, q)}
               <button
+                type="button"
                 className="diff-hunk-copy hover-bg"
                 title={t("diff.hunk.copy")}
+                aria-label={t("diff.hunk.copy")}
                 onClick={(e) => {
                   e.stopPropagation();
                   const text = hunkTexts[hunkIndex];
@@ -291,6 +293,7 @@ function SectionHeader({ title, count, expanded, onToggle, titleColor, accentBor
     <div
       role="button"
       tabIndex={0}
+      aria-expanded={expanded}
       onClick={onToggle}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
       className="hover-bg"
@@ -383,6 +386,7 @@ function DiffFileRow({
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={expanded}
         onClick={() => onToggle(file)}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(file); } }}
         className="hover-bg"

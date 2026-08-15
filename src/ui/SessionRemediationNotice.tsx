@@ -3,6 +3,7 @@ import { useT } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { reconnectPrefillFromSession, type Session } from "./types";
+import { AccentActionButton } from "./lib/ui-primitives";
 
 /** Generation-scoped user action for an SSH state that cannot self-heal. */
 export function SessionRemediationNotice({ session, compact = false }: { session: Session; compact?: boolean }) {
@@ -48,13 +49,15 @@ export function SessionRemediationNotice({ session, compact = false }: { session
       <div style={{ minWidth: 0, flex: 1 }}>
         <strong>{t(`remediation.${remediation.kind}.title`)}</strong>
         <div style={{ fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {remediation.endpoint} · {t("remediation.source.session", { session: remediation.sessionId })} · {t("remediation.source.binding", { binding })}
+          {compact
+            ? remediation.endpoint
+            : `${remediation.endpoint} · ${t("remediation.source.session", { session: remediation.sessionId })} · ${t("remediation.source.binding", { binding })}`}
         </div>
         {!compact && <div>{t("remediation.replacement_shell")}</div>}
       </div>
-      <button type="button" onClick={run} style={{ flexShrink: 0 }}>
+      <AccentActionButton onClick={run}>
         {t(`remediation.${remediation.kind}.action`)}
-      </button>
+      </AccentActionButton>
     </div>
   );
 }

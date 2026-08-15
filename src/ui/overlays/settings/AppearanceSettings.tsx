@@ -23,6 +23,7 @@ function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: 
   const t = useT();
   return (
     <Segmented
+      ariaLabel={t("settings.appearance.cursor_style")}
       options={[
         { id: "bar", label: t("settings.appearance.cursor.bar") },
         { id: "block", label: t("settings.appearance.cursor.block") },
@@ -90,12 +91,12 @@ export function AppearanceSettings() {
     { id: "system", label: t("settings.appearance.theme.system") },
     { id: "light", label: t("settings.appearance.theme.light") },
     { id: "dark", label: t("settings.appearance.theme.dark") },
-    { id: "github-light", label: "GitHub Light" },
-    { id: "rose-pine-dawn", label: "Rose Pine Dawn" },
-    { id: "catppuccin", label: "Catppuccin" },
-    { id: "tokyo-night", label: "Tokyo Night" },
-    { id: "one-dark", label: "One Dark" },
-    { id: "solarized", label: "Solarized" },
+    { id: "github-light", label: t("settings.appearance.theme.github_light") },
+    { id: "rose-pine-dawn", label: t("settings.appearance.theme.rose_pine_dawn") },
+    { id: "catppuccin", label: t("settings.appearance.theme.catppuccin") },
+    { id: "tokyo-night", label: t("settings.appearance.theme.tokyo_night") },
+    { id: "one-dark", label: t("settings.appearance.theme.one_dark") },
+    { id: "solarized", label: t("settings.appearance.theme.solarized") },
   ];
   const selectedColorScheme: ColorSchemeId = terminalTheme === "default" ? theme : terminalTheme;
   const selectColorScheme = (id: ColorSchemeId) => {
@@ -155,10 +156,10 @@ export function AppearanceSettings() {
         <div style={SECTION_LABEL}>{t("settings.appearance.accent")}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {ACCENT_COLORS.map((ac) => (
-            <AccentRing key={ac.color} color={ac.color} label={ac.label} selected={accent === ac.color} onClick={() => setAccent(ac.color)} />
+            <AccentRing key={ac.color} color={ac.color} label={t(ac.labelKey)} selected={accent === ac.color} onClick={() => setAccent(ac.color)} />
           ))}
           <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
-            {ACCENT_COLORS.find((ac) => ac.color === accent)?.label ?? accent}
+            {(() => { const match = ACCENT_COLORS.find((ac) => ac.color === accent); return match ? t(match.labelKey) : accent; })()}
           </span>
         </div>
       </div>
@@ -177,6 +178,8 @@ export function AppearanceSettings() {
         <Stepper
           display={`${fontSize}px`}
           valueMinWidth={48}
+          decrementLabel={t("common.decrement")}
+          incrementLabel={t("common.increment")}
           onDecrement={() => setFontSize(Math.max(10, fontSize - 1))}
           onIncrement={() => setFontSize(Math.min(22, fontSize + 1))}
         />
@@ -198,6 +201,8 @@ export function AppearanceSettings() {
             style={{ flex: "1 1 260px", minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-body)", outline: "none" }}
           />
           <button
+            type="button"
+            aria-pressed={nerdFontFallback}
             onClick={() => setNerdFontFallback(!nerdFontFallback)}
             style={{
               height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
@@ -209,6 +214,8 @@ export function AppearanceSettings() {
             {t("settings.appearance.nerd_font")}
           </button>
           <button
+            type="button"
+            aria-pressed={fontLigatures}
             onClick={() => setFontLigatures(!fontLigatures)}
             style={{
               height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
@@ -229,6 +236,8 @@ export function AppearanceSettings() {
         <Stepper
           display={`${scrollback}`}
           valueMinWidth={64}
+          decrementLabel={t("common.decrement")}
+          incrementLabel={t("common.increment")}
           onDecrement={() => setScrollback(Math.max(1000, scrollback - 1000))}
           onIncrement={() => setScrollback(Math.min(20000, scrollback + 1000))}
         />
@@ -262,6 +271,7 @@ export function AppearanceSettings() {
       <div style={{ marginTop: 24 }}>
         <div style={SECTION_LABEL}>{t("settings.appearance.external_editor")}</div>
         <Segmented
+          ariaLabel={t("settings.appearance.external_editor")}
           options={EXTERNAL_EDITORS.map((ed: ExternalEditor) => ({ id: ed, label: EDITOR_LABELS[ed] }))}
           value={externalEditor}
           onChange={setExternalEditor}
@@ -270,6 +280,7 @@ export function AppearanceSettings() {
       <div style={{ marginTop: 24 }}>
         <div style={SECTION_LABEL}>{t("settings.appearance.language")}</div>
         <Segmented
+          ariaLabel={t("settings.appearance.language")}
           options={LANGUAGES.map((lang: Language) => ({
             id: lang,
             label: lang === "system" ? t("settings.appearance.language.system") : lang === "zh-CN" ? t("settings.appearance.language.zh_cn") : t("settings.appearance.language.en"),

@@ -28,6 +28,7 @@ export const IS_MAC = detectIsMac();
 export function Toggle({ checked, onChange, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!checked)}
       role="switch"
       aria-checked={checked}
@@ -53,12 +54,14 @@ export function ToggleRow({ label, hint, checked, onChange }: { label: string; h
 }
 
 /** Pill-style single-select segments (cursor style, external editor, language). */
-export function Segmented<T extends string>({ options, value, onChange }: { options: { id: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+export function Segmented<T extends string>({ options, value, onChange, ariaLabel }: { options: { id: T; label: string }[]; value: T; onChange: (v: T) => void; ariaLabel?: string }) {
   return (
-    <div style={{ display: "flex", background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2, gap: 0 }}>
+    <div role="radiogroup" aria-label={ariaLabel} style={{ display: "flex", background: "var(--c-bg-3)", borderRadius: "var(--r-btn)", padding: 2, gap: 0 }}>
       {options.map((opt) => (
         <button
-          key={opt.id} onClick={() => onChange(opt.id)}
+          key={opt.id} type="button" onClick={() => onChange(opt.id)}
+          role="radio"
+          aria-checked={opt.id === value}
           data-active={opt.id === value ? "true" : "false"}
           className="settings-segment"
           style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: "var(--r-btn)", background: "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
@@ -71,13 +74,13 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
 }
 
 /** −/value/+ numeric stepper (font size, scrollback). */
-export function Stepper({ display, valueMinWidth, onDecrement, onIncrement }: { display: string; valueMinWidth: number; onDecrement: () => void; onIncrement: () => void }) {
+export function Stepper({ display, valueMinWidth, onDecrement, onIncrement, decrementLabel, incrementLabel }: { display: string; valueMinWidth: number; onDecrement: () => void; onIncrement: () => void; decrementLabel: string; incrementLabel: string }) {
   const btn: React.CSSProperties = { width: 32, height: 30, border: "none", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-title)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   return (
     <div style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", overflow: "hidden" }}>
-      <button onClick={onDecrement} className="hover-bg" style={{ ...btn, borderRight: "1px solid var(--c-border-2)" }}>−</button>
+      <button type="button" onClick={onDecrement} aria-label={decrementLabel} className="hover-bg" style={{ ...btn, borderRight: "1px solid var(--c-border-2)" }}>−</button>
       <span style={{ minWidth: valueMinWidth, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{display}</span>
-      <button onClick={onIncrement} className="hover-bg" style={{ ...btn, borderLeft: "1px solid var(--c-border-2)" }}>+</button>
+      <button type="button" onClick={onIncrement} aria-label={incrementLabel} className="hover-bg" style={{ ...btn, borderLeft: "1px solid var(--c-border-2)" }}>+</button>
     </div>
   );
 }
@@ -155,19 +158,19 @@ export function ColorSchemeCard({ id, label, selected, systemIsDark, onClick }: 
 
 export function AccentRing({ color, label, selected, onClick }: { color: string; label: string; selected: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} title={label} style={{ width: 26, height: 26, borderRadius: "50%", border: selected ? `2px solid ${color}` : "2px solid transparent", padding: 3, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: "none", transition: "border-color var(--duration-fast) var(--ease-smooth)" }}>
-      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: color }} />
+    <button type="button" onClick={onClick} title={label} aria-label={label} aria-pressed={selected} style={{ width: 26, height: 26, borderRadius: "50%", border: selected ? `2px solid ${color}` : "2px solid transparent", padding: 3, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: "none", transition: "border-color var(--duration-fast) var(--ease-smooth)" }}>
+      <div aria-hidden="true" style={{ width: "100%", height: "100%", borderRadius: "50%", background: color }} />
     </button>
   );
 }
 
 export const ACCENT_COLORS = [
-  { color: "#c2683c", label: "Terracotta" },
-  { color: "#2f9e7a", label: "Sage" },
-  { color: "#4f6ef0", label: "Indigo" },
-  { color: "#e0556b", label: "Rose" },
-  { color: "#c4a060", label: "Sand" },
-  { color: "#0f7a6a", label: "Teal" },
-  { color: "#8534F3", label: "Violet" },
-  { color: "#a4660a", label: "Amber" },
+  { color: "#c2683c", labelKey: "settings.appearance.accent.terracotta" },
+  { color: "#2f9e7a", labelKey: "settings.appearance.accent.sage" },
+  { color: "#4f6ef0", labelKey: "settings.appearance.accent.indigo" },
+  { color: "#e0556b", labelKey: "settings.appearance.accent.rose" },
+  { color: "#c4a060", labelKey: "settings.appearance.accent.sand" },
+  { color: "#0f7a6a", labelKey: "settings.appearance.accent.teal" },
+  { color: "#8534F3", labelKey: "settings.appearance.accent.violet" },
+  { color: "#a4660a", labelKey: "settings.appearance.accent.amber" },
 ];

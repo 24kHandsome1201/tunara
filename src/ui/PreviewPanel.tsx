@@ -262,7 +262,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         {row(t("inspector.preview.generation"), source.restartProvenance?.generation ?? t("inspector.preview.generation_missing"))}
         {row(t("inspector.preview.physical_pty"), source.physicalPtyId === undefined ? t("inspector.preview.physical_pty_missing") : String(source.physicalPtyId))}
         {isRemote && row(t("inspector.preview.ssh_host"), `${source.sshUser ?? "?"}@${source.sshHost ?? "?"}:${source.sshPort ?? "?"}`)}
-        {row(isRemote ? t("inspector.preview.remote_url") : "URL", previewDisplayUrl(source.sourceUrl))}
+        {row(isRemote ? t("inspector.preview.remote_url") : t("inspector.preview.url"), previewDisplayUrl(source.sourceUrl))}
         {isRemote && row(t("inspector.preview.remote_port"), String(remotePort))}
         {isRemote && row(t("inspector.preview.local_endpoint"), tunnelState?.localEndpoint ?? t("inspector.preview.local_endpoint_missing"))}
         {isRemote && row(t("inspector.preview.connection"), tunnelState ? t(`inspector.preview.tunnel.${tunnelState.status}`) : t("inspector.preview.tunnel.closed"))}

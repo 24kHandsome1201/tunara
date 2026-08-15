@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ComponentPropsWithRef, ReactNode } from "react";
+import { useT } from "@/modules/i18n";
 
 export function RefreshIcon({ size = 13 }: { size?: number }) {
   return (
@@ -13,7 +14,7 @@ export function RefreshIcon({ size = 13 }: { size?: number }) {
 
 export function SearchIcon({ size = 13, color = "var(--c-text-5)" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
     </svg>
@@ -101,6 +102,7 @@ export function PanelIconButton({
 }
 
 export function PanelState({ state, icon, compact = false }: { state: PanelAsyncState; icon?: React.ReactNode; compact?: boolean }) {
+  const t = useT();
   const defaultIcon = (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       {state.kind === "error" ? <><path d="M12 3 2.8 20h18.4Z" /><path d="M12 9v5" /><path d="M12 17h.01" /></> : <><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></>}
@@ -124,7 +126,7 @@ export function PanelState({ state, icon, compact = false }: { state: PanelAsync
         <strong>{state.label}</strong>
         {state.kind !== "loading" && state.detail && <span className="panel-state-detail">{state.detail}</span>}
         {state.kind === "error" && state.remediation && <span className="panel-state-remediation">{state.remediation}</span>}
-        {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? "Retry"}</PanelActionButton>}
+        {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? t("common.retry")}</PanelActionButton>}
       </div>
     </div>
   );

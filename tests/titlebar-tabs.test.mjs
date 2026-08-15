@@ -12,6 +12,7 @@ test("titlebar session tabs expose selection and close as separate controls", ()
   assert.doesNotMatch(tabButton, /tabIndex=\{isActive \? 0 : -1\}/);
   assert.doesNotMatch(tabButton, /<div[\s\S]*?role="button"/);
   assert.match(tabButton, /className="tab-close hover-close"/);
+  assert.equal((tabButton.match(/tabIndex=\{tabIndex \?\? 0\}/g) ?? []).length, 2);
   assert.match(source, /role="tablist"[\s\S]*?aria-label=\{t\("titlebar\.tabs"\)\}/);
 });
 

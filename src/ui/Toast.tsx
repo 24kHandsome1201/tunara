@@ -171,13 +171,15 @@ function ToastItem({ toast }: { toast: Toast }) {
         }}>
           {toast.title}
         </div>
-        <div className="toast-subtitle" style={{
-          fontSize: "var(--fs-meta)",
-          color: "var(--c-text-5)",
-          marginTop: 1,
-        }}>
-          {toast.subtitle}
-        </div>
+        {toast.subtitle ? (
+          <div className="toast-subtitle" style={{
+            fontSize: "var(--fs-meta)",
+            color: "var(--c-text-5)",
+            marginTop: 1,
+          }}>
+            {toast.subtitle}
+          </div>
+        ) : null}
       </div>
       </div>
 
@@ -291,11 +293,15 @@ function ToastItem({ toast }: { toast: Toast }) {
 }
 
 export function ToastContainer() {
+  const t = useT();
   const toasts = useUIStore((s) => s.toasts);
   if (toasts.length === 0) return null;
 
   return (
-    <div style={{
+    <div
+      role="region"
+      aria-label={t("toast.region")}
+      style={{
       position: "fixed",
       top: "calc(var(--h-titlebar) + 8px)",
       right: 12,
@@ -305,8 +311,8 @@ export function ToastContainer() {
       gap: 8,
       pointerEvents: "auto",
     }}>
-      {toasts.map((t) => (
-        <ToastItem key={t.id} toast={t} />
+      {toasts.map((toastItem) => (
+        <ToastItem key={toastItem.id} toast={toastItem} />
       ))}
     </div>
   );

@@ -86,6 +86,7 @@ export function WorkflowParamPrompt() {
   return (
     <>
       <div
+        aria-hidden="true"
         onClick={() => setPendingWorkflow(null)}
         style={{
           position: "fixed",

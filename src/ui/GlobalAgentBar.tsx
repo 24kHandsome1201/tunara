@@ -242,7 +242,6 @@ export function GlobalAgentBar({ sessions, onSelectSession }: GlobalAgentBarProp
           className="gbar-head"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          aria-label={t("gbar.aria_label")}
           style={{
             width: "100%",
             height: 30,

@@ -465,6 +465,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             }
           }}
           className="session-card-close hover-close"
+          data-confirm={confirmClose ? "true" : undefined}
           style={{
             position: "absolute",
             top: 6,
@@ -523,10 +524,11 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                   color: "var(--c-text-primary)",
                   fontFamily: "var(--font-ui)",
                   lineHeight: 1.3,
-                  border: "none",
-                  outline: "none",
+                  border: "1px solid var(--c-control-border)",
+                  outline: "2px solid var(--c-accent)",
+                  outlineOffset: 1,
                   background: "var(--c-bg-3)",
-                  borderRadius: 4,
+                  borderRadius: "var(--r-badge-sm)",
                   padding: "0 4px",
                   width: "100%",
                   minWidth: 0,
