@@ -31,7 +31,6 @@ pub mod diagnostics;
 pub mod direct_tcpip;
 mod flow_control;
 pub mod forwarding;
-pub mod reverse_forward;
 pub mod hosts;
 pub mod known_hosts;
 pub(crate) mod local_safe_write;
@@ -39,6 +38,7 @@ pub(crate) mod local_safe_write;
 pub(crate) mod m2_safe_write_benchmark;
 pub mod remote_fs;
 pub mod remote_git;
+pub mod reverse_forward;
 #[cfg(test)]
 mod rtt_benchmark;
 mod safe_write;

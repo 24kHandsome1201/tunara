@@ -56,6 +56,22 @@ describe("transfer queue", () => {
     expect(store.getState().items[0].attempt).toBe(2);
   });
 
+  it("toasts a remote preview action when a single upload completes", async () => {
+    useUIStore.setState({ toasts: [] });
+    const store = createTransferStore(async () => ({ outcome: { status: "completed" as const, bytesTransferred: 4 } }));
+    store.getState().enqueue({ ...request(1), destination: "/srv/app/notes.json" });
+    await tick();
+    await tick();
+    expect(useUIStore.getState().toasts).toEqual([expect.objectContaining({
+      sessionId: "session-1",
+      action: expect.objectContaining({
+        kind: "open-remote-preview",
+        sessionId: "session-1",
+        path: "/srv/app/notes.json",
+      }),
+    })]);
+  });
+
   it("holds an unknown outcome for reconciliation and forbids retry", async () => {
     const store = createTransferStore(async () => ({ outcome: {
       status: "outcomeUnknown" as const,

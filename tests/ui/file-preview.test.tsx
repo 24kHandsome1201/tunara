@@ -627,5 +627,8 @@ describe("FilePreview editor behavior", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Next file in this folder" }));
     await waitFor(() => expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/c.txt")).toBe(true));
     expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/b.txt")).toBe(false);
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    await waitFor(() => expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/a.txt")).toBe(true));
   });
 });

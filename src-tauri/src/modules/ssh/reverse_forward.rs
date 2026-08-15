@@ -65,9 +65,8 @@ impl ReverseForwardHub {
         cancel: watch::Receiver<bool>,
     ) -> Result<(), String> {
         let key = (
-            canonical_loopback(remote_bind_host).ok_or_else(|| {
-                "remote bind host must be exactly 127.0.0.1 or ::1".to_string()
-            })?,
+            canonical_loopback(remote_bind_host)
+                .ok_or_else(|| "remote bind host must be exactly 127.0.0.1 or ::1".to_string())?,
             remote_port,
         );
         if local_port == 0 {
@@ -101,7 +100,11 @@ impl ReverseForwardHub {
         }
     }
 
-    pub fn try_accept(&self, connected_address: &str, connected_port: u32) -> Option<ReverseAccept> {
+    pub fn try_accept(
+        &self,
+        connected_address: &str,
+        connected_port: u32,
+    ) -> Option<ReverseAccept> {
         let key_host = canonical_loopback(connected_address)?;
         let map = self.inner.lock().ok()?;
         let slot = map.get(&(key_host, connected_port))?;
@@ -169,8 +172,14 @@ mod tests {
     fn hub_accepts_up_to_connection_limit() {
         let hub = ReverseForwardHub::default();
         let (_cancel, cancelled) = watch::channel(false);
-        hub.insert("127.0.0.1", 8080, IpAddr::from([127, 0, 0, 1]), 3000, cancelled)
-            .unwrap();
+        hub.insert(
+            "127.0.0.1",
+            8080,
+            IpAddr::from([127, 0, 0, 1]),
+            3000,
+            cancelled,
+        )
+        .unwrap();
         let mut held = Vec::new();
         for _ in 0..MAX_CONNECTIONS_PER_RULE {
             held.push(hub.try_accept("127.0.0.1", 8080).expect("slot"));

@@ -71,6 +71,19 @@ function sameFileHeadResult(current: FileHeadResultV1 | null, next: FileHeadResu
   return false;
 }
 
+function sameImageResult(
+  current: Extract<ReadResult, { kind: "image" }>,
+  next: ReadResult,
+): boolean {
+  if (next.kind !== "image") return false;
+  if (current.mime !== next.mime || current.width !== next.width || current.height !== next.height) return false;
+  if (current.bytes.length !== next.bytes.length) return false;
+  for (let index = 0; index < current.bytes.length; index++) {
+    if (current.bytes[index] !== next.bytes[index]) return false;
+  }
+  return true;
+}
+
 /** 值防抖：delayMs 内连续变化只取最后一个，用于高开销派生的计算闸门。 */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -616,8 +629,29 @@ function InertTextOrTable({ fileName, content, fill = false }: { fileName: strin
   return <TextPreview content={content} fill={fill} />;
 }
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
+}
+
 function SiblingNav({ sessionId, filePath, previous, next }: { sessionId?: string; filePath: string; previous: string | null; next: string | null }) {
   const t = useT();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey || isTypingTarget(event.target)) return;
+      const goPrevious = event.key === "ArrowLeft" || event.key === "k" || event.key === "K";
+      const goNext = event.key === "ArrowRight" || event.key === "j" || event.key === "J";
+      if (goPrevious && previous) {
+        event.preventDefault();
+        openSiblingFile(sessionId, filePath, previous);
+      } else if (goNext && next) {
+        event.preventDefault();
+        openSiblingFile(sessionId, filePath, next);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filePath, next, previous, sessionId]);
   if (!previous && !next) return null;
   return (
     <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
@@ -1283,6 +1317,23 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
     }, PREVIEW_AUTO_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [filePath, headResult]);
+
+  useEffect(() => {
+    if (result?.kind !== "image") return;
+    let inFlight = false;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || inFlight || remote && remotePtyId === undefined) return;
+      inFlight = true;
+      const read = remote ? sshReadFile(remotePtyId!, filePath) : fsReadFile(filePath);
+      void read
+        .then((next) => {
+          setResult((current) => (current?.kind === "image" && sameImageResult(current, next) ? current : next));
+        })
+        .catch(() => {})
+        .finally(() => { inFlight = false; });
+    }, PREVIEW_AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [filePath, remote, remotePtyId, result?.kind]);
 
   const retryRead = () => {
     if (readingRef.current) return;

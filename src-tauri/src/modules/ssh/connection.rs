@@ -21,12 +21,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{oneshot, watch};
 
 use super::auth::{self, AuthOptions};
-use super::reverse_forward::ReverseForwardHub;
 use super::flow_control::{
     SshBootstrapOutputFilter, SshControl, SshOutputBatch, INPUT_WRITE_CHUNK_BYTES,
     OUTPUT_BATCH_INTERVAL,
 };
 use super::known_hosts::{self, Verdict};
+use super::reverse_forward::ReverseForwardHub;
 use crate::modules::pty::output_flow::OutputFlow;
 use crate::modules::pty::{HostKeyPersistenceStatus, PtyEvent};
 
@@ -636,7 +636,13 @@ async fn connect_direct_authenticated(
         .map_err(|e| format!("prepare SSH transport failed: {e}"))?;
     let (handle, disconnected, verified_host_key, reverse_hub) =
         connect_authenticated_stream(params, on_event, cancel, socket).await?;
-    Ok((handle, disconnected, verified_host_key, transport_abort, reverse_hub))
+    Ok((
+        handle,
+        disconnected,
+        verified_host_key,
+        transport_abort,
+        reverse_hub,
+    ))
 }
 
 async fn emit_output(

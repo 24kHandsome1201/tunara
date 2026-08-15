@@ -329,8 +329,7 @@ pub fn read_local_tail_window(
     cancelled: &AtomicBool,
 ) -> Result<(Vec<u8>, bool), FileViewErrorV1> {
     let offset = size.saturating_sub(MAX_HEAD_BYTES as u64);
-    file.seek(SeekFrom::Start(offset))
-        .map_err(local_io_error)?;
+    file.seek(SeekFrom::Start(offset)).map_err(local_io_error)?;
     let mut bytes = Vec::with_capacity((size - offset).min(MAX_HEAD_BYTES as u64) as usize);
     let mut chunk = [0_u8; HEAD_CHUNK_BYTES];
     loop {
@@ -479,7 +478,13 @@ mod tests {
 
     #[test]
     fn tail_keeps_the_last_requested_lines() {
-        let result = finish_tail(b"one\ntwo\nthree\nfour\n".to_vec(), 20, "rev".into(), 2, false);
+        let result = finish_tail(
+            b"one\ntwo\nthree\nfour\n".to_vec(),
+            20,
+            "rev".into(),
+            2,
+            false,
+        );
         assert!(matches!(
             result,
             FileHeadResultV1::Text { content, line_count: 2, truncated: true, .. }
