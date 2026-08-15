@@ -367,11 +367,9 @@
 }
 .explorer-sort-direction[data-visible="true"] { opacity: 1; transform: scale(1); }
 
-/* Inspector tabs use a compact underline, with the same press feedback as the
-   titlebar controls. */
-.inspector-tab:active { transform: scale(var(--scale-press)); transition-duration: 60ms; }
+/* Inspector tabs are underline-only. Press-scale belongs on buttons, not
+   navigation chrome that sits in a dense rail. */
 .inspector-tab.hover-text-3:hover { background: var(--c-bg-hover) !important; }
-.inspector-tab[data-active="true"] { background: var(--c-bg-white); }
 
 .split-handle:hover .split-handle-line,
 .split-handle:focus-visible .split-handle-line { background: var(--c-accent) !important; }
@@ -383,12 +381,10 @@
 
 .session-card {
   transition: background var(--duration-fast) var(--ease-smooth),
-              box-shadow var(--duration-normal) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo);
+              box-shadow var(--duration-normal) var(--ease-smooth);
   cursor: inherit;
 }
 .session-card:hover { background: var(--c-bg-hover); }
-.session-card:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
 .session-card:has(.session-card-select[aria-current="page"]) { background: var(--c-accent-bg-soft); }
 .session-card:has(.session-card-select[aria-current="page"]):hover { background: var(--c-accent-bg-light); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
@@ -403,11 +399,9 @@
 .gbar-head:active { transform: scale(var(--scale-press-soft)); }
 .gbar-row {
   background: transparent;
-  transition: background var(--duration-fast) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo);
+  transition: background var(--duration-fast) var(--ease-smooth);
 }
 .gbar-row:hover { background: var(--c-bg-hover); }
-.gbar-row:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
 .gbar-row-wait { background: var(--c-accent-bg-soft); }
 .gbar-row-wait:hover { background: var(--c-accent-bg-light); }
 .gbar-row-wait::before {
