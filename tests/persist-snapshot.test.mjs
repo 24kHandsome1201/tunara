@@ -272,6 +272,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.deepEqual(snapshot.agentResume["s-b"].provenance, { transport: "local" });
     assert.deepEqual(snapshot.recentDirs, ["/repo-a", "/repo-b"]);
     assert.deepEqual(snapshot.recentCommands, ["git status", "pnpm test"]);
+    assert.deepEqual(snapshot.hostFilePrefs, {});
     assert.equal(Object.keys(snapshot.commandUsage).length, 50);
     assert.deepEqual(Object.keys(snapshot.commandUsage).slice(0, 3), ["cmd-54", "cmd-53", "cmd-52"]);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.commandUsage, "__proto__"), false);

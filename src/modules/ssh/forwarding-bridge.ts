@@ -35,6 +35,17 @@ export interface DynamicForwardView {
   recreateOnReconnect: boolean;
 }
 
+export interface RemoteForwardView {
+  ruleId: string;
+  binding: SessionBindingV1;
+  remoteBindHost: string;
+  remotePort: number;
+  requestedRemotePort: number;
+  recreateOnReconnect: boolean;
+  localTargetHost: string;
+  localTargetPort: number;
+}
+
 function forwardingErrorCode(error: unknown): ForwardingErrorCode {
   const message = String(error);
   if (message.includes("SSH_FORWARDING_STALE_BINDING")) return "staleBinding";
@@ -93,4 +104,28 @@ export function startDynamicForward(
 
 export function stopDynamicForward(binding: SessionBindingV1, ruleId: string): Promise<void> {
   return invokeForwarding("ssh_dynamic_forward_stop", { binding, ruleId });
+}
+
+export function listRemoteForwards(binding: SessionBindingV1): Promise<RemoteForwardView[]> {
+  return invokeForwarding("ssh_remote_forward_list", { binding });
+}
+
+export function startRemoteForward(
+  binding: SessionBindingV1,
+  request: {
+    remotePort: number;
+    localTargetPort: number;
+    recreateOnReconnect: boolean;
+  },
+): Promise<RemoteForwardView> {
+  return invokeForwarding("ssh_remote_forward_start", {
+    binding,
+    remoteBindHost: "127.0.0.1",
+    localTargetHost: "127.0.0.1",
+    ...request,
+  });
+}
+
+export function stopRemoteForward(binding: SessionBindingV1, ruleId: string): Promise<void> {
+  return invokeForwarding("ssh_remote_forward_stop", { binding, ruleId });
 }

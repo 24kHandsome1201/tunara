@@ -907,6 +907,7 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /recentCommands: st\.recentCommands/);
   assert.match(init, /recentDirs: snapshot\.recentDirs/);
   assert.match(init, /recentCommands: snapshot\.recentCommands/);
+  assert.match(init, /hostFilePrefs: snapshot\.hostFilePrefs/);
   assert.match(init, /agentResume: snapshot\.agentResume\[p\.id\]/);
   assert.match(init, /for \(const sessionId of splitLayoutSessionIds\(split\)\)[\s\S]*launchedSessionIds\[sessionId\] = true/);
 });

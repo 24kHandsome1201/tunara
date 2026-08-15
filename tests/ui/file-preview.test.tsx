@@ -460,6 +460,7 @@ describe("FilePreview editor behavior", () => {
     mockIPC((command, payload) => {
       calls.push({ command, payload: payload as Record<string, unknown> });
       if (command === "fs_read_file") return { kind: "toolarge", size: 50_000_000, limit: 10_485_760 };
+      if (command === "fs_read_dir") return [];
       if (command === "fs_file_view_head_v1") {
         return {
           kind: "text",
@@ -477,7 +478,8 @@ describe("FilePreview editor behavior", () => {
 
     renderLocal("server.log");
     await screen.findByRole("button", { name: "View beginning" });
-    expect((screen.getByRole("combobox", { name: "First lines" }) as HTMLSelectElement).value).toBe("1000");
+    expect((screen.getByRole("combobox", { name: "Lines" }) as HTMLSelectElement).value).toBe("1000");
+    expect((screen.getByRole("combobox", { name: "Window" }) as HTMLSelectElement).value).toBe("head");
     fireEvent.click(screen.getByRole("button", { name: "View beginning" }));
 
     await screen.findByText(/Showing 2 of up to 1000 lines/);
@@ -497,6 +499,7 @@ describe("FilePreview editor behavior", () => {
     mockIPC((command, payload) => {
       calls.push({ command, payload: payload as Record<string, unknown> });
       if (command === "ssh_fs_read_file") return { kind: "toolarge", size: 12_000_000, limit: 10_485_760 };
+      if (command === "ssh_fs_read_dir") return [];
       if (command === "ssh_file_view_head_v1") {
         return { kind: "text", content: "remote\n", size: 12_000_000, revision: "r2", lineCount: 1, lineLimit: 1000, byteLimit: 262_144, truncated: true };
       }
@@ -530,6 +533,7 @@ describe("FilePreview editor behavior", () => {
     mockIPC((command) => {
       commands.push(command);
       if (command === "fs_read_file") return { kind: "toolarge", size: 20_000_000, limit: 10_485_760 };
+      if (command === "fs_read_dir") return [];
       if (command === "fs_file_view_head_v1") return pendingHead;
       if (command === "fs_cancel_file_view_v1") return true;
       throw new Error(`unexpected command: ${command}`);
@@ -541,5 +545,87 @@ describe("FilePreview editor behavior", () => {
     await screen.findByText("The bounded view was cancelled.");
     expect(commands).toContain("fs_cancel_file_view_v1");
     resolveHead?.({ kind: "text", content: "late", size: 1, revision: "late", lineCount: 1, lineLimit: 1000, byteLimit: 262_144, truncated: false });
+  });
+
+  test("reads a bounded tail window without using download", async () => {
+    const calls: Array<{ command: string; payload: Record<string, unknown> }> = [];
+    mockIPC((command, payload) => {
+      calls.push({ command, payload: payload as Record<string, unknown> });
+      if (command === "fs_read_dir") return [];
+      if (command === "fs_read_file") return { kind: "toolarge", size: 50_000_000, limit: 10_485_760 };
+      if (command === "fs_file_view_tail_v1") {
+        return {
+          kind: "text",
+          content: "last line\n",
+          size: 50_000_000,
+          revision: "tail-1",
+          lineCount: 1,
+          lineLimit: 1000,
+          byteLimit: 262_144,
+          truncated: true,
+        };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("server.log");
+    fireEvent.change(await screen.findByRole("combobox", { name: "Window" }), { target: { value: "tail" } });
+    fireEvent.click(screen.getByRole("button", { name: "View end" }));
+    await screen.findByText(/last line/);
+    expect(calls.find((call) => call.command === "fs_file_view_tail_v1")?.payload).toMatchObject({
+      path: "/tmp/server.log",
+      lineLimit: 1000,
+    });
+    expect(calls.some((call) => call.command.includes("download"))).toBe(false);
+  });
+
+  test("previews json as a read-only text table without executing markup", async () => {
+    const json = JSON.stringify([{ name: "<script>alert(1)</script>", id: 1 }]);
+    mockIPC((command) => {
+      if (command === "fs_read_dir") return [];
+      if (command === "fs_read_file") {
+        return { kind: "text", content: json, size: json.length, fingerprint: "b".repeat(64) };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("users.json");
+    fireEvent.click(await screen.findByRole("tab", { name: "Preview" }));
+    expect(await screen.findByText("Read-only JSON table")).toBeTruthy();
+    expect(screen.getByText("<script>alert(1)</script>")).toBeTruthy();
+    expect(document.querySelector("script")).toBeNull();
+  });
+
+  test("moves to the next sibling file in the same directory", async () => {
+    useSessionsStore.setState({
+      activeSessionId: "local-preview",
+      sessions: [{
+        id: "local-preview",
+        title: "local",
+        dir: "/tmp",
+        branch: "",
+        runState: "idle",
+        updatedAt: 1,
+      }],
+    });
+    useUIStore.getState().openFileTab({ sessionId: "local-preview", filePath: "/tmp/b.txt", fileName: "b.txt" });
+    mockIPC((command) => {
+      if (command === "fs_read_dir") {
+        return [
+          { name: "a.txt", kind: "file", size: 1, mtime: 0 },
+          { name: "b.txt", kind: "file", size: 1, mtime: 0 },
+          { name: "c.txt", kind: "file", size: 1, mtime: 0 },
+        ];
+      }
+      if (command === "fs_read_file") {
+        return { kind: "text", content: "b\n", size: 2, fingerprint: "c".repeat(64) };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilePreview sessionId="local-preview" filePath="/tmp/b.txt" fileName="b.txt" fill onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Next file in this folder" }));
+    await waitFor(() => expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/c.txt")).toBe(true));
+    expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/b.txt")).toBe(false);
   });
 });

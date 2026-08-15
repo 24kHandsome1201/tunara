@@ -44,6 +44,7 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
     agentResume,
     recentDirs: st.recentDirs,
     recentCommands: st.recentCommands,
+    hostFilePrefs: st.hostFilePrefs,
     commandUsage: ui.commandUsage,
     workflows: useWorkflowsStore.getState().workflows,
   };
@@ -140,6 +141,7 @@ export function useInit() {
         launchedSessionIds,
         recentDirs: snapshot.recentDirs,
         recentCommands: snapshot.recentCommands,
+        hostFilePrefs: snapshot.hostFilePrefs ?? {},
       });
 
       useUIStore.setState({

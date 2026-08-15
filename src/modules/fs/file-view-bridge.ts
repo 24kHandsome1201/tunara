@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ResourceRef } from "@/modules/resources/resource-ref";
+import { isFileViewWindow, type FileViewWindow } from "@/modules/fs/file-view-window";
 
 export const FILE_HEAD_LINE_PRESETS = [100, 500, 1_000, 2_000] as const;
 export const DEFAULT_FILE_HEAD_LINES = 1_000;
@@ -36,21 +37,41 @@ export function readFileHeadV1(
   lineLimit: number,
   requestId: string,
 ): Promise<FileHeadResultV1> {
-  if (!Number.isInteger(lineLimit) || lineLimit < 1 || lineLimit > MAX_FILE_HEAD_LINES) {
+  return readFileWindowV1(resource, lineLimit, requestId, "head");
+}
+
+export function readFileTailV1(
+  resource: ResourceRef,
+  lineLimit: number,
+  requestId: string,
+): Promise<FileHeadResultV1> {
+  return readFileWindowV1(resource, lineLimit, requestId, "tail");
+}
+
+function readFileWindowV1(
+  resource: ResourceRef,
+  lineLimit: number,
+  requestId: string,
+  window: FileViewWindow,
+): Promise<FileHeadResultV1> {
+  if (!Number.isInteger(lineLimit) || lineLimit < 1 || lineLimit > MAX_FILE_HEAD_LINES || !isFileViewWindow(window)) {
     return Promise.reject({ code: "INVALID_REQUEST", message: "Invalid line limit" } satisfies FileViewErrorV1);
   }
+  const command = resource.transport === "ssh"
+    ? (window === "tail" ? "ssh_file_view_tail_v1" : "ssh_file_view_head_v1")
+    : (window === "tail" ? "fs_file_view_tail_v1" : "fs_file_view_head_v1");
   if (resource.transport === "ssh") {
     if (!resource.binding || resource.binding.logicalSessionId !== resource.logicalSessionId) {
       return Promise.reject({ code: "STALE_BINDING", message: "Stale SSH binding" } satisfies FileViewErrorV1);
     }
-    return invoke<FileHeadResultV1>("ssh_file_view_head_v1", {
+    return invoke<FileHeadResultV1>(command, {
       binding: resource.binding,
       path: resource.path,
       lineLimit,
       requestId,
     });
   }
-  return invoke<FileHeadResultV1>("fs_file_view_head_v1", {
+  return invoke<FileHeadResultV1>(command, {
     path: resource.path,
     lineLimit,
     requestId,

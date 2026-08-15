@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createTransferStore, useTransferStore, type TransferItem } from "@/modules/ssh/transfer-store";
 import type { TransferJournalRecord } from "@/modules/ssh/transfer-bridge";
 import { TransferCenter } from "@/ui/TransferCenter";
 import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 import { mockIPC } from "@tauri-apps/api/mocks";
 
 const request = (physicalPtyId: number) => ({
@@ -315,5 +316,25 @@ describe("Transfer Center announcements", () => {
       useTransferStore.setState({ items: [] });
       vi.useRealTimers();
     }
+  });
+
+  it("opens a completed upload in the file preview", () => {
+    const item: TransferItem = {
+      ...request(1),
+      source: "/home/alice/notes.json",
+      destination: "/srv/app/notes.json",
+      transferId: "up-preview",
+      attempt: 1,
+      status: "completed",
+      cancelRequested: false,
+    };
+    useTransferStore.setState({ items: [item] });
+    render(<TransferCenter />);
+    fireEvent.click(screen.getByRole("button", { name: "Preview /srv/app/notes.json" }));
+    expect(useUIStore.getState().fileTabs).toEqual([expect.objectContaining({
+      sessionId: "session-1",
+      filePath: "/srv/app/notes.json",
+      fileName: "notes.json",
+    })]);
   });
 });

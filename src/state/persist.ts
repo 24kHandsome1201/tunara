@@ -145,6 +145,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotLoadResu
       agentResume: {},
       recentDirs: sanitizeRecentDirs(localSessionDirs(sessions)),
       recentCommands: [],
+      hostFilePrefs: {},
       commandUsage: {},
       workflows: [],
     };

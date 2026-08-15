@@ -242,6 +242,11 @@ export interface Toast {
     kind: "open-settings";
     tab: SettingsTab;
     label: string;
+  } | {
+    kind: "open-remote-preview";
+    sessionId: string;
+    path: string;
+    label: string;
   };
   durationMs?: number;
 }

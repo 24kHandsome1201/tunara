@@ -5,6 +5,7 @@ import { useT } from "@/modules/i18n";
 import { AgentBadge } from "./agents";
 import { CloseIcon } from "./shared";
 import { copyText } from "./lib/clipboard";
+import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 
 const DEFAULT_TOAST_DURATION = 4000;
 const ERROR_TOAST_DURATION = 12000;
@@ -81,6 +82,11 @@ function ToastItem({ toast }: { toast: Toast }) {
   const handleClick = () => {
     if (toast.action?.kind === "open-settings") {
       useUIStore.getState().openSettings(toast.action.tab);
+    } else if (toast.action?.kind === "open-remote-preview") {
+      const owner = useSessionsStore.getState().sessions.find((session) => session.id === toast.action.sessionId);
+      if (owner) {
+        void openResource(resourceRefForSession(owner, toast.action.path), "preview");
+      }
     } else if (toast.sessionId) {
       setActive(toast.sessionId);
     }

@@ -541,6 +541,16 @@ export type ForwardReconnectIntent =
       bindHost: string;
       requestedLocalPort: number;
       oldActualLocalPort: number;
+    }
+  | {
+      kind: "remote";
+      oldRuleId: string;
+      oldBinding: SessionBindingV1;
+      remoteBindHost: string;
+      requestedRemotePort: number;
+      oldActualRemotePort: number;
+      localTargetHost: string;
+      localTargetPort: number;
     };
 
 export interface ForwardRebuildResult {

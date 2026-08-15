@@ -31,6 +31,7 @@ pub mod diagnostics;
 pub mod direct_tcpip;
 mod flow_control;
 pub mod forwarding;
+pub mod reverse_forward;
 pub mod hosts;
 pub mod known_hosts;
 pub(crate) mod local_safe_write;
