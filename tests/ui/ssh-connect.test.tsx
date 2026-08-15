@@ -87,6 +87,29 @@ describe("SSH connection sheet", () => {
     expect(takeSshCredentials(session.id)).toBeUndefined();
   });
 
+  test("Enter in the profile search field does not submit Connect", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") {
+        return [{ id: "saved-lab", label: "lab box", host: "lab.example", port: 22, user: "ops", identity_file: "" }];
+      }
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: /^Password/ }));
+    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "password.example" } });
+    fireEvent.change(screen.getByLabelText("User"), { target: { value: "deploy" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-value" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+
+    const search = await screen.findByLabelText("Search profiles and ~/.ssh/config");
+    search.focus();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+  });
+
   test("keeps an invalid Port description on the full endpoint row in a narrow window", () => {
     mockEmptySources();
     useUIStore.setState({ viewportWidth: 640 });

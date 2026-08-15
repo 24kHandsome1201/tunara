@@ -12,6 +12,8 @@ const read = (path) => readFileSync(resolve(root, path), "utf8");
 const readSettingsSources = () => [
   "src/ui/overlays/Settings.tsx",
   "src/ui/overlays/settings/AppearanceSettings.tsx",
+  "src/ui/overlays/settings/TerminalSettings.tsx",
+  "src/ui/overlays/settings/AccessibilitySettings.tsx",
   "src/ui/overlays/settings/ShortcutsSettings.tsx",
   "src/ui/overlays/settings/CliSettings.tsx",
   "src/ui/overlays/settings/AppSettings.tsx",

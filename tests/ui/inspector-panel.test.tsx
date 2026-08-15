@@ -86,7 +86,11 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   expect(screen.queryByTestId("changes-panel")).toBeNull();
   expect(screen.getByTestId("files-panel")).toBeTruthy();
 
-  chooseSecondaryPanel("Preview");
+  fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
+  expect(screen.getByText("Workspace")).toBeTruthy();
+  expect(screen.getByText("Transfer")).toBeTruthy();
+  expect(screen.getByText("SSH")).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitem", { name: /Preview/ }));
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");

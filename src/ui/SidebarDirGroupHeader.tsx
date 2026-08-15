@@ -77,7 +77,7 @@ export function DirGroupHeader({
       <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={dir}>
         <span
           style={{
-            fontSize: workspace ? "var(--fs-badge)" : "var(--fs-meta)",
+            fontSize: "var(--fs-meta)",
             fontWeight: workspace ? 650 : 600,
             fontFamily: "var(--font-mono)",
             color: workspace ? "var(--c-text-5)" : "var(--c-text-3)",
@@ -90,7 +90,7 @@ export function DirGroupHeader({
         >
           {workspace ? workspace.repositoryName : dir.split("/").pop() || dir}
           {workspace?.transport === "ssh" && (
-            <span style={{ marginLeft: 5, color: "var(--c-text-6)", fontSize: "var(--fs-badge)", fontWeight: 600 }}>{t("workspace.ssh")}</span>
+            <span style={{ marginLeft: 5, color: "var(--c-text-6)", fontSize: "var(--fs-meta)", fontWeight: 600 }}>{t("workspace.ssh")}</span>
           )}
         </span>
         {workspace && (
@@ -109,7 +109,7 @@ export function DirGroupHeader({
       <span
         title={t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}
         style={{
-          fontSize: "var(--fs-badge)",
+          fontSize: "var(--fs-meta)",
           color: "var(--c-text-4)",
           background: "var(--c-bg-3)",
           borderRadius: "var(--r-pill)",

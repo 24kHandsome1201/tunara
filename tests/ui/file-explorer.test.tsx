@@ -840,6 +840,34 @@ describe("FileExplorer workspace files", () => {
     expect(document.activeElement).toBe(src);
   });
 
+  test("expands a folder from the chevron without navigating into it", async () => {
+    const reads: string[] = [];
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      const path = (payload as { path: string }).path;
+      reads.push(path);
+      if (path === "/tmp/repo") return [
+        { name: "src", kind: "dir", size: 0, mtime: 2_000 },
+        { name: "README.md", kind: "file", size: 1, mtime: 1_000 },
+      ];
+      return [{ name: "index.ts", kind: "file", size: 1, mtime: 1_000 }];
+    });
+
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    const src = await screen.findByRole("treeitem", { name: /^src/ });
+    expect(src.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand src" }));
+    expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
+    expect(src.getAttribute("aria-expanded")).toBe("true");
+    expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(src);
+    await waitFor(() => expect(reads[reads.length - 1]).toBe("/tmp/repo/src"));
+    expect(screen.getByRole("button", { name: "src" }).getAttribute("aria-current")).toBe("page");
+  });
+
   test("retries a rejected nested directory read instead of caching an empty result", async () => {
     let nestedAttempts = 0;
     let rejectFirst!: (error: Error) => void;

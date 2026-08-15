@@ -14,7 +14,7 @@ import {
 import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { ContextMenu } from "@/ui/ContextMenu";
+import { ContextMenu, isMenuItem, type MenuItem } from "@/ui/ContextMenu";
 import { SplitHandle } from "@/ui/SplitHandle";
 import { PtyErrorBanner, TerminalExitBanner } from "@/ui/TerminalExitBanner";
 import { TerminalQuickSelect } from "@/ui/TerminalQuickSelect";
@@ -968,10 +968,10 @@ test("session menu exposes bounded keyboard reorder actions", () => {
     externalEditor: "vscode",
     onSelectSession: () => {},
   });
-  const up = items.find((item) => item?.id === "session:move-up");
-  const down = items.find((item) => item?.id === "session:move-down");
-  expect(up && up.disabled).toBe(true);
-  expect(down && down.disabled).toBe(false);
+  const up = items.find((item): item is MenuItem => isMenuItem(item) && item.id === "session:move-up");
+  const down = items.find((item): item is MenuItem => isMenuItem(item) && item.id === "session:move-down");
+  expect(up?.disabled).toBe(true);
+  expect(down?.disabled).toBe(false);
 
   down?.action();
 

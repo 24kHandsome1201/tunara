@@ -13,10 +13,7 @@ import { SessionMascotIcon } from "./SessionMascotIcon";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
-function StatusDot({ runState, unread, waitingConfirmation = false }: { runState: RunState; unread?: boolean; waitingConfirmation?: boolean }) {
-  if (waitingConfirmation) {
-    return <span aria-hidden="true" style={{ position: "absolute", bottom: -1, right: -1, width: 8, height: 8, borderRadius: "50%", background: "var(--c-warning)", border: "2px solid var(--c-bg-white)" }} />;
-  }
+function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
   const showDone = (runState === "done" || runState === "failed") && unread;
   if (runState === "idle" || ((runState === "done" || runState === "failed") && !unread)) return null;
   const color = runState === "running"
@@ -61,7 +58,7 @@ function SessionIcon({ session }: { session: Session }) {
         >
           <SessionMascotIcon id={session.mascot} size={23} />
         </div>
-        <StatusDot runState={displayRunState} unread={session.unread} waitingConfirmation={session.agentActivity === "waiting_confirmation"} />
+        <StatusDot runState={displayRunState} unread={session.unread} />
       </div>
     );
   }
@@ -90,7 +87,7 @@ function SessionIcon({ session }: { session: Session }) {
             </span>
           )}
         </div>
-        <StatusDot runState={displayRunState} unread={session.unread} waitingConfirmation={session.agentActivity === "waiting_confirmation"} />
+        <StatusDot runState={displayRunState} unread={session.unread} />
       </div>
     );
   }
@@ -114,15 +111,12 @@ function SessionIcon({ session }: { session: Session }) {
           <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
       </div>
-      <StatusDot runState={displayRunState} unread={session.unread} waitingConfirmation={session.agentActivity === "waiting_confirmation"} />
+      <StatusDot runState={displayRunState} unread={session.unread} />
     </div>
   );
 }
 
-function StatusMark({ runState, exitCode, waitingLabel }: { runState: RunState; exitCode?: number; waitingLabel?: string }) {
-  if (waitingLabel) {
-    return <span title={waitingLabel} aria-label={waitingLabel} style={{ color: "var(--c-warning-text)", fontSize: "var(--fs-meta)", lineHeight: 1, flexShrink: 0 }}>◆</span>;
-  }
+function StatusMark({ runState, exitCode }: { runState: RunState; exitCode?: number }) {
   if (runState === "done") {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -494,7 +488,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* 行1: 状态标记 + 标题 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatusMark runState={displayRunState} exitCode={session.lastExitCode} waitingLabel={session.agentActivity === "waiting_confirmation" ? t("agent.status.waiting_confirmation") : undefined} />
+            <StatusMark runState={displayRunState} exitCode={session.lastExitCode} />
             {session.pinned && (
               <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>★</span>
             )}
@@ -552,7 +546,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
               </span>
             )}
             {session.agentActivity === "waiting_confirmation" && (
-              <span style={{ flexShrink: 0, borderRadius: "var(--r-badge-sm)", padding: "0 4px", color: "var(--c-warning-text)", background: "var(--c-warning-bg)", fontSize: "var(--fs-badge)", fontWeight: 700, lineHeight: "14px" }}>
+              <span style={{ flexShrink: 0, borderRadius: "var(--r-badge-sm)", padding: "0 5px", color: "var(--c-warning-text)", background: "var(--c-warning-bg)", fontSize: "var(--fs-meta)", fontWeight: 700, lineHeight: "16px" }}>
                 {t("gbar.tag.confirmation")}
               </span>
             )}
@@ -584,13 +578,13 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 ⇄
               </span>
             )}
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 48%", minWidth: 0 }}>
               {session.remote ? session.dir : session.dir.split("/").pop() || session.dir}
             </span>
             {session.branch && (
               <>
                 <span style={{ flexShrink: 0 }}>·</span>
-                <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>⎇ {session.branch}</span>
+                <span title={session.branch} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1 auto", minWidth: 0, maxWidth: "42%" }}>⎇ {session.branch}</span>
               </>
             )}
             {elapsed && (

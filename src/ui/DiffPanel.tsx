@@ -174,7 +174,7 @@ function MiniDiff({
       ref={scrollRef}
       onScroll={onScroll}
       style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }}
-      className="no-scrollbar scroll-fade-y"
+      className="scroll-fade-y"
     >
       {/* Hidden probe row to measure the real rendered row height once. It's
           absolutely positioned + invisible so it participates in layout (and
@@ -721,7 +721,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         </div>
       )}
 
-      <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar scroll-fade-y">
+      <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="scroll-fade-y">
         {loading ? (
           <PanelLoadingState label={t("diff.loading")} />
         ) : notGit ? (

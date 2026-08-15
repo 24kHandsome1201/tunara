@@ -9,7 +9,7 @@ export function WorkspaceSourceChip({ session }: { session: Session }) {
   if (!workspace || !worktree) {
     if (session.workspaceState !== "unavailable") return null;
     return (
-      <span title={t("workspace.unavailable_hint")} style={{ height: 22, display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-pill)", background: "var(--c-bg-white)", color: "var(--c-error)", padding: "0 7px", fontSize: "var(--fs-badge)", whiteSpace: "nowrap" }}>
+      <span title={t("workspace.unavailable_hint")} style={{ height: 22, display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-pill)", background: "var(--c-bg-white)", color: "var(--c-error)", padding: "0 7px", fontSize: "var(--fs-meta)", whiteSpace: "nowrap" }}>
         <span aria-hidden="true">!</span>
         {t("workspace.unavailable")}
       </span>
@@ -37,7 +37,7 @@ export function WorkspaceSourceChip({ session }: { session: Session }) {
         color: "var(--c-text-4)",
         padding: "0 7px",
         fontFamily: "var(--font-mono)",
-        fontSize: "var(--fs-badge)",
+        fontSize: "var(--fs-meta)",
         whiteSpace: "nowrap",
         overflow: "hidden",
       }}
