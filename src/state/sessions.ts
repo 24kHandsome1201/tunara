@@ -27,6 +27,7 @@ import { setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-awa
 import { pushRecentCommand } from "./recent-commands";
 import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
+import { duplicateRemoteSessionFields } from "@/modules/ssh/connection-share";
 import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 import { removeTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { getNumberRecordValue } from "@/state/record-keys";
@@ -141,6 +142,7 @@ interface SessionsState {
   newTerminalWithInput: (input: string, dir?: string) => void;
   openFileInTerminal: (sourceSessionId: string, directory: string, fileName: string) => void;
   splitWithNewSession: (direction: SplitDirection, sourceSessionId?: string) => void;
+  duplicateOnHost: (sourceSessionId?: string) => void;
   closeSession: (id: string) => void;
 }
 
@@ -975,6 +977,23 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       return;
     }
     if (!useUIStore.getState().splitPane(source.id, newSess.id, direction)) return;
+    get().addSession(newSess);
+  },
+
+  duplicateOnHost: (sourceSessionId) => {
+    const source = get().sessions.find((s) => s.id === (sourceSessionId ?? get().activeSessionId));
+    if (!source?.remote || !duplicateRemoteSessionFields(source)) {
+      useUIStore.getState().addToast({
+        title: t("session.duplicate.ssh_only"),
+        subtitle: "",
+        variant: "error",
+      });
+      return;
+    }
+    const newSess = createSession(source.dir, {
+      title: t("session.default_title"),
+      remote: { ...source.remote },
+    });
     get().addSession(newSess);
   },
 

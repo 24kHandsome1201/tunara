@@ -335,10 +335,18 @@ interface UIState extends AppearanceSettings {
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   commandUsage: Record<string, number>;
+  broadcastInput: boolean;
+  explorerFollowCwd: boolean;
+  downloadMaxFiles: number;
+  downloadMaxFileBytes: number;
+  downloadMaxTotalBytes: number;
 
   setPresentationMode: (mode: PresentationMode) => void;
   togglePresentationMode: () => void;
   setNativeFullscreen: (fullscreen: boolean) => void;
+  toggleBroadcastInput: () => void;
+  setExplorerFollowCwd: (enabled: boolean) => void;
+  setDownloadLimits: (limits: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number }) => void;
   setSidebarVisible: (visible: boolean) => void;
   setPanelVisible: (visible: boolean) => void;
   toggleSidebar: () => void;
@@ -430,6 +438,11 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     collapsedDiffSections: {},
     // Hydrated from the workspace snapshot in useInit; starts empty.
     commandUsage: {},
+    broadcastInput: false,
+    explorerFollowCwd: true,
+    downloadMaxFiles: 100,
+    downloadMaxFileBytes: 100 * 1024 * 1024,
+    downloadMaxTotalBytes: 1024 ** 3,
     ...DEFAULT_SETTINGS,
 
     setPresentationMode: (presentationMode) => set(presentationMode === "pure"
@@ -449,6 +462,13 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
         }
       : { presentationMode: "workspace", overlay: null, sshPrefill: null }),
     setNativeFullscreen: (nativeFullscreen) => set({ nativeFullscreen }),
+    toggleBroadcastInput: () => set((s) => ({ broadcastInput: !s.broadcastInput })),
+    setExplorerFollowCwd: (explorerFollowCwd) => set({ explorerFollowCwd }),
+    setDownloadLimits: (limits) => set((s) => ({
+      downloadMaxFiles: limits.maxFiles ?? s.downloadMaxFiles,
+      downloadMaxFileBytes: limits.maxFileBytes ?? s.downloadMaxFileBytes,
+      downloadMaxTotalBytes: limits.maxTotalBytes ?? s.downloadMaxTotalBytes,
+    })),
     setSidebarVisible: (sidebarVisible) => set({ sidebarVisible }),
     setPanelVisible: (panelVisible) => set({ panelVisible }),
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),

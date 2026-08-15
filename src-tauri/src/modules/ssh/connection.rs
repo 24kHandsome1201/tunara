@@ -384,6 +384,8 @@ pub struct ConnectParams {
     pub session_id: String,
     pub transport_generation: String,
     pub hop_role: String,
+    /// Secret-free jump identity used to decide whether two shells can share a TCP transport.
+    pub jump_endpoint: Option<(String, u16, String)>,
 }
 
 /// A connected, authenticated SSH session with a live shell channel.
@@ -397,18 +399,44 @@ pub struct SshSession {
     /// Retains the authenticated outer transport for a ProxyJump session. The
     /// target Handle's stream is a direct-tcpip channel owned by this handle,
     /// so dropping it would tear down the nested connection.
-    _jump_handle: Option<Handle<ClientHandler>>,
+    _jump_handle: Option<Arc<Handle<ClientHandler>>>,
     control: Arc<SshControl>,
     output_flow: Arc<OutputFlow>,
     transport_lost: Arc<AtomicBool>,
+    disconnected: watch::Receiver<bool>,
     host: String,
     port: u16,
     user: String,
     verified_host_key: String,
     logical_session_id: String,
+    identity_file: Option<String>,
+    jump_endpoint: Option<(String, u16, String)>,
     /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
-    sftp: tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>,
+    /// Shared across multiplexed shells on the same TCP transport.
+    sftp: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>>,
+}
+
+/// Cloneable pieces of an authenticated SSH TCP transport. A second interactive
+/// shell opens another session channel on these Arcs instead of reconnecting.
+#[derive(Clone)]
+pub struct SharedSshTransport {
+    handle: Arc<Handle<ClientHandler>>,
+    transport_abort: Arc<std::net::TcpStream>,
+    jump_handle: Option<Arc<Handle<ClientHandler>>>,
+    sftp: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>>,
+    transport_lost: Arc<AtomicBool>,
+    disconnected: watch::Receiver<bool>,
+    #[allow(dead_code)]
+    host: String,
+    #[allow(dead_code)]
+    port: u16,
+    #[allow(dead_code)]
+    user: String,
+    verified_host_key: String,
+    #[allow(dead_code)]
+    identity_file: Option<String>,
+    jump_endpoint: Option<(String, u16, String)>,
 }
 
 async fn close_forward_channel_owned(channel: russh::Channel<russh::client::Msg>) {
@@ -715,7 +743,7 @@ impl SshSession {
             on_event,
             target_handle,
             target_disconnected,
-            Some(jump_handle),
+            Some(Arc::new(jump_handle)),
             verified_host_key,
             transport_abort,
         )
@@ -727,12 +755,57 @@ impl SshSession {
         params: ConnectParams,
         on_event: IpcChannel<PtyEvent>,
         handle: Handle<ClientHandler>,
-        mut disconnected: watch::Receiver<bool>,
-        jump_handle: Option<Handle<ClientHandler>>,
+        disconnected: watch::Receiver<bool>,
+        jump_handle: Option<Arc<Handle<ClientHandler>>>,
         verified_host_key: Arc<std::sync::Mutex<Option<String>>>,
         transport_abort: Arc<std::net::TcpStream>,
     ) -> Result<SshSession, String> {
         let handle = Arc::new(handle);
+        let verified = verified_host_key
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+            .ok_or_else(|| "SSH server identity was not verified".to_string())?;
+        Self::start_interactive_shell(
+            params,
+            on_event,
+            SharedSshTransport {
+                handle,
+                transport_abort,
+                jump_handle,
+                sftp: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+                transport_lost: Arc::new(AtomicBool::new(false)),
+                disconnected,
+                host: String::new(),
+                port: 0,
+                user: String::new(),
+                verified_host_key: verified,
+                identity_file: None,
+                jump_endpoint: None,
+            },
+        )
+        .await
+    }
+
+    pub async fn open_from_shared(
+        params: ConnectParams,
+        on_event: IpcChannel<PtyEvent>,
+        shared: SharedSshTransport,
+    ) -> Result<SshSession, String> {
+        if shared.transport_lost.load(Ordering::Acquire) {
+            return Err("SSH transport is no longer live".into());
+        }
+        send_connection_status(&on_event, "openingShell");
+        Self::start_interactive_shell(params, on_event, shared).await
+    }
+
+    async fn start_interactive_shell(
+        params: ConnectParams,
+        on_event: IpcChannel<PtyEvent>,
+        shared: SharedSshTransport,
+    ) -> Result<SshSession, String> {
+        let handle = shared.handle.clone();
+        let mut disconnected = shared.disconnected.clone();
         send_connection_status(&on_event, "openingShell");
         let mut channel = await_stage(
             "open session channel",
@@ -821,7 +894,7 @@ impl SshSession {
         let pump_control = control.clone();
         let output_flow = OutputFlow::new();
         let pump_output_flow = output_flow.clone();
-        let transport_lost = Arc::new(AtomicBool::new(false));
+        let transport_lost = shared.transport_lost.clone();
         let pump_transport_lost = transport_lost.clone();
         let pump_handle = handle.clone();
         send_connection_status(&on_event, "ready");
@@ -1002,24 +1075,76 @@ impl SshSession {
             });
         });
 
-        let verified_host_key = verified_host_key
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
-            .ok_or_else(|| "SSH server identity was not verified".to_string())?;
         Ok(SshSession {
             handle,
-            transport_abort,
-            _jump_handle: jump_handle,
+            transport_abort: shared.transport_abort,
+            _jump_handle: shared.jump_handle,
             control,
             output_flow,
             transport_lost,
+            disconnected: shared.disconnected,
             host: params.host,
             port: params.port,
             user: params.auth.user,
-            verified_host_key,
+            verified_host_key: shared.verified_host_key,
             logical_session_id: params.session_id,
-            sftp: tokio::sync::Mutex::new(None),
+            identity_file: params.auth.identity_file,
+            jump_endpoint: params.jump_endpoint.or(shared.jump_endpoint),
+            sftp: shared.sftp,
+        })
+    }
+
+    pub fn is_shareable(&self) -> bool {
+        !self.is_closed() && !self.transport_lost()
+    }
+
+    pub fn matches_transport(
+        &self,
+        host: &str,
+        port: u16,
+        user: &str,
+        identity_file: Option<&str>,
+        jump_endpoint: Option<&(String, u16, String)>,
+        exclude_logical_id: Option<&str>,
+    ) -> bool {
+        if exclude_logical_id.is_some_and(|id| id == self.logical_session_id) {
+            return false;
+        }
+        if self.host.to_ascii_lowercase() != host.to_ascii_lowercase()
+            || self.port != port
+            || self.user != user
+        {
+            return false;
+        }
+        if self.identity_file.as_deref() != identity_file {
+            return false;
+        }
+        match (&self.jump_endpoint, jump_endpoint) {
+            (None, None) => true,
+            (Some(left), Some(right)) => {
+                left.0.eq_ignore_ascii_case(&right.0) && left.1 == right.1 && left.2 == right.2
+            }
+            _ => false,
+        }
+    }
+
+    pub fn share_transport(&self) -> Option<SharedSshTransport> {
+        if !self.is_shareable() {
+            return None;
+        }
+        Some(SharedSshTransport {
+            handle: self.handle.clone(),
+            transport_abort: self.transport_abort.clone(),
+            jump_handle: self._jump_handle.clone(),
+            sftp: self.sftp.clone(),
+            transport_lost: self.transport_lost.clone(),
+            disconnected: self.disconnected.clone(),
+            host: self.host.clone(),
+            port: self.port,
+            user: self.user.clone(),
+            verified_host_key: self.verified_host_key.clone(),
+            identity_file: self.identity_file.clone(),
+            jump_endpoint: self.jump_endpoint.clone(),
         })
     }
 
@@ -2145,6 +2270,7 @@ mod tests {
                     session_id: "m1-real-smoke".into(),
                     transport_generation: "smoke".into(),
                     hop_role: "direct".into(),
+                    jump_endpoint: None,
                 },
                 on_event,
             ),

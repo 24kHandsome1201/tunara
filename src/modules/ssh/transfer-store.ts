@@ -8,6 +8,8 @@ import {
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { currentReadySessionBinding } from "@/state/sessions";
 import { localUsageDuration, localUsageErrorCategory, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
+import { pushRateSample, type TransferRateSample } from "./transfer-rate";
+import { canResumeRecovery } from "./transfer-resume";
 
 export type TransferConflict = "skip" | "replace" | "rename";
 export type TransferDirection = "upload" | "download";
@@ -15,10 +17,13 @@ export type TransferStatus = "queued" | "running" | "completed" | "cancelled" | 
 export interface TransferRequest {
   transferId?: string; batchId?: string; binding: SessionBindingV1; direction: TransferDirection;
   source: string; destination: string; conflict: TransferConflict;
+  resumeFrom?: number; resumePartial?: string; createParents?: boolean;
 }
-export interface TransferItem extends Required<Omit<TransferRequest, "batchId" | "transferId">> {
+export interface TransferItem extends Required<Omit<TransferRequest, "batchId" | "transferId" | "resumeFrom" | "resumePartial" | "createParents">> {
   transferId: string; batchId?: string; attempt: number; status: TransferStatus;
   event?: SshTransferEvent; outcome?: SshTransferOutcome; error?: string; cancelRequested: boolean;
+  resumeFrom?: number; resumePartial?: string; createParents?: boolean;
+  rateSamples?: TransferRateSample[]; startedAt?: number;
 }
 export interface TransferRecoveryItem {
   record: TransferJournalRecord;
@@ -38,13 +43,21 @@ export interface TransferState {
   reconcileRecovery(recoveryId: string): Promise<"completed" | "partial" | "offline" | "failed">;
   deleteRecoveryPartial(recoveryId: string): Promise<"deleted" | "unsupported" | "failed">;
   restartRecovery(recoveryId: string): Promise<"queued" | "offline" | "unsupported" | "failed">;
+  resumeRecovery(recoveryId: string): Promise<"queued" | "offline" | "unsupported" | "failed">;
   dismissRecovery(recoveryId: string): Promise<void>;
 }
 
 const id = () => globalThis.crypto?.randomUUID?.() ?? `transfer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const defaultRunner: Runner = (item, event) => item.direction === "upload"
-  ? sshTransferUpload(item.binding, item.transferId, item.attempt, item.source, item.destination, item.conflict === "replace", event)
-  : sshTransferDownload(item.binding, item.transferId, item.attempt, item.source, item.destination, event);
+const defaultRunner: Runner = (item, event) => {
+  const options = {
+    resumeFrom: item.resumeFrom,
+    resumePartial: item.resumePartial,
+    createParents: item.createParents,
+  };
+  return item.direction === "upload"
+    ? sshTransferUpload(item.binding, item.transferId, item.attempt, item.source, item.destination, item.conflict === "replace", event, options)
+    : sshTransferDownload(item.binding, item.transferId, item.attempt, item.source, item.destination, event, options);
+};
 const FINISHED_LIMIT = 200;
 const UNRESOLVED_LIMIT = 200;
 const active = (item: TransferItem) => item.status === "queued" || item.status === "running";
@@ -108,10 +121,17 @@ export function createTransferStore(run: Runner = defaultRunner) {
           const count = connections.get(item.binding.physicalPtyId) ?? 0;
           if (count >= 2) continue;
           global++; connections.set(item.binding.physicalPtyId, count + 1);
-          set((s) => ({ items: s.items.map((x) => x === item ? { ...x, status: "running" } : x) }));
+          set((s) => ({ items: s.items.map((x) => x === item ? { ...x, status: "running", startedAt: Date.now(), rateSamples: [] } : x) }));
           const startedAt = Date.now();
-          void run(item, (event) => set((s) => ({ items: s.items.map((x) => x.transferId === item.transferId && x.attempt === item.attempt
-            ? { ...x, event: acceptSshTransferEvent(x.event, event) } : x) })))
+          void run(item, (event) => set((s) => ({ items: s.items.map((x) => {
+            if (x.transferId !== item.transferId || x.attempt !== item.attempt) return x;
+            const nextEvent = acceptSshTransferEvent(x.event, event);
+            return {
+              ...x,
+              event: nextEvent,
+              rateSamples: pushRateSample(x.rateSamples ?? [], { at: Date.now(), bytes: nextEvent?.bytesTransferred ?? 0 }),
+            };
+          }) })))
             .then(({ outcome }) => {
               const outcomeName = outcome.status === "completed" ? "completed"
                 : outcome.status === "cancelled" ? "cancelled"
@@ -332,6 +352,49 @@ export function createTransferStore(run: Runner = defaultRunner) {
             source: recovery.record.source,
             destination: recovery.record.finalPath,
             conflict: "rename",
+          });
+          set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "scheduled", startedAt);
+          return "queued";
+        } catch (error) {
+          set((s) => ({ recoveries: s.recoveries.map((item) => item.record.recoveryId === recoveryId
+            ? { ...item, busy: false, error: recoveryError(error) } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "failed", startedAt, "io");
+          return "failed";
+        }
+      },
+      resumeRecovery: async (recoveryId) => {
+        const recovery = get().recoveries.find((item) => item.record.recoveryId === recoveryId);
+        if (!recovery) return "failed";
+        const startedAt = Date.now();
+        const resolved = currentReadySessionBinding(recovery.record.session);
+        if (!resolved) {
+          set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery
+            ? { ...item, busy: false, error: "offline" } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "failed", startedAt, "disconnected");
+          return "offline";
+        }
+        if (!canResumeRecovery(recovery.record)) {
+          set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery
+            ? { ...item, busy: false, error: "unsupported" } : item) }));
+          recordTransferRecovery(recovery.record, recoveryId, "restart", "skipped", startedAt, "unsupported");
+          return "unsupported";
+        }
+        set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery ? { ...item, busy: true, error: undefined } : item) }));
+        try {
+          await sshTransferRecoveryDismiss(recoveryId);
+          const binding = currentReadySessionBinding(recovery.record.session) ?? resolved;
+          const direction = recovery.record.direction === "upload" ? "upload" : "download";
+          const overwrite = direction === "upload" && recovery.record.partial.path !== recovery.record.finalPath;
+          get().enqueue({
+            binding,
+            direction,
+            source: recovery.record.source,
+            destination: recovery.record.finalPath,
+            conflict: overwrite ? "replace" : "rename",
+            resumeFrom: recovery.record.bytes,
+            resumePartial: recovery.record.partial.path,
+            createParents: direction === "download",
           });
           set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));
           recordTransferRecovery(recovery.record, recoveryId, "restart", "scheduled", startedAt);

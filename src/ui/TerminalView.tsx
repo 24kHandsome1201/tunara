@@ -8,6 +8,8 @@ import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cancelSshOpen, openSessionPty, recordPendingPtyConnectionStatus, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, safeSshFailure, SSH_DISCONNECTED_EXIT_CODE, toRemoteOpenInfo, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
+import { findShareableSshSession, sshEndpointIdentityFromRemote } from "@/modules/ssh/connection-share";
+import { broadcastTerminalInput, registerBroadcastWriter } from "@/modules/terminal/lib/broadcast-input";
 import { completeSshAutoReconnect, handleSshReconnectFailure, handleSshTransportLost, markSshOneShotCredentialConsumed } from "@/modules/ssh/auto-reconnect";
 import { registerCwdHandler, registerTitleHandlers } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
@@ -41,6 +43,7 @@ import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal
 import { createTerminalLinkInputOwnership, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
 import { captureTerminalActionTarget, handleTerminalInteractionKeyEvent, registerTerminalActions } from "@/modules/terminal/lib/terminal-action-registry";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
+import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
@@ -423,9 +426,17 @@ function TerminalViewImpl({
         // object so they're never persisted; merge them in only for this open.
         const creds = sessionRemote ? takeSshCredentials(sessionIdRef.current) : undefined;
         if (sessionRemote) markSshOneShotCredentialConsumed(sessionIdRef.current, creds);
+        const shareWith = sessionRemote
+          ? findShareableSshSession(
+              useSessionsStore.getState().sessions,
+              sshEndpointIdentityFromRemote(sessionRemote),
+              sessionIdRef.current,
+            )?.id
+          : undefined;
         pty = await openSessionPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
           cwd,
           remote: sessionRemote ? toRemoteOpenInfo(sessionRemote, creds) : undefined,
+          shareWithLogicalSessionId: shareWith,
         });
       } catch (e) {
         if (disposed) return;
@@ -495,6 +506,7 @@ function TerminalViewImpl({
         if (!inputToPtyEnabled || !ptyRef.current) return; const pty = ptyRef.current;
         pty.write(data).catch(onWriteError);
       };
+      cleanups.push(registerBroadcastWriter(sessionIdRef.current, writePty));
       cleanups.push(registerTerminalDeviceAttributesHandler(term, {
         isOsc52ClipboardWriteAllowed: () => useUIStore.getState().terminalClipboardWrite,
         sendInput: writePty,
@@ -529,6 +541,10 @@ function TerminalViewImpl({
       const dataDisposable = term.onData((data) => {
         if (!inputToPtyEnabled) return;
         writePty(data);
+        if (useUIStore.getState().broadcastInput) {
+          const targets = splitLayoutSessionIds(useUIStore.getState().split);
+          if (targets.length > 1) broadcastTerminalInput(sessionIdRef.current, data, targets);
+        }
         const submitAgentInput = (submitted: string) => {
           const sess = getCurrentSession();
           if (!sess?.agent) return;

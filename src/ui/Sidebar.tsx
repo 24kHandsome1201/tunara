@@ -12,6 +12,7 @@ import { buildSessionMenuItems } from "./sidebar-session-menu";
 import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-dir-group-menu";
 import { useT } from "@/modules/i18n";
 import { SidebarNewTerminalControl } from "./SidebarNewTerminalControl";
+import { SidebarHosts } from "./SidebarHosts";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
@@ -224,6 +225,7 @@ export function Sidebar({
           onNewTerminalInDirectory={onNewTerminalInDirectory}
         />
       )}
+      <SidebarHosts />
 
       <div style={{ padding: "6px 12px" }}>
         <div

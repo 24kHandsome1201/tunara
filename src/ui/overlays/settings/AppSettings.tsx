@@ -12,7 +12,7 @@ import {
 } from "@/modules/usage-log/local-usage-log";
 import { useUIStore } from "@/state/ui";
 import type { useAppUpdate } from "../useAppUpdate";
-import { SECTION_LABEL, SECTION_HINT, Toggle } from "./controls";
+import { SECTION_LABEL, SECTION_HINT, Toggle, Stepper } from "./controls";
 
 type LegacyAgentDataState = "loading" | "missing" | "present" | "deleting" | "error";
 
@@ -31,6 +31,10 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
   const t = useT();
   const localUsageLoggingEnabled = useUIStore((s) => s.localUsageLoggingEnabled);
   const setLocalUsageLoggingEnabled = useUIStore((s) => s.setLocalUsageLoggingEnabled);
+  const downloadMaxFiles = useUIStore((s) => s.downloadMaxFiles);
+  const downloadMaxFileBytes = useUIStore((s) => s.downloadMaxFileBytes);
+  const downloadMaxTotalBytes = useUIStore((s) => s.downloadMaxTotalBytes);
+  const setDownloadLimits = useUIStore((s) => s.setDownloadLimits);
   const [legacyAgentDataState, setLegacyAgentDataState] = useState<LegacyAgentDataState>("loading");
   const [usageLogStatus, setUsageLogStatus] = useState<LocalUsageLogStatus | null>(null);
   const [usageLogBusy, setUsageLogBusy] = useState(false);
@@ -131,6 +135,39 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
             >
               {canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("settings.app.updates.retry") : t("settings.app.updates.check")}
             </button>
+          </div>
+        </div>
+      </div>
+      <div style={{ paddingTop: 20 }}>
+        <div style={SECTION_LABEL}>{t("settings.transfers.title")}</div>
+        <div style={{ ...SECTION_HINT, marginBottom: 14 }}>{t("settings.transfers.hint")}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 6 }}>{t("settings.transfers.max_files")}</div>
+            <Stepper
+              display={`${downloadMaxFiles}`}
+              valueMinWidth={48}
+              onDecrement={() => setDownloadLimits({ maxFiles: Math.max(1, downloadMaxFiles - 10) })}
+              onIncrement={() => setDownloadLimits({ maxFiles: Math.min(10_000, downloadMaxFiles + 10) })}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 6 }}>{t("settings.transfers.max_file_mib")}</div>
+            <Stepper
+              display={`${Math.round(downloadMaxFileBytes / (1024 * 1024))}`}
+              valueMinWidth={48}
+              onDecrement={() => setDownloadLimits({ maxFileBytes: Math.max(1 * 1024 * 1024, downloadMaxFileBytes - 10 * 1024 * 1024) })}
+              onIncrement={() => setDownloadLimits({ maxFileBytes: Math.min(1024 * 1024 * 1024, downloadMaxFileBytes + 10 * 1024 * 1024) })}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 6 }}>{t("settings.transfers.max_total_gib")}</div>
+            <Stepper
+              display={`${(downloadMaxTotalBytes / (1024 ** 3)).toFixed(1)}`}
+              valueMinWidth={48}
+              onDecrement={() => setDownloadLimits({ maxTotalBytes: Math.max(1024 ** 3, downloadMaxTotalBytes - 1024 ** 3) })}
+              onIncrement={() => setDownloadLimits({ maxTotalBytes: Math.min(10 * 1024 ** 3, downloadMaxTotalBytes + 1024 ** 3) })}
+            />
           </div>
         </div>
       </div>

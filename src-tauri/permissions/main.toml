@@ -27,6 +27,7 @@ commands.allow = [
   "git_watch",
   "git_unwatch",
   "open_in_editor",
+  "remote_edit_staging_path",
   "load_config",
   "save_config",
   "local_usage_log_record",

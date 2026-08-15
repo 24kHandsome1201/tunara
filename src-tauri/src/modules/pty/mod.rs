@@ -115,6 +115,52 @@ impl PtyState {
         self.sessions.read().get(&id).cloned()
     }
 
+    /// Find a live SSH transport that a new shell can multiplex onto.
+    pub fn find_shareable_ssh(
+        &self,
+        host: &str,
+        port: u16,
+        user: &str,
+        identity_file: Option<&str>,
+        jump_endpoint: Option<&(String, u16, String)>,
+        exclude_logical_id: Option<&str>,
+        prefer_logical_id: Option<&str>,
+    ) -> Option<crate::modules::ssh::connection::SharedSshTransport> {
+        let sessions = self.sessions.read();
+        if let Some(prefer) = prefer_logical_id {
+            if let Some(physical) = self.logical_sessions.read().get(prefer).copied() {
+                if let Some(session) = sessions.get(&physical) {
+                    if let Session::Ssh(ssh) = session.as_ref() {
+                        if ssh.matches_transport(
+                            host,
+                            port,
+                            user,
+                            identity_file,
+                            jump_endpoint,
+                            exclude_logical_id,
+                        ) {
+                            if let Some(shared) = ssh.share_transport() {
+                                return Some(shared);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for session in sessions.values() {
+            let Session::Ssh(ssh) = session.as_ref() else {
+                continue;
+            };
+            if ssh.matches_transport(host, port, user, identity_file, jump_endpoint, exclude_logical_id)
+            {
+                if let Some(shared) = ssh.share_transport() {
+                    return Some(shared);
+                }
+            }
+        }
+        None
+    }
+
     /// Atomically validate all three components of a backend-issued binding
     /// and acquire its live session. A stale generation can never alias a
     /// replacement because physical ids and generations are never reused.

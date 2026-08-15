@@ -2,11 +2,25 @@ import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import type { FolderManifest } from "./transfer-bridge";
 import type { TransferConflict, TransferDirection, TransferRequest } from "./transfer-store";
 
-export const BATCH_DOWNLOAD_LIMITS = {
+export type DownloadLimits = {
+  maxFiles: number;
+  maxTotalBytes: number;
+  maxFileBytes: number;
+};
+
+export const BATCH_DOWNLOAD_LIMITS: DownloadLimits = {
   maxFiles: 100,
   maxTotalBytes: 1024 ** 3,
   maxFileBytes: 100 * 1024 ** 2,
 } as const;
+
+export function resolveDownloadLimits(limits?: Partial<DownloadLimits>): DownloadLimits {
+  return {
+    maxFiles: limits?.maxFiles ?? BATCH_DOWNLOAD_LIMITS.maxFiles,
+    maxTotalBytes: limits?.maxTotalBytes ?? BATCH_DOWNLOAD_LIMITS.maxTotalBytes,
+    maxFileBytes: limits?.maxFileBytes ?? BATCH_DOWNLOAD_LIMITS.maxFileBytes,
+  };
+}
 
 export type DragDropIntent =
   | { kind: "upload"; localPaths: string[] }
@@ -67,22 +81,24 @@ export function planBatchDownloads(options: {
   destinationRoot: string;
   existingNames: readonly string[];
   binding: SessionBindingV1;
+  limits?: Partial<DownloadLimits>;
 }): TransferRequest[] {
   const { sources, destinationRoot, binding } = options;
+  const limits = resolveDownloadLimits(options.limits);
   if (sources.length === 0) return [];
-  if (sources.length > BATCH_DOWNLOAD_LIMITS.maxFiles) throw new Error("batch download file limit exceeded");
+  if (sources.length > limits.maxFiles) throw new Error("batch download file limit exceeded");
   let totalBytes = 0;
   const occupied = new Set(options.existingNames.map((name) => join(destinationRoot, name)));
   return sources.map((source, index) => {
-    if (!Number.isFinite(source.size) || source.size < 0 || source.size > BATCH_DOWNLOAD_LIMITS.maxFileBytes) {
+    if (!Number.isFinite(source.size) || source.size < 0 || source.size > limits.maxFileBytes) {
       throw new Error("batch download contains an oversized file");
     }
     totalBytes += source.size;
-    if (totalBytes > BATCH_DOWNLOAD_LIMITS.maxTotalBytes) throw new Error("batch download total size limit exceeded");
+    if (totalBytes > limits.maxTotalBytes) throw new Error("batch download total size limit exceeded");
     let destination = join(destinationRoot, safeDownloadLeaf(source.name, index + 1));
     if (occupied.has(destination)) destination = renamedSibling(destination, occupied);
     occupied.add(destination);
-    return { binding, direction: "download", source: source.path, destination, conflict: "rename" };
+    return { binding, direction: "download" as const, source: source.path, destination, conflict: "rename" as const, createParents: true };
   });
 }
 
@@ -120,7 +136,10 @@ export function expandFolderTransfer(options: {
       if (conflict === "rename") { destination = renamedSibling(destination, occupied); itemConflict = "rename"; }
     }
     occupied.add(destination);
-    requests.push({ binding, direction, source, destination, conflict: itemConflict });
+    requests.push({
+      binding, direction, source, destination, conflict: itemConflict,
+      createParents: direction === "download",
+    });
   }
   directories.sort((a, b) => a.split(/[\\/]/).length - b.split(/[\\/]/).length || a.localeCompare(b));
   return { directories: [...new Set(directories)], requests };

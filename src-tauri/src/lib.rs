@@ -134,6 +134,7 @@ pub fn run() {
             modules::git::watcher::git_unwatch,
             // Tunara 新增（§6.3 外部编辑器跳转）
             modules::editor::open_in_editor,
+            modules::editor::remote_edit_staging_path,
             // Text config: ~/.config/tunara/config.toml
             modules::config::load_config,
             modules::config::save_config,

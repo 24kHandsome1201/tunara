@@ -39,6 +39,8 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
       collapsedDiffSections: ui.collapsedDiffSections,
       split: ui.split,
       inspectorTab: ui.inspectorTab,
+      broadcastInput: ui.broadcastInput,
+      explorerFollowCwd: ui.explorerFollowCwd,
     },
     terminals: getAllTerminalSnapshots(),
     agentResume,
@@ -150,6 +152,8 @@ export function useInit() {
         split: snapshot.ui.split,
         inspectorTab: snapshot.ui.inspectorTab,
         commandUsage: snapshot.commandUsage ?? {},
+        broadcastInput: snapshot.ui.broadcastInput === true,
+        explorerFollowCwd: snapshot.ui.explorerFollowCwd !== false,
       });
 
       if (snapshot.workflows?.length) {
@@ -287,7 +291,7 @@ export function useInit() {
     });
 
     const unsubUI = useUIStore.subscribe(
-      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage] as const,
+      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.broadcastInput, s.explorerFollowCwd] as const,
       () => scheduleSave(),
       { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
     );

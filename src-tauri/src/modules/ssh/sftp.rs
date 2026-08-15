@@ -1305,6 +1305,41 @@ pub(crate) fn validate_download_target(local_path: &str) -> Result<std::path::Pa
     Ok(target)
 }
 
+/// Create missing parent directories for a download, but only when the first
+/// existing ancestor is already inside the home confinement used by
+/// [`validate_download_target`].
+pub(crate) fn ensure_download_parents(local_path: &str) -> Result<(), String> {
+    let path = std::path::Path::new(local_path);
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("download path must be absolute and must not contain '..'".into());
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| "download path must have a parent directory".to_string())?;
+    if parent.exists() {
+        return Ok(());
+    }
+    let home = dirs::home_dir().ok_or_else(|| "cannot resolve home dir".to_string())?;
+    let real_home = std::fs::canonicalize(&home).unwrap_or(home);
+    let mut cursor = parent;
+    while !cursor.exists() {
+        cursor = cursor
+            .parent()
+            .ok_or_else(|| "download directory does not exist".to_string())?;
+    }
+    let real_existing = std::fs::canonicalize(cursor)
+        .map_err(|_| "download directory does not exist".to_string())?;
+    if !real_existing.starts_with(&real_home) {
+        return Err("download path must be under the home directory".into());
+    }
+    std::fs::create_dir_all(parent).map_err(|error| format!("create download directory failed: {error}"))?;
+    Ok(())
+}
+
 /// Download a remote file to a local path. The destination is validated to a
 /// safe location (see `validate_download_target`) because the bytes are
 /// remote-controlled. Streamed chunk-by-chunk (O(chunk) memory) and aborted
@@ -1435,6 +1470,7 @@ pub(crate) async fn upload_file(
     mut on_allocated: impl FnMut(&str, u64) -> Result<(), String>,
     mut on_checkpoint: impl FnMut(&str, u64, String) -> Result<(), String>,
     mut on_commit: impl FnMut(String) -> Result<Option<crate::modules::pty::CommitLease>, String>,
+    resume: Option<(String, u64)>,
 ) -> Result<u64, String> {
     let registration = UploadRegistration::register(&transfer_id)?;
     validate_remote_edit_path(&remote_path)?;
@@ -1504,7 +1540,29 @@ pub(crate) async fn upload_file(
         None
     };
 
-    let upload_path = if overwrite {
+    let upload_path = if let Some((partial, offset)) = resume.clone() {
+        use tokio::io::AsyncSeekExt;
+        if offset > total {
+            return Err("upload resume offset exceeds source length".into());
+        }
+        source
+            .seek(std::io::SeekFrom::Start(offset))
+            .await
+            .map_err(|error| format!("seek upload source for resume failed: {error}"))?;
+        let mut file = await_stage(
+            "open remote upload partial for resume",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.open_with_flags(
+                partial.clone(),
+                OpenFlags::WRITE,
+            ),
+        )
+        .await?;
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
+            .map_err(|error| format!("seek remote upload partial failed: {error}"))?;
+        (partial, file)
+    } else if overwrite {
         let mut temporary = None;
         for attempt in 0..16 {
             let candidate = remote_sibling_temp_path(&remote_path, attempt)?;
@@ -1567,6 +1625,7 @@ pub(crate) async fn upload_file(
         (remote_path.clone(), file)
     };
     let (partial_path, mut destination) = upload_path;
+    let resume_offset = resume.as_ref().map(|(_, offset)| *offset).unwrap_or(0);
     if let Err(error) = on_allocated(&partial_path, total) {
         return Err(encode_upload_error(
             "failed",
@@ -1575,11 +1634,30 @@ pub(crate) async fn upload_file(
         ));
     }
     on_progress(UploadProgress {
-        transferred: 0,
+        transferred: resume_offset,
         total,
     });
-    let mut transferred = 0_u64;
+    let mut transferred = resume_offset;
     let mut content_hash = Sha256::new();
+    if resume_offset > 0 {
+        let mut prefix = tokio::fs::File::open(local)
+            .await
+            .map_err(|error| format!("rehash upload prefix failed: {error}"))?;
+        let mut hashed = 0_u64;
+        let mut buffer = vec![0_u8; 64 * 1024];
+        while hashed < resume_offset {
+            let want = std::cmp::min(buffer.len() as u64, resume_offset - hashed) as usize;
+            let count = prefix
+                .read(&mut buffer[..want])
+                .await
+                .map_err(|error| format!("rehash upload prefix failed: {error}"))?;
+            if count == 0 {
+                return Err("upload source ended before resume offset".into());
+            }
+            content_hash.update(&buffer[..count]);
+            hashed += count as u64;
+        }
+    }
     let mut buffer = vec![0_u8; 64 * 1024];
 
     let transfer_result: Result<(), String> = async {
@@ -1743,6 +1821,7 @@ pub(crate) async fn legacy_upload_file(
         |_, _| Ok(()),
         |_, _, _| Ok(()),
         |_| Ok(None),
+        None,
     )
     .await
 }
@@ -1969,6 +2048,7 @@ mod tests {
                     session_id: label.into(),
                     transport_generation: "smoke".into(),
                     hop_role: "direct".into(),
+                    jump_endpoint: None,
                 },
                 Channel::<PtyEvent>::new(|_| Ok(())),
             ),
