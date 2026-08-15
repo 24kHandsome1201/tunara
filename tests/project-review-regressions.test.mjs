@@ -1345,7 +1345,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   // identity instead of remounting every row on each state change.
   assert.match(diff, /function DiffFileRow\(/);
   assert.match(diff, /loadFileDiffStable/);
-  assert.match(diff, /className="no-scrollbar scroll-fade-y"/);
+  assert.match(diff, /className="scroll-fade-y"/);
+  assert.doesNotMatch(diff, /className="no-scrollbar scroll-fade-y"/);
   assert.match(explorer, /function compactRelativePath/);
   assert.match(explorer, /className="no-scrollbar scroll-fade-y"/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
@@ -1641,5 +1642,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // restore. 580→625 covers input ownership plus binding-aware terminal
   // actions; their state machines remain extracted into terminal lib modules.
   assert.ok(terminal.split("\n").length < 625);
-  assert.ok(sidebar.split("\n").length < 410);
+  // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
+  assert.ok(sidebar.split("\n").length < 430);
 });

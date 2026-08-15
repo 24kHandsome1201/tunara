@@ -219,8 +219,8 @@ test("uses Rust-reported history state and submits addresses through the trusted
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_navigate", payload: { source: eligible, address: "/b?q=1#two" } }));
 });
 
-function openViewControls() {
-  fireEvent.click(screen.getByText("View controls"));
+async function openViewControls() {
+  fireEvent.click(await screen.findByText("View controls"));
 }
 
 test("changes zoom and viewport only after Rust reports native state", async () => {
@@ -241,7 +241,7 @@ test("changes zoom and viewport only after Rust reports native state", async () 
     throw new Error(`unexpected command: ${command}`);
   });
   render(<PreviewPanel session={session([eligible])} />);
-  openViewControls();
+  await openViewControls();
 
   const zoom = await screen.findByRole("button", { name: "125%" });
   expect(zoom.getAttribute("aria-pressed")).toBe("false");
@@ -279,7 +279,7 @@ test("shows bounded failures and explicitly copies, clears, or fills only the so
     throw new Error(`unexpected command: ${command}`);
   });
   render(<PreviewPanel session={session([eligible])} />);
-  openViewControls();
+  await openViewControls();
 
   expect(await screen.findByText("Render failed ×2")).toBeTruthy();
   useUIStore.setState({ toasts: [] });
@@ -330,7 +330,7 @@ test("captures only on explicit action and sends the safe reference to the bound
     throw new Error(`unexpected command: ${command}`);
   });
   render(<PreviewPanel session={session([eligible])} />);
-  openViewControls();
+  await openViewControls();
 
   expect(calls.some((call) => call.command === "preview_capture")).toBe(false);
   fireEvent.click(await screen.findByRole("button", { name: "Capture PNG" }));
