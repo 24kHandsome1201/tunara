@@ -386,7 +386,8 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(terminalFont, /buildTerminalFontFamily/);
   assert.match(terminalInstance, /wordSeparator: " \(\)\[\]\{\}'\\";,"/);
   assert.match(runtimeSync, /from "@\/modules\/terminal\/lib\/terminal-font"/);
-  assert.match(runtimeSync, /term\.options\.fontFamily = buildTerminalFontFamily/);
+  assert.match(runtimeSync, /term\.options\.fontFamily = withAtlasIsolationFontFamily/);
+  assert.match(runtimeSync, /buildTerminalFontFamily\(fontFamily, nerdFontFallback\)/);
   assert.match(terminalLigatures, /registerCharacterJoiner/);
   assert.match(terminalLigatures, /deregisterCharacterJoiner/);
   assert.match(terminalLigatureSync, /useUIStore\.subscribe\(\(s\) => s\.fontLigatures/);
@@ -1429,6 +1430,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(sshConnection, /input = pump_control\.next_input\(\), if accepting_input/);
   assert.match(sshConnection, /_ = pump_control\.wait_for_close\(\)/);
   assert.match(sshConnection, /changed = resize_rx\.changed\(\), if accepting_input/);
+  assert.match(sshConnection, /SSH_PTY_MODES/);
+  assert.match(sshConnection, /Pty::IUTF8/);
+  assert.match(sshConnection, /&SSH_PTY_MODES/);
   assert.match(terminalAttention, /import \{ UserAttentionType \} from "@tauri-apps\/api\/window"/);
   assert.match(terminalAttention, /tryGetCurrentWindow\(\)[\s\S]*?requestUserAttention\(UserAttentionType\.Informational\)/);
   assert.doesNotMatch(terminalAttention, /getCurrentWindow\(\)/);
@@ -1453,6 +1457,10 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ scanTerminalInputBuffer, shouldScanTerminalInput \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
+  assert.match(terminal, /atlasIsolationKey: sessionId/);
+  assert.match(terminal, /useTerminalWebgl\(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef\)/);
+  assert.match(terminalInstance, /withAtlasIsolationFontFamily/);
+  assert.match(terminalRuntimeSync, /withAtlasIsolationFontFamily/);
   assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl, linkInputRef\.current\.shouldActivate\)/);
   // Paste protection must be wired with the Tauri dialog confirmer —
   // window.confirm never renders in wry's WKWebView (silent false), which
@@ -1536,6 +1544,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
   assert.match(terminalRuntimeSync, /getTerminalTheme\(theme, terminalTheme, accent\)/);
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
+  assert.match(terminalWebgl, /fitRef\?\.current\?\.fit\(\)/);
+  assert.match(terminalWebgl, /ptyRef\?\.current\?\.resize\(term\.cols, term\.rows\)\?\.catch/);
   assert.match(terminalHyperlinks, /export function normalizeTerminalHyperlink/);
   assert.match(terminalHyperlinks, /allowNonHttpProtocols: false/);
   assert.match(terminalHyperlinks, /url\.protocol !== "http:" && url\.protocol !== "https:"/);

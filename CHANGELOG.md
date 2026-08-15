@@ -24,6 +24,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 统一桌面控件在各配色下的对比度、焦点与窄面板布局；文件表面快捷键不再误伤会话标签。
 
 ### 稳定性
+- 修复 SSH 下多分屏同时跑 Codex / Grok 等 TUI 一段时间后出现的乱码：每个会话使用独立 WebGL glyph atlas，避免 addon-webgl 0.19 共享纹理在 page merge 后把相邻 pane 画花；WebGL 替换 renderer 后立即重新 fit 并同步 PTY 尺寸；SSH PTY 启用 IUTF8，中文输入不再被当成 8-bit 字节。
 - 修复 Linux 窗口尺寸与原生缩放合同，避免平台 overlay 配置覆盖 `resizable`。
 
 ## [1.17.1] - 2026-08-01

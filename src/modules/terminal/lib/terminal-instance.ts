@@ -2,6 +2,7 @@ import { Terminal, type ILinkHandler } from "@xterm/xterm";
 import type { CursorStyle } from "@/state/ui";
 import type { TerminalThemeName, ThemeType } from "@/ui/types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
+import { withAtlasIsolationFontFamily } from "./terminal-atlas-isolation.ts";
 import { buildTerminalFontFamily } from "./terminal-font.ts";
 
 interface TerminalInstanceOptions {
@@ -15,6 +16,7 @@ interface TerminalInstanceOptions {
   cursorBlink: boolean;
   cursorStyle: CursorStyle;
   screenReaderMode: boolean;
+  atlasIsolationKey?: string;
   linkHandler?: ILinkHandler | null;
 }
 
@@ -29,10 +31,14 @@ export function createTerminalInstance({
   cursorBlink,
   cursorStyle,
   screenReaderMode,
+  atlasIsolationKey,
   linkHandler,
 }: TerminalInstanceOptions): Terminal {
   return new Terminal({
-    fontFamily: buildTerminalFontFamily(fontFamily, nerdFontFallback),
+    fontFamily: withAtlasIsolationFontFamily(
+      buildTerminalFontFamily(fontFamily, nerdFontFallback),
+      atlasIsolationKey,
+    ),
     fontSize,
     lineHeight: 1.05,
     theme: getTerminalTheme(theme, terminalTheme, accent),
