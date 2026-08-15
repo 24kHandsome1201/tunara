@@ -82,10 +82,11 @@ function ToastItem({ toast }: { toast: Toast }) {
   const handleClick = () => {
     if (toast.action?.kind === "open-settings") {
       useUIStore.getState().openSettings(toast.action.tab);
-    } else if (toast.action?.kind === "open-remote-preview") {
-      const owner = useSessionsStore.getState().sessions.find((session) => session.id === toast.action.sessionId);
+    } else if (toast.action !== undefined && toast.action.kind === "open-remote-preview") {
+      const previewAction = toast.action;
+      const owner = useSessionsStore.getState().sessions.find((session) => session.id === previewAction.sessionId);
       if (owner) {
-        void openResource(resourceRefForSession(owner, toast.action.path), "preview");
+        void openResource(resourceRefForSession(owner, previewAction.path), "preview");
       }
     } else if (toast.sessionId) {
       setActive(toast.sessionId);

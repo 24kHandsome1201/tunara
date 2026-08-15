@@ -919,6 +919,9 @@ export function FileExplorer({
     }
     setBaseDir(rootDir);
     setCurrentPath(rootDir);
+    // Follow-cwd applies later OSC 7 updates. Including rootDir here would
+    // clear search and reset local/remote explorers on every shell cd.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, [isRemote, remotePtyId, sessionId]);
 
   useEffect(() => {

@@ -1216,7 +1216,7 @@ pub async fn ssh_remote_forward_start(
         };
         let (cancel, cancelled) = watch::channel(false);
         let (completion_tx, completion_rx) = watch::channel(false);
-        {
+        let over_session_limit = {
             let mut rules = state
                 .rules
                 .lock()
@@ -1227,27 +1227,32 @@ pub async fn ssh_remote_forward_start(
                 .count()
                 >= MAX_RULES_PER_SESSION
             {
-                let Session::Ssh(ssh) = generation.as_ref() else {
-                    return Err(format!(
-                        "session forward limit ({MAX_RULES_PER_SESSION}) reached"
-                    ));
-                };
-                let _ = ssh
-                    .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
-                    .await;
+                true
+            } else {
+                rules.insert(
+                    rule_id.clone(),
+                    Rule {
+                        view: RuleView::Remote(view.clone()),
+                        generation: generation.clone(),
+                        cancel: cancel.clone(),
+                        completed: completion_rx,
+                    },
+                );
+                false
+            }
+        };
+        if over_session_limit {
+            let Session::Ssh(ssh) = generation.as_ref() else {
                 return Err(format!(
                     "session forward limit ({MAX_RULES_PER_SESSION}) reached"
                 ));
-            }
-            rules.insert(
-                rule_id.clone(),
-                Rule {
-                    view: RuleView::Remote(view.clone()),
-                    generation: generation.clone(),
-                    cancel: cancel.clone(),
-                    completed: completion_rx,
-                },
-            );
+            };
+            let _ = ssh
+                .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
+                .await;
+            return Err(format!(
+                "session forward limit ({MAX_RULES_PER_SESSION}) reached"
+            ));
         }
         let Session::Ssh(ssh) = generation.as_ref() else {
             return Err("binding does not identify an SSH session".into());

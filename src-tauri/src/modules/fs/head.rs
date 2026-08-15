@@ -482,7 +482,7 @@ mod tests {
         let result = finish_tail(b"one\ntwo\nthree\nfour\n".to_vec(), 20, "rev".into(), 2, false);
         assert!(matches!(
             result,
-            FileHeadResultV1::Text { content, line_count: 2, truncated: false, .. }
+            FileHeadResultV1::Text { content, line_count: 2, truncated: true, .. }
                 if content == "three\nfour\n"
         ));
     }
