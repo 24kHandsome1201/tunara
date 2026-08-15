@@ -76,7 +76,7 @@ function TabButton({
         flexShrink: 0,
         whiteSpace: "nowrap",
         color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
-        transition: "border-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
+        transition: "border-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth)",
       }}
       className={active ? "inspector-tab" : "inspector-tab hover-text-3"}
     >
@@ -285,7 +285,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     <div
       style={{
         width: "100%",
-        background: "var(--c-bg-2)",
+        background: "var(--c-bg-1)",
         borderLeft: "1px solid var(--c-border-1)",
         display: "flex",
         flexDirection: "column",
@@ -362,7 +362,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
             alignItems: "center",
             gap: 7,
             borderBottom: "1px solid var(--c-border-1)",
-            background: "var(--c-bg-2)",
+            background: "var(--c-bg-1)",
             flexShrink: 0,
             minWidth: 0,
             overflow: "hidden",

@@ -1119,6 +1119,8 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /aria-hidden="true"/);
   assert.match(shared, /export function SearchIcon/);
   assert.match(shared, /export function CloseIcon/);
+  assert.match(shared, /export function UploadIcon/);
+  assert.match(shared, /export function DownloadIcon/);
 
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(settings, /t\("settings\.cli\.error"\)/);

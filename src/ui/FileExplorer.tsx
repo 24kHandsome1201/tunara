@@ -30,7 +30,7 @@ import {
   sshUpload,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
-import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { CloseIcon, DownloadIcon, RefreshIcon, SearchIcon, UploadFolderIcon, UploadIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -189,8 +189,28 @@ export function uploadFailureKey(error: unknown): string {
 
 function FolderIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--c-text-4)" }}>
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function TreeChevron({ expanded = false }: { expanded?: boolean }) {
+  return (
+    <svg
+      className="explorer-tree-chevron"
+      data-expanded={expanded ? "true" : "false"}
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="9 6 15 12 9 18" />
     </svg>
   );
 }
@@ -1621,7 +1641,7 @@ export function FileExplorer({
               }}
             >
               <FolderIcon />
-              <span aria-hidden="true" style={{ fontSize: 11, width: 10, textAlign: "center" }}>{expanded ? "⌄" : "›"}</span>
+              <TreeChevron expanded={expanded} />
             </button>
           ) : (
             <span aria-hidden="true" style={{ display: "flex", pointerEvents: "none" }}><FileIcon /></span>
@@ -1868,9 +1888,9 @@ export function FileExplorer({
               className="hover-bg"
               title={t("explorer.upload")}
               aria-label={t("explorer.upload")}
-              style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}
+              style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
             >
-              ↑
+              <UploadIcon />
             </button>
             {binding && (
               <>
@@ -1882,7 +1902,7 @@ export function FileExplorer({
                   aria-label={t("explorer.upload_folder")}
                   style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                 >
-                  <span aria-hidden="true">↥▣</span>
+                  <UploadFolderIcon />
                 </button>
                 <button
                   onClick={() => { void downloadSelectedFiles(); }}
@@ -1892,7 +1912,7 @@ export function FileExplorer({
                   aria-label={t("explorer.download.batch_action", { count: selectedDownloads.size })}
                   style={{ minWidth: 26, height: 26, padding: "0 4px", borderRadius: "var(--r-btn)", border: "none", background: selectedDownloads.size > 0 ? "var(--c-accent-bg-light)" : "transparent", color: selectedDownloads.size > 0 ? "var(--c-accent)" : "var(--c-text-4)", cursor: remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 2, flexShrink: 0 }}
                 >
-                  <span aria-hidden="true">↓</span>
+                  <DownloadIcon />
                   {selectedDownloads.size > 0 && <span aria-hidden="true" style={{ fontSize: "var(--fs-meta)" }}>{selectedDownloads.size}</span>}
                 </button>
               </>
@@ -2112,7 +2132,7 @@ export function FileExplorer({
                     >
                       {hit.isDir ? <FolderIcon /> : <FileIcon />}
                       <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
-                      {hit.isDir && <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>}
+                      {hit.isDir && <TreeChevron />}
                     </button>
                   </div>
                 );
