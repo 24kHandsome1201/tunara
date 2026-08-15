@@ -11,7 +11,7 @@ import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 import type { WorkspaceFileTab } from "@/state/ui";
-import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
+import { activateWorkspaceFileTab, requestCloseWorkspaceFileTab } from "./lib/workspace-tab-actions";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
 import { copyActiveTerminal, safePasteActiveTerminal, searchActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import { TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, type TerminalContextAnnouncement } from "@/modules/terminal/lib/terminal-context-announcement";
@@ -566,8 +566,6 @@ function TitlebarImpl({
   const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
   const fileTabs = useUIStore((s) => s.fileTabs);
   const activeFileTabId = useUIStore((s) => s.activeFileTabId);
-  const setActiveFileTab = useUIStore((s) => s.setActiveFileTab);
-  const closeFileTab = useUIStore((s) => s.closeFileTab);
   const showTabs = presentationMode === "workspace" && (!sidebarVisible || fileTabs.length > 0);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
@@ -654,25 +652,6 @@ function TitlebarImpl({
     return tab.fileName.length > 28 ? tab.fileName.slice(0, 28) + "…" : tab.fileName;
   }
 
-  function selectFileTab(tab: WorkspaceFileTab) {
-    useSessionsStore.getState().setActive(tab.sessionId);
-    setActiveFileTab(tab.id);
-  }
-
-  function requestCloseFileTab(tab: WorkspaceFileTab) {
-    const close = () => {
-      const wasActive = useUIStore.getState().activeFileTabId === tab.id;
-      closeFileTab(tab.id);
-      if (!wasActive) return;
-      const ui = useUIStore.getState();
-      const adjacent = ui.fileTabs.find((candidate) => candidate.id === ui.activeFileTabId);
-      if (!adjacent) return;
-      useSessionsStore.getState().setActive(adjacent.sessionId);
-      ui.setActiveFileTab(adjacent.id);
-    };
-    if (requestDirtyDraftFileAction(tab.sessionId, tab.filePath, close)) close();
-  }
-
   // 监听 tabs 容器滚动，决定哪边显示渐隐提示
   useEffect(() => {
     const el = tabsRef.current;
@@ -742,8 +721,7 @@ function TitlebarImpl({
     const fileId = tabId.slice("file:".length);
     const tab = useUIStore.getState().fileTabs.find((candidate) => candidate.id === fileId);
     if (!tab) return;
-    useSessionsStore.getState().setActive(tab.sessionId);
-    useUIStore.getState().setActiveFileTab(tab.id);
+    activateWorkspaceFileTab(tab);
   }, [onSelectSession]);
   const handleTabListKeyDown = useCallback((e: React.KeyboardEvent) => {
     const currentId = tabIdFromEventTarget(e.target);
@@ -905,8 +883,8 @@ function TitlebarImpl({
                 closeLabel={t("titlebar.file_tab.close", { file: tab.fileName })}
                 confirmCloseLabel={t("preview.editor.close_warning")}
                 tabIndex={`file:${tab.id}` === activeTabId ? 0 : -1}
-                onSelect={() => selectFileTab(tab)}
-                onClose={() => requestCloseFileTab(tab)}
+                onSelect={() => activateWorkspaceFileTab(tab)}
+                onClose={() => requestCloseWorkspaceFileTab(tab)}
               />
             </div>
           ))}
