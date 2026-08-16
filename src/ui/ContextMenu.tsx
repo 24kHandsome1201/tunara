@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { returnTerminalFocus, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import type { ModalFocusReturnToken } from "./overlays/Modal";
 
-export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
+export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
 
 export interface MenuItem {
   id?: string;
@@ -89,6 +89,16 @@ function MenuIcon({ name }: { name: MenuIconName }) {
       <svg {...common}>
         <rect x="8" y="8" width="11" height="11" rx="2" />
         <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+      </svg>
+    );
+  }
+  if (name === "paste") {
+    return (
+      <svg {...common}>
+        <rect x="6" y="7" width="12" height="14" rx="2" />
+        <rect x="9" y="4" width="6" height="4" rx="1" />
+        <path d="M9 12h6" />
+        <path d="M9 16h4" />
       </svg>
     );
   }

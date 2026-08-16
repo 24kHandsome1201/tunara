@@ -31,6 +31,7 @@ commands.allow = [
   "remote_edit_staging_path",
   "load_config",
   "save_config",
+  "clipboard_read_text",
   "local_usage_log_record",
   "local_usage_log_set_enabled",
   "local_usage_log_status",

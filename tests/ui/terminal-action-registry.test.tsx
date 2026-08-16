@@ -10,10 +10,10 @@ import {
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { defaultKeybindingsForPlatform } from "@/modules/config/keybindings";
-import { copyText } from "@/ui/lib/clipboard";
+import { copyText, readClipboardText } from "@/ui/lib/clipboard";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
-vi.mock("@/ui/lib/clipboard", () => ({ copyText: vi.fn() }));
+vi.mock("@/ui/lib/clipboard", () => ({ copyText: vi.fn(), readClipboardText: vi.fn() }));
 
 function fakeTerminal(selection = ""): Terminal {
   return {
@@ -46,6 +46,7 @@ beforeEach(() => {
     keybindings: defaultKeybindingsForPlatform("linux"),
   });
   vi.mocked(copyText).mockReset();
+  vi.mocked(readClipboardText).mockReset();
 });
 
 test("paste target consumes the six-field binding-aware focus contract", () => {
@@ -93,10 +94,7 @@ test("paste target rejects session, binding generation, terminal, and stdin chan
 test("Safe Paste drops a clipboard continuation after a session switch", async () => {
   let resolveClipboard!: (text: string) => void;
   const clipboardText = new Promise<string>((resolve) => { resolveClipboard = resolve; });
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { readText: vi.fn(() => clipboardText) },
-  });
+  vi.mocked(readClipboardText).mockReturnValue(clipboardText);
   const terminal = fakeTerminal();
   const dispose = registerTarget(terminal);
 
@@ -112,10 +110,7 @@ test("Safe Paste drops a clipboard continuation after a session switch", async (
 
 test("Safe Paste captures bracketed mode before awaiting clipboard access", async () => {
   let resolveClipboard!: (text: string) => void;
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { readText: vi.fn(() => new Promise<string>((resolve) => { resolveClipboard = resolve; })) },
-  });
+  vi.mocked(readClipboardText).mockReturnValue(new Promise<string>((resolve) => { resolveClipboard = resolve; }));
   const terminal = fakeTerminal();
   const modes = terminal.modes as { bracketedPasteMode: boolean };
   modes.bracketedPasteMode = true;
@@ -175,10 +170,7 @@ test("Copy remains available for a read-only or exited active terminal", () => {
 });
 
 test("configured Safe Paste cancels native paste and uses the binding-aware registry once", async () => {
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { readText: vi.fn().mockResolvedValue("echo safe") },
-  });
+  vi.mocked(readClipboardText).mockResolvedValue("echo safe");
   const terminal = fakeTerminal();
   const dispose = registerTarget(terminal);
 
@@ -187,6 +179,7 @@ test("configured Safe Paste cancels native paste and uses the binding-aware regi
   expect(event.preventDefault).toHaveBeenCalledOnce();
   await vi.waitFor(() => expect(terminal.paste).toHaveBeenCalledWith("echo safe"));
   expect(terminal.paste).toHaveBeenCalledOnce();
+  expect(readClipboardText).toHaveBeenCalledOnce();
   dispose();
 });
 

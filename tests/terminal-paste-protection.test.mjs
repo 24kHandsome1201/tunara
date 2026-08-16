@@ -291,9 +291,35 @@ test("no window.confirm/alert/prompt anywhere in src (silent no-ops in wry)", ()
 test("context-menu paste delegates to the binding-aware safe-paste registry", () => {
   const chrome = readFileSync(join(import.meta.dirname, "..", "src/ui/TerminalViewChrome.tsx"), "utf8");
   const registry = readFileSync(join(import.meta.dirname, "..", "src/modules/terminal/lib/terminal-action-registry.ts"), "utf8");
+  const clipboard = readFileSync(join(import.meta.dirname, "..", "src/ui/lib/clipboard.ts"), "utf8");
   assert.match(chrome, /safePasteActiveTerminal\(sessionId\)/);
+  assert.match(chrome, /id: "paste"[\s\S]*?icon: "paste"/);
   assert.doesNotMatch(chrome, /navigator\.clipboard|\.paste\(text\)|requestProtectedTerminalPaste/);
-  assert.match(registry, /const action = captureTerminalActionTarget\(sessionId, registration\.terminal\);[\s\S]*?await navigator\.clipboard\.readText\(\)/);
+  assert.match(registry, /const action = captureTerminalActionTarget\(sessionId, registration\.terminal\);[\s\S]*?await readClipboardText\(\)/);
+  assert.doesNotMatch(registry, /await navigator\.clipboard\.readText/);
   assert.match(registry, /requestProtectedTerminalPaste\([\s\S]*?\(\) => action\.isCurrent\(\)/);
   assert.match(registry, /if \(!protectedPaste && action\.isCurrent\(\)\) \{[\s\S]*?pasteWithCapturedBracketedMode\(registration\.terminal, text, bracketedPasteRequired\)/);
+  assert.match(clipboard, /invoke<string>\("clipboard_read_text"\)/);
+  assert.match(clipboard, /"__TAURI_INTERNALS__" in window/);
+  assert.match(clipboard, /navigator\.clipboard\.readText\(\)[\s\S]*second native "Paste" button/);
+});
+
+test("Safe Paste reads the native clipboard command instead of WKWebView readText", () => {
+  const cargo = readFileSync(join(import.meta.dirname, "..", "src-tauri/Cargo.toml"), "utf8");
+  const lib = readFileSync(join(import.meta.dirname, "..", "src-tauri/src/lib.rs"), "utf8");
+  const modules = readFileSync(join(import.meta.dirname, "..", "src-tauri/src/modules/mod.rs"), "utf8");
+  const clipboardRs = readFileSync(join(import.meta.dirname, "..", "src-tauri/src/modules/clipboard.rs"), "utf8");
+  const permission = readFileSync(join(import.meta.dirname, "..", "src-tauri/permissions/main.toml"), "utf8");
+  const capability = JSON.parse(readFileSync(join(import.meta.dirname, "..", "src-tauri/capabilities/default.json"), "utf8"));
+  assert.match(modules, /pub mod clipboard;/);
+  assert.doesNotMatch(cargo, /arboard|tauri-plugin-clipboard-manager/);
+  assert.match(lib, /modules::clipboard::clipboard_read_text/);
+  assert.doesNotMatch(lib, /tauri_plugin_clipboard_manager/);
+  assert.match(clipboardRs, /spawn_blocking\(read_os_clipboard_text\)/);
+  assert.match(clipboardRs, /pbpaste/);
+  assert.match(clipboardRs, /wl-paste/);
+  assert.match(clipboardRs, /xclip/);
+  assert.match(permission, /"clipboard_read_text"/);
+  assert.equal(capability.permissions.includes("clipboard-manager:allow-read-text"), false);
+  assert.equal(capability.permissions.includes("clipboard-manager:default"), false);
 });

@@ -259,7 +259,7 @@ export function TerminalViewChrome({
           onClose={() => setMenu(null)}
           items={[
             { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: () => { copyActiveTerminal(sessionId); } },
-            { id: "paste", label: t("pure.action.safe_paste"), action: () => { void safePasteActiveTerminal(sessionId); } },
+            { id: "paste", label: t("pure.action.safe_paste"), icon: "paste", action: () => { void safePasteActiveTerminal(sessionId); } },
             null,
             {
               id: "split-right",

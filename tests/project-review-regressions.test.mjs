@@ -1116,7 +1116,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /ArrowDown/);
   assert.match(contextMenu, /role="separator"/);
   assert.match(contextMenu, /boxShadow: "var\(--shadow-menu\)"/);
-  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "ssh" \| "editor" \| "copy" \| "download" \| "rename" \| "search" \| "close"/);
+  assert.match(contextMenu, /export type MenuIconName = "terminal" \| "ssh" \| "editor" \| "copy" \| "paste" \| "download" \| "rename" \| "search" \| "close"/);
   assert.match(contextMenu, /id\?: string/);
   assert.match(contextMenu, /function menuEntryKey/);
   assert.match(contextMenu, /function MenuIcon/);

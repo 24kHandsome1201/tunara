@@ -31,10 +31,13 @@ multi-binding/conditional-trigger schema:
   reassigned in Settings or preempted by hand-edited app bindings. Modified
   variants such as Ctrl+Shift+F10 remain independently configurable.
 - Every paste path uses the binding-aware terminal action registry and the
-  existing async safe-paste confirmation. The target identity and bracketed
-  paste mode are captured before awaiting clipboard access or confirmation;
-  even a safe single-line native paste is rejected if its captured target is
-  already stale.
+  existing async safe-paste confirmation. Menu, shortcut, and command-palette
+  paste read the OS clipboard through the native `clipboard_read_text` command —
+  not `navigator.clipboard.readText()` — so WKWebView/WebKitGTK cannot show a
+  second Paste button after the user already chose Paste. The target identity
+  and bracketed paste mode are captured before awaiting clipboard access or
+  confirmation; even a safe single-line native paste is rejected if its
+  captured target is already stale.
 
 ## Persistence and compatibility
 

@@ -3,6 +3,7 @@ pub mod fs;
 pub mod local_usage_log;
 pub mod preview;
 pub mod pty;
+pub mod clipboard;
 
 // Tunara 新增底座（实施文档 §3.7 / §3.4.3）
 pub mod process;

@@ -3,7 +3,7 @@ import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { t } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { copyText } from "@/ui/lib/clipboard";
+import { copyText, readClipboardText } from "@/ui/lib/clipboard";
 import { pasteWithCapturedBracketedMode, requestProtectedTerminalPaste } from "./terminal-paste-protection";
 import { bindingAwareAsyncAction, issueFocusReturnToken, type BindingAwareAsyncAction } from "./binding-aware-async-action";
 import { findKeybindingConflict, matchesKeybinding, TERMINAL_KEYBINDING_ACTIONS, type TerminalKeybindingAction } from "@/modules/config/keybindings";
@@ -75,12 +75,14 @@ export async function safePasteActiveTerminal(sessionId: string): Promise<void> 
   if (!registration) return;
   const action = captureTerminalActionTarget(sessionId, registration.terminal);
   if (!action) return;
-  // Clipboard permission UI can move focus and terminal programs can toggle
-  // DECSET 2004 while readText() is pending. Capture both target identity and
-  // bracketed-paste semantics before the first asynchronous boundary.
+  // Native clipboard IPC can still move focus, and terminal programs can toggle
+  // DECSET 2004 while the read is pending. Capture both target identity and
+  // bracketed-paste semantics before the first asynchronous boundary. Do not
+  // use navigator.clipboard.readText() here: WKWebView/WebKitGTK then shows a
+  // second native Paste button after the user already chose Paste.
   const bracketedPasteRequired = registration.terminal.modes.bracketedPasteMode === true;
   try {
-    const text = await navigator.clipboard.readText();
+    const text = await readClipboardText();
     if (!text || !action.isCurrent()) return;
     const protectedPaste = requestProtectedTerminalPaste(
       registration.terminal,
