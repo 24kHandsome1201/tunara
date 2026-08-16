@@ -263,7 +263,7 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
     primary = s.customTitle;
   } else if (s.agent) {
     // Agents (e.g. Claude Code) only report their own name via OSC titles, so we
-    // append the live activity from agentActivity instead — "Claude Code · 运行中"
+    // append the live activity from agentActivity instead — "Claude Code · 工作中"
     // when working, just the name when idle.
     const name = AGENT_NAMES[s.agent] ?? s.agent;
     const status = agentActivityLabel(s.agentActivity);

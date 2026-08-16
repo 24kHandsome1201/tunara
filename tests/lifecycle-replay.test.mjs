@@ -1594,7 +1594,7 @@ test("Claude lifecycle replay clears sidebar busy state and restores terminal ti
   assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
   assert.equal(h.session.agent, "CC");
   assert.equal(h.session.agentActivity, "starting");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code · 加载中");
+  assert.equal(deriveTitle(h.session).primary, "Claude Code · 启动中");
   assert.equal(isSessionBusy(h.session), true);
 
   assert.equal(h.applyAgentOsc("tunara-agent;idle;s-1;CC;", 20), true);
@@ -1655,16 +1655,16 @@ test("terminal process exit clears stale agent state and marks background unread
 test("agent session title appends live activity and falls back to the bare name", () => {
   const h = createHarness();
 
-  // Agent detected → "starting" → name + 加载中.
+  // Agent detected → "starting" → name + 启动中.
   assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
   assert.equal(h.session.agent, "CC");
   assert.equal(h.session.agentActivity, "starting");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code · 加载中");
+  assert.equal(deriveTitle(h.session).primary, "Claude Code · 启动中");
 
-  // Working → "running" → name + 运行中.
+  // Working → "running" → name + 工作中.
   assert.equal(h.applyAgentOsc("tunara-agent;busy;s-1;CC;", 20), true);
   assert.equal(h.session.agentActivity, "running");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code · 运行中");
+  assert.equal(deriveTitle(h.session).primary, "Claude Code · 工作中");
 
   // Idle (waiting for input) → no suffix, just the agent name.
   assert.equal(h.applyAgentOsc("tunara-agent;idle;s-1;CC;", 30), true);
