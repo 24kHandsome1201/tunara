@@ -50,7 +50,8 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 输出确认 | 前端 ACK 驱动 SSH/本地流控 | `pty_output_ack` |
 | 分栏 | 在任意 pane 右/下继续拆，最多 4 pane | [`split-layout.ts`](../src/modules/session/split-layout.ts) |
 | 搜索 | ⌘F，匹配计数 | [`useTerminalSearch.ts`](../src/ui/useTerminalSearch.ts) |
-| 命令块 | 跟随 scrollback marker；筛选与块导航 | [`terminal-blocks.ts`](../src/modules/terminal/lib/terminal-blocks.ts) |
+| 命令块 | 跟随 scrollback marker；块导航；右键菜单展示退出码/耗时，可复制命令/输出、回填命令到输入行（不自动执行） | [`terminal-blocks.ts`](../src/modules/terminal/lib/terminal-blocks.ts) · [`useTerminalBlockMenu.ts`](../src/ui/useTerminalBlockMenu.ts) |
+| 命令完成提醒 | 非观察中会话的完成 toast 附带耗时；≥15s 的长命令在窗口后台完成时请求 Dock 提醒 | [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) |
 | 安全粘贴 | 多行确认、bracketed paste、目标失效拒绝 | [`terminal-paste-protection.ts`](../src/modules/terminal/lib/terminal-paste-protection.ts) |
 | 右键与复制 | 智能/菜单/禁用三档；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
 | 会话恢复 | serialize 快照 + 安全历史 | [`terminal-snapshot.ts`](../src/modules/terminal/lib/terminal-snapshot.ts) |

@@ -7,11 +7,13 @@ import {
   agentWaitingConfirmationUpdate,
   agentBusyUpdate,
   agentExitedUpdate,
+  commandCompletionNotice,
   commandDetectedUpdate,
   commandFinishedUpdate,
   terminalExitedUpdate,
   cwdChangedUpdate,
   shellTitleUpdate,
+  LONG_COMMAND_ATTENTION_MS,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 
 const NOW = 1_000_000;
@@ -155,6 +157,42 @@ test("command lifecycle: detected → finished marks done/failed and refreshes g
   assert.equal(s2.runState, "failed");
   assert.equal(s2.lastExitCode, 127);
   assert.equal(s2.unread, undefined, "active session does not get unread");
+});
+
+test("commandCompletionNotice includes duration and flags long runs for attention", () => {
+  // Short successful run: plain wording, no duration, no attention.
+  const quick = commandCompletionNotice("ls", 0, NOW, NOW + 400);
+  assert.equal(quick.title, "ls");
+  assert.equal(quick.variant, "success");
+  assert.equal(quick.requestAttention, false);
+  assert.doesNotMatch(quick.subtitle, /0s/, "sub-second runs must not show a 0s duration");
+
+  // Multi-minute failure: duration and exit code surface, attention requested.
+  const failed = commandCompletionNotice("pnpm build", 1, NOW, NOW + 134_000);
+  assert.equal(failed.variant, "error");
+  assert.equal(failed.requestAttention, true);
+  assert.match(failed.subtitle, /2m 14s/);
+  assert.match(failed.subtitle, /1/);
+
+  // Success right at the attention threshold.
+  const long = commandCompletionNotice("pnpm test", 0, NOW, NOW + LONG_COMMAND_ATTENTION_MS);
+  assert.equal(long.variant, "success");
+  assert.equal(long.requestAttention, true);
+  assert.match(long.subtitle, /15s/);
+});
+
+test("commandCompletionNotice tolerates a missing or bogus start timestamp", () => {
+  const noStart = commandCompletionNotice("make", 0, undefined, NOW);
+  assert.equal(noStart.requestAttention, false);
+  const future = commandCompletionNotice("make", 2, NOW + 999_999, NOW);
+  assert.equal(future.requestAttention, false);
+  assert.equal(future.variant, "error");
+});
+
+test("commandCompletionNotice truncates long command titles", () => {
+  const longCommand = "x".repeat(64);
+  const notice = commandCompletionNotice(longCommand, 0, NOW, NOW + 100);
+  assert.equal(notice.title, "x".repeat(30) + "…");
 });
 
 test("commandDetectedUpdate is skipped when an agent is active", () => {

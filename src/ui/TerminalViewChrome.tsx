@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type { ReactNode } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { TerminalSearchBar } from "./TerminalSearchBar";
-import { ContextMenu } from "./ContextMenu";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
 import { canSplitLayout } from "@/modules/session/split-layout";
@@ -20,6 +20,8 @@ interface TerminalViewChromeProps {
   getTerminal: () => Terminal | null;
   search: ReturnType<typeof useTerminalSearch>;
   quickSelectOverlay?: ReactNode;
+  /** Contextual command-block entries for the menu anchor position, if any. */
+  getBlockMenuEntries?: (clientX: number, clientY: number) => MenuEntry[];
 }
 
 export function TerminalViewChrome({
@@ -28,9 +30,10 @@ export function TerminalViewChrome({
   getTerminal,
   search,
   quickSelectOverlay,
+  getBlockMenuEntries,
 }: TerminalViewChromeProps) {
   const t = useT();
-  const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean; focusToken: TerminalFocusReturnToken | null } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean; blockEntries: MenuEntry[]; focusToken: TerminalFocusReturnToken | null } | null>(null);
   const pure = useUIStore((s) => s.presentationMode === "pure");
   const hostModifier = useUIStore((s) => s.terminalHostModifier);
   const secondaryClickMode = useUIStore((s) => s.terminalSecondaryClick);
@@ -84,9 +87,10 @@ export function TerminalViewChrome({
       y,
       hasSelection: !!term.getSelection(),
       canSplit: canSplitLayout(useUIStore.getState().split),
+      blockEntries: getBlockMenuEntries?.(x, y) ?? [],
       focusToken: issueFocusReturnToken(sessionId),
     });
-  }, [getTerminal, sessionId]);
+  }, [getTerminal, getBlockMenuEntries, sessionId]);
 
   const openKeyboardMenu = useCallback(() => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -179,6 +183,7 @@ export function TerminalViewChrome({
           terminalFocusReturnToken={menu.focusToken}
           onClose={() => setMenu(null)}
           items={[
+            ...(menu.blockEntries.length > 0 ? [...menu.blockEntries, null] : []),
             { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: () => { copyActiveTerminal(sessionId); } },
             { id: "paste", label: t("pure.action.safe_paste"), action: () => { void safePasteActiveTerminal(sessionId); } },
             null,

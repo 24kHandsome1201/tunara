@@ -63,6 +63,21 @@ export function findStickyCommandBlock(
   return null;
 }
 
+/**
+ * Find the command block covering an absolute buffer row (command row included),
+ * preferring the most recent block when ranges ever overlap.
+ */
+export function findCommandBlockAtRow(
+  blocks: readonly TerminalCommandBlock[],
+  row: number,
+): TerminalCommandBlock | null {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const rows = resolveTerminalBlockRows(blocks[i]);
+    if (rows && row >= rows.startRow && row <= rows.endRow) return blocks[i];
+  }
+  return null;
+}
+
 export function normalizeBlockCommand(command: string): string {
   return command.replace(/\s+/g, " ").trim();
 }
