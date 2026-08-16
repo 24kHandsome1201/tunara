@@ -114,8 +114,9 @@ Two patterns appear, depending on what the code under test enforces:
 
 - **Temp dir under the *real* home** — `src-tauri/src/modules/ssh/sftp.rs`. `validate_download_target` confines downloads to under the home directory, so the test fixtures *must* be created inside home (`dirs::home_dir().join(".tunara-sftp-test-...")` with a nanosecond-unique suffix), and `std::env::temp_dir()` is used as a deliberate **negative** case (it lives outside home on macOS, so a `/tmp/...` target must be rejected). Fixtures are cleaned up with `fs::remove_dir_all`; the `~/.ssh` sensitive-dir test skips itself if `~/.ssh` doesn't exist rather than failing on CI.
 - **Plain temp dir** — `src-tauri/src/modules/config.rs`. Config has no home-confinement requirement, so `temp_config_path`/`temp_named_config_path` build a nanosecond-unique path under `std::env::temp_dir()`, write fixture TOML there, exercise load/migrate/clamp/repair, and `fs::remove_dir_all` the root afterward.
+- **Canonicalized physical temp dir** — `src-tauri/src/modules/ssh/local_safe_write.rs` and `hosts.rs`. The writer walks every parent component from `/` with `O_DIRECTORY | O_NOFOLLOW`, so a fixture under macOS `/tmp` or `/var` (symlinks to `/private/...`) fails with `ENOTDIR` before the test body runs. Tests must `fs::canonicalize(std::env::temp_dir())` first so the walk only sees real directories. Linux `/tmp` is usually already physical; canonicalize is a no-op there.
 
-Both use a `SystemTime::now()` nanosecond suffix so parallel tests never collide on a path.
+All three use a `SystemTime::now()` nanosecond suffix so parallel tests never collide on a path.
 
 ## How to add a test
 
@@ -132,7 +133,7 @@ Both use a `SystemTime::now()` nanosecond suffix so parallel tests never collide
 
 1. Add the `#[cfg(test)] mod tests { use super::*; ... }` block at the bottom of the module under test (or add a `#[test]` fn to the existing one).
 2. **Read** env, never `set_var` — derive from `dirs::home_dir()` / `$HOME` / `temp_dir()`.
-3. For filesystem fixtures, use a `SystemTime::now().as_nanos()` unique suffix and `fs::remove_dir_all` cleanup. Put the fixture under the real home only if the code enforces home-confinement; otherwise `std::env::temp_dir()`.
+3. For filesystem fixtures, use a `SystemTime::now().as_nanos()` unique suffix and `fs::remove_dir_all` cleanup. Put the fixture under the real home only if the code enforces home-confinement. If the code walks parents with `O_NOFOLLOW`, canonicalize `temp_dir()` first (macOS `/tmp` is a symlink). Otherwise `std::env::temp_dir()` is fine.
 4. Skip (early `return`) instead of failing when a precondition like `~/.ssh` is absent on CI.
 5. Run `cargo test --manifest-path src-tauri/Cargo.toml`.
 
@@ -215,8 +216,10 @@ the main themes by filename prefix.
   reader/syntax, safe-write contracts, and the Phase 2 editor surface.
 - **File explorer** (`file-explorer-*`): remote root resolution and search.
 - **SSH and remote** (`ssh-*`): failure classification, host profile
-  serialization, write reconciliation, command detection, and M2 safe-write
-  gating.
+  serialization, write reconciliation, command detection, file loop, and M2
+  safe-write gating.
+- **Sidebar grouping** (`sidebar-groups`, `session-attention`): local-vs-SSH
+  group keys, OSC 7 cwd stability, and ⌘⇧U attention jump.
 - **Preview** (`preview-*`): capture contract and source modeling.
 - **Persistence** (`persist-*`, `lifecycle-*`, `session-lifecycle`): snapshot
   persistence, session lifecycle replay, and workspace hydration.

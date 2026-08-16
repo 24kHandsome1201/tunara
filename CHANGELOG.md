@@ -7,6 +7,7 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/DEPENDENCY_ADVISORIES.md](docs/DEPENDENCY_ADVISORIES.md)**.
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
+- **RUSTSEC-2026-0235** (`rkyv` 0.7 archive validation OOB read) — unused transitive crate via `tauri-plugin-log` → `byte-unit` → `rust_decimal`. Tunara never deserializes rkyv archives. Ignored in `cargo audit` with the same explicit-flag pattern. **Revisit when tauri-plugin-log / byte-unit drop or upgrade rkyv.**
 
 ## [Unreleased]
 
@@ -38,6 +39,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 统一桌面控件在各配色下的对比度、焦点与窄面板布局；文件表面快捷键不再误伤会话标签。
 
 ### 稳定性
+- CI：补齐 rustfmt / clippy，macOS `local_safe_write` 测试改为走无符号链接的物理临时目录（`/var`、`/tmp` 在 macOS 上是 symlink，`O_NOFOLLOW` 会得到 `ENOTDIR`），并把 `ENOTDIR` 映射为 unsafe parent。
 - 修复点「安全粘贴」后又弹出系统粘贴按钮：菜单/快捷键/命令面板改为走原生剪贴板读取，不再使用会触发 WKWebView/WebKitGTK 权限条的 `navigator.clipboard.readText()`。
 - 修复 SSH 下多分屏同时跑 Codex / Grok 等 TUI 一段时间后出现的乱码：每个会话使用独立 WebGL glyph atlas，避免 addon-webgl 0.19 共享纹理在 page merge 后把相邻 pane 画花；WebGL 替换 renderer 后立即重新 fit 并同步 PTY 尺寸；SSH PTY 启用 IUTF8，中文输入不再被当成 8-bit 字节。
 - 修复 Linux 窗口尺寸与原生缩放合同，避免平台 overlay 配置覆盖 `resizable`。
