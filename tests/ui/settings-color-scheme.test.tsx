@@ -4,6 +4,8 @@ import { setLanguage } from "@/modules/i18n";
 import { useTheme } from "@/app/useTheme";
 import { useUIStore } from "@/state/ui";
 import { Settings } from "@/ui/overlays/Settings";
+import { terminalThemePreviewColors } from "@/ui/overlays/settings/controls";
+import { DARK_THEME, LIGHT_THEME } from "@/styles/terminalTheme";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
@@ -155,6 +157,30 @@ test("system media changes affect only the default System scheme", async () => {
   });
   expect(document.documentElement.classList.contains("dark")).toBe(true);
   expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#1e1e2e");
+});
+
+test("default scheme previews mirror the token-derived chrome and palette", () => {
+  // The fallback swatches are the sRGB equivalents of the default tokens.css
+  // OKLCH surfaces; if the tokens or the fallbacks drift, the preview stops
+  // telling the truth about the real window chrome.
+  expect(terminalThemePreviewColors("light", false)).toMatchObject({
+    deepest: "#fffdfb",
+    sidebar: "#f2ece9",
+    raised: "#e9e2de",
+    terminal: LIGHT_THEME.background,
+    text: LIGHT_THEME.foreground,
+    secondaryText: "#5c5552",
+    border: "#d4ceca",
+  });
+  expect(terminalThemePreviewColors("dark", false)).toMatchObject({
+    deepest: "#0f0b09",
+    sidebar: "#1c1714",
+    raised: "#25211e",
+    terminal: DARK_THEME.background,
+    text: DARK_THEME.foreground,
+    secondaryText: "#9f9a97",
+    border: "#342f2c",
+  });
 });
 
 test("recommended Chinese title and description remain readable as a single section", () => {

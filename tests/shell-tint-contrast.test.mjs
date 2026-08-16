@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { SHELL_TINTS, isTerminalThemeDark, NAMED_DARK_TERMINAL_THEME_KEYS } from "../src/styles/terminalTheme.ts";
+import { SHELL_TINTS, LIGHT_THEME, DARK_THEME, isTerminalThemeDark, NAMED_DARK_TERMINAL_THEME_KEYS } from "../src/styles/terminalTheme.ts";
 import {
   assertShellTintContrast,
   contrastRatio,
@@ -55,6 +55,56 @@ function oklchContrast(first, second) {
   return (Math.max(firstLuminance, secondLuminance) + 0.05)
     / (Math.min(firstLuminance, secondLuminance) + 0.05);
 }
+
+function oklchToHex([lightness, chroma, hue]) {
+  const radians = (hue * Math.PI) / 180;
+  const a = chroma * Math.cos(radians);
+  const b = chroma * Math.sin(radians);
+  const lRoot = lightness + 0.3963377774 * a + 0.2158037573 * b;
+  const mRoot = lightness - 0.1055613458 * a - 0.0638541728 * b;
+  const sRoot = lightness - 0.0894841775 * a - 1.291485548 * b;
+  const l = lRoot ** 3;
+  const m = mRoot ** 3;
+  const s = sRoot ** 3;
+  const linear = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+  const toSrgb = (c) => Math.round(Math.max(0, Math.min(1, c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055)) * 255);
+  return `#${linear.map((c) => toSrgb(c).toString(16).padStart(2, "0")).join("")}`;
+}
+
+test("default terminal canvases stay in sync with the shell paper tokens", () => {
+  const css = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+  const lightBlock = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
+  const darkBlock = css.slice(css.indexOf(".dark {"), css.indexOf(".hover-bg"));
+
+  // The default terminal canvas is the main paper surface and the primary ink.
+  // If the OKLCH tokens move, the hex palettes must move with them — otherwise
+  // the WebGL canvas stops matching the surrounding chrome. See
+  // docs/DEFAULT_TERMINAL_PALETTE.md.
+  assert.equal(LIGHT_THEME.background, oklchToHex(parseOklch(lightBlock, "--c-bg-white")));
+  assert.equal(LIGHT_THEME.foreground, oklchToHex(parseOklch(lightBlock, "--c-text-primary")));
+  assert.equal(DARK_THEME.background, oklchToHex(parseOklch(darkBlock, "--c-bg-white")));
+  assert.equal(DARK_THEME.foreground, oklchToHex(parseOklch(darkBlock, "--c-text-primary")));
+});
+
+test("info badge text stays AA on its background in both modes", () => {
+  const css = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+  const lightBlock = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
+  const darkBlock = css.slice(css.indexOf(".dark {"), css.indexOf(".hover-bg"));
+  const readHex = (block, key) => {
+    const match = block.match(new RegExp(`${key}:\\s*(#[0-9a-f]{6})`, "i"));
+    assert.ok(match, `missing ${key}`);
+    return match[1];
+  };
+
+  for (const [mode, block] of [["light", lightBlock], ["dark", darkBlock]]) {
+    const ratio = contrastRatio(readHex(block, "--c-info"), readHex(block, "--c-info-bg"));
+    assert.ok(ratio >= 4.5, `${mode} --c-info on --c-info-bg is ${ratio.toFixed(2)}:1`);
+  }
+});
 
 test("default light and dark shell tokens keep text AA and control boundaries at 3:1", () => {
   const css = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
