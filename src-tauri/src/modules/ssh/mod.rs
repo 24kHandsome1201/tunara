@@ -690,13 +690,8 @@ async fn ssh_open_impl(
         logical_session_id.as_deref(),
         share_hint,
     );
-    let (ssh, open_attempt) = open_with_cancellation(
-        params,
-        jump_params,
-        on_event,
-        &open_attempt_id,
-        shared,
-    )
+    let (ssh, open_attempt) =
+        open_with_cancellation(params, jump_params, on_event, &open_attempt_id, shared)
             .await
             .inspect_err(|e| {
                 log::error!(

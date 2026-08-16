@@ -1425,7 +1425,8 @@ pub(crate) fn ensure_download_parents(local_path: &str) -> Result<(), String> {
     if !real_existing.starts_with(&real_home) {
         return Err("download path must be under the home directory".into());
     }
-    std::fs::create_dir_all(parent).map_err(|error| format!("create download directory failed: {error}"))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create download directory failed: {error}"))?;
     Ok(())
 }
 
@@ -1641,10 +1642,7 @@ pub(crate) async fn upload_file(
         let mut file = await_stage(
             "open remote upload partial for resume",
             SFTP_CONTROL_TIMEOUT,
-            sftp.open_with_flags(
-                partial.clone(),
-                OpenFlags::WRITE,
-            ),
+            sftp.open_with_flags(partial.clone(), OpenFlags::WRITE),
         )
         .await?;
         file.seek(std::io::SeekFrom::Start(offset))
