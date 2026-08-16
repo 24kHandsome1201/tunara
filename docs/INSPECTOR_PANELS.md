@@ -116,7 +116,7 @@
 
 ## 4. 文件（Files）
 
-**建议：保留。** 核心功能。重构（拆分子模块 + 状态归并）**进行中**，由另一位工程师同步推进。
+**建议：保留。** 核心功能。搜索 / 树 / 上传已拆到 `src/ui/file-explorer/` 自定义 hook；壳组件仍负责编排下载、右键菜单与 JSX。
 
 ### 作用
 
@@ -124,7 +124,7 @@
 
 ### 实现位置
 
-[`src/ui/FileExplorer.tsx`](../src/ui/FileExplorer.tsx)（2258 行）。本地桥接 [`src/modules/fs/fs-bridge.ts`](../src/modules/fs/fs-bridge.ts)，远程 [`src/modules/ssh/remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts)，变更 [`src/modules/ssh/remote-fs/`](../src/modules/ssh/remote-fs/)，传输意图 [`src/modules/ssh/transfer-intent.ts`](../src/modules/ssh/transfer-intent.ts) / [`transfer-store.ts`](../src/modules/ssh/transfer-store.ts)。
+壳组件 [`src/ui/FileExplorer.tsx`](../src/ui/FileExplorer.tsx)（约 1600 行），领域逻辑在 [`src/ui/file-explorer/`](../src/ui/file-explorer/)：`use-explorer-search.ts`、`use-tree-listing.ts`、`use-direct-upload.ts`、`upload-preflight.ts`，以及 icons / helpers / transfer-failures。本地桥接 [`src/modules/fs/fs-bridge.ts`](../src/modules/fs/fs-bridge.ts)，远程 [`src/modules/ssh/remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts)，变更 [`src/modules/ssh/remote-fs/`](../src/modules/ssh/remote-fs/)，传输意图 [`src/modules/ssh/transfer-intent.ts`](../src/modules/ssh/transfer-intent.ts) / [`transfer-store.ts`](../src/modules/ssh/transfer-store.ts)。
 
 右键「元数据」通过 `onInspectRemotePath` 把路径塞给 `InspectorPanel` 的 `metadataPath`，再切到元数据 tab。
 
@@ -142,17 +142,15 @@
 
 ### 现状问题
 
-- 单文件 2258 行，约 40 处 `useState`：浏览、搜索、grep、上传、下载、拖拽、树、变更各堆一套。
-- 关联状态分散后需要大量竞态防御（generation / binding key / 取消令牌）。
+- 壳组件仍偏大：下载、右键菜单、变更对话框、JSX 编排还在 `FileExplorer.tsx`。
+- 搜索 / 树 / 上传已各自带 generation / 取消令牌；下载与变更仍散落在壳里。
 - 传输从本面板发起，进度却藏在「更多 → 传输」，进行中缺少就地入口。
 
-### 优化建议（进行中）
+### 优化建议
 
-- 按领域拆子组件与自定义 hook（树、列表、搜索、传输、变更）。
-- 关联状态合并为 `useReducer` 或小 store，消除散落的竞态补丁。
-- 与第 6 节配合：列表区增加「N 个传输进行中」迷你入口，跳到传输中心。
-
-提案不要在本文件上再开一轮平行重构，以免与进行中的拆分冲突。
+- 下载与变更也可再抽 hook，但不要再开一轮平行大重构。
+- 与第 7 节配合：列表区增加「N 个传输进行中」迷你入口，跳到传输中心。
+- 跨页改动（属性弹窗、传输入口）可以按现有 `file-explorer/` 边界小 PR 接入。
 
 ---
 
@@ -369,7 +367,7 @@ SSH 上传 / 下载进度中心：单文件与批量进度、取消 / 重试、�
 |------|------|------|
 | 概览 | 保留 | 做成摘要 + 导航；卡片可跳转 |
 | 改动 | 保留 | 核心 review；拆分子组件、记展开状态 |
-| 文件 | 保留 | 拆分 + 状态合并，**进行中** |
+| 文件 | 保留 | 搜索 / 树 / 上传已拆模块；下载与传输入口仍待做 |
 | Preview | 保留 | 轮询改事件或 3–5s 退避；砍身份详情 |
 | 笔记 | 保留 | 可选并入概览，默认不合并 |
 | 传输 | 保留 | Files 加「N 个传输进行中」入口 |
@@ -395,4 +393,4 @@ SSH 上传 / 下载进度中心：单文件与批量进度、取消 / 重试、�
 3. **主 tab 承担导航。** Overview 卡片跳转、Files 传输入口，减少「更多」里才能完成的闭环。
 4. **不要用 scope 徽章掩盖错位。** 全局或「单文件操作」不应继续塞进会话检查器；迁走后徽章只描述真正的会话 / 绑定范围。
 5. **一次只挂载当前页。** 现有模型保持。懒加载后仍应卸载不可见面板，避免 SSH 轮询在后台跑。
-6. **FileExplorer 重构进行中。** 跨页改动（属性弹窗、传输入口）应等拆分边界稳定后再接入，或作为拆分后的小 PR，避免与进行中的状态归并冲突。
+6. **FileExplorer 拆分边界已稳定。** 跨页改动（属性弹窗、传输入口）按 `src/ui/file-explorer/` 小 PR 接入即可。
