@@ -53,7 +53,7 @@ function session(previewSources: PreviewSource[]): Session {
   };
 }
 
-test("renders the full source identity and opens only an eligible source", async () => {
+test("renders the source URL and opens only an eligible source", async () => {
   const calls: Array<{ command: string; payload: unknown }> = [];
   mockIPC((command, payload) => {
     calls.push({ command, payload });
@@ -66,10 +66,9 @@ test("renders the full source identity and opens only an eligible source", async
   const eligible = source();
   render(<PreviewPanel session={session([eligible])} />);
 
-  expect(screen.getByText("repo-a")).toBeTruthy();
-  expect(screen.getByText("worktree-a")).toBeTruthy();
-  expect(screen.getByText("session-a:0")).toBeTruthy();
   expect(screen.getByText(eligible.sourceUrl)).toBeTruthy();
+  expect(screen.queryByText("repo-a")).toBeNull();
+  expect(screen.queryByText("session-a:0")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Open Preview" }));
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_open", payload: { source: eligible } }));
   expect(screen.getByRole("button", { name: "Focus Preview" })).toBeTruthy();

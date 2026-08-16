@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import type React from "react";
 import { AGENT_NAMES, deriveTitle, reconnectPrefillFromSession, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
@@ -13,6 +14,8 @@ import { SessionMascotIcon } from "./SessionMascotIcon";
 import { SessionMascotPicker } from "./SessionMascotPicker";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { SessionRemediationNotice } from "./SessionRemediationNotice";
+import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
+import { diagnosticsCenter, diagnosticsForSession } from "@/modules/ssh/diagnostics-store";
 
 interface SessionOverviewPanelProps {
   session: Session;
@@ -20,18 +23,19 @@ interface SessionOverviewPanelProps {
 
 const EMPTY_TIMELINE: readonly TimelineEvent[] = Object.freeze([]);
 
-function InfoCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div
-      style={{
-        minWidth: 0,
-        border: "1px solid var(--c-border-1)",
-        background: "var(--c-bg-white)",
-        borderRadius: "var(--r-card)",
-        padding: "10px 12px",
-        boxShadow: "var(--shadow-card)",
-      }}
-    >
+function InfoCard({
+  label,
+  value,
+  hint,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
       <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: "var(--fs-body)", color: "var(--c-text-primary)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={value}>
         {value}
@@ -41,7 +45,27 @@ function InfoCard({ label, value, hint }: { label: string; value: string; hint?:
           {hint}
         </div>
       )}
-    </div>
+    </>
+  );
+  const style = {
+    minWidth: 0,
+    border: "1px solid var(--c-border-1)",
+    background: "var(--c-bg-white)",
+    borderRadius: "var(--r-card)",
+    padding: "10px 12px",
+    boxShadow: "var(--shadow-card)",
+    textAlign: "left" as const,
+  };
+  if (!onClick) return <div style={style}>{body}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="hover-bg"
+      style={{ ...style, cursor: "pointer", font: "inherit", color: "inherit" }}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -103,10 +127,25 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
     ? `${session.connection.phase === "ready" ? `${t("connection.phase.ready")} · ` : ""}${t(`connection.source.${session.connection.source}`)} · ${formatTimelineRelativeTime(session.connection.updatedAt)}`
     : undefined;
   const currentWorktree = currentWorkspaceWorktree(session.workspace);
+  useSyncExternalStore(diagnosticsCenter.subscribe, diagnosticsCenter.snapshot);
+  const diagnosticEvents = diagnosticsForSession(session.id);
+  const connectionAbnormal = !!session.connection && session.connection.phase !== "ready";
 
-  const openNotes = () => {
+  const openInspector = (tab: "changes" | "files" | "notes") => {
     useUIStore.getState().setPanelVisible(true);
-    useUIStore.getState().setInspectorTab("notes");
+    useUIStore.getState().setInspectorTab(tab);
+  };
+
+  const openNotes = () => openInspector("notes");
+
+  const copyDiagnostics = async () => {
+    const copied = await copyText(diagnosticReportText(session.id));
+    useUIStore.getState().addToast({
+      sessionId: session.id,
+      title: t(copied ? "diagnostics.copy_succeeded" : "diagnostics.copy_failed"),
+      subtitle: "",
+      variant: copied ? "success" : "error",
+    });
   };
 
   const reconnectRemote = () => {
@@ -134,13 +173,21 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
         <InfoCard label={t("overview.card.status")} value={statusLabel(session, t)} hint={connectionHint ?? (session.lastExitCode !== undefined ? t("overview.card.exit_code", { code: session.lastExitCode }) : undefined)} />
         <InfoCard label={t("overview.card.agent")} value={agentName} hint={session.agentActivity ? t(`overview.agent_activity.${session.agentActivity}`) : undefined} />
-        <InfoCard label={isRemote ? t("overview.card.remote") : t("overview.card.cwd")} value={isRemote ? remoteLabel : session.dir} />
-        <InfoCard label={t("overview.card.changes")} value={changes.fileCount > 0 ? t("overview.changes.files", { count: String(changes.fileCount) }) : changeHint} hint={changes.fileCount > 0 ? changeHint : undefined} />
+        <InfoCard label={isRemote ? t("overview.card.remote") : t("overview.card.cwd")} value={isRemote ? remoteLabel : session.dir} onClick={() => openInspector("files")} />
+        <InfoCard label={t("overview.card.changes")} value={changes.fileCount > 0 ? t("overview.changes.files", { count: String(changes.fileCount) }) : changeHint} hint={changes.fileCount > 0 ? changeHint : undefined} onClick={() => openInspector("changes")} />
       </div>
 
       <SessionMascotPicker session={session} />
 
       <SessionRemediationNotice session={session} />
+
+      {isRemote && connectionAbnormal && diagnosticEvents.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <ActionButton onClick={() => { void copyDiagnostics(); }}>
+            {t("overview.action.copy_diagnostics")}
+          </ActionButton>
+        </div>
+      )}
 
       {session.workspaceState === "unavailable" && (
         <div role="status" style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: "9px 11px", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>
