@@ -9,6 +9,7 @@ export interface BlockContextMenuHandlers {
   onCopyCommand: (id: string) => unknown;
   onCopyOutput: (id: string) => unknown;
   onCopyCommandAndOutput: (id: string) => unknown;
+  onExportOutput: (id: string) => unknown;
   onReveal: (id: string) => unknown;
 }
 
@@ -40,6 +41,7 @@ export function buildBlockContextMenuItems(
     { id: "block:copy-command", label: t("block.menu.copy_command"), icon: "copy", action: () => { handlers.onCopyCommand(block.id); } },
     { id: "block:copy-output", label: t("block.menu.copy_output"), icon: "copy", disabled: !completed, action: () => { handlers.onCopyOutput(block.id); } },
     { id: "block:copy-both", label: t("block.menu.copy_both"), icon: "copy", disabled: !completed, action: () => { handlers.onCopyCommandAndOutput(block.id); } },
+    { id: "block:export-output", label: t("block.menu.export_output"), icon: "download", disabled: !completed, action: () => { handlers.onExportOutput(block.id); } },
     null,
     { id: "block:reveal", label: t("block.menu.reveal"), icon: "terminal", action: () => { handlers.onReveal(block.id); } },
   ];

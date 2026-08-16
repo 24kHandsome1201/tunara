@@ -27,6 +27,7 @@ function makeHandlers() {
     onCopyCommand: [],
     onCopyOutput: [],
     onCopyCommandAndOutput: [],
+    onExportOutput: [],
     onReveal: [],
   };
   return {
@@ -36,6 +37,7 @@ function makeHandlers() {
       onCopyCommand: (id) => { calls.onCopyCommand.push(id); },
       onCopyOutput: (id) => { calls.onCopyOutput.push(id); },
       onCopyCommandAndOutput: (id) => { calls.onCopyCommandAndOutput.push(id); },
+      onExportOutput: (id) => { calls.onExportOutput.push(id); },
       onReveal: (id) => { calls.onReveal.push(id); },
     },
   };
@@ -63,6 +65,9 @@ test("buildBlockContextMenuItems wires each entry to the matching handler", () =
   byId["block:copy-both"].action();
   assert.deepEqual(calls.onCopyCommandAndOutput, ["abc"]);
 
+  byId["block:export-output"].action();
+  assert.deepEqual(calls.onExportOutput, ["abc"]);
+
   byId["block:reveal"].action();
   assert.deepEqual(calls.onReveal, ["abc"]);
 });
@@ -77,6 +82,7 @@ test("buildBlockContextMenuItems disables output-dependent entries while the com
   assert.equal(byId["block:copy-command"].disabled, undefined);
   assert.equal(byId["block:copy-output"].disabled, true);
   assert.equal(byId["block:copy-both"].disabled, true);
+  assert.equal(byId["block:export-output"].disabled, true);
   assert.equal(byId["block:reveal"].disabled, undefined);
 });
 
@@ -87,6 +93,7 @@ test("buildBlockContextMenuItems enables output entries once the command has com
 
   assert.notEqual(byId["block:copy-output"].disabled, true);
   assert.notEqual(byId["block:copy-both"].disabled, true);
+  assert.notEqual(byId["block:export-output"].disabled, true);
 });
 
 test("buildBlockContextMenuItems leads with a status heading showing exit state and duration", () => {
@@ -136,7 +143,7 @@ test("buildBlockContextMenuItems separates rerun, copy, and navigation groups", 
 
   assert.deepEqual(groups, [
     ["block:rerun"],
-    ["block:copy-command", "block:copy-output", "block:copy-both"],
+    ["block:copy-command", "block:copy-output", "block:copy-both", "block:export-output"],
     ["block:reveal"],
   ]);
 });
@@ -150,5 +157,6 @@ test("buildBlockContextMenuItems uses the icon catalog so ContextMenu renders th
   assert.equal(byId["block:copy-command"].icon, "copy");
   assert.equal(byId["block:copy-output"].icon, "copy");
   assert.equal(byId["block:copy-both"].icon, "copy");
+  assert.equal(byId["block:export-output"].icon, "download");
   assert.equal(byId["block:reveal"].icon, "terminal");
 });

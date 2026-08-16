@@ -15,6 +15,8 @@ import { useFocusTrap } from "./useFocusTrap";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { canSplitLayout } from "@/modules/session/split-layout";
 import { copyActiveTerminal, openTerminalMenu, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
+import { nextAttentionSessionId } from "@/modules/session/session-attention";
+import { requestTerminalScrollbackExport } from "@/modules/terminal/lib/terminal-export-file";
 
 interface Command {
   id: string;
@@ -182,6 +184,28 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       },
     });
 
+    cmds.push({
+      id: "focus-latest-attention",
+      label: t("palette.cmd.focus_latest_attention"),
+      shortcut: formatShortcut(keybindings.focusLatestAttention),
+      icon: <CmdIcon d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "session"],
+      originalIndex: idx++,
+      action: () => {
+        const sessionsState = useSessionsStore.getState();
+        const target = nextAttentionSessionId(sessionsState.sessions, sessionsState.activeSessionId);
+        uiStore.getState().recordCommandUse("focus-latest-attention");
+        if (!target) {
+          uiStore.getState().addToast({ title: t("attention.none"), subtitle: t("attention.none_hint"), variant: "warning" });
+          onClose();
+          return;
+        }
+        sessionsState.setActive(target);
+        onClose();
+      },
+    });
+
     if (activeSession) {
       cmds.push({
         id: "copy-terminal-selection",
@@ -225,6 +249,20 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           uiStore.getState().recordCommandUse("open-terminal-menu");
           onClose();
           globalThis.setTimeout(() => { openTerminalMenu(activeSession.id); }, 0);
+        },
+      });
+
+      cmds.push({
+        id: "export-scrollback",
+        label: t("palette.cmd.export_scrollback"),
+        icon: <CmdIcon d="M12 3v12M8 11l4 4 4-4M4 19h16" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "terminal"],
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("export-scrollback");
+          requestTerminalScrollbackExport(activeSession.id);
+          onClose();
         },
       });
 

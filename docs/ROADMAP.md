@@ -118,7 +118,7 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 2. 终端本职缺口（对标其他终端）
 
-对照 iTerm2 / Ghostty / Warp / Wave / cmux / Kitty / Tabby 之后，仍缺且符合定位的优先项是：拖文件到终端插入转义路径、OSC 99 通知、一键跳到最近需要处理的会话、有上限的滚屏/命令块导出。完整矩阵、已实现易被误报的项、以及明确不抄的厨房水槽，见 [TERMINAL_COMPETITIVE_GAPS.md](./TERMINAL_COMPETITIVE_GAPS.md)。命令块时长与长命令完成提醒见草案 PR #75，不在本清单里重复开工。
+对照 iTerm2 / Ghostty / Warp / Wave / cmux / Kitty / Tabby 的优先项里，拖文件插入路径、OSC 99、跳到最近 Attention、有上限的滚屏/命令块导出已经落地。下一批仍是 Unicode grapheme 宽度、Kitty keyboard（等 xterm.js 上游）和跨会话搜索。完整矩阵与明确不抄的厨房水槽见 [TERMINAL_COMPETITIVE_GAPS.md](./TERMINAL_COMPETITIVE_GAPS.md)。
 
 ## 性能方向
 

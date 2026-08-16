@@ -8,7 +8,7 @@ import {
   sshEndpointIdentityFromRemote,
 } from "../src/modules/ssh/connection-share.ts";
 import { remoteExplorerFollowPath, terminalUploadDestination } from "../src/modules/ssh/remote-cwd.ts";
-import { broadcastTerminalInput, registerBroadcastWriter, resetBroadcastWritersForTests } from "../src/modules/terminal/lib/broadcast-input.ts";
+import { broadcastTerminalInput, registerBroadcastWriter, resetBroadcastWritersForTests, writeRegisteredTerminalInput } from "../src/modules/terminal/lib/broadcast-input.ts";
 import { formatTransferEta, formatTransferRate, pushRateSample, transferEta, transferRate } from "../src/modules/ssh/transfer-rate.ts";
 import { canResumeRecovery } from "../src/modules/ssh/transfer-resume.ts";
 
@@ -62,6 +62,19 @@ test("broadcast input fans out to other registered writers only", () => {
   assert.deepEqual(received, ["b:ls\n"]);
   stopB();
   assert.equal(broadcastTerminalInput("a", "pwd\n", ["a", "b"]), 0);
+  resetBroadcastWritersForTests();
+});
+
+test("writeRegisteredTerminalInput writes only to a live registered writer", () => {
+  resetBroadcastWritersForTests();
+  const received = [];
+  const stop = registerBroadcastWriter("pane", (data) => received.push(data));
+  assert.equal(writeRegisteredTerminalInput("pane", "/tmp/a.txt "), true);
+  assert.equal(writeRegisteredTerminalInput("missing", "/tmp/b.txt "), false);
+  assert.equal(writeRegisteredTerminalInput("pane", ""), false);
+  stop();
+  assert.equal(writeRegisteredTerminalInput("pane", "/tmp/c.txt "), false);
+  assert.deepEqual(received, ["/tmp/a.txt "]);
   resetBroadcastWritersForTests();
 });
 

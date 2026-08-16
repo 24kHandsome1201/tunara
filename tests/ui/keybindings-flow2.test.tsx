@@ -21,6 +21,8 @@ describe("flow 2 keybindings", () => {
     expect([mac.terminalMenu, mac.copySelection, mac.safePaste]).toEqual(["", "Mod+C", "Mod+V"]);
     expect([mac.newTerminalAlt, mac.closeSession, mac.splitHorizontal, mac.commandPalette])
       .toEqual(["Mod+N", "Mod+W", "Mod+D", "Mod+K"]);
+    expect(mac.focusLatestAttention).toBe("Mod+Shift+U");
+    expect(new Set(Object.values(mac)).size).toBe(Object.values(mac).length);
     for (const platform of ["windows", "linux"] as const) {
       const defaults = defaultKeybindingsForPlatform(platform);
       expect([defaults.terminalMenu, defaults.copySelection, defaults.safePaste])

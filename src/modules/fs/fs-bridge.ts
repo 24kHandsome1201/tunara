@@ -49,6 +49,11 @@ export function fsWriteTextFile(path: string, content: string, expectedFingerpri
   return invoke<WriteTextResult>("fs_write_text_file", { path, content, expectedFingerprint });
 }
 
+/** Create or replace a user-chosen export file. Content is capped at 256 KiB. */
+export function fsExportTextFile(path: string, content: string): Promise<number> {
+  return invoke<number>("fs_export_text_file", { path, content });
+}
+
 export function fsSearch(
   root: string,
   query: string,

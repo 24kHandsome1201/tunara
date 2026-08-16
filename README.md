@@ -53,7 +53,9 @@ The terminal is the product, not an accessory. Sessions run real `portable-pty`;
 - ⌘F in-terminal search with match counts
 - Command-block history follows live scrollback, with navigation and output filters for text / regex / case / invert / context lines
 - Clickable URLs, configurable scrollback (1k–20k lines)
-- OSC 7 cwd tracking, OSC 133 shell integration
+- OSC 7 cwd tracking, OSC 133 shell integration, OSC 9 / 99 / 777 notifications
+- Drop files onto a local terminal to insert escaped paths (no auto-submit); SSH drops still upload over SFTP
+- Export scrollback or a command block to a file (capped at 2000 lines / 256 KiB)
 - Optional inline images (SIXEL / iTerm IIP)
 - 9 synchronized interface & terminal color schemes: System, Light, Dark, GitHub Light, Rose Pine Dawn, Catppuccin, Tokyo Night, One Dark, Solarized
 
@@ -210,6 +212,7 @@ Defaults below are macOS. Windows / Linux experimental builds remap several chor
 | Switch to session 1–8 / last | ⌘1 – ⌘8 / ⌘9 |
 | Cycle recent sessions | ⌘Tab |
 | Command-block prev / next | ⌘⇧↑ / ⌘⇧↓ |
+| Jump to latest attention session | ⌘⇧U |
 | Font size +/- / reset | ⌘+ / ⌘- / ⌘0 |
 | Toggle sidebar / Inspector | ⌘\ / ⌘⇧\ |
 | Settings | ⌘, |

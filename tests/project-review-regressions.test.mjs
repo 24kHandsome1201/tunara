@@ -1103,8 +1103,10 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalOsc9, /parseConEmuCwdOsc9\(data\)/);
   assert.match(terminalOsc9, /parseTerminalNotificationOsc9\(data\)/);
   assert.match(terminalOsc9, /registerOscHandler\(9/);
+  assert.match(terminalOsc9, /registerOscHandler\(99/);
   assert.match(terminalNotification, /parseTerminalNotificationOsc9/);
   assert.match(terminalNotification, /parseTerminalNotificationOsc777/);
+  assert.match(terminalNotification, /createOsc99Assembler/);
   assert.match(terminalNotification, /\^\\s\*\\d\+\(\?:;\|\$\)/);
 
   assert.doesNotMatch(sessions, /launchAllAgents/);
@@ -1540,6 +1542,18 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(commandPalette, /label: t\("palette\.cmd\.quick_select"\)/);
   assert.match(zhDict, /"palette\.cmd\.quick_select": "快速选择附近输出"/);
   assert.match(commandPalette, /window\.dispatchEvent\(new CustomEvent\(TERMINAL_QUICK_SELECT_EVENT\)\)/);
+  assert.match(commandPalette, /id: "focus-latest-attention"/);
+  assert.match(commandPalette, /nextAttentionSessionId\(/);
+  assert.match(commandPalette, /id: "export-scrollback"/);
+  assert.match(commandPalette, /requestTerminalScrollbackExport\(activeSession\.id\)/);
+  assert.match(zhDict, /"palette\.cmd\.focus_latest_attention": "跳到最近需要处理的会话"/);
+  assert.match(zhDict, /"palette\.cmd\.export_scrollback": "导出终端滚屏…"/);
+  assert.match(terminalChrome, /formatDroppedTerminalPaths\(paths\)/);
+  assert.match(terminalChrome, /pendingInputSubmit: false/);
+  assert.match(terminalChrome, /exportTerminalBufferToFile/);
+  assert.doesNotMatch(terminalChrome, /invoke</);
+  assert.match(keybindings, /focusLatestAttention: "Mod\+Shift\+U"/);
+  assert.match(appKeybindings, /case "focusLatestAttention"/);
   assert.match(keybindings, /"quickSelect"/);
   assert.match(appKeybindings, /case "quickSelect"/);
   assert.match(appKeybindings, /hasPlatformModKey\(e, isMac\)/);

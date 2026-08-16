@@ -70,3 +70,26 @@ export function deriveSessionAttention(sessions: readonly Session[]): SessionAtt
     total: attention.length + running.length + resumable.length,
   };
 }
+
+/**
+ * Most recently updated attention session, cycling when the caller is already
+ * focused on one. Actions only return an id — callers focus, they never run
+ * commands.
+ */
+export function nextAttentionSessionId(
+  sessions: readonly Session[],
+  activeSessionId: string | null,
+): string | null {
+  const { attention } = deriveSessionAttention(sessions);
+  if (attention.length === 0) return null;
+  const ordered = [...attention].sort((left, right) => {
+    const delta = right.session.updatedAt - left.session.updatedAt;
+    if (delta !== 0) return delta;
+    return sessions.indexOf(left.session) - sessions.indexOf(right.session);
+  });
+  const ids = ordered.map((item) => item.session.id);
+  if (!activeSessionId) return ids[0];
+  const index = ids.indexOf(activeSessionId);
+  if (index === -1) return ids[0];
+  return ids[(index + 1) % ids.length];
+}

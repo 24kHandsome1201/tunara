@@ -33,6 +33,7 @@ export const KEYBINDING_ACTIONS = [
   "cyclePrevSession",
   "navigatePrevBlock",
   "navigateNextBlock",
+  "focusLatestAttention",
 ] as const;
 
 export type KeybindingAction = typeof KEYBINDING_ACTIONS[number];
@@ -89,6 +90,7 @@ const COMMON_DEFAULT_KEYBINDINGS: KeybindingConfig = {
   cyclePrevSession: "Mod+Shift+Tab",
   navigatePrevBlock: "Mod+Shift+ArrowUp",
   navigateNextBlock: "Mod+Shift+ArrowDown",
+  focusLatestAttention: "Mod+Shift+U",
 };
 
 /** Defaults are explicit by platform so terminal-hostile bare Ctrl sequences are never introduced. */
@@ -149,6 +151,7 @@ export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
   cyclePrevSession: "cycle_prev_session",
   navigatePrevBlock: "navigate_prev_block",
   navigateNextBlock: "navigate_next_block",
+  focusLatestAttention: "focus_latest_attention",
 };
 
 const CONFIG_KEY_TO_ACTION = Object.fromEntries(

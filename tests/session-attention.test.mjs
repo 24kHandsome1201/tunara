@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deriveSessionAttention } from "../src/modules/session/session-attention.ts";
+import { deriveSessionAttention, nextAttentionSessionId } from "../src/modules/session/session-attention.ts";
 
 function session(id, patch = {}) {
   return {
@@ -88,4 +88,17 @@ test("global attention uses cwd-aware commands and hides cross-transport resume 
     "cd -- '/root/original repo' && npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
   );
   assert.deepEqual(groups.quiet.map((item) => item.id), ["other-host"]);
+});
+
+test("nextAttentionSessionId prefers the most recently updated attention session and cycles", () => {
+  const sessions = [
+    session("quiet"),
+    session("older", { unread: true, runState: "failed", lastCommand: "pnpm test", updatedAt: 10 }),
+    session("newer", { unread: true, runState: "failed", lastCommand: "pnpm lint", updatedAt: 20 }),
+  ];
+  assert.equal(nextAttentionSessionId([], null), null);
+  assert.equal(nextAttentionSessionId(sessions, null), "newer");
+  assert.equal(nextAttentionSessionId(sessions, "quiet"), "newer");
+  assert.equal(nextAttentionSessionId(sessions, "newer"), "older");
+  assert.equal(nextAttentionSessionId(sessions, "older"), "newer");
 });

@@ -200,7 +200,6 @@ function TerminalViewImpl({
       // Terminal-scoped actions and workspace context-menu keys return false
       // before search/blocks so xterm neither consumes nor forwards them.
       term.attachCustomKeyEventHandler((e) => !((e.type === "keydown" && isFixedTerminalMenuEvent(e)) && useUIStore.getState().presentationMode !== "pure") && handleTerminalInteractionKeyEvent(sessionIdRef.current, term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
-      // OSC 133: A prompt start, B input start, C command start, D;N command end.
       let osc133Active = false;
       let osc133InputFallback = false;
       let pendingSubmittedShellCommand: string | null = null;
@@ -338,8 +337,7 @@ function TerminalViewImpl({
               if (agent) {
                 markAgentDetected(agent, cmd);
               }
-              // 本地会话默认注入 OSC 133,命令文本走这条路径(非 fallback)——
-              // ssh 检测必须同样挂在这里,否则提示条对绝大多数本地会话永不出现。
+              // OSC 133 path (not keystroke fallback): local sessions inject this by default.
               const sshTarget = detectSshCommand(cmd);
               if (sshTarget) {
                 useSessionsStore.getState().suggestSshConnect(sessionIdRef.current, sshTarget);

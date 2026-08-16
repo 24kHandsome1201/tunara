@@ -19,6 +19,9 @@ import { TerminalInputRouter, type TerminalInputEventKind, type TerminalInputOwn
 import { issueFocusReturnToken, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import { copyActiveTerminal, registerTerminalMenuAction, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
+import { formatDroppedTerminalPaths } from "@/modules/terminal/lib/terminal-drop-paths";
+import { writeRegisteredTerminalInput } from "@/modules/terminal/lib/broadcast-input";
+import { exportTerminalBufferToFile, exportTerminalTextToFile, TERMINAL_EXPORT_SCROLLBACK_EVENT } from "@/modules/terminal/lib/terminal-export-file";
 
 interface TerminalViewChromeProps {
   sessionId: string;
@@ -108,6 +111,16 @@ export function TerminalViewChrome({
   useEffect(() => registerTerminalMenuAction(sessionId, openKeyboardMenu), [openKeyboardMenu, sessionId]);
 
   useEffect(() => {
+    const onExport = (event: Event) => {
+      const id = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
+      if (id !== sessionId) return;
+      void exportTerminalBufferToFile(getTerminal()?.buffer.active, "tunara-scrollback.txt", sessionId);
+    };
+    window.addEventListener(TERMINAL_EXPORT_SCROLLBACK_EVENT, onExport);
+    return () => window.removeEventListener(TERMINAL_EXPORT_SCROLLBACK_EVENT, onExport);
+  }, [getTerminal, sessionId]);
+
+  useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     const handleDragDrop = (event: Parameters<Parameters<ReturnType<typeof getCurrentWebview>["onDragDropEvent"]>[0]>[0]) => {
@@ -122,7 +135,24 @@ export function TerminalViewChrome({
       if (!inside) return;
       const session = useSessionsStore.getState().sessions.find((item) => item.id === sessionId);
       const binding = readyBindingForSession(session);
-      if (!session?.remote || !binding) return;
+      if (!session) return;
+      if (!session.remote) {
+        const inserted = formatDroppedTerminalPaths(paths);
+        if (!inserted) return;
+        if (!writeRegisteredTerminalInput(sessionId, inserted)) {
+          useSessionsStore.getState().updateSession(sessionId, { pendingInput: inserted, pendingInputSubmit: false });
+        }
+        return;
+      }
+      if (!binding) {
+        useUIStore.getState().addToast({
+          sessionId,
+          title: t("term.drop.upload"),
+          subtitle: t("term.drop.ssh_not_ready"),
+          variant: "warning",
+        });
+        return;
+      }
       const cwd = session.dir;
       void (async () => {
         const requests = [];
@@ -265,6 +295,7 @@ export function TerminalViewChrome({
             ...(menu.blockEntries.length > 0 ? [...menu.blockEntries, null] : []),
             { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: () => { copyActiveTerminal(sessionId); } },
             { id: "paste", label: t("pure.action.safe_paste"), icon: "paste", action: () => { void safePasteActiveTerminal(sessionId); } },
+            { id: "export-scrollback", label: t("term.export.scrollback"), icon: "download", action: () => { void exportTerminalBufferToFile(getTerminal()?.buffer.active, "tunara-scrollback.txt", sessionId); } },
             null,
             {
               id: "split-right",
