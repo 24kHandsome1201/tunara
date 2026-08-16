@@ -163,6 +163,73 @@ test("context-loss cleanup and DOM refresh still run when WebGL dispose throws",
   assert.deepEqual(calls, ["cleanup", "refresh:0:9"]);
 });
 
+test("atlas rebuild also refreshes the current terminal rows", async () => {
+  const { createWebglAtlasRebuilder } = await import(
+    "../src/modules/terminal/lib/terminal-atlas-refresh.ts"
+  );
+  const calls = [];
+  const webglRef = { current: { clearTextureAtlas: () => calls.push("atlas") } };
+  const termRef = { current: { rows: 24, refresh: (start, end) => calls.push(`refresh:${start}:${end}`) } };
+  createWebglAtlasRebuilder(webglRef, termRef)();
+  assert.deepEqual(calls, ["atlas", "refresh:0:23"]);
+});
+
+test("atlas rebuild skips refresh when the terminal is already gone", async () => {
+  const { createWebglAtlasRebuilder } = await import(
+    "../src/modules/terminal/lib/terminal-atlas-refresh.ts"
+  );
+  const webglRef = { current: { clearTextureAtlas: () => {} } };
+  createWebglAtlasRebuilder(webglRef, { current: null })();
+  createWebglAtlasRebuilder(webglRef)();
+});
+
+test("WebGL renderer swap refits the grid and resizes the PTY", async () => {
+  const source = await import("node:fs").then((fs) =>
+    fs.readFileSync(new URL("../src/ui/useTerminalWebgl.ts", import.meta.url), "utf8"),
+  );
+  assert.match(source, /fitRef\?: RefObject<FitAddon \| null>/);
+  assert.match(source, /ptyRef\?: RefObject<PtySession \| null>/);
+  assert.match(source, /fitRef\?\.current\?\.fit\(\)/);
+  assert.match(source, /ptyRef\?\.current\?\.resize\(term\.cols, term\.rows\)\?\.catch/);
+});
+
+test("PTY resize is sent promptly after fit so TUI grids stay aligned", async () => {
+  const ResizeObserverStub = class {
+    constructor(cb) { ResizeObserverStub.lastCb = cb; }
+    observe() {}
+    disconnect() {}
+  };
+  const prevRO = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = ResizeObserverStub;
+  try {
+    const { observeTerminalResize, TERMINAL_PTY_RESIZE_DEBOUNCE_MS } = await import(
+      "../src/modules/terminal/lib/terminal-resize.ts"
+    );
+    assert.ok(TERMINAL_PTY_RESIZE_DEBOUNCE_MS <= 50, "TUI wrap cannot wait a quarter second");
+
+    let ptyResizes = 0;
+    const element = { clientWidth: 80, clientHeight: 24 };
+    const dispose = observeTerminalResize({
+      element,
+      terminal: { cols: 100, rows: 30 },
+      fit: { fit: () => {} },
+      resizePty: () => { ptyResizes += 1; },
+      isDisposed: () => false,
+    });
+    element.clientWidth = 120;
+    element.clientHeight = 40;
+    ResizeObserverStub.lastCb();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(ptyResizes, 0, "fit debounce still coalesces sub-frame size churn");
+    await new Promise((r) => setTimeout(r, TERMINAL_PTY_RESIZE_DEBOUNCE_MS + 20));
+    assert.equal(ptyResizes, 1, "PTY learns the fitted size without a 250ms wait");
+    dispose();
+  } finally {
+    if (prevRO) globalThis.ResizeObserver = prevRO;
+    else delete globalThis.ResizeObserver;
+  }
+});
+
 test("a stale context-loss event cannot evict the replacement renderer", async () => {
   const { fallbackTerminalContextIfCurrent } = await import(
     "../src/modules/terminal/lib/terminal-webgl-fallback.ts"

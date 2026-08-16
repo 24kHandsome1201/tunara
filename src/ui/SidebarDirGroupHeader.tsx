@@ -4,7 +4,7 @@ import { useT } from "@/modules/i18n";
 
 function FolderIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
     </svg>
   );
@@ -50,6 +50,7 @@ export function DirGroupHeader({
   onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const t = useT();
+  const groupName = workspace?.repositoryName || dir.split("/").pop() || dir;
   const headerContent = (
     <>
       {onToggleCollapse && (
@@ -76,7 +77,7 @@ export function DirGroupHeader({
       <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={dir}>
         <span
           style={{
-            fontSize: workspace ? "var(--fs-badge)" : "var(--fs-meta)",
+            fontSize: "var(--fs-meta)",
             fontWeight: workspace ? 650 : 600,
             fontFamily: "var(--font-mono)",
             color: workspace ? "var(--c-text-5)" : "var(--c-text-3)",
@@ -89,7 +90,7 @@ export function DirGroupHeader({
         >
           {workspace ? workspace.repositoryName : dir.split("/").pop() || dir}
           {workspace?.transport === "ssh" && (
-            <span style={{ marginLeft: 5, color: "var(--c-text-6)", fontSize: "var(--fs-badge)", fontWeight: 600 }}>SSH</span>
+            <span style={{ marginLeft: 5, color: "var(--c-text-6)", fontSize: "var(--fs-meta)", fontWeight: 600 }}>{t("workspace.ssh")}</span>
           )}
         </span>
         {workspace && (
@@ -108,7 +109,7 @@ export function DirGroupHeader({
       <span
         title={t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}
         style={{
-          fontSize: "var(--fs-badge)",
+          fontSize: "var(--fs-meta)",
           color: "var(--c-text-4)",
           background: "var(--c-bg-3)",
           borderRadius: "var(--r-pill)",
@@ -116,7 +117,7 @@ export function DirGroupHeader({
           fontFamily: "var(--font-mono)",
         }}
       >
-        {agentCount > 0 ? `${count} · ${agentCount}A` : count}
+        {agentCount > 0 ? `${count} · ${t("workspace.agent_count_short", { count: agentCount })}` : count}
       </span>
     </>
   );
@@ -144,8 +145,8 @@ export function DirGroupHeader({
           className="dir-group-toggle"
           onClick={onToggleCollapse}
           aria-expanded={!collapsed}
-          title={collapsed ? t("dir_group.expand") : t("dir_group.collapse")}
-          aria-label={collapsed ? t("dir_group.expand") : t("dir_group.collapse")}
+          title={collapsed ? t("dir_group.expand_named", { name: groupName }) : t("dir_group.collapse_named", { name: groupName })}
+          aria-label={collapsed ? t("dir_group.expand_named", { name: groupName }) : t("dir_group.collapse_named", { name: groupName })}
           style={{
             display: "flex",
             alignItems: "center",

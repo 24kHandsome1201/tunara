@@ -5,6 +5,7 @@ import { useT } from "@/modules/i18n";
 import { AgentBadge } from "./agents";
 import { CloseIcon } from "./shared";
 import { copyText } from "./lib/clipboard";
+import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 
 const DEFAULT_TOAST_DURATION = 4000;
 const ERROR_TOAST_DURATION = 12000;
@@ -81,6 +82,12 @@ function ToastItem({ toast }: { toast: Toast }) {
   const handleClick = () => {
     if (toast.action?.kind === "open-settings") {
       useUIStore.getState().openSettings(toast.action.tab);
+    } else if (toast.action !== undefined && toast.action.kind === "open-remote-preview") {
+      const previewAction = toast.action;
+      const owner = useSessionsStore.getState().sessions.find((session) => session.id === previewAction.sessionId);
+      if (owner) {
+        void openResource(resourceRefForSession(owner, previewAction.path), "preview");
+      }
     } else if (toast.sessionId) {
       setActive(toast.sessionId);
     }
@@ -164,13 +171,15 @@ function ToastItem({ toast }: { toast: Toast }) {
         }}>
           {toast.title}
         </div>
-        <div className="toast-subtitle" style={{
-          fontSize: "var(--fs-meta)",
-          color: "var(--c-text-5)",
-          marginTop: 1,
-        }}>
-          {toast.subtitle}
-        </div>
+        {toast.subtitle ? (
+          <div className="toast-subtitle" style={{
+            fontSize: "var(--fs-meta)",
+            color: "var(--c-text-5)",
+            marginTop: 1,
+          }}>
+            {toast.subtitle}
+          </div>
+        ) : null}
       </div>
       </div>
 
@@ -284,11 +293,15 @@ function ToastItem({ toast }: { toast: Toast }) {
 }
 
 export function ToastContainer() {
+  const t = useT();
   const toasts = useUIStore((s) => s.toasts);
   if (toasts.length === 0) return null;
 
   return (
-    <div style={{
+    <div
+      role="region"
+      aria-label={t("toast.region")}
+      style={{
       position: "fixed",
       top: "calc(var(--h-titlebar) + 8px)",
       right: 12,
@@ -298,8 +311,8 @@ export function ToastContainer() {
       gap: 8,
       pointerEvents: "auto",
     }}>
-      {toasts.map((t) => (
-        <ToastItem key={t.id} toast={t} />
+      {toasts.map((toastItem) => (
+        <ToastItem key={toastItem.id} toast={toastItem} />
       ))}
     </div>
   );

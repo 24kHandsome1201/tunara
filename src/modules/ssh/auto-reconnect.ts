@@ -16,9 +16,13 @@ import { recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 type RegisterCleanup = (cleanup: () => void) => void;
 
 function intentKey(intent: ForwardReconnectIntent): string {
-  return intent.kind === "local"
-    ? `local\0${intent.bindHost}\0${intent.requestedLocalPort}\0${intent.targetHost}\0${intent.targetPort}`
-    : `dynamic\0${intent.bindHost}\0${intent.requestedLocalPort}`;
+  if (intent.kind === "local") {
+    return `local\0${intent.bindHost}\0${intent.requestedLocalPort}\0${intent.targetHost}\0${intent.targetPort}`;
+  }
+  if (intent.kind === "remote") {
+    return `remote\0${intent.remoteBindHost}\0${intent.requestedRemotePort}\0${intent.localTargetHost}\0${intent.localTargetPort}`;
+  }
+  return `dynamic\0${intent.bindHost}\0${intent.requestedLocalPort}`;
 }
 
 function mergeForwardIntents(

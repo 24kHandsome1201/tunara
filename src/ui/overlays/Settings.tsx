@@ -7,6 +7,8 @@ import { useAppUpdate } from "./useAppUpdate";
 import { useWorkflowsStore } from "@/state/workflows";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
+import { TerminalSettings } from "./settings/TerminalSettings";
+import { AccessibilitySettings } from "./settings/AccessibilitySettings";
 import { ShortcutsSettings } from "./settings/ShortcutsSettings";
 import { WorkflowsSettings } from "./settings/WorkflowsSettings";
 import { CliSettings } from "./settings/CliSettings";
@@ -18,7 +20,7 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-const TABS = ["appearance", "shortcuts", "workflows", "cli", "app"] as const;
+const TABS = ["appearance", "terminal", "accessibility", "shortcuts", "workflows", "cli", "app"] as const;
 
 /**
  * Settings dialog shell: chrome (backdrop, focus trap, tab list, footer) plus
@@ -97,6 +99,8 @@ export function Settings({ onClose }: SettingsProps) {
 
         <div role="tabpanel" id="settings-tabpanel" className="no-scrollbar scroll-fade-y">
           {activeTab === "appearance" && <AppearanceSettings />}
+          {activeTab === "terminal" && <TerminalSettings />}
+          {activeTab === "accessibility" && <AccessibilitySettings />}
           {activeTab === "shortcuts" && <ShortcutsSettings />}
           {activeTab === "workflows" && <WorkflowsSettings />}
           {activeTab === "cli" && <CliSettings {...cliStatus} />}
@@ -104,7 +108,7 @@ export function Settings({ onClose }: SettingsProps) {
         </div>
 
         <div className="settings-dialog-footer">
-          {activeTab === "appearance" ? (
+          {activeTab === "appearance" || activeTab === "terminal" || activeTab === "accessibility" ? (
             <button
               onClick={async () => {
                 const ok = await tauriConfirmDialog(t("settings.appearance.reset_confirm"), { kind: "warning" });
@@ -153,7 +157,7 @@ export function Settings({ onClose }: SettingsProps) {
             ) : configPath ? (
               <span title={configPath} style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{configPath}</span>
             ) : null}
-            <kbd className="settings-key-hint" style={{ padding: "2px 6px" }}>ESC</kbd>
+            <kbd className="settings-key-hint" style={{ padding: "2px 6px" }}>{t("common.escape")}</kbd>
             <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)" }}>
               {t("common.done")}
             </button>

@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ComponentPropsWithRef, ReactNode } from "react";
+import { useT } from "@/modules/i18n";
 
 export function RefreshIcon({ size = 13 }: { size?: number }) {
   return (
@@ -11,9 +12,37 @@ export function RefreshIcon({ size = 13 }: { size?: number }) {
   );
 }
 
+export function UploadIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 19V5" />
+      <polyline points="6 11 12 5 18 11" />
+    </svg>
+  );
+}
+
+export function UploadFolderIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <path d="M12 17v-6" />
+      <polyline points="9 13 12 10 15 13" />
+    </svg>
+  );
+}
+
+export function DownloadIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 5v14" />
+      <polyline points="6 13 12 19 18 13" />
+    </svg>
+  );
+}
+
 export function SearchIcon({ size = 13, color = "var(--c-text-5)" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
     </svg>
@@ -101,6 +130,7 @@ export function PanelIconButton({
 }
 
 export function PanelState({ state, icon, compact = false }: { state: PanelAsyncState; icon?: React.ReactNode; compact?: boolean }) {
+  const t = useT();
   const defaultIcon = (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       {state.kind === "error" ? <><path d="M12 3 2.8 20h18.4Z" /><path d="M12 9v5" /><path d="M12 17h.01" /></> : <><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></>}
@@ -124,7 +154,7 @@ export function PanelState({ state, icon, compact = false }: { state: PanelAsync
         <strong>{state.label}</strong>
         {state.kind !== "loading" && state.detail && <span className="panel-state-detail">{state.detail}</span>}
         {state.kind === "error" && state.remediation && <span className="panel-state-remediation">{state.remediation}</span>}
-        {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? "Retry"}</PanelActionButton>}
+        {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? t("common.retry")}</PanelActionButton>}
       </div>
     </div>
   );

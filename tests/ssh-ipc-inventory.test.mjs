@@ -30,6 +30,7 @@ const mapped = {
   "forwarding.rs": Object.fromEntries([
     "ssh_local_forward_start", "ssh_local_forward_list", "ssh_local_forward_stop",
     "ssh_dynamic_forward_start", "ssh_dynamic_forward_list", "ssh_dynamic_forward_stop",
+    "ssh_remote_forward_start", "ssh_remote_forward_list", "ssh_remote_forward_stop",
     "ssh_forwarding_reconnect_snapshot", "ssh_forwarding_reconnect_rebuild",
   ].map((name) => [name, "Forwarding"])),
   "remote_git.rs": Object.fromEntries([
@@ -44,13 +45,14 @@ const mapped = {
 const exemptions = new Set([
   "ssh_open_v2", "ssh_diagnostic_run_v1", "ssh_cancel_open",
   "ssh_diagnostic_cancel_v1", "ssh_fs_cancel_upload", "ssh_transfer_cancel",
-  "ssh_file_view_head_v1",
+  "ssh_file_view_head_v1", "ssh_file_view_tail_v1",
 ]);
 
 const addedSshCommands = [
   "ssh_open_v2", "ssh_diagnostic_run_v1", "ssh_diagnostic_cancel_v1",
   "ssh_local_forward_start", "ssh_local_forward_list", "ssh_local_forward_stop",
   "ssh_dynamic_forward_start", "ssh_dynamic_forward_list", "ssh_dynamic_forward_stop",
+  "ssh_remote_forward_start", "ssh_remote_forward_list", "ssh_remote_forward_stop",
   "ssh_forwarding_reconnect_snapshot", "ssh_forwarding_reconnect_rebuild",
   "ssh_known_hosts_list_v1", "ssh_known_hosts_remove_v1", "ssh_known_hosts_refresh_v1",
   "ssh_fs_mutate_v1", "ssh_fs_reconcile_mutation_v1", "ssh_fs_stat_v1", "ssh_fs_chmod_v1",
@@ -82,8 +84,8 @@ test("registered SSH command inventory is explicit and complete", () => {
   assert.deepEqual(new Set(registrations), new Set([...expected, ...exemptions]));
 });
 
-test("all 29 added SSH commands are registered, permitted, and present in generated ACL", async () => {
-  assert.equal(addedSshCommands.length, 29);
+test("all 32 added SSH commands are registered, permitted, and present in generated ACL", async () => {
+  assert.equal(addedSshCommands.length, 32);
   const permission = await readFile(new URL("src-tauri/permissions/main.toml", root), "utf8");
   const acl = JSON.parse(await readFile(new URL("src-tauri/gen/schemas/acl-manifests.json", root), "utf8"));
   const generated = acl["__app-acl__"].permissions["allow-main-commands"].commands.allow;
@@ -138,6 +140,7 @@ test("forward stop carries and atomically validates the complete SSH binding", a
   for (const [kind, command] of [
     ["Local", "ssh_local_forward_stop"],
     ["Dynamic", "ssh_dynamic_forward_stop"],
+    ["Remote", "ssh_remote_forward_stop"],
   ]) {
     assert.match(bridge, new RegExp(`stop${kind}Forward\\(binding: SessionBindingV1, ruleId: string\\)`));
     assert.match(bridge, new RegExp(`"${command}", \\{ binding, ruleId \\}`));

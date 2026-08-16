@@ -29,6 +29,18 @@ export const SECONDARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
   "knownHosts",
 ];
 
+export type InspectorOverflowSection = "workspace" | "transfer" | "ssh";
+
+export const INSPECTOR_OVERFLOW_SECTION: Partial<Record<InspectorTab, InspectorOverflowSection>> = {
+  preview: "workspace",
+  notes: "workspace",
+  transfers: "transfer",
+  metadata: "ssh",
+  forwarding: "ssh",
+  diagnostics: "ssh",
+  knownHosts: "ssh",
+};
+
 const REMOTE_ONLY_INSPECTOR_TAB_IDS = new Set<InspectorTab>([
   "transfers",
   "metadata",

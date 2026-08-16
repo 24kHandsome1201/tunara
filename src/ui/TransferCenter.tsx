@@ -6,6 +6,8 @@ import type { InspectorScopedPanelProps } from "./inspector-scope";
 import { PanelActionButton, PanelEmptyState, PanelToolbar } from "./shared";
 import { formatTransferEta, formatTransferRate, transferEta, transferRate } from "@/modules/ssh/transfer-rate";
 import { canResumeRecovery } from "@/modules/ssh/transfer-resume";
+import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
+import { useSessionsStore } from "@/state/sessions";
 
 export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelProps> = {}) {
   const t = useT();
@@ -156,6 +158,18 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                   </div>
                   <div className="transfer-card-actions">
                     {(item.status === "queued" || item.status === "running") && <PanelActionButton aria-label={t("transfer.cancel_item", { file: item.source })} onClick={() => void cancel(item.transferId)}>{t("transfer.cancel")}</PanelActionButton>}
+                    {item.status === "completed" && item.direction === "upload" && (
+                      <PanelActionButton
+                        aria-label={t("transfer.preview_item", { file: item.destination })}
+                        onClick={() => {
+                          const owner = useSessionsStore.getState().sessions.find((session) => session.id === item.binding.logicalSessionId);
+                          if (!owner) return;
+                          void openResource(resourceRefForSession(owner, item.destination), "preview");
+                        }}
+                      >
+                        {t("transfer.preview")}
+                      </PanelActionButton>
+                    )}
                     {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") setAnnouncement(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
                   </div>
                   {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" className="transfer-warning">{t("transfer.residue", { path: item.outcome.residuePath })}</div>}

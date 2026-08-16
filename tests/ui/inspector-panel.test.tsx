@@ -53,7 +53,7 @@ const remoteSession: Session = {
 };
 
 function chooseSecondaryPanel(name: string) {
-  fireEvent.click(screen.getByRole("button", { name: "Inspector panels" }));
+  fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
   fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(name) }));
 }
 
@@ -86,7 +86,11 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   expect(screen.queryByTestId("changes-panel")).toBeNull();
   expect(screen.getByTestId("files-panel")).toBeTruthy();
 
-  chooseSecondaryPanel("Preview");
+  fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
+  expect(screen.getByText("Workspace")).toBeTruthy();
+  expect(screen.getByText("Transfer")).toBeTruthy();
+  expect(screen.getByText("SSH")).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitem", { name: /Preview/ }));
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
@@ -176,7 +180,7 @@ test("projects only Files controls in Pure Mode", () => {
 
   expect(screen.getByTestId("files-panel")).toBeTruthy();
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Files"]);
-  expect(screen.queryByRole("button", { name: "Inspector panels" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "More inspector tools" })).toBeNull();
   expect(useUIStore.getState().inspectorTab).toBe("overview");
 });
 

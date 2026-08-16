@@ -146,9 +146,9 @@ export function WorkflowsSettings() {
         <div style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-text-3)" }}>
           {editingId ? t("settings.workflows.edit") : t("settings.workflows.add")}
         </div>
-        <input style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("settings.workflows.name_placeholder")} />
-        <input style={fieldStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("settings.workflows.desc_placeholder")} />
-        <input style={{ ...fieldStyle, fontFamily: "var(--font-mono)" }} value={template} onChange={(e) => setTemplate(e.target.value)} placeholder={t("settings.workflows.template_placeholder")} spellCheck={false} />
+        <input aria-label={t("settings.workflows.name")} style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("settings.workflows.name_placeholder")} />
+        <input aria-label={t("settings.workflows.description")} style={fieldStyle} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("settings.workflows.desc_placeholder")} />
+        <input aria-label={t("settings.workflows.template")} style={{ ...fieldStyle, fontFamily: "var(--font-mono)" }} value={template} onChange={(e) => setTemplate(e.target.value)} placeholder={t("settings.workflows.template_placeholder")} spellCheck={false} />
         <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>
           {previewParams.length > 0
             ? t("settings.workflows.params", { params: previewParams.join(", ") })

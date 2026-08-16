@@ -89,10 +89,14 @@ ready: boolean                       // set true once useInit finishes restore
 configLoaded / configPath / configError  // user-config load status
 sidebarVisible / panelVisible
 overlay: OverlayType                 // null | "settings" | "command-palette" | "ssh"
-split: SplitState                    // { mode, paneA, paneB, ratio }
-inspectorTab: "overview" | "changes" | "files" | "notes"
+split: SplitState                    // recursive pane tree, max 4 leaves ({ root })
+inspectorTab: InspectorTab           // overview | changes | files | preview | notes
+                                     // SSH: + transfers | metadata | forwarding | diagnostics | knownHosts
+presentationMode: "workspace" | "pure"
+fileTabs: WorkspaceFileTab[]         // files opened beside the terminal
 toasts: Toast[]                      // capped, last 3
 hostKeyPrompt: HostKeyPrompt | null  // pending SSH TOFU confirmation
+keyboardInteractivePrompts: KeyboardInteractivePrompt[]  // parked SSH keyboard-interactive questions
 pendingWorkflow: PendingWorkflow | null
 collapsedDirs: Record<string, true>
 collapsedDiffSections: Record<string, true>
@@ -101,16 +105,22 @@ trafficLightWidth / viewportWidth    // runtime layout, not persisted
 ```
 
 `hostKeyPrompt` is set by the PTY bridge (`setHostKeyPrompt` is called from
-`src/modules/terminal/lib/pty-bridge.ts`) when the backend `ssh_open` call
-parks on an unknown host key; the overlay in `src/ui/overlays/HostKeyPrompt.tsx`
-resolves it.
+`src/modules/terminal/lib/pty-bridge.ts`) when the backend `ssh_open_v2` call
+parks on an unknown or unverifiable host key; the overlay in
+`src/ui/overlays/HostKeyPrompt.tsx` resolves it. Keyboard-interactive prompts
+use the same park/unpark path via `KeyboardInteractivePrompt.tsx`.
+
+`presentationMode` and `fileTabs` are runtime UI. Pure Mode is not written into
+the workspace snapshot; leaving it restores the last docked layout. File tabs
+are session-scoped open documents and are not part of `PersistedUILayoutV2`.
 
 **Two distinct persistence channels for the UI store:**
 
 1. **User config** (`loadUserConfig` / the appearance subscriber): the
    `AppearanceSettings` half (theme, accent, fonts, scrollback, sidebar/panel
    width, terminal theme, external editor, bell, clipboard/inline-image flags,
-   keybindings, language) is loaded via `loadUserConfig()` and written through
+   terminal interaction triggers, keybindings, language, global shortcut,
+   local usage logging) is loaded via `loadUserConfig()` and written through
    `src/modules/config/config-bridge.ts` to the backend config file. A
    `subscribeWithSelector` subscription over `PERSIST_KEYS` debounces saves at
    300 ms and is suppressed during hydration (the `configHydrating` flag) and

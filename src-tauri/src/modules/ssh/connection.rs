@@ -26,6 +26,7 @@ use super::flow_control::{
     OUTPUT_BATCH_INTERVAL,
 };
 use super::known_hosts::{self, Verdict};
+use super::reverse_forward::ReverseForwardHub;
 use crate::modules::pty::output_flow::OutputFlow;
 use crate::modules::pty::{HostKeyPersistenceStatus, PtyEvent};
 
@@ -75,6 +76,11 @@ const SSH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(135);
 // stage timeout slightly longer so it does not cancel a still-valid challenge.
 const SSH_AUTH_TIMEOUT: Duration = Duration::from_secs(135);
 const SSH_CHANNEL_SETUP_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// GUI clients have no local tty whose termios we can copy. sshd applies only
+/// the listed codes and leaves the rest at pty defaults; IUTF8 is the flag
+/// that keeps CJK/IME input as UTF-8 instead of 8-bit garbage.
+pub(crate) const SSH_PTY_MODES: [(russh::Pty, u32); 1] = [(russh::Pty::IUTF8, 1)];
 
 pub(super) async fn await_stage<T, E, F>(
     label: &str,
@@ -161,6 +167,8 @@ pub struct ClientHandler {
     /// Connection-level termination signal. Channel EOF alone is not proof
     /// that the multiplexed SSH transport was lost.
     disconnected: tokio::sync::watch::Sender<bool>,
+    /// Reverse-forward listeners registered on this multiplexed client.
+    reverse_hub: ReverseForwardHub,
 }
 
 impl ClientHandler {
@@ -319,6 +327,29 @@ impl client::Handler for ClientHandler {
         }
         Ok(accepted)
     }
+
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::client::Msg>,
+        connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let Some(accept) = self
+            .reverse_hub
+            .try_accept(connected_address, connected_port)
+        else {
+            return Ok(());
+        };
+        tokio::spawn(async move {
+            if let Err(error) = accept.relay(channel).await {
+                log::debug!("ssh reverse forward relay ended: {error}");
+            }
+        });
+        Ok(())
+    }
 }
 
 /// Remote shell-integration bootstrap (OSC 7 + OSC 133 hooks for bash/zsh).
@@ -415,6 +446,7 @@ pub struct SshSession {
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
     /// Shared across multiplexed shells on the same TCP transport.
     sftp: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>>,
+    reverse_hub: ReverseForwardHub,
 }
 
 /// Cloneable pieces of an authenticated SSH TCP transport. A second interactive
@@ -437,6 +469,7 @@ pub struct SharedSshTransport {
     #[allow(dead_code)]
     identity_file: Option<String>,
     jump_endpoint: Option<(String, u16, String)>,
+    reverse_hub: ReverseForwardHub,
 }
 
 async fn close_forward_channel_owned(channel: russh::Channel<russh::client::Msg>) {
@@ -533,6 +566,7 @@ async fn connect_authenticated_stream<S>(
         Handle<ClientHandler>,
         watch::Receiver<bool>,
         Arc<std::sync::Mutex<Option<String>>>,
+        ReverseForwardHub,
     ),
     String,
 >
@@ -547,6 +581,7 @@ where
     });
     let verified_host_key = Arc::new(std::sync::Mutex::new(None));
     let (disconnected, disconnected_rx) = watch::channel(false);
+    let reverse_hub = ReverseForwardHub::default();
     let handler = ClientHandler {
         host: params.host.clone(),
         port: params.port,
@@ -555,6 +590,7 @@ where
         verified_host_key: Arc::clone(&verified_host_key),
         cancel,
         disconnected,
+        reverse_hub: reverse_hub.clone(),
     };
     send_connection_status(&on_event, "handshaking");
     let mut handle = await_stage(
@@ -582,7 +618,7 @@ where
         ),
     )
     .await?;
-    Ok((handle, disconnected_rx, verified_host_key))
+    Ok((handle, disconnected_rx, verified_host_key, reverse_hub))
 }
 
 async fn connect_direct_authenticated(
@@ -595,6 +631,7 @@ async fn connect_direct_authenticated(
         watch::Receiver<bool>,
         Arc<std::sync::Mutex<Option<String>>>,
         Arc<std::net::TcpStream>,
+        ReverseForwardHub,
     ),
     String,
 > {
@@ -626,9 +663,15 @@ async fn connect_direct_authenticated(
     );
     let socket = tokio::net::TcpStream::from_std(socket)
         .map_err(|e| format!("prepare SSH transport failed: {e}"))?;
-    let (handle, disconnected, verified_host_key) =
+    let (handle, disconnected, verified_host_key, reverse_hub) =
         connect_authenticated_stream(params, on_event, cancel, socket).await?;
-    Ok((handle, disconnected, verified_host_key, transport_abort))
+    Ok((
+        handle,
+        disconnected,
+        verified_host_key,
+        transport_abort,
+        reverse_hub,
+    ))
 }
 
 async fn emit_output(
@@ -704,7 +747,7 @@ impl SshSession {
         on_event: IpcChannel<PtyEvent>,
         cancel: tokio::sync::watch::Receiver<bool>,
     ) -> Result<SshSession, String> {
-        let (handle, disconnected, verified_host_key, transport_abort) =
+        let (handle, disconnected, verified_host_key, transport_abort, reverse_hub) =
             connect_direct_authenticated(&params, on_event.clone(), cancel.clone()).await?;
         Self::open_authenticated(
             params,
@@ -714,6 +757,7 @@ impl SshSession {
             None,
             verified_host_key,
             transport_abort,
+            reverse_hub,
         )
         .await
     }
@@ -727,14 +771,14 @@ impl SshSession {
         on_event: IpcChannel<PtyEvent>,
         cancel: tokio::sync::watch::Receiver<bool>,
     ) -> Result<SshSession, RoutedOpenError> {
-        let (jump_handle, _jump_disconnected, _jump_verified_host_key, transport_abort) =
+        let (jump_handle, _jump_disconnected, _jump_verified_host_key, transport_abort, _jump_hub) =
             connect_direct_authenticated(&jump, on_event.clone(), cancel.clone())
                 .await
                 .map_err(RoutedOpenError::Jump)?;
         let stream = super::direct_tcpip::into_stream(&jump_handle, &target.host, target.port)
             .await
             .map_err(RoutedOpenError::Jump)?;
-        let (target_handle, target_disconnected, verified_host_key) =
+        let (target_handle, target_disconnected, verified_host_key, reverse_hub) =
             connect_authenticated_stream(&target, on_event.clone(), cancel, stream)
                 .await
                 .map_err(RoutedOpenError::Target)?;
@@ -746,6 +790,7 @@ impl SshSession {
             Some(Arc::new(jump_handle)),
             verified_host_key,
             transport_abort,
+            reverse_hub,
         )
         .await
         .map_err(RoutedOpenError::Target)
@@ -759,6 +804,7 @@ impl SshSession {
         jump_handle: Option<Arc<Handle<ClientHandler>>>,
         verified_host_key: Arc<std::sync::Mutex<Option<String>>>,
         transport_abort: Arc<std::net::TcpStream>,
+        reverse_hub: ReverseForwardHub,
     ) -> Result<SshSession, String> {
         let handle = Arc::new(handle);
         let verified = verified_host_key
@@ -782,6 +828,7 @@ impl SshSession {
                 verified_host_key: verified,
                 identity_file: None,
                 jump_endpoint: None,
+                reverse_hub,
             },
         )
         .await
@@ -823,7 +870,7 @@ impl SshSession {
                 params.rows as u32,
                 0,
                 0,
-                &[],
+                &SSH_PTY_MODES,
             ),
         )
         .await
@@ -1091,6 +1138,7 @@ impl SshSession {
             identity_file: params.auth.identity_file,
             jump_endpoint: params.jump_endpoint.or(shared.jump_endpoint),
             sftp: shared.sftp,
+            reverse_hub: shared.reverse_hub,
         })
     }
 
@@ -1145,6 +1193,7 @@ impl SshSession {
             verified_host_key: self.verified_host_key.clone(),
             identity_file: self.identity_file.clone(),
             jump_endpoint: self.jump_endpoint.clone(),
+            reverse_hub: self.reverse_hub.clone(),
         })
     }
 
@@ -1453,6 +1502,35 @@ impl SshSession {
 
     pub fn transport_lost(&self) -> bool {
         self.transport_lost.load(Ordering::Acquire)
+    }
+
+    pub fn reverse_forward_hub(&self) -> &ReverseForwardHub {
+        &self.reverse_hub
+    }
+
+    pub async fn request_tcpip_forward(&self, address: &str, port: u32) -> Result<u32, String> {
+        if self.is_closed() {
+            return Err("SSH session closed".into());
+        }
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            self.handle.tcpip_forward(address.to_string(), port),
+        )
+        .await
+        .map_err(|_| "SSH remote forward request timed out".to_string())?
+        .map_err(|error| format!("SSH remote forward rejected: {error}"))
+    }
+
+    pub async fn cancel_tcpip_forward(&self, address: &str, port: u32) -> Result<(), String> {
+        if self.is_closed() {
+            return Ok(());
+        }
+        let _ = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.handle.cancel_tcpip_forward(address.to_string(), port),
+        )
+        .await;
+        Ok(())
     }
 
     /// Open the exact RFC 4254 direct-tcpip target through this already
@@ -2115,6 +2193,11 @@ mod tests {
             classify_pump_end(None, false, false, true),
             PumpEnd::TransportLost
         );
+    }
+
+    #[test]
+    fn ssh_pty_modes_enable_utf8_input() {
+        assert_eq!(SSH_PTY_MODES, [(russh::Pty::IUTF8, 1)]);
     }
 
     #[test]

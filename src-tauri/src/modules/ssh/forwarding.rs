@@ -50,6 +50,19 @@ pub struct DynamicForwardView {
     pub recreate_on_reconnect: bool,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteForwardView {
+    pub rule_id: String,
+    pub binding: SessionBindingV1,
+    pub remote_bind_host: String,
+    pub remote_port: u16,
+    pub requested_remote_port: u16,
+    pub recreate_on_reconnect: bool,
+    pub local_target_host: String,
+    pub local_target_port: u16,
+}
+
 /// A deliberately narrow, serializable reconnect intent. The old rule id and
 /// binding let rebuild stop only the rule represented by this snapshot.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -74,6 +87,15 @@ pub enum ForwardReconnectIntent {
         bind_host: String,
         requested_local_port: u16,
         old_actual_local_port: u16,
+    },
+    Remote {
+        old_rule_id: String,
+        old_binding: SessionBindingV1,
+        remote_bind_host: String,
+        requested_remote_port: u16,
+        old_actual_remote_port: u16,
+        local_target_host: String,
+        local_target_port: u16,
     },
 }
 
@@ -102,6 +124,7 @@ pub struct ForwardRebuildResult {
 enum RuleView {
     Local(LocalForwardView),
     Dynamic(DynamicForwardView),
+    Remote(RemoteForwardView),
 }
 
 impl RuleView {
@@ -109,6 +132,7 @@ impl RuleView {
         match self {
             Self::Local(view) => &view.binding,
             Self::Dynamic(view) => &view.binding,
+            Self::Remote(view) => &view.binding,
         }
     }
 }
@@ -131,6 +155,7 @@ async fn stop_rule(cancel: watch::Sender<bool>, mut completed: watch::Receiver<b
 enum RuleKind {
     Local,
     Dynamic,
+    Remote,
 }
 
 /// Validate the complete backend-issued binding and signal one matching rule
@@ -165,7 +190,9 @@ fn cancel_bound_rule(
         let rule = rules.get(rule_id).ok_or("forward rule not found")?;
         let matching_kind = matches!(
             (&rule.view, kind),
-            (RuleView::Local(_), RuleKind::Local) | (RuleView::Dynamic(_), RuleKind::Dynamic)
+            (RuleView::Local(_), RuleKind::Local)
+                | (RuleView::Dynamic(_), RuleKind::Dynamic)
+                | (RuleView::Remote(_), RuleKind::Remote)
         );
         if !matching_kind
             || rule.view.binding() != binding
@@ -467,7 +494,7 @@ pub fn ssh_local_forward_list(
             })
             .filter_map(|r| match &r.view {
                 RuleView::Local(view) => Some(view.clone()),
-                RuleView::Dynamic(_) => None,
+                RuleView::Dynamic(_) | RuleView::Remote(_) => None,
             })
             .collect();
         views.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
@@ -773,7 +800,7 @@ pub fn ssh_dynamic_forward_list(
             })
             .filter_map(|r| match &r.view {
                 RuleView::Dynamic(v) => Some(v.clone()),
-                _ => None,
+                RuleView::Local(_) | RuleView::Remote(_) => None,
             })
             .collect();
         out.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
@@ -853,6 +880,18 @@ pub async fn ssh_forwarding_reconnect_snapshot(
                         });
                         captured_ids.push(v.rule_id.clone());
                     }
+                    RuleView::Remote(v) if v.recreate_on_reconnect => {
+                        intents.push(ForwardReconnectIntent::Remote {
+                            old_rule_id: v.rule_id.clone(),
+                            old_binding: v.binding.clone(),
+                            remote_bind_host: v.remote_bind_host.clone(),
+                            requested_remote_port: v.requested_remote_port,
+                            old_actual_remote_port: v.remote_port,
+                            local_target_host: v.local_target_host.clone(),
+                            local_target_port: v.local_target_port,
+                        });
+                        captured_ids.push(v.rule_id.clone());
+                    }
                     _ => {}
                 }
             }
@@ -880,7 +919,8 @@ pub async fn ssh_forwarding_reconnect_snapshot(
 fn intent_rule_id(intent: &ForwardReconnectIntent) -> &str {
     match intent {
         ForwardReconnectIntent::Local { old_rule_id, .. }
-        | ForwardReconnectIntent::Dynamic { old_rule_id, .. } => old_rule_id,
+        | ForwardReconnectIntent::Dynamic { old_rule_id, .. }
+        | ForwardReconnectIntent::Remote { old_rule_id, .. } => old_rule_id,
     }
 }
 
@@ -906,6 +946,11 @@ pub async fn ssh_forwarding_reconnect_rebuild(
                     ..
                 }
                 | ForwardReconnectIntent::Dynamic {
+                    old_rule_id,
+                    old_binding,
+                    ..
+                }
+                | ForwardReconnectIntent::Remote {
                     old_rule_id,
                     old_binding,
                     ..
@@ -943,6 +988,18 @@ pub async fn ssh_forwarding_reconnect_rebuild(
                     old_binding,
                     *requested_local_port,
                     *old_actual_local_port,
+                ),
+                ForwardReconnectIntent::Remote {
+                    old_rule_id,
+                    old_binding,
+                    requested_remote_port,
+                    old_actual_remote_port,
+                    ..
+                } => (
+                    old_rule_id.clone(),
+                    old_binding,
+                    *requested_remote_port,
+                    *old_actual_remote_port,
                 ),
             };
             if old_binding.logical_session_id != binding.logical_session_id {
@@ -1007,6 +1064,24 @@ pub async fn ssh_forwarding_reconnect_rebuild(
                 )
                 .await
                 .map(|v| (v.rule_id, v.local_port)),
+                ForwardReconnectIntent::Remote {
+                    remote_bind_host,
+                    local_target_host,
+                    local_target_port,
+                    ..
+                } => ssh_remote_forward_start(
+                    app.clone(),
+                    app.state(),
+                    app.state(),
+                    binding.clone(),
+                    remote_bind_host,
+                    requested,
+                    local_target_host,
+                    local_target_port,
+                    Some(true),
+                )
+                .await
+                .map(|v| (v.rule_id, v.remote_port)),
             };
             results.push(match started {
                 Ok((new_rule_id, new_port)) => ForwardRebuildResult {
@@ -1037,7 +1112,10 @@ pub async fn ssh_forwarding_reconnect_rebuild(
 
 fn classify_rebuild_failure(error: &str, requested_port: u16) -> ForwardRebuildFailure {
     if requested_port != 0
-        && (error == "SSH_FORWARDING_FIXED_PORT_UNAVAILABLE" || error.contains("cannot bind"))
+        && (error == "SSH_FORWARDING_FIXED_PORT_UNAVAILABLE"
+            || error.contains("cannot bind")
+            || error.contains("remote forward rejected")
+            || error.contains("tcpip-forward"))
     {
         ForwardRebuildFailure::FixedPortUnavailable
     } else if error == "SSH_FORWARDING_STALE_BINDING"
@@ -1055,6 +1133,269 @@ fn classify_rebuild_failure(error: &str, requested_port: u16) -> ForwardRebuildF
     } else {
         ForwardRebuildFailure::Internal
     }
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn ssh_remote_forward_start(
+    app: AppHandle,
+    pty: State<'_, PtyState>,
+    state: State<'_, ForwardingState>,
+    binding: SessionBindingV1,
+    remote_bind_host: String,
+    remote_port: u16,
+    local_target_host: String,
+    local_target_port: u16,
+    recreate_on_reconnect: Option<bool>,
+) -> Result<RemoteForwardView, String> {
+    (async {
+        let remote_ip = parse_bind(&remote_bind_host)?;
+        let local_ip = parse_bind(&local_target_host)?;
+        if local_target_port == 0 {
+            return Err("localTargetPort must be non-zero".into());
+        }
+        let (physical_id, generation) = ssh_generation(&pty, &binding)?;
+        if matches!(generation.as_ref(), Session::Ssh(ssh) if ssh.transport_lost()) {
+            return Err("SSH session binding is stale".into());
+        }
+        {
+            let rules = state
+                .rules
+                .lock()
+                .map_err(|_| "forward registry unavailable")?;
+            if rules
+                .values()
+                .filter(|r| r.view.binding().logical_session_id == binding.logical_session_id)
+                .count()
+                >= MAX_RULES_PER_SESSION
+            {
+                return Err(format!(
+                    "session forward limit ({MAX_RULES_PER_SESSION}) reached"
+                ));
+            }
+        }
+
+        let Session::Ssh(ssh) = generation.as_ref() else {
+            return Err("binding does not identify an SSH session".into());
+        };
+        let allocated = ssh
+            .request_tcpip_forward(&remote_ip.to_string(), u32::from(remote_port))
+            .await?;
+        let actual_port = if remote_port == 0 {
+            u16::try_from(allocated).map_err(|_| "remote allocated port is invalid")?
+        } else {
+            remote_port
+        };
+        if actual_port == 0 {
+            return Err("remote forward did not allocate a port".into());
+        }
+        let (physical_after, generation_after) = ssh_generation(&pty, &binding)?;
+        if physical_after != physical_id
+            || !Arc::ptr_eq(&generation, &generation_after)
+            || matches!(generation_after.as_ref(), Session::Ssh(ssh) if ssh.transport_lost())
+        {
+            let Session::Ssh(ssh) = generation.as_ref() else {
+                return Err("SSH session generation changed while starting forward".into());
+            };
+            let _ = ssh
+                .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
+                .await;
+            return Err("SSH session generation changed while starting forward".into());
+        }
+
+        let rule_id = format!("rf-{}", state.next_id.fetch_add(1, Ordering::Relaxed) + 1);
+        let view = RemoteForwardView {
+            rule_id: rule_id.clone(),
+            binding: binding.clone(),
+            remote_bind_host,
+            remote_port: actual_port,
+            requested_remote_port: remote_port,
+            recreate_on_reconnect: recreate_on_reconnect.unwrap_or(false),
+            local_target_host: local_target_host.clone(),
+            local_target_port,
+        };
+        let (cancel, cancelled) = watch::channel(false);
+        let (completion_tx, completion_rx) = watch::channel(false);
+        let over_session_limit = {
+            let mut rules = state
+                .rules
+                .lock()
+                .map_err(|_| "forward registry unavailable")?;
+            if rules
+                .values()
+                .filter(|r| r.view.binding().logical_session_id == binding.logical_session_id)
+                .count()
+                >= MAX_RULES_PER_SESSION
+            {
+                true
+            } else {
+                rules.insert(
+                    rule_id.clone(),
+                    Rule {
+                        view: RuleView::Remote(view.clone()),
+                        generation: generation.clone(),
+                        cancel: cancel.clone(),
+                        completed: completion_rx,
+                    },
+                );
+                false
+            }
+        };
+        if over_session_limit {
+            let Session::Ssh(ssh) = generation.as_ref() else {
+                return Err(format!(
+                    "session forward limit ({MAX_RULES_PER_SESSION}) reached"
+                ));
+            };
+            let _ = ssh
+                .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
+                .await;
+            return Err(format!(
+                "session forward limit ({MAX_RULES_PER_SESSION}) reached"
+            ));
+        }
+        let Session::Ssh(ssh) = generation.as_ref() else {
+            return Err("binding does not identify an SSH session".into());
+        };
+        if let Err(error) = ssh.reverse_forward_hub().insert(
+            &remote_ip.to_string(),
+            u32::from(actual_port),
+            local_ip,
+            local_target_port,
+            cancelled.clone(),
+        ) {
+            if let Ok(mut rules) = state.rules.lock() {
+                rules.remove(&rule_id);
+            }
+            let _ = cancel.send(true);
+            let _ = ssh
+                .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
+                .await;
+            return Err(error);
+        }
+        if !ssh_generation(&pty, &binding).is_ok_and(|(_, current)| {
+            Arc::ptr_eq(&current, &generation)
+                && matches!(current.as_ref(), Session::Ssh(ssh) if !ssh.transport_lost())
+        }) {
+            if let Ok(mut rules) = state.rules.lock() {
+                rules.remove(&rule_id);
+            }
+            ssh.reverse_forward_hub()
+                .remove(&remote_ip.to_string(), u32::from(actual_port));
+            let _ = cancel.send(true);
+            let _ = ssh
+                .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
+                .await;
+            return Err("SSH session generation changed while registering forward".into());
+        }
+
+        let preserve_for_snapshot = view.recreate_on_reconnect;
+        let hub = ssh.reverse_forward_hub().clone();
+        let bind_host = remote_ip.to_string();
+        tokio::spawn(async move {
+            let mut cancelled = cancelled;
+            let mut transport_closed = false;
+            loop {
+                let pty = app.state::<PtyState>();
+                let current = pty.get_for_ssh_binding(&binding);
+                if current
+                    .as_ref()
+                    .is_none_or(|s| !Arc::ptr_eq(s, &generation))
+                {
+                    break;
+                }
+                let Session::Ssh(ssh) = generation.as_ref() else {
+                    break;
+                };
+                tokio::select! {
+                    biased;
+                    _ = cancelled.changed() => break,
+                    _ = ssh.wait_closed() => { transport_closed = ssh.transport_lost(); break; },
+                    _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {},
+                }
+            }
+            let _ = cancel.send(true);
+            hub.remove(&bind_host, u32::from(actual_port));
+            if let Session::Ssh(ssh) = generation.as_ref() {
+                let _ = ssh
+                    .cancel_tcpip_forward(&bind_host, u32::from(actual_port))
+                    .await;
+            }
+            cleanup_rule_registration(
+                app,
+                rule_id,
+                generation,
+                preserve_for_snapshot && transport_closed,
+            );
+            let _ = completion_tx.send(true);
+        });
+        Ok(view)
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::Forwarding, error)
+    })
+}
+
+#[tauri::command]
+pub fn ssh_remote_forward_list(
+    pty: State<'_, PtyState>,
+    state: State<'_, ForwardingState>,
+    binding: Option<SessionBindingV1>,
+) -> Result<Vec<RemoteForwardView>, String> {
+    (|| {
+        if let Some(binding) = binding.as_ref() {
+            valid_token(&binding.logical_session_id, "binding.logicalSessionId")?;
+            valid_token(&binding.transport_generation, "binding.transportGeneration")?;
+        }
+        let mut rules = state
+            .rules
+            .lock()
+            .map_err(|_| "forward registry unavailable")?;
+        rules.retain(|_, rule| {
+            let current = pty.get_for_ssh_binding(rule.view.binding());
+            let valid = current.is_some_and(|current| Arc::ptr_eq(&current, &rule.generation));
+            if !valid {
+                let _ = rule.cancel.send(true);
+            }
+            valid
+        });
+        let mut views: Vec<_> = rules
+            .values()
+            .filter(|r| {
+                binding
+                    .as_ref()
+                    .is_none_or(|binding| r.view.binding() == binding)
+            })
+            .filter_map(|r| match &r.view {
+                RuleView::Remote(view) => Some(view.clone()),
+                RuleView::Local(_) | RuleView::Dynamic(_) => None,
+            })
+            .collect();
+        views.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
+        Ok(views)
+    })()
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::Forwarding, error)
+    })
+}
+
+#[tauri::command]
+pub async fn ssh_remote_forward_stop(
+    pty: State<'_, PtyState>,
+    state: State<'_, ForwardingState>,
+    binding: SessionBindingV1,
+    rule_id: String,
+) -> Result<(), String> {
+    (async {
+        let completed = cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Remote)?;
+        wait_for_rule_stop(completed).await;
+        Ok(())
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::Forwarding, error)
+    })
 }
 
 #[cfg(test)]
@@ -1142,6 +1483,24 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<ForwardReconnectIntent>(json).unwrap(),
             intent
+        );
+
+        let remote = ForwardReconnectIntent::Remote {
+            old_rule_id: "rf-1".into(),
+            old_binding: binding("old"),
+            remote_bind_host: "127.0.0.1".into(),
+            requested_remote_port: 0,
+            old_actual_remote_port: 18080,
+            local_target_host: "127.0.0.1".into(),
+            local_target_port: 5173,
+        };
+        let json = serde_json::to_value(&remote).unwrap();
+        assert_eq!(json["requestedRemotePort"], 0);
+        assert_eq!(json["oldActualRemotePort"], 18080);
+        assert_eq!(json["localTargetPort"], 5173);
+        assert_eq!(
+            serde_json::from_value::<ForwardReconnectIntent>(json).unwrap(),
+            remote
         );
     }
 

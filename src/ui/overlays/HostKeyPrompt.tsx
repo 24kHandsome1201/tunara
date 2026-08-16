@@ -153,11 +153,12 @@ export function HostKeyPromptDialog() {
           <button
             onClick={() => { void decide(true); }}
             disabled={submitting}
-            className="ui-button ui-button--primary"
+            className={unverifiable ? "ui-button" : "ui-button ui-button--primary"}
             style={{
               padding: "6px 18px",
               fontSize: "var(--fs-body)",
               fontWeight: 500,
+              ...(unverifiable ? { color: "var(--c-warning-text)", borderColor: "var(--c-warning)" } : {}),
             }}
           >
             {t("ssh.hostKey.accept")}

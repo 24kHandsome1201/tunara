@@ -115,8 +115,11 @@ export function TerminalSearchBar({
       <div style={{ width: 1, height: 16, background: "var(--c-border-2)", flexShrink: 0, margin: "0 2px" }} />
 
       <button
+        type="button"
         onClick={onToggleRegex}
         title={t("term.search.regex")}
+        aria-label={t("term.search.regex")}
+        aria-pressed={useRegex}
         className="hover-bg"
         style={{
           ...TOGGLE_STYLE,
@@ -129,8 +132,11 @@ export function TerminalSearchBar({
         .*
       </button>
       <button
+        type="button"
         onClick={onToggleCaseSensitive}
         title={t("term.search.case_sensitive")}
+        aria-label={t("term.search.case_sensitive")}
+        aria-pressed={caseSensitive}
         className="hover-bg"
         style={{
           ...TOGGLE_STYLE,
@@ -165,17 +171,17 @@ export function TerminalSearchBar({
 
       <div style={{ width: 1, height: 16, background: "var(--c-border-2)", flexShrink: 0, margin: "0 2px" }} />
 
-      <button onClick={onPrev} title={`${t("term.search.prev")} ${prevShortcut}`} aria-label={`${t("term.search.prev")} ${prevShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button type="button" onClick={onPrev} title={`${t("term.search.prev")} ${prevShortcut}`} aria-label={`${t("term.search.prev")} ${prevShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE} disabled={!hasResults}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="18 15 12 9 6 15" />
         </svg>
       </button>
-      <button onClick={onNext} title={`${t("term.search.next")} ${nextShortcut}`} aria-label={`${t("term.search.next")} ${nextShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button type="button" onClick={onNext} title={`${t("term.search.next")} ${nextShortcut}`} aria-label={`${t("term.search.next")} ${nextShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE} disabled={!hasResults}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      <button onClick={onClose} title={`${t("term.search.close")} ${closeShortcut}`} aria-label={`${t("term.search.close")} ${closeShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button type="button" onClick={onClose} title={`${t("term.search.close")} ${closeShortcut}`} aria-label={`${t("term.search.close")} ${closeShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <CloseIcon size={12} strokeWidth={2.2} />
       </button>
     </div>

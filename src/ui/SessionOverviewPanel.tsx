@@ -164,8 +164,8 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
             <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
               <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>{t("workspace.title")}</span>
               <span style={{ flex: 1 }} />
-              <span style={{ fontSize: "var(--fs-badge)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
-                {session.workspace.repository.transport === "ssh" ? "SSH" : t("workspace.local")}
+              <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
+                {session.workspace.repository.transport === "ssh" ? t("workspace.ssh") : t("workspace.local")}
               </span>
             </div>
             <div style={{ marginTop: 5, display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>

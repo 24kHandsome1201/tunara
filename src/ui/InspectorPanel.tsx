@@ -32,8 +32,8 @@ import { ForwardingPanel } from "@/modules/ssh/ForwardingPanel";
 import { KnownHostsPanel } from "@/modules/ssh/KnownHostsPanel";
 import { copyText } from "./lib/clipboard";
 import { INSPECTOR_TAB_DESCRIPTORS, resolveInspectorScope } from "./inspector-scope";
-import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { resolveInspectorNavigation } from "./inspector-navigation";
+import { ContextMenu, type MenuEntry, type MenuItem } from "./ContextMenu";
+import { INSPECTOR_OVERFLOW_SECTION, resolveInspectorNavigation } from "./inspector-navigation";
 
 const INSPECTOR_TABPANEL_ID = "inspector-tabpanel";
 
@@ -76,7 +76,7 @@ function TabButton({
         flexShrink: 0,
         whiteSpace: "nowrap",
         color: active ? "var(--c-text-primary)" : "var(--c-text-5)",
-        transition: "border-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
+        transition: "border-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth)",
       }}
       className={active ? "inspector-tab" : "inspector-tab hover-text-3"}
     >
@@ -182,13 +182,18 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     const rect = event.currentTarget.getBoundingClientRect();
     const items = navigation.secondary.flatMap<MenuEntry>((id, index) => {
       const current = id === tab;
-      const item: MenuEntry = {
+      const item: MenuItem = {
         id: `inspector:${id}`,
         label: `${current ? "✓ " : ""}${t(INSPECTOR_TAB_DESCRIPTORS[id].titleKey)}`,
         action: () => selectTab(id),
       };
-      const addSeparator = index > 0 && (id === "transfers" || id === "diagnostics");
-      return addSeparator ? [null, item] : [item];
+      const section = INSPECTOR_OVERFLOW_SECTION[id];
+      const prevSection = index > 0 ? INSPECTOR_OVERFLOW_SECTION[navigation.secondary[index - 1]] : undefined;
+      if (section && section !== prevSection) {
+        const heading: MenuEntry = { type: "heading", label: t(`inspector.menu.${section}`) };
+        return index > 0 ? [null, heading, item] : [heading, item];
+      }
+      return [item];
     });
 
     setMoreMenu({
@@ -280,7 +285,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     <div
       style={{
         width: "100%",
-        background: "var(--c-bg-2)",
+        background: "var(--c-bg-1)",
         borderLeft: "1px solid var(--c-border-1)",
         display: "flex",
         flexDirection: "column",
@@ -330,7 +335,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
         {!filesOnly && navigation.secondary.length > 0 && (
           <MoreToolsButton
             expanded={moreMenu !== null}
-            label={t("inspector.tab.aria_label")}
+            label={t("inspector.tab.more")}
             buttonRef={moreButtonRef}
             onClick={toggleMoreMenu}
           />
@@ -357,7 +362,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
             alignItems: "center",
             gap: 7,
             borderBottom: "1px solid var(--c-border-1)",
-            background: "var(--c-bg-2)",
+            background: "var(--c-bg-1)",
             flexShrink: 0,
             minWidth: 0,
             overflow: "hidden",
@@ -372,7 +377,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
               borderRadius: "var(--r-pill)",
               background: "var(--c-bg-3)",
               color: "var(--c-text-5)",
-              fontSize: "var(--fs-badge)",
+              fontSize: "var(--fs-meta)",
               fontFamily: "var(--font-mono)",
             }}
           >

@@ -80,13 +80,14 @@ function ProfileRow({
       <button
         type="button"
         onClick={onSelect}
-        className="hover-bg"
+        className="hover-bg ssh-profile-row"
         style={{
           flex: 1,
           minWidth: 0,
           display: "flex",
-          alignItems: "center",
-          gap: 8,
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 2,
           padding: "7px 8px",
           border: "none",
           borderRadius: "var(--r-btn)",
@@ -96,14 +97,16 @@ function ProfileRow({
           textAlign: "left",
         }}
       >
-        <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-body)", fontWeight: 550 }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-body)", fontWeight: 550 }}>
           {profile.label || `${profile.user}@${profile.host}`}
         </span>
-        <span style={{ color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", whiteSpace: "nowrap" }}>
-          {profile.user ? `${profile.user}@` : ""}{profile.host}{profile.port !== 22 ? `:${profile.port}` : ""}
-        </span>
-        <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", whiteSpace: "nowrap" }}>
-          {source === "sshConfig" ? "~/.ssh/config" : profile.authMethod ? t(`ssh.auth.${profile.authMethod}.short`) : t("ssh.auth.choose.short")}
+        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>
+            {profile.user ? `${profile.user}@` : ""}{profile.host}{profile.port !== 22 ? `:${profile.port}` : ""}
+          </span>
+          <span className="ssh-profile-auth" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+            {source === "sshConfig" ? "~/.ssh/config" : profile.authMethod ? t(`ssh.auth.${profile.authMethod}.short`) : t("ssh.auth.choose.short")}
+          </span>
         </span>
       </button>
       {onDelete && (
@@ -562,7 +565,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
           }
           const target = event.target;
           const excludesSubmit = target instanceof HTMLButtonElement
-            || (target instanceof HTMLInputElement && ["checkbox", "radio"].includes(target.type));
+            || target instanceof HTMLSelectElement
+            || target instanceof HTMLTextAreaElement
+            || (target instanceof HTMLInputElement && (
+              ["checkbox", "radio", "search"].includes(target.type)
+              || target.id === "ssh-profile-search"
+            ));
           if (event.key === "Enter" && !excludesSubmit) {
             event.preventDefault();
             if (canConnect) connect();

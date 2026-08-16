@@ -46,6 +46,72 @@ describe("FileExplorer directory navigation", () => {
 
     expect((screen.getByRole("button", { name: "Go to parent" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  test("follows the SSH terminal cwd until the host toggle is turned off", async () => {
+    useSessionsStore.setState({
+      activeSessionId: "remote",
+      hostFilePrefs: {},
+      sessions: [{
+        id: "remote",
+        title: "deploy@example",
+        dir: "/srv/app",
+        branch: "",
+        runState: "idle",
+        updatedAt: 1,
+        remote: { host: "example", port: 22, user: "deploy" },
+        ptyId: 40,
+      }],
+    });
+    const readPaths: string[] = [];
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_read_dir") {
+        readPaths.push((payload as { path: string }).path);
+        return [];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const view = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} />);
+    await waitFor(() => expect(readPaths).toContain("/srv/app"));
+    const follow = screen.getByRole("button", { name: "Follow terminal directory" });
+    expect(follow.getAttribute("aria-pressed")).toBe("true");
+
+    view.rerender(<FileExplorer sessionId="remote" rootDir="/var/log" remotePtyId={40} />);
+    await waitFor(() => expect(readPaths).toContain("/var/log"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Follow terminal directory" }));
+    expect(screen.getByRole("button", { name: "Follow terminal directory" }).getAttribute("aria-pressed")).toBe("false");
+    const afterToggle = readPaths.length;
+    view.rerender(<FileExplorer sessionId="remote" rootDir="/tmp" remotePtyId={40} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Follow terminal directory" }).getAttribute("aria-pressed")).toBe("false"));
+    expect(readPaths.slice(afterToggle)).not.toContain("/tmp");
+  });
+
+  test("favorites the current remote directory for the host", async () => {
+    useSessionsStore.setState({
+      activeSessionId: "remote",
+      hostFilePrefs: {},
+      sessions: [{
+        id: "remote",
+        title: "deploy@example",
+        dir: "/srv/app",
+        branch: "",
+        runState: "idle",
+        updatedAt: 1,
+        remote: { host: "example", port: 22, user: "deploy" },
+        ptyId: 40,
+      }],
+    });
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} />);
+    await screen.findByText("Directory is empty");
+    fireEvent.click(screen.getByRole("button", { name: "Favorite this directory" }));
+    expect(useSessionsStore.getState().hostFilePrefs["deploy@example:22"]?.favoritePaths).toEqual(["/srv/app"]);
+  });
 });
 
 describe("FileExplorer workspace files", () => {
@@ -772,6 +838,34 @@ describe("FileExplorer workspace files", () => {
     expect(document.activeElement).toBe(readme);
     fireEvent.keyDown(readme, { key: "Home" });
     expect(document.activeElement).toBe(src);
+  });
+
+  test("expands a folder from the chevron without navigating into it", async () => {
+    const reads: string[] = [];
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      const path = (payload as { path: string }).path;
+      reads.push(path);
+      if (path === "/tmp/repo") return [
+        { name: "src", kind: "dir", size: 0, mtime: 2_000 },
+        { name: "README.md", kind: "file", size: 1, mtime: 1_000 },
+      ];
+      return [{ name: "index.ts", kind: "file", size: 1, mtime: 1_000 }];
+    });
+
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    const src = await screen.findByRole("treeitem", { name: /^src/ });
+    expect(src.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand src" }));
+    expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
+    expect(src.getAttribute("aria-expanded")).toBe("true");
+    expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(src);
+    await waitFor(() => expect(reads[reads.length - 1]).toBe("/tmp/repo/src"));
+    expect(screen.getByRole("button", { name: "src" }).getAttribute("aria-current")).toBe("page");
   });
 
   test("retries a rejected nested directory read instead of caching an empty result", async () => {

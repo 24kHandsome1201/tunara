@@ -14,7 +14,20 @@ export interface MenuItem {
   disabled?: boolean;
 }
 
-export type MenuEntry = MenuItem | null;
+export interface MenuHeading {
+  type: "heading";
+  label: string;
+}
+
+export type MenuEntry = MenuItem | MenuHeading | null;
+
+export function isMenuHeading(entry: MenuEntry): entry is MenuHeading {
+  return entry !== null && "type" in entry && entry.type === "heading";
+}
+
+export function isMenuItem(entry: MenuEntry): entry is MenuItem {
+  return entry !== null && !isMenuHeading(entry);
+}
 
 interface ContextMenuProps {
   items: MenuEntry[];
@@ -145,9 +158,10 @@ function MenuIcon({ name }: { name: MenuIconName }) {
 }
 
 function menuEntryKey(items: MenuEntry[], entry: MenuEntry, index: number): string {
+  if (isMenuHeading(entry)) return `heading:${entry.label}:${index}`;
   if (entry) return entry.id ?? `${entry.icon ?? "item"}:${entry.label}`;
-  const before = [...items.slice(0, index)].reverse().find(Boolean)?.label ?? "start";
-  const after = items.slice(index + 1).find(Boolean)?.label ?? "end";
+  const before = [...items.slice(0, index)].reverse().find((item) => item && isMenuItem(item))?.label ?? "start";
+  const after = items.slice(index + 1).find((item) => item && isMenuItem(item))?.label ?? "end";
   return `separator:${before}:${after}`;
 }
 
@@ -170,16 +184,16 @@ export function ContextMenu({
   const menuId = useId();
   const onCloseRef = useRef(onClose);
   const [pos, setPos] = useState({ x: position.x, y: position.y });
-  const firstEnabled = Math.max(0, items.findIndex((entry) => entry && !entry.disabled));
+  const firstEnabled = Math.max(0, items.findIndex((entry) => isMenuItem(entry) && !entry.disabled));
   const [activeIndex, setActiveIndex] = useState(firstEnabled);
 
   const enabledIndices = items
-    .map((entry, i) => (entry && !entry.disabled ? i : -1))
+    .map((entry, i) => (isMenuItem(entry) && !entry.disabled ? i : -1))
     .filter((i) => i >= 0);
 
   const runItem = (index: number) => {
     const item = items[index];
-    if (!item || item.disabled) return;
+    if (!isMenuItem(item) || item.disabled) return;
     item.action();
     onClose();
   };
@@ -209,7 +223,11 @@ export function ContextMenu({
       if (ref.current && !ref.current.contains(e.target as Node)) onCloseRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onCloseRef.current();
+      }
     };
     const onResize = () => onCloseRef.current();
     document.addEventListener("pointerdown", onDown);
@@ -299,6 +317,17 @@ export function ContextMenu({
       {items.map((entry, i) => {
         if (entry === null) {
           return <div key={menuEntryKey(items, entry, i)} role="separator" className="ctx-divider" />;
+        }
+        if (isMenuHeading(entry)) {
+          return (
+            <div
+              key={menuEntryKey(items, entry, i)}
+              role="presentation"
+              className="ctx-heading"
+            >
+              {entry.label}
+            </div>
+          );
         }
         const item = entry;
         const active = activeIndex === i && !item.disabled;

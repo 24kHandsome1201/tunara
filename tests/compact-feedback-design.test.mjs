@@ -10,6 +10,7 @@ test("error feedback remains readable and is not an interactive-role container",
   assert.match(toast, /role=\{toast\.variant === "error" \? "alert" : "status"\}/);
   assert.doesNotMatch(toast, /role="button"/);
   assert.match(toast, /className="toast-primary-action"/);
+  assert.match(toast, /toast\.subtitle \?/);
   assert.match(toast, /aria-label=\{t\("common\.close"\)\}/);
 });
 

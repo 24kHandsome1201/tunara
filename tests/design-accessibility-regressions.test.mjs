@@ -10,6 +10,8 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 const readSettingsSources = () => [
   "src/ui/overlays/Settings.tsx",
   "src/ui/overlays/settings/AppearanceSettings.tsx",
+  "src/ui/overlays/settings/TerminalSettings.tsx",
+  "src/ui/overlays/settings/AccessibilitySettings.tsx",
   "src/ui/overlays/settings/ShortcutsSettings.tsx",
   "src/ui/overlays/settings/CliSettings.tsx",
   "src/ui/overlays/settings/AppSettings.tsx",
@@ -24,7 +26,7 @@ test("waiting confirmation uses a dedicated readable text token", () => {
   const global = read("src/ui/GlobalAgentBar.tsx");
   assert.match(tokens, /--c-warning-text:\s*oklch\(43%/);
   assert.match(tokens, /--c-warning-bg:/);
-  assert.match(card, /var\(--c-warning-text\)/);
+  assert.match(card, /data-confirm=\{confirmClose \? "true" : undefined\}/);
   assert.match(global, /var\(--c-warning-text\)/);
 });
 
@@ -89,6 +91,7 @@ test("non-settings native controls opt into the shared theme contract", () => {
 
   assert.deepEqual(missing, []);
   assert.match(styles, /html \{ color-scheme: light; \}[\s\S]*html\.dark \{ color-scheme: dark; \}/);
+  assert.match(styles, /\.sr-only \{/);
   assert.match(styles, /\.ui-button:hover:not\(:disabled\)/);
   assert.match(styles, /\.ui-button:active:not\(:disabled\)/);
   assert.match(styles, /\.ui-button:focus-visible/);
@@ -113,4 +116,36 @@ test("session and activity rows do not nest action buttons inside button roles",
   assert.match(global, /role="group"[\s\S]*className="gbar-row-select"/);
   assert.doesNotMatch(card, /role="listitem"/);
   assert.doesNotMatch(global, /role="button"/);
+});
+
+test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted glyphs", () => {
+  const tokens = read("src/styles/tokens.css");
+  const styles = read("src/styles/globals.css");
+  const explorer = read("src/ui/FileExplorer.tsx");
+  const inspector = read("src/ui/InspectorPanel.tsx");
+  const preview = read("src/ui/PreviewPanel.tsx");
+  const shared = read("src/ui/shared.tsx");
+
+  assert.doesNotMatch(tokens, /\.session-card:active \{ transform:/);
+  assert.doesNotMatch(tokens, /\.gbar-row:active \{ transform:/);
+  assert.doesNotMatch(tokens, /\.inspector-tab:active \{ transform:/);
+  assert.doesNotMatch(tokens, /\.inspector-tab\[data-active="true"\] \{ background:/);
+  assert.doesNotMatch(inspector, /background: "var\(--c-bg-2\)"/);
+  assert.match(inspector, /background: "var\(--c-bg-1\)"/);
+  assert.match(styles, /\.ui-button--ghost \{/);
+  assert.match(styles, /\.ui-button--ghost:hover:not\(:disabled\)/);
+  assert.match(styles, /\.ui-button--ghost:active:not\(:disabled\)/);
+  assert.match(styles, /\.ui-button--ghost:disabled/);
+  assert.match(styles, /\.preview-source-card \.preview-action-primary/);
+  assert.match(preview, /className="preview-action-primary"/);
+  assert.match(styles, /\.preview-disclosure > summary::before \{[\s\S]*border-right:/);
+  assert.doesNotMatch(styles, /content: "› "/);
+  assert.doesNotMatch(explorer, /stroke="var\(--c-accent\)"/);
+  assert.match(explorer, /<UploadIcon/);
+  assert.match(explorer, /<UploadFolderIcon/);
+  assert.match(explorer, /<DownloadIcon/);
+  assert.match(explorer, /className="explorer-tree-chevron"/);
+  assert.match(shared, /export function UploadIcon/);
+  assert.match(shared, /export function UploadFolderIcon/);
+  assert.match(shared, /export function DownloadIcon/);
 });

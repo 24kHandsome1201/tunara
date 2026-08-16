@@ -101,7 +101,7 @@ function TerminalViewImpl({
   useTerminalRuntimeSync({
     sessionId, active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, terminalTheme, accent,
   });
-  useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady);
+  useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef);
   useEffect(() => {
     const pty = ptyRef.current;
     if (!pendingInput || !pty) return;
@@ -131,6 +131,7 @@ function TerminalViewImpl({
         cursorBlink,
         cursorStyle,
         screenReaderMode,
+        atlasIsolationKey: sessionId,
         linkHandler: createTerminalHyperlinkHandler(openUrl, linkInputRef.current.shouldActivate),
       });
       termRef.current = term;
@@ -182,12 +183,11 @@ function TerminalViewImpl({
         createResource: (path, line, column) => resourceRefForSession(useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)!, path, line, column),
       });
       cleanups.push(() => fileLinkDisposable.dispose());
-      const rebuildWebglAtlas = createWebglAtlasRebuilder(webglRef);
+      const rebuildWebglAtlas = createWebglAtlasRebuilder(webglRef, termRef);
       cleanups.push(registerTerminalAtlasRebuilder(rebuildWebglAtlas)); cleanups.push(registerTerminalLigatureSync(term, rebuildWebglAtlas));
-      // Fit after WebGL addon loads — the addon replaces the renderer and
-      // changes cell metrics; fitting before it loads would measure stale
-      // dimensions, causing a cols/rows mismatch with the PTY that shows
-      // as garbled output until the next resize.
+      // First-fit against the DOM renderer so the PTY can open with a real
+      // grid. useTerminalWebgl refits after swapping in WebGL, which changes
+      // cell metrics without changing the container size.
       await waitForTerminalLayoutFrame();
       if (disposed || !containerRef.current) return;
       fit.fit();

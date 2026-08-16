@@ -6,6 +6,7 @@ import { useUIStore, type CursorStyle } from "@/state/ui";
 import type { TerminalThemeName, ThemeType } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
+import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 import { issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 
@@ -74,7 +75,10 @@ export function useTerminalRuntimeSync({
     const fit = fitRef.current;
     if (!term) return;
     const effectiveScrollback = active ? scrollback : Math.min(scrollback, INACTIVE_SCROLLBACK_LIMIT);
-    term.options.fontFamily = buildTerminalFontFamily(fontFamily, nerdFontFallback);
+    term.options.fontFamily = withAtlasIsolationFontFamily(
+      buildTerminalFontFamily(fontFamily, nerdFontFallback),
+      sessionId,
+    );
     term.options.fontSize = fontSize;
     term.options.scrollback = effectiveScrollback;
     term.options.cursorStyle = cursorStyle;

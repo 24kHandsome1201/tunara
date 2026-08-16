@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import type { Terminal } from "@xterm/xterm";
 import type { WebglAddon } from "@xterm/addon-webgl";
 
 /**
@@ -15,29 +16,30 @@ import type { WebglAddon } from "@xterm/addon-webgl";
  */
 export function createWebglAtlasRebuilder(
   webglRef: RefObject<WebglAddon | null>,
+  termRef?: RefObject<Terminal | null>,
 ): () => void {
   return () => {
     try { webglRef.current?.clearTextureAtlas(); } catch { /* renderer torn down */ }
+    const term = termRef?.current;
+    if (!term || term.rows <= 0) return;
+    try { term.refresh(0, term.rows - 1); } catch { /* terminal disposed */ }
   };
 }
 
 /**
  * Self-heal the sustained-output case (xterm.js #6038 / #4534, fixed upstream
- * only in the unreleased 7.0 line): under heavy output with many distinct
- * glyphs (colored CJK at retina DPR), addon-webgl 0.19 corrupts its shared
+ * only in the unreleased 6.1 beta line): under heavy output with many distinct
+ * glyphs (colored CJK at retina DPR), addon-webgl 0.19 corrupts a shared
  * texture atlas — page merges run mid-frame and mutate glyph page/UV state
- * already baked into vertex buffers, and page-local version counters can
- * collide so stale textures are never re-uploaded. The buffer content stays
+ * already baked into vertex buffers. Split panes now isolate atlases (see
+ * terminal-atlas-isolation.ts); this pressure path still covers the single-
+ * pane CJK churn case and idle GPU reclaim. The buffer content stays
  * correct; only rendering garbles, which is why a resize (which clears the
  * atlas) always fixed it.
  *
- * Because the atlas is SHARED across every terminal with the same font config
- * (all split panes), a rebuild must clear every renderer's model in the same
- * synchronous pass — clearing just one pane leaves siblings pointing at stale
- * vertex data. Hence the module-level registry + global rebuild below.
- *
- * This is a stopgap until the upstream fix ships in a stable xterm release;
- * remove it (and the output-pressure heuristic) after upgrading.
+ * Rebuilders still run in one synchronous pass so a theme/focus invalidation
+ * cannot leave one pane holding a stale model. Remove this heuristic after
+ * upgrading past addon-webgl 0.19.
  */
 const atlasRebuilders = new Set<() => void>();
 
@@ -61,8 +63,8 @@ export function requestGlobalTerminalAtlasRebuild(): void {
 
 type TimerHandle = ReturnType<typeof setTimeout>;
 
-export const ATLAS_PRESSURE_THRESHOLD_BYTES = 512 * 1024;
-export const ATLAS_PRESSURE_MIN_INTERVAL_MS = 10_000;
+export const ATLAS_PRESSURE_THRESHOLD_BYTES = 128 * 1024;
+export const ATLAS_PRESSURE_MIN_INTERVAL_MS = 3_000;
 export const ATLAS_PRESSURE_QUIET_MS = 300;
 
 export interface AtlasPressureMonitorOptions {

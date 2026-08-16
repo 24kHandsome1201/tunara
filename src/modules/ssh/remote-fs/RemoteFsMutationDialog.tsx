@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useFocusTrap } from "@/ui/overlays/useFocusTrap";
 import { performRemoteMutation, type MutationActionResult } from "./actions";
 import type { MutationRequestV1 } from "./bridge";
+import { useT } from "@/modules/i18n";
 
 export interface RemoteFsMutationDialogProps {
   host: string;
@@ -20,11 +21,11 @@ function operationPaths(request: MutationRequestV1): string[] {
   }
 }
 
-function operationLabel(request: MutationRequestV1): string {
+function operationLabel(request: MutationRequestV1, t: (key: string) => string): string {
   switch (request.operation.kind) {
-    case "mkdir": return "Create remote directory";
-    case "rename": return "Move remote item";
-    case "delete": return "Delete remote item";
+    case "mkdir": return t("remote_fs.mutation.mkdir");
+    case "rename": return t("remote_fs.mutation.rename");
+    case "delete": return t("remote_fs.mutation.delete");
   }
 }
 
@@ -34,6 +35,7 @@ export function RemoteFsMutationDialog({
   onClose,
   onComplete,
 }: RemoteFsMutationDialogProps) {
+  const t = useT();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<MutationActionResult | null>(null);
@@ -43,7 +45,7 @@ export function RemoteFsMutationDialog({
   const paths = useMemo(() => operationPaths(request), [request]);
   const sourceKind = request.precondition.source.state === "present"
     ? request.precondition.source.identity.kind
-    : "absent path";
+    : t("remote_fs.mutation.absent");
   const destructive = request.operation.kind === "delete"
     || (request.operation.kind === "rename" && request.operation.replace);
 
@@ -83,33 +85,33 @@ export function RemoteFsMutationDialog({
         }}
       >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
-          <strong id="remote-fs-mutation-title">{operationLabel(request)}</strong>
+          <strong id="remote-fs-mutation-title">{operationLabel(request, t)}</strong>
         </div>
         <div style={{ padding: 18, display: "grid", gap: 12 }}>
           <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "72px 1fr", gap: "7px 10px" }}>
-            <dt>Host</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{host}</dd>
-            <dt>Kind</dt><dd style={{ margin: 0 }}>{sourceKind}</dd>
+            <dt>{t("remote_fs.mutation.host")}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{host}</dd>
+            <dt>{t("remote_fs.mutation.kind")}</dt><dd style={{ margin: 0 }}>{sourceKind}</dd>
             {paths.map((path, index) => (
               <div key={path} style={{ display: "contents" }}>
-                <dt>{index === 0 ? "Path" : "To"}</dt>
+                <dt>{index === 0 ? t("remote_fs.mutation.path") : t("remote_fs.mutation.to")}</dt>
                 <dd style={{ margin: 0, fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{path}</dd>
               </div>
             ))}
           </dl>
           <p id="remote-fs-mutation-safety" style={{ margin: 0, color: "var(--c-text-4)", lineHeight: 1.5 }}>
-            Tunara will lstat the item and its parent again before execution. SFTP pathname mutations are not claimed to be atomic, and no recursive delete or copy is performed.
+            {t("remote_fs.mutation.safety")}
           </p>
           {outcome && (
             <div role="status" style={{ padding: 10, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)" }}>
               <strong>{outcome.result.status}</strong>: {outcome.result.message}
-              {outcome.reconciled && " (reconciled after a lost response; no retry was sent)"}
+              {outcome.reconciled && t("remote_fs.mutation.reconciled")}
             </div>
           )}
           {error && <div role="alert" style={{ color: "var(--c-error)" }}>{error}</div>}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)" }}>
           <button type="button" className="ui-button" onClick={onClose} disabled={submitting} autoFocus>
-            {outcome ? "Close" : "Cancel"}
+            {outcome ? t("common.close") : t("common.cancel")}
           </button>
           {!outcome && (
             <button
@@ -118,7 +120,7 @@ export function RemoteFsMutationDialog({
               onClick={() => { void submit(); }}
               disabled={submitting}
             >
-              {submitting ? "Checking…" : operationLabel(request)}
+              {submitting ? t("remote_fs.mutation.checking") : operationLabel(request, t)}
             </button>
           )}
         </div>

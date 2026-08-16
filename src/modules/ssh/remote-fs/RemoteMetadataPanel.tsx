@@ -6,6 +6,7 @@ import {
   type ChmodResultV1,
   type RemoteMetadataV1,
 } from "./bridge";
+import { useT } from "@/modules/i18n";
 
 export function formatRemoteMode(mode: number): { rwx: string; octal: string; special: string } {
   const permissions = mode & 0o777;
@@ -21,9 +22,9 @@ export function formatRemoteMode(mode: number): { rwx: string; octal: string; sp
   };
 }
 
-function owner(metadata: RemoteMetadataV1): string {
-  const user = metadata.user ?? (metadata.uid === undefined ? "unknown" : String(metadata.uid));
-  const group = metadata.group ?? (metadata.gid === undefined ? "unknown" : String(metadata.gid));
+function owner(metadata: RemoteMetadataV1, unknownLabel: string): string {
+  const user = metadata.user ?? (metadata.uid === undefined ? unknownLabel : String(metadata.uid));
+  const group = metadata.group ?? (metadata.gid === undefined ? unknownLabel : String(metadata.gid));
   return `${user}:${group}`;
 }
 
@@ -34,6 +35,7 @@ export interface RemoteMetadataPanelProps {
 }
 
 export function RemoteMetadataPanel({ binding, path, host }: RemoteMetadataPanelProps) {
+  const t = useT();
   const targetKey = `${binding.logicalSessionId}\0${binding.physicalPtyId}\0${binding.transportGeneration}\0${path}`;
   const currentTargetKey = useRef(targetKey);
   currentTargetKey.current = targetKey;
@@ -105,25 +107,25 @@ export function RemoteMetadataPanel({ binding, path, host }: RemoteMetadataPanel
   };
 
   return (
-    <section aria-labelledby="remote-metadata-title" style={{ display: "grid", gap: 12 }}>
-      <h2 id="remote-metadata-title">Remote metadata</h2>
-      <div><strong>Host:</strong> {host}</div>
-      <div style={{ overflowWrap: "anywhere" }}><strong>Path:</strong> <code>{path}</code></div>
-      {!metadata && !error && <div role="status">Loading metadata…</div>}
+    <section aria-labelledby="remote-metadata-title" style={{ display: "grid", gap: 12, padding: 12, minHeight: 0, overflow: "auto" }}>
+      <h2 id="remote-metadata-title">{t("remote_fs.metadata.title")}</h2>
+      <div><strong>{t("remote_fs.metadata.host")}:</strong> {host}</div>
+      <div style={{ overflowWrap: "anywhere" }}><strong>{t("remote_fs.metadata.path")}:</strong> <code>{path}</code></div>
+      {!metadata && !error && <div role="status">{t("remote_fs.metadata.loading")}</div>}
       {metadata && (
         <>
           <dl style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, margin: 0 }}>
-            <dt>Kind</dt><dd style={{ margin: 0 }}>{metadata.kind}</dd>
-            <dt>Permissions</dt><dd style={{ margin: 0 }}>{formatted ? `${formatted.rwx} (${formatted.octal})` : "unknown"}</dd>
-            <dt>Owner/group</dt><dd style={{ margin: 0 }}>{owner(metadata)}</dd>
-            {metadata.linkTarget !== undefined && <><dt>Symlink target</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{metadata.linkTarget}</dd></>}
-            {formatted && formatted.special !== "0000" && <><dt>Special bits</dt><dd style={{ margin: 0 }}>{formatted.special} (read-only)</dd></>}
+            <dt>{t("remote_fs.metadata.kind")}</dt><dd style={{ margin: 0 }}>{metadata.kind}</dd>
+            <dt>{t("remote_fs.metadata.permissions")}</dt><dd style={{ margin: 0 }}>{formatted ? `${formatted.rwx} (${formatted.octal})` : t("remote_fs.metadata.unknown")}</dd>
+            <dt>{t("remote_fs.metadata.owner")}</dt><dd style={{ margin: 0 }}>{owner(metadata, t("remote_fs.metadata.unknown"))}</dd>
+            {metadata.linkTarget !== undefined && <><dt>{t("remote_fs.metadata.symlink")}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{metadata.linkTarget}</dd></>}
+            {formatted && formatted.special !== "0000" && <><dt>{t("remote_fs.metadata.special")}</dt><dd style={{ margin: 0 }}>{t("remote_fs.metadata.special_readonly", { bits: formatted.special })}</dd></>}
           </dl>
           <label>
-            Permissions (0000–0777)
+            {t("remote_fs.metadata.mode_label")}
             <input
               className="ui-control"
-              aria-label="Permissions (0000–0777)"
+              aria-label={t("remote_fs.metadata.mode_label")}
               value={modeInput}
               onChange={(event) => setModeInput(event.target.value)}
               inputMode="numeric"
@@ -131,14 +133,14 @@ export function RemoteMetadataPanel({ binding, path, host }: RemoteMetadataPanel
               disabled={metadata.capability.chmod !== "supported" || metadata.kind === "symlink" || busy}
             />
           </label>
-          {metadata.kind === "symlink" && <p>chmod is unavailable because lstat observed a symlink.</p>}
+          {metadata.kind === "symlink" && <p>{t("remote_fs.metadata.chmod_symlink")}</p>}
           {metadata.kind !== "symlink" && metadata.capability.chmod === "unsupported" && (
-            <p>chmod is unavailable because this SFTP connection cannot prove a no-follow, identity-bound update.</p>
+            <p>{t("remote_fs.metadata.chmod_unsupported")}</p>
           )}
           <button type="button" className="ui-button ui-button--primary" disabled={!canChmod || busy} onClick={() => { void chmod(); }}>
-            {busy ? "Checking…" : "Apply permissions"}
+            {busy ? t("remote_fs.metadata.checking") : t("remote_fs.metadata.apply")}
           </button>
-          <p>Capability: chmod {metadata.capability.chmod}; handle SETSTAT {metadata.capability.handleSetstat}; posix rename {metadata.capability.posixRename}.</p>
+          <p>{t("remote_fs.metadata.capability", { chmod: metadata.capability.chmod, handleSetstat: metadata.capability.handleSetstat, posixRename: metadata.capability.posixRename })}</p>
         </>
       )}
       {activeResult && <div role="status">{activeResult.status}: {activeResult.message}<br />{activeResult.toctouBoundary}</div>}

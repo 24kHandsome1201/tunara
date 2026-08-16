@@ -273,6 +273,22 @@ test("Pure Mode action strip is keyboard/AT reachable and exposes touch overflow
   expect(useUIStore.getState()).toMatchObject({ presentationMode: "pure", overlay: "command-palette" });
 });
 
+test("a hidden Pure Mode action strip leaves the tab order", () => {
+  vi.useFakeTimers();
+  try {
+    useUIStore.setState({ configLoaded: false, presentationMode: "pure", nativeFullscreen: false, overlay: null });
+    const { container } = renderTitlebar();
+    const strip = container.querySelector("[data-pure-action-strip]") as HTMLElement;
+    expect(strip.getAttribute("data-visible")).toBe("true");
+    act(() => vi.advanceTimersByTime(1400));
+    expect(strip.getAttribute("data-visible")).toBe("false");
+    expect(strip.hasAttribute("inert")).toBe(true);
+    expect(strip.getAttribute("aria-hidden")).toBe("true");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("Pure Mode action strip consumes terminal context announcements without switching session", () => {
   const sessions: Session[] = [
     { id: "pane-a", title: "First", dir: "/tmp/a", branch: "", runState: "idle", updatedAt: 1 },

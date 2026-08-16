@@ -30,7 +30,7 @@ import {
   sshUpload,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
-import { CloseIcon, RefreshIcon, SearchIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { CloseIcon, DownloadIcon, RefreshIcon, SearchIcon, UploadFolderIcon, UploadIcon, PanelEmptyState, PanelLoadingState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -41,9 +41,16 @@ import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
-import { remoteExplorerFollowPath } from "@/modules/ssh/remote-cwd";
 import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
 import { FileSearchGeneration } from "./lib/file-search-session";
+import { dropDestinationFromListing } from "@/modules/ssh/drop-target";
+import {
+  emptyHostFilePrefs,
+  hostFilePrefsKey,
+  pushHostRecentPath,
+  rememberHostDownloadDir,
+  toggleHostFavoritePath,
+} from "@/modules/ssh/host-file-prefs";
 import {
   classifyTransferDrop,
   expandFolderTransfer,
@@ -183,8 +190,28 @@ export function uploadFailureKey(error: unknown): string {
 
 function FolderIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--c-text-4)" }}>
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function TreeChevron({ expanded = false }: { expanded?: boolean }) {
+  return (
+    <svg
+      className="explorer-tree-chevron"
+      data-expanded={expanded ? "true" : "false"}
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="9 6 15 12 9 18" />
     </svg>
   );
 }
@@ -328,6 +355,11 @@ export function FileExplorer({
   const t = useT();
   const isRemote = remote;
   const remoteDisconnected = isRemote && remotePtyId === undefined;
+  const remoteInfo = useSessionsStore((state) => state.sessions.find((session) => session.id === sessionId)?.remote);
+  const prefsKey = remoteInfo ? hostFilePrefsKey(remoteInfo) : null;
+  const storedPrefs = useSessionsStore((state) => (prefsKey ? state.hostFilePrefs[prefsKey] : undefined));
+  const hostPrefs = storedPrefs ?? emptyHostFilePrefs();
+  const followTerminalCwd = isRemote && hostPrefs.followTerminalCwd;
   const [upload, setUpload] = useState<{
     transferId: string;
     fileName: string;
@@ -451,7 +483,6 @@ export function FileExplorer({
     bindingKey: string;
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
-  const explorerFollowCwd = useUIStore((s) => s.explorerFollowCwd);
   const downloadMaxFiles = useUIStore((s) => s.downloadMaxFiles);
   const downloadMaxFileBytes = useUIStore((s) => s.downloadMaxFileBytes);
   const downloadMaxTotalBytes = useUIStore((s) => s.downloadMaxTotalBytes);
@@ -473,7 +504,9 @@ export function FileExplorer({
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
   const [listingFocusIndex, setListingFocusIndex] = useState(0);
   const explorerRef = useRef<HTMLDivElement>(null);
+  const listingDropRef = useRef<{ currentPath: string; nodes: ExplorerTreeNode[] }>({ currentPath: "", nodes: [] });
   const [dropActive, setDropActive] = useState(false);
+  const [dropHighlightPath, setDropHighlightPath] = useState<string | null>(null);
   const [dropMessage, setDropMessage] = useState("");
   const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string } | null>(null);
   const [mutationRequest, setMutationRequest] = useState<MutationRequestV1 | null>(null);
@@ -681,19 +714,39 @@ export function FileExplorer({
       if (disposed) return;
       if (event.payload.type === "leave") {
         setDropActive(false);
+        setDropHighlightPath(null);
         return;
       }
       const rect = explorerRef.current?.getBoundingClientRect();
+      const listRect = resultsListRef.current?.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
       const x = event.payload.position.x / scale;
       const y = event.payload.position.y / scale;
       const inside = rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
       if (!inside) return;
+      const listing = listingDropRef.current;
+      const destination = listRect
+        ? dropDestinationFromListing({
+          clientY: y,
+          listTop: listRect.top,
+          scrollTop: resultsListRef.current?.scrollTop ?? 0,
+          inset: LISTING_TOP_INSET,
+          rowHeight: LISTING_ROW_HEIGHT,
+          nodes: listing.nodes.map((node) => ({
+            path: node.path,
+            parentPath: node.parentPath,
+            kind: node.entry.kind,
+          })),
+          currentPath: listing.currentPath,
+        })
+        : { path: listing.currentPath, highlightPath: null };
       if (event.payload.type === "enter" || event.payload.type === "over") {
         setDropActive(true);
+        setDropHighlightPath(destination.highlightPath);
       } else if (event.payload.type === "drop") {
         setDropActive(false);
-        void queueLocalPaths(event.payload.paths, currentPath).catch((error: unknown) => {
+        setDropHighlightPath(null);
+        void queueLocalPaths(event.payload.paths, destination.path).catch((error: unknown) => {
           setDropMessage(t("explorer.drop.failed"));
           useUIStore.getState().addToast({
             sessionId,
@@ -712,7 +765,7 @@ export function FileExplorer({
       // Browser/unit-test environments have no current Tauri webview.
     }
     return () => { disposed = true; unlisten?.(); };
-  }, [binding, currentPath, queueLocalPaths, sessionId, t]);
+  }, [binding, queueLocalPaths, sessionId, t]);
 
   const uploadToRemoteDirectory = async (directory: string) => {
     if (remotePtyId === undefined || uploadTransferRef.current) return;
@@ -829,6 +882,12 @@ export function FileExplorer({
               title: t("explorer.upload.complete"),
               subtitle: `${fileName} · ${formatSize(bytes)}`,
               variant: "success",
+              action: {
+                kind: "open-remote-preview",
+                sessionId,
+                path: remotePath,
+                label: t("explorer.upload.preview"),
+              },
             });
             refresh();
           }
@@ -890,24 +949,19 @@ export function FileExplorer({
     void openInEditorWithToast(externalEditor, path, { line });
   };
 
-  // Resolve the starting directory. Local: rootDir. Remote: SFTP-resolved home.
+  // Resolve the starting directory. Local: rootDir. Remote: SFTP home, or
+  // an OSC 7 path when follow-cwd is on.
   useEffect(() => {
     setNavDir(null);
     setSearchQuery("");
-    // Keep the user's remembered mode preference across the root change.
-    // Content search works for remote sessions too (ssh_fs_grep).
     setSearchMode(lastFileSearchMode);
     setSearchLimit(initialFileSearchLimit(lastFileSearchMode));
     if (isRemote) {
       if (remotePtyId === undefined) return;
       const knownRoot = knownRemoteExplorerRoot(rootDir);
       if (knownRoot) {
-        setBaseDir(knownRoot);
-        if (useUIStore.getState().explorerFollowCwd) {
-          setCurrentPath(knownRoot);
-        } else {
-          setCurrentPath((current) => current || knownRoot);
-        }
+        setBaseDir((current) => current ?? knownRoot);
+        setCurrentPath((current) => current || knownRoot);
         return;
       }
       let cancelled = false;
@@ -917,16 +971,13 @@ export function FileExplorer({
         .then((home) => {
           if (!cancelled) {
             setBaseDir(home);
-            setCurrentPath(home);
+            setCurrentPath((current) => current || home);
           }
         })
         .catch(() => {
           if (!cancelled) {
-            // Fall back to "/" so the panel is still usable on home-resolve fail.
             setBaseDir("/");
-            setCurrentPath("/");
-            // I9: surface the fallback so the user understands why the file
-            // list starts at root instead of their home directory.
+            setCurrentPath((current) => current || "/");
             useUIStore.getState().addToast({
               sessionId,
               title: staticT("explorer.remote_home_failed"),
@@ -939,7 +990,23 @@ export function FileExplorer({
     }
     setBaseDir(rootDir);
     setCurrentPath(rootDir);
-  }, [rootDir, isRemote, remotePtyId, sessionId]);
+    // Follow-cwd applies later OSC 7 updates. Including rootDir here would
+    // clear search and reset local/remote explorers on every shell cd.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
+  }, [isRemote, remotePtyId, sessionId]);
+
+  useEffect(() => {
+    if (!isRemote || !followTerminalCwd) return;
+    const knownRoot = knownRemoteExplorerRoot(rootDir);
+    if (!knownRoot) return;
+    setBaseDir(knownRoot);
+    setCurrentPath(knownRoot);
+  }, [rootDir, isRemote, followTerminalCwd]);
+
+  useEffect(() => {
+    if (!prefsKey || !currentPath.startsWith("/")) return;
+    useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => pushHostRecentPath(prefs, currentPath));
+  }, [prefsKey, currentPath]);
 
   useEffect(() => {
     treeRequestGenerationRef.current += 1;
@@ -1094,6 +1161,7 @@ export function FileExplorer({
     append(entries, currentPath, 1, null);
     return result;
   }, [entries, currentPath, expandedPaths, treeChildren, sort]);
+  listingDropRef.current = { currentPath, nodes: visibleTreeNodes };
   const selectableDownloadNodes = useMemo(() => binding
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
     : [], [binding, visibleTreeNodes, downloadLimits]);
@@ -1448,9 +1516,13 @@ export function FileExplorer({
         title: t("explorer.download.batch_choose_destination"),
         directory: true,
         multiple: false,
+        ...(hostPrefs.lastDownloadDir ? { defaultPath: hostPrefs.lastDownloadDir } : {}),
       });
       const destinationRoot = Array.isArray(selected) ? selected[0] : selected;
       if (!destinationRoot || treeRequestContextRef.current !== requestContext) return;
+      if (prefsKey) {
+        useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => rememberHostDownloadDir(prefs, destinationRoot));
+      }
       const existing = await fsReadDir(destinationRoot, true);
       if (treeRequestContextRef.current !== requestContext) return;
       const requests = planBatchDownloads({
@@ -1509,6 +1581,7 @@ export function FileExplorer({
         data-explorer-item
         data-listing-index={listingIndex}
         data-tree-path={node.path}
+        data-drop-target={dropHighlightPath === node.path ? "true" : undefined}
         data-file-path={!isDir ? node.path : undefined}
         tabIndex={listingFocusIndex === listingIndex ? 0 : -1}
         onFocus={(event) => {
@@ -1517,7 +1590,7 @@ export function FileExplorer({
           setListingFocusIndex(listingIndex);
         }}
         onClick={(event) => {
-          if (event.target !== event.currentTarget && (event.target as HTMLElement).closest("[role=group]")) return;
+          if (event.target !== event.currentTarget && (event.target as HTMLElement).closest("[role=group], button, input")) return;
           if (batchSelectable && (event.ctrlKey || event.metaKey || event.shiftKey)) {
             toggleDownloadSelection(node, event.shiftKey);
             return;
@@ -1584,7 +1657,7 @@ export function FileExplorer({
           }
         }}
         className="hover-bg"
-        style={{ width: "100%", minHeight: 30, padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`, borderRadius: "var(--r-btn)", border: "none", background: batchSelected || active ? "var(--c-accent-bg-light)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: binding ? "20px minmax(0, 1fr) minmax(42px, 92px) 28px" : "minmax(0, 1fr) minmax(42px, 92px) 28px", columnGap: 4, alignItems: "center", textAlign: "left", marginBottom: 2 }}
+        style={{ width: "100%", minHeight: 30, padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`, borderRadius: "var(--r-btn)", border: dropHighlightPath === node.path ? "1px dashed var(--c-accent)" : "none", background: dropHighlightPath === node.path ? "color-mix(in srgb, var(--c-accent) 12%, transparent)" : batchSelected || active ? "var(--c-accent-bg-light)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: binding ? "20px minmax(0, 1fr) minmax(42px, 92px) 28px" : "minmax(0, 1fr) minmax(42px, 92px) 28px", columnGap: 4, alignItems: "center", textAlign: "left", marginBottom: 2 }}
       >
         {binding && (
           <input
@@ -1599,10 +1672,34 @@ export function FileExplorer({
             style={{ margin: 0, visibility: node.entry.kind === "file" ? "visible" : "hidden" }}
           />
         )}
-        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, height: 30, pointerEvents: "none" }}>
-          {isDir ? <FolderIcon /> : <FileIcon />}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)" }}>{node.entry.name}</span>
-          {isDir && <span aria-hidden="true" style={{ fontSize: 10 }}>{expanded ? "⌄" : "›"}</span>}
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, height: 30 }}>
+          {isDir ? (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="explorer-tree-toggle hover-bg"
+              aria-label={expanded ? t("dir_group.collapse_named", { name: node.entry.name }) : t("dir_group.expand_named", { name: node.entry.name })}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (expanded) {
+                  setExpandedPaths((current) => {
+                    const next = new Set(current);
+                    next.delete(node.path);
+                    return next;
+                  });
+                } else {
+                  expandDirectory(node.path);
+                }
+              }}
+            >
+              <FolderIcon />
+              <TreeChevron expanded={expanded} />
+            </button>
+          ) : (
+            <span aria-hidden="true" style={{ display: "flex", pointerEvents: "none" }}><FileIcon /></span>
+          )}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)", pointerEvents: "none" }}>{node.entry.name}</span>
         </span>
         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", textAlign: "right", pointerEvents: "none" }}>{formatModifiedTime(node.entry.mtime)}</span>
         <button
@@ -1669,7 +1766,7 @@ export function FileExplorer({
     >
       {dropActive && (
         <div role="status" style={{ flexShrink: 0, padding: "7px var(--sp-2)", borderBottom: "1px dashed var(--c-accent)", fontWeight: 600, textAlign: "center" }}>
-          ↥ {t("explorer.drop.ready")}
+          ↥ {dropHighlightPath ? t("explorer.drop.on_folder", { path: dropHighlightPath }) : t("explorer.drop.ready")}
         </div>
       )}
       {dropMessage && <div role="status" aria-live="polite" className="sr-only">{dropMessage}</div>}
@@ -1751,65 +1848,62 @@ export function FileExplorer({
         >
           <RefreshIcon />
         </button>
-        {isRemote && (
-          <button
-            onClick={() => {
-              const next = !explorerFollowCwd;
-              useUIStore.getState().setExplorerFollowCwd(next);
-              if (next) {
-                const follow = remoteExplorerFollowPath({ remote: true, dir: rootDir });
-                if (follow) {
-                  setBaseDir(follow);
-                  setCurrentPath(follow);
-                }
-              }
-            }}
-            className="hover-bg"
-            title={explorerFollowCwd ? t("explorer.follow_cwd.on") : t("explorer.follow_cwd")}
-            aria-label={explorerFollowCwd ? t("explorer.follow_cwd.on") : t("explorer.follow_cwd")}
-            aria-pressed={explorerFollowCwd}
-            style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: explorerFollowCwd ? "var(--c-accent-bg-light)" : "transparent", color: explorerFollowCwd ? "var(--c-accent)" : "var(--c-text-4)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13 }}
-          >
-            ⌁
-          </button>
-        )}
-        {isRemote && (
+        {isRemote && prefsKey && (
           <>
             <button
-              onClick={() => { void uploadToRemoteDirectory(currentPath); }}
-              disabled={remoteDisconnected || upload !== null}
+              type="button"
               className="hover-bg"
-              title={t("explorer.upload")}
-              aria-label={t("explorer.upload")}
-              style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}
+              aria-pressed={followTerminalCwd}
+              title={t(followTerminalCwd ? "explorer.follow_cwd_on" : "explorer.follow_cwd")}
+              aria-label={t("explorer.follow_cwd")}
+              onClick={() => useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => ({ ...prefs, followTerminalCwd: !prefs.followTerminalCwd }))}
+              style={{
+                height: 26, minWidth: 26, padding: "0 6px", borderRadius: "var(--r-btn)", border: "none",
+                background: followTerminalCwd ? "var(--c-accent-bg-light)" : "transparent",
+                color: followTerminalCwd ? "var(--c-accent)" : "var(--c-text-5)",
+                cursor: "pointer", flexShrink: 0, fontSize: "var(--fs-meta)", fontWeight: 700,
+              }}
             >
-              ↑
+              cwd
             </button>
-            {binding && (
-              <>
-                <button
-                  onClick={() => { void uploadFolderToRemoteDirectory(currentPath); }}
-                  disabled={remoteDisconnected}
-                  className="hover-bg"
-                  title={t("explorer.upload_folder")}
-                  aria-label={t("explorer.upload_folder")}
-                  style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-                >
-                  <span aria-hidden="true">↥▣</span>
-                </button>
-                <button
-                  onClick={() => { void downloadSelectedFiles(); }}
-                  disabled={remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing}
-                  className="hover-bg"
-                  title={t("explorer.download.batch_action", { count: selectedDownloads.size })}
-                  aria-label={t("explorer.download.batch_action", { count: selectedDownloads.size })}
-                  style={{ minWidth: 26, height: 26, padding: "0 4px", borderRadius: "var(--r-btn)", border: "none", background: selectedDownloads.size > 0 ? "var(--c-accent-bg-light)" : "transparent", color: selectedDownloads.size > 0 ? "var(--c-accent)" : "var(--c-text-4)", cursor: remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 2, flexShrink: 0 }}
-                >
-                  <span aria-hidden="true">↓</span>
-                  {selectedDownloads.size > 0 && <span aria-hidden="true" style={{ fontSize: "var(--fs-meta)" }}>{selectedDownloads.size}</span>}
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              className="hover-bg"
+              title={hostPrefs.favoritePaths.includes(currentPath) ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
+              aria-label={hostPrefs.favoritePaths.includes(currentPath) ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
+              onClick={() => useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => toggleHostFavoritePath(prefs, currentPath))}
+              style={{
+                width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent",
+                color: hostPrefs.favoritePaths.includes(currentPath) ? "var(--c-accent)" : "var(--c-text-5)",
+                cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              ★
+            </button>
+            <label className="sr-only" htmlFor={`explorer-paths-${sessionId}`}>{t("explorer.paths")}</label>
+            <select
+              id={`explorer-paths-${sessionId}`}
+              className="ui-control"
+              aria-label={t("explorer.paths")}
+              value=""
+              onChange={(event) => {
+                const path = event.target.value;
+                if (path) { setNavDir("in"); setCurrentPath(path); }
+              }}
+              style={{ maxWidth: 120, height: 26, fontSize: "var(--fs-meta)" }}
+            >
+              <option value="">{t("explorer.paths")}</option>
+              {hostPrefs.favoritePaths.length > 0 && (
+                <optgroup label={t("explorer.paths_favorites")}>
+                  {hostPrefs.favoritePaths.map((path) => <option key={`fav:${path}`} value={path}>{path}</option>)}
+                </optgroup>
+              )}
+              {hostPrefs.recentPaths.length > 0 && (
+                <optgroup label={t("explorer.paths_recent")}>
+                  {hostPrefs.recentPaths.map((path) => <option key={`recent:${path}`} value={path}>{path}</option>)}
+                </optgroup>
+              )}
+            </select>
           </>
         )}
         <button
@@ -1839,6 +1933,45 @@ export function FileExplorer({
         >
           .*
         </button>
+        {isRemote && (
+          <div className="explorer-toolbar-transfers">
+            <button
+              onClick={() => { void uploadToRemoteDirectory(currentPath); }}
+              disabled={remoteDisconnected || upload !== null}
+              className="hover-bg"
+              title={t("explorer.upload")}
+              aria-label={t("explorer.upload")}
+              style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            >
+              <UploadIcon />
+            </button>
+            {binding && (
+              <>
+                <button
+                  onClick={() => { void uploadFolderToRemoteDirectory(currentPath); }}
+                  disabled={remoteDisconnected}
+                  className="hover-bg"
+                  title={t("explorer.upload_folder")}
+                  aria-label={t("explorer.upload_folder")}
+                  style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                >
+                  <UploadFolderIcon />
+                </button>
+                <button
+                  onClick={() => { void downloadSelectedFiles(); }}
+                  disabled={remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing}
+                  className="hover-bg"
+                  title={t("explorer.download.batch_action", { count: selectedDownloads.size })}
+                  aria-label={t("explorer.download.batch_action", { count: selectedDownloads.size })}
+                  style={{ minWidth: 26, height: 26, padding: "0 4px", borderRadius: "var(--r-btn)", border: "none", background: selectedDownloads.size > 0 ? "var(--c-accent-bg-light)" : "transparent", color: selectedDownloads.size > 0 ? "var(--c-accent)" : "var(--c-text-4)", cursor: remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 2, flexShrink: 0 }}
+                >
+                  <DownloadIcon />
+                  {selectedDownloads.size > 0 && <span aria-hidden="true" style={{ fontSize: "var(--fs-meta)" }}>{selectedDownloads.size}</span>}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {upload && (
@@ -2052,7 +2185,7 @@ export function FileExplorer({
                     >
                       {hit.isDir ? <FolderIcon /> : <FileIcon />}
                       <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
-                      {hit.isDir && <span style={{ fontSize: 10, color: "var(--c-text-6)", flexShrink: 0 }}>›</span>}
+                      {hit.isDir && <TreeChevron />}
                     </button>
                   </div>
                 );

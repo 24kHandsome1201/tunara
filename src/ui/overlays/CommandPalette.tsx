@@ -592,6 +592,12 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      if (ranked.length > 0) setSelectedIndex(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      if (ranked.length > 0) setSelectedIndex(ranked.length - 1);
     } else if (e.key === "Enter") {
       e.preventDefault();
       ranked[selectedIndex]?.action();

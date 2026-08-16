@@ -1,8 +1,10 @@
 import { useEffect, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { fallbackTerminalContextIfCurrent } from "@/modules/terminal/lib/terminal-webgl-fallback";
 import { registerTerminalBenchmarkRendererControl, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark";
+import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
 
 export type TerminalWebglRenderer = WebglAddon;
 
@@ -68,6 +70,8 @@ export function useTerminalWebgl(
   // term at first mount and never re-run — leaving a new session on the slow
   // DOM renderer until a tab switch. Used only to re-trigger; value unread.
   termReady: boolean,
+  fitRef?: RefObject<FitAddon | null>,
+  ptyRef?: RefObject<PtySession | null>,
 ) {
   useEffect(() => {
     if (!TERMINAL_BENCHMARK_MODE) return;
@@ -115,11 +119,22 @@ export function useTerminalWebgl(
       contextMap.set(sessionId, { addon: webgl, term });
       touchLRU(sessionId);
       evictIfNeeded();
+      // WebGL replaces the renderer and changes cell metrics. The init path
+      // fitted against the DOM renderer and opened the PTY with those cols/
+      // rows; without a refit, Codex/Grok TUIs wrap against a stale grid
+      // until the user resizes the window. Container size is unchanged, so
+      // ResizeObserver will not fire.
+      try {
+        fitRef?.current?.fit();
+        ptyRef?.current?.resize(term.cols, term.rows)?.catch(() => {});
+      } catch {
+        /* fit/resize can race pane teardown */
+      }
     } catch (e) {
       console.debug("[useTerminalWebgl] WebGL addon init failed, falling back to DOM renderer", e);
       webglRef.current = null;
     }
-  }, [active, sessionId, termRef, webglRef, termReady]);
+  }, [active, sessionId, termRef, webglRef, termReady, fitRef, ptyRef]);
 
   // Release on unmount. Inactive terminals keep their context for fast
   // tab-switching; LRU eviction handles the cap.

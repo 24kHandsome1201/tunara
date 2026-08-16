@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use russh_sftp::protocol::{FileAttributes, OpenFlags};
 use tauri::ipc::Channel;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use super::connection::await_stage;
 use super::diagnostics::SessionBindingV1;
@@ -27,8 +27,8 @@ use super::safe_write::{
     TransactionOutcome, TransactionStage, WriteRequest,
 };
 use crate::modules::fs::head::{
-    remote_revision, validate_line_limit, FileHeadResultV1, FileViewErrorV1, HeadAccumulator,
-    RequestRegistration, HEAD_CHUNK_BYTES,
+    finish_tail, remote_revision, validate_line_limit, FileHeadResultV1, FileViewErrorV1,
+    HeadAccumulator, RequestRegistration, HEAD_CHUNK_BYTES, MAX_HEAD_BYTES,
 };
 use crate::modules::pty::{PtyState, Session};
 
@@ -651,6 +651,95 @@ pub async fn ssh_file_view_head_v1(
         return Err(FileViewErrorV1::changed());
     }
     Ok(accumulator.finish(size, before_revision, line_limit, reached_eof))
+}
+
+/// Read only the last requested lines through the current SSH binding.
+#[tauri::command]
+pub async fn ssh_file_view_tail_v1(
+    state: tauri::State<'_, PtyState>,
+    binding: SessionBindingV1,
+    path: String,
+    line_limit: u32,
+    request_id: String,
+) -> Result<FileHeadResultV1, FileViewErrorV1> {
+    validate_line_limit(line_limit)?;
+    let registration = RequestRegistration::register(request_id)?;
+    let sftp = super::sftp_common::session_for_binding(state.inner(), &binding)
+        .await
+        .map_err(|_| FileViewErrorV1::stale_binding())?;
+    let before = await_stage(
+        "stat bounded remote tail",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.metadata(&path),
+    )
+    .await
+    .map_err(|error| remote_file_view_error(&error))?;
+    if !before.is_regular() {
+        return Err(FileViewErrorV1::read_failed());
+    }
+    let size = before.size.unwrap_or(0);
+    let before_revision = remote_revision(size, before.mtime);
+    let offset = size.saturating_sub(MAX_HEAD_BYTES as u64);
+    let mut file = await_stage(
+        "open bounded remote tail",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.open(&path),
+    )
+    .await
+    .map_err(|error| remote_file_view_error(&error))?;
+    if offset > 0 {
+        tokio::time::timeout(
+            SFTP_CONTROL_TIMEOUT,
+            file.seek(std::io::SeekFrom::Start(offset)),
+        )
+        .await
+        .map_err(|_| FileViewErrorV1::read_failed())?
+        .map_err(|_| FileViewErrorV1::read_failed())?;
+    }
+    let mut bytes = Vec::with_capacity((size - offset).min(MAX_HEAD_BYTES as u64) as usize);
+    let mut chunk = [0_u8; HEAD_CHUNK_BYTES];
+    tokio::time::timeout(SFTP_PREVIEW_TIMEOUT, async {
+        loop {
+            if registration.cancelled.load(Ordering::Acquire) {
+                return Err(FileViewErrorV1::cancelled());
+            }
+            let count = tokio::time::timeout(SFTP_CHUNK_TIMEOUT, file.read(&mut chunk))
+                .await
+                .map_err(|_| FileViewErrorV1::read_failed())?
+                .map_err(|error| remote_file_view_error(&error.to_string()))?;
+            if count == 0 {
+                break Ok(());
+            }
+            let remaining = MAX_HEAD_BYTES.saturating_sub(bytes.len());
+            bytes.extend_from_slice(&chunk[..count.min(remaining)]);
+            if bytes.len() == MAX_HEAD_BYTES {
+                break Ok(());
+            }
+        }
+    })
+    .await
+    .map_err(|_| FileViewErrorV1::read_failed())??;
+    if registration.cancelled.load(Ordering::Acquire) {
+        return Err(FileViewErrorV1::cancelled());
+    }
+    let after = await_stage(
+        "restat bounded remote tail",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.metadata(&path),
+    )
+    .await
+    .map_err(|_| FileViewErrorV1::changed())?;
+    let after_revision = remote_revision(after.size.unwrap_or(0), after.mtime);
+    if before_revision != after_revision {
+        return Err(FileViewErrorV1::changed());
+    }
+    Ok(finish_tail(
+        bytes,
+        size,
+        before_revision,
+        line_limit,
+        offset > 0,
+    ))
 }
 
 fn remote_file_view_error(raw: &str) -> FileViewErrorV1 {

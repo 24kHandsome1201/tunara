@@ -29,6 +29,11 @@ import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
 import { duplicateRemoteSessionFields } from "@/modules/ssh/connection-share";
 import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
+import {
+  emptyHostFilePrefs,
+  sanitizeHostFilePrefs,
+  type HostFilePrefsV1,
+} from "@/modules/ssh/host-file-prefs";
 import { removeTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { getNumberRecordValue } from "@/state/record-keys";
 import {
@@ -93,6 +98,7 @@ interface SessionsState {
   dirCloseConfirmations: Record<string, number>;
   recentDirs: string[];
   recentCommands: string[];
+  hostFilePrefs: Record<string, HostFilePrefsV1>;
   // Session ids in most-recently-active-first order, used by Mod+Tab cycling.
   recentSessionIds: string[];
   sessionTimelines: Record<string, TimelineEvent[]>;
@@ -110,6 +116,7 @@ interface SessionsState {
   clearDirCloseConfirmation: (dir: string) => void;
   recordRecentDir: (dir: string) => void;
   recordRecentCommand: (command: string) => void;
+  patchHostFilePrefs: (key: string, patch: (prefs: HostFilePrefsV1) => HostFilePrefsV1) => void;
   togglePinnedSession: (id: string) => void;
   setSessionNote: (id: string, note: string) => void;
   appendTimeline: (id: string, type: TimelineEvent["type"], detail?: string) => void;
@@ -261,6 +268,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   dirCloseConfirmations: {},
   recentDirs: [],
   recentCommands: [],
+  hostFilePrefs: {},
   recentSessionIds: [],
   sessionTimelines: {},
 
@@ -414,6 +422,13 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   recordRecentCommand: (command) =>
     set((state) => ({ recentCommands: pushRecentCommand(state.recentCommands, command) })),
+
+  patchHostFilePrefs: (key, patch) =>
+    set((state) => {
+      if (!key || key === "__proto__" || key === "prototype" || key === "constructor") return {};
+      const next = sanitizeHostFilePrefs(patch(state.hostFilePrefs[key] ?? emptyHostFilePrefs()));
+      return { hostFilePrefs: { ...state.hostFilePrefs, [key]: next } };
+    }),
 
   togglePinnedSession: (id) =>
     set((state) => ({

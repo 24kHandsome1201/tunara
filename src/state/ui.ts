@@ -217,7 +217,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
 
 export type InspectorTab = "overview" | "changes" | "files" | "transfers" | "metadata" | "forwarding" | "diagnostics" | "knownHosts" | "preview" | "notes";
 
-export type SettingsTab = "appearance" | "shortcuts" | "workflows" | "cli" | "app";
+export type SettingsTab = "appearance" | "terminal" | "accessibility" | "shortcuts" | "workflows" | "cli" | "app";
 
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
 
@@ -241,6 +241,11 @@ export interface Toast {
   action?: {
     kind: "open-settings";
     tab: SettingsTab;
+    label: string;
+  } | {
+    kind: "open-remote-preview";
+    sessionId: string;
+    path: string;
     label: string;
   };
   durationMs?: number;

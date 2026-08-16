@@ -28,6 +28,7 @@ export function AccentActionButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       title={title}
       aria-label={ariaLabel}

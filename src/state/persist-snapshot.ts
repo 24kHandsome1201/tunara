@@ -14,6 +14,10 @@ import { isSshAuthMethod, parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
 import { sanitizeRecentCommands } from "./recent-commands.ts";
+import {
+  sanitizeHostFilePrefsMap,
+  type HostFilePrefsV1,
+} from "../modules/ssh/host-file-prefs.ts";
 import { isSessionMascotId } from "../modules/session/session-mascot.ts";
 import {
   emptySplitState,
@@ -152,6 +156,8 @@ export interface WorkspaceSnapshotV1 {
   agentResume: Record<string, PersistedAgentResumeIntent>;
   recentDirs: string[];
   recentCommands: string[];
+  /** Per-host favorite/recent remote paths and Files-panel follow-cwd. */
+  hostFilePrefs: Record<string, HostFilePrefsV1>;
   /** Command-palette usage timestamps, keyed by command id, for recency ranking. */
   commandUsage: Record<string, number>;
   /** User-defined command-template workflows. */
@@ -491,6 +497,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     agentResume,
     recentDirs: recentDirs.length ? recentDirs : fallbackRecentDirs,
     recentCommands,
+    hostFilePrefs: sanitizeHostFilePrefsMap(obj.hostFilePrefs),
     commandUsage,
     workflows,
   };

@@ -174,7 +174,7 @@ function MiniDiff({
       ref={scrollRef}
       onScroll={onScroll}
       style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }}
-      className="no-scrollbar scroll-fade-y"
+      className="scroll-fade-y"
     >
       {/* Hidden probe row to measure the real rendered row height once. It's
           absolutely positioned + invisible so it participates in layout (and
@@ -201,8 +201,10 @@ function MiniDiff({
             >
               {renderHighlighted(line, q)}
               <button
+                type="button"
                 className="diff-hunk-copy hover-bg"
                 title={t("diff.hunk.copy")}
+                aria-label={t("diff.hunk.copy")}
                 onClick={(e) => {
                   e.stopPropagation();
                   const text = hunkTexts[hunkIndex];
@@ -291,6 +293,7 @@ function SectionHeader({ title, count, expanded, onToggle, titleColor, accentBor
     <div
       role="button"
       tabIndex={0}
+      aria-expanded={expanded}
       onClick={onToggle}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
       className="hover-bg"
@@ -383,6 +386,7 @@ function DiffFileRow({
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={expanded}
         onClick={() => onToggle(file)}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(file); } }}
         className="hover-bg"
@@ -717,7 +721,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         </div>
       )}
 
-      <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="no-scrollbar scroll-fade-y">
+      <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="scroll-fade-y">
         {loading ? (
           <PanelLoadingState label={t("diff.loading")} />
         ) : notGit ? (

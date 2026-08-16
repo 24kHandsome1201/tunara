@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { fsReadFile, fsWriteTextFile, type ReadResult } from "@/modules/fs/fs-bridge";
+import { fsReadDir, fsReadFile, fsWriteTextFile, type ReadResult } from "@/modules/fs/fs-bridge";
 import {
+  sshReadDir,
   sshReadFile,
   sshReconcileOutcomeUnknownTextWrite,
   sshWriteTextFile,
@@ -22,10 +23,14 @@ import {
   confirmDirtyDraftDiscard,
   hasPendingDirtyDraftAction,
   registerDirtyDraft,
+  requestDirtyDraftFileAction,
   updateDirtyDraft,
 } from "@/modules/editor/dirty-draft-guard";
 import { parseMarkdownDocument, safeMarkdownLanguage, type MarkdownBlock as MarkdownReaderBlock } from "@/modules/editor/markdown-reader";
 import { highlightMarkdownSource } from "@/modules/editor/markdown-syntax";
+import { parseTabularPreview, tabularKindFromName, type TabularPreview } from "@/modules/editor/tabular-preview";
+import { parentDirectoryPath, siblingPreviewPaths } from "@/modules/editor/sibling-files";
+import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import {
   discardEditorDraft,
   editorDraftKey,
@@ -44,10 +49,41 @@ import {
   FILE_HEAD_LINE_PRESETS,
   parseFileViewError,
   readFileHeadV1,
+  readFileTailV1,
   type FileHeadResultV1,
   type FileViewErrorV1,
 } from "@/modules/fs/file-view-bridge";
+import type { FileViewWindow } from "@/modules/fs/file-view-window";
 import { useModalBehavior } from "./overlays/Modal";
+
+const PREVIEW_AUTO_REFRESH_MS = 2500;
+
+function sameFileHeadResult(current: FileHeadResultV1 | null, next: FileHeadResultV1): boolean {
+  if (!current || current.kind !== next.kind) return false;
+  if (current.kind === "binary" && next.kind === "binary") {
+    return current.revision === next.revision && current.size === next.size;
+  }
+  if (current.kind === "text" && next.kind === "text") {
+    return current.revision === next.revision
+      && current.content === next.content
+      && current.truncated === next.truncated
+      && current.lineCount === next.lineCount;
+  }
+  return false;
+}
+
+function sameImageResult(
+  current: Extract<ReadResult, { kind: "image" }>,
+  next: ReadResult,
+): boolean {
+  if (next.kind !== "image") return false;
+  if (current.mime !== next.mime || current.width !== next.width || current.height !== next.height) return false;
+  if (current.bytes.length !== next.bytes.length) return false;
+  for (let index = 0; index < current.bytes.length; index++) {
+    if (current.bytes[index] !== next.bytes[index]) return false;
+  }
+  return true;
+}
 
 /** 值防抖：delayMs 内连续变化只取最后一个，用于高开销派生的计算闸门。 */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -456,16 +492,20 @@ function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, 
 
 function LargeFileHeadControls({
   lineLimit,
+  window,
   loading,
   error,
   onLineLimitChange,
+  onWindowChange,
   onView,
   onCancel,
 }: {
   lineLimit: number;
+  window: FileViewWindow;
   loading: boolean;
   error: FileViewErrorV1 | null;
   onLineLimitChange: (lineLimit: number) => void;
+  onWindowChange: (window: FileViewWindow) => void;
   onView: () => void;
   onCancel: () => void;
 }) {
@@ -487,6 +527,19 @@ function LargeFileHeadControls({
         {t("preview.head.description")}
       </span>
       <label className="large-file-line-limit">
+        {t("preview.head.window")}
+        <select
+          className="ui-control"
+          aria-label={t("preview.head.window")}
+          value={window}
+          disabled={loading}
+          onChange={(event) => onWindowChange(event.target.value === "tail" ? "tail" : "head")}
+        >
+          <option value="head">{t("preview.head.beginning")}</option>
+          <option value="tail">{t("preview.head.end")}</option>
+        </select>
+      </label>
+      <label className="large-file-line-limit">
         {t("preview.head.lines")}
         <select
           className="ui-control"
@@ -500,8 +553,111 @@ function LargeFileHeadControls({
       </label>
       {loading
         ? <button className="ui-button" onClick={onCancel}>{t("preview.head.cancel")}</button>
-        : <button className="ui-button ui-button--primary" onClick={onView}>{t("preview.head.view")}</button>}
+        : <button className="ui-button ui-button--primary" onClick={onView}>{window === "tail" ? t("preview.head.view_end") : t("preview.head.view")}</button>}
       {errorText ? <span role="alert" className="large-file-error">{errorText}</span> : null}
+    </div>
+  );
+}
+
+function TabularTable({ table }: { table: TabularPreview }) {
+  const t = useT();
+  return (
+    <div style={{ overflow: "auto", minHeight: 0, flex: 1 }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)" }}>
+        <caption style={{ textAlign: "left", padding: "8px 12px", color: "var(--c-text-5)" }}>
+          {t("preview.table.caption", { kind: table.kind.toUpperCase() })}
+          {table.truncated ? ` · ${t("preview.table.truncated", { shown: table.rows.length, total: table.rowCount })}` : ""}
+        </caption>
+        <thead>
+          <tr>
+            {table.columns.map((column) => (
+              <th key={column} style={{ textAlign: "left", padding: "4px 12px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-3)" }}>{column}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, index) => (
+            <tr key={index}>
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex} style={{ padding: "3px 12px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-2)", whiteSpace: "pre-wrap" }}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function useSiblingPaths(filePath: string, remote: boolean, remotePtyId?: number) {
+  const [siblings, setSiblings] = useState<{ previous: string | null; next: string | null }>({ previous: null, next: null });
+  useEffect(() => {
+    let cancelled = false;
+    const parent = parentDirectoryPath(filePath);
+    const read = remote && remotePtyId !== undefined
+      ? sshReadDir(remotePtyId, parent)
+      : !remote
+        ? fsReadDir(parent)
+        : Promise.resolve([]);
+    void read
+      .then((entries) => {
+        if (!cancelled) setSiblings(siblingPreviewPaths(filePath, entries));
+      })
+      .catch(() => {
+        if (!cancelled) setSiblings({ previous: null, next: null });
+      });
+    return () => { cancelled = true; };
+  }, [filePath, remote, remotePtyId]);
+  return siblings;
+}
+
+function openSiblingFile(sessionId: string | undefined, currentPath: string, nextPath: string) {
+  if (!sessionId) return;
+  const go = () => {
+    const owner = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
+    if (!owner) return;
+    const currentId = `${sessionId}\0${currentPath}`;
+    void openResource(resourceRefForSession(owner, nextPath), "preview").then(() => {
+      useUIStore.getState().closeFileTab(currentId);
+    });
+  };
+  if (requestDirtyDraftFileAction(sessionId, currentPath, go)) go();
+}
+
+function InertTextOrTable({ fileName, content, fill = false }: { fileName: string; content: string; fill?: boolean }) {
+  const table = parseTabularPreview(fileName, content);
+  if (table) return <TabularTable table={table} />;
+  return <TextPreview content={content} fill={fill} />;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
+}
+
+function SiblingNav({ sessionId, filePath, previous, next }: { sessionId?: string; filePath: string; previous: string | null; next: string | null }) {
+  const t = useT();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey || isTypingTarget(event.target)) return;
+      const goPrevious = event.key === "ArrowLeft" || event.key === "k" || event.key === "K";
+      const goNext = event.key === "ArrowRight" || event.key === "j" || event.key === "J";
+      if (goPrevious && previous) {
+        event.preventDefault();
+        openSiblingFile(sessionId, filePath, previous);
+      } else if (goNext && next) {
+        event.preventDefault();
+        openSiblingFile(sessionId, filePath, next);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filePath, next, previous, sessionId]);
+  if (!previous && !next) return null;
+  return (
+    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+      <button type="button" className="ui-button" disabled={!previous} aria-label={t("preview.siblings.previous")} onClick={() => previous && openSiblingFile(sessionId, filePath, previous)}>←</button>
+      <button type="button" className="ui-button" disabled={!next} aria-label={t("preview.siblings.next")} onClick={() => next && openSiblingFile(sessionId, filePath, next)}>→</button>
     </div>
   );
 }
@@ -577,7 +733,8 @@ function EditorSurface({
   const [operationError, setOperationError] = useState<OperationError | null>(null);
   const [reloadPending, setReloadPending] = useState(false);
   const dirty = content !== savedContent;
-  const previewable = isMarkdown;
+  const previewable = isMarkdown || tabularKindFromName(fileName) !== null;
+  const siblings = useSiblingPaths(filePath, isRemote, remotePtyId);
   const lines = useMemo(() => content.split("\n"), [content]);
   // 语法分类挂在防抖后的值上；等待分类时同步渲染纯文本，避免透明
   // textarea 后面的可见内容落后于输入。行号列同样保持实时。
@@ -590,6 +747,10 @@ function EditorSurface({
   const highlightedLines = isMarkdown && debouncedContent !== content
     ? lines.map((line) => [{ kind: "text" as const, text: line }])
     : debouncedHighlightedLines;
+  const tabularPreview = useMemo(
+    () => (tabularKindFromName(fileName) ? parseTabularPreview(fileName, debouncedContent) : null),
+    [debouncedContent, fileName],
+  );
   const matches = useMemo(() => {
     if (!debouncedFindQuery) return [] as number[];
     const found: number[] = [];
@@ -642,6 +803,38 @@ function EditorSurface({
   useEffect(() => {
     retainEditorDraft(draftKey, { content, savedContent, fingerprint, saveState, unknownOutcome });
   }, [content, draftKey, fingerprint, saveState, savedContent, unknownOutcome]);
+
+  const fingerprintRef = useRef(fingerprint);
+  fingerprintRef.current = fingerprint;
+  const refreshBlockedRef = useRef(false);
+  refreshBlockedRef.current = dirty
+    || remoteDisconnected
+    || reloadPending
+    || saveState === "saving"
+    || saveState === "reconciling"
+    || saveState === "unknown"
+    || saveState === "conflict";
+
+  useEffect(() => {
+    let inFlight = false;
+    const timer = window.setInterval(() => {
+      if (refreshBlockedRef.current || document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      const read = remotePtyId === undefined ? fsReadFile(filePath) : sshReadFile(remotePtyId, filePath);
+      void read
+        .then((result) => {
+          if (refreshBlockedRef.current) return;
+          if (result.kind !== "text" || !result.fingerprint) return;
+          if (result.fingerprint === fingerprintRef.current) return;
+          setContent(result.content);
+          setSavedContent(result.content);
+          setFingerprint(result.fingerprint);
+        })
+        .catch(() => {})
+        .finally(() => { inFlight = false; });
+    }, PREVIEW_AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [filePath, remotePtyId]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -873,6 +1066,7 @@ function EditorSurface({
               {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
             </div>
           )}
+          <SiblingNav sessionId={sessionId ?? undefined} filePath={filePath} previous={siblings.previous} next={siblings.next} />
           <button className="file-editor-icon-button" onClick={requestClose} title={t("common.close")} aria-label={t("common.close")}>
             <CloseIcon size={11} strokeWidth={2.5} />
           </button>
@@ -951,6 +1145,10 @@ function EditorSurface({
           <NotebookPreview content={content} />
         ) : mode === "preview" && isMarkdown ? (
           <MarkdownPreview content={content} fill findQuery={debouncedFindQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
+        ) : mode === "preview" && tabularPreview ? (
+          <TabularTable table={tabularPreview} />
+        ) : mode === "preview" ? (
+          <TextPreview content={content} fill />
         ) : (
           <div className="file-editor-code">
             <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
@@ -1034,11 +1232,14 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
   const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
   const [readAttempt, setReadAttempt] = useState(0);
   const [headLineLimit, setHeadLineLimit] = useState(DEFAULT_FILE_HEAD_LINES);
+  const [headWindow, setHeadWindow] = useState<FileViewWindow>("head");
   const [headResult, setHeadResult] = useState<FileHeadResultV1 | null>(null);
   const [headError, setHeadError] = useState<FileViewErrorV1 | null>(null);
   const [headLoading, setHeadLoading] = useState(false);
   const activeHeadRequestRef = useRef<string | null>(null);
+  const viewedWindowRef = useRef<FileViewWindow>("head");
   const readingRef = useRef(false);
+  const siblings = useSiblingPaths(filePath, remote, remotePtyId);
   const remoteSession = useSessionsStore((state) => !remote
     ? undefined
     : state.sessions.find((session) =>
@@ -1084,31 +1285,38 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
     };
   }, [filePath, resource?.binding?.physicalPtyId, resource?.binding?.transportGeneration]);
 
-  const startHeadView = () => {
-    if (headLoading) return;
+  const startHeadView = (silent = false) => {
+    if (!silent && headLoading) return;
+    if (silent && activeHeadRequestRef.current) return;
     const target: ResourceRef | null = resource ?? (!remote
       ? { transport: "local", logicalSessionId: sessionId ?? "local-preview", path: filePath }
       : null);
     if (!target) {
-      setHeadError({ code: "STALE_BINDING", message: "The SSH session binding is no longer current." });
+      if (!silent) setHeadError({ code: "STALE_BINDING", message: "The SSH session binding is no longer current." });
       return;
     }
+    const window = silent ? viewedWindowRef.current : headWindow;
     const requestId = createFileViewRequestId();
     activeHeadRequestRef.current = requestId;
-    setHeadResult(null);
-    setHeadError(null);
-    setHeadLoading(true);
-    void readFileHeadV1(target, headLineLimit, requestId)
+    if (!silent) {
+      viewedWindowRef.current = window;
+      setHeadResult(null);
+      setHeadError(null);
+      setHeadLoading(true);
+    }
+    const read = window === "tail" ? readFileTailV1 : readFileHeadV1;
+    void read(target, headLineLimit, requestId)
       .then((next) => {
-        if (activeHeadRequestRef.current === requestId) setHeadResult(next);
+        if (activeHeadRequestRef.current !== requestId) return;
+        setHeadResult((current) => (silent && sameFileHeadResult(current, next) ? current : next));
       })
       .catch((error) => {
-        if (activeHeadRequestRef.current === requestId) setHeadError(parseFileViewError(error));
+        if (activeHeadRequestRef.current === requestId && !silent) setHeadError(parseFileViewError(error));
       })
       .finally(() => {
         if (activeHeadRequestRef.current === requestId) {
           activeHeadRequestRef.current = null;
-          setHeadLoading(false);
+          if (!silent) setHeadLoading(false);
         }
       });
   };
@@ -1121,6 +1329,35 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
     setHeadError({ code: "CANCELLED", message: "The bounded file view was cancelled." });
     void cancelFileHeadViewV1(requestId).catch(() => {});
   };
+
+  const startHeadViewRef = useRef(startHeadView);
+  startHeadViewRef.current = startHeadView;
+
+  useEffect(() => {
+    if (!headResult) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      startHeadViewRef.current(true);
+    }, PREVIEW_AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [filePath, headResult]);
+
+  useEffect(() => {
+    if (result?.kind !== "image") return;
+    let inFlight = false;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || inFlight || remote && remotePtyId === undefined) return;
+      inFlight = true;
+      const read = remote ? sshReadFile(remotePtyId!, filePath) : fsReadFile(filePath);
+      void read
+        .then((next) => {
+          setResult((current) => (current?.kind === "image" && sameImageResult(current, next) ? current : next));
+        })
+        .catch(() => {})
+        .finally(() => { inFlight = false; });
+    }, PREVIEW_AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [filePath, remote, remotePtyId, result?.kind]);
 
   const retryRead = () => {
     if (readingRef.current) return;
@@ -1190,6 +1427,7 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
           </svg>
         )}
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{fileName}</span>
+        <SiblingNav sessionId={sessionId} filePath={filePath} previous={siblings.previous} next={siblings.next} />
         <button
           onClick={(e) => { e.stopPropagation(); onClose(); }}
           className="hover-bg"
@@ -1207,9 +1445,9 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
           <span title={readError.detail} style={{ display: "block", maxWidth: "100%", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{readError.detail}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={retryRead}>{t("preview.retry")}</button>
+            <button type="button" className="ui-button" onClick={retryRead}>{t("preview.retry")}</button>
             {readError.kind === "disconnected" && remoteSession?.remote ? (
-              <button onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+              <button type="button" className="ui-button ui-button--primary" onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
             ) : null}
           </div>
         </div>
@@ -1222,12 +1460,12 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(headResult.size) })} />
       ) : headResult?.kind === "text" ? (
         <>
-          <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} />
+          <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} />
           <div style={{ padding: "7px 14px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>
             {t("preview.head.result", { count: headResult.lineCount, limit: headResult.lineLimit })}
             {headResult.truncated ? ` · ${t("preview.head.bounded", { size: formatSize(headResult.byteLimit) })}` : ""}
           </div>
-          <TextPreview content={headResult.content} fill={fill} />
+          <InertTextOrTable fileName={fileName} content={headResult.content} fill={fill} />
         </>
       ) : result.kind === "binary" ? (
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
@@ -1236,16 +1474,16 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
       ) : result.kind === "toolarge" ? (
         <>
           <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
-          <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} />
+          <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} />
         </>
       ) : result.kind === "image" ? (
         <ImagePreview result={result} fileName={fileName} fill={fill} />
       ) : isNotebook ? (
-        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} /> : null}<NotebookPreview content={textContent} /></>
+        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} /> : null}<NotebookPreview content={textContent} /></>
       ) : isMarkdown ? (
-        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} /> : null}<MarkdownPreview content={textContent} fill={fill} /></>
+        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} /> : null}<MarkdownPreview content={textContent} fill={fill} /></>
       ) : (
-        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onView={startHeadView} onCancel={cancelHeadView} /> : null}<TextPreview content={textContent} fill={fill} /></>
+        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} /> : null}<InertTextOrTable fileName={fileName} content={textContent} fill={fill} /></>
       )}
     </div>
   );

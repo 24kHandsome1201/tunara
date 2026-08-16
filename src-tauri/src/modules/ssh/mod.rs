@@ -38,6 +38,7 @@ pub(crate) mod local_safe_write;
 pub(crate) mod m2_safe_write_benchmark;
 pub mod remote_fs;
 pub mod remote_git;
+pub mod reverse_forward;
 #[cfg(test)]
 mod rtt_benchmark;
 mod safe_write;

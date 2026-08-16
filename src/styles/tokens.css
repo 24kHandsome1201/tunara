@@ -12,11 +12,10 @@
   --c-text-primary: oklch(24% 0.012 48);
   --c-text-2: oklch(34% 0.012 48);
   --c-text-3: oklch(43% 0.011 48);
-  --c-text-4: oklch(48% 0.01 48);
-  --c-text-5: oklch(49% 0.009 48);
-  /* Small normal text: conservative AA contrast on the lightest used surface. */
-  --c-text-6: oklch(48% 0.009 48);
-  --c-text-7: oklch(48% 0.009 48);
+  --c-text-4: oklch(45.5% 0.01 48);
+  --c-text-5: oklch(47.5% 0.009 48);
+  --c-text-6: oklch(49.5% 0.008 48);
+  --c-text-7: oklch(51% 0.007 48);
 
   /* ── 面/底 ── */
   --c-bg-white: oklch(99.4% 0.003 55);
@@ -110,6 +109,7 @@
   --fs-reader-h1: 17px;
   --fs-reader-h2: 14px;
   --fs-reader-h3: 12px;
+  /* Ornament / kicker only. Status and scope chrome uses --fs-meta. */
   --fs-badge: 10px;
 
   /* ── 行高：界面信息保持紧凑，说明文字仍可舒适换行 ── */
@@ -204,11 +204,10 @@
   --c-text-primary: oklch(91% 0.008 55);
   --c-text-2: oklch(84% 0.008 55);
   --c-text-3: oklch(72% 0.008 55);
-  --c-text-4: oklch(65% 0.008 55);
-  --c-text-5: oklch(68% 0.008 55);
-  /* Small normal text: conservative AA contrast on dark panel surfaces. */
-  --c-text-6: oklch(68% 0.008 55);
-  --c-text-7: oklch(68% 0.008 55);
+  --c-text-4: oklch(69% 0.008 55);
+  --c-text-5: oklch(67% 0.008 55);
+  --c-text-6: oklch(65.5% 0.008 55);
+  --c-text-7: oklch(65% 0.008 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);
   --c-bg-white-glass: var(--c-bg-white);
@@ -368,11 +367,9 @@
 }
 .explorer-sort-direction[data-visible="true"] { opacity: 1; transform: scale(1); }
 
-/* Inspector tabs use a compact underline, with the same press feedback as the
-   titlebar controls. */
-.inspector-tab:active { transform: scale(var(--scale-press)); transition-duration: 60ms; }
+/* Inspector tabs are underline-only. Press-scale belongs on buttons, not
+   navigation chrome that sits in a dense rail. */
 .inspector-tab.hover-text-3:hover { background: var(--c-bg-hover) !important; }
-.inspector-tab[data-active="true"] { background: var(--c-bg-white); }
 
 .split-handle:hover .split-handle-line,
 .split-handle:focus-visible .split-handle-line { background: var(--c-accent) !important; }
@@ -384,16 +381,15 @@
 
 .session-card {
   transition: background var(--duration-fast) var(--ease-smooth),
-              box-shadow var(--duration-normal) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo);
+              box-shadow var(--duration-normal) var(--ease-smooth);
   cursor: inherit;
 }
 .session-card:hover { background: var(--c-bg-hover); }
-.session-card:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
 .session-card:has(.session-card-select[aria-current="page"]) { background: var(--c-accent-bg-soft); }
 .session-card:has(.session-card-select[aria-current="page"]):hover { background: var(--c-accent-bg-light); }
 .session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
 .session-card:hover .session-card-close,
+.session-card:has(.session-card-close[data-confirm="true"]) .session-card-close,
 .session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
 .session-card-close:active { transform: scale(var(--scale-press)); }
 
@@ -403,11 +399,9 @@
 .gbar-head:active { transform: scale(var(--scale-press-soft)); }
 .gbar-row {
   background: transparent;
-  transition: background var(--duration-fast) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo);
+  transition: background var(--duration-fast) var(--ease-smooth);
 }
 .gbar-row:hover { background: var(--c-bg-hover); }
-.gbar-row:active { transform: scale(var(--scale-press-soft)); transition-duration: 60ms; }
 .gbar-row-wait { background: var(--c-accent-bg-soft); }
 .gbar-row-wait:hover { background: var(--c-accent-bg-light); }
 .gbar-row-wait::before {
@@ -429,6 +423,14 @@
 .ctx-item-danger:hover, .ctx-item-danger[data-active='true'] { background: var(--c-error-bg-light); color: var(--c-error); }
 .ctx-item-disabled { color: var(--c-text-6); pointer-events: none; }
 .ctx-divider { height: 1px; background: var(--c-border-2); margin: var(--sp-1) 0; }
+.ctx-heading {
+  padding: 7px 12px 3px;
+  font: 700 var(--fs-meta) / 1.3 var(--font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-5);
+  user-select: none;
+}
 
 .sidebar-search:focus-within { background: var(--c-bg-white) !important; border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent); }
 .explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 16%, transparent); }
