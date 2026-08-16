@@ -140,11 +140,13 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
   assert.match(preview, /className="preview-action-primary"/);
   assert.match(styles, /\.preview-disclosure > summary::before \{[\s\S]*border-right:/);
   assert.doesNotMatch(styles, /content: "› "/);
+  const explorerIcons = read("src/ui/file-explorer/icons.tsx");
   assert.doesNotMatch(explorer, /stroke="var\(--c-accent\)"/);
+  assert.doesNotMatch(explorerIcons, /stroke="var\(--c-accent\)"/);
   assert.match(explorer, /<UploadIcon/);
   assert.match(explorer, /<UploadFolderIcon/);
   assert.match(explorer, /<DownloadIcon/);
-  assert.match(explorer, /className="explorer-tree-chevron"/);
+  assert.match(explorerIcons, /className="explorer-tree-chevron"/);
   assert.match(shared, /export function UploadIcon/);
   assert.match(shared, /export function UploadFolderIcon/);
   assert.match(shared, /export function DownloadIcon/);

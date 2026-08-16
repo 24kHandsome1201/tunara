@@ -6,28 +6,14 @@ const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
 const MAX_REMOTE_DOWNLOAD_BYTES = 100 * 1024 * 1024;
-import { confirm as confirmDialog, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { fsReadDir, type DirEntry } from "@/modules/fs/fs-bridge";
 import {
-  fsCancelActiveNameSearch,
-  fsCancelGrep,
-  fsGrep,
-  fsReadDir,
-  fsSearch,
-  type DirEntry,
-  type GrepResponse,
-  type SearchHit,
-} from "@/modules/fs/fs-bridge";
-import {
-  cancelRemoteSearch,
   invalidateRemoteSearchCache,
   sshDownload,
-  sshCancelUpload,
-  sshGrep,
   sshHome,
   sshReadDir,
-  sshSearch,
-  sshUpload,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { CloseIcon, DownloadIcon, RefreshIcon, SearchIcon, UploadFolderIcon, UploadIcon, PanelEmptyState, PanelLoadingState } from "./shared";
@@ -39,10 +25,8 @@ import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useT, t as staticT } from "@/modules/i18n";
 import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
-import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
 import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
-import { FileSearchGeneration } from "./lib/file-search-session";
 import { dropDestinationFromListing } from "@/modules/ssh/drop-target";
 import {
   emptyHostFilePrefs,
@@ -52,44 +36,37 @@ import {
   toggleHostFavoritePath,
 } from "@/modules/ssh/host-file-prefs";
 import {
-  classifyTransferDrop,
   expandFolderTransfer,
   planBatchDownloads,
-  renamedSibling,
   resolveDownloadLimits,
   type BatchDownloadSource,
 } from "@/modules/ssh/transfer-intent";
 import { validateManifest } from "@/modules/ssh/transfer-bridge";
-import { useTransferStore, type TransferRequest } from "@/modules/ssh/transfer-store";
+import { useTransferStore } from "@/modules/ssh/transfer-store";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { RemoteFsMutationDialog } from "@/modules/ssh/remote-fs/RemoteFsMutationDialog";
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
-import { performRemoteMutation } from "@/modules/ssh/remote-fs/actions";
 import { useModalBehavior } from "./overlays/Modal";
+import { FileContentIcon, FileIcon, FileNameIcon, FolderIcon, folderEmptyIcon, TreeChevron } from "./file-explorer/icons";
 import {
-  initialFileSearchLimit,
-  maxFileSearchLimit,
-  nextFileSearchLimit,
-} from "./lib/file-search-pagination";
-let nextLocalGrepRequest = 0;
+  compactRelativePath,
+  formatModifiedTime,
+  joinPath,
+  nextOperationId,
+  parentPath,
+  type SortDirection,
+  type SortKey,
+} from "./file-explorer/helpers";
+import { downloadFailureKey } from "./file-explorer/transfer-failures";
+import { queueLocalTransferPaths } from "./file-explorer/upload-preflight";
+import { useExplorerSearch } from "./file-explorer/use-explorer-search";
+import { useTreeListing, type ExplorerTreeNode } from "./file-explorer/use-tree-listing";
+import { useDirectUpload } from "./file-explorer/use-direct-upload";
+import { SearchLimitControl, SearchRetryButton } from "./file-explorer/search-controls";
 
-function createLocalGrepRequestId(): string {
-  nextLocalGrepRequest += 1;
-  return `grep-${Date.now().toString(36)}-${nextLocalGrepRequest.toString(36)}`;
-}
-
-function SearchRetryButton({ label, onRetry }: { label: string; onRetry: () => void }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "center", paddingTop: 6 }}>
-      <button className="hover-bg" onClick={onRetry} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "transparent", cursor: "pointer", padding: "2px 10px" }}>{label}</button>
-    </div>
-  );
-}
-
-// Remember the chosen search mode for this run so it survives directory/session
-// switches. The query itself is intentionally not remembered — it is scoped to a
-// specific repo and clearing it when the root changes avoids stale lookups.
-let lastFileSearchMode: "name" | "content" = "name";
+// Re-exported for existing importers/tests; implementations moved to ./file-explorer/.
+export { downloadFailureKey, parseUploadFailure, uploadFailureKey, type UploadFailure } from "./file-explorer/transfer-failures";
+export { sortExplorerEntries, formatModifiedTime } from "./file-explorer/helpers";
 
 interface FileExplorerProps {
   sessionId: string;
@@ -111,238 +88,6 @@ interface DownloadTransfer {
   disposed: boolean;
 }
 
-interface ExplorerTreeNode {
-  entry: DirEntry;
-  path: string;
-  parentPath: string | null;
-  level: number;
-  posInSet: number;
-  setSize: number;
-}
-
-interface TreeLoadError {
-  kind: "readFailed";
-}
-
-export function downloadFailureKey(error: unknown): string {
-  const message = String(error).toLowerCase();
-  if (message.includes("destination already exists")) return "explorer.download.error_exists";
-  if (message.includes("exceeds download limit")) return "explorer.download.error_limit";
-  if (message.includes("under the home directory") || message.includes("refusing to write") || message.includes("download path")) {
-    return "explorer.download.error_unsafe_path";
-  }
-  if (message.includes("write local file") || message.includes("permission") || message.includes("space")) {
-    return "explorer.download.error_local_write";
-  }
-  if (message.includes("connection") || message.includes("transport") || message.includes("session") || message.includes("timed out") || message.includes("timeout") || message.includes("pty")) {
-    return "explorer.download.error_connection";
-  }
-  return "explorer.download.failed_hint";
-}
-
-export interface UploadFailure {
-  kind: string;
-  residuePath?: string;
-}
-
-export function parseUploadFailure(error: unknown): UploadFailure {
-  const raw = String(error);
-  if (raw.includes("SSH_TRANSFER_CANCELLED")) return { kind: "cancelled" };
-  if (raw.includes("SSH_TRANSFER_UNSUPPORTED")) return { kind: "unsupported" };
-  if (raw.includes("SSH_TRANSFER_CHANGED")) return { kind: "changed" };
-  if (raw.includes("SSH_TRANSFER_OUTCOME_UNKNOWN")) return { kind: "uncertain" };
-  if (raw.includes("SSH_TRANSFER_PARTIAL")) return { kind: "partial" };
-  const prefix = "tunaraUploadError:";
-  const offset = raw.indexOf(prefix);
-  if (offset >= 0) {
-    try {
-      const parsed = JSON.parse(raw.slice(offset + prefix.length)) as unknown;
-      if (parsed && typeof parsed === "object" && "kind" in parsed && typeof parsed.kind === "string") {
-        return {
-          kind: parsed.kind,
-          residuePath: "residuePath" in parsed && typeof parsed.residuePath === "string"
-            ? parsed.residuePath
-            : undefined,
-        };
-      }
-    } catch {
-      // Fall through to compatibility matching for malformed/older errors.
-    }
-  }
-  const message = raw.toLowerCase();
-  if (message.includes("upload cancelled")) return { kind: "cancelled" };
-  if (message.includes("does not support safe atomic overwrite")) return { kind: "unsupported" };
-  if (message.includes("permissions changed during upload")) return { kind: "changed" };
-  if (message.includes("outcome unknown after replacement")) return { kind: "uncertain" };
-  if (message.includes("partial upload may remain")) return { kind: "partial" };
-  return { kind: "generic" };
-}
-
-export function uploadFailureKey(error: unknown): string {
-  const { kind } = parseUploadFailure(error);
-  if (kind === "unsupported") return "explorer.upload.error_unsupported_overwrite";
-  if (kind === "changed") return "explorer.upload.error_changed";
-  if (kind === "uncertain") return "explorer.upload.error_uncertain";
-  if (kind === "partial") return "explorer.upload.error_partial";
-  if (kind === "cancelled") return "explorer.upload.error_cancelled";
-  return "explorer.upload.failed_hint";
-}
-
-function FolderIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--c-text-4)" }}>
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function TreeChevron({ expanded = false }: { expanded?: boolean }) {
-  return (
-    <svg
-      className="explorer-tree-chevron"
-      data-expanded={expanded ? "true" : "false"}
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="9 6 15 12 9 18" />
-    </svg>
-  );
-}
-
-function FileIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
-}
-
-function FileNameIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
-}
-
-function FileContentIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <line x1="4" y1="6" x2="20" y2="6" />
-      <line x1="4" y1="10" x2="20" y2="10" />
-      <line x1="4" y1="14" x2="14" y2="14" />
-    </svg>
-  );
-}
-
-function SearchLimitControl({ canLoadMore, loading, onLoadMore }: { canLoadMore: boolean; loading: boolean; onLoadMore: () => void }) {
-  const t = useT();
-  if (loading) {
-    return <div aria-live="polite" style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.searching")}</div>;
-  }
-  return canLoadMore ? (
-    <button
-      type="button"
-      onClick={onLoadMore}
-      className="hover-bg"
-      style={{ margin: "4px var(--sp-2)", padding: "4px 8px", color: "var(--c-accent)", fontSize: "var(--fs-meta)", border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", cursor: "pointer" }}
-    >
-      {t("explorer.load_more")}
-    </button>
-  ) : (
-    <div style={{ padding: "4px var(--sp-2)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("explorer.results_limit_reached")}</div>
-  );
-}
-
-function joinPath(base: string, name: string): string {
-  if (!base || base === "/") return "/" + name;
-  return base.endsWith("/") ? base + name : base + "/" + name;
-}
-
-function parentPath(path: string): string {
-  if (path === "/") return "/";
-  const trimmed = path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path;
-  const idx = trimmed.lastIndexOf("/");
-  if (idx <= 0) return trimmed.startsWith("~") ? "~" : "/";
-  return trimmed.slice(0, idx);
-}
-
-function compactRelativePath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length <= 3) return path;
-  return "…/" + parts.slice(-3).join("/");
-}
-
-interface UploadTransfer {
-  transferId?: string;
-  cancelled: boolean;
-  disposed?: boolean;
-  backendActive?: boolean;
-  cancelRequest?: Promise<boolean>;
-  lastAnnouncementAt?: number;
-  lastAnnouncementPercent?: number;
-}
-
-function requestUploadCancellation(transfer: UploadTransfer): Promise<boolean> {
-  if (transfer.cancelRequest) return transfer.cancelRequest;
-  transfer.cancelRequest = (async () => {
-    while (transfer.backendActive && transfer.transferId) {
-      if (await sshCancelUpload(transfer.transferId)) return true;
-      // The invoke can reach the frontend before Rust has registered the ID.
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    return false;
-  })();
-  return transfer.cancelRequest;
-}
-
-type SortKey = "name" | "modified";
-type SortDirection = "asc" | "desc";
-
-function compareEntries(a: DirEntry, b: DirEntry, key: SortKey, direction: SortDirection): number {
-  const factor = direction === "asc" ? 1 : -1;
-  if (key === "modified" && a.mtime !== b.mtime) return (a.mtime - b.mtime) * factor;
-  const insensitive = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
-  const nameOrder = insensitive !== 0 ? insensitive : a.name.localeCompare(b.name);
-  return key === "modified" ? nameOrder : nameOrder * factor;
-}
-
-export function sortExplorerEntries(
-  entries: readonly DirEntry[],
-  key: SortKey,
-  direction: SortDirection,
-): DirEntry[] {
-  return [...entries].sort((a, b) => compareEntries(a, b, key, direction));
-}
-
-export function formatModifiedTime(mtime: number, now = new Date()): string {
-  if (!Number.isFinite(mtime) || mtime <= 0) return "—";
-  const date = new Date(mtime);
-  if (Number.isNaN(date.getTime())) return "—";
-  if (date.toDateString() === now.toDateString()) {
-    return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date);
-  }
-  if (date.getFullYear() === now.getFullYear()) {
-    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
-  }
-  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(date);
-}
-
-const folderEmptyIcon = (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-);
-
 export function FileExplorer({
   sessionId,
   rootDir,
@@ -360,15 +105,8 @@ export function FileExplorer({
   const storedPrefs = useSessionsStore((state) => (prefsKey ? state.hostFilePrefs[prefsKey] : undefined));
   const hostPrefs = storedPrefs ?? emptyHostFilePrefs();
   const followTerminalCwd = isRemote && hostPrefs.followTerminalCwd;
-  const [upload, setUpload] = useState<{
-    transferId: string;
-    fileName: string;
-    transferred: number;
-    total: number;
-    cancelling: boolean;
-  } | null>(null);
-  const uploadTransferRef = useRef<UploadTransfer | null>(null);
-  const [transferAnnouncement, setTransferAnnouncement] = useState("");
+  const directUpload = useDirectUpload({ sessionId, remotePtyId, t, onUploaded: () => refresh() });
+  const { upload, transferAnnouncement } = directUpload;
   const [download, setDownload] = useState<{ fileName: string } | null>(null);
   const downloadTransferRef = useRef<DownloadTransfer | null>(null);
   const [selectedDownloads, setSelectedDownloads] = useState<Map<string, BatchDownloadSource>>(() => new Map());
@@ -467,16 +205,20 @@ export function FileExplorer({
   const [includeHidden, setIncludeHidden] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState(false);
-  const [searchRetryNonce, setSearchRetryNonce] = useState(0);
-  const [searchTruncated, setSearchTruncated] = useState(false);
-  const [searchMode, setSearchMode] = useState<"name" | "content">(lastFileSearchMode);
-  const [searchLimit, setSearchLimit] = useState(() => initialFileSearchLimit(lastFileSearchMode));
-  const [grepHits, setGrepHits] = useState<GrepFileGroup[]>([]);
-  const [grepTruncated, setGrepTruncated] = useState(false);
+  const search = useExplorerSearch({ baseDir, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected });
+  const {
+    searchQuery,
+    searchMode,
+    searchHits,
+    grepHits,
+    searchLoading,
+    searchError,
+    searchTruncated,
+    grepTruncated,
+    searchLimit,
+    searchMaxLimit,
+    isSearching,
+  } = search;
   const [contextMenu, setContextMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -497,7 +239,6 @@ export function FileExplorer({
   const activeFilePath = useUIStore((s) =>
     s.fileTabs.find((tab) => tab.id === s.activeFileTabId && tab.sessionId === sessionId)?.filePath,
   );
-  const searchGenerationRef = useRef(new FileSearchGeneration());
   const resultsListRef = useRef<HTMLDivElement>(null);
   // 目录列表虚拟滚动：行距恒定 32px（30 按钮 + 2 margin），仅列表很长时启用
   const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
@@ -511,12 +252,6 @@ export function FileExplorer({
   const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string } | null>(null);
   const [mutationRequest, setMutationRequest] = useState<MutationRequestV1 | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
-  const [treeChildren, setTreeChildren] = useState<Record<string, DirEntry[]>>({});
-  const [treeLoading, setTreeLoading] = useState<Set<string>>(() => new Set());
-  const [treeErrors, setTreeErrors] = useState<Record<string, TreeLoadError>>({});
-  const treeRequestGenerationRef = useRef(0);
-  const treeRequestTokensRef = useRef(new Map<string, string>());
   const treeRequestContext = JSON.stringify({
     logical: sessionId,
     physical: remotePtyId ?? null,
@@ -529,6 +264,29 @@ export function FileExplorer({
   const treeRequestContextRef = useRef(treeRequestContext);
   // Render-time assignment closes the window before passive effect cleanup.
   treeRequestContextRef.current = treeRequestContext;
+  const {
+    visibleTreeNodes,
+    nodeIndexByPath,
+    childrenByParent,
+    expandedPaths,
+    treeErrors,
+    expandDirectory,
+    collapsePath,
+    beginListingEpoch,
+    resetExpansion,
+  } = useTreeListing({
+    entries,
+    currentPath,
+    sort,
+    includeHidden,
+    isRemote,
+    remotePtyId,
+    remoteDisconnected,
+    sessionId,
+    transportGeneration,
+    treeRequestContext,
+    treeRequestContextRef,
+  });
   useEffect(() => {
     setSelectedDownloads(new Map());
     selectionAnchorRef.current = null;
@@ -567,123 +325,12 @@ export function FileExplorer({
 
   const queueLocalPaths = useCallback(async (paths: string[], destinationRoot: string) => {
     if (!binding || paths.length === 0) return false;
-    const requests: TransferRequest[] = [];
-    const directories: string[] = [];
-    for (const localPath of paths) {
-      let isDirectory = false;
-      try {
-        await fsReadDir(localPath, false);
-        isDirectory = true;
-      } catch {
-        // Tauri exposes OS paths but not their kinds. Directory validation is
-        // authoritative below; ordinary files continue through the file intent.
-      }
-      const intent = classifyTransferDrop({ localPaths: [localPath], folder: isDirectory });
-      if (intent.kind === "folder") {
-        const manifest = await validateManifest({ kind: "local", root: intent.root });
-        const leaf = intent.root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "upload";
-        const plan = expandFolderTransfer({
-          manifest,
-          binding,
-          direction: "upload",
-          sourceRoot: intent.root,
-          destinationRoot: joinPath(destinationRoot, leaf),
-          conflict: "rename",
-        });
-        directories.push(...plan.directories);
-        requests.push(...plan.requests);
-      } else if (intent.kind === "upload") {
-        for (const source of intent.localPaths) {
-          const leaf = source.split(/[\\/]/).pop() ?? "upload";
-          requests.push({ binding, direction: "upload", source, destination: joinPath(destinationRoot, leaf), conflict: "rename" });
-        }
-      }
-    }
-    const conflicts: TransferRequest[] = [];
-    for (const request of requests) {
-      try {
-        await sshStatV1(binding, request.destination);
-        conflicts.push(request);
-      } catch (error) {
-        if (!String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) throw error;
-      }
-    }
-    if (conflicts.length > 0) {
-      const endpoint = remoteHost ?? `${binding.logicalSessionId} / PTY ${binding.physicalPtyId}`;
-      const replaceAll = await confirmDialog(t("transfer.preflight.message", {
-        endpoint,
-        root: destinationRoot,
-        count: conflicts.length,
-      }), { title: t("transfer.preflight.title"), kind: "warning" });
-      if (replaceAll) {
-        for (const conflict of conflicts) conflict.conflict = "replace";
-      } else if (await confirmDialog(t("transfer.preflight.rename_all", { count: conflicts.length }), { title: t("transfer.preflight.title"), kind: "warning" })) {
-        const occupied = new Set(requests.map((request) => request.destination));
-        for (const conflict of conflicts) {
-          let candidate = renamedSibling(conflict.destination, occupied);
-          for (;;) {
-            try { await sshStatV1(binding, candidate); occupied.add(candidate); candidate = renamedSibling(conflict.destination, occupied); }
-            catch (error) { if (String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) break; throw error; }
-          }
-          conflict.destination = candidate;
-          conflict.conflict = "rename";
-          occupied.add(conflict.destination);
-        }
-      } else if (await confirmDialog(t("transfer.preflight.skip_all", { count: conflicts.length }), { title: t("transfer.preflight.title"), kind: "warning" })) {
-        for (const conflict of conflicts) requests.splice(requests.indexOf(conflict), 1);
-      } else {
-        const occupied = new Set(requests.map((request) => request.destination));
-        for (const conflict of conflicts) {
-          const replace = await confirmDialog(t("transfer.preflight.replace_item", { path: conflict.destination, endpoint }), { title: t("transfer.preflight.title"), kind: "warning" });
-          if (replace) { conflict.conflict = "replace"; continue; }
-          const rename = await confirmDialog(t("transfer.preflight.rename_item", { path: conflict.destination }), { title: t("transfer.preflight.title"), kind: "warning" });
-          if (rename) {
-            let candidate = renamedSibling(conflict.destination, occupied);
-            for (;;) {
-              try { await sshStatV1(binding, candidate); occupied.add(candidate); candidate = renamedSibling(conflict.destination, occupied); }
-              catch (error) { if (String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) break; throw error; }
-            }
-            conflict.destination = candidate;
-            conflict.conflict = "rename";
-            occupied.add(conflict.destination);
-          } else requests.splice(requests.indexOf(conflict), 1);
-        }
-      }
-    }
-    // Folder uploads are a two-phase operation: materialize every directory
-    // first (including empty ones), then publish file work to the queue. A
-    // typed mutation failure aborts the whole plan so children never race a
-    // missing parent and the UI never claims the folder was queued.
-    try {
-      for (const path of [...new Set(directories)]) {
-        const parent = path.replace(/[\\/][^\\/]+$/, "") || "/";
-        const parentMetadata = await sshStatV1(binding, parent);
-        let existing;
-        try {
-          existing = await sshStatV1(binding, path);
-        } catch (error) {
-          if (!String(error).includes("SSH_REMOTE_FS_NOT_FOUND")) throw error;
-          existing = undefined;
-        }
-        if (existing?.kind === "directory") continue;
-        if (existing) throw new Error("folder destination already exists and is not a directory");
-        const request: MutationRequestV1 = {
-          operationId: nextOperationId(),
-          binding,
-          operation: { kind: "mkdir", path },
-          precondition: { source: { state: "absent" }, sourceParent: parentMetadata.precondition },
-        };
-        const { result } = await performRemoteMutation(request);
-        if (result.status !== "applied" && result.status !== "desiredStateObserved") {
-          throw new Error("remote folder creation was not confirmed");
-        }
-      }
-    } catch {
+    const result = await queueLocalTransferPaths({ binding, remoteHost, paths, destinationRoot, t });
+    if (result.status === "prepareFailed") {
       setDropMessage(t("explorer.mutation.prepare_failed"));
       return false;
     }
-    if (requests.length > 0) useTransferStore.getState().enqueueBatch(requests);
-    setDropMessage(t("explorer.drop.queued", { files: requests.length, directories: directories.length }));
+    setDropMessage(t("explorer.drop.queued", { files: result.files, directories: result.directories }));
     return true;
   }, [binding, remoteHost, t]);
 
@@ -694,16 +341,6 @@ export function FileExplorer({
       if (downloadTransferRef.current === downloadTransfer) downloadTransferRef.current = null;
       setDownload(null);
     }
-    const transfer = uploadTransferRef.current;
-    if (!transfer) return;
-    transfer.cancelled = true;
-    transfer.disposed = true;
-    if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
-    if (transfer.transferId) {
-      setUpload((current) => current?.transferId === transfer.transferId ? null : current);
-    }
-    setTransferAnnouncement("");
-    if (transfer.transferId) void requestUploadCancellation(transfer).catch(() => {});
   }, [remotePtyId, sessionId]);
 
   useEffect(() => {
@@ -768,7 +405,7 @@ export function FileExplorer({
   }, [binding, queueLocalPaths, sessionId, t]);
 
   const uploadToRemoteDirectory = async (directory: string) => {
-    if (remotePtyId === undefined || uploadTransferRef.current) return;
+    if (remotePtyId === undefined || directUpload.isUploadActive()) return;
     if (binding) {
       let selected: string | string[] | null;
       try {
@@ -789,132 +426,7 @@ export function FileExplorer({
       }
       return;
     }
-    const transfer: UploadTransfer = { cancelled: false };
-    uploadTransferRef.current = transfer;
-    let selected: string | string[] | null;
-    try {
-      selected = await openDialog({
-        title: t("explorer.upload.choose_file"),
-        directory: false,
-        multiple: true,
-      });
-    } catch {
-      if (!transfer.disposed) {
-        useUIStore.getState().addToast({ sessionId, title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
-      }
-      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
-      return;
-    }
-    const localPaths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
-    if (localPaths.length === 0 || transfer.cancelled) {
-      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
-      return;
-    }
-    try {
-      for (const localPath of localPaths) {
-        if (transfer.cancelled) break;
-        const fileName = localPath.split(/[\\/]/).filter(Boolean).pop();
-        if (!fileName) continue;
-        const remotePath = joinPath(directory, fileName);
-        const transferId = globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        transfer.transferId = transferId;
-        transfer.lastAnnouncementAt = Date.now();
-        transfer.lastAnnouncementPercent = 0;
-        setUpload({ transferId, fileName, transferred: 0, total: 0, cancelling: false });
-        setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent: 0 }));
-
-        const throwIfCancelled = () => {
-          if (transfer.cancelled) throw new Error("upload cancelled");
-        };
-
-        const run = async (overwrite: boolean) => {
-          throwIfCancelled();
-          transfer.backendActive = true;
-          try {
-            return await sshUpload(
-              remotePtyId,
-              transferId,
-              localPath,
-              remotePath,
-              overwrite,
-              ({ transferred, total }) => {
-                if (!transfer.disposed) {
-                  setUpload((current) => current?.transferId === transferId
-                    ? { ...current, transferred, total }
-                    : current);
-                  const percent = total > 0 ? Math.min(100, Math.floor(transferred / total * 100)) : 0;
-                  const percentBucket = Math.floor(percent / 10) * 10;
-                  const now = Date.now();
-                  const crossedTenPercent = percentBucket >= (transfer.lastAnnouncementPercent ?? 0) + 10;
-                  const waitedTwoSeconds = now - (transfer.lastAnnouncementAt ?? now) >= 2_000;
-                  if (crossedTenPercent || waitedTwoSeconds) {
-                    transfer.lastAnnouncementAt = now;
-                    transfer.lastAnnouncementPercent = percentBucket;
-                    setTransferAnnouncement(t("explorer.upload.announcement", { file: fileName, percent }));
-                  }
-                }
-              },
-            );
-          } finally {
-            transfer.backendActive = false;
-          }
-        };
-
-        try {
-          let bytes: number;
-          try {
-            bytes = await run(false);
-          } catch (error) {
-            if (!String(error).includes("SSH_TRANSFER_DESTINATION_EXISTS")) throw error;
-            throwIfCancelled();
-            const overwrite = await confirmDialog(t("explorer.upload.overwrite_message", { file: fileName }), {
-              title: t("explorer.upload.overwrite_title"),
-              kind: "warning",
-            });
-            if (!overwrite) continue;
-            throwIfCancelled();
-            bytes = await run(true);
-          }
-          if (!transfer.disposed) {
-            setTransferAnnouncement("");
-            useUIStore.getState().addToast({
-              sessionId,
-              title: t("explorer.upload.complete"),
-              subtitle: `${fileName} · ${formatSize(bytes)}`,
-              variant: "success",
-              action: {
-                kind: "open-remote-preview",
-                sessionId,
-                path: remotePath,
-                label: t("explorer.upload.preview"),
-              },
-            });
-            refresh();
-          }
-        } catch (error) {
-          const failure = parseUploadFailure(error);
-          if (!transfer.disposed && (failure.kind !== "cancelled" || failure.residuePath)) {
-            setTransferAnnouncement("");
-            const primary = t(uploadFailureKey(error));
-            const residue = failure.residuePath
-              ? ` ${t("explorer.upload.error_residue", { path: failure.residuePath })}`
-              : "";
-            useUIStore.getState().addToast({
-              sessionId,
-              title: t("explorer.upload.failed"),
-              subtitle: `${primary}${residue}`,
-              variant: "error",
-            });
-          }
-        } finally {
-          setUpload((current) => current?.transferId === transferId ? null : current);
-        }
-      }
-    } finally {
-      if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
-      transfer.transferId = undefined;
-      setTransferAnnouncement("");
-    }
+    await directUpload.uploadFilesDirect(directory);
   };
 
   const uploadFolderToRemoteDirectory = async (directory: string) => {
@@ -934,17 +446,6 @@ export function FileExplorer({
     }
   };
 
-  const cancelUpload = () => {
-    const transfer = uploadTransferRef.current;
-    if (!transfer) return;
-    transfer.cancelled = true;
-    setTransferAnnouncement(t("explorer.upload.cancelling"));
-    setUpload((current) => current ? { ...current, cancelling: true } : null);
-    if (transfer.transferId && transfer.backendActive) {
-      void requestUploadCancellation(transfer).catch(() => {});
-    }
-  };
-
   const openEditor = (path: string, line?: number) => {
     void openInEditorWithToast(externalEditor, path, { line });
   };
@@ -953,9 +454,7 @@ export function FileExplorer({
   // an OSC 7 path when follow-cwd is on.
   useEffect(() => {
     setNavDir(null);
-    setSearchQuery("");
-    setSearchMode(lastFileSearchMode);
-    setSearchLimit(initialFileSearchLimit(lastFileSearchMode));
+    search.resetSearch();
     if (isRemote) {
       if (remotePtyId === undefined) return;
       const knownRoot = knownRemoteExplorerRoot(rootDir);
@@ -1009,10 +508,7 @@ export function FileExplorer({
   }, [prefsKey, currentPath]);
 
   useEffect(() => {
-    treeRequestGenerationRef.current += 1;
-    treeRequestTokensRef.current.clear();
-    setTreeLoading(new Set());
-    setTreeErrors({});
+    beginListingEpoch();
     if (baseDir === null) return; // remote home not resolved yet
     if (remoteDisconnected) {
       setLoading(false);
@@ -1029,8 +525,7 @@ export function FileExplorer({
       .then((e) => {
         if (!cancelled) {
           setEntries(e);
-          setExpandedPaths(new Set());
-          setTreeChildren({});
+          resetExpansion();
           setLoading(false);
         }
       })
@@ -1042,131 +537,17 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration]);
-
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (!q || baseDir === null) {
-      setSearchHits([]);
-      setGrepHits([]);
-      setGrepTruncated(false);
-      setSearchTruncated(false);
-      setSearchLoading(false);
-      setSearchError(false);
-      return;
-    }
-    if (remoteDisconnected) {
-      setSearchLoading(false);
-      return;
-    }
-
-    const mode = searchMode;
-    const searchGen = searchGenerationRef.current;
-    const token = searchGen.start();
-    const localGrepRequestId = mode === "content" && !isRemote
-      ? createLocalGrepRequestId()
-      : null;
-    let requestStarted = false;
-    let requestSettled = false;
-    setSearchLoading(true);
-    setSearchError(false);
-    // Fire the request inside the debounce timer, not before it: building the
-    // promise eagerly would start the find/grep on every keystroke and only
-    // debounce the setState. The generation token discards any in-flight
-    // response when searchQuery, searchMode, baseDir, or remotePtyId changes.
-    // Local content searches also send an explicit cancellation IPC so stale
-    // parallel filesystem walks stop consuming CPU and disk. Both modes split local/remote:
-    // content search runs fs_grep locally and ssh_fs_grep over the exec channel
-    // remotely (shared GrepResponse shape); name search keeps the fs_search /
-    // ssh_fs_search split with the shared SearchHit shape. The remote bridge
-    // caches per (ptyId, root, query) so backspacing doesn't re-run find/grep.
-    const timer = window.setTimeout(() => {
-      requestStarted = true;
-      const runSearch: Promise<SearchHit[] | GrepResponse> =
-        mode === "content"
-          ? isRemote && remotePtyId !== undefined
-            ? sshGrep(remotePtyId, baseDir, q, searchLimit)
-            : fsGrep(q, baseDir, { requestId: localGrepRequestId!, caseInsensitive: false, maxResults: searchLimit })
-          : isRemote && remotePtyId !== undefined
-            ? sshSearch(remotePtyId, baseDir, q, searchLimit)
-            : fsSearch(baseDir, q, searchLimit, includeHidden);
-      runSearch
-        .then((result) => {
-          requestSettled = true;
-          if (!searchGen.isCurrent(token)) return;
-          if (mode === "content") {
-            const resp = result as GrepResponse;
-            setGrepHits(groupGrepHitsByFile(resp.hits));
-            setGrepTruncated(resp.truncated);
-            setSearchHits([]);
-            setSearchTruncated(false);
-          } else {
-            const hits = result as SearchHit[];
-            setSearchHits(hits);
-            // fs_search/ssh_fs_search cap results at searchLimit without a
-            // truncated flag, so infer truncation from hitting the cap exactly.
-            setSearchTruncated(hits.length >= searchLimit);
-            setGrepHits([]);
-            setGrepTruncated(false);
-          }
-          setSearchLoading(false);
-        })
-        .catch(() => {
-          requestSettled = true;
-          if (!searchGen.isCurrent(token)) return;
-          setSearchHits([]);
-          setGrepHits([]);
-          setGrepTruncated(false);
-          setSearchTruncated(false);
-          setSearchError(true);
-          setSearchLoading(false);
-        });
-    }, 180);
-
-    return () => {
-      searchGen.invalidate();
-      window.clearTimeout(timer);
-      if (localGrepRequestId && requestStarted && !requestSettled) {
-        void fsCancelGrep(localGrepRequestId).catch(() => {});
-      }
-      if (mode === "name" && !isRemote && requestStarted && !requestSettled) {
-        fsCancelActiveNameSearch();
-      }
-      if (isRemote && remotePtyId !== undefined && requestStarted && !requestSettled) {
-        cancelRemoteSearch(remotePtyId);
-      }
-    };
-  }, [baseDir, searchQuery, searchMode, searchLimit, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected, searchRetryNonce]);
+  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration, beginListingEpoch, resetExpansion]);
 
   const canGoUp = currentPath !== "/" && (isRemote || currentPath !== baseDir);
   const breadcrumbRoot = baseDir !== null
     && (currentPath === baseDir || currentPath.startsWith(`${baseDir}/`))
     ? baseDir
     : "/";
-  const visibleTreeNodes = useMemo(() => {
-    const result: ExplorerTreeNode[] = [];
-    const append = (siblings: DirEntry[], parent: string, parentLevel: number, parentPath: string | null) => {
-      const sorted = [
-        ...sortExplorerEntries(siblings.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
-        ...sortExplorerEntries(siblings.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
-      ];
-      sorted.forEach((entry, index) => {
-        const path = joinPath(parent, entry.name);
-        result.push({ entry, path, parentPath, level: parentLevel, posInSet: index + 1, setSize: sorted.length });
-        if (entry.kind === "dir" && expandedPaths.has(path) && treeChildren[path]) {
-          append(treeChildren[path], path, parentLevel + 1, path);
-        }
-      });
-    };
-    append(entries, currentPath, 1, null);
-    return result;
-  }, [entries, currentPath, expandedPaths, treeChildren, sort]);
   listingDropRef.current = { currentPath, nodes: visibleTreeNodes };
   const selectableDownloadNodes = useMemo(() => binding
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
     : [], [binding, visibleTreeNodes, downloadLimits]);
-  const isSearching = searchQuery.trim().length > 0;
-  const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
 
   // ── 目录列表虚拟滚动（仅非搜索态的大目录启用；搜索结果本身有 searchLimit 分页）──
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
@@ -1206,9 +587,9 @@ export function FileExplorer({
   useEffect(() => {
     const path = focusedPathRef.current;
     if (!path || isSearching) return;
-    const index = visibleTreeNodes.findIndex((node) => node.path === path);
+    const index = nodeIndexByPath.get(path) ?? -1;
     if (index >= 0) setListingFocusIndex(index);
-  }, [visibleTreeNodes, isSearching]);
+  }, [nodeIndexByPath, isSearching]);
 
   useEffect(() => {
     if (pendingListingFocus === null) return;
@@ -1222,10 +603,6 @@ export function FileExplorer({
     target.focus({ preventScroll: true });
     setPendingListingFocus(null);
   }, [pendingListingFocus, listingSlice.first, listingSlice.last]);
-
-  function loadMoreSearchResults() {
-    setSearchLimit((current) => nextFileSearchLimit(current, searchMode, isRemote));
-  }
 
   function refresh() {
     if (remoteDisconnected) return;
@@ -1241,56 +618,6 @@ export function FileExplorer({
   function goUp() {
     setNavDir("out");
     setCurrentPath(parentPath(currentPath));
-  }
-
-  function expandDirectory(path: string) {
-    setExpandedPaths((current) => new Set(current).add(path));
-    if (treeChildren[path] || treeLoading.has(path) || remoteDisconnected) return;
-    setTreeErrors((current) => {
-      if (!(path in current)) return current;
-      const next = { ...current };
-      delete next[path];
-      return next;
-    });
-    setTreeLoading((current) => new Set(current).add(path));
-    const token = JSON.stringify({
-      logical: sessionId,
-      physical: remotePtyId ?? null,
-      transport: transportGeneration ?? null,
-      generation: treeRequestGenerationRef.current,
-      path,
-      includeHidden,
-      remote: isRemote,
-    });
-    treeRequestTokensRef.current.set(path, token);
-    const capturedContext = treeRequestContext;
-    const currentRequest = () => treeRequestContextRef.current === capturedContext
-      && treeRequestTokensRef.current.get(path) === token;
-    const read = isRemote && remotePtyId !== undefined
-      ? sshReadDir(remotePtyId, path, includeHidden)
-      : fsReadDir(path, includeHidden);
-    void read.then((children) => {
-      if (!currentRequest()) return;
-      setTreeChildren((current) => ({ ...current, [path]: children }));
-      setTreeErrors((current) => {
-        if (!(path in current)) return current;
-        const next = { ...current };
-        delete next[path];
-        return next;
-      });
-    })
-      .catch(() => {
-        if (currentRequest()) {
-          setTreeErrors((current) => ({ ...current, [path]: { kind: "readFailed" } }));
-        }
-      })
-      .finally(() => setTreeLoading((current) => {
-        if (!currentRequest()) return current;
-        treeRequestTokensRef.current.delete(path);
-        const next = new Set(current);
-        next.delete(path);
-        return next;
-      }));
   }
 
   function focusTreeIndex(index: number) {
@@ -1324,13 +651,10 @@ export function FileExplorer({
         returnFocus.focus({ preventScroll: true });
         return;
       }
-      const index = visibleTreeNodes.findIndex((node) => node.path === path);
+      const index = path === null ? -1 : nodeIndexByPath.get(path) ?? -1;
       if (index >= 0) focusTreeIndex(index);
     });
   }
-
-  const nextOperationId = () => globalThis.crypto?.randomUUID?.()
-    ?? `remote-fs-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   async function observedExpectation(path: string): Promise<PathExpectationV1> {
     if (!binding) throw new Error("remote session binding unavailable");
@@ -1556,10 +880,10 @@ export function FileExplorer({
   }
 
   function renderTreeNode(node: ExplorerTreeNode) {
-    const listingIndex = visibleTreeNodes.findIndex((candidate) => candidate.path === node.path);
+    const listingIndex = nodeIndexByPath.get(node.path) ?? -1;
     const isDir = node.entry.kind === "dir";
     const expanded = isDir && expandedPaths.has(node.path);
-    const children = visibleTreeNodes.filter((candidate) => candidate.parentPath === node.path);
+    const children = childrenByParent.get(node.path) ?? [];
     const active = activeFilePath === node.path;
     const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes;
     const batchSelected = selectedDownloads.has(node.path);
@@ -1634,10 +958,10 @@ export function FileExplorer({
           if (event.key === "ArrowLeft") {
             if (isDir && expanded) {
               event.preventDefault(); event.stopPropagation();
-              setExpandedPaths((current) => { const next = new Set(current); next.delete(node.path); return next; });
+              collapsePath(node.path);
             } else if (node.parentPath) {
               event.preventDefault(); event.stopPropagation();
-              focusTreeIndex(visibleTreeNodes.findIndex((candidate) => candidate.path === node.parentPath));
+              focusTreeIndex(nodeIndexByPath.get(node.parentPath) ?? -1);
             }
             return;
           }
@@ -1682,15 +1006,8 @@ export function FileExplorer({
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (expanded) {
-                  setExpandedPaths((current) => {
-                    const next = new Set(current);
-                    next.delete(node.path);
-                    return next;
-                  });
-                } else {
-                  expandDirectory(node.path);
-                }
+                if (expanded) collapsePath(node.path);
+                else expandDirectory(node.path);
               }}
             >
               <FolderIcon />
@@ -1738,7 +1055,7 @@ export function FileExplorer({
   }
 
   function openSearchDir(path: string) {
-    setSearchQuery("");
+    search.setQuery("");
     setNavDir("in");
     setCurrentPath(path);
   }
@@ -1980,7 +1297,7 @@ export function FileExplorer({
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {upload.cancelling ? t("explorer.upload.cancelling") : t("explorer.upload.progress", { file: upload.fileName, percent: upload.total > 0 ? Math.min(100, Math.round(upload.transferred / upload.total * 100)) : 0 })}
             </span>
-            <button type="button" onClick={cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("explorer.upload.cancel")}</button>
+            <button type="button" onClick={directUpload.cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("explorer.upload.cancel")}</button>
           </div>
           <progress className="ui-progress" aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
         </div>
@@ -2000,15 +1317,7 @@ export function FileExplorer({
       >
         <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px var(--sp-2)", border: "1px solid var(--c-control-border)", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
           <button
-            onClick={() => {
-              setSearchMode((m) => {
-                const next = m === "name" ? "content" : "name";
-                lastFileSearchMode = next;
-                setSearchLimit(initialFileSearchLimit(next));
-                return next;
-              });
-              setSearchQuery("");
-            }}
+            onClick={search.toggleSearchMode}
             title={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
             aria-label={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
             aria-pressed={searchMode === "content"}
@@ -2022,17 +1331,13 @@ export function FileExplorer({
             className="ui-native-control"
             type="text"
             value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setSearchLimit(initialFileSearchLimit(searchMode));
-            }}
+            onChange={(e) => search.setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();
                 // Esc 先清空，已空则让出焦点
                 if (searchQuery) {
-                  setSearchQuery("");
-                  setSearchLimit(initialFileSearchLimit(searchMode));
+                  search.setQuery("");
                 } else {
                   (e.currentTarget as HTMLInputElement).blur();
                 }
@@ -2050,7 +1355,7 @@ export function FileExplorer({
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => search.setQuery("")}
               className="hover-bg"
               title={t("explorer.clear_search")}
               aria-label={t("explorer.clear_search")}
@@ -2115,7 +1420,7 @@ export function FileExplorer({
             ) : searchError ? (
               <>
                 <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-                <SearchRetryButton label={t("explorer.search_retry")} onRetry={() => setSearchRetryNonce((n) => n + 1)} />
+                <SearchRetryButton label={t("explorer.search_retry")} onRetry={search.retrySearch} />
               </>
             ) : grepHits.length === 0 ? (
               <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
@@ -2150,7 +1455,7 @@ export function FileExplorer({
                     ))}
                   </div>
                 ))}
-                {(grepTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={loadMoreSearchResults} />}
+                {(grepTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />}
               </>
             )
           ) : (
@@ -2159,7 +1464,7 @@ export function FileExplorer({
           ) : searchError ? (
             <>
               <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-              <SearchRetryButton label={t("explorer.search_retry")} onRetry={() => setSearchRetryNonce((n) => n + 1)} />
+              <SearchRetryButton label={t("explorer.search_retry")} onRetry={search.retrySearch} />
             </>
           ) : searchHits.length === 0 ? (
             <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
@@ -2190,7 +1495,7 @@ export function FileExplorer({
                   </div>
                 );
               })}
-              {(searchTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={loadMoreSearchResults} />}
+              {(searchTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />}
             </>
           )
           )
@@ -2239,8 +1544,7 @@ export function FileExplorer({
             </div>
             <div role="tree" aria-label={t("explorer.file_list")} aria-multiselectable={binding ? "true" : undefined}>
               {virtualizeListing && <div aria-hidden="true" role="presentation" style={{ height: listingSlice.topPad }} />}
-              {visibleTreeNodes
-                .filter((node) => node.parentPath === null)
+              {(childrenByParent.get(null) ?? [])
                 .slice(listingSlice.first, listingSlice.last)
                 .map(renderTreeNode)}
               {virtualizeListing && <div aria-hidden="true" role="presentation" style={{ height: listingSlice.bottomPad }} />}
