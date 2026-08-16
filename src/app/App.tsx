@@ -285,7 +285,6 @@ function AppSplash() {
 }
 
 export default function App() {
-  const t = useT();
   const ready = useUIStore((s) => s.ready);
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);

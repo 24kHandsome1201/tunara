@@ -19,6 +19,7 @@ import { TerminalInputRouter, type TerminalInputEventKind, type TerminalInputOwn
 import { issueFocusReturnToken, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import { copyActiveTerminal, registerTerminalMenuAction, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import { formatDroppedTerminalPaths } from "@/modules/terminal/lib/shell-quote";
+import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
 interface TerminalViewChromeProps {
   sessionId: string;

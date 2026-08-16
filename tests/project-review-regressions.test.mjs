@@ -1673,7 +1673,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // The 580 ceiling left room for generation publication and inert SSH
   // restore. 580→625 covers input ownership plus binding-aware terminal
   // actions; their state machines remain extracted into terminal lib modules.
-  assert.ok(terminal.split("\n").length < 625);
+  // 625→630 covers the OSC 133 seen-marker used by the Overview hint.
+  assert.ok(terminal.split("\n").length < 630);
   // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
   assert.ok(sidebar.split("\n").length < 430);
 });

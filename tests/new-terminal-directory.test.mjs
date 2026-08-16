@@ -98,7 +98,7 @@ test("all directory entry points share the guarded dialog helper", () => {
   const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
 
   assert.match(app, /openNewTerminalDirectoryDialog/);
-  assert.equal((app.match(/onNewTerminalInDirectory=\{newTerminalInDirectory\}/g) ?? []).length, 2);
+  assert.equal((app.match(/onNewTerminalInDirectory=\{newTerminalInDirectory\}/g) ?? []).length, 3);
   assert.match(sidebar, /onClick=\{onNewTerminalInDirectory\}/);
   assert.match(titlebar, /onContextMenu=\{openNewTerminalMenu\}/);
   assert.match(palette, /void openNewTerminalDirectoryDialog\(\)/);
