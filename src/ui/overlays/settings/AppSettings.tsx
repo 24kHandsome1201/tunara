@@ -147,6 +147,8 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
             <Stepper
               display={`${downloadMaxFiles}`}
               valueMinWidth={48}
+              decrementLabel={t("common.decrement")}
+              incrementLabel={t("common.increment")}
               onDecrement={() => setDownloadLimits({ maxFiles: Math.max(1, downloadMaxFiles - 10) })}
               onIncrement={() => setDownloadLimits({ maxFiles: Math.min(10_000, downloadMaxFiles + 10) })}
             />
@@ -156,6 +158,8 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
             <Stepper
               display={`${Math.round(downloadMaxFileBytes / (1024 * 1024))}`}
               valueMinWidth={48}
+              decrementLabel={t("common.decrement")}
+              incrementLabel={t("common.increment")}
               onDecrement={() => setDownloadLimits({ maxFileBytes: Math.max(1 * 1024 * 1024, downloadMaxFileBytes - 10 * 1024 * 1024) })}
               onIncrement={() => setDownloadLimits({ maxFileBytes: Math.min(1024 * 1024 * 1024, downloadMaxFileBytes + 10 * 1024 * 1024) })}
             />
@@ -165,6 +169,8 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
             <Stepper
               display={`${(downloadMaxTotalBytes / (1024 ** 3)).toFixed(1)}`}
               valueMinWidth={48}
+              decrementLabel={t("common.decrement")}
+              incrementLabel={t("common.increment")}
               onDecrement={() => setDownloadLimits({ maxTotalBytes: Math.max(1024 ** 3, downloadMaxTotalBytes - 1024 ** 3) })}
               onIncrement={() => setDownloadLimits({ maxTotalBytes: Math.min(10 * 1024 ** 3, downloadMaxTotalBytes + 1024 ** 3) })}
             />
