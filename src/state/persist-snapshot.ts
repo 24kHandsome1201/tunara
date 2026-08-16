@@ -103,6 +103,8 @@ export interface PersistedUILayoutV2 {
   collapsedDiffSections: Record<string, true>;
   split: SplitState;
   inspectorTab: "overview" | "changes" | "files" | "transfers" | "metadata" | "forwarding" | "diagnostics" | "knownHosts" | "preview" | "notes";
+  broadcastInput?: boolean;
+  explorerFollowCwd?: boolean;
 }
 
 export interface PersistedTerminalSnapshot {
@@ -398,7 +400,10 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
 
     const inspectorTab = isValidInspectorTab(uiRaw.inspectorTab) ? uiRaw.inspectorTab : "overview";
 
-    ui = { sidebarVisible, panelVisible, collapsedDirs, collapsedDiffSections, split, inspectorTab };
+    ui = { sidebarVisible, panelVisible, collapsedDirs, collapsedDiffSections, split, inspectorTab,
+      broadcastInput: uiRaw.broadcastInput === true,
+      explorerFollowCwd: uiRaw.explorerFollowCwd !== false,
+    };
   } else {
     ui = { ...DEFAULT_UI_LAYOUT_V2 };
   }

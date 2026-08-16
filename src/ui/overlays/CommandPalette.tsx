@@ -152,6 +152,36 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       },
     });
 
+    if (activeSession?.remote) {
+      cmds.push({
+        id: "duplicate-ssh-host",
+        label: t("palette.cmd.duplicate_ssh_host"),
+        icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m6 9 3 3-3 3" /><line x1="12" y1="15" x2="16" y2="15" /></svg>,
+        section: t("palette.section.action"),
+        scopes: ["action", "terminal"],
+        originalIndex: idx++,
+        action: () => {
+          uiStore.getState().recordCommandUse("duplicate-ssh-host");
+          useSessionsStore.getState().duplicateOnHost(activeSession.id);
+          onClose();
+        },
+      });
+    }
+
+    cmds.push({
+      id: "toggle-broadcast-input",
+      label: uiStore.getState().broadcastInput ? t("palette.cmd.broadcast_off") : t("palette.cmd.broadcast_on"),
+      icon: <CmdIcon d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "terminal"],
+      originalIndex: idx++,
+      action: () => {
+        uiStore.getState().recordCommandUse("toggle-broadcast-input");
+        uiStore.getState().toggleBroadcastInput();
+        onClose();
+      },
+    });
+
     if (activeSession) {
       cmds.push({
         id: "copy-terminal-selection",

@@ -136,6 +136,7 @@ async fn real_ssh_rtt_operations_benchmark() {
                         session_id: format!("m1-rtt-{rtt_ms}-{sample}"),
                         transport_generation: "benchmark".into(),
                         hop_role: "direct".into(),
+                        jump_endpoint: None,
                     },
                     on_event,
                 ),

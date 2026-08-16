@@ -4,6 +4,8 @@ import { useT } from "@/modules/i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import type { InspectorScopedPanelProps } from "./inspector-scope";
 import { PanelActionButton, PanelEmptyState, PanelToolbar } from "./shared";
+import { formatTransferEta, formatTransferRate, transferEta, transferRate } from "@/modules/ssh/transfer-rate";
+import { canResumeRecovery } from "@/modules/ssh/transfer-resume";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import { useSessionsStore } from "@/state/sessions";
 
@@ -19,6 +21,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
   const reconcileRecovery = useTransferStore((state) => state.reconcileRecovery);
   const deleteRecoveryPartial = useTransferStore((state) => state.deleteRecoveryPartial);
   const restartRecovery = useTransferStore((state) => state.restartRecovery);
+  const resumeRecovery = useTransferStore((state) => state.resumeRecovery);
   const dismissRecovery = useTransferStore((state) => state.dismissRecovery);
   const logicalSessionId = inspectorScope?.logicalSessionId;
   const [global, setGlobal] = useState(!logicalSessionId);
@@ -146,6 +149,12 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                   </div>
                   <div className="transfer-meta">
                     {t(`transfer.direction.${item.direction}`)} · {item.binding.logicalSessionId} / PTY {item.binding.physicalPtyId} · {t("transfer.attempt", { attempt: item.attempt })}
+                    {item.status === "running" && (() => {
+                      const snapshot = transferRate(item.rateSamples ?? []);
+                      if (!snapshot || snapshot.bytesPerSec <= 0) return null;
+                      const eta = formatTransferEta(transferEta(item.event?.bytesTransferred ?? 0, item.event?.totalBytes, snapshot.bytesPerSec));
+                      return <> · {eta ? t("transfer.rate", { rate: formatTransferRate(snapshot.bytesPerSec), eta }) : t("transfer.rate_only", { rate: formatTransferRate(snapshot.bytesPerSec) })}</>;
+                    })()}
                   </div>
                   <div className="transfer-card-actions">
                     {(item.status === "queued" || item.status === "running") && <PanelActionButton aria-label={t("transfer.cancel_item", { file: item.source })} onClick={() => void cancel(item.transferId)}>{t("transfer.cancel")}</PanelActionButton>}
@@ -182,6 +191,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     {error && <div role="alert" className="transfer-warning">{t(`transfer.recovery.error.${error}`)}</div>}
                     <div className="transfer-card-actions">
                       <PanelActionButton disabled={busy} onClick={() => void reconcileRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.reconcile.${result}`)))}>{t("transfer.recovery.reconcile")}</PanelActionButton>
+                      <PanelActionButton disabled={busy || !canResumeRecovery(record)} title={canResumeRecovery(record) ? undefined : t("transfer.recovery.resume_unavailable")} onClick={() => void resumeRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.resume.${result}`)))}>{t("transfer.recovery.resume")}</PanelActionButton>
                       <PanelActionButton disabled={busy || record.partial.kind === "remote"} title={record.partial.kind === "remote" ? t("transfer.recovery.remote_cleanup_unavailable") : undefined} onClick={() => void confirmAction(t("transfer.confirm.restart")).then((approved) => { if (approved) return restartRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.restart.${result}`))); })}>{t("transfer.recovery.restart")}</PanelActionButton>
                       <PanelActionButton disabled={busy || record.partial.kind === "remote"} title={record.partial.kind === "remote" ? t("transfer.recovery.remote_cleanup_unavailable") : undefined} onClick={() => void confirmAction(t("transfer.confirm.delete_partial")).then((approved) => { if (approved) return deleteRecoveryPartial(record.recoveryId); })}>{t("transfer.recovery.delete_partial")}</PanelActionButton>
                       <PanelActionButton disabled={busy} onClick={() => void confirmAction(t("transfer.confirm.dismiss")).then((approved) => { if (approved) return dismissRecovery(record.recoveryId); })}>{t("transfer.recovery.dismiss")}</PanelActionButton>

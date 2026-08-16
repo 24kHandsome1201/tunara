@@ -237,6 +237,8 @@ pub struct SshOpenRequestV2 {
     /// explicitly rather than silently ignoring an unsupported route.
     pub jump: Option<SshEndpointV1>,
     pub shell: SshShellOptionsV1,
+    /// Open a new shell channel on the live TCP transport of this logical session.
+    pub share_with_logical_session_id: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -451,7 +453,14 @@ async fn open_with_cancellation(
     jump: Option<ConnectParams>,
     on_event: Channel<PtyEvent>,
     open_attempt_id: &str,
+    shared: Option<connection::SharedSshTransport>,
 ) -> Result<(SshSession, OpenAttemptGuard), String> {
+    if let Some(shared) = shared {
+        let logical_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
+        let (_cancel, guard) = register_open_attempt(open_attempt_id, logical_id);
+        let ssh = connection::SshSession::open_from_shared(params, on_event, shared).await?;
+        return Ok((ssh, guard));
+    }
     let logical_session_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
     let (cancel, guard) = register_open_attempt(open_attempt_id, logical_session_id);
     let (cancel_transport, cancel_receiver) = tokio::sync::watch::channel(false);
@@ -547,6 +556,7 @@ async fn ssh_open_impl(
     inject_shell_integration: Option<bool>,
     cols: u16,
     rows: u16,
+    share_with_logical_session_id: Option<String>,
     on_event: Channel<PtyEvent>,
 ) -> Result<SshOpenResultV2, String> {
     let port = port.unwrap_or(22);
@@ -591,7 +601,7 @@ async fn ssh_open_impl(
     {
         return Err("target request: invalid SSH open attempt id".into());
     }
-    let params = ConnectParams {
+    let mut params = ConnectParams {
         host: host.clone(),
         port,
         auth: AuthOptions {
@@ -629,6 +639,7 @@ async fn ssh_open_impl(
         } else {
             "direct".into()
         },
+        jump_endpoint: None,
     };
     let jump_params = jump
         .map(|jump| -> Result<ConnectParams, String> {
@@ -660,13 +671,32 @@ async fn ssh_open_impl(
                 session_id: logical_session_id.clone().unwrap_or_default(),
                 transport_generation: open_attempt_id.clone(),
                 hop_role: "jump".into(),
+                jump_endpoint: None,
             })
         })
         .transpose()
         .map_err(|error| format!("jump request: {error}"))?;
+    if let Some(jump) = jump_params.as_ref() {
+        params.jump_endpoint = Some((jump.host.clone(), jump.port, jump.auth.user.clone()));
+    }
 
-    let (ssh, open_attempt) =
-        open_with_cancellation(params, jump_params, on_event, &open_attempt_id)
+    let share_hint = share_with_logical_session_id.as_deref();
+    let shared = state.find_shareable_ssh(
+        &params.host,
+        params.port,
+        &params.auth.user,
+        params.auth.identity_file.as_deref(),
+        params.jump_endpoint.as_ref(),
+        logical_session_id.as_deref(),
+        share_hint,
+    );
+    let (ssh, open_attempt) = open_with_cancellation(
+        params,
+        jump_params,
+        on_event,
+        &open_attempt_id,
+        shared,
+    )
             .await
             .inspect_err(|e| {
                 log::error!(
@@ -769,6 +799,7 @@ pub async fn ssh_open(
         inject_shell_integration,
         cols,
         rows,
+        None,
         on_event,
     )
     .await
@@ -823,6 +854,7 @@ pub async fn ssh_open_v2(
         shell.inject_shell_integration,
         shell.cols,
         shell.rows,
+        request.share_with_logical_session_id,
         on_event,
     )
     .await

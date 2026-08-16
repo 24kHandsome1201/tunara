@@ -138,6 +138,12 @@ export function acceptSshTransferEvent(
   return event.sequence > previous.sequence ? event : previous;
 }
 
+export type SshTransferResumeOptions = {
+  resumeFrom?: number;
+  resumePartial?: string;
+  createParents?: boolean;
+};
+
 export function sshTransferDownload(
   binding: SessionBindingV1,
   transferId: string,
@@ -145,9 +151,13 @@ export function sshTransferDownload(
   remotePath: string,
   localPath: string,
   onEvent: (event: SshTransferEvent) => void,
+  options?: SshTransferResumeOptions,
 ): Promise<{ outcome: SshTransferOutcome }> {
   return invoke<{ outcome: SshTransferOutcome }>("ssh_transfer_download", {
     binding, transferId, attempt, remotePath, localPath, onEvent: transferChannel(onEvent),
+    resumeFrom: options?.resumeFrom ?? null,
+    resumePartial: options?.resumePartial ?? null,
+    createParents: options?.createParents ?? null,
   });
 }
 
@@ -159,9 +169,12 @@ export function sshTransferUpload(
   remotePath: string,
   overwrite: boolean,
   onEvent: (event: SshTransferEvent) => void,
+  options?: SshTransferResumeOptions,
 ): Promise<{ outcome: SshTransferOutcome }> {
   return invoke<{ outcome: SshTransferOutcome }>("ssh_transfer_upload", {
     binding, transferId, attempt, localPath, remotePath, overwrite, onEvent: transferChannel(onEvent),
+    resumeFrom: options?.resumeFrom ?? null,
+    resumePartial: options?.resumePartial ?? null,
   });
 }
 

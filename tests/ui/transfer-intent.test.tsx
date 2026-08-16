@@ -62,7 +62,19 @@ describe("folder transfer intents", () => {
       ["/bad/name", "/home/alice/Downloads/__bad_name"],
     ]);
     expect(requests.every(({ direction, conflict }) => direction === "download" && conflict === "rename")).toBe(true);
+    expect(requests.every(({ createParents }) => createParents === true)).toBe(true);
     expect(safeDownloadLeaf("CON", 1)).toBe("_CON");
+  });
+
+  it("honors tighter caller download limits", () => {
+    expect(() => planBatchDownloads({
+      sources: [
+        { path: "/one/a.txt", name: "a.txt", size: 2 },
+        { path: "/two/b.txt", name: "b.txt", size: 2 },
+      ],
+      destinationRoot: "/home/alice/Downloads", existingNames: [], binding,
+      limits: { maxFiles: 1 },
+    })).toThrow("file limit");
   });
 
   it("rejects batch plans beyond file and total resource limits", () => {

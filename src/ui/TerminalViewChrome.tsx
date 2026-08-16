@@ -5,9 +5,16 @@ import { TerminalSearchBar } from "./TerminalSearchBar";
 import { ContextMenu } from "./ContextMenu";
 import { useT } from "@/modules/i18n";
 import type { useTerminalSearch } from "./useTerminalSearch";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { canSplitLayout } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
+import { terminalUploadDestination } from "@/modules/ssh/remote-cwd";
+import { classifyTransferDrop, expandFolderTransfer } from "@/modules/ssh/transfer-intent";
+import { validateManifest } from "@/modules/ssh/transfer-bridge";
+import { useTransferStore } from "@/modules/ssh/transfer-store";
+import { fsReadDir } from "@/modules/fs/fs-bridge";
 import { TerminalInputRouter, type TerminalInputEventKind, type TerminalInputOwner, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
 import { issueFocusReturnToken, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import { copyActiveTerminal, registerTerminalMenuAction, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
@@ -95,6 +102,78 @@ export function TerminalViewChrome({
   }, [containerRef, openMenu]);
 
   useEffect(() => registerTerminalMenuAction(sessionId, openKeyboardMenu), [openKeyboardMenu, sessionId]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const handleDragDrop = (event: Parameters<Parameters<ReturnType<typeof getCurrentWebview>["onDragDropEvent"]>[0]>[0]) => {
+      if (disposed) return;
+      if (event.payload.type !== "drop") return;
+      const { paths, position } = event.payload;
+      const rect = containerRef.current?.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      const x = position.x / scale;
+      const y = position.y / scale;
+      const inside = rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+      if (!inside) return;
+      const session = useSessionsStore.getState().sessions.find((item) => item.id === sessionId);
+      const binding = readyBindingForSession(session);
+      if (!session?.remote || !binding) return;
+      const cwd = session.dir;
+      void (async () => {
+        const requests = [];
+        for (const localPath of paths) {
+          let isDirectory = false;
+          try {
+            await fsReadDir(localPath, false);
+            isDirectory = true;
+          } catch {
+            // Ordinary files fail directory listing and continue as uploads.
+          }
+          const intent = classifyTransferDrop({ localPaths: [localPath], folder: isDirectory });
+          if (intent.kind === "folder") {
+            const leaf = intent.root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "upload";
+            const destinationRoot = terminalUploadDestination(cwd, leaf);
+            if (!destinationRoot) throw new Error("cwd");
+            const manifest = await validateManifest({ kind: "local", root: intent.root });
+            const plan = expandFolderTransfer({
+              manifest, binding, direction: "upload", sourceRoot: intent.root, destinationRoot, conflict: "rename",
+            });
+            requests.push(...plan.requests);
+          } else {
+            const leaf = localPath.split(/[\\/]/).pop() ?? "upload";
+            const destination = terminalUploadDestination(cwd, leaf);
+            if (!destination) throw new Error("cwd");
+            requests.push({ binding, direction: "upload" as const, source: localPath, destination, conflict: "rename" as const });
+          }
+        }
+        if (requests.length === 0) return;
+        useTransferStore.getState().enqueueBatch(requests);
+        useUIStore.getState().addToast({
+          sessionId,
+          title: t("term.drop.upload"),
+          subtitle: t("explorer.download.batch_queued_hint", { count: requests.length }),
+          variant: "success",
+        });
+      })().catch(() => {
+        const hasCwd = terminalUploadDestination(cwd, "file") !== null;
+        useUIStore.getState().addToast({
+          sessionId,
+          title: t("term.drop.upload"),
+          subtitle: t(hasCwd ? "explorer.drop.failed" : "term.drop.no_cwd"),
+          variant: "error",
+        });
+      });
+    };
+    try {
+      void getCurrentWebview().onDragDropEvent(handleDragDrop)
+        .then((next) => { if (disposed) next(); else unlisten = next; })
+        .catch(() => {});
+    } catch {
+      // Browser/unit-test environments have no current Tauri webview.
+    }
+    return () => { disposed = true; unlisten?.(); };
+  }, [containerRef, sessionId, t]);
 
   const handleContextMenuCapture = (e: React.MouseEvent) => {
     if (!isOnTerminalCanvas(e)) return;
@@ -195,6 +274,11 @@ export function TerminalViewChrome({
               icon: "terminal",
               disabled: !menu.canSplit,
               action: () => useSessionsStore.getState().splitWithNewSession("vertical", sessionId),
+            },
+            {
+              id: "broadcast",
+              label: useUIStore.getState().broadcastInput ? t("term.broadcast.off") : t("term.broadcast.on"),
+              action: () => useUIStore.getState().toggleBroadcastInput(),
             },
           ]}
         />

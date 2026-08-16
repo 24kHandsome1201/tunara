@@ -252,6 +252,30 @@ describe("transfer queue", () => {
     await tick();
     expect(runner).toHaveBeenCalledOnce();
   });
+
+  it("queues a byte-level resume from a verified partial without deleting it", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_transfer_recovery_dismiss") return undefined;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const runner = vi.fn(async (item) => {
+      expect(item).toMatchObject({
+        direction: "download",
+        source: "/remote/a",
+        destination: "/home/user/a",
+        resumeFrom: 3,
+        resumePartial: "/home/user/.a.tunara-x.partial",
+        createParents: true,
+      });
+      return { outcome: { status: "completed" as const, bytesTransferred: 3 } };
+    });
+    const store = createTransferStore(runner);
+    store.setState({ recoveries: [{ record: recoveryRecord, busy: false }] });
+    expect(await store.getState().resumeRecovery(recoveryRecord.recoveryId)).toBe("queued");
+    expect(store.getState().recoveries).toEqual([]);
+    await tick();
+    expect(runner).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Transfer Center announcements", () => {

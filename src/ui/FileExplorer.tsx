@@ -41,6 +41,7 @@ import { breadcrumbSegments } from "./lib/breadcrumbs";
 import { copyText } from "./lib/clipboard";
 import { groupGrepHitsByFile, type GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
+import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
 import { FileSearchGeneration } from "./lib/file-search-session";
 import { dropDestinationFromListing } from "@/modules/ssh/drop-target";
 import {
@@ -51,11 +52,11 @@ import {
   toggleHostFavoritePath,
 } from "@/modules/ssh/host-file-prefs";
 import {
-  BATCH_DOWNLOAD_LIMITS,
   classifyTransferDrop,
   expandFolderTransfer,
   planBatchDownloads,
   renamedSibling,
+  resolveDownloadLimits,
   type BatchDownloadSource,
 } from "@/modules/ssh/transfer-intent";
 import { validateManifest } from "@/modules/ssh/transfer-bridge";
@@ -416,6 +417,45 @@ export function FileExplorer({
       if (!transfer.disposed) setDownload(null);
     }
   };
+
+  const downloadRemoteFolder = async (remotePath: string, folderName: string) => {
+    if (!binding) return;
+    try {
+      const selected = await openDialog({
+        title: t("explorer.download.batch_choose_destination"),
+        directory: true,
+        multiple: false,
+      });
+      const destinationParent = Array.isArray(selected) ? selected[0] : selected;
+      if (!destinationParent) return;
+      const manifest = await validateManifest(
+        { kind: "remote", root: remotePath, binding },
+        { maxEntries: downloadLimits.maxFiles, maxTotalBytes: downloadLimits.maxTotalBytes },
+      );
+      const plan = expandFolderTransfer({
+        manifest,
+        binding,
+        direction: "download",
+        sourceRoot: remotePath,
+        destinationRoot: joinPath(destinationParent, folderName),
+        conflict: "rename",
+      });
+      useTransferStore.getState().enqueueBatch(plan.requests);
+      useUIStore.getState().addToast({
+        sessionId,
+        title: t("explorer.download.batch_queued"),
+        subtitle: t("explorer.download.batch_queued_hint", { count: plan.requests.length }),
+        variant: "success",
+      });
+    } catch (error) {
+      useUIStore.getState().addToast({
+        sessionId,
+        title: t("explorer.download.failed"),
+        subtitle: error instanceof Error ? error.message : t("explorer.download.batch_prepare_failed"),
+        variant: "error",
+      });
+    }
+  };
   // For local sessions the base is rootDir directly. Remote sessions use an
   // OSC 7 absolute cwd when available, otherwise resolve $HOME via SFTP.
   const [baseDir, setBaseDir] = useState<string | null>(isRemote ? null : rootDir);
@@ -443,6 +483,17 @@ export function FileExplorer({
     bindingKey: string;
   } | null>(null);
   const externalEditor = useUIStore((s) => s.externalEditor);
+  const downloadMaxFiles = useUIStore((s) => s.downloadMaxFiles);
+  const downloadMaxFileBytes = useUIStore((s) => s.downloadMaxFileBytes);
+  const downloadMaxTotalBytes = useUIStore((s) => s.downloadMaxTotalBytes);
+  const downloadLimits = useMemo(
+    () => resolveDownloadLimits({
+      maxFiles: downloadMaxFiles,
+      maxFileBytes: downloadMaxFileBytes,
+      maxTotalBytes: downloadMaxTotalBytes,
+    }),
+    [downloadMaxFiles, downloadMaxFileBytes, downloadMaxTotalBytes],
+  );
   const activeFilePath = useUIStore((s) =>
     s.fileTabs.find((tab) => tab.id === s.activeFileTabId && tab.sessionId === sessionId)?.filePath,
   );
@@ -1112,8 +1163,8 @@ export function FileExplorer({
   }, [entries, currentPath, expandedPaths, treeChildren, sort]);
   listingDropRef.current = { currentPath, nodes: visibleTreeNodes };
   const selectableDownloadNodes = useMemo(() => binding
-    ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= BATCH_DOWNLOAD_LIMITS.maxFileBytes)
-    : [], [binding, visibleTreeNodes]);
+    ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
+    : [], [binding, visibleTreeNodes, downloadLimits]);
   const isSearching = searchQuery.trim().length > 0;
   const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
 
@@ -1374,7 +1425,7 @@ export function FileExplorer({
         ? [
             { id: "dir:mkdir", label: t("explorer.mutation.mkdir"), icon: "folder", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "mkdir", node, value: "", bindingKey: treeRequestContext }); } },
             { id: "dir:new-file", label: t("explorer.capability.new_file_unavailable"), icon: "editor", disabled: true, action: () => {} },
-            { id: "dir:download", label: t("explorer.capability.directory_download_unavailable"), icon: "download", disabled: true, action: () => {} },
+            { id: "dir:download", label: t("explorer.download_folder"), icon: "download", disabled: remoteDisconnected || !binding, action: () => { void downloadRemoteFolder(node.path, node.entry.name); } },
             { id: "dir:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
             { id: "dir:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
             { id: "dir:metadata", label: t("explorer.metadata"), icon: "search", action: () => { suppressMenuFocusRef.current = true; onInspectRemotePath?.(node.path); } },
@@ -1389,6 +1440,7 @@ export function FileExplorer({
     return isRemote
       ? [
           { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => openFile(node.path) },
+          { id: "file:open-editor", label: t("preview.editor.external_remote"), icon: "editor", disabled: remoteDisconnected || remotePtyId === undefined, action: () => { if (remotePtyId !== undefined) void openRemoteInExternalEditor({ sessionId, remotePtyId, remotePath: node.path, editor: externalEditor }).catch(() => {}); } },
           { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
           { id: "file:metadata", label: t("explorer.metadata"), icon: "search", action: () => { suppressMenuFocusRef.current = true; onInspectRemotePath?.(node.path); } },
@@ -1406,7 +1458,7 @@ export function FileExplorer({
   }
 
   function toggleDownloadSelection(node: ExplorerTreeNode, range: boolean) {
-    if (!binding || node.entry.kind !== "file" || node.entry.size > BATCH_DOWNLOAD_LIMITS.maxFileBytes) return;
+    if (!binding || node.entry.kind !== "file" || node.entry.size > downloadLimits.maxFileBytes) return;
     const nextSource = { path: node.path, name: node.entry.name, size: node.entry.size };
     setSelectedDownloads((current) => {
       const next = new Map(current);
@@ -1417,16 +1469,16 @@ export function FileExplorer({
         if (anchor >= 0 && target >= 0) {
           for (const candidate of selectableDownloadNodes.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)) {
             if (next.has(candidate.path)) continue;
-            if (next.size >= BATCH_DOWNLOAD_LIMITS.maxFiles
-              || totalBytes + candidate.entry.size > BATCH_DOWNLOAD_LIMITS.maxTotalBytes) break;
+            if (next.size >= downloadLimits.maxFiles
+              || totalBytes + candidate.entry.size > downloadLimits.maxTotalBytes) break;
             next.set(candidate.path, { path: candidate.path, name: candidate.entry.name, size: candidate.entry.size });
             totalBytes += candidate.entry.size;
           }
         }
       } else if (next.has(node.path)) {
         next.delete(node.path);
-      } else if (next.size < BATCH_DOWNLOAD_LIMITS.maxFiles
-        && totalBytes + node.entry.size <= BATCH_DOWNLOAD_LIMITS.maxTotalBytes) {
+      } else if (next.size < downloadLimits.maxFiles
+        && totalBytes + node.entry.size <= downloadLimits.maxTotalBytes) {
         next.set(node.path, nextSource);
       }
       return next;
@@ -1448,7 +1500,7 @@ export function FileExplorer({
     const next = new Map<string, BatchDownloadSource>();
     let total = 0;
     for (const node of selectableDownloadNodes) {
-      if (next.size >= BATCH_DOWNLOAD_LIMITS.maxFiles || total + node.entry.size > BATCH_DOWNLOAD_LIMITS.maxTotalBytes) break;
+      if (next.size >= downloadLimits.maxFiles || total + node.entry.size > downloadLimits.maxTotalBytes) break;
       next.set(node.path, { path: node.path, name: node.entry.name, size: node.entry.size });
       total += node.entry.size;
     }
@@ -1478,6 +1530,7 @@ export function FileExplorer({
         destinationRoot,
         existingNames: existing.map(({ name }) => name),
         binding,
+        limits: downloadLimits,
       });
       useTransferStore.getState().enqueueBatch(requests);
       setSelectedDownloads(new Map());
@@ -1508,7 +1561,7 @@ export function FileExplorer({
     const expanded = isDir && expandedPaths.has(node.path);
     const children = visibleTreeNodes.filter((candidate) => candidate.parentPath === node.path);
     const active = activeFilePath === node.path;
-    const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= BATCH_DOWNLOAD_LIMITS.maxFileBytes;
+    const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes;
     const batchSelected = selectedDownloads.has(node.path);
     const openMenu = (x: number, y: number, opener: HTMLElement) => {
       menuReturnPathRef.current = node.path;
@@ -1613,7 +1666,7 @@ export function FileExplorer({
             aria-label={node.entry.kind === "file" ? t("explorer.download.select_file", { file: node.entry.name }) : undefined}
             checked={batchSelected}
             disabled={!batchSelectable}
-            title={node.entry.kind === "file" && node.entry.size > BATCH_DOWNLOAD_LIMITS.maxFileBytes ? t("explorer.download.too_large") : undefined}
+            title={node.entry.kind === "file" && node.entry.size > downloadLimits.maxFileBytes ? t("explorer.download.too_large") : undefined}
             onClick={(event) => { event.stopPropagation(); toggleDownloadSelection(node, event.shiftKey); }}
             onChange={() => {}}
             style={{ margin: 0, visibility: node.entry.kind === "file" ? "visible" : "hidden" }}

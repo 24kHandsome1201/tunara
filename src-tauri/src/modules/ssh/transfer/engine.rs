@@ -623,6 +623,9 @@ pub async fn ssh_transfer_download(
     attempt: u32,
     remote_path: String,
     local_path: String,
+    resume_from: Option<u64>,
+    resume_partial: Option<String>,
+    create_parents: Option<bool>,
     on_event: Channel<TransferEvent>,
 ) -> Result<TransferResponse, String> {
     (async {
@@ -649,8 +652,28 @@ pub async fn ssh_transfer_download(
             }
         };
 
+        if create_parents == Some(true) {
+            sftp::ensure_download_parents(&local_path)?;
+        }
+        let resume_offset = resume_from.unwrap_or(0);
         let target = sftp::validate_download_target(&local_path)?;
-        let partial = random_partial_sibling(&target)?;
+        let partial = if resume_offset > 0 {
+            let path = resume_partial
+                .as_deref()
+                .filter(|path| !path.is_empty())
+                .ok_or("download resume partial path is required")?;
+            let candidate = PathBuf::from(path);
+            if !candidate.is_absolute()
+                || candidate
+                    .components()
+                    .any(|component| matches!(component, std::path::Component::ParentDir))
+            {
+                return Err("download resume partial must be an absolute path".into());
+            }
+            candidate
+        } else {
+            random_partial_sibling(&target)?
+        };
         let sftp = resolve_session(&state, &binding).await?;
         let remote_metadata = await_stage(
             "stat remote download",
@@ -677,14 +700,30 @@ pub async fn ssh_transfer_download(
             sftp.open(&remote_path),
         )
         .await?;
-        let mut local = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&partial)
-            .await
-            .map_err(|error| format!("create local download partial failed: {error}"))?;
+        if resume_offset > 0 {
+            use tokio::io::AsyncSeekExt;
+            remote
+                .seek(std::io::SeekFrom::Start(resume_offset))
+                .await
+                .map_err(|error| format!("seek remote download failed: {error}"))?;
+        }
+        let mut local = if resume_offset > 0 {
+            tokio::fs::OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(&partial)
+                .await
+                .map_err(|error| format!("open local download partial failed: {error}"))?
+        } else {
+            tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&partial)
+                .await
+                .map_err(|error| format!("create local download partial failed: {error}"))?
+        };
 
-        let initial_identity = local_identity(&partial, 0)?;
+        let initial_identity = local_identity(&partial, resume_offset)?;
         let recovery_id = match transfer_journal::create(
             &app,
             TransferJournalRecord {
@@ -705,7 +744,7 @@ pub async fn ssh_transfer_download(
                 final_path: target.display().to_string(),
                 partial: initial_identity,
                 phase: "transferring".into(),
-                bytes: 0,
+                bytes: resume_offset,
                 prefix_sha256: format!("{:x}", Sha256::digest([])),
                 final_sha256: None,
                 commit_intent: false,
@@ -726,8 +765,27 @@ pub async fn ssh_transfer_download(
             }
         };
 
-        let mut bytes_transferred = 0_u64;
+        let mut bytes_transferred = resume_offset;
         let mut hasher = Sha256::new();
+        if resume_offset > 0 {
+            let mut existing = std::fs::File::open(&partial)
+                .map_err(|error| format!("read download partial for resume failed: {error}"))?;
+            let mut buffer = vec![0_u8; 64 * 1024];
+            let mut hashed = 0_u64;
+            loop {
+                let count = existing
+                    .read(&mut buffer)
+                    .map_err(|error| format!("hash download partial for resume failed: {error}"))?;
+                if count == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..count]);
+                hashed += count as u64;
+            }
+            if hashed != resume_offset {
+                return Err("download partial size does not match resume offset".into());
+            }
+        }
         let mut last_checkpoint = Instant::now();
         let mut buffer = vec![0_u8; 64 * 1024];
         emitter.emit(TransferPhase::Transferring, 0, Some(total), true);
@@ -952,6 +1010,8 @@ pub async fn ssh_transfer_upload(
     local_path: String,
     remote_path: String,
     overwrite: bool,
+    resume_from: Option<u64>,
+    resume_partial: Option<String>,
     on_event: Channel<TransferEvent>,
 ) -> Result<TransferResponse, String> {
     (async {
@@ -996,6 +1056,16 @@ pub async fn ssh_transfer_upload(
             Session::Local(_) => return Err("not a remote session".into()),
         };
         let mut opened_source = OpenedUploadSource::open(Path::new(&local_path))?;
+        let resume = match (resume_partial.clone(), resume_from) {
+            (Some(path), Some(offset)) if offset > 0 => {
+                opened_source
+                    .file
+                    .seek(SeekFrom::Start(offset))
+                    .map_err(|error| format!("seek upload source for resume failed: {error}"))?;
+                Some((path, offset))
+            }
+            _ => None,
+        };
         #[cfg(unix)]
         let source_identity = SourceIdentity::Local {
             path: local_path.clone(),
@@ -1154,6 +1224,7 @@ pub async fn ssh_transfer_upload(
                     Err("upload cancelled".into())
                 }
             },
+            resume,
         )
         .await;
 

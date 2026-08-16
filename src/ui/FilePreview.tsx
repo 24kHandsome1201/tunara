@@ -15,6 +15,7 @@ import { CloseIcon } from "./shared";
 import { useT, t as staticT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
+import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
 import { copyText } from "./lib/clipboard";
 import { useSessionsStore } from "@/state/sessions";
 import {
@@ -1192,7 +1193,30 @@ function EditorSurface({
         <span>{t("preview.editor.lines", { count: lines.length })}</span>
         <span>{formatSize(new TextEncoder().encode(content).length)}</span>
         <div className="file-editor-footer-actions">
-          {!isRemote && (
+          {isRemote ? (
+            <button
+              disabled={remoteDisconnected || !sessionId || remotePtyId === undefined}
+              title={t("preview.editor.external_remote_hint")}
+              onClick={() => {
+                if (!sessionId || remotePtyId === undefined) return;
+                void openRemoteInExternalEditor({
+                  sessionId,
+                  remotePtyId,
+                  remotePath: filePath,
+                  editor: externalEditor,
+                }).catch(() => {
+                  useUIStore.getState().addToast({
+                    sessionId,
+                    title: t("preview.editor.external_remote"),
+                    subtitle: t("preview.editor.save_failed_body"),
+                    variant: "error",
+                  });
+                });
+              }}
+            >
+              {t("preview.editor.external_remote")}
+            </button>
+          ) : (
             <button onClick={() => void openInEditorWithToast(externalEditor, filePath)}>{t("preview.editor.external")}</button>
           )}
           {!isNotebook && <button data-editor-action="save" className="file-editor-save" disabled={remoteDisconnected || !dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown"} onClick={() => void save()}>{t("preview.editor.save")}</button>}
