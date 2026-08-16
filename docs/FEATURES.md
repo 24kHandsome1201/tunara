@@ -10,7 +10,7 @@
 
 ## 产品是什么
 
-Tunara 是 **terminal-first 的本地开发工作台**：真实 PTY / SSH、按目录分组的会话侧栏、只读 Git review、文件浏览与有边界的轻编辑、workspace-bound Preview，以及轻量 Agent 识别。
+Tunara 是 **terminal-first 的本地开发工作台**：真实 PTY / SSH、本地按目录 / SSH 按主机分组的会话侧栏、只读 Git review、文件浏览与有边界的轻编辑、workspace-bound Preview，以及轻量 Agent 识别。
 
 它不替代 shell、Git、浏览器、编辑器或 Agent。职责是让这些工具在同一个 workspace 里更容易观察、切换和验证。
 
@@ -29,7 +29,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 区域 | 入口 | 职责 |
 |------|------|------|
 | 标题栏 | [`src/ui/Titlebar.tsx`](../src/ui/Titlebar.tsx) | 会话/文件标签、新建、纯净模式、命令面板、设置 |
-| 侧栏 | [`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx) | 按目录分组的会话、统一动态、搜索 |
+| 侧栏 | [`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx) | 本地按目录、SSH 按主机分组的会话、统一动态、搜索 |
 | 主区 | [`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) | xterm 分栏，或与终端并列的文件标签 |
 | 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | Overview / Changes / Files / Preview / Notes，以及 SSH 专用页 |
 
@@ -62,11 +62,11 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 2. 会话侧栏与驾驶舱
 
-**用户能做什么：** 按工作目录分组；置顶、重命名、模糊搜索、未读与运行标记；关闭 running 会话需二次确认；选择目录新建终端。
+**用户能做什么：** 本地按工作目录分组，SSH 按目标主机分组；置顶、重命名、模糊搜索（含主机名）、未读与运行标记；关闭 running 会话需二次确认；选择目录新建终端；在已连接主机上再开窗口。
 
 | 能力 | 代码 |
 |------|------|
-| 会话列表与分组 | [`Sidebar.tsx`](../src/ui/Sidebar.tsx) · [`SessionCard.tsx`](../src/ui/SessionCard.tsx) |
+| 会话列表与分组 | [`Sidebar.tsx`](../src/ui/Sidebar.tsx) · [`sidebar-groups.ts`](../src/modules/session/sidebar-groups.ts) · [`SessionCard.tsx`](../src/ui/SessionCard.tsx) |
 | 会话状态机 | [`src/state/sessions.ts`](../src/state/sessions.ts) · [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) |
 | 统一动态（需处理 / 运行中 / 可恢复） | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) |
 | Overview 卡片 | [`SessionOverviewPanel.tsx`](../src/ui/SessionOverviewPanel.tsx) |

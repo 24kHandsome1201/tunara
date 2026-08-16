@@ -2,6 +2,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore, type ExternalEditor } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
+import { knownRemoteCwd, sidebarGroupKey, sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import type { MenuEntry } from "./ContextMenu";
 import type { Session } from "./types";
 
@@ -29,7 +30,7 @@ export function buildSessionMenuItems({
   const groupIndex = groupSessions.findIndex((candidate) => candidate.id === session.id);
   const move = (delta: -1 | 1) => {
     const next = groupIndex + delta;
-    useSessionsStore.getState().reorderInGroup(session.dir, groupIndex, next);
+    useSessionsStore.getState().reorderInGroup(sidebarGroupKey(session), groupIndex, next);
     onReordered?.(next + 1);
   };
   const openNotes = () => {
@@ -61,8 +62,12 @@ export function buildSessionMenuItems({
   if (!session.remote) {
     items.push({ id: "session:open-editor", label: t("sidebar.session.open_in_editor"), icon: "editor", action: () => { void openInEditorWithToast(externalEditor, session.dir, { sessionId: session.id }); } });
   }
+  const remoteCwd = session.remote ? knownRemoteCwd(session.dir) : null;
   items.push(
-    { id: "session:copy-dir", label: session.remote ? t("sidebar.session.copy_remote") : t("sidebar.session.copy_dir"), icon: "copy", action: () => { void copyText(session.dir); } },
+    { id: "session:copy-dir", label: session.remote ? t("sidebar.session.copy_remote") : t("sidebar.session.copy_dir"), icon: "copy", action: () => { void copyText(session.remote ? sshEndpointLabel(session.remote) : session.dir); } },
+    ...(remoteCwd
+      ? [{ id: "session:copy-cwd", label: t("sidebar.session.copy_remote_cwd"), icon: "copy" as const, action: () => { void copyText(remoteCwd); } }]
+      : []),
     null,
     { id: "session:close", label: t("sidebar.session.close"), icon: "close", danger: true, action: () => { onCloseSession?.(session.id); } },
   );

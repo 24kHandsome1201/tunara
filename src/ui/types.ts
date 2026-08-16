@@ -301,13 +301,3 @@ export function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** 按 dir 归组（设计稿侧栏分段） */
-export function groupByDir(sessions: Session[]): Record<string, Session[]> {
-  const groups = new Map<string, Session[]>();
-  for (const session of sessions) {
-    const group = groups.get(session.dir) ?? [];
-    group.push(session);
-    groups.set(session.dir, group);
-  }
-  return Object.fromEntries(groups);
-}

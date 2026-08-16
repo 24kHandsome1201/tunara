@@ -2,6 +2,7 @@ import { memo, useEffect, useState, useRef, useCallback } from "react";
 import { type Session, type RunState, type TerminalProgress, deriveTitle } from "./types";
 import { getAgentCircleStyle, getAgentIcon } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
+import { sidebarCwdLabel, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
@@ -287,11 +288,14 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const lifecycleLabel = session.agentActivity === "waiting_confirmation"
     ? t("agent.status.waiting_confirmation")
     : t(`sidebar.session.status.${displayRunState}`);
+  const connectionPhase = sshCardConnectionPhase(session);
+  const connectionTone = connectionPhase ? sshConnectionPhaseTone(connectionPhase) : null;
   const accessibleLabel = [
     primary,
     lifecycleLabel,
+    connectionPhase ? t(`connection.phase.${connectionPhase}`) : "",
     session.unread ? t("sidebar.session.unread") : "",
-    t(session.remote ? "sidebar.session.remote" : "sidebar.session.local"),
+    session.remote ? `${t("sidebar.session.remote")}, ${sshEndpointLabel(session.remote)}` : t("sidebar.session.local"),
   ].filter(Boolean).join(", ");
   const busy = isSessionBusy(session);
   const showTerminalProgress = !!session.terminalProgress;
@@ -550,6 +554,30 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 {t("gbar.tag.confirmation")}
               </span>
             )}
+            {connectionPhase && connectionTone && (
+              <span
+                style={{
+                  flexShrink: 0,
+                  borderRadius: "var(--r-badge-sm)",
+                  padding: "0 5px",
+                  fontSize: "var(--fs-meta)",
+                  fontWeight: 700,
+                  lineHeight: "16px",
+                  color: connectionTone === "error"
+                    ? "var(--c-error)"
+                    : connectionTone === "warning"
+                      ? "var(--c-warning-text)"
+                      : "var(--c-accent)",
+                  background: connectionTone === "error"
+                    ? "var(--c-error-bg)"
+                    : connectionTone === "warning"
+                      ? "var(--c-warning-bg)"
+                      : "color-mix(in srgb, var(--c-accent) 14%, transparent)",
+                }}
+              >
+                {t(`connection.phase.${connectionPhase}`)}
+              </span>
+            )}
           </div>
 
           {/* 行2: 目录 · 分支 · diff */}
@@ -567,19 +595,18 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             }}
           >
             {session.remote && (
-              // Remote (SSH) marker: a small plug glyph so local vs. remote
-              // sessions are distinguishable at a glance. session.dir already
-              // shows user@host for remote sessions.
+              // Remote marker: host identity lives on the group header; this
+              // glyph plus tooltip still distinguish transport on the card.
               <span
-                title={`${session.remote.user}@${session.remote.host}${session.remote.port !== 22 ? `:${session.remote.port}` : ""}`}
+                title={sshEndpointLabel(session.remote)}
                 style={{ flexShrink: 0, color: "var(--c-accent)", fontSize: "var(--fs-meta)" }}
-                aria-label={t("sidebar.session.remote")}
+                aria-hidden="true"
               >
                 ⇄
               </span>
             )}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 48%", minWidth: 0 }}>
-              {session.remote ? session.dir : session.dir.split("/").pop() || session.dir}
+              {sidebarCwdLabel(session)}
             </span>
             {session.branch && (
               <>

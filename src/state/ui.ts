@@ -340,6 +340,8 @@ interface UIState extends AppearanceSettings {
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   commandUsage: Record<string, number>;
+  /** Bumped when saved SSH profiles or ~/.ssh/config import results change. Not persisted. */
+  sshProfilesEpoch: number;
   broadcastInput: boolean;
   explorerFollowCwd: boolean;
   downloadMaxFiles: number;
@@ -397,6 +399,7 @@ interface UIState extends AppearanceSettings {
   enqueueKeyboardInteractivePrompt: (prompt: KeyboardInteractivePrompt) => void;
   dismissKeyboardInteractivePrompt: (promptId: string) => void;
   setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
+  bumpSshProfilesEpoch: () => void;
   toggleDirCollapsed: (dir: string) => void;
   toggleDiffSectionCollapsed: (section: string) => void;
   recordCommandUse: (id: string) => void;
@@ -441,6 +444,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     pendingWorkflow: null,
     collapsedDirs: {},
     collapsedDiffSections: {},
+    sshProfilesEpoch: 0,
     // Hydrated from the workspace snapshot in useInit; starts empty.
     commandUsage: {},
     broadcastInput: false,
@@ -599,6 +603,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
         keyboardInteractivePrompts: s.keyboardInteractivePrompts.filter((p) => p.promptId !== promptId),
       })),
     setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
+    bumpSshProfilesEpoch: () => set((s) => ({ sshProfilesEpoch: s.sshProfilesEpoch + 1 })),
     toggleDirCollapsed: (dir) =>
       set((s) => ({ collapsedDirs: toggleTrueRecordKey(s.collapsedDirs, dir) })),
     toggleDiffSectionCollapsed: (section) =>
