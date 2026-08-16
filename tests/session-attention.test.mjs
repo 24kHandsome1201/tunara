@@ -15,6 +15,17 @@ function session(id, patch = {}) {
   };
 }
 
+test("connecting SSH sessions stay quiet instead of becoming attention", () => {
+  const groups = deriveSessionAttention([
+    session("connecting", {
+      remote: { host: "a", port: 22, user: "root" },
+      connection: { transport: "ssh", phase: "connecting", source: "backend", updatedAt: 2 },
+    }),
+  ]);
+  assert.equal(groups.attention.length, 0);
+  assert.deepEqual(groups.quiet.map((item) => item.id), ["connecting"]);
+});
+
 test("SSH failures and disconnects are derived as attention", () => {
   const groups = deriveSessionAttention([
     session("failed", { remote: { host: "a", port: 22, user: "root" }, connection: { transport: "ssh", phase: "failed", source: "backend", updatedAt: 2 } }),

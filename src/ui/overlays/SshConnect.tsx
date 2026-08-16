@@ -196,6 +196,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       const result = await importSshConfig();
       if (generation !== configGeneration.current) return;
       setPanelModel((current) => toProfilesPanelModel(current.savedProfiles, result));
+      useUIStore.getState().bumpSshProfilesEpoch();
       if (announce) {
         useUIStore.getState().addToast({
           title: t("ssh.config.loaded"),
@@ -255,7 +256,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const deleteProfile = (id: string) => {
     tryConfirm(`ssh-profile:${id}`, () => {
       removeHost(id)
-        .then((savedProfiles) => setPanelModel((current) => ({ ...current, savedProfiles })))
+        .then((savedProfiles) => {
+          setPanelModel((current) => ({ ...current, savedProfiles }));
+          useUIStore.getState().bumpSshProfilesEpoch();
+        })
         .catch(() => useUIStore.getState().addToast({ title: t("ssh.profile.remove_failed"), subtitle: "", variant: "error" }));
     });
   };
@@ -534,6 +538,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       try {
         const savedProfiles = await saveHost(profile);
         setPanelModel((current) => ({ ...current, savedProfiles }));
+        useUIStore.getState().bumpSshProfilesEpoch();
       } catch {
         useUIStore.getState().addToast({ title: t("ssh.profile.save_failed"), subtitle: "", variant: "error" });
       }

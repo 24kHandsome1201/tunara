@@ -1,24 +1,26 @@
-import { SessionCard } from "./SessionCard";
 import { GlobalAgentBar } from "./GlobalAgentBar";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { groupByDir, deriveTitle, type Session } from "./types";
-import { DirGroupHeader, SidebarSearchIcon } from "./SidebarDirGroupHeader";
+import { deriveTitle, type Session } from "./types";
+import { SidebarSearchIcon } from "./SidebarDirGroupHeader";
+import { SidebarSessionGroup } from "./SidebarSessionGroup";
 import { CloseIcon } from "./shared";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
 import { buildSessionMenuItems } from "./sidebar-session-menu";
-import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-dir-group-menu";
 import { useT } from "@/modules/i18n";
 import { SidebarNewTerminalControl } from "./SidebarNewTerminalControl"; import { SidebarHosts } from "./SidebarHosts";
-import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
-import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
+import {
+  groupSessionsForSidebar,
+  sessionMatchesSidebarSearch,
+  sidebarGroupKey,
+} from "@/modules/session/sidebar-groups";
 
 // Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
 interface DragState {
   draggingId: string;
-  sourceDir: string;
+  sourceGroupKey: string;
   overIndex: number;
 }
 
@@ -63,27 +65,16 @@ export function Sidebar({
   // update (e.g. an agent heartbeat that rebuilds the sessions array) doesn't
   // re-run filter/group/flatten on every render.
   const filtered = useMemo(
-    () =>
-      q
-        ? sessions.filter((s) => {
-            const { primary, subtitle } = deriveTitle(s);
-            return (
-              primary.toLowerCase().includes(q) ||
-              subtitle.toLowerCase().includes(q) ||
-              s.dir.toLowerCase().includes(q) ||
-              s.note?.toLowerCase().includes(q) === true
-            );
-          })
-        : sessions,
+    () => (q ? sessions.filter((s) => sessionMatchesSidebarSearch(s, q)) : sessions),
     [sessions, q],
   );
   const canReorder = q.length === 0;
-  const groupEntries = useMemo(() => Object.entries(groupByDir(filtered)), [filtered]);
+  const groupEntries = useMemo(() => groupSessionsForSidebar(filtered), [filtered]);
   // Kept as a plain derivation (cheap flatMap) — a structure-regression test
   // locks this exact line shape; the heavy work (filter/group) is already
   // memoized above.
-  const visibleSessionIds = groupEntries.flatMap(([dir, groupSessions]) =>
-    hasTrueRecordKey(collapsedDirs, dir) && !q ? [] : groupSessions.map((s) => s.id)
+  const visibleSessionIds = groupEntries.flatMap((group) =>
+    hasTrueRecordKey(collapsedDirs, group.key) && !q ? [] : group.sessions.map((s) => s.id)
   );
   const tabbableSessionId = visibleSessionIds.includes(activeSessionId) ? activeSessionId : visibleSessionIds[0] ?? null;
   const visibleSessionIdsRef = useRef(visibleSessionIds); // read by handleSessionKeyDown (keeps its deps stable for memo)
@@ -133,13 +124,13 @@ export function Sidebar({
       position: { x: e.clientX, y: e.clientY },
       items: buildSessionMenuItems({
         session, t, externalEditor, onSelectSession, onCloseSession, canReorder,
-        groupSessions: sessions.filter((candidate) => candidate.dir === session.dir),
+        groupSessions: sessions.filter((candidate) => sidebarGroupKey(candidate) === sidebarGroupKey(session)),
         onReordered: (position) => setReorderAnnouncement(t("sidebar.session.moved", { session: deriveTitle(session).primary, position })),
       }),
     });
   }, [t, externalEditor, onCloseSession, onSelectSession, canReorder, sessions]);
 
-  const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, dir: string, index: number) => {
+  const handleDragStart = useCallback((e: React.PointerEvent, sessionId: string, groupKey: string, index: number) => {
     dragStartY.current = e.clientY;
     dragStarted.current = false;
     const el = e.currentTarget as HTMLElement;
@@ -148,13 +139,13 @@ export function Sidebar({
     const onMove = (ev: PointerEvent) => {
       if (!dragStarted.current && Math.abs(ev.clientY - dragStartY.current) > 4) {
         dragStarted.current = true;
-        const initial: DragState = { draggingId: sessionId, sourceDir: dir, overIndex: index };
+        const initial: DragState = { draggingId: sessionId, sourceGroupKey: groupKey, overIndex: index };
         dragRef.current = initial;
         setDrag(initial);
       }
       if (!dragStarted.current) return;
 
-      const container = el.closest("[data-dir-group]");
+      const container = el.closest("[data-sidebar-group]");
       if (!container) return;
       const cards = Array.from(container.querySelectorAll("[data-session-id]"));
       let closest = index;
@@ -183,9 +174,9 @@ export function Sidebar({
       const finalDrag = dragRef.current;
       if (dragStarted.current && finalDrag) {
         const current = useSessionsStore.getState().sessions;
-        const fromIdx = current.filter((s) => s.dir === finalDrag.sourceDir).findIndex((s) => s.id === finalDrag.draggingId);
+        const fromIdx = current.filter((s) => sidebarGroupKey(s) === finalDrag.sourceGroupKey).findIndex((s) => s.id === finalDrag.draggingId);
         if (fromIdx !== -1) {
-          useSessionsStore.getState().reorderInGroup(finalDrag.sourceDir, fromIdx, finalDrag.overIndex);
+          useSessionsStore.getState().reorderInGroup(finalDrag.sourceGroupKey, fromIdx, finalDrag.overIndex);
         }
       }
       dragRef.current = null;
@@ -225,7 +216,7 @@ export function Sidebar({
           onNewTerminalInDirectory={onNewTerminalInDirectory}
         />
       )}
-      <SidebarHosts />
+      <SidebarHosts sessions={sessions} activeSessionId={activeSessionId} onSelectSession={onSelectSession} />
       <div style={{ padding: "6px 12px" }}>
         <div
           className="sidebar-search"
@@ -313,97 +304,29 @@ export function Sidebar({
           </div>
         )}
 
-        {groupEntries.map(([dir, groupSessions]) => {
-          const collapsed = hasTrueRecordKey(collapsedDirs, dir) && !q;
-          const hasLocalFilesystem = dirGroupHasLocalFilesystem(groupSessions);
-          const workspaceSession = groupSessions.find((session) => session.workspace);
-          const workspaceContext = workspaceSession?.workspace;
-          const currentWorktree = currentWorkspaceWorktree(workspaceContext);
-          const workspace = workspaceContext && currentWorktree
-            ? {
-                repositoryName: workspaceContext.repository.name,
-                worktreeName: currentWorktree.name,
-                branch: currentWorktree.branch,
-                detached: currentWorktree.detached,
-                dirtyFiles: currentWorktree.dirtyFiles,
-                ahead: currentWorktree.ahead,
-                behind: currentWorktree.behind,
-                available: currentWorktree.available,
-                transport: workspaceContext.repository.transport,
-              }
-            : undefined;
-          const agentCount = groupSessions.filter((session) => Boolean(session.agent)).length;
-          return (
-          <div key={dir} style={{ marginBottom: 6 }} data-dir-group={dir}>
-            <DirGroupHeader
-              dir={dir}
-              count={groupSessions.length}
-              workspace={workspace}
-              agentCount={agentCount}
-              collapsed={collapsed}
-              onToggleCollapse={() => toggleDirCollapsed(dir)}
-              onNewTerminal={hasLocalFilesystem ? () => useSessionsStore.getState().newTerminalInDir(dir) : undefined}
-              onCloseAll={() => useSessionsStore.getState().closeSessionsInDir(dir)}
-              confirmClose={getNumberRecordValue(dirCloseConfirmations, dir) > 0}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setContextMenu({
-                  position: { x: e.clientX, y: e.clientY },
-                  items: buildDirGroupMenuItems({ dir, groupSessions, t, externalEditor }),
-                });
-              }}
-              onKeyDown={(e) => {
-                if (isFixedTerminalMenuEvent(e)) {
-                  e.preventDefault();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left + 8, clientY: rect.bottom }));
-                }
-              }}
-            />
-            {!collapsed && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
-              {groupSessions.map((s, idx) => {
-                const isDragging = drag?.draggingId === s.id;
-                const showIndicator = drag?.sourceDir === dir && drag.overIndex === idx && drag.draggingId !== s.id;
-                return (
-                  <div key={s.id} data-session-id={s.id} role="listitem">
-                    {showIndicator && (
-                      <div style={{ height: 2, background: "var(--c-accent)", borderRadius: 1, margin: "2px 8px 4px" }} />
-                    )}
-                    <div
-                      onPointerDown={(e) => {
-                        if (!canReorder) return;
-                        if (e.pointerType === "touch") return;
-                        if ((e.target as HTMLElement).closest(".session-card-close") || (e.target as HTMLElement).closest(".hover-close")) return;
-                        handleDragStart(e, s.id, dir, idx);
-                      }}
-                      style={{
-                        opacity: isDragging ? 0.3 : 1,
-                        transition: "opacity 120ms ease",
-                        touchAction: "pan-y",
-                        cursor: !canReorder ? "pointer" : isDragging ? "grabbing" : "grab",
-                      }}
-                    >
-                      <SessionCard
-                        session={s}
-                        active={s.id === activeSessionId}
-                        confirmCloseAt={getNumberRecordValue(closeConfirmations, s.id)}
-                        tabIndex={s.id === tabbableSessionId ? 0 : -1}
-                        onSelect={handleSelect}
-                        onKeyDown={handleSessionKeyDown}
-                        onClose={handleClose}
-                        onRename={handleRename}
-                        onContextMenu={handleContextMenu}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            )}
-          </div>
-          );
-        })}
+        {groupEntries.map((group) => (
+          <SidebarSessionGroup
+            key={group.key}
+            group={group}
+            collapsed={hasTrueRecordKey(collapsedDirs, group.key) && !q}
+            activeSessionId={activeSessionId}
+            tabbableSessionId={tabbableSessionId}
+            canReorder={canReorder}
+            drag={drag}
+            confirmClose={getNumberRecordValue(dirCloseConfirmations, group.key) > 0}
+            closeConfirmations={closeConfirmations}
+            externalEditor={externalEditor}
+            t={t}
+            onToggleCollapse={() => toggleDirCollapsed(group.key)}
+            onOpenMenu={(items, position) => setContextMenu({ items, position })}
+            onDragStart={handleDragStart}
+            onSelect={handleSelect}
+            onKeyDown={handleSessionKeyDown}
+            onClose={handleClose}
+            onRename={handleRename}
+            onContextMenu={handleContextMenu}
+          />
+        ))}
       </div>
 
       {contextMenu && (

@@ -28,6 +28,8 @@
 | [LOCAL_USAGE_LOGGING.md](./LOCAL_USAGE_LOGGING.md) | 可选本地 SSH 诊断日志 |
 | [THEME_SHELL_TINTING.md](./THEME_SHELL_TINTING.md) | 界面与终端统一配色 |
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | 视觉与交互约定 |
+| [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 右侧栏现状与收敛提案（非产品合同） |
+| [SIDEBAR_SSH.md](./SIDEBAR_SSH.md) | 左侧栏 SSH 适配规划（非产品合同） |
 
 ## 发布、验收与历史
 

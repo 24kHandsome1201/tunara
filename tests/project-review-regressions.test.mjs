@@ -472,6 +472,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   const ui = read("src/state/ui.ts");
   const diffPanel = read("src/ui/DiffPanel.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
   const overviewPanel = read("src/ui/SessionOverviewPanel.tsx");
   const recordKeys = read("src/state/record-keys.ts");
   assert.match(persist, /const STORE_FILE = "tunara-sessions\.json";/);
@@ -562,9 +563,9 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(recordKeys, /toggleTrueRecordKey\(record: Record<string, true>, key: string\)/);
   assert.match(ui, /toggleTrueRecordKey\(s\.collapsedDirs, dir\)/);
   assert.match(ui, /toggleTrueRecordKey\(s\.collapsedDiffSections, section\)/);
-  assert.match(sidebar, /hasTrueRecordKey\(collapsedDirs, dir\)/);
-  assert.match(sidebar, /getNumberRecordValue\(dirCloseConfirmations, dir\) > 0/);
-  assert.match(sidebar, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
+  assert.match(sidebar, /hasTrueRecordKey\(collapsedDirs, group\.key\)/);
+  assert.match(sidebar, /getNumberRecordValue\(dirCloseConfirmations, group\.key\) > 0/);
+  assert.match(sidebarGroup, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
   assert.doesNotMatch(sidebar, /!!collapsedDirs\[dir\]/);
   assert.doesNotMatch(sidebar, /!!dirCloseConfirmations\[dir\]/);
   assert.doesNotMatch(sidebar, /!!closeConfirmations\[s\.id\]/);
@@ -923,7 +924,7 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(sessionsGit, /function bumpGitNonce\(id: string,/);
   assert.match(sessionsGit, /queueMicrotask\(\(\) => flushGitNonceBumps\(set\)\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, s\.id\)/);
-  assert.match(source, /getNumberRecordValue\(get\(\)\.dirCloseConfirmations, dir\)/);
+  assert.match(source, /getNumberRecordValue\(get\(\)\.dirCloseConfirmations, groupKey\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, id\)/);
   assert.match(source, /sessions\[Math\.min\(Math\.max\(removedIndex, 0\), sessions\.length - 1\)\]/);
   assert.match(init, /const merged = current\.sessions\.length === 0/);
@@ -1022,6 +1023,7 @@ test("appearance settings are sanitized and command palette exposes useful actio
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const paletteFilter = read("src/ui/overlays/command-palette-filter.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
   const toast = read("src/ui/Toast.tsx");
   const css = read("src/styles/globals.css");
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
@@ -1064,7 +1066,7 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(palette, /for \(const \[globalIdx, cmd\] of ranked\.entries\(\)\)/);
   assert.doesNotMatch(palette, /ranked\.indexOf/);
   assert.match(sidebar, /const canReorder = q\.length === 0/);
-  assert.match(sidebar, /if \(!canReorder\) return;/);
+  assert.match(sidebarGroup, /if \(!canReorder\) return;/);
   assert.match(toast, /exitTimerRef/);
   assert.match(toast, /minWidth: 260/);
   assert.match(toast, /maxWidth: "min\(340px, calc\(100vw - 24px\)\)"/);
@@ -1179,6 +1181,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   const sessions = read("src/state/sessions.ts");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
   const sidebarMenu = read("src/ui/sidebar-session-menu.ts");
   const sidebarDirMenu = read("src/ui/sidebar-dir-group-menu.ts");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
@@ -1227,7 +1230,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sessionCard, /e\.key === "F2"/);
   assert.match(sessionCard, /active && e\.key === "Enter"/);
   assert.match(sessionCard, /useDestructiveConfirmCountdown/);
-  assert.match(sidebar, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
+  assert.match(sidebarGroup, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
   assert.doesNotMatch(sidebar, /confirmClose=\{getNumberRecordValue\(closeConfirmations, s\.id\) > 0\}/);
   assert.doesNotMatch(sessionCard, /onClearCloseConfirm/);
   assert.doesNotMatch(sessionCard, /session\.changes\?\.files\.reduce/);
@@ -1238,7 +1241,12 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sidebarMenu, /label: t\("sidebar\.session\.close"\), icon: "close"/);
   assert.match(sidebarDirMenu, /dirGroupHasLocalFilesystem/);
   assert.match(sidebarDirMenu, /canUseSessionDirForLocalTerminal/);
+  assert.match(sidebarDirMenu, /dir:duplicate-host/);
+  assert.match(sidebarDirMenu, /sidebar\.session\.copy_remote_cwd/);
+  assert.match(sidebarDirMenu, /closeSessionsInGroup/);
   assert.match(sidebarDirMenu, /label: t\("sidebar\.dir\.close_all"\), icon: "close"/);
+  assert.match(sidebar, /groupSessionsForSidebar/);
+  assert.match(sessions, /closeSessionsInGroup: \(groupKey: string\) => void/);
   assert.match(zhDict, /"sidebar\.session\.rename": "重命名"/);
   assert.match(zhDict, /"sidebar\.session\.close": "关闭会话"/);
   assert.match(zhDict, /"sidebar\.dir\.close_all": "关闭全部会话"/);
@@ -1655,7 +1663,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalInput, /export function scanTerminalInputBuffer/);
   assert.match(terminalInput, /BRACKETED_PASTE_START/);
   assert.match(terminalInput, /bracketedPasteActive/);
-  assert.match(sidebar, /import \{ DirGroupHeader, SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
+  assert.match(sidebar, /import \{ SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
+  assert.match(sidebar, /import \{ SidebarSessionGroup \} from "\.\/SidebarSessionGroup"/);
   assert.match(sidebarHeader, /export function DirGroupHeader/);
   assert.doesNotMatch(terminal, /new ResizeObserver/);
   assert.doesNotMatch(terminal, /for \(let i = 0; i < data\.length; i \+= 1\)/);
