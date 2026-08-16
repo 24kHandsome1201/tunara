@@ -7,8 +7,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cancelSshOpen, openSessionPty, recordPendingPtyConnectionStatus, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, safeSshFailure, SSH_DISCONNECTED_EXIT_CODE, toRemoteOpenInfo, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
-import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
-import { findShareableSshSession, sshEndpointIdentityFromRemote } from "@/modules/ssh/connection-share";
+import { takeSshCredentials } from "@/modules/ssh/pending-credentials"; import { shareWithLogicalSessionIdFor } from "@/modules/ssh/connection-share";
 import { broadcastTerminalInput, registerBroadcastWriter } from "@/modules/terminal/lib/broadcast-input";
 import { completeSshAutoReconnect, handleSshReconnectFailure, handleSshTransportLost, markSshOneShotCredentialConsumed } from "@/modules/ssh/auto-reconnect";
 import { registerCwdHandler, registerTitleHandlers } from "@/modules/terminal/lib/osc-handlers";
@@ -426,17 +425,10 @@ function TerminalViewImpl({
         // object so they're never persisted; merge them in only for this open.
         const creds = sessionRemote ? takeSshCredentials(sessionIdRef.current) : undefined;
         if (sessionRemote) markSshOneShotCredentialConsumed(sessionIdRef.current, creds);
-        const shareWith = sessionRemote
-          ? findShareableSshSession(
-              useSessionsStore.getState().sessions,
-              sshEndpointIdentityFromRemote(sessionRemote),
-              sessionIdRef.current,
-            )?.id
-          : undefined;
         pty = await openSessionPty(sessionIdRef.current, term.cols, term.rows, ptyHandlers, {
           cwd,
           remote: sessionRemote ? toRemoteOpenInfo(sessionRemote, creds) : undefined,
-          shareWithLogicalSessionId: shareWith,
+          shareWithLogicalSessionId: shareWithLogicalSessionIdFor(useSessionsStore.getState().sessions, sessionRemote, sessionIdRef.current),
         });
       } catch (e) {
         if (disposed) return;
@@ -541,10 +533,7 @@ function TerminalViewImpl({
       const dataDisposable = term.onData((data) => {
         if (!inputToPtyEnabled) return;
         writePty(data);
-        if (useUIStore.getState().broadcastInput) {
-          const targets = splitLayoutSessionIds(useUIStore.getState().split);
-          if (targets.length > 1) broadcastTerminalInput(sessionIdRef.current, data, targets);
-        }
+        if (useUIStore.getState().broadcastInput) broadcastTerminalInput(sessionIdRef.current, data, splitLayoutSessionIds(useUIStore.getState().split));
         const submitAgentInput = (submitted: string) => {
           const sess = getCurrentSession();
           if (!sess?.agent) return;

@@ -73,6 +73,15 @@ export function findShareableSshSession(
   return null;
 }
 
+export function shareWithLogicalSessionIdFor(
+  sessions: readonly SessionLike[],
+  remote: RemoteLike | undefined,
+  excludeSessionId: string,
+): string | undefined {
+  if (!remote) return undefined;
+  return findShareableSshSession(sessions, sshEndpointIdentityFromRemote(remote), excludeSessionId)?.id;
+}
+
 export function duplicateRemoteSessionFields(session: SessionLike): { dir: string; remote: RemoteLike } | null {
   if (!session.remote) return null;
   return {

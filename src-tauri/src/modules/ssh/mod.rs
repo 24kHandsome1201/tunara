@@ -452,7 +452,14 @@ async fn open_with_cancellation(
     jump: Option<ConnectParams>,
     on_event: Channel<PtyEvent>,
     open_attempt_id: &str,
+    shared: Option<connection::SharedSshTransport>,
 ) -> Result<(SshSession, OpenAttemptGuard), String> {
+    if let Some(shared) = shared {
+        let logical_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
+        let (_cancel, guard) = register_open_attempt(open_attempt_id, logical_id);
+        let ssh = connection::SshSession::open_from_shared(params, on_event, shared).await?;
+        return Ok((ssh, guard));
+    }
     let logical_session_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
     let (cancel, guard) = register_open_attempt(open_attempt_id, logical_session_id);
     let (cancel_transport, cancel_receiver) = tokio::sync::watch::channel(false);
@@ -682,28 +689,24 @@ async fn ssh_open_impl(
         logical_session_id.as_deref(),
         share_hint,
     );
-    let log_open_err = |e: &String| {
-        log::error!(
-            "{}",
-            diagnostics::redacted_log_message(
-                diagnostics::SshStage::OpenShell,
-                diagnostics::SshErrorCode::Internal,
-                e,
-            )
-        );
-    };
-    let (ssh, open_attempt) = if let Some(shared) = shared {
-        let logical_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
-        let (_cancel, guard) = register_open_attempt(&open_attempt_id, logical_id);
-        let ssh = connection::SshSession::open_from_shared(params, on_event, shared)
+    let (ssh, open_attempt) = open_with_cancellation(
+        params,
+        jump_params,
+        on_event,
+        &open_attempt_id,
+        shared,
+    )
             .await
-            .inspect_err(log_open_err)?;
-        (ssh, guard)
-    } else {
-        open_with_cancellation(params, jump_params, on_event, &open_attempt_id)
-            .await
-            .inspect_err(log_open_err)?
-    };
+            .inspect_err(|e| {
+                log::error!(
+                    "{}",
+                    diagnostics::redacted_log_message(
+                        diagnostics::SshStage::OpenShell,
+                        diagnostics::SshErrorCode::Internal,
+                        e,
+                    )
+                );
+            })?;
 
     // Build the replacement completely before touching the live-session map.
     // Authentication, host-key confirmation, and shell setup can all fail or

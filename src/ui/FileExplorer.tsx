@@ -1096,7 +1096,7 @@ export function FileExplorer({
   }, [entries, currentPath, expandedPaths, treeChildren, sort]);
   const selectableDownloadNodes = useMemo(() => binding
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
-    : [], [binding, visibleTreeNodes]);
+    : [], [binding, visibleTreeNodes, downloadLimits]);
   const isSearching = searchQuery.trim().length > 0;
   const searchMaxLimit = maxFileSearchLimit(searchMode, isRemote);
 

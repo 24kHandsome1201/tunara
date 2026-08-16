@@ -11,8 +11,7 @@ import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
 import { buildSessionMenuItems } from "./sidebar-session-menu";
 import { buildDirGroupMenuItems, dirGroupHasLocalFilesystem } from "./sidebar-dir-group-menu";
 import { useT } from "@/modules/i18n";
-import { SidebarNewTerminalControl } from "./SidebarNewTerminalControl";
-import { SidebarHosts } from "./SidebarHosts";
+import { SidebarNewTerminalControl } from "./SidebarNewTerminalControl"; import { SidebarHosts } from "./SidebarHosts";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
@@ -226,7 +225,6 @@ export function Sidebar({
         />
       )}
       <SidebarHosts />
-
       <div style={{ padding: "6px 12px" }}>
         <div
           className="sidebar-search"
