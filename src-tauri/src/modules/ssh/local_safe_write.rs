@@ -126,12 +126,18 @@ mod unix {
             }
             if fd < 0 {
                 let error = std::io::Error::last_os_error();
-                return if error.raw_os_error() == Some(libc::ELOOP) {
-                    Err(Error::Unsafe(
+                return match error.raw_os_error() {
+                    Some(libc::ELOOP) => Err(Error::Unsafe(
                         "parent path must not contain symlinks".into(),
-                    ))
-                } else {
-                    Err(error.into())
+                    )),
+                    // macOS reports O_NOFOLLOW|O_DIRECTORY on a symlink as
+                    // ENOTDIR (the symlink inode is not a directory) rather
+                    // than ELOOP. A regular file in the parent chain is also
+                    // ENOTDIR and equally unsafe to treat as a directory.
+                    Some(libc::ENOTDIR) => {
+                        Err(Error::Unsafe("parent path must be a directory".into()))
+                    }
+                    _ => Err(error.into()),
                 };
             }
             dir = unsafe { File::from_raw_fd(fd) };
@@ -333,8 +339,14 @@ mod tests {
     use std::os::unix::fs::{symlink, PermissionsExt};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    fn physical_temp_dir() -> std::path::PathBuf {
+        // Walk from `/` with O_NOFOLLOW, so fixtures cannot live under a
+        // symlink component. macOS `/tmp` and `/var` are such links.
+        fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir())
+    }
+
     fn fixture() -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!(
+        let p = physical_temp_dir().join(format!(
             "tunara-local-write-{}-{}",
             std::process::id(),
             SystemTime::now()

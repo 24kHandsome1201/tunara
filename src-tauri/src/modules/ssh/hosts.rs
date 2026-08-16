@@ -2503,7 +2503,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system clock before Unix epoch")
             .as_nanos();
-        std::env::temp_dir()
+        std::fs::canonicalize(std::env::temp_dir())
+            .unwrap_or_else(|_| std::env::temp_dir())
             .join(format!("tunara-hosts-test-{name}-{unique}"))
             .join("hosts.toml")
     }

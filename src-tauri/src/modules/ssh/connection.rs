@@ -445,7 +445,8 @@ pub struct SshSession {
     /// Lazily-opened SFTP subsystem on a SEPARATE channel of this connection.
     /// Guarded by an async mutex so concurrent fs commands serialize cleanly.
     /// Shared across multiplexed shells on the same TCP transport.
-    sftp: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>>,
+    sftp:
+        std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>>,
     reverse_hub: ReverseForwardHub,
 }
 
@@ -456,7 +457,8 @@ pub struct SharedSshTransport {
     handle: Arc<Handle<ClientHandler>>,
     transport_abort: Arc<std::net::TcpStream>,
     jump_handle: Option<Arc<Handle<ClientHandler>>>,
-    sftp: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>>,
+    sftp:
+        std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<russh_sftp::client::SftpSession>>>>,
     transport_lost: Arc<AtomicBool>,
     disconnected: watch::Receiver<bool>,
     #[allow(dead_code)]
@@ -796,6 +798,7 @@ impl SshSession {
         .map_err(RoutedOpenError::Target)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn open_authenticated(
         params: ConnectParams,
         on_event: IpcChannel<PtyEvent>,
@@ -1158,10 +1161,7 @@ impl SshSession {
         if exclude_logical_id.is_some_and(|id| id == self.logical_session_id) {
             return false;
         }
-        if self.host.to_ascii_lowercase() != host.to_ascii_lowercase()
-            || self.port != port
-            || self.user != user
-        {
+        if !self.host.eq_ignore_ascii_case(host) || self.port != port || self.user != user {
             return false;
         }
         if self.identity_file.as_deref() != identity_file {

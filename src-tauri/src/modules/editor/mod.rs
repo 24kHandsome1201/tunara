@@ -83,7 +83,10 @@ fn sanitize_remote_edit_segment(value: &str) -> String {
     }
 }
 
-pub(crate) fn remote_edit_staging_relative(session_id: &str, remote_path: &str) -> Result<PathBuf, String> {
+pub(crate) fn remote_edit_staging_relative(
+    session_id: &str,
+    remote_path: &str,
+) -> Result<PathBuf, String> {
     if session_id.is_empty() || session_id.len() > 128 || session_id.contains('\0') {
         return Err("invalid remote edit session".into());
     }

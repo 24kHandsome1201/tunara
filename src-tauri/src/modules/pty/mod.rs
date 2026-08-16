@@ -116,6 +116,7 @@ impl PtyState {
     }
 
     /// Find a live SSH transport that a new shell can multiplex onto.
+    #[allow(clippy::too_many_arguments)]
     pub fn find_shareable_ssh(
         &self,
         host: &str,
@@ -151,8 +152,14 @@ impl PtyState {
             let Session::Ssh(ssh) = session.as_ref() else {
                 continue;
             };
-            if ssh.matches_transport(host, port, user, identity_file, jump_endpoint, exclude_logical_id)
-            {
+            if ssh.matches_transport(
+                host,
+                port,
+                user,
+                identity_file,
+                jump_endpoint,
+                exclude_logical_id,
+            ) {
                 if let Some(shared) = ssh.share_transport() {
                     return Some(shared);
                 }
