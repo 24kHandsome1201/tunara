@@ -113,6 +113,7 @@ pub fn run() {
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,
             fs::file::fs_write_text_file,
+            fs::file::fs_export_text_file,
             fs::head::fs_file_view_head_v1,
             fs::head::fs_file_view_tail_v1,
             fs::head::fs_cancel_file_view_v1,

@@ -50,12 +50,14 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 输出确认 | 前端 ACK 驱动 SSH/本地流控 | `pty_output_ack` |
 | 分栏 | 在任意 pane 右/下继续拆，最多 4 pane | [`split-layout.ts`](../src/modules/session/split-layout.ts) |
 | 搜索 | ⌘F，匹配计数 | [`useTerminalSearch.ts`](../src/ui/useTerminalSearch.ts) |
-| 命令块 | 跟随 scrollback marker；筛选与块导航 | [`terminal-blocks.ts`](../src/modules/terminal/lib/terminal-blocks.ts) |
+| 命令块 | 跟随 scrollback marker；块导航；右键菜单展示退出码/耗时，可复制命令/输出、导出输出、回填命令到输入行（不自动执行） | [`terminal-blocks.ts`](../src/modules/terminal/lib/terminal-blocks.ts) · [`useTerminalBlockMenu.ts`](../src/ui/useTerminalBlockMenu.ts) |
+| 命令完成提醒 | 非观察中会话的完成 toast 附带耗时；≥15s 的长命令在窗口后台完成时请求 Dock 提醒 | [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) |
+| 拖放路径 | 本地会话把 Finder/文件管理器拖入的路径转义后写入输入行（不自动回车）；SSH 会话仍走 SFTP 上传 | [`shell-quote.ts`](../src/modules/terminal/lib/shell-quote.ts) · [`TerminalViewChrome.tsx`](../src/ui/TerminalViewChrome.tsx) |
+| 导出滚屏/块 | 显式另存为，最多 2000 行 / 256 KiB | [`terminal-export.ts`](../src/modules/terminal/lib/terminal-export.ts) · [`fs_export_text_file`](../src-tauri/src/modules/fs/file.rs) |
 | 安全粘贴 | 多行确认、bracketed paste、目标失效拒绝 | [`terminal-paste-protection.ts`](../src/modules/terminal/lib/terminal-paste-protection.ts) |
 | 右键与复制 | 智能/菜单/禁用三档；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
 | 会话恢复 | serialize 快照 + 安全历史 | [`terminal-snapshot.ts`](../src/modules/terminal/lib/terminal-snapshot.ts) |
-| OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 777 远程 hook | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
-| 本地拖放 | 拖入本地终端插入带引号的路径（上限 16）；SSH 仍走上传 | [`shell-quote.ts`](../src/modules/terminal/lib/shell-quote.ts) · [`TerminalViewChrome.tsx`](../src/ui/TerminalViewChrome.tsx) |
+| OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 9 / 99 / 777 通知、OSC 9;4 进度、OSC 52 剪贴板 | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
 
 分栏默认快捷键：⌘D 水平、⌘⇧D 垂直；焦点按几何方向 ⌘[ / ⌘] / ⌘⇧[ / ⌘⇧]。
 
@@ -70,6 +72,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 会话列表与分组 | [`Sidebar.tsx`](../src/ui/Sidebar.tsx) · [`sidebar-groups.ts`](../src/modules/session/sidebar-groups.ts) · [`SessionCard.tsx`](../src/ui/SessionCard.tsx) |
 | 会话状态机 | [`src/state/sessions.ts`](../src/state/sessions.ts) · [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) |
 | 统一动态（需处理 / 运行中 / 可恢复） | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) |
+| 跳到最近需要处理的会话 | ⌘⇧U / `Mod+Shift+U`，只聚焦，不自动跑命令。[`session-attention.ts`](../src/modules/session/session-attention.ts) · [`useKeybindings.ts`](../src/app/useKeybindings.ts) |
 | Overview 卡片 | [`SessionOverviewPanel.tsx`](../src/ui/SessionOverviewPanel.tsx) |
 | Session Notes | [`SessionNotesPanel.tsx`](../src/ui/SessionNotesPanel.tsx) · [`session-notes.ts`](../src/modules/session/session-notes.ts) |
 | 吉祥物 | [`session-mascot.ts`](../src/modules/session/session-mascot.ts) |
@@ -207,6 +210,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | 会话 1–8 / 最后一个 | ⌘1–8 / ⌘9 |
 | 最近会话循环 | ⌘Tab |
 | 命令块导航 | ⌘⇧↑ / ⌘⇧↓ |
+| 跳到最近需要处理的会话 | ⌘⇧U |
 | 侧栏 / 检查器 | ⌘\ / ⌘⇧\ |
 | 设置 | ⌘, |
 | 全局唤起 | ⌘⇧T（可关） |

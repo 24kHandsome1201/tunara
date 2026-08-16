@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 import { KEYBINDING_ACTIONS, hasPlatformModKey, isFixedTerminalMenuEvent, isTerminalKeybindingAction, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
+import { nextAttentionSessionId } from "@/modules/session/session-attention";
+import { t } from "@/modules/i18n";
 import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { isMac } from "@/ui/lib/platform";
 import {
@@ -124,6 +126,17 @@ export function useKeybindings() {
           if (handleFileSurfaceCycle("prev")) break;
           const previous = st.activeSessionId;
           st.cycleSession("prev");
+          announcePureNavigation(previous);
+          break;
+        }
+        case "focusLatestAttention": {
+          const target = nextAttentionSessionId(st.sessions, st.activeSessionId);
+          if (!target) {
+            ui.addToast({ title: t("attention.none"), subtitle: t("attention.none_hint"), variant: "warning" });
+            break;
+          }
+          const previous = st.activeSessionId;
+          st.setActive(target);
           announcePureNavigation(previous);
           break;
         }

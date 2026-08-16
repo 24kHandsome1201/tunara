@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildBlockContextMenuItems } from "../src/modules/terminal/lib/terminal-blocks-menu.ts";
+import { blockStatusLabel, buildBlockContextMenuItems } from "../src/modules/terminal/lib/terminal-blocks-menu.ts";
 import { setLanguage } from "../src/modules/i18n/core.ts";
 
 setLanguage("zh-CN");
+
+const NOW = 10_000_000;
 
 function makeBlock(overrides = {}) {
   return {
@@ -12,43 +14,47 @@ function makeBlock(overrides = {}) {
     command: "ls -la",
     startRow: 0,
     endRow: 5,
-    startedAt: 1000,
+    startedAt: NOW - 5_000,
+    completedAt: NOW,
+    exitCode: 0,
     ...overrides,
   };
 }
 
 function makeHandlers() {
   const calls = {
+    onRerun: [],
     onCopyCommand: [],
     onCopyOutput: [],
     onCopyCommandAndOutput: [],
-    onFilterBlock: [],
+    onExportOutput: [],
     onReveal: [],
-    onToggle: [],
   };
   return {
     calls,
     handlers: {
+      onRerun: (command) => { calls.onRerun.push(command); },
       onCopyCommand: (id) => { calls.onCopyCommand.push(id); },
       onCopyOutput: (id) => { calls.onCopyOutput.push(id); },
       onCopyCommandAndOutput: (id) => { calls.onCopyCommandAndOutput.push(id); },
-      onFilterBlock: (block) => { calls.onFilterBlock.push(block); },
+      onExportOutput: (id) => { calls.onExportOutput.push(id); },
       onReveal: (id) => { calls.onReveal.push(id); },
-      onToggle: (id) => { calls.onToggle.push(id); },
     },
   };
 }
 
-function entries(items) {
-  return items.filter((item) => item !== null);
+function actionEntries(items) {
+  return items.filter((item) => item !== null && !("type" in item));
 }
 
-test("buildBlockContextMenuItems wires each entry to the matching handler with the block id", () => {
+test("buildBlockContextMenuItems wires each entry to the matching handler", () => {
   const block = makeBlock({ id: "abc" });
   const { calls, handlers } = makeHandlers();
-  const items = entries(buildBlockContextMenuItems(block, true, false, handlers));
-
+  const items = actionEntries(buildBlockContextMenuItems(block, handlers, NOW));
   const byId = Object.fromEntries(items.map((item) => [item.id, item]));
+
+  byId["block:rerun"].action();
+  assert.deepEqual(calls.onRerun, ["ls -la"], "rerun passes the command text, not the id");
 
   byId["block:copy-command"].action();
   assert.deepEqual(calls.onCopyCommand, ["abc"]);
@@ -59,74 +65,98 @@ test("buildBlockContextMenuItems wires each entry to the matching handler with t
   byId["block:copy-both"].action();
   assert.deepEqual(calls.onCopyCommandAndOutput, ["abc"]);
 
-  byId["block:filter-output"].action();
-  assert.deepEqual(calls.onFilterBlock, [block]);
+  byId["block:export-output"].action();
+  assert.deepEqual(calls.onExportOutput, ["abc"]);
 
   byId["block:reveal"].action();
   assert.deepEqual(calls.onReveal, ["abc"]);
-
-  byId["block:toggle"].action();
-  assert.deepEqual(calls.onToggle, ["abc"]);
 });
 
 test("buildBlockContextMenuItems disables output-dependent entries while the command is still running", () => {
   const { handlers } = makeHandlers();
-  const items = entries(buildBlockContextMenuItems(makeBlock(), false, false, handlers));
+  const running = makeBlock({ completedAt: undefined, exitCode: undefined });
+  const items = actionEntries(buildBlockContextMenuItems(running, handlers, NOW));
   const byId = Object.fromEntries(items.map((item) => [item.id, item]));
 
-  assert.equal(byId["block:copy-command"].disabled, undefined, "复制命令 should stay enabled even while running");
+  assert.equal(byId["block:rerun"].disabled, false, "回填命令 stays enabled while running — it never auto-submits");
+  assert.equal(byId["block:copy-command"].disabled, undefined);
   assert.equal(byId["block:copy-output"].disabled, true);
   assert.equal(byId["block:copy-both"].disabled, true);
-  assert.equal(byId["block:filter-output"].disabled, true);
+  assert.equal(byId["block:export-output"].disabled, true);
   assert.equal(byId["block:reveal"].disabled, undefined);
-  assert.equal(byId["block:toggle"].disabled, undefined);
 });
 
 test("buildBlockContextMenuItems enables output entries once the command has completed", () => {
   const { handlers } = makeHandlers();
-  const items = entries(buildBlockContextMenuItems(makeBlock(), true, false, handlers));
+  const items = actionEntries(buildBlockContextMenuItems(makeBlock(), handlers, NOW));
   const byId = Object.fromEntries(items.map((item) => [item.id, item]));
 
   assert.notEqual(byId["block:copy-output"].disabled, true);
   assert.notEqual(byId["block:copy-both"].disabled, true);
-  assert.notEqual(byId["block:filter-output"].disabled, true);
+  assert.notEqual(byId["block:export-output"].disabled, true);
 });
 
-test("buildBlockContextMenuItems toggle label reflects the collapsed state", () => {
+test("buildBlockContextMenuItems leads with a status heading showing exit state and duration", () => {
   const { handlers } = makeHandlers();
-  const collapsedItems = entries(buildBlockContextMenuItems(makeBlock(), true, true, handlers));
-  const expandedItems = entries(buildBlockContextMenuItems(makeBlock(), true, false, handlers));
 
-  const collapsedToggle = collapsedItems.find((item) => item.id === "block:toggle");
-  const expandedToggle = expandedItems.find((item) => item.id === "block:toggle");
+  const done = buildBlockContextMenuItems(makeBlock(), handlers, NOW)[0];
+  assert.equal(done.type, "heading");
+  assert.equal(done.label, "成功 · 耗时 5s");
 
-  assert.equal(collapsedToggle.label, "展开输出");
-  assert.equal(expandedToggle.label, "折叠输出");
+  const failed = buildBlockContextMenuItems(
+    makeBlock({ exitCode: 1, startedAt: NOW - 134_000 }),
+    handlers,
+    NOW,
+  )[0];
+  assert.equal(failed.label, "失败 (exit 1) · 耗时 2m 14s");
+
+  const running = buildBlockContextMenuItems(
+    makeBlock({ completedAt: undefined, exitCode: undefined, startedAt: NOW - 3_000 }),
+    handlers,
+    NOW,
+  )[0];
+  assert.equal(running.label, "运行中 · 3s");
 });
 
-test("buildBlockContextMenuItems keeps copy and navigation groups separated by a divider", () => {
+test("blockStatusLabel keeps sub-second runs readable instead of showing 0s", () => {
+  assert.equal(
+    blockStatusLabel(makeBlock({ startedAt: NOW - 200 }), NOW),
+    "成功 · 耗时 <1s",
+  );
+});
+
+test("buildBlockContextMenuItems separates rerun, copy, and navigation groups", () => {
   const { handlers } = makeHandlers();
-  const items = buildBlockContextMenuItems(makeBlock(), true, false, handlers);
+  const items = buildBlockContextMenuItems(makeBlock(), handlers, NOW);
 
-  const dividerIndex = items.findIndex((item) => item === null);
-  assert.ok(dividerIndex > 0, "expected a divider somewhere after the copy group");
+  const groups = [];
+  let current = [];
+  for (const item of items) {
+    if (item === null) {
+      groups.push(current);
+      current = [];
+    } else if (!("type" in item)) {
+      current.push(item.id);
+    }
+  }
+  groups.push(current);
 
-  const beforeDivider = items.slice(0, dividerIndex).filter((item) => item !== null).map((item) => item.id);
-  const afterDivider = items.slice(dividerIndex + 1).filter((item) => item !== null).map((item) => item.id);
-
-  assert.deepEqual(beforeDivider, ["block:copy-command", "block:copy-output", "block:copy-both", "block:filter-output"]);
-  assert.deepEqual(afterDivider, ["block:reveal", "block:toggle"]);
+  assert.deepEqual(groups, [
+    ["block:rerun"],
+    ["block:copy-command", "block:copy-output", "block:copy-both", "block:export-output"],
+    ["block:reveal"],
+  ]);
 });
 
 test("buildBlockContextMenuItems uses the icon catalog so ContextMenu renders the expected glyphs", () => {
   const { handlers } = makeHandlers();
-  const items = entries(buildBlockContextMenuItems(makeBlock(), true, false, handlers));
+  const items = actionEntries(buildBlockContextMenuItems(makeBlock(), handlers, NOW));
   const byId = Object.fromEntries(items.map((item) => [item.id, item]));
 
+  assert.equal(byId["block:rerun"].icon, "terminal");
   assert.equal(byId["block:copy-command"].icon, "copy");
   assert.equal(byId["block:copy-output"].icon, "copy");
   assert.equal(byId["block:copy-both"].icon, "copy");
-  assert.equal(byId["block:filter-output"].icon, "search");
+  assert.equal(byId["block:export-output"].icon, "download");
   assert.equal(byId["block:reveal"].icon, "terminal");
-  assert.equal(byId["block:toggle"].icon, "terminal");
 });

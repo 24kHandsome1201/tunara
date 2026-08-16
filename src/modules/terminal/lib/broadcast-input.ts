@@ -9,6 +9,14 @@ export function registerBroadcastWriter(sessionId: string, write: Writer): () =>
   };
 }
 
+export function writeRegisteredTerminalInput(sessionId: string, data: string): boolean {
+  if (!data) return false;
+  const write = writers.get(sessionId);
+  if (!write) return false;
+  write(data);
+  return true;
+}
+
 export function broadcastTerminalInput(sourceSessionId: string, data: string, targetSessionIds: readonly string[]): number {
   if (!data) return 0;
   let sent = 0;

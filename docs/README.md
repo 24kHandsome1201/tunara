@@ -22,6 +22,7 @@
 | [AGENT_DETECTION.md](./AGENT_DETECTION.md) | Agent 识别、生命周期、新增 agent 清单 |
 | [TERMINAL_INTERACTIONS.md](./TERMINAL_INTERACTIONS.md) | 右键、复制、安全粘贴与终端快捷键边界 |
 | [TERMINAL_SELECTION_COPY.md](./TERMINAL_SELECTION_COPY.md) | 选区复制行为 |
+| [TERMINAL_COMPETITIVE_GAPS.md](./TERMINAL_COMPETITIVE_GAPS.md) | 与 iTerm2 / Ghostty / Warp / cmux 等对比后仍缺、以及明确不抄的项 |
 | [M2_MARKDOWN_SAFE_EDITING.md](./M2_MARKDOWN_SAFE_EDITING.md) | Markdown / 单文件安全写合同 |
 | [LIMITED_LARGE_FILE_VIEWING.md](./LIMITED_LARGE_FILE_VIEWING.md) | 大文本前 N 行受限查看 |
 | [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md) | Preview 来源绑定与安全边界 |

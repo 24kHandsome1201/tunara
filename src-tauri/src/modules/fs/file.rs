@@ -404,11 +404,76 @@ pub fn fs_write_text_file(
     })
 }
 
+/// Create or replace a user-chosen text export. Unlike `fs_write_text_file`,
+/// this does not require a prior fingerprint because the path comes from an
+/// explicit Save dialog. Destinations that are symlinks or non-files fail closed.
+#[tauri::command]
+pub fn fs_export_text_file(path: String, content: String) -> Result<u64, String> {
+    if content.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
+        return Err(format!(
+            "exported content exceeds {MAX_TEXT_PREVIEW_BYTES} bytes"
+        ));
+    }
+    if content.contains('\0') {
+        return Err("exported content must be UTF-8 text".into());
+    }
+    let target = super::expand_tilde(&path);
+    if target.file_name().is_none() {
+        return Err("export path has no file name".into());
+    }
+    match std::fs::symlink_metadata(&target) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err("export path must be a regular file".into());
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("inspect export path failed: {error}")),
+    }
+
+    let mut temporary = None;
+    for attempt in 0..16 {
+        let candidate = sibling_temp_path(&target, attempt)?;
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                temporary = Some((candidate, file));
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("create temporary file failed: {error}")),
+        }
+    }
+    let (temporary_path, mut temporary_file) =
+        temporary.ok_or_else(|| "could not allocate temporary file".to_string())?;
+
+    let prepared = (|| -> Result<(), String> {
+        temporary_file
+            .write_all(content.as_bytes())
+            .map_err(|error| format!("write temporary file failed: {error}"))?;
+        temporary_file
+            .sync_all()
+            .map_err(|error| format!("flush temporary file failed: {error}"))?;
+        std::fs::rename(&temporary_path, &target)
+            .map_err(|error| format!("replace export file failed: {error}"))?;
+        Ok(())
+    })();
+
+    if let Err(error) = prepared {
+        let _ = std::fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+    Ok(content.len() as u64)
+}
+
 #[cfg(test)]
 mod write_tests {
     use super::{
-        content_fingerprint, fs_read_file, fs_write_text_file, image_preview, ReadResult,
-        WriteResult,
+        content_fingerprint, fs_export_text_file, fs_read_file, fs_write_text_file, image_preview,
+        ReadResult, WriteResult, MAX_TEXT_PREVIEW_BYTES,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -871,6 +936,50 @@ mod write_tests {
             ReadResult::Text { fingerprint, .. } => assert_eq!(fingerprint, None),
             _ => panic!("symlink text remains readable"),
         }
+        fs::remove_file(link).unwrap();
+        fs::remove_file(target).unwrap();
+    }
+
+    #[test]
+    fn export_creates_and_replaces_a_regular_file_within_the_text_cap() {
+        let target = fixture("export-create.txt");
+        let _ = fs::remove_file(&target);
+        let bytes = fs_export_text_file(
+            target.to_string_lossy().into_owned(),
+            "hello export\n".into(),
+        )
+        .expect("create export");
+        assert_eq!(bytes, "hello export\n".len() as u64);
+        assert_eq!(fs::read_to_string(&target).unwrap(), "hello export\n");
+        fs_export_text_file(target.to_string_lossy().into_owned(), "replaced\n".into())
+            .expect("replace export");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "replaced\n");
+        fs::remove_file(&target).unwrap();
+    }
+
+    #[test]
+    fn export_rejects_oversize_and_nul_content() {
+        let target = fixture("export-oversize.txt");
+        let oversize = "a".repeat((MAX_TEXT_PREVIEW_BYTES as usize) + 1);
+        assert!(fs_export_text_file(target.to_string_lossy().into_owned(), oversize).is_err());
+        assert!(
+            fs_export_text_file(target.to_string_lossy().into_owned(), "ok\0nope".into()).is_err()
+        );
+        assert!(!target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_never_follows_a_symlink_destination() {
+        use std::os::unix::fs::symlink;
+        let target = fixture("export-symlink-target.txt");
+        let link = fixture("export-symlink.txt");
+        fs::write(&target, "keep\n").unwrap();
+        symlink(&target, &link).unwrap();
+        let error = fs_export_text_file(link.to_string_lossy().into_owned(), "overwrite\n".into())
+            .unwrap_err();
+        assert!(error.contains("regular file"));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "keep\n");
         fs::remove_file(link).unwrap();
         fs::remove_file(target).unwrap();
     }

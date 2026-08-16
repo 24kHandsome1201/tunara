@@ -77,6 +77,7 @@ import {
   terminalProgressUpdate,
 } from "../src/modules/terminal/lib/session-lifecycle.ts";
 import {
+  createOsc99Assembler,
   parseTerminalNotificationOsc9,
   parseTerminalNotificationOsc777,
 } from "../src/modules/terminal/lib/terminal-notification.ts";
@@ -1274,6 +1275,26 @@ test("terminal notification OSC sequences avoid ConEmu progress and cwd collisio
   assert.equal(parseTerminalNotificationOsc777("tunara-agent;start;s-1;CC;"), null);
   assert.equal(parseTerminalNotificationOsc777("conduit-agent;start;s-1;CC;"), null);
   assert.equal(parseTerminalNotificationOsc777("notify;;"), null);
+});
+
+test("OSC 99 assembles Kitty-style title/body fragments including base64 payloads", () => {
+  const assembler = createOsc99Assembler();
+  assert.equal(assembler.ingest("i=1:d=0:p=title;Claude Code"), null);
+  assert.deepEqual(assembler.ingest("i=1:d=1:p=body;Needs approval"), {
+    title: "Claude Code",
+    body: "Needs approval",
+  });
+
+  const oneShot = createOsc99Assembler();
+  assert.deepEqual(oneShot.ingest("d=1;Build finished"), { title: "Build finished" });
+
+  const encoded = createOsc99Assembler();
+  const payload = Buffer.from("等待确认", "utf8").toString("base64");
+  assert.deepEqual(encoded.ingest(`e=1:d=1;${payload}`), { title: "等待确认" });
+
+  const empty = createOsc99Assembler();
+  assert.equal(empty.ingest("d=1;"), null);
+  assert.equal(empty.ingest("i=1:d=0:p=title;\u0007"), null);
 });
 
 test("agent lifecycle OSC accepts current and legacy event prefixes", () => {

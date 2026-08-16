@@ -44,7 +44,7 @@ import { captureTerminalActionTarget, handleTerminalInteractionKeyEvent, registe
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
-import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
+import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
 import { allocateTerminalInstanceEpoch, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
@@ -90,6 +90,7 @@ function TerminalViewImpl({
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const getBlockMenuEntries = useTerminalBlockMenu(blocks, sessionIdRef);
   const theme = useUIStore((s) => s.theme);
   const fontSize = useUIStore((s) => s.fontSize);
   const fontFamily = useUIStore((s) => s.fontFamily);
@@ -199,7 +200,6 @@ function TerminalViewImpl({
       // Terminal-scoped actions and workspace context-menu keys return false
       // before search/blocks so xterm neither consumes nor forwards them.
       term.attachCustomKeyEventHandler((e) => !((e.type === "keydown" && isFixedTerminalMenuEvent(e)) && useUIStore.getState().presentationMode !== "pure") && handleTerminalInteractionKeyEvent(sessionIdRef.current, term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
-      // OSC 133: A prompt start, B input start, C command start, D;N command end.
       let osc133Active = false;
       let osc133InputFallback = false;
       let pendingSubmittedShellCommand: string | null = null;
@@ -340,8 +340,7 @@ function TerminalViewImpl({
               if (agent) {
                 markAgentDetected(agent, cmd);
               }
-              // 本地会话默认注入 OSC 133,命令文本走这条路径(非 fallback)——
-              // ssh 检测必须同样挂在这里,否则提示条对绝大多数本地会话永不出现。
+              // OSC 133 path (not keystroke fallback): local sessions inject this by default.
               const sshTarget = detectSshCommand(cmd);
               if (sshTarget) {
                 useSessionsStore.getState().suggestSshConnect(sessionIdRef.current, sshTarget);
@@ -612,6 +611,7 @@ function TerminalViewImpl({
         getTerminal={() => termRef.current}
         search={search}
         quickSelectOverlay={quickSelect.quickSelectOverlay}
+        getBlockMenuEntries={getBlockMenuEntries}
       />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {
         void cancelSshOpen(sessionId);

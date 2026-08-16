@@ -118,6 +118,10 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 持续覆盖不同认证方式、bash/zsh、首连 host key、被动断开和大目录搜索，并把真实 SSH 证据纳入发版门禁。
 
+### 2. 终端本职缺口（对标其他终端）
+
+对照 iTerm2 / Ghostty / Warp / Wave / cmux / Kitty / Tabby 的优先项里，拖文件插入路径、OSC 99、跳到最近 Attention、有上限的滚屏/命令块导出已经落地。下一批仍是 Unicode grapheme 宽度、Kitty keyboard（等 xterm.js 上游）和跨会话搜索。完整矩阵与明确不抄的厨房水槽见 [TERMINAL_COMPETITIVE_GAPS.md](./TERMINAL_COMPETITIVE_GAPS.md)。
+
 ## 性能方向
 
 1. 会话列表继续保持 memo 化，过滤、分组、排序要和渲染拆开。

@@ -1,7 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalProgress } from "../../../ui/types.ts";
 import { parseOsc7 } from "./osc-handlers.ts";
-import { parseTerminalNotificationOsc9, type TerminalNotification } from "./terminal-notification.ts";
+import { createOsc99Assembler, parseTerminalNotificationOsc9, type TerminalNotification } from "./terminal-notification.ts";
 import { parseTerminalProgressOsc } from "./terminal-progress.ts";
 
 export interface TerminalOsc9Handlers {
@@ -14,7 +14,8 @@ export function registerTerminalOsc9Handler(
   term: Terminal,
   handlers: TerminalOsc9Handlers,
 ): () => void {
-  const disposable = term.parser.registerOscHandler(9, (data) => {
+  const osc99 = createOsc99Assembler();
+  const osc9 = term.parser.registerOscHandler(9, (data) => {
     const signal = parseTerminalProgressOsc(data);
     if (signal) {
       handlers.onProgress(signal.progress ?? undefined);
@@ -32,7 +33,16 @@ export function registerTerminalOsc9Handler(
     handlers.onNotification?.(notification);
     return true;
   });
-  return () => disposable.dispose();
+  const osc99Handler = term.parser.registerOscHandler(99, (data) => {
+    const notification = osc99.ingest(data);
+    if (notification) handlers.onNotification?.(notification);
+    return true;
+  });
+  return () => {
+    osc9.dispose();
+    osc99Handler.dispose();
+    osc99.reset();
+  };
 }
 
 export function parseConEmuCwdOsc9(data: string): string | null {

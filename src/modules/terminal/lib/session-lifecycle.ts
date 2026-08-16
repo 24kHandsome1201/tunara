@@ -2,6 +2,7 @@ import type { AgentCode, Session, TerminalProgress } from "../../../ui/types.ts"
 import { AGENT_NAMES, isPromptLikeShellTitle } from "../../../ui/types.ts";
 import { initialAgentActivity, isAgentShellTitle } from "./agent-lifecycle.ts";
 import { t } from "../../i18n/core.ts";
+import { formatElapsed } from "../../../ui/lib/elapsed.ts";
 
 export interface SessionLifecycleUpdate {
   patch: Partial<Session>;
@@ -106,6 +107,44 @@ export function agentExitedUpdate(
       ...(!isActive ? { unread: true } : {}),
     },
     refreshGit: true,
+  };
+}
+
+/** Commands at or above this duration also request OS-level attention (Dock bounce). */
+export const LONG_COMMAND_ATTENTION_MS = 15_000;
+
+const COMPLETION_TITLE_MAX = 30;
+
+export interface CommandCompletionNotice {
+  title: string;
+  subtitle: string;
+  variant: "success" | "error";
+  requestAttention: boolean;
+}
+
+/**
+ * Toast content for a command that finished in an unobserved session. Duration
+ * comes from the session-level command start timestamp; sub-second runs keep
+ * the plain done/failed wording to avoid "0s" noise.
+ */
+export function commandCompletionNotice(
+  command: string,
+  exitCode: number,
+  startedAt: number | undefined,
+  now = Date.now(),
+): CommandCompletionNotice {
+  const durationMs = typeof startedAt === "number" && now >= startedAt ? now - startedAt : undefined;
+  const duration = durationMs !== undefined && durationMs >= 1000 ? formatElapsed(durationMs) : undefined;
+  const subtitle = exitCode === 0
+    ? (duration ? t("command.toast.done_duration", { duration }) : t("command.toast.done"))
+    : (duration
+      ? t("command.toast.failed_duration", { code: exitCode, duration })
+      : t("command.toast.failed", { code: exitCode }));
+  return {
+    title: command.length > COMPLETION_TITLE_MAX ? command.slice(0, COMPLETION_TITLE_MAX) + "…" : command,
+    subtitle,
+    variant: exitCode === 0 ? "success" : "error",
+    requestAttention: durationMs !== undefined && durationMs >= LONG_COMMAND_ATTENTION_MS,
   };
 }
 
