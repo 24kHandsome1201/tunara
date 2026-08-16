@@ -102,7 +102,7 @@ export interface PersistedUILayoutV2 {
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   split: SplitState;
-  inspectorTab: "overview" | "changes" | "files" | "transfers" | "metadata" | "forwarding" | "diagnostics" | "knownHosts" | "preview" | "notes";
+  inspectorTab: "overview" | "changes" | "files" | "transfers" | "forwarding" | "preview" | "notes";
   broadcastInput?: boolean;
   explorerFollowCwd?: boolean;
 }
@@ -287,7 +287,12 @@ function sanitizePersistedSplit(raw: unknown, sessionIds: ReadonlySet<string>): 
 }
 
 function isValidInspectorTab(v: unknown): v is PersistedUILayoutV2["inspectorTab"] {
-  return v === "overview" || v === "changes" || v === "files" || v === "transfers" || v === "metadata" || v === "forwarding" || v === "diagnostics" || v === "knownHosts" || v === "preview" || v === "notes";
+  return v === "overview" || v === "changes" || v === "files" || v === "transfers" || v === "forwarding" || v === "preview" || v === "notes";
+}
+
+function coerceInspectorTab(v: unknown): PersistedUILayoutV2["inspectorTab"] {
+  if (v === "metadata" || v === "diagnostics" || v === "knownHosts") return "overview";
+  return isValidInspectorTab(v) ? v : "overview";
 }
 
 function sanitizeTrueRecord(raw: unknown): Record<string, true> {
@@ -398,7 +403,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
 
     const split = sanitizePersistedSplit(uiRaw.split, sessionIds);
 
-    const inspectorTab = isValidInspectorTab(uiRaw.inspectorTab) ? uiRaw.inspectorTab : "overview";
+    const inspectorTab = coerceInspectorTab(uiRaw.inspectorTab);
 
     ui = { sidebarVisible, panelVisible, collapsedDirs, collapsedDiffSections, split, inspectorTab,
       broadcastInput: uiRaw.broadcastInput === true,

@@ -29,10 +29,7 @@ export const INSPECTOR_TAB_DESCRIPTORS: Record<InspectorTab, InspectorTabDescrip
   changes: { id: "changes", scope: "profile", titleKey: "diff.title", descriptionKey: "inspector.scope.description.profile" },
   files: { id: "files", scope: "transport-binding", titleKey: "inspector.tab.files", descriptionKey: "inspector.scope.description.transport_binding" },
   transfers: { id: "transfers", scope: "logical-session", titleKey: "inspector.tab.transfers", descriptionKey: "inspector.scope.description.logical_session" },
-  metadata: { id: "metadata", scope: "transport-binding", titleKey: "inspector.tab.metadata", descriptionKey: "inspector.scope.description.transport_binding" },
   forwarding: { id: "forwarding", scope: "transport-binding", titleKey: "inspector.tab.forwarding", descriptionKey: "inspector.scope.description.transport_binding" },
-  diagnostics: { id: "diagnostics", scope: "logical-session", titleKey: "inspector.tab.diagnostics", descriptionKey: "inspector.scope.description.logical_session" },
-  knownHosts: { id: "knownHosts", scope: "global", titleKey: "inspector.tab.known_hosts", descriptionKey: "inspector.scope.description.global" },
   preview: { id: "preview", scope: "logical-session", titleKey: "inspector.tab.preview", descriptionKey: "inspector.scope.description.logical_session" },
   notes: { id: "notes", scope: "logical-session", titleKey: "inspector.tab.notes", descriptionKey: "inspector.scope.description.logical_session" },
 };

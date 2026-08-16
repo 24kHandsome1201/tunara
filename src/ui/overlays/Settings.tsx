@@ -13,6 +13,7 @@ import { ShortcutsSettings } from "./settings/ShortcutsSettings";
 import { WorkflowsSettings } from "./settings/WorkflowsSettings";
 import { CliSettings } from "./settings/CliSettings";
 import { AppSettings } from "./settings/AppSettings";
+import { SshSettings } from "./settings/SshSettings";
 import { useCliStatus } from "./settings/useCliStatus";
 import { Modal } from "./Modal";
 
@@ -20,7 +21,7 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-const TABS = ["appearance", "terminal", "accessibility", "shortcuts", "workflows", "cli", "app"] as const;
+const TABS = ["appearance", "terminal", "accessibility", "shortcuts", "workflows", "cli", "ssh", "app"] as const;
 
 /**
  * Settings dialog shell: chrome (backdrop, focus trap, tab list, footer) plus
@@ -104,6 +105,7 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === "shortcuts" && <ShortcutsSettings />}
           {activeTab === "workflows" && <WorkflowsSettings />}
           {activeTab === "cli" && <CliSettings {...cliStatus} />}
+          {activeTab === "ssh" && <SshSettings />}
           {activeTab === "app" && <AppSettings {...appUpdate} />}
         </div>
 

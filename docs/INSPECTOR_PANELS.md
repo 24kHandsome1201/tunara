@@ -365,31 +365,31 @@ SSH 上传 / 下载进度中心：单文件与批量进度、取消 / 重试、�
 
 | 页面 | 建议 | 备注 |
 |------|------|------|
-| 概览 | 保留 | 做成摘要 + 导航；卡片可跳转 |
-| 改动 | 保留 | 核心 review；拆分子组件、记展开状态 |
-| 文件 | 保留 | 搜索 / 树 / 上传已拆模块；下载与传输入口仍待做 |
-| Preview | 保留 | 轮询改事件或 3–5s 退避；砍身份详情 |
+| 概览 | 保留 | 目录 / 改动卡片可跳转；连接异常时可复制诊断报告 |
+| 改动 | 保留 | 核心 review；拆分子组件、记展开状态仍待做 |
+| 文件 | 保留 | 搜索 / 树 / 上传已拆模块；右键属性弹窗；工具条有传输入口 |
+| Preview | 保留 | 身份 ID 已去掉；轮询退避到 4s；完整事件推送仍待做 |
 | 笔记 | 保留 | 可选并入概览，默认不合并 |
-| 传输 | 保留 | Files 加「N 个传输进行中」入口 |
-| 端口转发 | 保留 | 统一 PanelToolbar 风格，补复制与字段校验 |
-| 元数据 | 砍 tab | 改为文件浏览器「属性」弹窗 |
-| 诊断 | 砍 tab | 复制报告并入概览；store 保留 |
-| 已知主机 | 移出右侧栏 | 迁到全局设置 SSH 分区 |
+| 传输 | 保留 | Files 工具条「N 个传输进行中」入口已落地 |
+| 端口转发 | 保留 | PanelToolbar、临时端口复制、字段级校验已落地 |
+| 元数据 | 已砍 tab | FileExplorer 右键「属性」弹窗 |
+| 诊断 | 已砍 tab | 概览在连接异常时复制报告；store 保留 |
+| 已知主机 | 已移出右侧栏 | 设置 → SSH |
 
 收敛后 **10 个页面变为 7 个**（本地会话仍是 5 个：概览、改动、文件、Preview、笔记）。远程「更多」里的专用项从 5 个变为 2 个（传输、端口转发）；导航中的 `ssh` 分组从 4 项缩到 1 项（端口转发）。
 
-可顺带删除：
+已删除：
 
 - `InspectorPanel` 的 `metadataPath` 与 `onInspectRemotePath`
 - `resolveInspectorNavigation` 的 `hasBinding` / `metadata` 特判
-- Diagnostics 的 `diagnosticsCenter.open()` 与 `onClose` 跳回 Overview
+- Diagnostics 的 `diagnosticsCenter.open()` 与独立 tab / `onClose` 跳回 Overview
 
 ---
 
 ## 13. 跨页面通用优化
 
-1. **按需加载 SSH 面板。** `InspectorPanel` 现在静态 import 全部 10 个面板。传输、元数据、转发、诊断、已知主机仅远程用到，可改为 `React.lazy`，避免本地会话打包和初始化这些模块。
-2. **统一工具条。** Overview、Preview、Forwarding、Metadata 仍大量内联样式；Transfer / Diagnostics / Known Hosts 已用 `PanelToolbar` / `PanelActionButton`。新改动应靠齐共享组件。
+1. **按需加载 SSH 面板。** 传输与端口转发已改为 `React.lazy`；本地会话不再静态打包这两个模块。
+2. **统一工具条。** Overview、Preview 仍有部分内联样式；Forwarding 已用 `PanelToolbar` / `PanelActionButton`。新改动应靠齐共享组件。
 3. **主 tab 承担导航。** Overview 卡片跳转、Files 传输入口，减少「更多」里才能完成的闭环。
 4. **不要用 scope 徽章掩盖错位。** 全局或「单文件操作」不应继续塞进会话检查器；迁走后徽章只描述真正的会话 / 绑定范围。
 5. **一次只挂载当前页。** 现有模型保持。懒加载后仍应卸载不可见面板，避免 SSH 轮询在后台跑。

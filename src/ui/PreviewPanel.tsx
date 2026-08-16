@@ -54,7 +54,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
     const timer = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
       void sync();
-    }, 750);
+    }, 4000);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") void sync();
     };
@@ -146,14 +146,6 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         ? "provenance-changed"
         : runtimeState?.restart.reason ?? "command-unavailable";
   const restartUiEligible = !!runtimeState?.restart.eligible && restartUiReason === "ready";
-  const remotePort = tunnelState?.remotePort ?? (() => {
-    try {
-      const url = new URL(source.sourceUrl);
-      return Number(url.port || (url.protocol === "https:" ? 443 : 80));
-    } catch {
-      return 0;
-    }
-  })();
 
   const establishTunnelAndOpen = async () => {
     const tunnel = await previewTunnelOpen(source, previewActionNonce());
@@ -254,23 +246,9 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         <input className="preview-control ui-native-control" aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: "1 1 180px", fontFamily: "var(--font-mono)" }} />
         <button className="preview-control" type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
       </form>}
-      <details className="preview-disclosure">
-        <summary>{t("inspector.preview.identity_details")}</summary>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "var(--fs-meta)", color: "var(--c-text-3)", minWidth: 0, marginTop: 6 }}>
-          {row(t("inspector.preview.repository"), source.repositoryId)}
-          {row(t("inspector.preview.worktree"), source.worktreeId)}
-          {row(t("inspector.preview.workspace"), source.workspaceId)}
-          {row(t("inspector.preview.session"), source.sessionId)}
-          {row(t("inspector.preview.terminal"), source.terminalId)}
-          {row(t("inspector.preview.generation"), source.restartProvenance?.generation ?? t("inspector.preview.generation_missing"))}
-          {row(t("inspector.preview.physical_pty"), source.physicalPtyId === undefined ? t("inspector.preview.physical_pty_missing") : String(source.physicalPtyId))}
-          {isRemote && row(t("inspector.preview.ssh_host"), `${source.sshUser ?? "?"}@${source.sshHost ?? "?"}:${source.sshPort ?? "?"}`)}
-          {row(isRemote ? t("inspector.preview.remote_url") : t("inspector.preview.url"), previewDisplayUrl(source.sourceUrl))}
-          {isRemote && row(t("inspector.preview.remote_port"), String(remotePort))}
-          {isRemote && row(t("inspector.preview.local_endpoint"), tunnelState?.localEndpoint ?? t("inspector.preview.local_endpoint_missing"))}
-          {isRemote && row(t("inspector.preview.connection"), tunnelState ? t(`inspector.preview.tunnel.${tunnelState.status}`) : t("inspector.preview.tunnel.closed"))}
-        </div>
-      </details>
+      {row(isRemote ? t("inspector.preview.remote_url") : t("inspector.preview.url"), previewDisplayUrl(source.sourceUrl))}
+      {isRemote && row(t("inspector.preview.local_endpoint"), tunnelState?.localEndpoint ?? t("inspector.preview.local_endpoint_missing"))}
+      {isRemote && row(t("inspector.preview.connection"), tunnelState ? t(`inspector.preview.tunnel.${tunnelState.status}`) : t("inspector.preview.tunnel.closed"))}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button data-preview-action="view-source-terminal" disabled={busy} onClick={viewSourceTerminal}>{t("inspector.preview.view_terminal")}</button>
         {isRemote ? (

@@ -118,8 +118,8 @@ test("only the top modal handles Escape and focus returns to the underlying moda
 
 test("scope descriptors cover every Inspector tab and stale async tickets are rejected", () => {
   const ids = Object.keys(INSPECTOR_TAB_DESCRIPTORS);
-  expect(ids).toHaveLength(10);
-  expect(INSPECTOR_TAB_DESCRIPTORS.knownHosts.scope).toBe("global");
+  expect(ids).toHaveLength(7);
+  expect(INSPECTOR_TAB_DESCRIPTORS.preview.scope).toBe("logical-session");
   expect(INSPECTOR_TAB_DESCRIPTORS.forwarding.scope).toBe("transport-binding");
 
   const session: Session = {

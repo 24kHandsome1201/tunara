@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -23,17 +25,13 @@ import {
 import { WorkspaceSourceChip } from "./WorkspaceSource";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
-import { TransferCenter } from "./TransferCenter";
-import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
-import { DiagnosticsCenter } from "@/modules/ssh/DiagnosticsCenter";
-import { diagnosticsCenter } from "@/modules/ssh/diagnostics-store";
-import { ForwardingPanel } from "@/modules/ssh/ForwardingPanel";
-import { KnownHostsPanel } from "@/modules/ssh/KnownHostsPanel";
-import { copyText } from "./lib/clipboard";
 import { INSPECTOR_TAB_DESCRIPTORS, resolveInspectorScope } from "./inspector-scope";
 import { ContextMenu, type MenuEntry, type MenuItem } from "./ContextMenu";
 import { INSPECTOR_OVERFLOW_SECTION, resolveInspectorNavigation } from "./inspector-navigation";
+
+const TransferCenter = lazy(() => import("./TransferCenter").then((module) => ({ default: module.TransferCenter })));
+const ForwardingPanel = lazy(() => import("@/modules/ssh/ForwardingPanel").then((module) => ({ default: module.ForwardingPanel })));
 
 const INSPECTOR_TABPANEL_ID = "inspector-tabpanel";
 
@@ -128,7 +126,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     ? { logicalSessionId: session.id, physicalPtyId: session.ptyId, transportGeneration: session.transportGeneration }
     : null;
   const forwardingBinding = session.connection?.phase === "ready" ? binding : null;
-  const [metadataPath, setMetadataPath] = useState(session.dir);
   const [moreMenu, setMoreMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -139,7 +136,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   const navigation = resolveInspectorNavigation({
     filesOnly,
     isRemote,
-    hasBinding: binding !== null,
   });
   const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "overview";
   const secondaryTabActive = navigation.secondary.includes(tab);
@@ -158,9 +154,8 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   const showContextBar = showSourceSummary || inspectorScope.kind !== "logical-session";
 
   useEffect(() => {
-    setMetadataPath(session.dir);
     setMoreMenu(null);
-  }, [filesOnly, session.dir, session.id]);
+  }, [filesOnly, session.id]);
 
   useEffect(() => {
     const activeTab = tabListRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(tab)}"]`);
@@ -168,7 +163,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   }, [tab]);
 
   const selectTab = (nextTab: InspectorTab) => {
-    if (nextTab === "diagnostics") diagnosticsCenter.open();
     setTab(nextTab);
     setMoreMenu(null);
   };
@@ -216,20 +210,11 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
           transportGeneration={session.transportGeneration}
           remote={isRemote}
           remoteHost={session.remote ? `${session.remote.user}@${session.remote.host}` : undefined}
-          onInspectRemotePath={(path) => {
-            setMetadataPath(path);
-            selectTab("metadata");
-          }}
         />
       );
       break;
     case "transfers":
       activePanel = <TransferCenter inspectorScope={inspectorScope} />;
-      break;
-    case "metadata":
-      activePanel = binding
-        ? <RemoteMetadataPanel binding={binding} path={metadataPath} host={`${session.remote!.user}@${session.remote!.host}`} />
-        : <SessionOverviewPanel session={session} />;
       break;
     case "forwarding":
       activePanel = (
@@ -239,26 +224,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
           session={session}
         />
       );
-      break;
-    case "diagnostics":
-      activePanel = (
-        <DiagnosticsCenter
-          sessionId={session.id}
-          onClose={() => selectTab("overview")}
-          onCopyReport={async (report) => {
-            const copied = await copyText(report);
-            useUIStore.getState().addToast({
-              sessionId: session.id,
-              title: t(copied ? "diagnostics.copy_succeeded" : "diagnostics.copy_failed"),
-              subtitle: "",
-              variant: copied ? "success" : "error",
-            });
-          }}
-        />
-      );
-      break;
-    case "knownHosts":
-      activePanel = <KnownHostsPanel />;
       break;
     case "preview":
       activePanel = <PreviewPanel session={session} />;
@@ -441,7 +406,9 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
             animation: "contentIn var(--duration-normal) var(--ease-out-expo)",
           }}
         >
-          {activePanel}
+          <Suspense fallback={null}>
+            {activePanel}
+          </Suspense>
         </div>
       </div>
 

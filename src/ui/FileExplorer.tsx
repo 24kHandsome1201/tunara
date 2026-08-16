@@ -45,8 +45,9 @@ import { validateManifest } from "@/modules/ssh/transfer-bridge";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { RemoteFsMutationDialog } from "@/modules/ssh/remote-fs/RemoteFsMutationDialog";
+import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel";
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
-import { useModalBehavior } from "./overlays/Modal";
+import { Modal, useModalBehavior } from "./overlays/Modal";
 import { FileContentIcon, FileIcon, FileNameIcon, FolderIcon, folderEmptyIcon, TreeChevron } from "./file-explorer/icons";
 import {
   compactRelativePath,
@@ -81,7 +82,6 @@ interface FileExplorerProps {
   /** Stable transport identity while the physical SSH PTY is unavailable. */
   remote?: boolean;
   remoteHost?: string;
-  onInspectRemotePath?: (path: string) => void;
 }
 
 interface DownloadTransfer {
@@ -95,7 +95,6 @@ export function FileExplorer({
   transportGeneration,
   remote = remotePtyId !== undefined,
   remoteHost,
-  onInspectRemotePath,
 }: FileExplorerProps) {
   const t = useT();
   const isRemote = remote;
@@ -250,6 +249,7 @@ export function FileExplorer({
   const [dropHighlightPath, setDropHighlightPath] = useState<string | null>(null);
   const [dropMessage, setDropMessage] = useState("");
   const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string } | null>(null);
+  const [propertiesPath, setPropertiesPath] = useState<string | null>(null);
   const [mutationRequest, setMutationRequest] = useState<MutationRequestV1 | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
   const treeRequestContext = JSON.stringify({
@@ -315,6 +315,10 @@ export function FileExplorer({
     && transportGeneration
     ? { logicalSessionId: sessionId, physicalPtyId: remotePtyId, transportGeneration }
     : null, [isRemote, remotePtyId, sessionId, transportGeneration]);
+  const activeTransferNotice = useTransferStore((s) =>
+    s.items.filter((item) => item.binding.logicalSessionId === sessionId && (item.status === "queued" || item.status === "running")).length
+    + s.recoveries.filter((item) => item.record.session === sessionId).length,
+  );
   const mutationRequestIsCurrent = !mutationRequest || !!binding
     && mutationRequest.binding.logicalSessionId === binding.logicalSessionId
     && mutationRequest.binding.physicalPtyId === binding.physicalPtyId
@@ -752,7 +756,7 @@ export function FileExplorer({
             { id: "dir:download", label: t("explorer.download_folder"), icon: "download", disabled: remoteDisconnected || !binding, action: () => { void downloadRemoteFolder(node.path, node.entry.name); } },
             { id: "dir:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
             { id: "dir:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
-            { id: "dir:metadata", label: t("explorer.metadata"), icon: "search", action: () => { suppressMenuFocusRef.current = true; onInspectRemotePath?.(node.path); } },
+            { id: "dir:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
             { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
           ]
         : [
@@ -767,7 +771,7 @@ export function FileExplorer({
           { id: "file:open-editor", label: t("preview.editor.external_remote"), icon: "editor", disabled: remoteDisconnected || remotePtyId === undefined, action: () => { if (remotePtyId !== undefined) void openRemoteInExternalEditor({ sessionId, remotePtyId, remotePath: node.path, editor: externalEditor }).catch(() => {}); } },
           { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
-          { id: "file:metadata", label: t("explorer.metadata"), icon: "search", action: () => { suppressMenuFocusRef.current = true; onInspectRemotePath?.(node.path); } },
+          { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
           { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
           { id: "file:download", label: node.entry.size > MAX_REMOTE_DOWNLOAD_BYTES ? t("explorer.download.too_large") : t("explorer.download"), icon: "download", disabled: node.entry.size > MAX_REMOTE_DOWNLOAD_BYTES || download !== null, action: () => { void downloadRemoteFile(node.path, node.entry.name); } },
           { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
@@ -1287,6 +1291,21 @@ export function FileExplorer({
                 </button>
               </>
             )}
+            {activeTransferNotice > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  useUIStore.getState().setPanelVisible(true);
+                  useUIStore.getState().setInspectorTab("transfers");
+                }}
+                className="hover-bg"
+                title={t("explorer.transfers_open")}
+                aria-label={t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
+                style={{ minWidth: 26, height: 26, padding: "0 6px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-accent-border)", background: "var(--c-accent-bg-soft)", color: "var(--c-accent)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--fs-meta)", fontWeight: 650, flexShrink: 0, whiteSpace: "nowrap" }}
+              >
+                {t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1552,6 +1571,21 @@ export function FileExplorer({
           </>
         )}
       </div>
+
+      {propertiesPath && binding && (
+        <Modal
+          labelledBy="remote-metadata-title"
+          onRequestClose={() => setPropertiesPath(null)}
+          bindingKey={treeRequestContext}
+          currentBindingKey={treeRequestContext}
+          style={{ width: 480 }}
+        >
+          <RemoteMetadataPanel binding={binding} path={propertiesPath} host={remoteHost ?? sessionId} />
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px 12px" }}>
+            <button type="button" className="ui-button" onClick={() => setPropertiesPath(null)}>{t("common.close")}</button>
+          </div>
+        </Modal>
+      )}
 
       {mutationComposer && (
         <>

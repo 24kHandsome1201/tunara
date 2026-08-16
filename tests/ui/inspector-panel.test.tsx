@@ -4,7 +4,7 @@ import { InspectorPanel } from "../../src/ui/InspectorPanel";
 import { useSessionsStore } from "../../src/state/sessions";
 import { useUIStore } from "../../src/state/ui";
 import type { Session } from "../../src/ui/types";
-import { appendDiagnostic, clearDiagnostics } from "../../src/modules/ssh/diagnostics-store";
+import { clearDiagnostics } from "../../src/modules/ssh/diagnostics-store";
 
 vi.mock("../../src/ui/SessionOverviewPanel", () => ({
   SessionOverviewPanel: () => <div data-testid="overview-panel" />,
@@ -23,16 +23,8 @@ vi.mock("../../src/ui/TransferCenter", () => ({
     <div data-testid="transfers-panel" data-scope-kind={inspectorScope.kind} data-scope-key={inspectorScope.key} data-session={inspectorScope.logicalSessionId} />
   ),
 }));
-vi.mock("../../src/modules/ssh/remote-fs/RemoteMetadataPanel", () => ({
-  RemoteMetadataPanel: ({ path }: { path: string }) => <div data-testid="metadata-panel">{path}</div>,
-}));
 vi.mock("../../src/modules/ssh/ForwardingPanel", () => ({
   ForwardingPanel: ({ binding }: { binding: unknown }) => <div data-testid="forwarding-panel">{binding ? "live" : "offline"}</div>,
-}));
-vi.mock("../../src/modules/ssh/known-hosts-bridge", () => ({
-  listKnownHostsV1: async () => ({ revision: "r1", entries: [{ entryId: "e1", line: 1, marker: null, patternDisplay: "example.com", keyType: "ssh-ed25519", fingerprint: "SHA256:safe", manageable: true }] }),
-  refreshKnownHostsV1: async () => ({ revision: "r1", entries: [] }),
-  removeKnownHostV1: async () => ({ revision: "r2", entries: [] }),
 }));
 
 const session: Session = {
@@ -98,23 +90,16 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   chooseSecondaryPanel("Transfers");
   expect(screen.queryByTestId("preview-panel")).toBeNull();
   expect(screen.getByRole("tab", { name: "Transfers" }).getAttribute("aria-selected")).toBe("true");
-  expect(screen.getByTestId("transfers-panel")).toMatchObject({
+  expect(await screen.findByTestId("transfers-panel")).toMatchObject({
     dataset: { scopeKind: "logical-session", scopeKey: `session:${session.id}`, session: session.id },
   });
 
-  chooseSecondaryPanel("Diagnostics");
-  const diagnostics = screen.getByRole("region", { name: "SSH diagnostics" });
-  expect(screen.getByRole("status").textContent).toContain("No diagnostics for this session");
-  expect(screen.queryByRole("button", { name: "Copy de-identified report" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
-  fireEvent.keyDown(diagnostics, { key: "Escape" });
-  expect(screen.getByTestId("overview-panel")).toBeTruthy();
-
-  chooseSecondaryPanel("Known hosts");
-  expect(await screen.findByText("example.com")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Remove example.com" }));
-  fireEvent.click(screen.getByRole("button", { name: "Confirm removal of example.com" }));
-  expect(await screen.findByText("No known hosts")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
+  expect(screen.getByText("SSH")).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: /Forwarding/ })).toBeTruthy();
+  expect(screen.queryByRole("menuitem", { name: /Diagnostics/ })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: /Known hosts/ })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: /Metadata/ })).toBeNull();
 });
 
 test("keeps the active tab visible and preserves APG roving focus navigation", async () => {
@@ -137,42 +122,18 @@ test("keeps the active tab visible and preserves APG roving focus navigation", a
     await waitFor(() => expect(document.activeElement).toBe(changes));
     expect(changes.getAttribute("aria-selected")).toBe("true");
 
-    chooseSecondaryPanel("Known hosts");
-    const knownHosts = screen.getByRole("tab", { name: "Known hosts" });
+    chooseSecondaryPanel("Transfers");
+    const transfers = screen.getByRole("tab", { name: "Transfers" });
     await waitFor(() => expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" }));
-    expect(knownHosts.getAttribute("aria-selected")).toBe("true");
+    expect(transfers.getAttribute("aria-selected")).toBe("true");
 
-    knownHosts.focus();
-    fireEvent.keyDown(knownHosts, { key: "Home" });
+    transfers.focus();
+    fireEvent.keyDown(transfers, { key: "Home" });
     await waitFor(() => expect(document.activeElement).toBe(overview));
     expect(overview.getAttribute("aria-selected")).toBe("true");
   } finally {
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
   }
-});
-
-test("diagnostic actions appear only when there is a report to copy or clear", () => {
-  appendDiagnostic(session.id, {
-    requestId: "request-1",
-    status: "failed",
-    diagnostic: {
-      schemaVersion: 1,
-      stage: "auth",
-      code: "authenticationFailed",
-      severity: "error",
-      retryable: false,
-      hopRole: "direct",
-      timestamp: 1,
-    },
-  });
-  useUIStore.setState({ inspectorTab: "diagnostics" });
-  render(<InspectorPanel session={remoteSession} filesOnly={false} />);
-
-  expect(screen.getByRole("button", { name: "Copy de-identified report" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-  expect(screen.getByRole("status").textContent).toContain("No diagnostics for this session");
-  expect(screen.queryByRole("button", { name: "Copy de-identified report" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
 });
 
 test("projects only Files controls in Pure Mode", () => {
@@ -195,10 +156,10 @@ test("flushes a pending note when switching away before the debounce", () => {
   expect(screen.getByTestId("overview-panel")).toBeTruthy();
 });
 
-test("offers forwarding only to SSH sessions and withholds the binding while reconnecting", () => {
+test("offers forwarding only to SSH sessions and withholds the binding while reconnecting", async () => {
   const view = render(<InspectorPanel session={remoteSession} filesOnly={false} />);
   chooseSecondaryPanel("Forwarding");
-  expect(screen.getByTestId("forwarding-panel").textContent).toBe("live");
+  expect((await screen.findByTestId("forwarding-panel")).textContent).toBe("live");
 
   view.rerender(<InspectorPanel session={{
     ...remoteSession,
