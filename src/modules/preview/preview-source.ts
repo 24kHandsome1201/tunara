@@ -167,6 +167,24 @@ export function markPreviewSourcesStale(
     : source);
 }
 
+export function hasActivePreviewSource(sources: readonly PreviewSource[] | undefined): boolean {
+  return (sources ?? []).some((source) => source.state === "active");
+}
+
+export function latestPreviewPromptSource(
+  sources: readonly PreviewSource[] | undefined,
+  dismissedKeys: readonly string[] | undefined,
+): PreviewSource | null {
+  const dismissed = new Set(dismissedKeys ?? []);
+  let latest: PreviewSource | null = null;
+  for (const source of sources ?? []) {
+    if (source.state !== "active") continue;
+    if (dismissed.has(previewSourceKey(source))) continue;
+    if (!latest || source.discoveredAt >= latest.discoveredAt) latest = source;
+  }
+  return latest;
+}
+
 export function createPreviewOutputScanner(onOutput: (text: string) => void) {
   const decoder = new TextDecoder();
   let unfinishedToken = "";

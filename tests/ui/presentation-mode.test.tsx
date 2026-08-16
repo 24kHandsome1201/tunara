@@ -248,6 +248,11 @@ test("Pure Mode Files action remains available in the action strip and command p
   expect(screen.queryByRole("button", { name: "Open Files in Pure Mode" })).toBeNull();
   fireEvent.click(screen.getByLabelText("More actions"));
   expect(screen.getByRole("menuitem", { name: "Files" })).toBeTruthy();
+  expect(screen.queryByRole("menuitem", { name: "Safe Paste" })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: "Copy" })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: "Search" })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: "Command Palette" })).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Safe Paste" })).toHaveLength(1);
   view.unmount();
 
   useUIStore.setState({ overlay: "command-palette" });
@@ -258,7 +263,13 @@ test("Pure Mode Files action remains available in the action strip and command p
 });
 
 test("Pure Mode action strip is keyboard/AT reachable and exposes touch overflow", () => {
-  useUIStore.setState({ configLoaded: false, presentationMode: "pure", nativeFullscreen: false, overlay: null });
+  useUIStore.setState({
+    configLoaded: false,
+    presentationMode: "pure",
+    nativeFullscreen: false,
+    overlay: null,
+    showPureModeFilesButton: true,
+  });
   const { container } = renderTitlebar();
   const strip = screen.getByRole("toolbar", { name: "Pure Mode actions" });
   expect(strip.getAttribute("data-visible")).toBe("true");
@@ -268,6 +279,7 @@ test("Pure Mode action strip is keyboard/AT reachable and exposes touch overflow
   expect(screen.getByRole("button", { name: "Command Palette" })).toBeTruthy();
   expect(screen.getByRole("button", { name: /Exit Pure Mode.+P/ })).toBeTruthy();
   expect(container.querySelector("[data-touch-overflow]")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Command Palette" }));
   expect(useUIStore.getState()).toMatchObject({ presentationMode: "pure", overlay: "command-palette" });

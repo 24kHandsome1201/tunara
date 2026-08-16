@@ -38,9 +38,7 @@ const MAX_OSC99_PENDING = 32;
 function decodeOsc99Payload(payload: string, encoding: string | undefined): string {
   if (encoding !== "1") return payload;
   try {
-    const binary = typeof atob === "function"
-      ? atob(payload)
-      : Buffer.from(payload, "base64").toString("binary");
+    const binary = atob(payload);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {

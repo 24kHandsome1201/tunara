@@ -27,6 +27,7 @@ export function agentDetectedUpdate(
       shellTitle: undefined,
       suppressShellTitle: false,
       terminalProgress: undefined,
+      reviewChangesHint: false,
     },
   };
 }
@@ -43,7 +44,7 @@ export function agentReadyUpdate(
     patch: {
       agentActivity: "idle",
       runState: "idle",
-      ...(completedTurn ? { completedAt: now } : {}),
+      ...(completedTurn ? { completedAt: now, reviewChangesHint: true } : {}),
       ...(completedTurn && !isActive ? { unread: true } : {}),
     },
     ...(completedTurn ? { refreshGit: true } : {}),
@@ -99,6 +100,7 @@ export function agentExitedUpdate(
       shellTitle: undefined,
       suppressShellTitle: true,
       terminalProgress: undefined,
+      reviewChangesHint: false,
       ...(session.agentActivity === "starting" && exitCode !== 0 ? { agentResume: undefined } : {}),
       runState: exitCode === 0 ? "done" : "failed",
       completedAt: now,

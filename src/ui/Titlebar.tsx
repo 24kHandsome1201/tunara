@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { deriveTitle, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { getNumberRecordValue } from "@/state/record-keys";
@@ -12,6 +12,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 import type { WorkspaceFileTab } from "@/state/ui";
 import { activateWorkspaceFileTab, requestCloseWorkspaceFileTab } from "./lib/workspace-tab-actions";
+import { splitToolbarOverflow } from "./lib/toolbar-overflow";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
 import { copyActiveTerminal, safePasteActiveTerminal, searchActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import { TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, type TerminalContextAnnouncement } from "@/modules/terminal/lib/terminal-context-announcement";
@@ -244,9 +245,19 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
   const activeSession = useSessionsStore((state) => state.sessions.find((session) => session.id === activeSessionId));
   const showFilesButton = useUIStore((state) => state.showPureModeFilesButton);
   const [visible, setVisible] = useState(true);
-  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  const [overflowMenu, setOverflowMenu] = useState<{
+    items: MenuEntry[];
+    position: { x: number; y: number };
+  } | null>(null);
   const [contextAnnouncement, setContextAnnouncement] = useState<TerminalContextAnnouncement | null>(null);
   const hideTimer = useRef<number | null>(null);
+  const overflowMenuRef = useRef(overflowMenu);
+  overflowMenuRef.current = overflowMenu;
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const overflowBtnRef = useRef<HTMLButtonElement>(null);
+  const itemWidthCache = useRef(new Map<string, number>());
 
   const keepVisible = useCallback(() => {
     if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
@@ -257,6 +268,7 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
     if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
       hideTimer.current = null;
+      if (overflowMenuRef.current) return;
       setVisible(false);
     }, 1400);
   }, []);
@@ -293,20 +305,38 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
     return () => window.clearTimeout(timeout);
   }, [contextAnnouncement]);
 
-  const openFiles = () => {
-    const ui = useUIStore.getState();
-    ui.setInspectorTab("files");
-    ui.setPanelVisible(true);
-  };
-  const openPalette = () => useUIStore.getState().setOverlay("command-palette");
-  const exit = () => useUIStore.getState().setPresentationMode("workspace");
-  const actions = [
+  useEffect(() => {
+    const mq = window.matchMedia?.("(pointer: coarse)");
+    if (!mq) return;
+    const update = () => setCoarsePointer(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const actions = useMemo(() => [
     { id: "paste", label: t("pure.action.safe_paste"), run: () => void safePasteActiveTerminal(activeSessionId) },
     { id: "copy", label: t("term.copy"), run: () => void copyActiveTerminal(activeSessionId) },
     { id: "search", label: t("pure.action.search"), run: () => searchActiveTerminal(activeSessionId) },
-    { id: "files", label: t("pure.files.button"), run: openFiles },
-    { id: "palette", label: t("pure.action.command_palette"), run: openPalette },
-    ...(includeExit ? [{ id: "exit", label: t("palette.cmd.exit_pure"), run: exit }] : []),
+    { id: "files", label: t("pure.files.button"), run: () => {
+      const ui = useUIStore.getState();
+      ui.setInspectorTab("files");
+      ui.setPanelVisible(true);
+    } },
+    { id: "palette", label: t("pure.action.command_palette"), run: () => useUIStore.getState().setOverlay("command-palette") },
+    ...(includeExit ? [{ id: "exit", label: t("palette.cmd.exit_pure"), run: () => useUIStore.getState().setPresentationMode("workspace") }] : []),
+  ], [activeSessionId, includeExit, t]);
+  const inlineCandidates = useMemo(
+    () => actions.filter((action) => action.id !== "files" || showFilesButton),
+    [actions, showFilesButton],
+  );
+  const extraOverflow = useMemo(
+    () => actions.filter((action) => action.id === "files" && !showFilesButton),
+    [actions, showFilesButton],
+  );
+  const overflowActions = [
+    ...inlineCandidates.filter((action) => collapsedIds.includes(action.id)),
+    ...extraOverflow,
   ];
   const announcedSession = useSessionsStore((state) => contextAnnouncement
     ? state.sessions.find((session) => session.id === contextAnnouncement.logicalSessionId)
@@ -323,6 +353,67 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
   const contextPosition = contextAnnouncement?.index !== undefined && contextAnnouncement.total !== undefined
     ? `${contextAnnouncement.index}/${contextAnnouncement.total}`
     : "";
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      for (const action of inlineCandidates) {
+        const el = labelRef.current?.parentElement?.querySelector<HTMLElement>(`[data-pure-action="${CSS.escape(action.id)}"]`);
+        const width = el?.offsetWidth ?? 0;
+        if (width > 0) itemWidthCache.current.set(action.id, width);
+      }
+      const widths = inlineCandidates.map((action) => itemWidthCache.current.get(action.id) ?? 0);
+      const overflowWidth = overflowBtnRef.current?.offsetWidth || 36;
+      const labelWidth = labelRef.current?.offsetWidth ?? 0;
+      const inset = fullscreen ? 20 : 24;
+      const available = coarsePointer
+        ? 0
+        : Math.max(0, window.innerWidth - inset - 8 - labelWidth - 2);
+      const split = splitToolbarOverflow(
+        inlineCandidates,
+        widths,
+        available,
+        overflowWidth,
+        2,
+        extraOverflow.length > 0 || coarsePointer,
+      );
+      const nextIds = split.overflow.map((action) => action.id);
+      setCollapsedIds((current) => (
+        current.length === nextIds.length && current.every((id, index) => id === nextIds[index])
+          ? current
+          : nextIds
+      ));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(document.documentElement);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [coarsePointer, extraOverflow.length, fullscreen, inlineCandidates, sessionLabel]);
+
+  useEffect(() => {
+    setOverflowMenu(null);
+  }, [showFilesButton, includeExit]);
+
+  const toggleOverflowMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (overflowMenu) {
+      setOverflowMenu(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setOverflowMenu({
+      items: overflowActions.map((action) => ({
+        id: `pure:${action.id}`,
+        label: action.label,
+        action: action.run,
+      })),
+      position: { x: Math.max(8, rect.right - 180), y: rect.bottom + 4 },
+    });
+    keepVisible();
+  };
+
   const buttonStyle: React.CSSProperties = {
     minHeight: 30,
     padding: "0 9px",
@@ -332,6 +423,7 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
     color: "var(--c-text-2)",
     cursor: "pointer",
     whiteSpace: "nowrap",
+    flexShrink: 0,
   };
 
   return (
@@ -361,33 +453,57 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
         background: "var(--c-bg-white)",
         boxShadow: "var(--shadow-menu)",
         opacity: visible ? 1 : 0.02,
+        maxWidth: fullscreen ? "calc(100vw - 20px)" : "calc(100vw - 24px)",
         transition: "top var(--duration-normal) var(--ease-smooth), opacity var(--duration-normal) var(--ease-smooth)",
         WebkitAppRegion: "no-drag",
       } as DragStyle}
     >
-      <span role="status" aria-live="polite" title={sessionLabel} style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 7px", fontSize: "var(--fs-meta)", color: cue ? "var(--c-accent)" : "var(--c-text-4)" }}>
+      <span ref={labelRef} role="status" aria-live="polite" title={sessionLabel} style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 7px", fontSize: "var(--fs-meta)", color: cue ? "var(--c-accent)" : "var(--c-text-4)" }}>
         {sessionLabel}{contextPosition ? ` · ${contextPosition}` : ""}{cue ? ` · ${cue}` : ""}
       </span>
-      {actions.filter((action) => action.id !== "files" || showFilesButton).map((action) => (
+      {inlineCandidates.map((action) => (
         <button
           key={action.id}
           type="button"
+          data-pure-action={action.id}
           aria-label={action.id === "files" ? t("pure.files.open") : action.id === "exit" ? `${action.label} ${exitShortcut}` : action.label}
-          style={buttonStyle}
+          style={{
+            ...buttonStyle,
+            display: collapsedIds.includes(action.id) ? "none" : undefined,
+          }}
           className="hover-bg"
           onClick={action.run}
         >
           {action.label}
         </button>
       ))}
-      <details data-touch-overflow onToggle={(event) => { setOverflowOpen(event.currentTarget.open); keepVisible(); }} style={{ position: "relative" }}>
-        <summary aria-label={t("common.more_actions")} title={t("common.more_actions")} style={{ ...buttonStyle, display: "flex", alignItems: "center", listStyle: "none" }}>•••</summary>
-        {overflowOpen && (
-          <div role="menu" style={{ position: "absolute", right: 0, top: 34, padding: 4, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", boxShadow: "var(--shadow-menu)" }}>
-            {actions.map((action) => <button key={action.id} type="button" role="menuitem" style={{ ...buttonStyle, width: "100%", textAlign: "left" }} onClick={action.run}>{action.label}</button>)}
-          </div>
-        )}
-      </details>
+      <button
+        ref={overflowBtnRef}
+        type="button"
+        data-touch-overflow
+        aria-label={t("common.more_actions")}
+        title={t("common.more_actions")}
+        aria-haspopup="menu"
+        aria-expanded={overflowMenu !== null}
+        hidden={overflowActions.length === 0}
+        style={{ ...buttonStyle, display: overflowActions.length === 0 ? "none" : "flex", alignItems: "center" }}
+        className="hover-bg"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={toggleOverflowMenu}
+      >
+        •••
+      </button>
+      {overflowMenu && (
+        <ContextMenu
+          items={overflowMenu.items}
+          position={overflowMenu.position}
+          onClose={() => {
+            setOverflowMenu(null);
+            releaseVisible();
+          }}
+          returnFocusToken={overflowBtnRef}
+        />
+      )}
     </div>
   );
 }

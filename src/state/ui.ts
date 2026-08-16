@@ -340,8 +340,11 @@ interface UIState extends AppearanceSettings {
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   commandUsage: Record<string, number>;
+  /** Bumped when saved SSH profiles or ~/.ssh/config import results change. Not persisted. */
+  sshProfilesEpoch: number;
   broadcastInput: boolean;
   explorerFollowCwd: boolean;
+  shellIntegrationHintDismissed: boolean;
   downloadMaxFiles: number;
   downloadMaxFileBytes: number;
   downloadMaxTotalBytes: number;
@@ -351,6 +354,7 @@ interface UIState extends AppearanceSettings {
   setNativeFullscreen: (fullscreen: boolean) => void;
   toggleBroadcastInput: () => void;
   setExplorerFollowCwd: (enabled: boolean) => void;
+  dismissShellIntegrationHint: () => void;
   setDownloadLimits: (limits: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number }) => void;
   setSidebarVisible: (visible: boolean) => void;
   setPanelVisible: (visible: boolean) => void;
@@ -397,6 +401,7 @@ interface UIState extends AppearanceSettings {
   enqueueKeyboardInteractivePrompt: (prompt: KeyboardInteractivePrompt) => void;
   dismissKeyboardInteractivePrompt: (promptId: string) => void;
   setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
+  bumpSshProfilesEpoch: () => void;
   toggleDirCollapsed: (dir: string) => void;
   toggleDiffSectionCollapsed: (section: string) => void;
   recordCommandUse: (id: string) => void;
@@ -441,10 +446,12 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     pendingWorkflow: null,
     collapsedDirs: {},
     collapsedDiffSections: {},
+    sshProfilesEpoch: 0,
     // Hydrated from the workspace snapshot in useInit; starts empty.
     commandUsage: {},
     broadcastInput: false,
     explorerFollowCwd: true,
+    shellIntegrationHintDismissed: false,
     downloadMaxFiles: 100,
     downloadMaxFileBytes: 100 * 1024 * 1024,
     downloadMaxTotalBytes: 1024 ** 3,
@@ -469,6 +476,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setNativeFullscreen: (nativeFullscreen) => set({ nativeFullscreen }),
     toggleBroadcastInput: () => set((s) => ({ broadcastInput: !s.broadcastInput })),
     setExplorerFollowCwd: (explorerFollowCwd) => set({ explorerFollowCwd }),
+    dismissShellIntegrationHint: () => set({ shellIntegrationHintDismissed: true }),
     setDownloadLimits: (limits) => set((s) => ({
       downloadMaxFiles: limits.maxFiles ?? s.downloadMaxFiles,
       downloadMaxFileBytes: limits.maxFileBytes ?? s.downloadMaxFileBytes,
@@ -599,6 +607,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
         keyboardInteractivePrompts: s.keyboardInteractivePrompts.filter((p) => p.promptId !== promptId),
       })),
     setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
+    bumpSshProfilesEpoch: () => set((s) => ({ sshProfilesEpoch: s.sshProfilesEpoch + 1 })),
     toggleDirCollapsed: (dir) =>
       set((s) => ({ collapsedDirs: toggleTrueRecordKey(s.collapsedDirs, dir) })),
     toggleDiffSectionCollapsed: (section) =>

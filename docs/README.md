@@ -7,6 +7,7 @@
 | 文档 | 用途 |
 |------|------|
 | [FEATURES.md](./FEATURES.md) | 功能与代码地图：用户可见能力对应到前端/后端入口 |
+| [PRODUCT_REVIEW.md](./PRODUCT_REVIEW.md) | 全量功能盘点：成本/价值取舍与主路径缺口 |
 | [GOAL.md](./GOAL.md) | 产品目标、平台支持、Agent 边界 |
 | [ROADMAP.md](./ROADMAP.md) | 已落地能力与后续建议 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 前后端 IPC、三种传输、托管 state、启动顺序 |
@@ -28,6 +29,8 @@
 | [LOCAL_USAGE_LOGGING.md](./LOCAL_USAGE_LOGGING.md) | 可选本地 SSH 诊断日志 |
 | [THEME_SHELL_TINTING.md](./THEME_SHELL_TINTING.md) | 界面与终端统一配色 |
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | 视觉与交互约定 |
+| [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 右侧栏现状与收敛提案（非产品合同） |
+| [SIDEBAR_SSH.md](./SIDEBAR_SSH.md) | 左侧栏 SSH 适配规划（非产品合同） |
 
 ## 发布、验收与历史
 

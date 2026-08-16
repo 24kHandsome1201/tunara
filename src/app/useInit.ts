@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useSessionsStore, createSession } from "@/state/sessions";
+import { useSessionsStore } from "@/state/sessions";
 import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
@@ -41,6 +41,7 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
       inspectorTab: ui.inspectorTab,
       broadcastInput: ui.broadcastInput,
       explorerFollowCwd: ui.explorerFollowCwd,
+      shellIntegrationHintDismissed: ui.shellIntegrationHintDismissed,
     },
     terminals: getAllTerminalSnapshots(),
     agentResume,
@@ -53,8 +54,6 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
 }
 
 export function useInit() {
-  const addSession = useSessionsStore((s) => s.addSession);
-
   const initRef = useRef(false);
   useEffect(() => {
     if (initRef.current) return;
@@ -82,17 +81,11 @@ export function useInit() {
 
       if (result.status === "error") {
         notifyPersistenceFailure("restore", result.error);
-        if (current.sessions.length === 0) {
-          addSession(createSession("~", { title: t("session.default_title") }));
-        }
         useUIStore.setState({ ready: true });
         return;
       }
 
       if (result.status === "empty") {
-        if (current.sessions.length === 0) {
-          addSession(createSession("~", { title: t("session.default_title") }));
-        }
         useUIStore.setState({ ready: true });
         return;
       }
@@ -115,12 +108,6 @@ export function useInit() {
             ...restored,
             ...current.sessions.filter((s) => !restored.some((r) => r.id === s.id)),
           ];
-
-      if (merged.length === 0) {
-        addSession(createSession("~", { title: t("session.default_title") }));
-        useUIStore.setState({ ready: true });
-        return;
-      }
 
       const restoredActive = snapshot.activeSessionId;
       const activeSessionId = merged.some((s) => s.id === current.activeSessionId)
@@ -156,6 +143,7 @@ export function useInit() {
         commandUsage: snapshot.commandUsage ?? {},
         broadcastInput: snapshot.ui.broadcastInput === true,
         explorerFollowCwd: snapshot.ui.explorerFollowCwd !== false,
+        shellIntegrationHintDismissed: snapshot.ui.shellIntegrationHintDismissed === true,
       });
 
       if (snapshot.workflows?.length) {
@@ -293,7 +281,7 @@ export function useInit() {
     });
 
     const unsubUI = useUIStore.subscribe(
-      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.broadcastInput, s.explorerFollowCwd] as const,
+      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.broadcastInput, s.explorerFollowCwd, s.shellIntegrationHintDismissed] as const,
       () => scheduleSave(),
       { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
     );
@@ -330,5 +318,5 @@ export function useInit() {
       for (const dir of watchedDirs) releaseGitWatch(dir);
       unlistens.forEach((p) => p.then((fn) => fn()).catch((e) => console.warn("[useInit] cleanup listener failed", e)));
     };
-  }, [addSession]);
+  }, []);
 }

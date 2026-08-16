@@ -29,6 +29,7 @@ import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { INSPECTOR_TAB_DESCRIPTORS, resolveInspectorScope } from "./inspector-scope";
 import { ContextMenu, type MenuEntry, type MenuItem } from "./ContextMenu";
 import { INSPECTOR_OVERFLOW_SECTION, resolveInspectorNavigation } from "./inspector-navigation";
+import { hasActivePreviewSource } from "@/modules/preview/preview-source";
 
 const TransferCenter = lazy(() => import("./TransferCenter").then((module) => ({ default: module.TransferCenter })));
 const ForwardingPanel = lazy(() => import("@/modules/ssh/ForwardingPanel").then((module) => ({ default: module.ForwardingPanel })));
@@ -136,6 +137,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   const navigation = resolveInspectorNavigation({
     filesOnly,
     isRemote,
+    hasPreviewSource: hasActivePreviewSource(session.previewSources),
   });
   const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "overview";
   const secondaryTabActive = navigation.secondary.includes(tab);

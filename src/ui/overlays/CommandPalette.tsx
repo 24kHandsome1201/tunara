@@ -266,7 +266,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         },
       });
 
-      const openInspectorTab = (tab: "overview" | "notes", usageId: string) => {
+      const openInspectorTab = (tab: "overview" | "notes" | "changes" | "files" | "preview", usageId: string) => {
         uiStore.getState().recordCommandUse(usageId);
         uiStore.getState().setPanelVisible(true);
         uiStore.getState().setInspectorTab(tab);
@@ -393,6 +393,36 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         scopes: ["action", "app"],
         originalIndex: idx++,
         action: () => openInspectorTab("overview", "open-session-overview"),
+      });
+
+      cmds.push({
+        id: "open-session-changes",
+        label: t("palette.cmd.open_session_changes"),
+        icon: <CmdIcon d="M4 5h16M4 12h16M8 19h8" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "app"],
+        originalIndex: idx++,
+        action: () => openInspectorTab("changes", "open-session-changes"),
+      });
+
+      cmds.push({
+        id: "open-session-files",
+        label: t("palette.cmd.open_session_files"),
+        icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "app"],
+        originalIndex: idx++,
+        action: () => openInspectorTab("files", "open-session-files"),
+      });
+
+      cmds.push({
+        id: "open-session-preview",
+        label: t("palette.cmd.open_session_preview"),
+        icon: <CmdIcon d="M4 6h16v12H4zM8 10h8" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "app"],
+        originalIndex: idx++,
+        action: () => openInspectorTab("preview", "open-session-preview"),
       });
 
       cmds.push({

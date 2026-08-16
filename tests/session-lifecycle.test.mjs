@@ -62,6 +62,7 @@ test("agent lifecycle: detected → busy → ready → exited clears agent and m
   assert.equal(s.agentActivity, "idle");
   assert.equal(s.completedAt, NOW + 200);
   assert.equal(s.unread, true, "inactive session should get unread on turn completion");
+  assert.equal(s.reviewChangesHint, true, "completed turns offer a Changes prompt");
 
   // 4. Agent exits — agent cleared, runState done/failed based on exit code.
   const exited = agentExitedUpdate(s, 0, false, NOW + 300);

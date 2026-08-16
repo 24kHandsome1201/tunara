@@ -7,6 +7,7 @@ import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { AccentActionButton, RestartIcon, ResumeIcon } from "./lib/ui-primitives";
 import { agentResumePendingInput } from "@/modules/terminal/lib/agent-resume";
+import { openInspectorTab } from "./lib/open-inspector";
 
 // Sidebar 的统一会话动态层。展示需要处理、正在运行、可恢复三类派生状态；
 // 没有可操作状态时整条隐藏，不制造第二套持久化状态或独立工作区。
@@ -114,6 +115,13 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
     const prefill = reconnectPrefillFromSession(session);
     if (prefill) useUIStore.getState().openSshConnect(prefill);
   };
+  const openChanges = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    useSessionsStore.getState().updateSession(session.id, { reviewChangesHint: false });
+    onSelect(session.id);
+    openInspectorTab("changes");
+  };
+  const showReview = fileCount > 0 && (attentionKind === "agent-ready" || variant === "resumable");
 
   return (
     <div
@@ -177,6 +185,11 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
         </span>
       )}
       </button>
+      {showReview && (
+        <AccentActionButton onClick={openChanges} title={t("gbar.action.review")} ariaLabel={t("gbar.action.review")}>
+          {t("gbar.action.review")}
+        </AccentActionButton>
+      )}
       {isSshAttention ? (
         <AccentActionButton onClick={reconnect} title={t("gbar.action.reconnect")} ariaLabel={t("gbar.action.reconnect")}>
           <RestartIcon size={10} />

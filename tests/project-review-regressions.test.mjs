@@ -85,10 +85,35 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.match(terminal, /<TerminalExitBanner/);
   assert.match(terminal, /<PtyErrorBanner/);
   assert.match(main, /!pure && <SshSuggestionBar session=\{session\} \/>/);
+  assert.match(main, /!pure && <PreviewSuggestionBar session=\{session\} \/>/);
+  assert.match(main, /!pure && <ReviewChangesBar session=\{session\} \/>/);
   assert.match(globalAgentBar, /agentResumePendingInput\(resumeCommand\)/);
   assert.match(chrome, /\{search\.searchOpen &&/);
   assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
   assert.match(chrome, /!pure && menu &&/);
+  assert.match(chrome, /formatDroppedTerminalPaths\(paths\)/);
+  assert.match(chrome, /insertTerminalText\(sessionId, inserted\)/);
+  assert.match(globalAgentBar, /gbar\.action\.review/);
+});
+
+test("discovery flows keep empty-state recents, preview prompts, and OSC 133 hints", () => {
+  const app = read("src/app/App.tsx");
+  const empty = read("src/ui/WorkspaceEmptyState.tsx");
+  const init = read("src/app/useInit.ts");
+  const sessions = read("src/state/sessions.ts");
+  const overview = read("src/ui/SessionOverviewPanel.tsx");
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const terminal = read("src/ui/TerminalView.tsx");
+
+  assert.match(app, /WorkspaceEmptyState/);
+  assert.match(empty, /collectRecentTerminalDirs\(recentDirs, undefined, 5\)/);
+  assert.match(empty, /sidebar\.new_terminal_in_directory/);
+  assert.match(init, /if \(result\.status === "empty"\) \{\s*useUIStore\.setState\(\{ ready: true \}\);/);
+  assert.doesNotMatch(sessions, /createSession\("~"/);
+  assert.match(overview, /overview\.shell_integration\.title/);
+  assert.match(terminal, /markShellIntegrationSeen\(sessionIdRef\.current\)/);
+  assert.match(palette, /openInspectorTab\("changes", "open-session-changes"\)/);
+  assert.match(palette, /openInspectorTab\("preview", "open-session-preview"\)/);
 });
 
 test("fixed runbooks stay removed while user-configurable workflows remain", () => {
@@ -447,6 +472,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   const ui = read("src/state/ui.ts");
   const diffPanel = read("src/ui/DiffPanel.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
   const overviewPanel = read("src/ui/SessionOverviewPanel.tsx");
   const recordKeys = read("src/state/record-keys.ts");
   assert.match(persist, /const STORE_FILE = "tunara-sessions\.json";/);
@@ -537,9 +563,9 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(recordKeys, /toggleTrueRecordKey\(record: Record<string, true>, key: string\)/);
   assert.match(ui, /toggleTrueRecordKey\(s\.collapsedDirs, dir\)/);
   assert.match(ui, /toggleTrueRecordKey\(s\.collapsedDiffSections, section\)/);
-  assert.match(sidebar, /hasTrueRecordKey\(collapsedDirs, dir\)/);
-  assert.match(sidebar, /getNumberRecordValue\(dirCloseConfirmations, dir\) > 0/);
-  assert.match(sidebar, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
+  assert.match(sidebar, /hasTrueRecordKey\(collapsedDirs, group\.key\)/);
+  assert.match(sidebar, /getNumberRecordValue\(dirCloseConfirmations, group\.key\) > 0/);
+  assert.match(sidebarGroup, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
   assert.doesNotMatch(sidebar, /!!collapsedDirs\[dir\]/);
   assert.doesNotMatch(sidebar, /!!dirCloseConfirmations\[dir\]/);
   assert.doesNotMatch(sidebar, /!!closeConfirmations\[s\.id\]/);
@@ -898,7 +924,7 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(sessionsGit, /function bumpGitNonce\(id: string,/);
   assert.match(sessionsGit, /queueMicrotask\(\(\) => flushGitNonceBumps\(set\)\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, s\.id\)/);
-  assert.match(source, /getNumberRecordValue\(get\(\)\.dirCloseConfirmations, dir\)/);
+  assert.match(source, /getNumberRecordValue\(get\(\)\.dirCloseConfirmations, groupKey\)/);
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, id\)/);
   assert.match(source, /sessions\[Math\.min\(Math\.max\(removedIndex, 0\), sessions\.length - 1\)\]/);
   assert.match(init, /const merged = current\.sessions\.length === 0/);
@@ -997,6 +1023,7 @@ test("appearance settings are sanitized and command palette exposes useful actio
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const paletteFilter = read("src/ui/overlays/command-palette-filter.ts");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
   const toast = read("src/ui/Toast.tsx");
   const css = read("src/styles/globals.css");
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
@@ -1039,7 +1066,7 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(palette, /for \(const \[globalIdx, cmd\] of ranked\.entries\(\)\)/);
   assert.doesNotMatch(palette, /ranked\.indexOf/);
   assert.match(sidebar, /const canReorder = q\.length === 0/);
-  assert.match(sidebar, /if \(!canReorder\) return;/);
+  assert.match(sidebarGroup, /if \(!canReorder\) return;/);
   assert.match(toast, /exitTimerRef/);
   assert.match(toast, /minWidth: 260/);
   assert.match(toast, /maxWidth: "min\(340px, calc\(100vw - 24px\)\)"/);
@@ -1156,6 +1183,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   const sessions = read("src/state/sessions.ts");
   const sessionCard = read("src/ui/SessionCard.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
+  const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
   const sidebarMenu = read("src/ui/sidebar-session-menu.ts");
   const sidebarDirMenu = read("src/ui/sidebar-dir-group-menu.ts");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
@@ -1204,7 +1232,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sessionCard, /e\.key === "F2"/);
   assert.match(sessionCard, /active && e\.key === "Enter"/);
   assert.match(sessionCard, /useDestructiveConfirmCountdown/);
-  assert.match(sidebar, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
+  assert.match(sidebarGroup, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
   assert.doesNotMatch(sidebar, /confirmClose=\{getNumberRecordValue\(closeConfirmations, s\.id\) > 0\}/);
   assert.doesNotMatch(sessionCard, /onClearCloseConfirm/);
   assert.doesNotMatch(sessionCard, /session\.changes\?\.files\.reduce/);
@@ -1215,7 +1243,12 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sidebarMenu, /label: t\("sidebar\.session\.close"\), icon: "close"/);
   assert.match(sidebarDirMenu, /dirGroupHasLocalFilesystem/);
   assert.match(sidebarDirMenu, /canUseSessionDirForLocalTerminal/);
+  assert.match(sidebarDirMenu, /dir:duplicate-host/);
+  assert.match(sidebarDirMenu, /sidebar\.session\.copy_remote_cwd/);
+  assert.match(sidebarDirMenu, /closeSessionsInGroup/);
   assert.match(sidebarDirMenu, /label: t\("sidebar\.dir\.close_all"\), icon: "close"/);
+  assert.match(sidebar, /groupSessionsForSidebar/);
+  assert.match(sessions, /closeSessionsInGroup: \(groupKey: string\) => void/);
   assert.match(zhDict, /"sidebar\.session\.rename": "重命名"/);
   assert.match(zhDict, /"sidebar\.session\.close": "关闭会话"/);
   assert.match(zhDict, /"sidebar\.dir\.close_all": "关闭全部会话"/);
@@ -1549,7 +1582,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(zhDict, /"palette\.cmd\.focus_latest_attention": "跳到最近需要处理的会话"/);
   assert.match(zhDict, /"palette\.cmd\.export_scrollback": "导出终端滚屏…"/);
   assert.match(terminalChrome, /formatDroppedTerminalPaths\(paths\)/);
-  assert.match(terminalChrome, /pendingInputSubmit: false/);
+  assert.match(terminalChrome, /insertTerminalText\(sessionId, inserted\)/);
+  assert.match(terminalChrome, /term\.drop\.ssh_not_ready/);
   assert.match(terminalChrome, /exportTerminalBufferToFile/);
   assert.doesNotMatch(terminalChrome, /invoke</);
   assert.match(keybindings, /focusLatestAttention: "Mod\+Shift\+U"/);
@@ -1644,7 +1678,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalInput, /export function scanTerminalInputBuffer/);
   assert.match(terminalInput, /BRACKETED_PASTE_START/);
   assert.match(terminalInput, /bracketedPasteActive/);
-  assert.match(sidebar, /import \{ DirGroupHeader, SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
+  assert.match(sidebar, /import \{ SidebarSearchIcon \} from "\.\/SidebarDirGroupHeader"/);
+  assert.match(sidebar, /import \{ SidebarSessionGroup \} from "\.\/SidebarSessionGroup"/);
   assert.match(sidebarHeader, /export function DirGroupHeader/);
   assert.doesNotMatch(terminal, /new ResizeObserver/);
   assert.doesNotMatch(terminal, /for \(let i = 0; i < data\.length; i \+= 1\)/);
@@ -1662,7 +1697,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // The 580 ceiling left room for generation publication and inert SSH
   // restore. 580→625 covers input ownership plus binding-aware terminal
   // actions; their state machines remain extracted into terminal lib modules.
-  assert.ok(terminal.split("\n").length < 625);
+  // 625→630 covers the OSC 133 seen-marker used by the Overview hint.
+  assert.ok(terminal.split("\n").length < 630);
   // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
   assert.ok(sidebar.split("\n").length < 430);
 });

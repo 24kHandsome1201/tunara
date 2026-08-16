@@ -105,6 +105,7 @@ export interface PersistedUILayoutV2 {
   inspectorTab: "overview" | "changes" | "files" | "transfers" | "forwarding" | "preview" | "notes";
   broadcastInput?: boolean;
   explorerFollowCwd?: boolean;
+  shellIntegrationHintDismissed?: boolean;
 }
 
 export interface PersistedTerminalSnapshot {
@@ -408,6 +409,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     ui = { sidebarVisible, panelVisible, collapsedDirs, collapsedDiffSections, split, inspectorTab,
       broadcastInput: uiRaw.broadcastInput === true,
       explorerFollowCwd: uiRaw.explorerFollowCwd !== false,
+      shellIntegrationHintDismissed: uiRaw.shellIntegrationHintDismissed === true,
     };
   } else {
     ui = { ...DEFAULT_UI_LAYOUT_V2 };

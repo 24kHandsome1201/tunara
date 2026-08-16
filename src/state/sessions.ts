@@ -29,6 +29,7 @@ import { setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-awa
 import { pushRecentCommand } from "./recent-commands";
 import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
+import { sidebarGroupKey } from "@/modules/session/sidebar-groups";
 import { duplicateRemoteSessionFields } from "@/modules/ssh/connection-share";
 import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 import {
@@ -114,7 +115,7 @@ interface SessionsState {
   refreshGit: (id: string) => void;
   clearCloseConfirmation: (id: string) => void;
   closeSessions: (ids: string[], opts?: { toastSubtitle?: string }) => boolean;
-  closeSessionsInDir: (dir: string) => void;
+  closeSessionsInGroup: (groupKey: string) => void;
   clearDirCloseConfirmation: (dir: string) => void;
   recordRecentDir: (dir: string) => void;
   recordRecentCommand: (command: string) => void;
@@ -139,13 +140,16 @@ interface SessionsState {
   suggestSshConnect: (id: string, target: SshConnectSuggestion) => void;
   clearSshSuggestion: (id: string) => void;
   dismissSshSuggestion: (id: string) => void;
+  dismissPreviewPrompt: (id: string, sourceKey: string) => void;
+  markShellIntegrationSeen: (id: string) => void;
+  insertTerminalText: (id: string, text: string) => void;
   handleShellTitle: (id: string, title: string) => void;
   handleTerminalProgress: (id: string, progress: Session["terminalProgress"] | undefined) => void;
 
   renameSession: (id: string, name: string) => void;
   startRenaming: (id: string) => void;
   stopRenaming: () => void;
-  reorderInGroup: (dir: string, fromIndex: number, toIndex: number) => void;
+  reorderInGroup: (groupKey: string, fromIndex: number, toIndex: number) => void;
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
   newTerminalWithInput: (input: string, dir?: string) => void;
@@ -204,8 +208,8 @@ export function createSession(
 }
 
 /**
- * 远程 SSH 会话的 dir 显示为 user@host，且不参与本地 git/文件操作。
- * 真实远程 cwd 由 Phase 4 的远程 shell 集成提供（若启用）。
+ * 远程 SSH 会话的初始 dir 是 user@host（不是本地路径），不参与本地 git/文件操作。
+ * OSC 7 之后 dir 会变成远端绝对路径；侧栏分组键走 remote，不走 dir。
  */
 export function createRemoteSession(remote: RemoteInfo, title?: string): Session {
   const label = `${remote.user}@${remote.host}`;
@@ -561,22 +565,22 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     return true;
   },
 
-  closeSessionsInDir: (dir) => {
-    const sessionIds = get().sessions.filter((s) => s.dir === dir).map((s) => s.id);
+  closeSessionsInGroup: (groupKey) => {
+    const sessionIds = get().sessions.filter((s) => sidebarGroupKey(s) === groupKey).map((s) => s.id);
     if (sessionIds.length === 0) return;
     const closed = get().closeSessions(sessionIds, { toastSubtitle: t("session.close.all_running_hint") });
     if (!closed) {
-      const lastConfirm = getNumberRecordValue(get().dirCloseConfirmations, dir);
+      const lastConfirm = getNumberRecordValue(get().dirCloseConfirmations, groupKey);
       if (Date.now() - lastConfirm > CLOSE_CONFIRM_WINDOW_MS) {
         set((state) => ({
-          dirCloseConfirmations: { ...state.dirCloseConfirmations, [dir]: Date.now() },
+          dirCloseConfirmations: { ...state.dirCloseConfirmations, [groupKey]: Date.now() },
         }));
-        scheduleDirCloseConfirmationExpiry(dir, get().clearDirCloseConfirmation);
+        scheduleDirCloseConfirmationExpiry(groupKey, get().clearDirCloseConfirmation);
       }
       return;
     }
 
-    get().clearDirCloseConfirmation(dir);
+    get().clearDirCloseConfirmation(groupKey);
   },
 
   markRead: (id) =>
@@ -886,6 +890,25 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     });
   },
 
+  dismissPreviewPrompt: (id, sourceKey) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session || session.dismissedPreviewKeys?.includes(sourceKey)) return;
+    get().updateSession(id, {
+      dismissedPreviewKeys: [...(session.dismissedPreviewKeys ?? []), sourceKey],
+    });
+  },
+
+  markShellIntegrationSeen: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session || session.shellIntegrationSeen) return;
+    get().updateSession(id, { shellIntegrationSeen: true });
+  },
+
+  insertTerminalText: (id, text) => {
+    if (!text) return;
+    get().updateSession(id, { pendingInput: text, pendingInputSubmit: false });
+  },
+
   handleShellTitle: (id, title) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = shellTitleUpdate(session, title);
@@ -907,10 +930,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   startRenaming: (id) => set({ renamingSessionId: id }),
   stopRenaming: () => set({ renamingSessionId: null }),
 
-  reorderInGroup: (dir, fromIndex, toIndex) =>
+  reorderInGroup: (groupKey, fromIndex, toIndex) =>
     set((state) => {
       if (fromIndex === toIndex) return {};
-      const group = state.sessions.filter((s) => s.dir === dir);
+      const group = state.sessions.filter((s) => sidebarGroupKey(s) === groupKey);
       if (fromIndex < 0 || toIndex < 0 || fromIndex >= group.length || toIndex >= group.length) return {};
       const movedId = group[fromIndex].id;
       const targetId = group[toIndex].id;
@@ -1036,7 +1059,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
 
     get().removeSession(id);
-    if (get().sessions.length === 0) get().addSession(createSession("~", { title: t("session.default_title") }));
   },
 }));
 

@@ -25,7 +25,7 @@
 
 Warp keeps adding features it doesn't need. It boots slowly, eats memory, and drifts further from being a terminal you reach for every day. cmux and Wave have the right instincts, but their styling is the kind you don't want sitting in your Dock. macOS Terminal and iTerm2 never grew a sidebar, so juggling several projects means a forest of tabs you switch through by muscle memory.
 
-Tunara is built for that gap. A local terminal — **real PTY, xterm.js, WebGL** — no cloud, no account, no telemetry. A sidebar on the left groups sessions by working directory so a glance tells you which project is running and which AI agent is in it. A read-only review rail on the right lets you eyeball your diff before you commit. The installer is about 30 MB and the app opens nearly instantly.
+Tunara is built for that gap. A local terminal — **real PTY, xterm.js, WebGL** — no cloud, no account, no telemetry. A sidebar on the left groups local sessions by working directory and SSH sessions by host so a glance tells you which project or machine is running and which AI agent is in it. A read-only review rail on the right lets you eyeball your diff before you commit. The installer is about 30 MB and the app opens nearly instantly.
 
 It is not a Warp replacement. It is for people who **switched back to iTerm and still feel something is missing**.
 
@@ -61,7 +61,7 @@ The terminal is the product, not an accessory. Sessions run real `portable-pty`;
 
 ### Smart sidebar
 
-The sidebar is what visually separates Tunara from every other terminal. Sessions group by working directory; multiple sessions in the same project fold together; directory groups collapse, batch-close, and drag as a unit; sessions themselves rename, search, and fuzzy-match in place.
+The sidebar is what visually separates Tunara from every other terminal. Local sessions group by working directory and SSH sessions group by host; multiple sessions in the same project or on the same machine fold together; groups collapse, batch-close, and drag as a unit; sessions themselves rename, search, and fuzzy-match in place.
 
 - Directory groups: collapse / expand / batch close
 - Drag to reorder, fuzzy search filter, inline rename
@@ -79,7 +79,7 @@ Tunara now has a small cockpit layer for people who keep several sessions open a
 - Starter workflows can add common review, test, and diagnostic commands in one click
 - Overview keeps a bounded, runtime-only list of recent session activity; it is not a persistent Agent history
 
-Future direction and feature notes live in [docs/ROADMAP.md](docs/ROADMAP.md). A feature-to-code map is in [docs/FEATURES.md](docs/FEATURES.md).
+Future direction, feature notes, and cost/value cuts live in [docs/ROADMAP.md](docs/ROADMAP.md), [docs/FEATURES.md](docs/FEATURES.md), and [docs/PRODUCT_REVIEW.md](docs/PRODUCT_REVIEW.md).
 
 ### SSH
 

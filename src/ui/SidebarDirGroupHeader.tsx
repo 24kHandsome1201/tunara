@@ -10,12 +10,25 @@ function FolderIcon() {
   );
 }
 
+function HostIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="7" rx="1.5" />
+      <rect x="3" y="13" width="18" height="7" rx="1.5" />
+      <circle cx="7" cy="7.5" r="0.8" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="16.5" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function SidebarSearchIcon() {
   return <SearchIcon />;
 }
 
 export function DirGroupHeader({
-  dir,
+  kind = "local",
+  label,
+  pathTitle,
   count,
   workspace,
   agentCount = 0,
@@ -27,7 +40,9 @@ export function DirGroupHeader({
   onContextMenu,
   onKeyDown,
 }: {
-  dir: string;
+  kind?: "local" | "ssh";
+  label: string;
+  pathTitle: string;
   count: number;
   workspace?: {
     repositoryName: string;
@@ -50,7 +65,13 @@ export function DirGroupHeader({
   onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const t = useT();
-  const groupName = workspace?.repositoryName || dir.split("/").pop() || dir;
+  const groupName = kind === "ssh" ? label : workspace?.repositoryName || label;
+  const newTerminalLabel = kind === "ssh" ? t("sidebar.session.duplicate_host") : t("dir_group.new_terminal");
+  const closeAllTitle = confirmClose
+    ? t("session.close.all_running_hint")
+    : kind === "ssh"
+      ? t("session.close.all_host_title")
+      : t("session.close.all_title");
   const headerContent = (
     <>
       {onToggleCollapse && (
@@ -73,23 +94,23 @@ export function DirGroupHeader({
           <polyline points="9 6 15 12 9 18" />
         </svg>
       )}
-      <FolderIcon />
-      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={dir}>
+      {kind === "ssh" ? <HostIcon /> : <FolderIcon />}
+      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={pathTitle}>
         <span
           style={{
             fontSize: "var(--fs-meta)",
-            fontWeight: workspace ? 650 : 600,
+            fontWeight: workspace || kind === "ssh" ? 650 : 600,
             fontFamily: "var(--font-mono)",
-            color: workspace ? "var(--c-text-5)" : "var(--c-text-3)",
+            color: workspace || kind === "ssh" ? "var(--c-text-5)" : "var(--c-text-3)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            letterSpacing: workspace ? "0.02em" : undefined,
+            letterSpacing: workspace || kind === "ssh" ? "0.02em" : undefined,
             textAlign: "left",
           }}
         >
-          {workspace ? workspace.repositoryName : dir.split("/").pop() || dir}
-          {workspace?.transport === "ssh" && (
+          {kind === "ssh" ? label : workspace ? workspace.repositoryName : label}
+          {kind === "ssh" && (
             <span style={{ marginLeft: 5, color: "var(--c-text-6)", fontSize: "var(--fs-meta)", fontWeight: 600 }}>{t("workspace.ssh")}</span>
           )}
         </span>
@@ -128,7 +149,7 @@ export function DirGroupHeader({
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
       role="group"
-      aria-label={`${dir}, ${t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}`}
+      aria-label={`${kind === "ssh" ? `${label}, ${t("workspace.ssh")}` : pathTitle}, ${t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}`}
       tabIndex={0}
       style={{
         display: "flex",
@@ -173,8 +194,8 @@ export function DirGroupHeader({
           type="button"
           className="dir-group-add hover-bg"
           onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
-          title={t("dir_group.new_terminal")}
-          aria-label={t("dir_group.new_terminal")}
+          title={newTerminalLabel}
+          aria-label={newTerminalLabel}
           style={{
             width: 18,
             height: 18,
@@ -200,8 +221,8 @@ export function DirGroupHeader({
           type="button"
           className="dir-group-close hover-close"
           onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
-          title={confirmClose ? t("session.close.all_running_hint") : t("session.close.all_title")}
-          aria-label={confirmClose ? t("session.close.all_running_hint") : t("session.close.all_title")}
+          title={closeAllTitle}
+          aria-label={closeAllTitle}
           style={{
             width: 18,
             height: 18,

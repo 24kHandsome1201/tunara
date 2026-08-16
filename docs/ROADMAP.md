@@ -112,6 +112,8 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ## 下一阶段建议
 
+当前主线没有自动进入的下一产品阶段。功能取舍与主路径缺口见 [PRODUCT_REVIEW.md](./PRODUCT_REVIEW.md)：优先把 Preview 和最近目录接到已有流程上，并冻结吉祥物、工作流 starter、使用日志等周边，而不是再铺新面。
+
 ### 1. 发布后的真实环境回归矩阵
 
 持续覆盖不同认证方式、bash/zsh、首连 host key、被动断开和大目录搜索，并把真实 SSH 证据纳入发版门禁。

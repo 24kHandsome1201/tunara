@@ -97,6 +97,12 @@ export interface Session {
   sshSuggestion?: SshConnectSuggestion | null;
   // 本会话内被用户忽略过的 ssh 目标，避免重复打扰（运行时字段，不持久化）。
   dismissedSshHosts?: string[];
+  /** Runtime-only: Preview URLs the user dismissed or already opened. */
+  dismissedPreviewKeys?: string[];
+  /** Runtime-only: OSC 133 A/B/C/D was observed on this PTY. */
+  shellIntegrationSeen?: boolean;
+  /** Runtime-only: Agent just finished a turn; offer Changes if Git is dirty. */
+  reviewChangesHint?: boolean;
 
   // ── git 改动 ──
   gitState?: GitState;
@@ -301,13 +307,3 @@ export function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** 按 dir 归组（设计稿侧栏分段） */
-export function groupByDir(sessions: Session[]): Record<string, Session[]> {
-  const groups = new Map<string, Session[]>();
-  for (const session of sessions) {
-    const group = groups.get(session.dir) ?? [];
-    group.push(session);
-    groups.set(session.dir, group);
-  }
-  return Object.fromEntries(groups);
-}

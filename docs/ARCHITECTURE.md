@@ -25,8 +25,8 @@ fixed three-pane layout under a custom titlebar:
 ```
 
 - **Left — `Sidebar`** ([`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx)): session
-  list grouped by working directory, plus a derived attention/running/recovery
-  layer for SSH, commands, and agents.
+  list grouped by local working directory or SSH target host, plus a derived
+  attention/running/recovery layer for SSH, commands, and agents.
 - **Center — `MainArea`** ([`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) →
   [`TerminalView`](../src/ui/TerminalView.tsx)): the actual terminals. xterm.js +
   WebGL, one per session, optionally split into two panes.
