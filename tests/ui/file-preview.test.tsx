@@ -479,7 +479,7 @@ describe("FilePreview editor behavior", () => {
     renderLocal("server.log");
     await screen.findByRole("button", { name: "View beginning" });
     expect((screen.getByRole("combobox", { name: "Lines" }) as HTMLSelectElement).value).toBe("1000");
-    expect((screen.getByRole("combobox", { name: "Window" }) as HTMLSelectElement).value).toBe("head");
+    expect((screen.getByRole("combobox", { name: "Position" }) as HTMLSelectElement).value).toBe("head");
     fireEvent.click(screen.getByRole("button", { name: "View beginning" }));
 
     await screen.findByText(/Showing 2 of up to 1000 lines/);
@@ -542,7 +542,7 @@ describe("FilePreview editor behavior", () => {
     renderLocal("stream.log");
     fireEvent.click(await screen.findByRole("button", { name: "View beginning" }));
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-    await screen.findByText("The bounded view was cancelled.");
+    await screen.findByText("View cancelled.");
     expect(commands).toContain("fs_cancel_file_view_v1");
     resolveHead?.({ kind: "text", content: "late", size: 1, revision: "late", lineCount: 1, lineLimit: 1000, byteLimit: 262_144, truncated: false });
   });
@@ -569,7 +569,7 @@ describe("FilePreview editor behavior", () => {
     });
 
     renderLocal("server.log");
-    fireEvent.change(await screen.findByRole("combobox", { name: "Window" }), { target: { value: "tail" } });
+    fireEvent.change(await screen.findByRole("combobox", { name: "Position" }), { target: { value: "tail" } });
     fireEvent.click(screen.getByRole("button", { name: "View end" }));
     await screen.findByText(/last line/);
     expect(calls.find((call) => call.command === "fs_file_view_tail_v1")?.payload).toMatchObject({

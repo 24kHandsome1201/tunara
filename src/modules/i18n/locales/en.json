@@ -940,7 +940,7 @@
   "preview.head.view": "View beginning",
   "preview.head.view_end": "View end",
   "preview.head.cancel": "Cancel",
-  "preview.head.cancelled": "Cancelled.",
+  "preview.head.cancelled": "View cancelled.",
   "preview.head.changed": "The file changed while it was being read. Try again for a consistent revision.",
   "preview.head.result": "Showing {{count}} of up to {{limit}} lines",
   "preview.head.bounded": "stopped at the {{size}} limit",

@@ -296,7 +296,7 @@ test("shows bounded failures and explicitly copies, clears, or fills only the so
   fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-telemetry"]')!);
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_telemetry_send", payload: { source: eligible } }));
   fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-  await screen.findByText("No bounded console or network failures for this Preview generation.");
+  await screen.findByText("No console or network failures for this preview yet.");
 });
 
 test("captures only on explicit action and sends the safe reference to the bound PTY without execution", async () => {
@@ -344,5 +344,5 @@ test("captures only on explicit action and sends the safe reference to the bound
     command: "preview_send_capture_to_source_terminal",
     payload: { source: eligible, captureId: "capture-safe" },
   }));
-  expect(await screen.findByText("Filled 142 bytes into the bound PTY without executing.")).toBeTruthy();
+  expect(await screen.findByText("Filled 142 bytes into the source terminal without executing.")).toBeTruthy();
 });

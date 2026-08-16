@@ -940,7 +940,7 @@
   "preview.head.view": "查看开头",
   "preview.head.view_end": "查看结尾",
   "preview.head.cancel": "取消",
-  "preview.head.cancelled": "已取消。",
+  "preview.head.cancelled": "已取消查看。",
   "preview.head.changed": "读取期间文件发生了变化。请重试以查看一致的版本。",
   "preview.head.result": "已显示 {{count}} 行（最多 {{limit}} 行）",
   "preview.head.bounded": "已达到 {{size}} 上限，未继续读取",
