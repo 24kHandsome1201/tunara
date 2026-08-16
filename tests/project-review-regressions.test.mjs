@@ -1401,7 +1401,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(explorer, /formatModifiedTime\(node\.entry\.mtime\)/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);
-  assert.match(tokens, /--font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;/);
+  assert.match(tokens, /--font-ui: system-ui, -apple-system, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;/);
   assert.equal(existsSync(resolve(root, "src/styles/tokens.ts")), false);
   assert.match(globals, /\.scroll-fade-y/);
   assert.match(globals, /background-repeat: no-repeat/);

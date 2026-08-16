@@ -80,7 +80,7 @@ test("named and Tunara default schemes are one mutually exclusive synchronized c
   expect(useUIStore.getState()).toMatchObject({ theme: "light", terminalTheme: "default" });
   await waitFor(() => {
     expect(document.documentElement.style.getPropertyValue("--c-bg-1")).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#ffffff");
+    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb");
   });
   expect(light.getAttribute("aria-checked")).toBe("true");
 
@@ -145,7 +145,7 @@ test("system media changes affect only the default System scheme", async () => {
     for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
   });
   expect(document.documentElement.classList.contains("dark")).toBe(true);
-  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#18181b");
+  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#0f0b09");
 
   fireEvent.click(screen.getByRole("radio", { name: "Catppuccin" }));
   await waitFor(() => expect(document.documentElement.style.getPropertyValue("--c-bg-1")).toBe("#1e1e2e"));

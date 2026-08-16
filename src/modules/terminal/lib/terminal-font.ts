@@ -1,4 +1,7 @@
-export const TERMINAL_FONT_FAMILY = '"JetBrains Mono", SFMono-Regular, Menlo, monospace';
+/* 终端画布的字族回退与界面 --font-mono 保持一致：JetBrains Mono 内置，
+   其后按平台补系统级等宽字体，末尾用 Noto Sans Mono CJK SC 兜住 CJK，
+   避免中文字符落进非等宽字体破坏列对齐。 */
+export const TERMINAL_FONT_FAMILY = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, "Cascadia Mono", Consolas, "Noto Sans Mono CJK SC", monospace';
 export const TERMINAL_FONT_LOAD_TIMEOUT_MS = 200;
 
 type FontLoader = (fontSpec: string) => Promise<unknown>;
@@ -14,9 +17,11 @@ function quoteSingleFamily(fontFamily: string): string {
 
 export function buildTerminalFontFamily(fontFamily: string, nerdFontFallback: boolean): string {
   const base = quoteSingleFamily(fontFamily);
+  const platformFallback =
+    'ui-monospace, SFMono-Regular, Menlo, "Cascadia Mono", Consolas, "Noto Sans Mono CJK SC", monospace';
   const fallback = nerdFontFallback
-    ? '"Symbols Nerd Font Mono", "Symbols Nerd Font", "MesloLGS NF", SFMono-Regular, Menlo, monospace'
-    : "SFMono-Regular, Menlo, monospace";
+    ? `"Symbols Nerd Font Mono", "Symbols Nerd Font", "MesloLGS NF", ${platformFallback}`
+    : platformFallback;
   return `${base}, ${fallback}`;
 }
 
