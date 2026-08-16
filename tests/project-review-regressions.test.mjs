@@ -613,6 +613,8 @@ test("window API lookups are guarded so metadata failures do not blank the app",
 test("file explorer exposes fast project search, refresh, and hidden-file controls", () => {
   const bridge = read("src/modules/fs/fs-bridge.ts");
   const explorer = read("src/ui/FileExplorer.tsx");
+  // The search state machine moved to a dedicated hook module.
+  const explorerSearch = read("src/ui/file-explorer/use-explorer-search.ts");
   const search = read("src-tauri/src/modules/fs/search.rs");
   const tree = read("src-tauri/src/modules/fs/tree.rs");
 
@@ -622,22 +624,24 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /export interface GrepHit/);
   assert.match(bridge, /export function fsGrep/);
   assert.match(bridge, /export function fsCancelGrep/);
-  assert.match(explorer, /fsSearch\(baseDir, q, searchLimit, includeHidden\)/);
-  assert.match(explorer, /nextFileSearchLimit/);
-  assert.match(explorer, /fsGrep\(q, baseDir, \{ requestId: localGrepRequestId!, caseInsensitive: false, maxResults: searchLimit \}\)/);
-  assert.match(explorer, /fsCancelGrep\(localGrepRequestId\)/);
-  assert.match(explorer, /groupGrepHitsByFile\(resp\.hits\)/);
+  assert.match(explorer, /useExplorerSearch\(\{ baseDir, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected \}\)/);
+  assert.match(explorerSearch, /fsSearch\(baseDir, q, searchLimit, includeHidden\)/);
+  assert.match(explorerSearch, /nextFileSearchLimit/);
+  assert.match(explorerSearch, /fsGrep\(q, baseDir, \{ requestId: localGrepRequestId!, caseInsensitive: false, maxResults: searchLimit \}\)/);
+  assert.match(explorerSearch, /fsCancelGrep\(localGrepRequestId\)/);
+  assert.match(explorerSearch, /groupGrepHitsByFile\(resp\.hits\)/);
   // Remote (SSH) name search runs `find` over the exec channel and content
   // search runs `grep` over it (ssh_fs_grep), so BOTH modes stay enabled for
   // remote sessions — the old disabled={isRemote} toggle must not come back.
-  assert.match(explorer, /sshSearch\(remotePtyId, baseDir, q, searchLimit\)/);
-  assert.match(explorer, /sshGrep\(remotePtyId, baseDir, q, searchLimit\)/);
+  assert.match(explorerSearch, /sshSearch\(remotePtyId, baseDir, q, searchLimit\)/);
+  assert.match(explorerSearch, /sshGrep\(remotePtyId, baseDir, q, searchLimit\)/);
   const fileSearchSession = read("src/ui/lib/file-search-session.ts");
   assert.match(fileSearchSession, /export class FileSearchGeneration/);
-  assert.match(explorer, /FileSearchGeneration/);
-  assert.match(explorer, /searchGen\.isCurrent\(token\)/);
-  assert.match(explorer, /searchGen\.invalidate\(\)/);
+  assert.match(explorerSearch, /FileSearchGeneration/);
+  assert.match(explorerSearch, /searchGen\.isCurrent\(token\)/);
+  assert.match(explorerSearch, /searchGen\.invalidate\(\)/);
   assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
+  assert.doesNotMatch(explorerSearch, /disabled=\{isRemote\}/);
   // Local and remote grep hits open the same persistent Tunara workspace tab;
   // SSH paths must never be handed to a local external editor.
   assert.match(explorer, /onClick=\{\(\) => openFile\(group\.path\)\}/);
@@ -646,7 +650,7 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
   assert.doesNotMatch(explorer, /openInEditor\([^)]*\)\.catch\(\(\) => \{\}\)/);
   assert.match(explorer, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
-  assert.match(explorer, /const next = m === "name" \? "content" : "name"/);
+  assert.match(explorerSearch, /const next = m === "name" \? "content" : "name"/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
   assert.match(explorer, /return isRemote[\s\S]*?id: "dir:copy-path"/);
@@ -1349,7 +1353,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(diff, /loadFileDiffStable/);
   assert.match(diff, /className="scroll-fade-y"/);
   assert.doesNotMatch(diff, /className="no-scrollbar scroll-fade-y"/);
-  assert.match(explorer, /function compactRelativePath/);
+  assert.match(explorer, /compactRelativePath\(/);
+  assert.match(read("src/ui/file-explorer/helpers.ts"), /function compactRelativePath/);
   assert.match(explorer, /className="no-scrollbar scroll-fade-y"/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(explorer, /label: t\("sidebar\.dir\.new_terminal"\), icon: "terminal"/);
