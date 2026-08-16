@@ -145,6 +145,26 @@ test("CI enforces Tauri npm/cargo major.minor version coupling", () => {
   assert.match(script, /major\.minor|NPM_MM|CARGO_MM/);
 });
 
+test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs", () => {
+  const workflow = read(".github/workflows/security.yml");
+  const auditToml = read("src-tauri/.cargo/audit.toml");
+  const advisories = read("docs/DEPENDENCY_ADVISORIES.md");
+  const changelog = read("CHANGELOG.md");
+  const expected = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0235"];
+
+  const workflowIgnores = [...workflow.matchAll(/cargo audit((?: --ignore RUSTSEC-\d{4}-\d+)+)/g)]
+    .flatMap((match) => [...match[1].matchAll(/RUSTSEC-\d{4}-\d+/g)].map((item) => item[0]));
+  const tomlIgnores = [...auditToml.matchAll(/"(RUSTSEC-\d{4}-\d+)"/g)].map((match) => match[1]);
+
+  assert.deepEqual(workflowIgnores, expected);
+  assert.deepEqual(tomlIgnores, expected);
+  for (const id of expected) {
+    assert.match(advisories, new RegExp(id));
+    assert.match(changelog, new RegExp(id));
+    assert.match(workflow, new RegExp(`--ignore ${id}`));
+  }
+});
+
 test("release metadata keeps versions and distribution identifiers aligned", () => {
   const pkg = JSON.parse(read("package.json"));
   const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));

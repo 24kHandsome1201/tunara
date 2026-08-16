@@ -397,8 +397,28 @@ mod tests {
         ));
         let parent_link = dir.with_extension("link");
         symlink(&dir, &parent_link).unwrap();
-        assert!(replace(&parent_link.join("new"), b"bad", &Revision::Missing).is_err());
+        assert!(
+            matches!(
+                replace(&parent_link.join("new"), b"bad", &Revision::Missing),
+                Err(Error::Unsafe(_))
+            ),
+            "macOS reports O_NOFOLLOW|O_DIRECTORY on a symlink as ENOTDIR; both must be Unsafe"
+        );
         fs::remove_file(parent_link).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn rejects_regular_file_in_parent_chain() {
+        let dir = fixture();
+        let file_component = dir.join("not-a-dir");
+        fs::write(&file_component, b"x").unwrap();
+        let nested = file_component.join("store");
+        assert!(matches!(
+            replace(&nested, b"bad", &Revision::Missing),
+            Err(Error::Unsafe(_))
+        ));
+        assert!(matches!(read(&nested), Err(Error::Unsafe(_))));
         fs::remove_dir_all(dir).unwrap();
     }
 

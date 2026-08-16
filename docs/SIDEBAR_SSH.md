@@ -24,39 +24,41 @@
 
 ---
 
-## 2. 当前结构
+## 2. 当前结构（2026-08-16 起）
+
+阶段 A–D 已落地。分组入口是 [`groupSessionsForSidebar`](../src/modules/session/sidebar-groups.ts)，组键是 `local:<dir>` / `ssh:<user>@<host>:<port>`，**不再**用 `session.dir` 分桶。
 
 容器是 [`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx)。从上到下：
 
 ```
 ┌ Sidebar ─────────────────────────────────────┐
 │ 新建终端  [选目录]  [▾ 含「新建 SSH 连接」]   │
-│ 已保存主机（最多 8 条，点开连接对话框）       │
-│ 搜索会话                                      │
+│ 已保存主机（有会话时收成一行）                 │
+│ 搜索会话（含 remote.user / host / user@host） │
 │ 统一会话动态（需处理 / 正在运行 / 可恢复）     │
-│ ── 按 session.dir 分组 ───────────────────── │
-│   组头：目录名或仓库名 · 计数 · 折叠/新建/关闭 │
-│   卡片：标题 · ⇄ · dir · 分支 · diff          │
+│ ── 本地按目录、SSH 按主机 ─────────────────── │
+│   组头：目录名或 user@host · 计数 · 折叠/新建/关闭 │
+│   卡片：标题 · ⇄ · cwd basename · 连接阶段 · 分支 │
 └──────────────────────────────────────────────┘
 ```
 
 | 区域 | 入口 | 今天对 SSH 做了什么 |
 |------|------|---------------------|
 | 新建 | [`SidebarNewTerminalControl.tsx`](../src/ui/SidebarNewTerminalControl.tsx) | 主按钮仍是本地终端；溢出菜单第三项打开 `SshConnect` |
-| 已保存主机 | [`SidebarHosts.tsx`](../src/ui/SidebarHosts.tsx) | 保存 profile + `~/.ssh/config` 导入结果拼成最多 8 条，点击预填连接对话框 |
-| 搜索 | `Sidebar.tsx` 内 `filtered` | 匹配 `deriveTitle`、`dir`、笔记；**不**单独匹配 `remote.user` / `remote.host` |
-| 统一动态 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) | SSH `failed` / `disconnected` 进「需要处理」，可原位打开重连 |
-| 分组 | [`groupByDir`](../src/ui/types.ts) | **只按 `session.dir` 字符串分桶** |
-| 组头 | [`SidebarDirGroupHeader.tsx`](../src/ui/SidebarDirGroupHeader.tsx) | workspace 为 SSH 时加「SSH」字样；无本地会话则隐藏「在此目录新建」 |
-| 组菜单 | [`sidebar-dir-group-menu.ts`](../src/ui/sidebar-dir-group-menu.ts) | 无本地文件系统时去掉新建终端和打开编辑器，仍复制 `dir`、关闭全组 |
-| 卡片 | [`SessionCard.tsx`](../src/ui/SessionCard.tsx) | 远程显示 ⇄；副标题直接渲染 `session.dir` |
-| 卡片菜单 | [`sidebar-session-menu.ts`](../src/ui/sidebar-session-menu.ts) | 远程多「在此主机再开一个窗口」，复制文案改为远程标识，去掉本地编辑器 |
+| 已保存主机 | [`SidebarHosts.tsx`](../src/ui/SidebarHosts.tsx) | 有会话时默认折叠；该主机已有活会话则聚焦该组，否则打开连接对话框 |
+| 搜索 | `Sidebar.tsx` 内 `filtered` | 匹配标题、`dir`、笔记，以及 `remote.user` / `remote.host` / `user@host[:port]` |
+| 统一动态 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) | SSH `failed` / `disconnected` 进「需要处理」；`connecting` 不进动态条 |
+| 分组 | [`sidebar-groups.ts`](../src/modules/session/sidebar-groups.ts) | 本地 `local:<dir>`，SSH `ssh:<user>@<host>:<port>`；OSC 7 只改卡片副标题 |
+| 组头 | [`SidebarDirGroupHeader.tsx`](../src/ui/SidebarDirGroupHeader.tsx) | SSH 组显示主机身份 +「SSH」；「+」走 `duplicateOnHost` |
+| 组菜单 | [`sidebar-dir-group-menu.ts`](../src/ui/sidebar-dir-group-menu.ts) | SSH 组无本地新建/编辑器；关闭全组走 `closeSessionsInGroup` |
+| 卡片 | [`SessionCard.tsx`](../src/ui/SessionCard.tsx) | 远程显示 ⇄；副标题是远端 cwd basename；非 `ready` 的 `connection.phase` 有静默指示 |
+| 卡片菜单 | [`sidebar-session-menu.ts`](../src/ui/sidebar-session-menu.ts) | 远程多「在此主机再开一个窗口」，复制远程标识，去掉本地编辑器 |
 
-相关 store 动作：[`closeSessionsInDir`](../src/state/sessions.ts)、[`reorderInGroup`](../src/state/sessions.ts)、[`duplicateOnHost`](../src/state/sessions.ts)、[`collapsedDirs`](../src/state/ui.ts)。新建远程会话走 [`createRemoteSession`](../src/state/sessions.ts)，初始 `dir` 为 `user@host`。
+相关 store 动作：[`closeSessionsInGroup`](../src/state/sessions.ts)、[`reorderInGroup`](../src/state/sessions.ts)、[`duplicateOnHost`](../src/state/sessions.ts)、[`collapsedDirs`](../src/state/ui.ts)（值已是组键）。新建远程会话走 [`createRemoteSession`](../src/state/sessions.ts)，初始 `dir` 为 `user@host`，OSC 7 之后变成远端绝对路径，但组键不变。
 
 ---
 
-## 3. 根因：分组键是 `dir`
+## 3. 落地前的根因：分组键曾是 `dir`
 
 `session.dir` 同时承担三件事：分组键、卡片副标题、本地「在此目录新建」的路径。这对本地 PTY 成立，对 SSH 不成立。
 
@@ -97,7 +99,7 @@ OSC 7 之后，本地 `/tmp` 和远端 `/tmp` 的 `dir` 相同，`groupByDir` �
 
 分组是 **视图派生**，不改 `Session` 持久化形状。`remote`、`dir`（作 cwd）、`workspace` 继续各司其职。
 
-建议把分组从 [`groupByDir`](../src/ui/types.ts) 抽到例如 `src/modules/session/sidebar-groups.ts`（过滤 / 分组 / 排序与渲染拆开，与 [ROADMAP](./ROADMAP.md) 性能项一致）。
+分组已从旧的 `groupByDir` 抽到 [`sidebar-groups.ts`](../src/modules/session/sidebar-groups.ts)（过滤 / 分组 / 排序与渲染拆开）。
 
 ### 4.1 组键
 
@@ -216,7 +218,7 @@ Known hosts 编辑继续留在设置 → SSH，不进侧栏。
 
 ## 7. 落地顺序
 
-分组键是正确性修复，应单独先合。主机列表折叠和卡片连接指示是体验，可随后。
+阶段 A–D 已于 2026-08-16 合入（见 [PR #81](https://github.com/24kHandsome1201/tunara/pull/81)）。下文保留当时的拆分，方便对照测试。后续体验项（已保存主机点击修饰键再连一次、组头图标是否换成独立主机 glyph）可另开 PR，不要回退组键。
 
 ### 阶段 A — 分组键（正确性，应先做）
 
@@ -284,4 +286,4 @@ Known hosts 编辑继续留在设置 → SSH，不进侧栏。
 | 远端文件 / 传输 / 转发 | 不放 | Files、Transfers、Forwarding |
 | 改 known_hosts | 不放 | 设置 → SSH |
 
-侧栏适配完成后，FEATURES 里「按工作目录分组」应改成「本地按目录、SSH 按主机」。在此之前 FEATURES 描述的是现状，不是本提案。
+侧栏适配完成后，[FEATURES.md](./FEATURES.md) 已写成「本地按目录、SSH 按主机」。不要再改回「只按工作目录分组」。

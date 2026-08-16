@@ -1295,6 +1295,19 @@ test("OSC 99 assembles Kitty-style title/body fragments including base64 payload
   const empty = createOsc99Assembler();
   assert.equal(empty.ingest("d=1;"), null);
   assert.equal(empty.ingest("i=1:d=0:p=title;\u0007"), null);
+
+  const invalidBase64 = createOsc99Assembler();
+  assert.equal(invalidBase64.ingest("e=1:d=1;not-base64!!!"), null);
+
+  const overflow = createOsc99Assembler();
+  for (let index = 0; index < 32; index += 1) {
+    assert.equal(overflow.ingest(`i=${index}:d=0:p=title;pending-${index}`), null);
+  }
+  assert.equal(overflow.ingest("i=32:d=0:p=title;overflow"), null);
+  assert.deepEqual(overflow.ingest("i=0:d=1:p=body;late"), {
+    title: "终端通知",
+    body: "late",
+  });
 });
 
 test("agent lifecycle OSC accepts current and legacy event prefixes", () => {
