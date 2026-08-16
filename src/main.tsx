@@ -1,4 +1,8 @@
+/* 界面中等宽元素大量使用 500/600/650 字重（徽章、快捷键、面板标题），
+   只打包 400/700 会让浏览器合成加粗；500/600 补齐中间档。 */
 import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/500.css";
+import "@fontsource/jetbrains-mono/600.css";
 import "@fontsource/jetbrains-mono/700.css";
 import "./styles/tokens.css";
 import "@xterm/xterm/css/xterm.css";

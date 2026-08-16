@@ -101,14 +101,16 @@ export function terminalThemePreviewColors(
   const tint = getShellTint(terminalTheme);
   const terminalPalette = getTerminalTheme(appTheme, terminalTheme);
 
+  // Fallbacks mirror the sRGB equivalents of the default tokens.css OKLCH
+  // surfaces so the default-scheme preview matches the real window chrome.
   return {
-    deepest: tint?.["--c-bg-white"] ?? (dark ? "#18181b" : "#fefdfc"),
-    sidebar: tint?.["--c-bg-2"] ?? (dark ? "#252529" : "#f2f0ed"),
-    raised: tint?.["--c-bg-3"] ?? (dark ? "#303035" : "#e9e6e2"),
+    deepest: tint?.["--c-bg-white"] ?? (dark ? "#0f0b09" : "#fffdfb"),
+    sidebar: tint?.["--c-bg-2"] ?? (dark ? "#1c1714" : "#f2ece9"),
+    raised: tint?.["--c-bg-3"] ?? (dark ? "#25211e" : "#e9e2de"),
     terminal: terminalPalette.background,
     text: terminalPalette.foreground,
-    secondaryText: tint?.["--c-text-4"] ?? (dark ? "#a1a1aa" : "#71717a"),
-    border: tint?.["--c-border-2"] ?? (dark ? "#52525b" : "#c9c5bf"),
+    secondaryText: tint?.["--c-text-4"] ?? (dark ? "#9f9a97" : "#5c5552"),
+    border: tint?.["--c-border-2"] ?? (dark ? "#342f2c" : "#d4ceca"),
   };
 }
 

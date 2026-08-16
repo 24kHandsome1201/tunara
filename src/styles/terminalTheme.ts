@@ -1,27 +1,34 @@
 import type { ThemeType, TerminalThemeName } from "@/ui/types";
 
+/**
+ * 默认「纸面 / 暖墨」终端调色板。背景与前景直接取 tokens.css 的主纸面
+ * （--c-bg-white）与主墨色（--c-text-primary）的 sRGB 等效值，终端画布与
+ * 界面外壳同源，WebGL 渲染时与侧栏、标题栏之间没有冷暖或明度接缝。
+ * ANSI 色相在保持辨认度的前提下向暖纸/暖墨调和：常规色与白底对比度
+ * ≥ 4.4:1（接近 AA），亮色组保持可区分的同时不荧光。
+ */
 export const LIGHT_THEME = {
-  background: "#ffffff",
-  foreground: "#27272a",
-  cursor: "#27272a",
-  cursorAccent: "#ffffff",
+  background: "#fffdfb",
+  foreground: "#241e1a",
+  cursor: "#241e1a",
+  cursorAccent: "#fffdfb",
   selectionBackground: "#c2683c44",
-  black: "#27272a", red: "#ef4444", green: "#22c55e", yellow: "#eab308",
-  blue: "#3b82f6", magenta: "#a855f7", cyan: "#06b6d4", white: "#e4e4e7",
-  brightBlack: "#52525b", brightRed: "#f87171", brightGreen: "#4ade80", brightYellow: "#facc15",
-  brightBlue: "#60a5fa", brightMagenta: "#c084fc", brightCyan: "#22d3ee", brightWhite: "#fafafa",
+  black: "#3a332a", red: "#b3261e", green: "#2e7d32", yellow: "#8f6200",
+  blue: "#1a5fb4", magenta: "#8e3fa8", cyan: "#0a7c86", white: "#efe9e0",
+  brightBlack: "#6f675b", brightRed: "#c5221f", brightGreen: "#188038", brightYellow: "#b06000",
+  brightBlue: "#1967d2", brightMagenta: "#a142f4", brightCyan: "#0e8a94", brightWhite: "#ffffff",
 };
 
 export const DARK_THEME = {
-  background: "#18181b",
-  foreground: "#e4e4e7",
-  cursor: "#e4e4e7",
-  cursorAccent: "#18181b",
+  background: "#0f0b09",
+  foreground: "#e6e0dc",
+  cursor: "#e6e0dc",
+  cursorAccent: "#0f0b09",
   selectionBackground: "#e0907066",
-  black: "#3f3f46", red: "#f87171", green: "#4ade80", yellow: "#facc15",
-  blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#e4e4e7",
-  brightBlack: "#52525b", brightRed: "#fca5a5", brightGreen: "#86efac", brightYellow: "#fde047",
-  brightBlue: "#93c5fd", brightMagenta: "#d8b4fe", brightCyan: "#67e8f9", brightWhite: "#fafafa",
+  black: "#4a4238", red: "#f47067", green: "#8edb8c", yellow: "#e3b341",
+  blue: "#6ea8fe", magenta: "#d2a8ff", cyan: "#56d4dd", white: "#e8e2d8",
+  brightBlack: "#8a8175", brightRed: "#ff938a", brightGreen: "#a9f0a4", brightYellow: "#ffcf5c",
+  brightBlue: "#96c0ff", brightMagenta: "#e2c5ff", brightCyan: "#7ee7ef", brightWhite: "#fdfbf7",
 };
 
 export const CATPPUCCIN_THEME = {

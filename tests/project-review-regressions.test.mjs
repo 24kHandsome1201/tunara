@@ -367,6 +367,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   const terminalLigatures = read("src/modules/terminal/lib/terminal-ligatures.ts");
   const terminalLigatureSync = read("src/modules/terminal/lib/terminal-ligature-sync.ts");
   const terminalFont = read("src/modules/terminal/lib/terminal-font.ts");
+  const mainEntry = read("src/main.tsx");
   const settings = readSettingsSources();
   const agentBadge = read("src/ui/agents/badge.tsx");
   const sessionCard = read("src/ui/SessionCard.tsx");
@@ -431,6 +432,14 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
   assert.match(keys, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalFont, /buildTerminalFontFamily/);
+  // The canvas fallback chain keeps CJK glyphs on a monospace face and covers
+  // Windows/Linux system mono layers between JetBrains Mono and the generic.
+  assert.match(terminalFont, /ui-monospace, SFMono-Regular, Menlo, "Cascadia Mono", Consolas, "Noto Sans Mono CJK SC", monospace/);
+  // 500/600 ship alongside 400/700 so mid-weight mono UI text is not faux-bolded.
+  assert.match(mainEntry, /@fontsource\/jetbrains-mono\/400\.css/);
+  assert.match(mainEntry, /@fontsource\/jetbrains-mono\/500\.css/);
+  assert.match(mainEntry, /@fontsource\/jetbrains-mono\/600\.css/);
+  assert.match(mainEntry, /@fontsource\/jetbrains-mono\/700\.css/);
   assert.match(terminalInstance, /wordSeparator: " \(\)\[\]\{\}'\\";,"/);
   assert.match(runtimeSync, /from "@\/modules\/terminal\/lib\/terminal-font"/);
   assert.match(runtimeSync, /term\.options\.fontFamily = withAtlasIsolationFontFamily/);
@@ -1421,7 +1430,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(explorer, /formatModifiedTime\(node\.entry\.mtime\)/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);
-  assert.match(tokens, /--font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;/);
+  assert.match(tokens, /--font-ui: system-ui, -apple-system, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;/);
+  assert.match(tokens, /--font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, 'Cascadia Mono', Consolas, 'PingFang SC', 'Noto Sans Mono CJK SC', monospace;/);
   assert.equal(existsSync(resolve(root, "src/styles/tokens.ts")), false);
   assert.match(globals, /\.scroll-fade-y/);
   assert.match(globals, /background-repeat: no-repeat/);

@@ -248,7 +248,7 @@ test("runtime theme swaps repaint the current terminal frame", async () => {
 
   view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="dark" />);
 
-  await waitFor(() => expect(terminal.options.theme?.background).toBe("#18181b"));
+  await waitFor(() => expect(terminal.options.theme?.background).toBe("#0f0b09"));
   expect(rebuild).toHaveBeenCalled();
   expect(refresh).toHaveBeenCalledWith(0, terminal.rows - 1);
   unregisterRebuild();

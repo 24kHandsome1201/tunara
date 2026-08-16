@@ -9,12 +9,14 @@ Tunara 是高密度纸面开发工具。界面像一张有明确层级的工作�
 - 默认强调色为 Terracotta，定义在 `src/styles/tokens.css`，运行时尊重用户已选择的强调色。
 - 中性色使用暖白纸面与暖灰墨色，统一采用 OKLCH 表达。
 - 侧栏和检查器使用二级纸面，终端使用主纸面，层级依靠明度与边界，不依靠透明模糊。
+- 默认终端调色板与外壳同源：画布背景与前景直接取主纸面与主墨色的 sRGB 等效值，ANSI 色相向暖纸/暖墨调和，常规色对比度保持在 AA 附近。
 - 绿色、黄色、红色只表示完成、等待、失败等语义状态。
 
 ## 3. 字体
 
-- 拉丁文字、数字、路径与代码使用 JetBrains Mono。
-- 中文依次回退到 PingFang SC 和 Noto Sans SC。
+- 拉丁文字、数字、路径与代码使用 JetBrains Mono（打包 400/500/600/700 字重，中间字重不依赖合成加粗）。
+- 界面字族以 system-ui 起始，按平台回退到 SF Pro Text、Segoe UI；中文依次回退 PingFang SC、Hiragino Sans GB、Microsoft YaHei 与 Noto Sans SC。
+- 等宽字族在 JetBrains Mono 之后经 ui-monospace、SF Mono、Menlo、Cascadia Mono、Consolas 回退，中文以 PingFang SC 与 Noto Sans Mono CJK SC 兜底，保持列对齐。
 - 数据默认使用等宽数字，避免状态计数变化时产生水平跳动。
 
 ## 4. 圆角

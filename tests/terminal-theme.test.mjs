@@ -72,3 +72,27 @@ test("getTerminalTheme without an accent leaves the base selectionBackground int
   const theme = getTerminalTheme("dark", "default");
   assert.equal(theme.selectionBackground, DARK_THEME.selectionBackground);
 });
+
+// The default palettes share the shell's warm paper/ink tokens; keep their
+// foreground and chromatic ANSI colors comfortably readable on their canvas.
+test("default light/dark terminal palettes keep foreground AAA and ANSI hues near-AA", async () => {
+  const { contrastRatio } = await import("../src/styles/shell-tint-contrast.ts");
+  const chromatic = ["red", "green", "yellow", "blue", "magenta", "cyan"];
+  for (const [name, palette] of [["light", LIGHT_THEME], ["dark", DARK_THEME]]) {
+    assert.ok(
+      contrastRatio(palette.foreground, palette.background) >= 12,
+      `${name} foreground should be near-AAA on its background`,
+    );
+    for (const key of chromatic) {
+      assert.ok(
+        contrastRatio(palette[key], palette.background) >= 4.4,
+        `${name} ${key} is ${contrastRatio(palette[key], palette.background).toFixed(2)}:1 on ${palette.background}`,
+      );
+    }
+    // Bright black renders comments and dim text; it must stay legible.
+    assert.ok(
+      contrastRatio(palette.brightBlack, palette.background) >= 4.5,
+      `${name} brightBlack should stay AA on its background`,
+    );
+  }
+});

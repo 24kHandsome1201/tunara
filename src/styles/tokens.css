@@ -3,7 +3,9 @@
 
 :root {
   /* ── 强调色 Terracotta ── */
-  --c-accent: oklch(58% 0.135 43);
+  /* 与 DEFAULT_SETTINGS.accent (#c2683c) 同色的 OKLCH 表达；仅作启动前的
+     静态回退，运行时由 useTheme/shell-tint-boot 按用户设置覆写。 */
+  --c-accent: oklch(61.3% 0.129 45.4);
   --c-accent-bg-light: oklch(93.5% 0.035 49);
   --c-accent-bg-soft: oklch(97% 0.014 49);
   --c-accent-border: oklch(86.5% 0.048 47);
@@ -44,7 +46,8 @@
   --c-warning: oklch(59% 0.12 72);
   --c-warning-text: oklch(43% 0.105 68);
   --c-warning-bg: oklch(94% 0.04 78);
-  --c-info: #3b82f6;
+  /* DiffPanel 改名徽章文字色：在 --c-info-bg 上保持 5.8:1（AA）。 */
+  --c-info: #1d4ed8;
   --c-info-bg: #e6efff;
 
   /* ── Agent 角标色 ── */
@@ -97,8 +100,13 @@
   --c-diff-add-text: #1a7a4f;
 
   /* ── 字体族 ── */
-  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
-  --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'PingFang SC', monospace;
+  /* system-ui 让 Linux/Windows 也落在各自的系统 UI 字体上；中文依次回退
+     PingFang SC（macOS）、Hiragino Sans GB、Microsoft YaHei（Windows）、
+     Noto Sans SC（Linux 等）。 */
+  --font-ui: system-ui, -apple-system, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  /* JetBrains Mono 内置打包；其后按平台补上等宽中间层，中文用 PingFang SC
+     与 Noto Sans Mono CJK SC 兜底，保持界面内代码片段的网格对齐。 */
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, 'Cascadia Mono', Consolas, 'PingFang SC', 'Noto Sans Mono CJK SC', monospace;
 
   /* ── 字体尺寸 ── */
   --fs-title: 16px;

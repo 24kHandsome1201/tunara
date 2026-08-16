@@ -1079,14 +1079,15 @@ select.ui-control {
 .file-editor-footer-actions { margin-left: auto; gap: 4px; }
 .file-editor-footer button:disabled { cursor: default; opacity: .35; transform: none; }
 .file-editor-footer button { white-space: nowrap; }
-.file-editor-footer .file-editor-save { background: var(--c-accent); color: var(--c-bg-white); font-weight: 700; min-width: 54px; }
+/* 与 .ui-button--primary 同一模式：accent 混入墨色底，保证白字 AA。 */
+.file-editor-footer .file-editor-save { background: color-mix(in srgb, var(--c-accent) 55%, var(--c-btn-primary-bg)); color: var(--c-btn-primary-text); font-weight: 700; min-width: 54px; }
 
 @media (hover: hover) {
   .file-editor-mode button:hover,
   .file-editor-icon-button:hover,
   .file-editor-find button:hover,
   .file-editor-footer button:hover { background: var(--c-bg-hover); color: var(--c-text-primary); }
-  .file-editor-footer .file-editor-save:hover { background: color-mix(in srgb, var(--c-accent) 88%, var(--c-text-primary)); color: var(--c-bg-white); }
+  .file-editor-footer .file-editor-save:hover { background: color-mix(in srgb, var(--c-accent) 60%, var(--c-btn-primary-bg)); color: var(--c-btn-primary-text); }
 }
 
 @container file-editor (max-width: 460px) {
