@@ -6,6 +6,7 @@ import { hasTrueRecordKey, toggleTrueRecordKey } from "@/state/record-keys";
 import { copyText } from "./lib/clipboard";
 
 import {
+  findCommandBlockAtRow,
   findNavigableCommandBlock,
   findStickyCommandBlock,
   formatTerminalBlockCommandAndOutput,
@@ -201,6 +202,22 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     term.scrollToLine(block.startRow);
   }, [termRef]);
 
+  /**
+   * Resolve the command block under a viewport pixel (e.g. a context-menu
+   * anchor). Row math uses the rendered .xterm-screen box, so it stays valid
+   * across font-size changes and renderer swaps.
+   */
+  const blockAtPixel = useCallback((clientX: number, clientY: number): TerminalCommandBlock | null => {
+    const term = termRef.current;
+    const screen = term?.element?.querySelector(".xterm-screen");
+    if (!term || !screen || term.rows <= 0) return null;
+    const rect = screen.getBoundingClientRect();
+    if (!(rect.height > 0) || clientX < rect.left || clientX > rect.right) return null;
+    const viewportRow = Math.floor((clientY - rect.top) / (rect.height / term.rows));
+    if (viewportRow < 0 || viewportRow >= term.rows) return null;
+    return findCommandBlockAtRow(blocksRef.current, term.buffer.active.viewportY + viewportRow);
+  }, [termRef]);
+
   const navigateBlock = useCallback((direction: "previous" | "next") => {
     const term = termRef.current;
     if (!term) return false;
@@ -234,6 +251,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     blocks,
     collapsedBlockIds,
     stickyBlock,
+    blockAtPixel,
     beginBlock,
     finishBlock,
     updateActiveBlockEnd,

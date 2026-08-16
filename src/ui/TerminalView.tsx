@@ -44,7 +44,7 @@ import { captureTerminalActionTarget, handleTerminalInteractionKeyEvent, registe
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
-import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
+import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
 import { allocateTerminalInstanceEpoch, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
@@ -90,6 +90,7 @@ function TerminalViewImpl({
   const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const getBlockMenuEntries = useTerminalBlockMenu(blocks, sessionIdRef);
   const theme = useUIStore((s) => s.theme);
   const fontSize = useUIStore((s) => s.fontSize);
   const fontFamily = useUIStore((s) => s.fontFamily);
@@ -609,6 +610,7 @@ function TerminalViewImpl({
         getTerminal={() => termRef.current}
         search={search}
         quickSelectOverlay={quickSelect.quickSelectOverlay}
+        getBlockMenuEntries={getBlockMenuEntries}
       />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {
         void cancelSshOpen(sessionId);

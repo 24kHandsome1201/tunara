@@ -14,6 +14,7 @@ import {
   agentExitedUpdate,
   agentReadyUpdate,
   agentWaitingConfirmationUpdate,
+  commandCompletionNotice,
   commandDetectedUpdate,
   commandFinishedUpdate,
   cwdChangedUpdate,
@@ -21,6 +22,7 @@ import {
   terminalExitedUpdate,
   terminalProgressUpdate,
 } from "@/modules/terminal/lib/session-lifecycle";
+import { requestInformationalAttention } from "@/ui/terminal-attention";
 import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
 import { setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
@@ -789,15 +791,16 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && session?.lastCommand) {
-      const cmd = session.lastCommand.length > 30
-        ? session.lastCommand.slice(0, 30) + "…"
-        : session.lastCommand;
+      const notice = commandCompletionNotice(session.lastCommand, exitCode, session.startedAt);
       useUIStore.getState().addToast({
         sessionId: id,
-        title: cmd,
-        subtitle: exitCode === 0 ? t("command.toast.done") : t("command.toast.failed", { code: exitCode }),
-        variant: exitCode === 0 ? "success" : "error",
+        title: notice.title,
+        subtitle: notice.subtitle,
+        variant: notice.variant,
       });
+      // Long-running commands also bounce the Dock when the window is in the
+      // background (no-op when focused; gated by the bell-notification setting).
+      if (notice.requestAttention) requestInformationalAttention();
     }
   },
 
