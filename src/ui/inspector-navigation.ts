@@ -40,6 +40,7 @@ const REMOTE_ONLY_INSPECTOR_TAB_IDS = new Set<InspectorTab>([
 interface InspectorNavigationOptions {
   filesOnly: boolean;
   isRemote: boolean;
+  hasPreviewSource?: boolean;
 }
 
 export interface InspectorNavigationModel {
@@ -51,6 +52,7 @@ export interface InspectorNavigationModel {
 export function resolveInspectorNavigation({
   filesOnly,
   isRemote,
+  hasPreviewSource = false,
 }: InspectorNavigationOptions): InspectorNavigationModel {
   if (filesOnly) {
     return { all: ["files"], primary: ["files"], secondary: [] };
@@ -59,8 +61,12 @@ export function resolveInspectorNavigation({
   const all = INSPECTOR_TAB_IDS.filter((id) => !REMOTE_ONLY_INSPECTOR_TAB_IDS.has(id) || isRemote);
   const available = new Set(all);
 
-  const primary = PRIMARY_INSPECTOR_TAB_IDS.filter((id) => available.has(id));
-  const secondary = SECONDARY_INSPECTOR_TAB_IDS.filter((id) => available.has(id));
+  const primary: InspectorTab[] = PRIMARY_INSPECTOR_TAB_IDS.filter((id) => available.has(id));
+  let secondary: InspectorTab[] = SECONDARY_INSPECTOR_TAB_IDS.filter((id) => available.has(id));
+  if (hasPreviewSource && available.has("preview") && !primary.includes("preview")) {
+    primary.push("preview");
+    secondary = secondary.filter((id) => id !== "preview");
+  }
 
   return { all: [...primary, ...secondary], primary, secondary };
 }

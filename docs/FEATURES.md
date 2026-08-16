@@ -55,6 +55,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 右键与复制 | 智能/菜单/禁用三档；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
 | 会话恢复 | serialize 快照 + 安全历史 | [`terminal-snapshot.ts`](../src/modules/terminal/lib/terminal-snapshot.ts) |
 | OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 777 远程 hook | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
+| 本地拖放 | 拖入本地终端插入带引号的路径（上限 16）；SSH 仍走上传 | [`shell-quote.ts`](../src/modules/terminal/lib/shell-quote.ts) · [`TerminalViewChrome.tsx`](../src/ui/TerminalViewChrome.tsx) |
 
 分栏默认快捷键：⌘D 水平、⌘⇧D 垂直；焦点按几何方向 ⌘[ / ⌘] / ⌘⇧[ / ⌘⇧]。
 
@@ -73,6 +74,8 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | Session Notes | [`SessionNotesPanel.tsx`](../src/ui/SessionNotesPanel.tsx) · [`session-notes.ts`](../src/modules/session/session-notes.ts) |
 | 吉祥物 | [`session-mascot.ts`](../src/modules/session/session-mascot.ts) |
 | 选择目录新建 | [`new-terminal-directory.ts`](../src/modules/session/new-terminal-directory.ts) |
+| 空状态（选目录主 CTA、最近目录；关光会话不再偷偷建 `~`） | [`WorkspaceEmptyState.tsx`](../src/ui/WorkspaceEmptyState.tsx) |
+| Agent 完成后看改动 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`ReviewChangesBar.tsx`](../src/ui/ReviewChangesBar.tsx) |
 | 最近活动 | 内存 `sessionTimelines`，不持久化；见 [`src/state/timeline.ts`](../src/state/timeline.ts) |
 
 工作区快照恢复会话列表、布局、终端 scrollback 和 Agent resume 意图，见 [STATE_AND_PERSISTENCE.md](./STATE_AND_PERSISTENCE.md)。
@@ -81,20 +84,19 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 3. 检查器（右栏）
 
-页签由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 与是否有 transport binding 裁剪。一次只挂载当前页签。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
+页签由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 裁剪。一次只挂载当前页签。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
 
 | 页签 | 范围 | 内容 | 入口 |
 |------|------|------|------|
-| Overview | 会话 | cwd、Agent、Git、笔记、快捷动作 | [`SessionOverviewPanel.tsx`](../src/ui/SessionOverviewPanel.tsx) |
+| Overview | 会话 | cwd、Agent、Git、笔记、快捷动作；缺少 OSC 133 时可关闭说明 | [`SessionOverviewPanel.tsx`](../src/ui/SessionOverviewPanel.tsx) |
 | Changes | 仓库 profile | 只读 staged / unstaged / untracked | [`DiffPanel.tsx`](../src/ui/DiffPanel.tsx) |
 | Files | 传输绑定 | 目录树、搜索、预览、SSH 传输 | [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx) · [`FilePreview.tsx`](../src/ui/FilePreview.tsx) |
-| Preview | 会话 | workspace-bound WebView 控制 | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) |
+| Preview | 会话 | workspace-bound WebView；有来源时提升为主 tab | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) · [`PreviewSuggestionBar.tsx`](../src/ui/PreviewSuggestionBar.tsx) |
 | Notes | 会话 | 自动保存草稿与待办计数 | [`SessionNotesPanel.tsx`](../src/ui/SessionNotesPanel.tsx) |
 | Transfers | SSH | 上传/下载进度、取消、恢复 | [`TransferCenter.tsx`](../src/ui/TransferCenter.tsx) |
-| Metadata | SSH 绑定 | 远端 stat / chmod | [`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx) |
-| Forwarding | SSH 绑定 | 本地/动态端口转发 | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
-| Diagnostics | SSH 会话 | 连接诊断 | [`DiagnosticsCenter.tsx`](../src/modules/ssh/DiagnosticsCenter.tsx) |
-| Known hosts | 全局 | known_hosts 列表与删除 | [`KnownHostsPanel.tsx`](../src/modules/ssh/KnownHostsPanel.tsx) |
+| Forwarding | SSH 绑定 | 本地/动态/反向端口转发 | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
+
+远端文件属性改为 Files 右键弹窗（[`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx)）。连接诊断并入 Overview 复制报告。known_hosts 在设置 → SSH。页签取舍见 [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md)。
 
 纯净模式可只打开 Files（`filesOnly`），不展开整栏检查器。
 
@@ -165,25 +167,30 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 检查器 Preview 页控制独立的 loopback WebView：来源绑定到 repository / worktree / session / terminal generation；导航、缩放、viewport、失败摘要、截图、显式 SSH tunnel。不自动扫端口、不自动启动服务。合同见 [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。
 
-代码：[`src-tauri/src/modules/preview.rs`](../src-tauri/src/modules/preview.rs) · [`preview-window.ts`](../src/modules/preview/preview-window.ts) · [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx)。
+检测到 localhost URL 时，终端上方给出一次性「打开 Preview」（仍只打开检查器页，不自动起 WebView）；有活跃来源时 Preview 从「更多」提升到主 tab。
+
+代码：[`src-tauri/src/modules/preview.rs`](../src-tauri/src/modules/preview.rs) · [`preview-window.ts`](../src/modules/preview/preview-window.ts) · [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) · [`PreviewSuggestionBar.tsx`](../src/ui/PreviewSuggestionBar.tsx)。
 
 ---
 
 ## 9. 设置、快捷键与工作流
 
-设置对话框分五个页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
+设置对话框分八个页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
 
 | 页签 | 内容 |
 |------|------|
-| Appearance | 统一界面+终端配色（9 套）、8 色 accent、字体、光标、行内图、右键行为 |
+| Appearance | 统一界面+终端配色（9 套）、8 色 accent |
+| Terminal | 字体、光标、scrollback、行内图、右键行为、外部编辑器 |
+| Accessibility | 读屏模式；macOS 可跳转系统隐私设置 |
 | Shortcuts | 可配置快捷键；终端 Copy / Safe Paste / 菜单绑定带风险提示 |
 | Workflows | 用户命令模板；可选 starter（status / 测试 / TODO / 大文件 / 端口） |
 | CLI | Agent 二进制覆盖与预检 |
+| SSH | known_hosts 列表与删除 |
 | App | 签名更新、语言、全局唤起、本地使用日志、遗留 Agent 数据清理 |
 
 配置文件：`~/.config/tunara/config.toml`，经 [`config-bridge.ts`](../src/modules/config/config-bridge.ts) 读写。
 
-命令面板：[`CommandPalette.tsx`](../src/ui/overlays/CommandPalette.tsx)，加权模糊匹配，覆盖动作与会话切换。
+命令面板：[`CommandPalette.tsx`](../src/ui/overlays/CommandPalette.tsx)，加权模糊匹配，覆盖动作与会话切换，包括打开当前会话的改动 / 文件 / Preview。
 
 默认快捷键（macOS；Windows/Linux 实验构建见设置页，部分默认避开裸 Ctrl）：
 

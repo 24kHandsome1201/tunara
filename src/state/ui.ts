@@ -344,6 +344,7 @@ interface UIState extends AppearanceSettings {
   sshProfilesEpoch: number;
   broadcastInput: boolean;
   explorerFollowCwd: boolean;
+  shellIntegrationHintDismissed: boolean;
   downloadMaxFiles: number;
   downloadMaxFileBytes: number;
   downloadMaxTotalBytes: number;
@@ -353,6 +354,7 @@ interface UIState extends AppearanceSettings {
   setNativeFullscreen: (fullscreen: boolean) => void;
   toggleBroadcastInput: () => void;
   setExplorerFollowCwd: (enabled: boolean) => void;
+  dismissShellIntegrationHint: () => void;
   setDownloadLimits: (limits: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number }) => void;
   setSidebarVisible: (visible: boolean) => void;
   setPanelVisible: (visible: boolean) => void;
@@ -449,6 +451,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     commandUsage: {},
     broadcastInput: false,
     explorerFollowCwd: true,
+    shellIntegrationHintDismissed: false,
     downloadMaxFiles: 100,
     downloadMaxFileBytes: 100 * 1024 * 1024,
     downloadMaxTotalBytes: 1024 ** 3,
@@ -473,6 +476,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setNativeFullscreen: (nativeFullscreen) => set({ nativeFullscreen }),
     toggleBroadcastInput: () => set((s) => ({ broadcastInput: !s.broadcastInput })),
     setExplorerFollowCwd: (explorerFollowCwd) => set({ explorerFollowCwd }),
+    dismissShellIntegrationHint: () => set({ shellIntegrationHintDismissed: true }),
     setDownloadLimits: (limits) => set((s) => ({
       downloadMaxFiles: limits.maxFiles ?? s.downloadMaxFiles,
       downloadMaxFileBytes: limits.maxFileBytes ?? s.downloadMaxFileBytes,

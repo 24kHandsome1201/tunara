@@ -85,10 +85,35 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.match(terminal, /<TerminalExitBanner/);
   assert.match(terminal, /<PtyErrorBanner/);
   assert.match(main, /!pure && <SshSuggestionBar session=\{session\} \/>/);
+  assert.match(main, /!pure && <PreviewSuggestionBar session=\{session\} \/>/);
+  assert.match(main, /!pure && <ReviewChangesBar session=\{session\} \/>/);
   assert.match(globalAgentBar, /agentResumePendingInput\(resumeCommand\)/);
   assert.match(chrome, /\{search\.searchOpen &&/);
   assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
   assert.match(chrome, /!pure && menu &&/);
+  assert.match(chrome, /formatDroppedTerminalPaths\(paths\)/);
+  assert.match(chrome, /insertTerminalText\(sessionId, inserted\)/);
+  assert.match(globalAgentBar, /gbar\.action\.review/);
+});
+
+test("discovery flows keep empty-state recents, preview prompts, and OSC 133 hints", () => {
+  const app = read("src/app/App.tsx");
+  const empty = read("src/ui/WorkspaceEmptyState.tsx");
+  const init = read("src/app/useInit.ts");
+  const sessions = read("src/state/sessions.ts");
+  const overview = read("src/ui/SessionOverviewPanel.tsx");
+  const palette = read("src/ui/overlays/CommandPalette.tsx");
+  const terminal = read("src/ui/TerminalView.tsx");
+
+  assert.match(app, /WorkspaceEmptyState/);
+  assert.match(empty, /collectRecentTerminalDirs\(recentDirs, undefined, 5\)/);
+  assert.match(empty, /sidebar\.new_terminal_in_directory/);
+  assert.match(init, /if \(result\.status === "empty"\) \{\s*useUIStore\.setState\(\{ ready: true \}\);/);
+  assert.doesNotMatch(sessions, /createSession\("~"/);
+  assert.match(overview, /overview\.shell_integration\.title/);
+  assert.match(terminal, /markShellIntegrationSeen\(sessionIdRef\.current\)/);
+  assert.match(palette, /openInspectorTab\("changes", "open-session-changes"\)/);
+  assert.match(palette, /openInspectorTab\("preview", "open-session-preview"\)/);
 });
 
 test("fixed runbooks stay removed while user-configurable workflows remain", () => {
@@ -1657,7 +1682,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // The 580 ceiling left room for generation publication and inert SSH
   // restore. 580→625 covers input ownership plus binding-aware terminal
   // actions; their state machines remain extracted into terminal lib modules.
-  assert.ok(terminal.split("\n").length < 625);
+  // 625→630 covers the OSC 133 seen-marker used by the Overview hint.
+  assert.ok(terminal.split("\n").length < 630);
   // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
   assert.ok(sidebar.split("\n").length < 430);
 });

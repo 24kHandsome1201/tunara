@@ -16,6 +16,7 @@ import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { SessionRemediationNotice } from "./SessionRemediationNotice";
 import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
 import { diagnosticsCenter, diagnosticsForSession } from "@/modules/ssh/diagnostics-store";
+import { CloseIcon } from "./shared";
 
 interface SessionOverviewPanelProps {
   session: Session;
@@ -109,6 +110,7 @@ function timelineLabel(event: TimelineEvent, t: ReturnType<typeof useT>): string
 export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
   const t = useT();
   const externalEditor = useUIStore((s) => s.externalEditor);
+  const shellIntegrationHintDismissed = useUIStore((s) => s.shellIntegrationHintDismissed);
   const timeline = useSessionsStore((s) => s.sessionTimelines[session.id] ?? EMPTY_TIMELINE);
   const { primary, subtitle } = deriveTitle(session);
   const changes = summarizeChangedFiles(session.changes?.files);
@@ -130,6 +132,10 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
   useSyncExternalStore(diagnosticsCenter.subscribe, diagnosticsCenter.snapshot);
   const diagnosticEvents = diagnosticsForSession(session.id);
   const connectionAbnormal = !!session.connection && session.connection.phase !== "ready";
+  const showShellIntegrationHint = !session.agent
+    && Boolean(session.lastCommand)
+    && !session.shellIntegrationSeen
+    && !shellIntegrationHintDismissed;
 
   const openInspector = (tab: "changes" | "files" | "notes") => {
     useUIStore.getState().setPanelVisible(true);
@@ -180,6 +186,25 @@ export function SessionOverviewPanel({ session }: SessionOverviewPanelProps) {
       <SessionMascotPicker session={session} />
 
       <SessionRemediationNotice session={session} />
+
+      {showShellIntegrationHint && (
+        <div role="status" style={{ marginBottom: 12, border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", background: "var(--c-bg-white)", padding: "9px 11px", display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <div style={{ minWidth: 0, flex: 1, color: "var(--c-text-4)", fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>
+            <strong style={{ color: "var(--c-text-2)" }}>{t("overview.shell_integration.title")}</strong>
+            <span> · {t("overview.shell_integration.body")}</span>
+          </div>
+          <button
+            type="button"
+            className="hover-bg"
+            onClick={() => useUIStore.getState().dismissShellIntegrationHint()}
+            aria-label={t("overview.shell_integration.dismiss")}
+            title={t("overview.shell_integration.dismiss")}
+            style={{ width: 22, height: 22, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      )}
 
       {isRemote && connectionAbnormal && diagnosticEvents.length > 0 && (
         <div style={{ marginBottom: 12 }}>

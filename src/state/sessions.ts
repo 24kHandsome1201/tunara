@@ -138,6 +138,9 @@ interface SessionsState {
   suggestSshConnect: (id: string, target: SshConnectSuggestion) => void;
   clearSshSuggestion: (id: string) => void;
   dismissSshSuggestion: (id: string) => void;
+  dismissPreviewPrompt: (id: string, sourceKey: string) => void;
+  markShellIntegrationSeen: (id: string) => void;
+  insertTerminalText: (id: string, text: string) => void;
   handleShellTitle: (id: string, title: string) => void;
   handleTerminalProgress: (id: string, progress: Session["terminalProgress"] | undefined) => void;
 
@@ -884,6 +887,25 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     });
   },
 
+  dismissPreviewPrompt: (id, sourceKey) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session || session.dismissedPreviewKeys?.includes(sourceKey)) return;
+    get().updateSession(id, {
+      dismissedPreviewKeys: [...(session.dismissedPreviewKeys ?? []), sourceKey],
+    });
+  },
+
+  markShellIntegrationSeen: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session || session.shellIntegrationSeen) return;
+    get().updateSession(id, { shellIntegrationSeen: true });
+  },
+
+  insertTerminalText: (id, text) => {
+    if (!text) return;
+    get().updateSession(id, { pendingInput: text, pendingInputSubmit: false });
+  },
+
   handleShellTitle: (id, title) => {
     const session = get().sessions.find((s) => s.id === id);
     const update = shellTitleUpdate(session, title);
@@ -1034,7 +1056,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
 
     get().removeSession(id);
-    if (get().sessions.length === 0) get().addSession(createSession("~", { title: t("session.default_title") }));
   },
 }));
 

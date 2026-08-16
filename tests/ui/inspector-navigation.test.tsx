@@ -32,6 +32,18 @@ describe("inspector navigation", () => {
     expect(INSPECTOR_OVERFLOW_SECTION.forwarding).toBe("ssh");
   });
 
+  test("promotes Preview into the primary tabs when a source is live", () => {
+    expect(resolveInspectorNavigation({
+      filesOnly: false,
+      isRemote: false,
+      hasPreviewSource: true,
+    })).toEqual({
+      all: ["overview", "changes", "files", "preview", "notes"],
+      primary: ["overview", "changes", "files", "preview"],
+      secondary: ["notes"],
+    });
+  });
+
   test("preserves the dedicated files-only projection", () => {
     expect(resolveInspectorNavigation({
       filesOnly: true,

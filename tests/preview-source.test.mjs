@@ -8,6 +8,9 @@ import {
   MAX_PREVIEW_SOURCES_PER_SESSION,
   markPreviewSourcesStale,
   mergePreviewSources,
+  hasActivePreviewSource,
+  latestPreviewPromptSource,
+  previewSourceKey,
   normalizePreviewCandidate,
   previewSourceContext,
 } from "../src/modules/preview/preview-source.ts";
@@ -224,4 +227,15 @@ test("可信 main ACL 明确覆盖全部既有 app command，且 ingest 只属�
 
   const mainCapability = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
   assert.ok(mainCapability.permissions.includes("allow-main-commands"));
+});
+
+test("latest Preview prompt skips dismissed keys and prefers the newest active source", () => {
+  const context = previewSourceContext(session("s-a", "wt-a"));
+  const first = detectPreviewSources("http://localhost:3000 ", context, 10)[0];
+  const second = detectPreviewSources("http://localhost:4000 ", context, 20)[0];
+  const merged = mergePreviewSources([first], [second]);
+  assert.equal(hasActivePreviewSource(merged), true);
+  assert.equal(latestPreviewPromptSource(merged, [])?.sourceUrl, second.sourceUrl);
+  assert.equal(latestPreviewPromptSource(merged, [previewSourceKey(second)])?.sourceUrl, first.sourceUrl);
+  assert.equal(latestPreviewPromptSource(merged, [previewSourceKey(first), previewSourceKey(second)]), null);
 });

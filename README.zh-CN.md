@@ -77,7 +77,7 @@ Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话�
 - 起步工作流可以一键加入 review、测试和排查类常用命令
 - Overview 保留有上限、仅当前运行期的会话最近活动；它不是持久 Agent 历史
 
-后续方向和功能记录在 [docs/ROADMAP.md](docs/ROADMAP.md)。功能与代码对照见 [docs/FEATURES.md](docs/FEATURES.md)。
+后续方向、功能记录和取舍见 [docs/ROADMAP.md](docs/ROADMAP.md)、[docs/FEATURES.md](docs/FEATURES.md)、[docs/PRODUCT_REVIEW.md](docs/PRODUCT_REVIEW.md)。
 
 ### SSH
 

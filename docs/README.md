@@ -7,6 +7,7 @@
 | 文档 | 用途 |
 |------|------|
 | [FEATURES.md](./FEATURES.md) | 功能与代码地图：用户可见能力对应到前端/后端入口 |
+| [PRODUCT_REVIEW.md](./PRODUCT_REVIEW.md) | 全量功能盘点：成本/价值取舍与主路径缺口 |
 | [GOAL.md](./GOAL.md) | 产品目标、平台支持、Agent 边界 |
 | [ROADMAP.md](./ROADMAP.md) | 已落地能力与后续建议 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 前后端 IPC、三种传输、托管 state、启动顺序 |
