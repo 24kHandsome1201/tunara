@@ -9,6 +9,7 @@ import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { ToastContainer } from "@/ui/Toast";
+import { WorkspaceEmptyState } from "@/ui/WorkspaceEmptyState";
 import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
@@ -437,46 +438,12 @@ export default function App() {
           />
         )}
 
-        {/* B5: when there are no sessions (e.g. snapshot restore failed or the
-            last session was closed before the auto-create kicked in), show a
-            centered empty-state with a clear call to action instead of a blank
-            middle pane. */}
         {workspaceMode && sessions.length === 0 && (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "var(--r-overlay)", background: "var(--c-bg-3)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-4)" }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 17 10 11 4 5" />
-                  <line x1="12" y1="19" x2="20" y2="19" />
-                </svg>
-              </div>
-              <span style={{ fontSize: "var(--fs-title)", fontWeight: 700, color: "var(--c-text-primary)" }}>{t("app.empty.title")}</span>
-              <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>{t("app.empty.hint")}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                <button
-                  onClick={newTerminal}
-                  className="hover-primary"
-                  style={{ padding: "8px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}
-                >
-                  {t("sidebar.new_terminal")}
-                </button>
-                <button
-                  onClick={newTerminalInDirectory}
-                  className="hover-bg"
-                  style={{ padding: "7px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}
-                >
-                  {t("sidebar.new_terminal_in_directory")}
-                </button>
-                <button
-                  onClick={() => useUIStore.getState().openSshConnect()}
-                  className="hover-bg"
-                  style={{ padding: "7px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}
-                >
-                  {t("sidebar.new_ssh_connection")}
-                </button>
-              </div>
-            </div>
-          </div>
+          <WorkspaceEmptyState
+            onNewTerminal={newTerminal}
+            onNewTerminalInDirectory={newTerminalInDirectory}
+            onOpenSsh={() => useUIStore.getState().openSshConnect()}
+          />
         )}
 
         {activeSession && (

@@ -296,6 +296,9 @@ function TerminalViewImpl({
         onCwd: handleCwdChange,
       }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
+        if (data.charAt(0) === "A" || data.charAt(0) === "B" || data.charAt(0) === "C" || data.charAt(0) === "D") {
+          useSessionsStore.getState().markShellIntegrationSeen(sessionIdRef.current);
+        }
         const marker = data.charAt(0);
         const trackedSession = getCurrentSession();
         if (trackedSession?.agent) { const shellMarker = data.includes(";tunara-shell");

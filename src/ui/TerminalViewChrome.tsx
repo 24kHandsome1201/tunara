@@ -18,7 +18,7 @@ import { fsReadDir } from "@/modules/fs/fs-bridge";
 import { TerminalInputRouter, type TerminalInputEventKind, type TerminalInputOwner, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
 import { issueFocusReturnToken, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import { copyActiveTerminal, registerTerminalMenuAction, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
-import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
+import { formatDroppedTerminalPaths } from "@/modules/terminal/lib/shell-quote";
 
 interface TerminalViewChromeProps {
   sessionId: string;
@@ -118,7 +118,13 @@ export function TerminalViewChrome({
       if (!inside) return;
       const session = useSessionsStore.getState().sessions.find((item) => item.id === sessionId);
       const binding = readyBindingForSession(session);
-      if (!session?.remote || !binding) return;
+      if (!session) return;
+      if (!session.remote) {
+        const inserted = formatDroppedTerminalPaths(paths);
+        if (inserted) useSessionsStore.getState().insertTerminalText(sessionId, inserted);
+        return;
+      }
+      if (!binding) return;
       const cwd = session.dir;
       void (async () => {
         const requests = [];

@@ -261,6 +261,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
       },
     });
     assert.equal(snapshot.ui.inspectorTab, "overview");
+    assert.equal(snapshot.ui.shellIntegrationHintDismissed, false);
     assert.deepEqual(Object.keys(snapshot.terminals), ["s-a"]);
     assert.deepEqual(Object.keys(snapshot.agentResume), ["s-a", "s-active", "s-b"]);
     assert.deepEqual(snapshot.agentResume["s-active"].provenance, {
@@ -283,6 +284,25 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
   } finally {
     console.warn = originalWarn;
   }
+});
+
+test("snapshot sanitizer keeps a dismissed shell-integration hint", () => {
+  const snapshot = sanitizeSnapshot({
+    version: 1,
+    savedAt: 1,
+    activeSessionId: "s-a",
+    sessions: [persistedSession("s-a", "/repo")],
+    ui: {
+      sidebarVisible: true,
+      panelVisible: true,
+      collapsedDirs: {},
+      collapsedDiffSections: {},
+      split: { root: { type: "pane", sessionId: "s-a" } },
+      inspectorTab: "overview",
+      shellIntegrationHintDismissed: true,
+    },
+  });
+  assert.equal(snapshot?.ui.shellIntegrationHintDismissed, true);
 });
 
 test("snapshot sanitizer restores a four-pane BSP layout and keeps its nested ratios", () => {

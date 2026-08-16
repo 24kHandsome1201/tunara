@@ -103,8 +103,11 @@ test("non-settings native controls opt into the shared theme contract", () => {
 
 test("folder-based terminal creation stays visible in empty and compact shells", () => {
   const app = read("src/app/App.tsx");
+  const empty = read("src/ui/WorkspaceEmptyState.tsx");
   const titlebar = read("src/ui/Titlebar.tsx");
-  assert.match(app, /onClick=\{newTerminalInDirectory\}[\s\S]*sidebar\.new_terminal_in_directory/);
+  assert.match(app, /WorkspaceEmptyState/);
+  assert.match(empty, /onClick=\{onNewTerminalInDirectory\}[\s\S]*sidebar\.new_terminal_in_directory/);
+  assert.match(empty, /className="hover-primary"[\s\S]*sidebar\.new_terminal_in_directory/);
   assert.match(titlebar, /onClick=\{onNewTerminalInDirectory\}[\s\S]*titlebar\.new_terminal_in_directory/);
 });
 

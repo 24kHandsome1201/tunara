@@ -5,6 +5,8 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
 import { SshSuggestionBar } from "./SshSuggestionBar";
+import { PreviewSuggestionBar } from "./PreviewSuggestionBar";
+import { ReviewChangesBar } from "./ReviewChangesBar";
 import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { getNumberRecordValue } from "@/state/record-keys";
@@ -38,6 +40,8 @@ const TerminalPane = memo(function TerminalPane({
   return (
     <div data-terminal-session-id={session.id} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {!pure && <SshSuggestionBar session={session} />}
+      {!pure && <PreviewSuggestionBar session={session} />}
+      {!pure && <ReviewChangesBar session={session} />}
       <TerminalView
         key={`${session.id}:${session.terminalMountNonce ?? session.reconnectNonce ?? 0}`}
         sessionId={session.id}
