@@ -81,7 +81,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 3. 检查器（右栏）
 
-页签由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 与是否有 transport binding 裁剪。一次只挂载当前页签。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
+页签由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 裁剪。一次只挂载当前页签。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
 
 | 页签 | 范围 | 内容 | 入口 |
 |------|------|------|------|
@@ -91,10 +91,9 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | Preview | 会话 | workspace-bound WebView 控制 | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) |
 | Notes | 会话 | 自动保存草稿与待办计数 | [`SessionNotesPanel.tsx`](../src/ui/SessionNotesPanel.tsx) |
 | Transfers | SSH | 上传/下载进度、取消、恢复 | [`TransferCenter.tsx`](../src/ui/TransferCenter.tsx) |
-| Metadata | SSH 绑定 | 远端 stat / chmod | [`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx) |
-| Forwarding | SSH 绑定 | 本地/动态端口转发 | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
-| Diagnostics | SSH 会话 | 连接诊断 | [`DiagnosticsCenter.tsx`](../src/modules/ssh/DiagnosticsCenter.tsx) |
-| Known hosts | 全局 | known_hosts 列表与删除 | [`KnownHostsPanel.tsx`](../src/modules/ssh/KnownHostsPanel.tsx) |
+| Forwarding | SSH 绑定 | 本地/动态/反向端口转发 | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
+
+远端文件属性改为 Files 右键弹窗（[`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx)）。连接诊断并入 Overview 复制报告。known_hosts 在设置 → SSH。页签取舍见 [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md)。
 
 纯净模式可只打开 Files（`filesOnly`），不展开整栏检查器。
 
@@ -171,14 +170,17 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 ## 9. 设置、快捷键与工作流
 
-设置对话框分五个页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
+设置对话框分八个页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
 
 | 页签 | 内容 |
 |------|------|
-| Appearance | 统一界面+终端配色（9 套）、8 色 accent、字体、光标、行内图、右键行为 |
+| Appearance | 统一界面+终端配色（9 套）、8 色 accent |
+| Terminal | 字体、光标、scrollback、行内图、右键行为、外部编辑器 |
+| Accessibility | 读屏模式；macOS 可跳转系统隐私设置 |
 | Shortcuts | 可配置快捷键；终端 Copy / Safe Paste / 菜单绑定带风险提示 |
 | Workflows | 用户命令模板；可选 starter（status / 测试 / TODO / 大文件 / 端口） |
 | CLI | Agent 二进制覆盖与预检 |
+| SSH | known_hosts 列表与删除 |
 | App | 签名更新、语言、全局唤起、本地使用日志、遗留 Agent 数据清理 |
 
 配置文件：`~/.config/tunara/config.toml`，经 [`config-bridge.ts`](../src/modules/config/config-bridge.ts) 读写。

@@ -77,7 +77,7 @@ Tunara now has a small cockpit layer for people who keep several sessions open a
 - Starter workflows can add common review, test, and diagnostic commands in one click
 - Overview keeps a bounded, runtime-only list of recent session activity; it is not a persistent Agent history
 
-Future direction and feature notes live in [docs/ROADMAP.md](docs/ROADMAP.md). A feature-to-code map is in [docs/FEATURES.md](docs/FEATURES.md).
+Future direction, feature notes, and cost/value cuts live in [docs/ROADMAP.md](docs/ROADMAP.md), [docs/FEATURES.md](docs/FEATURES.md), and [docs/PRODUCT_REVIEW.md](docs/PRODUCT_REVIEW.md).
 
 ### SSH
 

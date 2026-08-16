@@ -21,7 +21,7 @@
 | 常驻主 tab | 概览、改动、文件 | — |
 | 「更多」菜单 | Preview、笔记 | `workspace` |
 | 「更多」菜单 | 传输 | `transfer` |
-| 「更多」菜单 | 元数据、端口转发、诊断、已知主机 | `ssh` |
+| 「更多」菜单 | 端口转发 | `ssh` |
 
 主 tab 始终可见。从「更多」打开的次级页会临时出现在 tab 条上，与三个主 tab 并列，直到切回主 tab。
 
@@ -29,14 +29,13 @@
 
 ### 1.2 可见性
 
-`resolveInspectorNavigation({ filesOnly, isRemote, hasBinding })` 按会话裁剪：
+`resolveInspectorNavigation({ filesOnly, isRemote })` 按会话裁剪：
 
 - **本地会话**：概览、改动、文件、Preview、笔记（5 个）。
-- **SSH 远程会话**：再加上传输、端口转发、诊断、已知主机。
-- **元数据**还要求有活跃 transport binding（`logicalSessionId` + `physicalPtyId` + `transportGeneration`）。无 binding 时该 tab 不进入导航。
+- **SSH 远程会话**：再加上传输、端口转发。
 - `filesOnly`：只保留文件。
 
-远程专用 5 项（传输、元数据、端口转发、诊断、已知主机）对本地会话不可见。
+远程专用 2 项（传输、端口转发）对本地会话不可见。元数据改为 Files 右键属性弹窗；诊断并入概览；已知主机在设置 → SSH。
 
 ### 1.3 作用域标签
 
