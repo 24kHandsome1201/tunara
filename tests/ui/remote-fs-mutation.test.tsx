@@ -109,7 +109,7 @@ describe("remote filesystem mutation boundary", () => {
     expect(screen.getByText("deploy@production.example:2222")).toBeTruthy();
     expect(screen.getByText("/srv/app/broken-link")).toBeTruthy();
     expect(screen.getByText("symlink")).toBeTruthy();
-    expect(screen.getByText(/not claimed to be atomic/i)).toBeTruthy();
+    expect(screen.getByText(/Deletes and copies are not recursive/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete remote item" }));
     await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
@@ -145,7 +145,7 @@ describe("remote filesystem mutation boundary", () => {
     expect(await screen.findByText("rwxrwxrwx (0777)")).toBeTruthy();
     expect(screen.getByText("1000:deploy")).toBeTruthy();
     expect(screen.getByText("releases/missing")).toBeTruthy();
-    expect(screen.getByText(/lstat observed a symlink/i)).toBeTruthy();
+    expect(screen.getByText(/Can’t change permissions on a symbolic link/i)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Apply permissions" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -164,7 +164,7 @@ describe("remote filesystem mutation boundary", () => {
     });
     render(<RemoteMetadataPanel binding={deleteRequest().binding} path="/srv/file" host="production" />);
 
-    const input = await screen.findByLabelText("Permissions (0000–0777)") as HTMLInputElement;
+    const input = await screen.findByLabelText("Permissions (e.g. 0644)") as HTMLInputElement;
     const apply = screen.getByRole("button", { name: "Apply permissions" }) as HTMLButtonElement;
     expect(input.disabled).toBe(true);
     expect(apply.disabled).toBe(true);

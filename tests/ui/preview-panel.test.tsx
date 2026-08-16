@@ -84,7 +84,7 @@ test("keeps SSH, stale, and fallback sources visibly blocked", () => {
   ])} />);
 
   expect(screen.getAllByText("Closed").length).toBe(3);
-  expect(screen.getByText("Source stale / terminal exited")).toBeTruthy();
+  expect(screen.getByText("Source terminal exited")).toBeTruthy();
   for (const button of screen.getAllByRole("button", { name: "Open Preview" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   }
@@ -139,7 +139,7 @@ test("shows a failed load with manual recovery and does not pretend it is ready"
   });
   render(<PreviewPanel session={session([source()])} />);
 
-  expect(await screen.findByText("Unreachable / failed")).toBeTruthy();
+  expect(await screen.findByText("Failed to load")).toBeTruthy();
   expect(screen.getByRole("alert").textContent).toContain("did not finish loading");
   expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
@@ -164,7 +164,7 @@ test("offers only a proven failed-source command and delegates fill-without-exec
   render(<PreviewPanel session={session([eligible])} />);
 
   expect(await screen.findByText("python3 -m http.server 41731")).toBeTruthy();
-  const prepare = screen.getByRole("button", { name: "Fill source PTY" }) as HTMLButtonElement;
+  const prepare = screen.getByRole("button", { name: "Fill source terminal" }) as HTMLButtonElement;
   expect(prepare.disabled).toBe(false);
   fireEvent.click(prepare);
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_restart_prepare", payload: { source: eligible } }));
@@ -179,8 +179,8 @@ test("keeps restart disabled for busy, stale, changed, exited, or unproven sourc
     : undefined);
   render(<PreviewPanel session={session(reasons.map((_, sourceIndex) => source({ terminalId: `session-a:${sourceIndex}` })))} />);
 
-  await screen.findAllByText("Unreachable / failed");
-  for (const button of screen.getAllByRole("button", { name: "Fill source PTY" })) {
+  await screen.findAllByText("Failed to load");
+  for (const button of screen.getAllByRole("button", { name: "Fill source terminal" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   }
 });
@@ -189,7 +189,7 @@ test("terminal exit keeps close available but blocks refresh and a new internal 
   mockIPC((command) => command === "preview_status" ? runtime({ currentUrl: source().sourceUrl }) : undefined);
   render(<PreviewPanel session={session([source({ state: "stale", staleReason: "terminal-exited" })])} />);
 
-  expect(await screen.findByText("Source stale / terminal exited")).toBeTruthy();
+  expect(await screen.findByText("Source terminal exited")).toBeTruthy();
   expect((screen.getByRole("button", { name: "Focus Preview" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Refresh" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled).toBe(false);
@@ -214,7 +214,7 @@ test("uses Rust-reported history state and submits addresses through the trusted
 
   const address = screen.getByRole("textbox", { name: "Preview address" });
   fireEvent.change(address, { target: { value: "/b?q=1#two" } });
-  fireEvent.submit(screen.getByRole("form", { name: "Trusted Preview navigation" }));
+  fireEvent.submit(screen.getByRole("form", { name: "Preview navigation" }));
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_navigate", payload: { source: eligible, address: "/b?q=1#two" } }));
 });
 

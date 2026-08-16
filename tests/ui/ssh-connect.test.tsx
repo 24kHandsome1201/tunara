@@ -104,7 +104,7 @@ describe("SSH connection sheet", () => {
     const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
     await waitFor(() => expect(connect.disabled).toBe(false));
 
-    const search = await screen.findByLabelText("Search profiles and ~/.ssh/config");
+    const search = await screen.findByLabelText("Search saved hosts and ~/.ssh/config");
     search.focus();
     fireEvent.keyDown(search, { key: "Enter" });
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
@@ -166,7 +166,7 @@ describe("SSH connection sheet", () => {
     expect(screen.queryByLabelText("Private key")).toBeNull();
     const secret = ["not", "for", "profile"].join("-");
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: secret } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save as connection profile/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     await waitFor(() => expect(saves).toHaveLength(1));
@@ -322,7 +322,7 @@ describe("SSH connection sheet", () => {
     const saved = await screen.findByRole("button", { name: /saved routed/i });
     expect(screen.getByRole("button", { name: /config routed/i })).toBeTruthy();
     fireEvent.click(saved);
-    expect(screen.getByText(/ProxyJump profile is missing/i)).toBeTruthy();
+    expect(screen.getByText(/ProxyJump host is missing/i)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
   });
@@ -354,9 +354,9 @@ describe("SSH connection sheet", () => {
 
     render(<SshConnect onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: /Routed target/i }));
-    const jumpMethods = screen.getByRole("radiogroup", { name: "Jump-hop authentication method" });
+    const jumpMethods = screen.getByRole("radiogroup", { name: "Jump host authentication method" });
     fireEvent.click(within(jumpMethods).getByRole("radio", { name: "Password" }));
-    fireEvent.change(screen.getByLabelText("Jump-hop password"), { target: { value: jumpSecret } });
+    fireEvent.change(screen.getByLabelText("Jump host password"), { target: { value: jumpSecret } });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     const [session] = useSessionsStore.getState().sessions;
@@ -395,7 +395,7 @@ describe("SSH connection sheet", () => {
 
     render(<SshConnect onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: /Config direct/i }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save as connection profile/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     await waitFor(() => expect(saves).toHaveLength(1));
@@ -425,7 +425,7 @@ describe("SSH connection sheet", () => {
 
     render(<SshConnect onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: /Config routed/i }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save as connection profile/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     await waitFor(() => expect(saves).toHaveLength(1));
@@ -444,14 +444,14 @@ describe("SSH connection sheet", () => {
     });
 
     render(<SshConnect onClose={vi.fn()} />);
-    const routeSelector = await screen.findByLabelText("Direct or ProxyJump profile");
+    const routeSelector = await screen.findByLabelText("Direct or via ProxyJump host");
     fireEvent.change(screen.getByLabelText("Host"), { target: { value: "target.internal" } });
     fireEvent.change(screen.getByLabelText("User"), { target: { value: "deploy" } });
     fireEvent.click(screen.getByRole("radio", { name: /^SSH Agent/ }));
     fireEvent.change(routeSelector, { target: { value: "jump" } });
-    const jumpMethods = await screen.findByRole("radiogroup", { name: "Jump-hop authentication method" });
+    const jumpMethods = await screen.findByRole("radiogroup", { name: "Jump host authentication method" });
     fireEvent.click(within(jumpMethods).getByRole("radio", { name: "Password" }));
-    fireEvent.change(screen.getByLabelText("Jump-hop password"), { target: { value: jumpSecret } });
+    fireEvent.change(screen.getByLabelText("Jump host password"), { target: { value: jumpSecret } });
     fireEvent.change(routeSelector, { target: { value: "" } });
 
     const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
@@ -488,7 +488,7 @@ describe("SSH connection sheet", () => {
     expect(screen.getByRole("status").textContent).toContain("2 available, 1 skipped");
     fireEvent.click(screen.getByText("SSH config diagnostics"));
     expect(screen.getByText(/error · \/home\/test\/\.ssh\/config:17 · unsafe · unsupported_active_directive · ProxyCommand/)).toBeTruthy();
-    expect(screen.getByText(/%h, %n, %p, %r, and %u/)).toBeTruthy();
+    expect(screen.getByText(/Supports common Host, Include, and ProxyJump settings/)).toBeTruthy();
     expect(screen.getByText("ProxyCommand and Match exec are never executed.")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh ~/.ssh/config" }));
@@ -519,11 +519,11 @@ describe("SSH connection sheet", () => {
 
     render(<SshConnect onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: /Ambiguous target/i }));
-    expect(screen.getByText(/More than one ProxyJump profile/)).toBeTruthy();
+    expect(screen.getByText(/More than one ProxyJump host/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: /Multi-hop target/i }));
-    expect(screen.getByText(/routed profile cannot be used as a jump hop/)).toBeTruthy();
+    expect(screen.getByText(/already uses ProxyJump cannot itself be a jump host/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
   });

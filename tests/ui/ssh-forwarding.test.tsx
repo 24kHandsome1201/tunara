@@ -64,7 +64,7 @@ test("starts and stops loopback-only local forwarding with requested and actual 
   await waitFor(() => expect(screen.getByText("No active forwarding listeners")).toBeTruthy());
   fireEvent.change(screen.getByLabelText("Target host"), { target: { value: "db.internal" } });
   fireEvent.change(screen.getByLabelText("Target port"), { target: { value: "5432" } });
-  fireEvent.click(screen.getByLabelText("Recreate this listener after a successful replacement-shell reconnect"));
+  fireEvent.click(screen.getByLabelText("Turn this forward back on after a successful reconnect"));
   fireEvent.click(screen.getByRole("button", { name: "Start forwarding" }));
 
   expect(await screen.findByText("127.0.0.1:49152 → db.internal:5432")).toBeTruthy();
@@ -147,7 +147,7 @@ test("shows only allowlisted failures and explains replacement-shell reconnect",
   fireEvent.change(screen.getByLabelText("Target host"), { target: { value: "db.internal" } });
   fireEvent.change(screen.getByLabelText("Target port"), { target: { value: "5432" } });
   fireEvent.click(screen.getByRole("button", { name: "Start forwarding" }));
-  expect((await screen.findByRole("alert")).textContent).toContain("The requested local port is unavailable");
+  expect((await screen.findByRole("alert")).textContent).toContain("That local port is in use");
   expect(view.container.textContent).not.toContain("SECRET-CANARY");
 
   view.rerender(<ForwardingPanel binding={null} session={{
@@ -157,7 +157,7 @@ test("shows only allowlisted failures and explains replacement-shell reconnect",
     connection: { transport: "ssh", phase: "needsUserAction", source: "user", updatedAt: 2, reason: "auth" },
   }} />);
   expect(screen.getByRole("alert").textContent).toContain("Reconnect needs your action");
-  expect(screen.getByText(/cannot restore the old shell or replay its input/i)).toBeTruthy();
+  expect(screen.getByText(/cannot restore the old terminal or replay its input/i)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Start forwarding" })).toBeNull();
 });
 
@@ -285,7 +285,7 @@ test("starts and stops loopback-only remote forwarding onto a local target port"
   await screen.findByText("No active forwarding listeners");
   fireEvent.click(screen.getByLabelText("Remote"));
   fireEvent.change(screen.getByLabelText("Local target port"), { target: { value: "5173" } });
-  fireEvent.click(screen.getByLabelText("Recreate this listener after a successful replacement-shell reconnect"));
+  fireEvent.click(screen.getByLabelText("Turn this forward back on after a successful reconnect"));
   fireEvent.click(screen.getByRole("button", { name: "Start forwarding" }));
 
   expect(await screen.findByText("127.0.0.1:18080 → 127.0.0.1:5173")).toBeTruthy();
