@@ -944,11 +944,14 @@ mod write_tests {
     fn export_creates_and_replaces_a_regular_file_within_the_text_cap() {
         let target = fixture("export-create.txt");
         let _ = fs::remove_file(&target);
-        let bytes = fs_export_text_file(target.to_string_lossy().into_owned(), "hello export\n")
-            .expect("create export");
+        let bytes = fs_export_text_file(
+            target.to_string_lossy().into_owned(),
+            "hello export\n".into(),
+        )
+        .expect("create export");
         assert_eq!(bytes, "hello export\n".len() as u64);
         assert_eq!(fs::read_to_string(&target).unwrap(), "hello export\n");
-        fs_export_text_file(target.to_string_lossy().into_owned(), "replaced\n")
+        fs_export_text_file(target.to_string_lossy().into_owned(), "replaced\n".into())
             .expect("replace export");
         assert_eq!(fs::read_to_string(&target).unwrap(), "replaced\n");
         fs::remove_file(&target).unwrap();
@@ -973,8 +976,8 @@ mod write_tests {
         let link = fixture("export-symlink.txt");
         fs::write(&target, "keep\n").unwrap();
         symlink(&target, &link).unwrap();
-        let error =
-            fs_export_text_file(link.to_string_lossy().into_owned(), "overwrite\n").unwrap_err();
+        let error = fs_export_text_file(link.to_string_lossy().into_owned(), "overwrite\n".into())
+            .unwrap_err();
         assert!(error.contains("regular file"));
         assert_eq!(fs::read_to_string(&target).unwrap(), "keep\n");
         fs::remove_file(link).unwrap();
