@@ -29,31 +29,24 @@ Then: `cargo update`, re-run `cargo audit`, and remove `RUSTSEC-2023-0071` from 
 
 ---
 
-## RUSTSEC-2026-0235 — `rkyv` shared-pointer archive validation OOB read
+## Resolved: RUSTSEC-2026-0235 — `rkyv` shared-pointer archive validation OOB read
 
 | Field | Detail |
 |-------|--------|
 | Advisory | [RUSTSEC-2026-0235](https://rustsec.org/advisories/RUSTSEC-2026-0235.html) |
 | Crate | `rkyv` 0.7.46 (transitive) |
 | Path | `tauri-plugin-log` → `byte-unit` → `rust_decimal` (rkyv feature) → `rkyv` |
-| Upstream status | Patched in `rkyv` ≥ 0.8.17; the 0.7 series is unmaintained. `rust_decimal` 1.x still pulls 0.7 |
+| Resolved | 2026-08-16: `tauri-plugin-log` 2.9.0 dropped the `byte-unit` / `rkyv` 0.7 path |
 
-### Why we accept the risk
+### Resolution
 
-- Tunara **does not deserialize rkyv archives**, trusted or otherwise. The crate is unused application code; it is only linked because `byte-unit` enables `rust_decimal`'s default `rkyv` feature for decimal formatting.
-- The advisory requires a crafted archive consumed through `rkyv::access` / `rkyv::from_bytes`. That API is not on Tunara's product surface.
-- Bumping to `rkyv` 0.8 would mean replacing `tauri-plugin-log` / `byte-unit` / `rust_decimal`, not a lockfile-only bump.
+- Bumped `tauri-plugin-log` from 2.8.0 to 2.9.0 so it matches npm `@tauri-apps/plugin-log` 2.9.x (`tauri build` refuses mismatched plugin minors).
+- Removed `RUSTSEC-2026-0235` from `audit.toml` and the security workflow ignores.
+- The crate is no longer in `Cargo.lock`; `cargo audit` covers this path by absence.
 
-### When to revisit
-
-- `tauri-plugin-log` or `byte-unit` drop the `rust_decimal` rkyv feature, **or**
-- `rust_decimal` moves to `rkyv` ≥ 0.8.17.
-
-Then: `cargo update`, re-run `cargo audit`, and remove `RUSTSEC-2026-0235` from `audit.toml` and the security workflow ignores.
-
----
-
-## Resolved: RUSTSEC-2026-0194 / RUSTSEC-2026-0195 — `quick-xml` unbounded allocation DoS
+```bash
+cargo audit --ignore RUSTSEC-2023-0071
+```
 
 | Field | Detail |
 |-------|--------|
@@ -70,7 +63,7 @@ Then: `cargo update`, re-run `cargo audit`, and remove `RUSTSEC-2026-0235` from 
 - The dependency path remains covered by the normal `cargo audit` gate.
 
 ```bash
-cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0235
+cargo audit --ignore RUSTSEC-2023-0071
 ```
 
 ---
@@ -103,7 +96,7 @@ Use this checklist whenever bumping **Tauri**, **russh**, or running a broad `ca
 
 | Step | Action |
 |------|--------|
-| 1 | `bash scripts/check-tauri-version-coupling.sh` — npm `@tauri-apps/*` major.minor must match `Cargo.lock` `tauri` |
+| 1 | `bash scripts/check-tauri-version-coupling.sh` — npm `@tauri-apps/api` and `@tauri-apps/plugin-*` major.minor must match the paired crates in `Cargo.lock` |
 | 2 | `cargo audit` — no new unignored advisories |
 | 3 | `pnpm audit --prod --audit-level high` — no new high/critical npm issues |
 | 4 | `cargo test` + `pnpm test:node` |

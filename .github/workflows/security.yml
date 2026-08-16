@@ -52,11 +52,9 @@ jobs:
       - name: Run cargo audit
         working-directory: src-tauri
         # RUSTSEC-2023-0071 (rsa Marvin attack) is a transitive russh dep with
-        # no upstream fix. RUSTSEC-2026-0235 is unused rkyv 0.7 pulled in by
-        # tauri-plugin-log → byte-unit → rust_decimal. Rationales live in
-        # src-tauri/.cargo/audit.toml; exceptions are passed explicitly so they
-        # stay visible in CI.
-        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0235
+        # no upstream fix. Rationale lives in src-tauri/.cargo/audit.toml;
+        # the exception is passed explicitly so it stays visible in CI.
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
   pnpm-audit:
     name: pnpm audit
