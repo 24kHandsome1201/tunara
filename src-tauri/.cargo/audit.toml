@@ -17,14 +17,6 @@
 #
 # Revisit when `rsa` ships a fixed release or russh exposes a way to build
 # without the RSA feature.
-#
-# RUSTSEC-2026-0235 — rkyv 0.7 shared-pointer archive validation OOB read.
-# We do not depend on `rkyv` directly. It arrives only as a default feature of
-# `rust_decimal`, which `byte-unit` (from `tauri-plugin-log`) enables. Tunara
-# never deserializes rkyv archives, trusted or otherwise, so the untrusted-
-# archive attack surface does not exist in this product. `rkyv` 0.7 is
-# unmaintained; the patched line is 0.8.17+, which `rust_decimal` 1.x does not
-# consume. Revisit when tauri-plugin-log / byte-unit drop or upgrade rkyv.
 
 [advisories]
-ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0235"]
+ignore = ["RUSTSEC-2023-0071"]

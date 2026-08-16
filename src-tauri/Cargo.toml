@@ -28,7 +28,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
-tauri-plugin-opener = "2"
+tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"
@@ -61,19 +61,21 @@ russh = "=0.61.2"
 russh-sftp = "2.3"
 # ~/.ssh & known_hosts path resolution (XDG/home dirs).
 dirs = "6"
-tauri-plugin-log = "2"
-tauri-plugin-os = "2"
-tauri-plugin-store = "2"
-tauri-plugin-process = "2"
+# Pin major.minor to the npm @tauri-apps/plugin-* packages. `tauri build`
+# refuses mismatched plugin pairs (v2.0.0 release failed on 2.8 vs 2.9).
+tauri-plugin-log = "2.9"
+tauri-plugin-os = "2.3"
+tauri-plugin-store = "2.4"
+tauri-plugin-process = "2.3"
 # Native confirm dialogs — window.confirm is a silent no-op in wry's WKWebView.
-tauri-plugin-dialog = "2"
+tauri-plugin-dialog = "2.7"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-autostart = "2"
-tauri-plugin-global-shortcut = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-window-state = "2"
-tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2.5"
+tauri-plugin-global-shortcut = "2.3"
+tauri-plugin-updater = "2.10"
+tauri-plugin-window-state = "2.4"
+tauri-plugin-single-instance = "2.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"

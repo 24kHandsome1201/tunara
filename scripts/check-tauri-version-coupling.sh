@@ -1,50 +1,70 @@
 #!/usr/bin/env bash
-# Verify @tauri-apps/api (npm) and tauri (cargo) share the same major.minor.
-# Tauri 2.x requires aligned frontend IPC bindings and backend crate versions.
+# Verify npm @tauri-apps/api and @tauri-apps/plugin-* share major.minor with
+# the matching crates in src-tauri/Cargo.lock. `tauri build` refuses mismatched
+# plugin pairs (v2.0.0's first Release run failed on plugin-log 2.8 vs 2.9).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export TUNARA_ROOT="$ROOT"
 
-npm_major_minor() {
-  node --input-type=module -e "
-    import { readFileSync } from 'node:fs';
-    const pkg = JSON.parse(readFileSync('${ROOT}/package.json', 'utf8'));
-    const raw = pkg.dependencies['@tauri-apps/api'] ?? '';
-    const m = raw.replace(/^[\^~>=<]*/, '').match(/^(\d+\.\d+)/);
-    if (!m) {
-      console.error('Could not parse @tauri-apps/api version from package.json');
-      process.exit(1);
-    }
-    console.log(m[1]);
-  "
+node --input-type=module <<'EOF'
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const root = process.env.TUNARA_ROOT;
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const lock = readFileSync(join(root, "src-tauri/Cargo.lock"), "utf8");
+
+const cargoVersions = new Map();
+for (const block of lock.split("\n[[package]]\n")) {
+  const name = block.match(/^name = "([^"]+)"/m)?.[1];
+  const version = block.match(/^version = "([^"]+)"/m)?.[1];
+  if (name && version && !cargoVersions.has(name)) cargoVersions.set(name, version);
 }
 
-cargo_major_minor() {
-  awk '
-    /^name = "tauri"$/ {
-      getline
-      if ($1 == "version") {
-        gsub(/version = "|"/, "", $3)
-        split($3, parts, ".")
-        printf "%s.%s\n", parts[1], parts[2]
-        exit
-      }
-    }
-  ' "${ROOT}/src-tauri/Cargo.lock"
+function majorMinor(raw, label) {
+  const m = String(raw).replace(/^[\^~>=<]*/, "").match(/^(\d+\.\d+)/);
+  if (!m) {
+    console.error(`Could not parse version for ${label}: ${raw}`);
+    process.exit(1);
+  }
+  return m[1];
 }
 
-NPM_MM="$(npm_major_minor)"
-CARGO_MM="$(cargo_major_minor)"
+const pairs = [["@tauri-apps/api", "tauri"]];
+for (const name of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })) {
+  const plugin = name.match(/^@tauri-apps\/plugin-(.+)$/)?.[1];
+  if (plugin) pairs.push([name, `tauri-plugin-${plugin}`]);
+}
 
-if [ -z "${CARGO_MM}" ]; then
-  echo "Could not find tauri crate version in src-tauri/Cargo.lock" >&2
-  exit 1
-fi
+let failed = 0;
+for (const [npmName, crate] of pairs) {
+  const npmRaw = pkg.dependencies?.[npmName] ?? pkg.devDependencies?.[npmName];
+  if (!npmRaw) continue;
+  const cargoRaw = cargoVersions.get(crate);
+  if (!cargoRaw) {
+    console.error(`Missing ${crate} in src-tauri/Cargo.lock (paired with ${npmName})`);
+    failed += 1;
+    continue;
+  }
+  const npmMM = majorMinor(npmRaw, npmName);
+  const cargoMM = majorMinor(cargoRaw, crate);
+  if (npmMM !== cargoMM) {
+    console.error(
+      `Tauri version mismatch: ${npmName} is ${npmMM}.x but Cargo.lock ${crate} is ${cargoMM}.x (${cargoRaw})`,
+    );
+    failed += 1;
+    continue;
+  }
+  console.log(`OK ${npmName} ${npmMM}.x ↔ ${crate} ${cargoRaw}`);
+}
 
-if [ "${NPM_MM}" != "${CARGO_MM}" ]; then
-  echo "Tauri version mismatch: @tauri-apps/api is ${NPM_MM}.x but Cargo.lock tauri is ${CARGO_MM}.x" >&2
-  echo "Align npm @tauri-apps/* packages and the src-tauri tauri crate to the same major.minor." >&2
-  exit 1
-fi
+if (failed) {
+  console.error(
+    "Align npm @tauri-apps/* packages and the matching src-tauri crates to the same major.minor.",
+  );
+  process.exit(1);
+}
 
-echo "Tauri version coupling OK: ${NPM_MM}.x (npm) matches ${CARGO_MM}.x (cargo)"
+console.log(`Tauri version coupling OK: ${pairs.length} npm/cargo pairs`);
+EOF

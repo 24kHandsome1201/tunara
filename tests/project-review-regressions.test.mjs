@@ -135,14 +135,18 @@ test("node test script can import TypeScript sources on Node 24", () => {
 test("CI enforces Tauri npm/cargo major.minor version coupling", () => {
   const scriptPath = resolve(root, "scripts/check-tauri-version-coupling.sh");
   const ci = read(".github/workflows/ci.yml");
+  const release = read(".github/workflows/release.yml");
   const script = read("scripts/check-tauri-version-coupling.sh");
 
   assert.ok(existsSync(scriptPath), "scripts/check-tauri-version-coupling.sh must exist");
   assert.match(ci, /pnpm install --frozen-lockfile/);
   assert.match(ci, /check-tauri-version-coupling\.sh/);
+  assert.match(release, /check-tauri-version-coupling\.sh/);
   assert.match(script, /@tauri-apps\/api/);
+  assert.match(script, /@tauri-apps\/plugin-/);
   assert.match(script, /src-tauri\/Cargo\.lock/);
-  assert.match(script, /major\.minor|NPM_MM|CARGO_MM/);
+  assert.match(script, /tauri-plugin-/);
+  assert.match(script, /major\.minor|npmMM|cargoMM/);
 });
 
 test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs", () => {
@@ -150,7 +154,7 @@ test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs"
   const auditToml = read("src-tauri/.cargo/audit.toml");
   const advisories = read("docs/DEPENDENCY_ADVISORIES.md");
   const changelog = read("CHANGELOG.md");
-  const expected = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0235"];
+  const expected = ["RUSTSEC-2023-0071"];
 
   const workflowIgnores = [...workflow.matchAll(/cargo audit((?: --ignore RUSTSEC-\d{4}-\d+)+)/g)]
     .flatMap((match) => [...match[1].matchAll(/RUSTSEC-\d{4}-\d+/g)].map((item) => item[0]));
@@ -163,6 +167,8 @@ test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs"
     assert.match(changelog, new RegExp(id));
     assert.match(workflow, new RegExp(`--ignore ${id}`));
   }
+  assert.doesNotMatch(auditToml, /RUSTSEC-2026-0235/);
+  assert.doesNotMatch(workflow, /--ignore RUSTSEC-2026-0235/);
 });
 
 test("release metadata keeps versions and distribution identifiers aligned", () => {
@@ -301,7 +307,7 @@ test("desktop runtime rejects a second process before shared state starts", () =
   const cargo = read("src-tauri/Cargo.toml");
   const lib = read("src-tauri/src/lib.rs");
 
-  assert.match(cargo, /^tauri-plugin-single-instance = "2"$/m);
+  assert.match(cargo, /^tauri-plugin-single-instance = "2\.4"$/m);
   const builderIndex = lib.indexOf("tauri::Builder::default()");
   const singleInstanceIndex = lib.indexOf(".plugin(tauri_plugin_single_instance::init", builderIndex);
   const updaterIndex = lib.indexOf(".plugin(tauri_plugin_updater", builderIndex);
