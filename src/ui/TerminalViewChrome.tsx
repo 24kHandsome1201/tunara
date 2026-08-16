@@ -21,7 +21,7 @@ import { copyActiveTerminal, registerTerminalMenuAction, safePasteActiveTerminal
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 import { formatDroppedTerminalPaths } from "@/modules/terminal/lib/terminal-drop-paths";
 import { writeRegisteredTerminalInput } from "@/modules/terminal/lib/broadcast-input";
-import { exportTerminalBufferToFile, exportTerminalTextToFile, TERMINAL_EXPORT_SCROLLBACK_EVENT } from "@/modules/terminal/lib/terminal-export-file";
+import { exportTerminalBufferToFile, TERMINAL_EXPORT_SCROLLBACK_EVENT } from "@/modules/terminal/lib/terminal-export-file";
 
 interface TerminalViewChromeProps {
   sessionId: string;
