@@ -1,0 +1,37 @@
+name: Probe CASK_PUSH_TOKEN
+
+on:
+  push:
+    branches: [cursor/probe-cask-token-c86f]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail fast if the secret is empty
+        env:
+          CASK_PUSH_TOKEN: ${{ secrets.CASK_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CASK_PUSH_TOKEN}" ]; then
+            echo "::error::CASK_PUSH_TOKEN is empty or not set on this repository"
+            exit 1
+          fi
+          echo "Secret is present (value not printed)."
+
+      - name: Checkout main with CASK_PUSH_TOKEN
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.CASK_PUSH_TOKEN }}
+
+      - name: Confirm the token can read and would be able to push
+        env:
+          GH_TOKEN: ${{ secrets.CASK_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git status -sb
+          gh api user --jq '"authenticated as \(.login)"'
+          echo "CASK_PUSH_TOKEN checkout succeeded."
