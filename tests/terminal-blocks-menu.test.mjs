@@ -108,7 +108,7 @@ test("buildBlockContextMenuItems leads with a status heading showing exit state 
     handlers,
     NOW,
   )[0];
-  assert.equal(failed.label, "失败 (exit 1) · 耗时 2m 14s");
+  assert.equal(failed.label, "失败（退出码 1）· 耗时 2m 14s");
 
   const running = buildBlockContextMenuItems(
     makeBlock({ completedAt: undefined, exitCode: undefined, startedAt: NOW - 3_000 }),
