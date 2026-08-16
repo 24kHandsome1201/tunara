@@ -273,7 +273,7 @@ The full map, including Inspector tabs and IPC entry points, is in [docs/FEATURE
 | P3 Agent status bar | done | Contextual strip + change counts |
 | Session Recovery | done (1.2) | xterm buffer snapshot + scrollback restore |
 | SSH Client | done (1.7+) | russh long-lived conn, SFTP, transfers, host profiles, forwarding, diagnostics |
-| Files / Preview | done (1.15–1.17) | workspace file tabs, Markdown safe-edit, notebook preview, Preview webviews |
+| Files / Preview | done (1.15–2.0) | workspace file tabs, Markdown safe-edit, notebook preview, Preview webviews |
 
 See [CHANGELOG](CHANGELOG.md) and [docs/FEATURES.md](docs/FEATURES.md).
 

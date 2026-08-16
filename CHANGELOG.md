@@ -11,6 +11,10 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-16
+
+默认终端与纸面外壳共用同一组暖纸 / 暖墨颜色；SSH 按主机分组并复用连接；1.17.1 之后积压的终端、文件与检查器能力一并发布。已保存的自定义配色不受影响，未改过默认主题的窗口会换成新的画布与 ANSI 色。
+
 ### 新功能
 - 把文件拖到**本地**终端会插入转义路径（不自动回车）；拖到已就绪的 SSH 会话仍走 SFTP 上传。
 - 终端识别 OSC 99 通知（Kitty 风格分片与 base64），与 OSC 9 / 777 走同一条 toast / Dock 管道。
@@ -28,21 +32,25 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - JSON / CSV / TSV 以只读表格预览，不执行、不渲染 HTML。
 - 大文本/日志新增显式“查看开头”：本地与 SFTP 共用最多 2000 行 / 256 KiB 的受限读取，可取消，变更中的文件会拒绝过期结果。
 - 文件预览支持安全图片解码；超大像素返回明确的 oversized 状态，不把整文件读进编辑器路径。
-- SSH 传输升级为可 journal 的批量上传/下载：进度、取消、部分失败恢复，以及文件夹 manifest 上限。
+- SSH 传输升级为可 journal 的批量上传/下载：进度、取消、部分失败恢复，以及文件夹 manifest 上限。同一主机上的多个会话复用连接，传输可在重连后继续。
 - 设置新增独立“快捷键”页签；外观、工作流、CLI、应用拆成各自面板。
 - 终端右键与 Copy / Safe Paste 改为可配置触发器（smart / menu / disabled），并保留 Shift+F10 与 ContextMenu 键作为不可改写的恢复路径。
 - 可选本地 SSH 使用日志（默认关闭）：allowlist 事件写入本机 JSONL，失败不影响终端。
 
 ### 产品与体验
+- 默认 Light/Dark 终端画布与 ANSI 色改为和纸面外壳同一组暖纸 / 暖墨 token；设置页预览与真实窗口对齐。打包 JetBrains Mono 500/600，补齐 UI 与中文等宽字体回退。
+- SSH 会话按主机分组，不再按远端工作目录拆组。
 - 界面与终端配色合并为互斥选择器；命名方案同时染外壳与 xterm。
 - 检查器导航分层：Overview / Changes / Files 为一级，Preview、Notes 与 SSH 专用页签为二级。
 - 统一桌面控件在各配色下的对比度、焦点与窄面板布局；文件表面快捷键不再误伤会话标签。
+- 纯净模式溢出菜单不再重复已经可见的操作。
 
 ### 稳定性
 - CI：补齐 rustfmt / clippy，macOS `local_safe_write` 测试改为走无符号链接的物理临时目录（`/var`、`/tmp` 在 macOS 上是 symlink，`O_NOFOLLOW` 会得到 `ENOTDIR`），并把 `ENOTDIR` 映射为 unsafe parent。
 - 修复点「安全粘贴」后又弹出系统粘贴按钮：菜单/快捷键/命令面板改为走原生剪贴板读取，不再使用会触发 WKWebView/WebKitGTK 权限条的 `navigator.clipboard.readText()`。
 - 修复 SSH 下多分屏同时跑 Codex / Grok 等 TUI 一段时间后出现的乱码：每个会话使用独立 WebGL glyph atlas，避免 addon-webgl 0.19 共享纹理在 page merge 后把相邻 pane 画花；WebGL 替换 renderer 后立即重新 fit 并同步 PTY 尺寸；SSH PTY 启用 IUTF8，中文输入不再被当成 8-bit 字节。
 - 修复 Linux 窗口尺寸与原生缩放合同，避免平台 overlay 配置覆盖 `resizable`。
+- 重写若干别扭的 SSH / UI 中英文案。
 
 ## [1.17.1] - 2026-08-01
 

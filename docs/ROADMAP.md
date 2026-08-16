@@ -110,6 +110,10 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 默认关闭。开启后只把 allowlist 事件写入本机 JSONL，不回传。见 [LOCAL_USAGE_LOGGING.md](./LOCAL_USAGE_LOGGING.md)。
 
+### 25. 纸面同源终端与 SSH 按主机分组（2.0.0）
+
+默认 Light/Dark 终端画布、墨色与 ANSI 色改为和外壳同一组暖纸 / 暖墨 token；SSH 会话按主机分组并复用连接。规范见 [DEFAULT_TERMINAL_PALETTE.md](./DEFAULT_TERMINAL_PALETTE.md) 与 [SIDEBAR_SSH.md](./SIDEBAR_SSH.md)。
+
 ## 下一阶段建议
 
 当前主线没有自动进入的下一产品阶段。功能取舍与主路径缺口见 [PRODUCT_REVIEW.md](./PRODUCT_REVIEW.md)：优先把 Preview 和最近目录接到已有流程上，并冻结吉祥物、工作流 starter、使用日志等周边，而不是再铺新面。

@@ -30,7 +30,7 @@ can correlate related events within one run but cannot be linked across runs.
 Each complete line is one JSON object:
 
 ```json
-{"schema_version":1,"app_version":"1.17.1","timestamp_ms":1786700000000,"app_run_id":"6d51…","event":"ssh.session.opened","session_id":"anon_4bf2…","correlation_id":"anon_77a9…","duration_ms":684,"success":true,"outcome":"completed","attributes":{"auth_method":"key","route":"direct"}}
+{"schema_version":1,"app_version":"2.0.0","timestamp_ms":1786700000000,"app_run_id":"6d51…","event":"ssh.session.opened","session_id":"anon_4bf2…","correlation_id":"anon_77a9…","duration_ms":684,"success":true,"outcome":"completed","attributes":{"auth_method":"key","route":"direct"}}
 ```
 
 Required fields are `schema_version`, `app_version`, `timestamp_ms`,

@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
 vi.mock("@/ui/overlays/useAppUpdate", () => ({
   useAppUpdate: () => ({
-    appVersion: "1.17.1",
+    appVersion: "2.0.0",
     updateStatus: "current",
     updateVersion: "",
     updateProgress: null,
