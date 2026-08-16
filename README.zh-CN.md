@@ -268,7 +268,7 @@ src-tauri/src/          # Rust 后端
 | P3 Agent 状态条 | done | 上下文条 + 改动计数 |
 | Session Recovery | done (1.2) | xterm buffer 快照 + 滚动恢复 |
 | SSH Client | done (1.7+) | russh 长连接、SFTP、传输、主机 profile、转发、诊断 |
-| 文件 / Preview | done (1.15–1.17) | 工作区文件标签、Markdown 安全编辑、notebook 预览、Preview 窗口 |
+| 文件 / Preview | done (1.15–2.0) | 工作区文件标签、Markdown 安全编辑、notebook 预览、Preview 窗口 |
 
 详见 [CHANGELOG](CHANGELOG.md) 与 [docs/FEATURES.md](docs/FEATURES.md)。
 

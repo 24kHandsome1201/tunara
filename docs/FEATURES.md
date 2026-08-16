@@ -6,7 +6,7 @@
 - IPC、传输与托管 state：[ARCHITECTURE.md](./ARCHITECTURE.md)
 - 已落地能力叙事：[ROADMAP.md](./ROADMAP.md)
 
-当前发布版本见根目录 `package.json`（撰写时为 1.17.1；其后已合入、尚未发版的能力标为 **未发布**）。
+当前发布版本见根目录 `package.json`（撰写时为 2.0.0）。
 
 ## 产品是什么
 
@@ -138,8 +138,8 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 文本预览/编辑 | UTF-8、≤256 KiB、fingerprint 原子写 | [M2_MARKDOWN_SAFE_EDITING.md](./M2_MARKDOWN_SAFE_EDITING.md) |
 | Markdown / MDX | 惰性阅读；MDX 当静态源码，不执行 | [`FilePreview.tsx`](../src/ui/FilePreview.tsx) |
 | Notebook | 只读 `.ipynb`：Markdown/代码/原始单元格与纯文本输出；不执行、不渲染 HTML/脚本/富输出 | [`notebook.ts`](../src/modules/editor/notebook.ts) |
-| 图片预览 **未发布** | 安全解码常见图片；超大像素拒绝 | `ReadResult.kind = "image"` · [`fs/file.rs`](../src-tauri/src/modules/fs/file.rs) |
-| 大文本开头 **未发布** | 显式 “View beginning”，最多 2000 行 / 256 KiB | [LIMITED_LARGE_FILE_VIEWING.md](./LIMITED_LARGE_FILE_VIEWING.md) |
+| 图片预览 | 安全解码常见图片；超大像素拒绝 | `ReadResult.kind = "image"` · [`fs/file.rs`](../src-tauri/src/modules/fs/file.rs) |
+| 大文本开头 | 显式 “View beginning”，最多 2000 行 / 256 KiB | [LIMITED_LARGE_FILE_VIEWING.md](./LIMITED_LARGE_FILE_VIEWING.md) |
 | 外部编辑器 | 本地路径跳 VS Code / Cursor / Zed / Sublime | [`open.ts`](../src/modules/editor/open.ts) |
 | 资源引用 | 远程路径不得落到本地编辑器 IPC | [`resource-ref.ts`](../src/modules/resources/resource-ref.ts) |
 
