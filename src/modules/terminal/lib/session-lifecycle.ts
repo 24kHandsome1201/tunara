@@ -1,6 +1,6 @@
 import type { AgentCode, Session, TerminalProgress } from "../../../ui/types.ts";
 import { AGENT_NAMES, isPromptLikeShellTitle } from "../../../ui/types.ts";
-import { initialAgentActivity, isAgentShellTitle } from "./agent-lifecycle.ts";
+import { initialAgentActivity, isAgentShellTitle, tracksAgentActivity } from "./agent-lifecycle.ts";
 import { t } from "../../i18n/core.ts";
 import { formatElapsed } from "../../../ui/lib/elapsed.ts";
 
@@ -37,7 +37,7 @@ export function agentReadyUpdate(
   isActive: boolean,
   now = Date.now(),
 ): SessionLifecycleUpdate | null {
-  if (!session?.agent || session.agentActivity === "idle") return null;
+  if (!session?.agent || !tracksAgentActivity(session.agent) || session.agentActivity === "idle") return null;
   const completedTurn = session.agentActivity === "running"
     || session.agentActivity === "waiting_confirmation";
   return {
@@ -55,7 +55,7 @@ export function agentWaitingConfirmationUpdate(
   session: Session | undefined,
   isActive: boolean,
 ): SessionLifecycleUpdate | null {
-  if (!session?.agent || session.agentActivity !== "running") return null;
+  if (!session?.agent || !tracksAgentActivity(session.agent) || session.agentActivity !== "running") return null;
   return {
     patch: {
       agentActivity: "waiting_confirmation",
@@ -71,7 +71,7 @@ export function agentBusyUpdate(
   session: Session | undefined,
   now = Date.now(),
 ): SessionLifecycleUpdate | null {
-  if (!session?.agent || session.agentActivity === "running") return null;
+  if (!session?.agent || !tracksAgentActivity(session.agent) || session.agentActivity === "running") return null;
   return {
     patch: {
       agentActivity: "running",

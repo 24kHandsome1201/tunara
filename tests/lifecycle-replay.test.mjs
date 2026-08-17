@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  detectAmpScreenState,
   detectAgentCommand,
   detectCodexScreenState,
   detectPiScreenState,
@@ -2022,95 +2021,64 @@ test("prompt agent screen tracker marks Codex busy from one semantic output upda
   tracker.dispose();
 });
 
-test("Pi screen replay gives the running indicator precedence over its ready footer", () => {
+test("Pi screen replay gives bash and LLM busy chrome precedence over its ready footer", () => {
   const ready = [
     "pi v0.79.4",
     "~",
     "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
   ].join("\n");
-  const busy = [
+  const bashBusy = [
     "$ sleep 2",
     "Running... (escape/ctrl+c to cancel)",
     "~",
     "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
   ].join("\n");
+  const llmBusy = [
+    "fix the detector",
+    "Working... (escape to interrupt)",
+    "~",
+    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+  ].join("\n");
+  const remappedBusy = [
+    "Working... (q to interrupt)",
+    "~",
+    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+  ].join("\n");
+  const truncatedBusy = [
+    "Working... (escape to interr",
+    "~",
+    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+  ].join("\n");
 
   assert.equal(detectPiScreenState(ready), "ready");
-  assert.equal(detectPiScreenState(busy), "busy");
+  assert.equal(detectPiScreenState(bashBusy), "busy");
+  assert.equal(detectPiScreenState(llmBusy), "busy");
+  assert.equal(detectPiScreenState(remappedBusy), "busy");
+  assert.equal(detectPiScreenState(truncatedBusy), "busy");
   assert.equal(detectPromptAgentScreenState("PI", ready), "ready");
-  assert.equal(detectPromptAgentScreenState("PI", busy), "busy");
+  assert.equal(detectPromptAgentScreenState("PI", llmBusy), "busy");
 });
 
-test("Amp screen replay returns to idle only when the composer is restored", () => {
-  const ready = [
+test("untracked agents keep identity without activity status", () => {
+  const amp = createHarness();
+  assert.equal(amp.apply(agentDetectedUpdate(amp.session, "AM", 10)), true);
+  assert.equal(amp.session.agent, "AM");
+  assert.equal(amp.session.agentActivity, undefined);
+  assert.equal(isSessionBusy(amp.session), false);
+  assert.equal(deriveTitle(amp.session).primary, "Amp");
+  assert.equal(detectPromptAgentScreenState("AM", [
     "OK",
     "╭──────────────────────────────────────────────────────── medium ─╮",
     "│                                                                │",
-    "│                                                                │",
     "╰──────────────────────────────────────── ~/code/pi5x/rail (main) ─╯",
-  ].join("\n");
-  const busy = [
-    "┃ Reply exactly OK",
-    "",
-    "∼ Connecting",
-  ].join("\n");
+  ].join("\n")), null);
 
-  assert.equal(detectAmpScreenState(ready), "ready");
-  assert.equal(detectPromptAgentScreenState("AM", ready), "ready");
-  assert.equal(detectAmpScreenState(busy), null);
-  assert.equal(detectPromptAgentScreenState("AM", busy), null);
-  assert.equal(detectAmpScreenState("╭──── a divider without a closing composer"), null);
-});
-
-test("prompt agent screen tracker moves Amp from startup and running back to ready", async () => {
-  let session = makeSession({ agent: "AM", agentActivity: "starting" });
-  const lines = [
-    "Welcome to Amp",
-    "╭──────────────────────── medium ─╮",
-    "│                                │",
-    "╰──────────── ~/code/pi5x/rail ─╯",
-  ];
-  let readyCount = 0;
-  const tracker = createPromptAgentScreenStateTracker({
-    terminal: makeTailTerminal(lines),
-    getSessionId: () => "s-amp",
-    getCurrentSession: () => session,
-    onBusy: () => {
-      session = { ...session, agentActivity: "running" };
-    },
-    onReady: () => {
-      readyCount += 1;
-      session = { ...session, agentActivity: "idle" };
-    },
-  });
-
-  // Amp's idle mascot repaints continuously. Repeated output notifications
-  // must not postpone the screen check forever.
-  const animation = setInterval(() => tracker.schedule(), 50);
-  tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 80));
-  clearInterval(animation);
-  assert.equal(readyCount, 1);
-  assert.equal(session.agentActivity, "idle");
-
-  session = { ...session, agentActivity: "running" };
-  lines.splice(0, lines.length, "┃ Reply exactly OK", "", "≈ Streaming");
-  tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
-  assert.equal(session.agentActivity, "running");
-
-  lines.splice(0, lines.length,
-    "OK",
-    "╭──────────────────────── medium ─╮",
-    "│                                │",
-    "╰──────────── ~/code/pi5x/rail ─╯",
-  );
-  tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
-  assert.equal(readyCount, 2);
-  assert.equal(session.agentActivity, "idle");
-
-  tracker.dispose();
+  const gemini = createHarness();
+  assert.equal(gemini.apply(agentDetectedUpdate(gemini.session, "GM", 10)), true);
+  assert.equal(gemini.session.agent, "GM");
+  assert.equal(gemini.session.agentActivity, undefined);
+  assert.equal(isSessionBusy(gemini.session), false);
+  assert.equal(deriveTitle(gemini.session).primary, "Gemini");
 });
 
 test("Pi screen replay recognizes a ready footer clipped by a narrow split", () => {
@@ -2193,6 +2161,17 @@ test("prompt agent screen tracker moves Pi from startup and running back to read
   await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
   assert.equal(readyCount, 2);
   assert.equal(session.agentActivity, "idle");
+
+  lines.splice(0, lines.length,
+    "fix the detector",
+    "Working... (escape to interrupt)",
+    "~",
+    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
+  );
+  tracker.schedule();
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(busyCount, 1);
+  assert.equal(session.agentActivity, "running");
 
   tracker.dispose();
 });

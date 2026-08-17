@@ -4,7 +4,7 @@ import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 import { shellCommandName, splitShellCommandSegments, tokenizeShellWords } from "./shell-command.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
-export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI", "AM"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
 
 export type AgentLifecycleEventName = "start" | "busy" | "wait" | "idle" | "stop" | "exit";
 
@@ -107,9 +107,15 @@ export function isAgentShellTitle(title: string): boolean {
     || AGENT_SHELL_TITLE_FRAGMENTS.some((fragment) => normalized.includes(fragment));
 }
 
-export function initialAgentActivity(agent: AgentCode): AgentActivity {
-  if (HOOK_READY_AGENTS.has(agent) || PROMPT_READY_AGENTS.has(agent)) return "starting";
-  return "running";
+export function tracksAgentActivity(agent: AgentCode): boolean {
+  return HOOK_READY_AGENTS.has(agent) || PROMPT_READY_AGENTS.has(agent);
+}
+
+export function initialAgentActivity(agent: AgentCode): AgentActivity | undefined {
+  if (tracksAgentActivity(agent)) return "starting";
+  // Identified only. Amp, Gemini, OpenCode, and the rest have no reliable
+  // turn signal, so the sidebar keeps the name without 启动中/工作中.
+  return undefined;
 }
 
 export function shouldUseStartupQuietReadyFallback(
@@ -214,7 +220,11 @@ export function detectCodexScreenState(text: string): AgentScreenState {
   return null;
 }
 
-const PI_BUSY_PATTERN = /Running\.\.\. \(escape\/ctrl\+c to cancel\)/i;
+// LLM turns paint `Working... (escape to interrupt)`; `!!` bash still paints
+// `Running... (escape/ctrl+c to cancel)`. The ready footer stays on screen in
+// both cases, so this chrome must win. Remapped cancel keys still include
+// interrupt/cancel; narrow panes may clip to `interr…`.
+const PI_BUSY_PATTERN = /(?:Working|Running)\.\.\.\s+\([^)\n]*(?:interr|cancel)/i;
 // Pi's status bar is clipped at the viewport edge instead of being preserved as
 // one logical line. In a narrow split the model name and trailing bullet may be
 // absent from xterm's readable tail, while the context/mode segment remains.
@@ -235,27 +245,9 @@ export function detectPiScreenState(text: string): AgentScreenState {
   return null;
 }
 
-// Amp removes its bordered composer while a turn is running and restores it
-// when input is available again. Match both borders so conversation dividers
-// or ordinary box-drawing output cannot complete a turn on their own.
-const AMP_COMPOSER_TOP_PATTERN = /^\s*╭─+/m;
-const AMP_COMPOSER_BOTTOM_PATTERN = /^\s*╰─+/m;
-
-export function detectAmpScreenState(text: string): AgentScreenState {
-  const recent = cleanTerminalLines(text)
-    .split("\n")
-    .slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT)
-    .join("\n");
-  if (AMP_COMPOSER_TOP_PATTERN.test(recent) && AMP_COMPOSER_BOTTOM_PATTERN.test(recent)) {
-    return "ready";
-  }
-  return null;
-}
-
 export function detectPromptAgentScreenState(agent: AgentCode, text: string): AgentScreenState {
   if (agent === "CX") return detectCodexScreenState(text);
   if (agent === "PI") return detectPiScreenState(text);
-  if (agent === "AM") return detectAmpScreenState(text);
   return null;
 }
 
