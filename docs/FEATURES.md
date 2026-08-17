@@ -134,7 +134,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 | 能力 | 边界 | 代码 |
 |------|------|------|
-| 目录浏览 | 虚拟滚动大目录 | [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx) |
+| 目录浏览 | 本地锁在工作区；SSH 从远端 `/` 浏览，主目录/cwd 是快捷位置 | [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx) |
 | 文本预览/编辑 | UTF-8、≤256 KiB、fingerprint 原子写 | [M2_MARKDOWN_SAFE_EDITING.md](./M2_MARKDOWN_SAFE_EDITING.md) |
 | Markdown / MDX | 惰性阅读；MDX 当静态源码，不执行 | [`FilePreview.tsx`](../src/ui/FilePreview.tsx) |
 | Notebook | 只读 `.ipynb`：Markdown/代码/原始单元格与纯文本输出；不执行、不渲染 HTML/脚本/富输出 | [`notebook.ts`](../src/modules/editor/notebook.ts) |

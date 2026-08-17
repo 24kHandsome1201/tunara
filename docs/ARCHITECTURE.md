@@ -133,7 +133,7 @@ their own commands.
 | `ssh_transfer_journal_*` / `ssh_transfer_recovery_*` | Persist, list, clean, and reconcile interrupted transfers | [`transfer_journal.rs`](../src-tauri/src/modules/ssh/transfer_journal.rs) |
 | `ssh_fs_mutate_v1` / `ssh_fs_reconcile_mutation_v1` | Precondition-checked mkdir / rename / delete | [`remote-fs/bridge.ts`](../src/modules/ssh/remote-fs/bridge.ts) |
 | `ssh_fs_stat_v1` / `ssh_fs_chmod_v1` | Remote metadata and chmod when the server supports it | [`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx) |
-| `ssh_fs_home` | Resolve the remote home dir when no OSC 7 absolute cwd is known | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
+| `ssh_fs_home` | Resolve the remote home location (not the listing root) when no OSC 7 cwd is known | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_search` / `ssh_fs_grep` | Cancellable remote filename/content search over exec channels | `sshSearch` / `sshGrep`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_git_status` / `ssh_git_diff` / `ssh_git_ahead_behind` | Read-only remote Git inspection over exec channels | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 | `ssh_git_workspace_context` | Read-only remote repository/common-dir/worktree discovery with the same shape as local discovery | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |

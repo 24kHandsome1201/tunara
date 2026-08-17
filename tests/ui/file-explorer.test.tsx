@@ -32,7 +32,55 @@ describe("FileExplorer directory navigation", () => {
     }
 
     expect((screen.getByRole("button", { name: "Go to parent" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole("button", { name: "/" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getAllByRole("button", { name: "/" })[0].getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("treeitem", { name: "/" })).toBeNull();
+  });
+
+  test("SSH breadcrumbs stay rooted at / and never list / as a child of /", async () => {
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home") return "/root";
+      if (command === "ssh_fs_read_dir") {
+        const path = (payload as { path: string }).path;
+        if (path === "/") return [
+          { name: "", kind: "dir", size: 0, mtime: 0 },
+          { name: "/", kind: "dir", size: 0, mtime: 0 },
+          { name: "bin", kind: "dir", size: 0, mtime: 1 },
+          { name: "tmp", kind: "dir", size: 0, mtime: 2 },
+        ];
+        return [];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/" remotePtyId={40} />);
+    const bin = await screen.findByRole("treeitem", { name: /^bin/ });
+    expect(bin).toBeTruthy();
+    expect(screen.getByRole("treeitem", { name: /^tmp/ })).toBeTruthy();
+    expect(screen.queryByRole("treeitem", { name: "/" })).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Directory" }).textContent).toContain("/");
+    expect(screen.getByRole("button", { name: "Go to filesystem root" })).toBeTruthy();
+  });
+
+  test("SSH home and root chips jump without changing the listing root", async () => {
+    const readPaths: string[] = [];
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home") return "/root";
+      if (command === "ssh_fs_read_dir") {
+        readPaths.push((payload as { path: string }).path);
+        return [];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/tmp" remotePtyId={40} />);
+    await waitFor(() => expect(readPaths).toContain("/tmp"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Go to filesystem root" }));
+    await waitFor(() => expect(readPaths).toContain("/"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Go to home directory" }));
+    await waitFor(() => expect(readPaths).toContain("/root"));
+    expect(screen.getByRole("button", { name: "Go to parent" })).toBeTruthy();
   });
 
   test("keeps a local explorer scoped to its starting directory", async () => {

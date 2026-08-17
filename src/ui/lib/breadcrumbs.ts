@@ -5,20 +5,21 @@ export interface BreadcrumbSegment {
 }
 
 export function breadcrumbSegments(currentPath: string, rootDir: string): BreadcrumbSegment[] {
-  const rootLabel = rootDir === "/" ? "/" : rootDir.split("/").filter(Boolean).pop() || rootDir;
+  const rootedAtFilesystem = rootDir === "/";
+  const rootLabel = rootedAtFilesystem ? "/" : rootDir.split("/").filter(Boolean).pop() || rootDir;
   const rootSeg: BreadcrumbSegment = { label: rootLabel, targetPath: rootDir };
 
   if (currentPath === rootDir) return [rootSeg];
 
   let relativeParts: string[] = [];
-  if (rootDir !== "/" && currentPath.startsWith(rootDir + "/")) {
+  if (!rootedAtFilesystem && currentPath.startsWith(rootDir + "/")) {
     relativeParts = currentPath.slice(rootDir.length + 1).split("/").filter(Boolean);
   } else {
     relativeParts = currentPath.split("/").filter(Boolean);
   }
 
   const tailSegs: BreadcrumbSegment[] = relativeParts.map((label, idx) => {
-    const prefix = rootDir === "/" ? "" : rootDir;
+    const prefix = rootedAtFilesystem ? "" : rootDir;
     const targetPath = prefix + "/" + relativeParts.slice(0, idx + 1).join("/");
     return { label, targetPath };
   });
