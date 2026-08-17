@@ -216,7 +216,9 @@ because Codex doesn't emit hook events, Tunara scrapes the last few rendered
 lines to decide `ready` vs `busy`. Current Codex keeps the `›` composer visible
 while a turn runs and paints `Working (… • esc to interrupt)` *above* it, so a
 live interrupt/elapsed status row wins over the composer; a bare "Working" in
-transcript or an idle goal/background footer does not.
+transcript or an idle goal/background footer does not. Approval overlays reuse
+`› 1.` as a list cursor, which is not treated as an idle prompt. Narrow panes
+may clip the hint to `esc to interr…`.
 
 ### Resume
 

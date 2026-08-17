@@ -1787,7 +1787,13 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
     "busy",
     "current Codex keeps the composer visible under the live status row",
   );
+  assert.equal(detectCodexScreenState("Codex\n◦ Working (1m 16s • esc to interrupt)\n› Use /skills"), "busy");
   assert.equal(detectCodexScreenState("Codex\nThinking (5s • esc to interrupt)\n› follow-up"), "busy");
+  assert.equal(
+    detectCodexScreenState("Codex\n• Working (0s • esc to interr…)\n› Ask Codex to do anything"),
+    "busy",
+    "narrow panes truncate the interrupt hint",
+  );
   assert.equal(
     detectCodexScreenState("Codex\nI'll start Working on the tests\n› "),
     "ready",
@@ -1799,6 +1805,11 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
     "goal footer is not a live turn",
   );
   assert.equal(detectCodexScreenState("Codex\n› \n2 background terminals running"), "ready");
+  assert.equal(
+    detectCodexScreenState("Codex\n◦ Working (4s • esc to interrupt)\n■ Conversation interrupted\n› "),
+    "ready",
+    "an interrupt footer clears leftover Working chrome",
+  );
   assert.equal(h.apply(agentBusyUpdate(h.session, 20)), true);
   assert.equal(h.session.agentActivity, "running");
   assert.equal(isSessionBusy(h.session), true);
@@ -1816,11 +1827,42 @@ test("Codex confirmation screen requires paired approval evidence and supports w
     "2. No, reject",
     "Esc to cancel",
   ].join("\n");
+  const liveOverlay = [
+    "Would you like to run the following command?",
+    "$ ls",
+    "› 1. Yes, proceed",
+    "2. Yes, and don't ask again for commands that start with `ls`",
+    "3. No, and tell Codex what to do differently",
+    "Press enter to confirm or esc to cancel",
+  ].join("\n");
   assert.equal(detectCodexScreenState(confirmation), "waiting_confirmation");
+  assert.equal(
+    detectCodexScreenState(liveOverlay),
+    "waiting_confirmation",
+    "list-selection › 1. is not an idle composer",
+  );
+  assert.equal(
+    detectCodexScreenState("Would you like to grant these permissions?\n› 1. Yes, proceed\n2. No, continue without running it\nEsc to cancel"),
+    "waiting_confirmation",
+  );
+  assert.equal(
+    detectCodexScreenState("Would you like to make the following edits?\n› 1. Yes, proceed\n2. No, and tell Codex what to do differently"),
+    "waiting_confirmation",
+  );
+  assert.equal(
+    detectCodexScreenState("Do you want to approve network access to \"api.github.com\"?\n› 1. Yes, just this once\n2. No, continue without running it\nEsc to cancel"),
+    "waiting_confirmation",
+  );
+  assert.equal(
+    detectCodexScreenState("Would you like to run the following command?\n• Working (4s • esc to interrupt)\n› 1. Yes, proceed\nPress enter to confirm or esc to cancel"),
+    "waiting_confirmation",
+    "approval overlay wins over leftover Working chrome",
+  );
   assert.equal(detectCodexScreenState("Would you like to run the following command?\nYes\nNo"), null);
   assert.equal(detectCodexScreenState("Trust this folder?\n1. Yes, proceed\n2. No, reject\nEsc to cancel"), null);
   assert.equal(detectCodexScreenState("Documentation: command requires approval"), null);
   assert.equal(detectCodexScreenState(`${confirmation}\n› `), "ready", "a newer composer clears stale approval scrollback");
+  assert.equal(detectCodexScreenState("› 1. Yes, proceed"), null, "a list cursor alone is not a composer");
 
   let s = makeSession({ agent: "CX", agentActivity: "running", unread: true });
   s = { ...s, ...agentWaitingConfirmationUpdate(s, true).patch };

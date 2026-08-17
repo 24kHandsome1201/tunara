@@ -145,14 +145,16 @@ export function sessionDisplayRunState(session: Session): RunState {
 
 export type AgentScreenState = "ready" | "busy" | "waiting_confirmation" | null;
 
-export const CODEX_PROMPT_PATTERN = /^\s*›(?:\s|$)/;
+// Composer is `›` / `› text`. Approval lists reuse the same glyph as
+// `› 1. Yes, proceed`, which is a selection cursor, not an idle prompt.
+export const CODEX_PROMPT_PATTERN = /^\s*›(?:\s*$|\s+(?!\d+\.\s))/;
 // Live turn chrome only. Codex keeps the composer visible while a turn runs and
-// paints the status row *above* `›`, so a bare "Working" in transcript or an
-// idle goal/background footer must not decide the session.
+// paints the status row *above* `›`. Match the live row (`•`/`◦` + elapsed, or
+// a possibly truncated `esc to interrupt`), not transcript "Working" or an idle
+// goal/background footer. Narrow panes clip the hint to `esc to interr…`.
 export const CODEX_BUSY_INDICATORS = [
-  /to interrupt/i,
-  /\bWorking\b[^\n]*\(\s*\d/i,
-  /\bThinking\b[^\n]*\(\s*\d/i,
+  /^\s*[•◦]?\s*(?:Working|Thinking)\b[^\n]*\(\s*\d/i,
+  /esc to interr/i,
 ] as const;
 export const PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT = 12;
 
@@ -164,13 +166,22 @@ function hasCodexBusyIndicator(text: string): boolean {
   return CODEX_BUSY_INDICATORS.some((pattern) => pattern.test(text));
 }
 
+function hasCodexBusyChrome(lines: readonly string[]): boolean {
+  return lines.some((line) => hasCodexBusyIndicator(line));
+}
+
+function hasCodexInterruptedFooter(lines: readonly string[]): boolean {
+  return lines.some((line) => /Conversation interrupted/i.test(line));
+}
+
 const CODEX_CONFIRMATION_QUESTION_PATTERNS = [
   /would you like to run(?: the following command)?/i,
-  /do you want to run(?: the following command)?/i,
+  /would you like to (?:grant these permissions|make the following edits)/i,
+  /do you want to (?:run(?: the following command)?|approve network access)/i,
   /command requires approval/i,
 ] as const;
-const CODEX_CONFIRMATION_ACCEPT_PATTERN = /(?:yes,?\s*proceed|allow once|press enter to confirm)/i;
-const CODEX_CONFIRMATION_REJECT_PATTERN = /(?:no,?\s*reject|tell codex .+ instead|esc to cancel)/i;
+const CODEX_CONFIRMATION_ACCEPT_PATTERN = /(?:yes,?\s*(?:proceed|just this once)|yes,?\s*and don't ask again|allow once|press enter to confirm|enter to confirm)/i;
+const CODEX_CONFIRMATION_REJECT_PATTERN = /(?:no,?\s*reject|no,?\s*continue without running|tell codex what to do differently|tell codex .+ instead|esc to cancel)/i;
 
 function hasCodexConfirmationPrompt(lines: readonly string[]): boolean {
   let questionIndex = -1;
@@ -194,12 +205,11 @@ export function detectCodexScreenState(text: string): AgentScreenState {
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
   const recent = lines.slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT);
-  const recentText = recent.join("\n");
   if (hasCodexConfirmationPrompt(recent)) return "waiting_confirmation";
-  // The live status row sits above the still-visible composer. Busy chrome in
-  // the recent window therefore wins over `›`; only an interrupt/elapsed status
-  // line counts, so a newer idle composer is not stuck on leftover transcript.
-  if (hasCodexBusyIndicator(recentText)) return "busy";
+  // Status sits above the still-visible composer. Live busy chrome in the
+  // recent window therefore wins over `›`, unless the turn already painted an
+  // interrupt footer. List-selection `› 1.` is not a composer.
+  if (hasCodexBusyChrome(recent) && !hasCodexInterruptedFooter(recent)) return "busy";
   if (recent.some(isCodexPromptLine)) return "ready";
   return null;
 }
