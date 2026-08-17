@@ -328,7 +328,7 @@ D. 看前端效果
 
 - 明确规则并写在 UI 上：检查器 = 浏览/搜索；主区标签 = 阅读/轻编辑。
 - Changes 文件行增加「在工作区打开」（受 256 KiB 边界限制）。
-- 标题栏收成当前设备工作面，而不是给混合条加颜色：见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)。
+- 标题栏收成当前设备工作面：侧栏打开时只显示该设备文件；SSH 标签用来源与 ARIA 区分传输。见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)。
 
 ### 4.6 检查器信息架构（与已落地盘点对齐）
 

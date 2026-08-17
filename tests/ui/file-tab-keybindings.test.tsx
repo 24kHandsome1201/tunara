@@ -202,4 +202,27 @@ describe("file surface keybindings", () => {
     dispatch(listener, ctrlEvent("w"));
     expect(useSessionsStore.getState().sessions.map((session) => session.id)).toEqual([second.id]);
   });
+
+  test("number keys stay inside the current device working set", () => {
+    const remote: Session = {
+      ...first,
+      id: "ssh-1",
+      title: "Pi",
+      dir: "/srv",
+      remote: { host: "pi", port: 22, user: "tuna" },
+    };
+    seedSessions([first, remote], remote.id);
+    openFile(first.id, "a.txt");
+    useUIStore.getState().openFileTab({
+      sessionId: remote.id,
+      filePath: "/srv/b.txt",
+      fileName: "b.txt",
+    });
+
+    expect(handleFileSurfaceSelectIndex(0)).toBe(true);
+    expect(useUIStore.getState().activeFileTabId).toBe(`${remote.id}\0/srv/b.txt`);
+    expect(handleFileSurfaceSelectIndex(1)).toBe(true);
+    expect(useUIStore.getState().activeFileTabId).toBe(`${remote.id}\0/srv/b.txt`);
+    expect(useSessionsStore.getState().activeSessionId).toBe(remote.id);
+  });
 });

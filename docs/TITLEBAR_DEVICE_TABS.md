@@ -1,6 +1,6 @@
 # 标题栏标签：按设备收口
 
-本文是标题栏工作面的设计提案，**尚未落地**。用户可见合同仍以 [FEATURES.md](./FEATURES.md) 为准。产品原则以 [GOAL.md](./GOAL.md) 为准。侧栏已经按设备分组，见 [SIDEBAR_SSH.md](./SIDEBAR_SSH.md)；本文回答侧栏收口之后，**顶部那条 36px 标签栏该怎么对待本地目录和 SSH 主机**。
+本文是标题栏工作面的设计与落地说明。**阶段 A–D 已落地**；用户可见合同以 [FEATURES.md](./FEATURES.md) 为准。产品原则以 [GOAL.md](./GOAL.md) 为准。侧栏已经按设备分组，见 [SIDEBAR_SSH.md](./SIDEBAR_SSH.md)。下文保留设计动机与示意图，方便对照实现。
 
 ---
 
@@ -536,6 +536,6 @@ macOS overlay 下可用宽度极紧。只允许 **一条** 横排，高度不得
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | 不为次要信息加冗余工具条；设备按钮只在侧栏收起且多设备时出现 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 不增加 titlebar 高度，不破坏 overlay traffic lights |
 | [STATE_AND_PERSISTENCE.md](./STATE_AND_PERSISTENCE.md) | 不把工作面或设备过滤写入快照 |
-| [FEATURES.md](./FEATURES.md) | 落地后改成「标题栏展示当前设备的终端/文件标签」；落地前不要改用户合同 |
+| [FEATURES.md](./FEATURES.md) | 标题栏展示当前设备的终端/文件标签；侧栏打开时只显示该设备的文件标签；侧栏收起且多设备时用压缩菜单切换 |
 
-落地完成后，FEATURES 标题栏那一行应写成：侧栏打开时只显示当前设备的文件标签；侧栏收起时显示当前设备的终端与文件，多设备时用压缩菜单切换。不要再写「会话/文件标签」这种未限定范围的句子。
+阶段 A–D 已落地：工作面过滤、SSH 来源标记、侧栏收起时的设备菜单、外设备脏文件跳转。实现入口是 [`titlebar-working-set.ts`](../src/modules/session/titlebar-working-set.ts) 与 [`Titlebar.tsx`](../src/ui/Titlebar.tsx)。

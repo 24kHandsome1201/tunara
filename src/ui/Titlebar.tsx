@@ -11,7 +11,17 @@ import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { SessionMascotIcon } from "./SessionMascotIcon";
 import type { WorkspaceFileTab } from "@/state/ui";
-import { activateWorkspaceFileTab, requestCloseWorkspaceFileTab } from "./lib/workspace-tab-actions";
+import { sshEndpointLabel } from "@/modules/session/sidebar-groups";
+import {
+  titlebarItemId,
+  titlebarWorkingSet,
+  visibleTitlebarItems,
+} from "@/modules/session/titlebar-working-set";
+import {
+  activateWorkspaceFileTab,
+  focusTitlebarDevice,
+  requestCloseWorkspaceFileTab,
+} from "./lib/workspace-tab-actions";
 import { splitToolbarOverflow } from "./lib/toolbar-overflow";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
 import { copyActiveTerminal, safePasteActiveTerminal, searchActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
@@ -512,6 +522,10 @@ interface TabButtonProps {
   isActive: boolean;
   label: string;
   kind: "terminal" | "file";
+  origin?: "local" | "ssh";
+  showOriginGlyph?: boolean;
+  accessibleName: string;
+  tooltip?: string;
   dirty?: boolean;
   mascot?: Session["mascot"];
   dirtyLabel: string;
@@ -541,11 +555,29 @@ function WorkspaceTabIcon({ kind }: { kind: "terminal" | "file" }) {
   );
 }
 
-function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabel, confirmCloseLabel, confirmClose, tabIndex, onSelect, onClose }: TabButtonProps) {
+function TabButton({
+  isActive,
+  label,
+  kind,
+  origin = "local",
+  showOriginGlyph = false,
+  accessibleName,
+  tooltip,
+  dirty,
+  mascot,
+  dirtyLabel,
+  closeLabel,
+  confirmCloseLabel,
+  confirmClose,
+  tabIndex,
+  onSelect,
+  onClose,
+}: TabButtonProps) {
   return (
     <div
       className="tab-btn"
       data-workspace-tab-kind={kind}
+      data-workspace-tab-origin={origin}
       data-active={isActive ? "true" : "false"}
       style={{
         height: 28,
@@ -561,6 +593,8 @@ function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabe
         type="button"
         role="tab"
         aria-selected={isActive}
+        aria-label={accessibleName}
+        title={tooltip ?? accessibleName}
         tabIndex={tabIndex ?? 0}
         onClick={onSelect}
         className="tab-select"
@@ -580,6 +614,15 @@ function TabButton({ isActive, label, kind, dirty, mascot, dirtyLabel, closeLabe
         {kind === "terminal" && mascot
           ? <SessionMascotIcon id={mascot} size={18} />
           : <WorkspaceTabIcon kind={kind} />}
+        {showOriginGlyph && (
+          <span
+            aria-hidden="true"
+            data-workspace-tab-origin-glyph=""
+            style={{ flexShrink: 0, color: "var(--c-accent)", fontSize: "var(--fs-meta)", lineHeight: 1 }}
+          >
+            ⇄
+          </span>
+        )}
         <span style={{
           fontSize: "var(--fs-secondary)",
           fontWeight: isActive ? 600 : 400,
@@ -684,7 +727,17 @@ function TitlebarImpl({
   const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
   const fileTabs = useUIStore((s) => s.fileTabs);
   const activeFileTabId = useUIStore((s) => s.activeFileTabId);
-  const showTabs = presentationMode === "workspace" && (!sidebarVisible || fileTabs.length > 0);
+  const workingSet = useMemo(
+    () => titlebarWorkingSet({
+      sessions,
+      fileTabs,
+      activeSessionId,
+      sidebarVisible,
+    }),
+    [sessions, fileTabs, activeSessionId, sidebarVisible],
+  );
+  const visibleTabs = useMemo(() => visibleTitlebarItems(workingSet), [workingSet]);
+  const showTabs = presentationMode === "workspace" && (workingSet.showTerminals || workingSet.files.length > 0);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
@@ -701,9 +754,17 @@ function TitlebarImpl({
     items: MenuEntry[];
     position: { x: number; y: number };
   } | null>(null);
+  const [deviceMenu, setDeviceMenu] = useState<{
+    items: MenuEntry[];
+    position: { x: number; y: number };
+  } | null>(null);
+  const deviceBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (presentationMode === "pure") setNewTerminalMenu(null);
+    if (presentationMode === "pure") {
+      setNewTerminalMenu(null);
+      setDeviceMenu(null);
+    }
   }, [presentationMode]);
 
   const clearFullscreenHintTimer = useCallback(() => {
@@ -761,6 +822,45 @@ function TitlebarImpl({
     });
   };
 
+  const openDeviceMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const items: MenuEntry[] = workingSet.devices.map((device) => ({
+      id: device.key,
+      label: device.key === workingSet.deviceKey
+        ? t("titlebar.device.current", { label: device.label })
+        : device.dirtyFiles.length > 0
+          ? `${device.label} · ${t("titlebar.device.unsaved_count", { count: device.dirtyFiles.length })}`
+          : device.label,
+      icon: device.kind === "ssh" ? "ssh" : "folder",
+      action: () => focusTitlebarDevice(device.key),
+    }));
+    if (workingSet.foreignDirtyFiles.length > 0) {
+      items.push(null);
+      items.push({ type: "heading", label: t("titlebar.device.unsaved_heading") });
+      for (const { device, tab } of workingSet.foreignDirtyFiles) {
+        items.push({
+          id: `dirty:${tab.id}`,
+          label: t("titlebar.device.unsaved_file", { file: tab.fileName, device: device.label }),
+          action: () => {
+            const storeTab = useUIStore.getState().fileTabs.find((candidate) => candidate.id === tab.id);
+            if (storeTab) activateWorkspaceFileTab(storeTab);
+          },
+        });
+      }
+    }
+    setDeviceMenu({
+      position: event.type === "contextmenu"
+        ? { x: event.clientX, y: event.clientY }
+        : { x: rect.left, y: rect.bottom },
+      items,
+    });
+  };
+
+  useEffect(() => {
+    if (!workingSet.showDeviceMenu) setDeviceMenu(null);
+  }, [workingSet.showDeviceMenu]);
+
   function tabLabel(s: Session): string {
     const { primary } = deriveTitle(s);
     return primary.length > 24 ? primary.slice(0, 24) + "…" : primary;
@@ -768,6 +868,28 @@ function TitlebarImpl({
 
   function fileTabLabel(tab: WorkspaceFileTab): string {
     return tab.fileName.length > 28 ? tab.fileName.slice(0, 28) + "…" : tab.fileName;
+  }
+
+  function terminalAccessibleName(s: Session): string {
+    const label = tabLabel(s);
+    if (!s.remote) return label;
+    return t("titlebar.tab.remote_terminal", { label, host: sshEndpointLabel(s.remote) });
+  }
+
+  function fileAccessibleName(tab: WorkspaceFileTab, owner: Session | undefined): string {
+    if (owner?.remote) {
+      return t("titlebar.tab.remote_file", {
+        file: tab.fileName,
+        host: sshEndpointLabel(owner.remote),
+        path: tab.filePath,
+      });
+    }
+    return t("titlebar.tab.local_file", { file: tab.fileName, path: tab.filePath });
+  }
+
+  function fileTooltip(tab: WorkspaceFileTab, owner: Session | undefined): string {
+    if (owner?.remote) return `${sshEndpointLabel(owner.remote)}  ${tab.filePath}`;
+    return tab.filePath;
   }
 
   // 监听 tabs 容器滚动，决定哪边显示渐隐提示
@@ -787,7 +909,7 @@ function TitlebarImpl({
       el.removeEventListener("scroll", update);
       ro.disconnect();
     };
-  }, [showTabs, sessions.length, fileTabs.length]);
+  }, [showTabs, workingSet.terminals.length, workingSet.files.length]);
 
   // 鼠标滚轮 → 横向滚动（trackpad 横滑天生工作，无需介入）
   useEffect(() => {
@@ -819,16 +941,16 @@ function TitlebarImpl({
     const right = left + activeRect.width;
     if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 16);
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 16;
-  }, [activeFileTabId, activeSessionId, showTabs, sessions.length, fileTabs.length]);
+  }, [activeFileTabId, activeSessionId, showTabs, workingSet.terminals.length, workingSet.files.length]);
 
   // APG tabs 键盘漫游：方向键/Home/End 在 terminal 与 file tab 间循环（自动激活）
   const orderedTabIds = useMemo(
-    () => [...sessions.map((s) => `terminal:${s.id}`), ...fileTabs.map((tab) => `file:${tab.id}`)],
-    [sessions, fileTabs],
+    () => visibleTabs.map((item) => titlebarItemId(item)),
+    [visibleTabs],
   );
-  const activeTabId = activeFileTabId !== null
+  const activeTabId = activeFileTabId !== null && workingSet.files.some((tab) => tab.id === activeFileTabId)
     ? `file:${activeFileTabId}`
-    : sessions.some((s) => s.id === activeSessionId)
+    : workingSet.terminals.some((s) => s.id === activeSessionId) && activeFileTabId === null
       ? `terminal:${activeSessionId}`
       : orderedTabIds[0];
   const selectTabById = useCallback((tabId: string) => {
@@ -950,6 +1072,64 @@ function TitlebarImpl({
         </button>
       </div>
 
+      {workingSet.showDeviceMenu && (
+        <button
+          ref={deviceBtnRef}
+          type="button"
+          data-titlebar-device={workingSet.deviceKey ?? ""}
+          data-titlebar-device-kind={workingSet.deviceKind ?? "local"}
+          title={workingSet.deviceDetail || workingSet.deviceLabel}
+          aria-label={[
+            workingSet.deviceKind === "ssh"
+              ? `${workingSet.deviceLabel}, ${t("workspace.ssh")}`
+              : workingSet.deviceLabel,
+            workingSet.foreignDirtyCount > 0
+              ? t("titlebar.device.unsaved_other", { count: workingSet.foreignDirtyCount })
+              : "",
+          ].filter(Boolean).join(", ")}
+          aria-haspopup="menu"
+          aria-expanded={deviceMenu !== null}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={openDeviceMenu}
+          onContextMenu={openDeviceMenu}
+          className="hover-bg"
+          style={{
+            height: "var(--h-titlebar-control)",
+            maxWidth: 160,
+            padding: "0 8px",
+            marginLeft: 2,
+            borderRadius: "var(--r-btn)",
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            flexShrink: 0,
+            transform: titlebarControlTransform,
+            WebkitAppRegion: "no-drag",
+          } as DragStyle}
+        >
+          {workingSet.deviceKind === "ssh" && (
+            <span aria-hidden="true" style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", lineHeight: 1 }}>⇄</span>
+          )}
+          <span style={{
+            fontSize: "var(--fs-secondary)",
+            fontWeight: 600,
+            color: "var(--c-text-primary)",
+            fontFamily: "var(--font-ui)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}>
+            {workingSet.deviceLabel}
+          </span>
+          {workingSet.foreignDirtyCount > 0 && (
+            <span className="workspace-tab-dirty" aria-hidden="true" />
+          )}
+        </button>
+      )}
+
       {showTabs ? (
         <div
           ref={tabsRef}
@@ -973,12 +1153,16 @@ function TitlebarImpl({
             WebkitMaskImage: tabsMask,
           } as DragStyle}
         >
-          {sessions.map((s) => (
+          {workingSet.showTerminals && workingSet.terminals.map((s) => (
             <div key={`terminal:${s.id}`} data-tab-id={`terminal:${s.id}`} data-active-tab={activeFileTabId === null && s.id === activeSessionId ? "true" : undefined} style={{ flexShrink: 0 }}>
               <TabButton
                 isActive={activeFileTabId === null && s.id === activeSessionId}
                 label={tabLabel(s)}
                 kind="terminal"
+                origin={s.remote ? "ssh" : "local"}
+                showOriginGlyph={Boolean(s.remote) && workingSet.showOriginGlyph}
+                accessibleName={terminalAccessibleName(s)}
+                tooltip={s.remote ? sshEndpointLabel(s.remote) : undefined}
                 mascot={s.mascot}
                 dirtyLabel={t("preview.editor.unsaved")}
                 closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
@@ -990,22 +1174,31 @@ function TitlebarImpl({
               />
             </div>
           ))}
-          {fileTabs.map((tab) => (
-            <div key={`file:${tab.id}`} data-tab-id={`file:${tab.id}`} data-active-tab={tab.id === activeFileTabId ? "true" : undefined} style={{ flexShrink: 0 }}>
-              <TabButton
-                isActive={tab.id === activeFileTabId}
-                label={fileTabLabel(tab)}
-                kind="file"
-                dirty={tab.dirty}
-                dirtyLabel={t("preview.editor.unsaved")}
-                closeLabel={t("titlebar.file_tab.close", { file: tab.fileName })}
-                confirmCloseLabel={t("preview.editor.close_warning")}
-                tabIndex={`file:${tab.id}` === activeTabId ? 0 : -1}
-                onSelect={() => activateWorkspaceFileTab(tab)}
-                onClose={() => requestCloseWorkspaceFileTab(tab)}
-              />
-            </div>
-          ))}
+          {workingSet.files.map((tab) => {
+            const owner = sessions.find((session) => session.id === tab.sessionId);
+            const storeTab = fileTabs.find((candidate) => candidate.id === tab.id);
+            if (!storeTab) return null;
+            return (
+              <div key={`file:${tab.id}`} data-tab-id={`file:${tab.id}`} data-active-tab={tab.id === activeFileTabId ? "true" : undefined} style={{ flexShrink: 0 }}>
+                <TabButton
+                  isActive={tab.id === activeFileTabId}
+                  label={fileTabLabel(storeTab)}
+                  kind="file"
+                  origin={owner?.remote ? "ssh" : "local"}
+                  showOriginGlyph={Boolean(owner?.remote) && workingSet.showOriginGlyph}
+                  accessibleName={fileAccessibleName(storeTab, owner)}
+                  tooltip={fileTooltip(storeTab, owner)}
+                  dirty={storeTab.dirty}
+                  dirtyLabel={t("preview.editor.unsaved")}
+                  closeLabel={t("titlebar.file_tab.close", { file: storeTab.fileName })}
+                  confirmCloseLabel={t("preview.editor.close_warning")}
+                  tabIndex={`file:${tab.id}` === activeTabId ? 0 : -1}
+                  onSelect={() => activateWorkspaceFileTab(storeTab)}
+                  onClose={() => requestCloseWorkspaceFileTab(storeTab)}
+                />
+              </div>
+            );
+          })}
           <button
             onClick={openNewTerminalMenu}
             onContextMenu={openNewTerminalMenu}
@@ -1130,6 +1323,14 @@ function TitlebarImpl({
           items={newTerminalMenu.items}
           position={newTerminalMenu.position}
           onClose={() => setNewTerminalMenu(null)}
+        />
+      )}
+      {deviceMenu && (
+        <ContextMenu
+          items={deviceMenu.items}
+          position={deviceMenu.position}
+          onClose={() => setDeviceMenu(null)}
+          returnFocusToken={deviceBtnRef}
         />
       )}
     </div>
