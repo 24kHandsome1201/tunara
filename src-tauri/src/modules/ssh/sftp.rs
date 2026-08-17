@@ -385,6 +385,15 @@ pub(crate) async fn sftp_for(
     super::sftp_common::session(state.inner(), id).await
 }
 
+fn usable_remote_dir_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains('\0')
+}
+
 /// List a remote directory. Mirrors fs_read_dir: dirs first, hidden filtered
 /// unless requested, sorted by name within kind.
 #[tauri::command]
@@ -413,7 +422,7 @@ pub async fn ssh_fs_read_dir(
         let mut out: Vec<RemoteDirEntry> = Vec::new();
         for entry in entries {
             let name = entry.filename;
-            if name == "." || name == ".." {
+            if !usable_remote_dir_name(&name) {
                 continue;
             }
             if !include_hidden && name.starts_with('.') {
@@ -2002,9 +2011,9 @@ mod tests {
         reconcile_text_write_with_sftp, remote_mtime_millis, remote_replace_lock_owner_path,
         remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock, shell_quote,
         stale_replace_lock_error, uncertain_upload_error, upload_residue_error,
-        validate_download_target, validate_fingerprint, validate_remote_edit_path,
-        write_text_transaction, RemoteWriteIo, SftpWriteAdapter, TransactionOutcome,
-        UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
+        usable_remote_dir_name, validate_download_target, validate_fingerprint,
+        validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
+        TransactionOutcome, UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
     };
     use crate::modules::pty::PtyEvent;
     use crate::modules::ssh::auth::AuthOptions;
@@ -2774,6 +2783,17 @@ mod tests {
     fn returns_none_when_nothing_usable() {
         assert_eq!(choose_remote_home(None, None), None);
         assert_eq!(choose_remote_home(Some(""), None), None);
+    }
+
+    #[test]
+    fn remote_dir_listings_drop_empty_and_path_like_names() {
+        assert!(!usable_remote_dir_name(""));
+        assert!(!usable_remote_dir_name("."));
+        assert!(!usable_remote_dir_name(".."));
+        assert!(!usable_remote_dir_name("/"));
+        assert!(!usable_remote_dir_name("bin/ls"));
+        assert!(usable_remote_dir_name("bin"));
+        assert!(usable_remote_dir_name("tmp"));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { fsReadDir, type DirEntry } from "@/modules/fs/fs-bridge";
 import { sshReadDir } from "@/modules/ssh/remote-fs-bridge";
-import { joinPath, sortExplorerEntries, type SortDirection, type SortKey } from "./helpers";
+import { joinPath, sortExplorerEntries, usableExplorerEntries, type SortDirection, type SortKey } from "./helpers";
 
 export interface ExplorerTreeNode {
   entry: DirEntry;
@@ -145,12 +145,14 @@ export function useTreeListing({
   const visibleTreeNodes = useMemo(() => {
     const result: ExplorerTreeNode[] = [];
     const append = (siblings: DirEntry[], parent: string, parentLevel: number, parentPath: string | null) => {
+      const usable = usableExplorerEntries(siblings);
       const sorted = [
-        ...sortExplorerEntries(siblings.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
-        ...sortExplorerEntries(siblings.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
+        ...sortExplorerEntries(usable.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
+        ...sortExplorerEntries(usable.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
       ];
       sorted.forEach((entry, index) => {
         const path = joinPath(parent, entry.name);
+        if (path === parent) return;
         result.push({ entry, path, parentPath, level: parentLevel, posInSet: index + 1, setSize: sorted.length });
         if (entry.kind === "dir" && expandedPaths.has(path) && treeChildren[path]) {
           append(treeChildren[path], path, parentLevel + 1, path);

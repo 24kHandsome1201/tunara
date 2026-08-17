@@ -64,3 +64,12 @@ test("breadcrumbSegments keeps exactly the trailing 3 segments after collapse re
   assert.equal(segs.length, 4);
   assert.deepEqual(segs.slice(1).map((s) => s.label), ["f", "g", "h"]);
 });
+
+test("breadcrumbSegments keeps a filesystem-root trail when SSH is browsing from /", () => {
+  const segs = breadcrumbSegments("/home/alice", "/");
+  assert.deepEqual(segs.map((s) => [s.label, s.targetPath]), [
+    ["/", "/"],
+    ["home", "/home"],
+    ["alice", "/home/alice"],
+  ]);
+});

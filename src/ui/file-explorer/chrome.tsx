@@ -182,6 +182,9 @@ export function ExplorerRemoteTools({
   onToggleFollowCwd,
   isFavorite,
   onToggleFavorite,
+  listingRoot,
+  homeDir,
+  currentPath,
   favoritePaths,
   recentPaths,
   onJumpToPath,
@@ -203,6 +206,9 @@ export function ExplorerRemoteTools({
   onToggleFollowCwd: () => void;
   isFavorite: boolean;
   onToggleFavorite: () => void;
+  listingRoot: string;
+  homeDir: string | null;
+  currentPath: string;
   favoritePaths: readonly string[];
   recentPaths: readonly string[];
   onJumpToPath: (path: string) => void;
@@ -218,11 +224,16 @@ export function ExplorerRemoteTools({
   onOpenTransfers: () => void;
 }) {
   const [placesMenu, setPlacesMenu] = useState<{ items: MenuEntry[]; position: { x: number; y: number } } | null>(null);
-  const hasPlaces = favoritePaths.length > 0 || recentPaths.length > 0;
+  const hasHome = Boolean(homeDir && homeDir !== listingRoot);
+  const hasSavedPlaces = favoritePaths.length > 0 || recentPaths.length > 0;
 
   const openPlaces = (event: { currentTarget: HTMLElement }) => {
-    if (!hasPlaces) return;
     const items: MenuEntry[] = [];
+    items.push({ type: "heading", label: t("explorer.paths_locations") });
+    items.push({ id: "loc:root", label: t("explorer.go_root"), icon: "folder", action: () => onJumpToPath(listingRoot) });
+    if (hasHome && homeDir) {
+      items.push({ id: "loc:home", label: t("explorer.go_home"), icon: "folder", action: () => onJumpToPath(homeDir) });
+    }
     if (favoritePaths.length > 0) {
       items.push({ type: "heading", label: t("explorer.paths_favorites") });
       for (const path of favoritePaths) {
@@ -241,37 +252,54 @@ export function ExplorerRemoteTools({
 
   return (
     <div className="explorer-tools" role="toolbar" aria-label={t("explorer.chrome.tools")}>
-      {showPlaces && (
-        <div className="explorer-places">
+      <div className="explorer-places">
+        <ExplorerChipButton
+          pressed={currentPath === listingRoot}
+          label={t("explorer.go_root")}
+          onClick={() => onJumpToPath(listingRoot)}
+        >
+          /
+        </ExplorerChipButton>
+        {hasHome && homeDir && (
           <ExplorerChipButton
-            pressed={followTerminalCwd}
-            label={t("explorer.follow_cwd")}
-            title={t(followTerminalCwd ? "explorer.follow_cwd_on" : "explorer.follow_cwd")}
-            onClick={onToggleFollowCwd}
+            pressed={currentPath === homeDir}
+            label={t("explorer.go_home")}
+            onClick={() => onJumpToPath(homeDir)}
           >
-            cwd
+            ~
           </ExplorerChipButton>
-          <PanelIconButton
-            title={isFavorite ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
-            aria-label={isFavorite ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
-            data-active={isFavorite ? "true" : "false"}
-            onClick={onToggleFavorite}
-            style={isFavorite ? { color: "var(--c-accent)" } : undefined}
-          >
-            ★
-          </PanelIconButton>
-          <PanelIconButton
-            title={hasPlaces ? t("explorer.paths") : t("explorer.paths_empty")}
-            aria-label={t("explorer.paths")}
-            aria-haspopup="menu"
-            aria-expanded={placesMenu !== null}
-            disabled={!hasPlaces}
-            onClick={(event) => openPlaces(event)}
-          >
-            <PlacesIcon />
-          </PanelIconButton>
-        </div>
-      )}
+        )}
+        {showPlaces && (
+          <>
+            <ExplorerChipButton
+              pressed={followTerminalCwd}
+              label={t("explorer.follow_cwd")}
+              title={t(followTerminalCwd ? "explorer.follow_cwd_on" : "explorer.follow_cwd")}
+              onClick={onToggleFollowCwd}
+            >
+              cwd
+            </ExplorerChipButton>
+            <PanelIconButton
+              title={isFavorite ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
+              aria-label={isFavorite ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
+              data-active={isFavorite ? "true" : "false"}
+              onClick={onToggleFavorite}
+              style={isFavorite ? { color: "var(--c-accent)" } : undefined}
+            >
+              ★
+            </PanelIconButton>
+            <PanelIconButton
+              title={hasSavedPlaces ? t("explorer.paths") : t("explorer.paths_empty")}
+              aria-label={t("explorer.paths")}
+              aria-haspopup="menu"
+              aria-expanded={placesMenu !== null}
+              onClick={(event) => openPlaces(event)}
+            >
+              <PlacesIcon />
+            </PanelIconButton>
+          </>
+        )}
+      </div>
       <div className="explorer-transfers">
         <PanelIconButton
           onClick={onUploadFile}

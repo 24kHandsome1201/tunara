@@ -25,7 +25,7 @@ import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useT, t as staticT } from "@/modules/i18n";
 import { ExplorerNav, ExplorerRemoteTools, ExplorerSearchRow } from "./file-explorer/chrome";
 import { copyText } from "./lib/clipboard";
-import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
+import { knownRemoteExplorerRoot, remoteExplorerListingRoot, remoteExplorerSearchRoot } from "./lib/file-explorer-root";
 import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
 import { dropDestinationFromListing } from "@/modules/ssh/drop-target";
 import {
@@ -74,7 +74,8 @@ interface FileExplorerProps {
   rootDir: string;
   /**
    * 远程 SSH 会话的 PTY id。存在则文件操作走 SFTP；否则走本地 fs。
-   * rootDir 有 OSC 7 识别出的绝对路径时从该 cwd 打开；旧会话标签才解析 home。
+   * SSH 浏览根始终是远端 `/`。rootDir 有 OSC 7 绝对路径时从该 cwd 打开；
+   * 旧会话标签才回退到 SFTP home。home / cwd 只是起点，不是树根。
    */
   remotePtyId?: number;
   /** Backend-authored generation required by transfer/mutation v1 contracts. */
@@ -193,9 +194,10 @@ export function FileExplorer({
       });
     }
   };
-  // For local sessions the base is rootDir directly. Remote sessions use an
-  // OSC 7 absolute cwd when available, otherwise resolve $HOME via SFTP.
+  // Local sessions stay scoped to the workspace directory. Remote sessions
+  // browse the whole host from `/`; home and OSC 7 cwd are starting locations.
   const [baseDir, setBaseDir] = useState<string | null>(isRemote ? null : rootDir);
+  const [homeDir, setHomeDir] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState(isRemote ? "" : rootDir);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,7 +206,8 @@ export function FileExplorer({
   const [includeHidden, setIncludeHidden] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
-  const search = useExplorerSearch({ baseDir, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected });
+  const searchRoot = isRemote ? remoteExplorerSearchRoot(currentPath, homeDir) : baseDir;
+  const search = useExplorerSearch({ baseDir: searchRoot, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected });
   const {
     searchQuery,
     searchMode,
@@ -454,43 +457,44 @@ export function FileExplorer({
     void openInEditorWithToast(externalEditor, path, { line });
   };
 
-  // Resolve the starting directory. Local: rootDir. Remote: SFTP home, or
-  // an OSC 7 path when follow-cwd is on.
+  // Resolve the starting directory. Local: workspace rootDir. Remote: `/`
+  // is the listing root; OSC 7 or SFTP home is only the first location.
   useEffect(() => {
     setNavDir(null);
     search.resetSearch();
     if (isRemote) {
       if (remotePtyId === undefined) return;
-      const knownRoot = knownRemoteExplorerRoot(rootDir);
-      if (knownRoot) {
-        setBaseDir((current) => current ?? knownRoot);
-        setCurrentPath((current) => current || knownRoot);
-        return;
-      }
+      const listingRoot = remoteExplorerListingRoot();
+      setHomeDir(null);
+      setBaseDir(listingRoot);
+      const knownStart = knownRemoteExplorerRoot(rootDir);
+      if (knownStart) setCurrentPath((current) => current || knownStart);
+      else setLoading(true);
       let cancelled = false;
-      setBaseDir(null);
-      setLoading(true);
       sshHome(remotePtyId)
         .then((home) => {
           if (!cancelled) {
-            setBaseDir(home);
+            setHomeDir(home);
             setCurrentPath((current) => current || home);
           }
         })
         .catch(() => {
           if (!cancelled) {
-            setBaseDir("/");
-            setCurrentPath((current) => current || "/");
-            useUIStore.getState().addToast({
-              sessionId,
-              title: staticT("explorer.remote_home_failed"),
-              subtitle: "",
-              variant: "warning",
-            });
+            setHomeDir(null);
+            setCurrentPath((current) => current || listingRoot);
+            if (!knownStart) {
+              useUIStore.getState().addToast({
+                sessionId,
+                title: staticT("explorer.remote_home_failed"),
+                subtitle: "",
+                variant: "warning",
+              });
+            }
           }
         });
       return () => { cancelled = true; };
     }
+    setHomeDir(null);
     setBaseDir(rootDir);
     setCurrentPath(rootDir);
     // Follow-cwd applies later OSC 7 updates. Including rootDir here would
@@ -500,10 +504,9 @@ export function FileExplorer({
 
   useEffect(() => {
     if (!isRemote || !followTerminalCwd) return;
-    const knownRoot = knownRemoteExplorerRoot(rootDir);
-    if (!knownRoot) return;
-    setBaseDir(knownRoot);
-    setCurrentPath(knownRoot);
+    const knownStart = knownRemoteExplorerRoot(rootDir);
+    if (!knownStart) return;
+    setCurrentPath(knownStart);
   }, [rootDir, isRemote, followTerminalCwd]);
 
   useEffect(() => {
@@ -513,7 +516,7 @@ export function FileExplorer({
 
   useEffect(() => {
     beginListingEpoch();
-    if (baseDir === null) return; // remote home not resolved yet
+    if (baseDir === null || !currentPath.startsWith("/")) return;
     if (remoteDisconnected) {
       setLoading(false);
       return;
@@ -544,10 +547,12 @@ export function FileExplorer({
   }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration, beginListingEpoch, resetExpansion]);
 
   const canGoUp = currentPath !== "/" && (isRemote || currentPath !== baseDir);
-  const breadcrumbRoot = baseDir !== null
-    && (currentPath === baseDir || currentPath.startsWith(`${baseDir}/`))
-    ? baseDir
-    : "/";
+  const breadcrumbRoot = isRemote
+    ? remoteExplorerListingRoot()
+    : baseDir !== null
+      && (currentPath === baseDir || currentPath.startsWith(`${baseDir}/`))
+      ? baseDir
+      : "/";
   listingDropRef.current = { currentPath, nodes: visibleTreeNodes };
   const selectableDownloadNodes = useMemo(() => binding
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
@@ -1143,6 +1148,9 @@ export function FileExplorer({
             if (!prefsKey) return;
             useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => toggleHostFavoritePath(prefs, currentPath));
           }}
+          listingRoot={remoteExplorerListingRoot()}
+          homeDir={homeDir}
+          currentPath={currentPath}
           favoritePaths={hostPrefs.favoritePaths}
           recentPaths={hostPrefs.recentPaths}
           onJumpToPath={(path) => { setNavDir("in"); setCurrentPath(path); }}

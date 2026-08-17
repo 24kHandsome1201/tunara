@@ -686,7 +686,7 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(bridge, /export interface GrepHit/);
   assert.match(bridge, /export function fsGrep/);
   assert.match(bridge, /export function fsCancelGrep/);
-  assert.match(explorer, /useExplorerSearch\(\{ baseDir, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected \}\)/);
+  assert.match(explorer, /useExplorerSearch\(\{ baseDir: searchRoot, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected \}\)/);
   assert.match(explorerSearch, /fsSearch\(baseDir, q, searchLimit, includeHidden\)/);
   assert.match(explorerSearch, /nextFileSearchLimit/);
   assert.match(explorerSearch, /fsGrep\(q, baseDir, \{ requestId: localGrepRequestId!, caseInsensitive: false, maxResults: searchLimit \}\)/);

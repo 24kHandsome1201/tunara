@@ -3,9 +3,18 @@ import type { DirEntry } from "@/modules/fs/fs-bridge";
 export type SortKey = "name" | "modified";
 export type SortDirection = "asc" | "desc";
 
+export function isUsableDirEntryName(name: string): boolean {
+  return name.length > 0 && name !== "." && name !== ".." && !name.includes("/") && !name.includes("\0");
+}
+
+export function usableExplorerEntries<T extends { name: string }>(entries: readonly T[]): T[] {
+  return entries.filter((entry) => isUsableDirEntryName(entry.name));
+}
+
 export function joinPath(base: string, name: string): string {
-  if (!base || base === "/") return "/" + name;
-  return base.endsWith("/") ? base + name : base + "/" + name;
+  if (!isUsableDirEntryName(name)) return base || "/";
+  if (!base || base === "/") return `/${name}`;
+  return base.endsWith("/") ? base + name : `${base}/${name}`;
 }
 
 export function parentPath(path: string): string {
