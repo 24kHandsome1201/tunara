@@ -41,6 +41,10 @@ pub struct AppearanceConfig {
     pub terminal_host_modifier: String,
     pub language: String,
     pub global_shortcut: String,
+    pub terminal_wallpaper: bool,
+    pub terminal_wallpaper_source: String,
+    pub terminal_wallpaper_blur: u8,
+    pub terminal_wallpaper_veil: u8,
 }
 
 impl Default for AppearanceConfig {
@@ -72,6 +76,10 @@ impl Default for AppearanceConfig {
             .into(),
             language: "system".into(),
             global_shortcut: "CmdOrCtrl+Shift+T".into(),
+            terminal_wallpaper: false,
+            terminal_wallpaper_source: "paper".into(),
+            terminal_wallpaper_blur: 24,
+            terminal_wallpaper_veil: 78,
         }
     }
 }
@@ -97,6 +105,14 @@ impl AppearanceConfig {
         // The upper bound is viewport-dependent in src/state/ui.ts; the backend must preserve
         // wider-screen values that the frontend already accepted.
         self.panel_width = self.panel_width.max(MIN_PANEL_WIDTH);
+        if !matches!(
+            self.terminal_wallpaper_source.as_str(),
+            "paper" | "grain" | "fiber" | "custom"
+        ) {
+            self.terminal_wallpaper_source = "paper".into();
+        }
+        self.terminal_wallpaper_blur = self.terminal_wallpaper_blur.clamp(0, 40);
+        self.terminal_wallpaper_veil = self.terminal_wallpaper_veil.clamp(50, 95);
     }
 }
 
@@ -281,6 +297,13 @@ fn config_path() -> Result<PathBuf, String> {
     config_path_for_dir(CONFIG_DIR)
 }
 
+pub(crate) fn config_dir() -> Result<PathBuf, String> {
+    config_path()?
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "config path has no parent".to_string())
+}
+
 fn legacy_config_path() -> Result<PathBuf, String> {
     config_path_for_dir(LEGACY_CONFIG_DIR)
 }
@@ -292,7 +315,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 21] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 25] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -330,6 +353,19 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 2
         ),
         ("language", value(config.language.clone())),
         ("global_shortcut", value(config.global_shortcut.clone())),
+        ("terminal_wallpaper", value(config.terminal_wallpaper)),
+        (
+            "terminal_wallpaper_source",
+            value(config.terminal_wallpaper_source.clone()),
+        ),
+        (
+            "terminal_wallpaper_blur",
+            value(i64::from(config.terminal_wallpaper_blur)),
+        ),
+        (
+            "terminal_wallpaper_veil",
+            value(i64::from(config.terminal_wallpaper_veil)),
+        ),
     ]
 }
 
@@ -761,6 +797,9 @@ font_size = 15
         assert!(saved.contains("scrollback = 2000"));
         assert!(saved.contains("show_pure_mode_files_button = true"));
         assert!(saved.contains("terminal_screen_reader_mode = false"));
+        assert!(saved.contains("terminal_wallpaper = false"));
+        assert!(saved.contains("terminal_wallpaper_source = \"paper\""));
+        assert!(!loaded.config.appearance.terminal_wallpaper);
         assert!(saved.contains("[terminal_interactions]"));
         assert!(saved.contains("secondary_click = \"smart\""));
         assert!(saved.contains("[local_usage_logging]"));
@@ -785,6 +824,8 @@ accent = "#abcdef"
         let loaded = load_config_from_path(&path).expect("load pre-i18n config");
         assert_eq!(loaded.config.appearance.language, "system");
         assert_eq!(loaded.config.appearance.theme, "dark");
+        assert!(!loaded.config.appearance.terminal_wallpaper);
+        assert_eq!(loaded.config.appearance.terminal_wallpaper_source, "paper");
         assert_eq!(loaded.error, None);
 
         let mut config = loaded.config.clone();

@@ -76,6 +76,68 @@ test("changing the Pure Mode Files setting persists the snake-case config field"
   useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
 });
 
+test("terminal wallpaper is off by default, hydrates, and persists without replacing the solid theme until enabled", async () => {
+  expect(DEFAULT_SETTINGS.terminalWallpaperEnabled).toBe(false);
+  mockIPC((command) => {
+    if (command === "load_config") {
+      return {
+        path: "/tmp/tunara-config.toml",
+        config: { appearance: { theme: "dark" } },
+        error: null,
+      };
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  useUIStore.setState({ configLoaded: false, terminalWallpaperEnabled: true });
+
+  await loadUserConfig();
+
+  expect(useUIStore.getState()).toMatchObject({
+    configLoaded: true,
+    theme: "dark",
+    terminalWallpaperEnabled: false,
+    terminalWallpaperSource: "paper",
+  });
+  useUIStore.setState({ configLoaded: false, terminalWallpaperEnabled: false });
+});
+
+test("enabling terminal wallpaper persists snake-case appearance fields", async () => {
+  let saved: unknown;
+  mockIPC((command, payload) => {
+    if (command === "save_config") {
+      saved = (payload as { config: unknown }).config;
+      return undefined;
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  useUIStore.setState({
+    configLoaded: true,
+    terminalWallpaperEnabled: false,
+    terminalWallpaperSource: "paper",
+    terminalWallpaperBlur: 24,
+    terminalWallpaperVeil: 78,
+    configError: null,
+  });
+
+  useUIStore.getState().setTerminalWallpaperEnabled(true);
+  useUIStore.getState().setTerminalWallpaperSource("grain");
+  useUIStore.getState().setTerminalWallpaperBlur(30);
+
+  await waitFor(() => expect(saved).toMatchObject({
+    appearance: {
+      terminal_wallpaper: true,
+      terminal_wallpaper_source: "grain",
+      terminal_wallpaper_blur: 30,
+    },
+  }));
+  useUIStore.setState({
+    configLoaded: false,
+    terminalWallpaperEnabled: false,
+    terminalWallpaperSource: "paper",
+    terminalWallpaperBlur: 24,
+  });
+});
+
 test("local usage logging is opt-in and persists only after native enable succeeds", async () => {
   let saved: unknown;
   mockIPC((command, payload) => {

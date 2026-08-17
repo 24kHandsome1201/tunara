@@ -73,6 +73,9 @@ replace those interaction checks.
 
 - [ ] With reduced transparency (macOS accessibility), all surfaces keep the
       same readable contrast because the shell does not depend on blur.
+- [ ] If Terminal background is enabled, Reduce Transparency still shows the
+      solid theme canvas; turning the setting off restores that canvas without
+      deleting a custom photo.
 - [ ] Terminal selection, diff highlights, and accent buttons stay legible.
 
 ## Regression guards

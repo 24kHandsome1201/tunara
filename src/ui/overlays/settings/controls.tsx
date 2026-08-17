@@ -85,6 +85,38 @@ export function Stepper({ display, valueMinWidth, onDecrement, onIncrement, decr
   );
 }
 
+/** Labeled range control (wallpaper blur / veil). */
+export function RangeRow({ label, value, min, max, display, onChange, ariaLabel }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  display: string;
+  onChange: (value: number) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ ...TOGGLE_ROW, height: 28, marginBottom: 6 }}>
+        <span style={SECTION_LABEL_INLINE}>{label}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", minWidth: 40, textAlign: "right" }}>{display}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        aria-label={ariaLabel}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        style={{ width: "100%", accentColor: "var(--c-accent)" }}
+      />
+    </div>
+  );
+}
+
 /** One entry in the unified interface + terminal color scheme picker: either a
  * base app theme (with the Tunara default terminal palette) or a named scheme
  * applied to both the interface and the terminal. */

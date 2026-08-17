@@ -119,7 +119,7 @@ are session-scoped open documents and are not part of `PersistedUILayoutV2`.
 1. **User config** (`loadUserConfig` / the appearance subscriber): the
    `AppearanceSettings` half (theme, accent, fonts, scrollback, sidebar/panel
    width, terminal theme, external editor, bell, clipboard/inline-image flags,
-   terminal interaction triggers, keybindings, language, global shortcut,
+   optional terminal wallpaper (off by default), terminal interaction triggers, keybindings, language, global shortcut,
    local usage logging) is loaded via `loadUserConfig()` and written through
    `src/modules/config/config-bridge.ts` to the backend config file. A
    `subscribeWithSelector` subscription over `PERSIST_KEYS` debounces saves at

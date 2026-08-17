@@ -17,6 +17,13 @@ import {
   type SplitState,
 } from "@/modules/session/split-layout";
 import type { TerminalHostModifier, TerminalSecondaryClickMode } from "@/modules/terminal/lib/terminal-input-router";
+import {
+  clampWallpaperBlur,
+  clampWallpaperVeil,
+  DEFAULT_TERMINAL_WALLPAPER,
+  isTerminalWallpaperSource,
+  type TerminalWallpaperSource,
+} from "@/modules/terminal/lib/terminal-wallpaper";
 import { hydrateLocalUsageLoggingEnabled, setLocalUsageLoggingEnabled } from "@/modules/usage-log/local-usage-log";
 
 export type CursorStyle = "bar" | "block" | "underline";
@@ -48,6 +55,10 @@ export interface AppearanceSettings {
   language: Language;
   globalShortcut: string;
   localUsageLoggingEnabled: boolean;
+  terminalWallpaperEnabled: boolean;
+  terminalWallpaperSource: TerminalWallpaperSource;
+  terminalWallpaperBlur: number;
+  terminalWallpaperVeil: number;
 }
 
 const MIN_FONT_SIZE = 10;
@@ -86,6 +97,10 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
   localUsageLoggingEnabled: false,
+  terminalWallpaperEnabled: DEFAULT_TERMINAL_WALLPAPER.enabled,
+  terminalWallpaperSource: DEFAULT_TERMINAL_WALLPAPER.source,
+  terminalWallpaperBlur: DEFAULT_TERMINAL_WALLPAPER.blur,
+  terminalWallpaperVeil: DEFAULT_TERMINAL_WALLPAPER.veil,
 };
 
 function isExternalEditor(v: unknown): v is ExternalEditor {
@@ -154,6 +169,12 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     keybindings: { ...DEFAULT_KEYBINDINGS },
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
     globalShortcut: typeof raw?.global_shortcut === "string" ? raw.global_shortcut : DEFAULT_SETTINGS.globalShortcut,
+    terminalWallpaperEnabled: raw?.terminal_wallpaper === true,
+    terminalWallpaperSource: isTerminalWallpaperSource(raw?.terminal_wallpaper_source)
+      ? raw.terminal_wallpaper_source
+      : DEFAULT_SETTINGS.terminalWallpaperSource,
+    terminalWallpaperBlur: clampWallpaperBlur(raw?.terminal_wallpaper_blur, DEFAULT_SETTINGS.terminalWallpaperBlur),
+    terminalWallpaperVeil: clampWallpaperVeil(raw?.terminal_wallpaper_veil, DEFAULT_SETTINGS.terminalWallpaperVeil),
   };
 }
 
@@ -202,6 +223,10 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       terminal_host_modifier: s.terminalHostModifier,
       language: s.language,
       global_shortcut: s.globalShortcut,
+      terminal_wallpaper: s.terminalWallpaperEnabled,
+      terminal_wallpaper_source: s.terminalWallpaperSource,
+      terminal_wallpaper_blur: s.terminalWallpaperBlur,
+      terminal_wallpaper_veil: s.terminalWallpaperVeil,
     },
     keybindings: keybindingsToConfigKeys(s.keybindings),
     terminal_interactions: {
@@ -329,6 +354,9 @@ interface UIState extends AppearanceSettings {
   fileTabs: WorkspaceFileTab[];
   activeFileTabId: string | null;
   toasts: Toast[];
+  /** Bumped when the custom wallpaper file is imported or cleared so the
+   *  canvas layer reloads without remounting terminals. Not persisted. */
+  terminalWallpaperRevision: number;
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
    *  so two SSH connections that both hit an unknown/unverifiable host key
    *  before the first is answered don't clobber each other — each parked
@@ -410,6 +438,11 @@ interface UIState extends AppearanceSettings {
   setTerminalClipboardWrite: (enabled: boolean) => void;
   setTerminalInlineImages: (enabled: boolean) => void;
   setShowPureModeFilesButton: (enabled: boolean) => void;
+  setTerminalWallpaperEnabled: (enabled: boolean) => void;
+  setTerminalWallpaperSource: (source: TerminalWallpaperSource) => void;
+  setTerminalWallpaperBlur: (blur: number) => void;
+  setTerminalWallpaperVeil: (veil: number) => void;
+  bumpTerminalWallpaperRevision: () => void;
   setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
   setTerminalSecondaryClick: (mode: TerminalSecondaryClickMode) => void;
   resetTerminalInteractions: () => void;
@@ -441,6 +474,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     fileTabs: [],
     activeFileTabId: null,
     toasts: [],
+    terminalWallpaperRevision: 0,
     hostKeyPrompts: [],
     keyboardInteractivePrompts: [],
     pendingWorkflow: null,
@@ -623,6 +657,21 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalInlineImages: (terminalInlineImages) => set({ terminalInlineImages: typeof terminalInlineImages === "boolean" ? terminalInlineImages : DEFAULT_SETTINGS.terminalInlineImages }),
     setShowPureModeFilesButton: (showPureModeFilesButton) => set({ showPureModeFilesButton: typeof showPureModeFilesButton === "boolean" ? showPureModeFilesButton : DEFAULT_SETTINGS.showPureModeFilesButton }),
+    setTerminalWallpaperEnabled: (terminalWallpaperEnabled) => set({
+      terminalWallpaperEnabled: terminalWallpaperEnabled === true,
+    }),
+    setTerminalWallpaperSource: (terminalWallpaperSource) => set({
+      terminalWallpaperSource: isTerminalWallpaperSource(terminalWallpaperSource)
+        ? terminalWallpaperSource
+        : DEFAULT_SETTINGS.terminalWallpaperSource,
+    }),
+    setTerminalWallpaperBlur: (terminalWallpaperBlur) => set({
+      terminalWallpaperBlur: clampWallpaperBlur(terminalWallpaperBlur, DEFAULT_SETTINGS.terminalWallpaperBlur),
+    }),
+    setTerminalWallpaperVeil: (terminalWallpaperVeil) => set({
+      terminalWallpaperVeil: clampWallpaperVeil(terminalWallpaperVeil, DEFAULT_SETTINGS.terminalWallpaperVeil),
+    }),
+    bumpTerminalWallpaperRevision: () => set((s) => ({ terminalWallpaperRevision: s.terminalWallpaperRevision + 1 })),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
     setTerminalSecondaryClick: (terminalSecondaryClick) => set({ terminalSecondaryClick }),
     resetTerminalInteractions: () => set((state) => {
@@ -694,7 +743,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut", "localUsageLoggingEnabled"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut", "localUsageLoggingEnabled", "terminalWallpaperEnabled", "terminalWallpaperSource", "terminalWallpaperBlur", "terminalWallpaperVeil"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

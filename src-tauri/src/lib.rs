@@ -140,6 +140,9 @@ pub fn run() {
             // Text config: ~/.config/tunara/config.toml
             modules::config::load_config,
             modules::config::save_config,
+            modules::wallpaper::terminal_wallpaper_import,
+            modules::wallpaper::terminal_wallpaper_load,
+            modules::wallpaper::terminal_wallpaper_clear,
             modules::clipboard::clipboard_read_text,
             modules::local_usage_log::local_usage_log_record,
             modules::local_usage_log::local_usage_log_set_enabled,
