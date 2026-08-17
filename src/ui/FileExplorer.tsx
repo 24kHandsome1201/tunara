@@ -194,8 +194,8 @@ export function FileExplorer({
       });
     }
   };
-  // Local sessions stay scoped to the workspace directory. Remote sessions
-  // browse the whole host from `/`; home and OSC 7 cwd are starting locations.
+  // Local and remote both start at the session cwd and can browse up to `/`.
+  // OSC 7 / SFTP home are only the first location for SSH, not a cage.
   const [baseDir, setBaseDir] = useState<string | null>(isRemote ? null : rootDir);
   const [homeDir, setHomeDir] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState(isRemote ? "" : rootDir);
@@ -206,7 +206,7 @@ export function FileExplorer({
   const [includeHidden, setIncludeHidden] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
-  const searchRoot = isRemote ? remoteExplorerSearchRoot(currentPath, homeDir) : baseDir;
+  const searchRoot = remoteExplorerSearchRoot(currentPath, isRemote ? homeDir : baseDir);
   const search = useExplorerSearch({ baseDir: searchRoot, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected });
   const {
     searchQuery,
@@ -546,13 +546,8 @@ export function FileExplorer({
     return () => { cancelled = true; };
   }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration, beginListingEpoch, resetExpansion]);
 
-  const canGoUp = currentPath !== "/" && (isRemote || currentPath !== baseDir);
-  const breadcrumbRoot = isRemote
-    ? remoteExplorerListingRoot()
-    : baseDir !== null
-      && (currentPath === baseDir || currentPath.startsWith(`${baseDir}/`))
-      ? baseDir
-      : "/";
+  const canGoUp = currentPath !== "/";
+  const breadcrumbRoot = remoteExplorerListingRoot();
   listingDropRef.current = { currentPath, nodes: visibleTreeNodes };
   const selectableDownloadNodes = useMemo(() => binding
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)

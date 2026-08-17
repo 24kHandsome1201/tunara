@@ -83,18 +83,28 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.getByRole("button", { name: "Go to parent" })).toBeTruthy();
   });
 
-  test("keeps a local explorer scoped to its starting directory", async () => {
-    mockIPC((command) => {
-      if (command === "fs_read_dir") return [];
-      throw new Error(`unexpected command: ${command}`);
+  test("lets a local explorer browse from its cwd to the filesystem root", async () => {
+    const readPaths: string[] = [];
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      readPaths.push((payload as { path: string }).path);
+      return [];
     });
 
     render(<FileExplorer sessionId="local" rootDir="/opt/wfs/repo" />);
-    await screen.findByText("Directory is empty");
+    await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe("/opt/wfs/repo"));
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(screen.getByRole("button", { name: "wfs" }));
+    await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe("/opt/wfs"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Go to parent" }));
+    await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe("/opt"));
+    fireEvent.click(screen.getByRole("button", { name: "Go to parent" }));
+    await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe("/"));
 
     expect((screen.getByRole("button", { name: "Go to parent" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole("button", { name: "/opt/wfs/repo" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("button", { name: /^repo$/ })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "/" })[0].getAttribute("aria-current")).toBe("page");
   });
 
   test("follows the SSH terminal cwd until the host toggle is turned off", async () => {
@@ -1006,7 +1016,7 @@ describe("FileExplorer workspace files", () => {
     expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
     expect(src.getAttribute("aria-expanded")).toBe("true");
     expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
-    expect(screen.getByRole("button", { name: "/tmp/repo" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
 
     fireEvent.keyDown(src, { key: "Enter" });
     await waitFor(() => expect(reads[reads.length - 1]).toBe("/tmp/repo/src"));
@@ -1046,13 +1056,13 @@ describe("FileExplorer workspace files", () => {
     expect(src.getAttribute("aria-expanded")).toBe("true");
     expect(nested.getAttribute("aria-level")).toBe("2");
     expect(screen.getByRole("treeitem", { name: /^lib/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "/tmp/repo" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
 
     fireEvent.click(row(nested));
     expect(await screen.findByRole("treeitem", { name: /^deep\.ts/ })).toBeTruthy();
     expect(nested.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("treeitem", { name: /^deep\.ts/ }).getAttribute("aria-level")).toBe("3");
-    expect(screen.getByRole("button", { name: "/tmp/repo" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
     expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src", "/tmp/repo/src/nested"]);
 
     fireEvent.click(row(src), { detail: 2 });
