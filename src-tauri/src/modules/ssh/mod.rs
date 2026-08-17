@@ -67,10 +67,29 @@ pub(crate) enum SshIpcErrorKind {
 
 /// Converts internal SSH failures to a fixed wire-safe message. `raw` is used
 /// only for allowlisted semantic classification; it is never formatted into
-/// the result or logged.
+/// the result. Debug logs may keep a sanitized excerpt of git stderr.
 pub(crate) fn safe_ipc_error(kind: SshIpcErrorKind, raw: impl std::fmt::Display) -> String {
-    log::warn!("SSH IPC operation failed: {kind:?}");
-    let raw = raw.to_string().to_ascii_lowercase();
+    safe_ipc_error_with_policy(kind, raw, RemoteGitLogPolicy::Warn)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RemoteGitLogPolicy {
+    Warn,
+    Quiet,
+}
+
+pub(crate) fn safe_ipc_error_with_policy(
+    kind: SshIpcErrorKind,
+    raw: impl std::fmt::Display,
+    policy: RemoteGitLogPolicy,
+) -> String {
+    let raw_text = raw.to_string();
+    if matches!(kind, SshIpcErrorKind::RemoteGit) {
+        log_remote_git_ipc_error(&raw_text, policy);
+    } else {
+        log::warn!("SSH IPC operation failed: {kind:?}");
+    }
+    let raw = raw_text.to_ascii_lowercase();
     if matches!(kind, SshIpcErrorKind::Transfer) {
         let code = if raw.contains("remote destination already exists") {
             "SSH_TRANSFER_DESTINATION_EXISTS"
@@ -130,9 +149,64 @@ pub(crate) fn safe_ipc_error(kind: SshIpcErrorKind, raw: impl std::fmt::Display)
     .to_string()
 }
 
+fn log_remote_git_ipc_error(raw: &str, policy: RemoteGitLogPolicy) {
+    let excerpt = sanitize_remote_git_debug_excerpt(raw);
+    match policy {
+        RemoteGitLogPolicy::Quiet => {
+            log::debug!("SSH remote git skipped on a non-repository path: {excerpt}");
+        }
+        RemoteGitLogPolicy::Warn => {
+            log::warn!("SSH IPC operation failed: RemoteGit");
+            log::debug!("SSH remote git stderr: {excerpt}");
+        }
+    }
+}
+
+/// Keep a short, path-free git class for debug logs. Absolute paths, home
+/// prefixes, and leftover tokens are dropped so stderr cannot leak a cwd.
+pub(crate) fn sanitize_remote_git_debug_excerpt(raw: &str) -> String {
+    let first_line = raw
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("unavailable");
+    let lower = first_line.to_ascii_lowercase();
+    if lower.contains("not a git repository") {
+        return "not_a_git_repository".into();
+    }
+    if looks_like_missing_git_binary(&lower) {
+        return "git_unavailable".into();
+    }
+    if lower.contains("permission denied") || lower.contains("operation not permitted") {
+        return "permission_denied".into();
+    }
+    if lower.contains("not a directory")
+        || (lower.contains("no such file") && !lower.contains("git"))
+    {
+        return "path_unavailable".into();
+    }
+    if lower.contains("timed out") || lower.contains("timeout") {
+        return "timeout".into();
+    }
+    "unclassified".into()
+}
+
+fn looks_like_missing_git_binary(lower: &str) -> bool {
+    (lower.contains("git") && (lower.contains("not found") || lower.contains("no such file")))
+        || lower.contains("command not found")
+        || lower.contains("not recognized as an internal or external command")
+}
+
+pub(crate) fn is_remote_non_git_error(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    lower.contains("not a git repository")
+}
+
 #[cfg(test)]
 mod safe_ipc_error_tests {
-    use super::{safe_ipc_error, SshIpcErrorKind};
+    use super::{
+        is_remote_non_git_error, safe_ipc_error, sanitize_remote_git_debug_excerpt, SshIpcErrorKind,
+    };
 
     #[test]
     fn command_error_mapper_serialization_is_fixed_and_drops_every_canary() {
@@ -184,6 +258,47 @@ mod safe_ipc_error_tests {
                 "cannot bind: private OS detail"
             ),
             "SSH_FORWARDING_FIXED_PORT_UNAVAILABLE"
+        );
+    }
+
+    #[test]
+    fn remote_git_debug_excerpt_classifies_without_paths_or_secrets() {
+        assert_eq!(
+            sanitize_remote_git_debug_excerpt(
+                "fatal: not a git repository (or any of the parent directories): /root"
+            ),
+            "not_a_git_repository"
+        );
+        assert_eq!(
+            sanitize_remote_git_debug_excerpt("bash: git: command not found"),
+            "git_unavailable"
+        );
+        assert_eq!(
+            sanitize_remote_git_debug_excerpt(
+                "fatal: cannot access '/tmp/secret': Permission denied"
+            ),
+            "permission_denied"
+        );
+        assert_eq!(
+            sanitize_remote_git_debug_excerpt("unexpected russh framing from /home/alice/.ssh"),
+            "unclassified"
+        );
+        assert!(!sanitize_remote_git_debug_excerpt(
+            "fatal: not a git repository (or any of the parent directories): /root"
+        )
+        .contains("/root"));
+        assert!(is_remote_non_git_error(
+            "fatal: not a git repository (or any of the parent directories): /var"
+        ));
+        assert!(!is_remote_non_git_error(
+            "remote command exited with status 128"
+        ));
+        assert_eq!(
+            safe_ipc_error(
+                SshIpcErrorKind::RemoteGit,
+                "fatal: not a git repository (or any of the parent directories): /root"
+            ),
+            "SSH_REMOTE_GIT_FAILED"
         );
     }
 }

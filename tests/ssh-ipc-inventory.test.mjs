@@ -102,8 +102,16 @@ test("every non-exempt registered SSH Result<String> command maps its final erro
     for (const [name, kind] of Object.entries(commands)) {
       assert.ok(registrations.includes(name), `${file}:${name} is not registered`);
       const fn = functionSource(source, name);
-      assert.match(fn, new RegExp(`safe_ipc_error\\(\\s*(?:crate::modules::ssh::)?SshIpcErrorKind::${kind}\\b`),
-        `${file}:${name} must map its final Err as ${kind}`);
+      const gitStatusCommands = new Set([
+        "ssh_git_status",
+        "ssh_git_diff",
+        "ssh_git_ahead_behind",
+        "ssh_git_workspace_context",
+      ]);
+      const mapper = kind === "RemoteGit" && gitStatusCommands.has(name)
+        ? /map_remote_git_error\(/
+        : new RegExp(`safe_ipc_error\\(\\s*(?:crate::modules::ssh::)?SshIpcErrorKind::${kind}\\b`);
+      assert.match(fn, mapper, `${file}:${name} must map its final Err as ${kind}`);
     }
   }
 });

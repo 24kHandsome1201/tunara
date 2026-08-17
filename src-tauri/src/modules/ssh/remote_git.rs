@@ -12,6 +12,10 @@
 use serde::Deserialize;
 use tauri::State;
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
 use crate::modules::fs::grep::{
     validate_request_id, FsSearchCancellationState, GrepHit, GrepResponse,
 };
@@ -19,6 +23,10 @@ use crate::modules::fs::search::SearchHit;
 use crate::modules::git::workspace::{RepositoryRef, WorkspaceContext, WorktreeRef};
 use crate::modules::git::{FileChange, FileDiff, RemoteState, StatusResult};
 use crate::modules::pty::{PtyState, Session};
+use crate::modules::ssh::{
+    is_remote_non_git_error, safe_ipc_error, safe_ipc_error_with_policy, RemoteGitLogPolicy,
+    SshIpcErrorKind,
+};
 
 /// Resolve the SSH session behind a session id as a cloned `Arc<Session>` so
 /// the caller can hold it across `.await` points without borrowing the
@@ -49,6 +57,111 @@ fn remote_git_cwd(cwd: &str) -> Result<String, String> {
         return Err("remote git cwd must be an absolute path".to_string());
     }
     Ok(shell_quote(cwd))
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RemoteRepoKnowledge {
+    Confirmed,
+    Absent,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RemoteRepoCacheEntry {
+    knowledge: RemoteRepoKnowledge,
+    expires_at: Instant,
+}
+
+const CONFIRMED_REPO_TTL: Duration = Duration::from_secs(30);
+const ABSENT_REPO_TTL: Duration = Duration::from_secs(8);
+const REMOTE_REPO_CACHE_CAP: usize = 64;
+
+fn remote_repo_cache() -> &'static Mutex<HashMap<(u32, String), RemoteRepoCacheEntry>> {
+    static CACHE: OnceLock<Mutex<HashMap<(u32, String), RemoteRepoCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn normalize_remote_repo_cwd(cwd: &str) -> Option<String> {
+    if !cwd.starts_with('/') || cwd.len() > 4_096 || cwd.chars().any(char::is_control) {
+        return None;
+    }
+    if cwd == "/" {
+        return Some("/".into());
+    }
+    Some(cwd.trim_end_matches('/').to_string())
+}
+
+fn cached_remote_repo_knowledge(session_id: u32, cwd: &str) -> Option<RemoteRepoKnowledge> {
+    let key = (session_id, normalize_remote_repo_cwd(cwd)?);
+    let mut cache = remote_repo_cache().lock().ok()?;
+    let entry = cache.get(&key).copied()?;
+    if entry.expires_at <= Instant::now() {
+        cache.remove(&key);
+        return None;
+    }
+    Some(entry.knowledge)
+}
+
+fn remember_remote_repo_knowledge(session_id: u32, cwd: &str, knowledge: RemoteRepoKnowledge) {
+    let Some(normalized) = normalize_remote_repo_cwd(cwd) else {
+        return;
+    };
+    let Ok(mut cache) = remote_repo_cache().lock() else {
+        return;
+    };
+    if cache.len() >= REMOTE_REPO_CACHE_CAP {
+        let now = Instant::now();
+        cache.retain(|_, entry| entry.expires_at > now);
+        if cache.len() >= REMOTE_REPO_CACHE_CAP {
+            if let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, entry)| entry.expires_at)
+                .map(|(key, _)| key.clone())
+            {
+                cache.remove(&oldest);
+            }
+        }
+    }
+    let ttl = match knowledge {
+        RemoteRepoKnowledge::Confirmed => CONFIRMED_REPO_TTL,
+        RemoteRepoKnowledge::Absent => ABSENT_REPO_TTL,
+    };
+    cache.insert(
+        (session_id, normalized),
+        RemoteRepoCacheEntry {
+            knowledge,
+            expires_at: Instant::now() + ttl,
+        },
+    );
+}
+
+fn map_remote_git_error(session_id: u32, cwd: &str, error: String) -> String {
+    if is_remote_non_git_error(&error) {
+        remember_remote_repo_knowledge(session_id, cwd, RemoteRepoKnowledge::Absent);
+        return safe_ipc_error_with_policy(
+            SshIpcErrorKind::RemoteGit,
+            error,
+            RemoteGitLogPolicy::Quiet,
+        );
+    }
+    safe_ipc_error(SshIpcErrorKind::RemoteGit, error)
+}
+
+fn skip_unconfirmed_remote_git(session_id: u32, cwd: &str) -> Option<String> {
+    match cached_remote_repo_knowledge(session_id, cwd)? {
+        RemoteRepoKnowledge::Confirmed => None,
+        RemoteRepoKnowledge::Absent => Some(safe_ipc_error_with_policy(
+            SshIpcErrorKind::RemoteGit,
+            "fatal: not a git repository",
+            RemoteGitLogPolicy::Quiet,
+        )),
+    }
+}
+
+#[cfg(test)]
+fn reset_remote_repo_cache() {
+    if let Ok(mut cache) = remote_repo_cache().lock() {
+        cache.clear();
+    }
 }
 
 /// Parse NUL-delimited `git status --porcelain=v1 --branch -z` output into a
@@ -134,12 +247,16 @@ pub async fn ssh_git_status(
     session_id: u32,
     cwd: String,
 ) -> Result<StatusResult, String> {
+    if let Some(error) = skip_unconfirmed_remote_git(session_id, &cwd) {
+        return Err(error);
+    }
     (async {
         let session = ssh_session(&state, session_id)?;
         let ssh = match session.as_ref() {
             Session::Ssh(s) => s,
             Session::Local(_) => return Err("not a remote session".to_string()),
         };
+        let requested_cwd = cwd.clone();
         let cwd = remote_git_cwd(&cwd)?;
         // Exec channels start in sshd's default directory, not the interactive
         // shell's live cwd, so pass the OSC-7-tracked path explicitly.
@@ -155,12 +272,11 @@ pub async fn ssh_git_status(
                 "remote git status exceeds {MAX_STATUS_BYTES} bytes"
             ));
         }
+        remember_remote_repo_knowledge(session_id, &requested_cwd, RemoteRepoKnowledge::Confirmed);
         Ok(parse_porcelain_v1(&out))
     })
     .await
-    .map_err(|error: String| {
-        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
-    })
+    .map_err(|error: String| map_remote_git_error(session_id, &cwd, error))
 }
 
 fn remote_basename(path: &str) -> String {
@@ -304,6 +420,10 @@ pub async fn ssh_git_workspace_context(
     {
         return Err("invalid remote repository identity".to_string());
     }
+    if let Some(error) = skip_unconfirmed_remote_git(session_id, &cwd) {
+        return Err(error);
+    }
+    let requested_cwd = cwd.clone();
     let session = ssh_session(&state, session_id)?;
     let ssh = match session.as_ref() {
         Session::Ssh(s) => s,
@@ -330,10 +450,13 @@ pub async fn ssh_git_workspace_context(
         workspace.worktrees.len(),
         workspace.current_worktree_id.is_some()
     );
+    remember_remote_repo_knowledge(session_id, &requested_cwd, RemoteRepoKnowledge::Confirmed);
     Ok(workspace)
 
-    }).await.map_err(|error: String| crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error))
+    }).await.map_err(|error: String| map_remote_git_error(session_id, &cwd, error))
 }
+
+// Search/grep keep the generic RemoteGit mapper: those are not repo-status probes.
 
 /// Run a remote `git diff` for one file/stage and wrap it as a `FileDiff::text`
 /// (or `tooLarge` when the exec hit its byte cap).
@@ -367,6 +490,10 @@ pub async fn ssh_git_diff(
             }
             _ => "",
         };
+        if let Some(error) = skip_unconfirmed_remote_git(session_id, &cwd) {
+            return Err(error);
+        }
+        let requested_cwd = cwd.clone();
         // Shell-quote the path minimally: wrap in single quotes and escape any
         // embedded single quotes. The file path comes from our own parsed status,
         // not user input, but quoting defends against paths with spaces/quotes.
@@ -386,6 +513,11 @@ pub async fn ssh_git_diff(
         search_state.finish(&request_id, &cancelled);
         let out = result?;
         if out.len() > MAX_DIFF_BYTES {
+            remember_remote_repo_knowledge(
+                session_id,
+                &requested_cwd,
+                RemoteRepoKnowledge::Confirmed,
+            );
             return Ok(FileDiff::TooLarge {
                 path: file,
                 bytes: out.len(),
@@ -396,6 +528,11 @@ pub async fn ssh_git_diff(
         // local DiffPanel would have labelled as truncated.
         let total_lines = out.lines().count();
         if total_lines > MAX_DIFF_LINES {
+            remember_remote_repo_knowledge(
+                session_id,
+                &requested_cwd,
+                RemoteRepoKnowledge::Confirmed,
+            );
             let patch = out
                 .lines()
                 .take(MAX_DIFF_LINES)
@@ -408,6 +545,7 @@ pub async fn ssh_git_diff(
                 total_lines,
             });
         }
+        remember_remote_repo_knowledge(session_id, &requested_cwd, RemoteRepoKnowledge::Confirmed);
         Ok(FileDiff::Text {
             path: file,
             patch: out,
@@ -416,9 +554,7 @@ pub async fn ssh_git_diff(
         })
     })
     .await
-    .map_err(|error: String| {
-        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
-    })
+    .map_err(|error: String| map_remote_git_error(session_id, &cwd, error))
 }
 
 /// Run `git rev-list --left-right --count @{u}...HEAD` over the SSH exec
@@ -436,13 +572,25 @@ pub async fn ssh_git_ahead_behind(
     session_id: u32,
     cwd: String,
 ) -> Result<RemoteState, String> {
+    if let Some(error) = skip_unconfirmed_remote_git(session_id, &cwd) {
+        return Err(error);
+    }
     (async {
         let session = ssh_session(&state, session_id)?;
         let ssh = match session.as_ref() {
             Session::Ssh(s) => s,
             Session::Local(_) => return Err("not a remote session".to_string()),
         };
-        let cwd = remote_git_cwd(&cwd)?;
+        let quoted_cwd = remote_git_cwd(&cwd)?;
+        if cached_remote_repo_knowledge(session_id, &cwd) != Some(RemoteRepoKnowledge::Confirmed) {
+            let inside = format!("git -C {quoted_cwd} rev-parse --is-inside-work-tree");
+            let inside_out = ssh.exec(&inside, 32).await?;
+            if inside_out.trim() != "true" {
+                return Err("fatal: not a git repository".into());
+            }
+            remember_remote_repo_knowledge(session_id, &cwd, RemoteRepoKnowledge::Confirmed);
+        }
+        let cwd = quoted_cwd;
         // `rev-list --left-right --count @{u}...HEAD` prints "<behind>\t<ahead>"
         // (one line, tab-separated).
         let rev_list =
@@ -489,6 +637,7 @@ pub async fn ssh_git_ahead_behind(
         let upstream_command = format!("git -C {cwd} rev-parse --abbrev-ref @{{u}} 2>/dev/null");
         let up_out = ssh.exec(&upstream_command, 128).await.unwrap_or_default();
         let upstream = up_out.trim().to_string();
+        remember_remote_repo_knowledge(session_id, &cwd, RemoteRepoKnowledge::Confirmed);
         Ok(RemoteState::Ok {
             upstream,
             ahead,
@@ -496,9 +645,7 @@ pub async fn ssh_git_ahead_behind(
         })
     })
     .await
-    .map_err(|error: String| {
-        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::RemoteGit, error)
-    })
+    .map_err(|error: String| map_remote_git_error(session_id, &cwd, error))
 }
 
 /// Cap stdout collection for a remote find so a huge tree can't OOM. The
@@ -846,6 +993,50 @@ mod tests {
         );
         assert!(remote_git_cwd("relative/repo").is_err());
         assert!(remote_git_cwd("/srv/repo\nnext").is_err());
+    }
+
+    #[test]
+    fn remote_repo_cache_skips_absent_paths_and_normalizes_trailing_slashes() {
+        reset_remote_repo_cache();
+        remember_remote_repo_knowledge(7, "/tmp/", RemoteRepoKnowledge::Absent);
+        assert_eq!(
+            cached_remote_repo_knowledge(7, "/tmp"),
+            Some(RemoteRepoKnowledge::Absent)
+        );
+        let skipped = skip_unconfirmed_remote_git(7, "/tmp").expect("absent path is skipped");
+        assert_eq!(skipped, "SSH_REMOTE_GIT_FAILED");
+        assert!(skip_unconfirmed_remote_git(7, "/srv/app").is_none());
+        remember_remote_repo_knowledge(7, "/srv/app", RemoteRepoKnowledge::Confirmed);
+        assert!(skip_unconfirmed_remote_git(7, "/srv/app/").is_none());
+        assert_eq!(
+            map_remote_git_error(
+                7,
+                "/",
+                "fatal: not a git repository (or any of the parent directories): /".into()
+            ),
+            "SSH_REMOTE_GIT_FAILED"
+        );
+        assert_eq!(
+            cached_remote_repo_knowledge(7, "/"),
+            Some(RemoteRepoKnowledge::Absent)
+        );
+        reset_remote_repo_cache();
+    }
+
+    #[test]
+    fn remote_repo_cache_is_scoped_to_the_session() {
+        reset_remote_repo_cache();
+        remember_remote_repo_knowledge(1, "/tmp", RemoteRepoKnowledge::Absent);
+        remember_remote_repo_knowledge(2, "/tmp", RemoteRepoKnowledge::Confirmed);
+        assert_eq!(
+            cached_remote_repo_knowledge(1, "/tmp"),
+            Some(RemoteRepoKnowledge::Absent)
+        );
+        assert_eq!(
+            cached_remote_repo_knowledge(2, "/tmp"),
+            Some(RemoteRepoKnowledge::Confirmed)
+        );
+        reset_remote_repo_cache();
     }
 
     #[test]
