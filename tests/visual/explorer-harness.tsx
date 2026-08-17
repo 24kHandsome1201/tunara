@@ -9,7 +9,7 @@ import type { DirEntry } from "@/modules/fs/fs-bridge";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
 
-const ROOT = "/tmp/repo";
+const ROOT = "/opt/wfs/repo";
 const params = new URLSearchParams(window.location.search);
 const language = params.get("lang") === "en" ? "en" : "zh-CN";
 const expand = params.get("expand") !== "0";

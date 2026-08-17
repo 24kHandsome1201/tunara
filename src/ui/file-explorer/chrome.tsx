@@ -87,7 +87,7 @@ export function ExplorerNav({
                 disabled={isCurrent}
                 aria-current={isCurrent ? "page" : undefined}
                 className={isCurrent ? "explorer-breadcrumb-current" : "hover-bg explorer-breadcrumb-link"}
-                title={seg.isCollapsed ? seg.targetPath : seg.label}
+                title={seg.targetPath}
               >
                 {seg.label}
               </button>

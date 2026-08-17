@@ -89,10 +89,12 @@ describe("FileExplorer directory navigation", () => {
       throw new Error(`unexpected command: ${command}`);
     });
 
-    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    render(<FileExplorer sessionId="local" rootDir="/opt/wfs/repo" />);
     await screen.findByText("Directory is empty");
 
     expect((screen.getByRole("button", { name: "Go to parent" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "/opt/wfs/repo" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("button", { name: /^repo$/ })).toBeNull();
   });
 
   test("follows the SSH terminal cwd until the host toggle is turned off", async () => {
@@ -1004,7 +1006,7 @@ describe("FileExplorer workspace files", () => {
     expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
     expect(src.getAttribute("aria-expanded")).toBe("true");
     expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
-    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "/tmp/repo" }).getAttribute("aria-current")).toBe("page");
 
     fireEvent.keyDown(src, { key: "Enter" });
     await waitFor(() => expect(reads[reads.length - 1]).toBe("/tmp/repo/src"));
@@ -1044,13 +1046,13 @@ describe("FileExplorer workspace files", () => {
     expect(src.getAttribute("aria-expanded")).toBe("true");
     expect(nested.getAttribute("aria-level")).toBe("2");
     expect(screen.getByRole("treeitem", { name: /^lib/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "/tmp/repo" }).getAttribute("aria-current")).toBe("page");
 
     fireEvent.click(row(nested));
     expect(await screen.findByRole("treeitem", { name: /^deep\.ts/ })).toBeTruthy();
     expect(nested.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("treeitem", { name: /^deep\.ts/ }).getAttribute("aria-level")).toBe("3");
-    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "/tmp/repo" }).getAttribute("aria-current")).toBe("page");
     expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src", "/tmp/repo/src/nested"]);
 
     fireEvent.click(row(src), { detail: 2 });

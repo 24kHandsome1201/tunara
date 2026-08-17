@@ -4,10 +4,17 @@ export interface BreadcrumbSegment {
   isCollapsed?: boolean;
 }
 
+function rootDisplayLabel(rootDir: string): string {
+  if (rootDir === "/") return "/";
+  // Local explorers pin breadcrumbRoot to the session directory, so this
+  // crumb is the only place the absolute path appears. Keep `/opt/wfs/repo`
+  // instead of the last segment (`repo`).
+  return rootDir;
+}
+
 export function breadcrumbSegments(currentPath: string, rootDir: string): BreadcrumbSegment[] {
   const rootedAtFilesystem = rootDir === "/";
-  const rootLabel = rootedAtFilesystem ? "/" : rootDir.split("/").filter(Boolean).pop() || rootDir;
-  const rootSeg: BreadcrumbSegment = { label: rootLabel, targetPath: rootDir };
+  const rootSeg: BreadcrumbSegment = { label: rootDisplayLabel(rootDir), targetPath: rootDir };
 
   if (currentPath === rootDir) return [rootSeg];
 
