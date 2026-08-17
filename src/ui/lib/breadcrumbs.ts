@@ -6,9 +6,6 @@ export interface BreadcrumbSegment {
 
 function rootDisplayLabel(rootDir: string): string {
   if (rootDir === "/") return "/";
-  // Local explorers pin breadcrumbRoot to the session directory, so this
-  // crumb is the only place the absolute path appears. Keep `/opt/wfs/repo`
-  // instead of the last segment (`repo`).
   return rootDir;
 }
 
