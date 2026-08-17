@@ -32,7 +32,7 @@ import { registerTerminalDeviceAttributesHandler } from "@/modules/terminal/lib/
 import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc9";
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification"; import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { createWebglAtlasRebuilder, recordTerminalAtlasOutputPressure, registerTerminalAtlasRebuilder, registerTerminalAtlasRefresh, requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
-import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback } from "@/modules/terminal/lib/agent-lifecycle";
+import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback, tracksAgentActivity } from "@/modules/terminal/lib/agent-lifecycle";
 import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
@@ -545,7 +545,7 @@ function TerminalViewImpl({
             clearTimeout(startupReadyTimer);
             startupReadyTimer = null;
           }
-          if (sess.agentActivity !== "running") {
+          if (tracksAgentActivity(sess.agent) && sess.agentActivity !== "running") {
             useSessionsStore.getState().handleAgentBusy(sessionIdRef.current);
           }
         };

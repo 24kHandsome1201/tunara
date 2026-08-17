@@ -4,7 +4,7 @@ import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 import { shellCommandName, splitShellCommandSegments, tokenizeShellWords } from "./shell-command.ts";
 
 export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
-export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI", "AM"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
 
 export type AgentLifecycleEventName = "start" | "busy" | "wait" | "idle" | "stop" | "exit";
 
@@ -107,9 +107,15 @@ export function isAgentShellTitle(title: string): boolean {
     || AGENT_SHELL_TITLE_FRAGMENTS.some((fragment) => normalized.includes(fragment));
 }
 
-export function initialAgentActivity(agent: AgentCode): AgentActivity {
-  if (HOOK_READY_AGENTS.has(agent) || PROMPT_READY_AGENTS.has(agent)) return "starting";
-  return "running";
+export function tracksAgentActivity(agent: AgentCode): boolean {
+  return HOOK_READY_AGENTS.has(agent) || PROMPT_READY_AGENTS.has(agent);
+}
+
+export function initialAgentActivity(agent: AgentCode): AgentActivity | undefined {
+  if (tracksAgentActivity(agent)) return "starting";
+  // Identified only. Amp, Gemini, OpenCode, and the rest have no reliable
+  // turn signal, so the sidebar keeps the name without 启动中/工作中.
+  return undefined;
 }
 
 export function shouldUseStartupQuietReadyFallback(
@@ -145,12 +151,16 @@ export function sessionDisplayRunState(session: Session): RunState {
 
 export type AgentScreenState = "ready" | "busy" | "waiting_confirmation" | null;
 
-export const CODEX_PROMPT_PATTERN = /^\s*›(?:\s|$)/;
+// Composer is `›` / `› text`. Approval lists reuse the same glyph as
+// `› 1. Yes, proceed`, which is a selection cursor, not an idle prompt.
+export const CODEX_PROMPT_PATTERN = /^\s*›(?:\s*$|\s+(?!\d+\.\s))/;
+// Live turn chrome only. Codex keeps the composer visible while a turn runs and
+// paints the status row *above* `›`. Match the live row (`•`/`◦` + elapsed, or
+// a possibly truncated `esc to interrupt`), not transcript "Working" or an idle
+// goal/background footer. Narrow panes clip the hint to `esc to interr…`.
 export const CODEX_BUSY_INDICATORS = [
-  /\bWorking\b/i,
-  /esc to interrupt/i,
-  /Pursuing goal/i,
-  /background terminal running/i,
+  /^\s*[•◦]?\s*(?:Working|Thinking)\b[^\n]*\(\s*\d/i,
+  /esc to interr/i,
 ] as const;
 export const PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT = 12;
 
@@ -162,13 +172,22 @@ function hasCodexBusyIndicator(text: string): boolean {
   return CODEX_BUSY_INDICATORS.some((pattern) => pattern.test(text));
 }
 
+function hasCodexBusyChrome(lines: readonly string[]): boolean {
+  return lines.some((line) => hasCodexBusyIndicator(line));
+}
+
+function hasCodexInterruptedFooter(lines: readonly string[]): boolean {
+  return lines.some((line) => /Conversation interrupted/i.test(line));
+}
+
 const CODEX_CONFIRMATION_QUESTION_PATTERNS = [
   /would you like to run(?: the following command)?/i,
-  /do you want to run(?: the following command)?/i,
+  /would you like to (?:grant these permissions|make the following edits)/i,
+  /do you want to (?:run(?: the following command)?|approve network access)/i,
   /command requires approval/i,
 ] as const;
-const CODEX_CONFIRMATION_ACCEPT_PATTERN = /(?:yes,?\s*proceed|allow once|press enter to confirm)/i;
-const CODEX_CONFIRMATION_REJECT_PATTERN = /(?:no,?\s*reject|tell codex .+ instead|esc to cancel)/i;
+const CODEX_CONFIRMATION_ACCEPT_PATTERN = /(?:yes,?\s*(?:proceed|just this once)|yes,?\s*and don't ask again|allow once|press enter to confirm|enter to confirm)/i;
+const CODEX_CONFIRMATION_REJECT_PATTERN = /(?:no,?\s*reject|no,?\s*continue without running|tell codex what to do differently|tell codex .+ instead|esc to cancel)/i;
 
 function hasCodexConfirmationPrompt(lines: readonly string[]): boolean {
   let questionIndex = -1;
@@ -192,29 +211,20 @@ export function detectCodexScreenState(text: string): AgentScreenState {
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
   const recent = lines.slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT);
-  const recentText = recent.join("\n");
   if (hasCodexConfirmationPrompt(recent)) return "waiting_confirmation";
-  let promptIndex = -1;
-  for (let i = recent.length - 1; i >= 0; i -= 1) {
-    if (isCodexPromptLine(recent[i])) {
-      promptIndex = i;
-      break;
-    }
-  }
-
-  if (promptIndex >= 0) {
-    const currentTurnText = recent.slice(promptIndex + 1).join("\n");
-    return hasCodexBusyIndicator(currentTurnText) ? "busy" : "ready";
-  }
-
-  if (hasCodexBusyIndicator(recentText)) {
-    return "busy";
-  }
-
+  // Status sits above the still-visible composer. Live busy chrome in the
+  // recent window therefore wins over `›`, unless the turn already painted an
+  // interrupt footer. List-selection `› 1.` is not a composer.
+  if (hasCodexBusyChrome(recent) && !hasCodexInterruptedFooter(recent)) return "busy";
+  if (recent.some(isCodexPromptLine)) return "ready";
   return null;
 }
 
-const PI_BUSY_PATTERN = /Running\.\.\. \(escape\/ctrl\+c to cancel\)/i;
+// LLM turns paint `Working... (escape to interrupt)`; `!!` bash still paints
+// `Running... (escape/ctrl+c to cancel)`. The ready footer stays on screen in
+// both cases, so this chrome must win. Remapped cancel keys still include
+// interrupt/cancel; narrow panes may clip to `interr…`.
+const PI_BUSY_PATTERN = /(?:Working|Running)\.\.\.\s+\([^)\n]*(?:interr|cancel)/i;
 // Pi's status bar is clipped at the viewport edge instead of being preserved as
 // one logical line. In a narrow split the model name and trailing bullet may be
 // absent from xterm's readable tail, while the context/mode segment remains.
@@ -235,27 +245,9 @@ export function detectPiScreenState(text: string): AgentScreenState {
   return null;
 }
 
-// Amp removes its bordered composer while a turn is running and restores it
-// when input is available again. Match both borders so conversation dividers
-// or ordinary box-drawing output cannot complete a turn on their own.
-const AMP_COMPOSER_TOP_PATTERN = /^\s*╭─+/m;
-const AMP_COMPOSER_BOTTOM_PATTERN = /^\s*╰─+/m;
-
-export function detectAmpScreenState(text: string): AgentScreenState {
-  const recent = cleanTerminalLines(text)
-    .split("\n")
-    .slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT)
-    .join("\n");
-  if (AMP_COMPOSER_TOP_PATTERN.test(recent) && AMP_COMPOSER_BOTTOM_PATTERN.test(recent)) {
-    return "ready";
-  }
-  return null;
-}
-
 export function detectPromptAgentScreenState(agent: AgentCode, text: string): AgentScreenState {
   if (agent === "CX") return detectCodexScreenState(text);
   if (agent === "PI") return detectPiScreenState(text);
-  if (agent === "AM") return detectAmpScreenState(text);
   return null;
 }
 

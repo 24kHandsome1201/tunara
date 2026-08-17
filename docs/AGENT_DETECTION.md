@@ -168,7 +168,7 @@ Session agent state lives in `Session.agentActivity`
 `runState`:
 
 ```
-type AgentActivity = "starting" | "idle" | "running";
+type AgentActivity = "starting" | "idle" | "running" | "waiting_confirmation";
 ```
 
 Two `Set`s in [`agent-lifecycle.ts`](../src/modules/terminal/lib/agent-lifecycle.ts)
@@ -176,26 +176,27 @@ classify how confidently an agent reports readiness:
 
 ```ts
 export const HOOK_READY_AGENTS  = new Set<AgentCode>(["CC", "DR"]);
-export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
 ```
 
-`initialAgentActivity(agent)` picks the starting state on detection:
+`tracksAgentActivity(agent)` is true for those sets. `initialAgentActivity(agent)`
+picks the starting state on detection:
 
 | Membership                       | Initial `agentActivity` | Why |
 | -------------------------------- | ----------------------- | --- |
 | `HOOK_READY_AGENTS` (CC, DR)     | `"starting"`            | Hooks will report `idle` once the agent is ready; show a startup state until then. |
-| `PROMPT_READY_AGENTS` (CX)       | `"idle"`                | Readiness is inferred from the on-screen prompt, so assume idle and let the screen-state tracker flip it busy. |
-| anything else                    | `"running"`             | No reliable readiness signal — treat the session as busy while the agent is up. |
+| `PROMPT_READY_AGENTS` (CX, PI)   | `"starting"`            | Readiness is inferred from on-screen chrome; show startup until the tracker sees a prompt or busy row. |
+| anything else                    | `undefined`             | No reliable turn signal — identify the agent, but do not show 启动中/工作中. |
 
 Transitions (via the store handlers and the
-`*Update` helpers in `session-lifecycle.ts`):
+`*Update` helpers in `session-lifecycle.ts`) only apply to tracked agents:
 
 - **Detected** (`handleAgentDetected`) → `agent` set, `agentActivity =
   initialAgentActivity(agent)`, `runState = "idle"`, title becomes the agent name.
   Also builds an `AgentResumeIntent` (see below).
 - **Busy** (`handleAgentBusy`) → `agentActivity = "running"`. Fired by the
-  native `UserPromptSubmit` hook, by typed-input fallback, or when the Codex
-  screen-state tracker sees busy indicators.
+  native `UserPromptSubmit` hook, by typed-input fallback (tracked agents only),
+  or when the Codex/Pi screen-state tracker sees busy indicators.
 - **Ready** (`handleAgentReady`) → `agentActivity = "idle"`; if the previous
   state was `"running"` it counts as a completed turn (`completedAt`, `unread`
   when inactive, toast). Fired by hook `idle`/`stop`, by the OSC `idle`/`stop`
@@ -208,12 +209,24 @@ Transitions (via the store handlers and the
 `isAgentActivityBusy` (`"starting"` or `"running"`) and `isSessionBusy` gate the
 sidebar busy indicator and close-confirmation.
 
-`PROMPT_READY_AGENTS` is paired with the Codex screen-state heuristic in the same
-file (`detectCodexScreenState`, `CODEX_BUSY_INDICATORS`,
-`CODEX_PROMPT_PATTERN`), driven by
+`PROMPT_READY_AGENTS` is paired with screen-state heuristics in the same
+file, driven by
 [`terminal-prompt-agent-state.ts`](../src/modules/terminal/lib/terminal-prompt-agent-state.ts):
-because Codex doesn't emit hook events, Tunara scrapes the last few rendered
-lines to decide `ready` vs `busy`.
+
+- **Codex** (`detectCodexScreenState`): Codex does not emit hook events. Tunara
+  scrapes the last few rendered lines. Current Codex keeps the `›` composer
+  visible while a turn runs and paints `Working (… • esc to interrupt)` *above*
+  it, so a live interrupt/elapsed status row wins over the composer; a bare
+  "Working" in transcript or an idle goal/background footer does not. Approval
+  overlays reuse `› 1.` as a list cursor, which is not treated as an idle
+  prompt. Narrow panes may clip the hint to `esc to interr…`.
+- **Pi** (`detectPiScreenState`): the ready footer
+  (`$0.000 (sub) 0.0%/272k (auto) …`, or the no-model `0.0%/0 (auto) unknown`
+  shape) stays visible during a turn. LLM chrome is
+  `Working... (escape to interrupt)`; `!!` bash is
+  `Running... (escape/ctrl+c to cancel)`. Either busy line wins over the footer.
+  Remapped cancel keys still include interrupt/cancel; a narrow pane may clip
+  to `interr…`.
 
 ### Resume
 
@@ -287,7 +300,7 @@ command ([`preflight.rs`](../src-tauri/src/modules/agent/preflight.rs)):
    `start`/`exit` only, like Codex). Then decide the readiness class: add the
    `code` to `HOOK_READY_AGENTS` or `PROMPT_READY_AGENTS` in
    [`agent-lifecycle.ts`](../src/modules/terminal/lib/agent-lifecycle.ts), or
-   leave it out to default to `"running"`. If the agent has a resume CLI, add a
+   leave it out so the session is identified without activity status. If the agent has a resume CLI, add a
    branch to `buildAgentResumeCommand` in
    [`agent-resume.ts`](../src/modules/terminal/lib/agent-resume.ts).
 

@@ -42,9 +42,9 @@ export function createPromptAgentScreenStateTracker({
   };
 
   const schedule = () => {
-    // Rate-limit instead of trailing-edge debounce. Amp keeps repainting its
-    // idle mascot, so resetting this timer for every output chunk would starve
-    // the screen check forever and leave the session stuck in "running".
+    // Rate-limit instead of trailing-edge debounce. Prompt-ready TUIs repaint
+    // spinners and status rows continuously, so resetting this timer for every
+    // output chunk would starve the screen check and leave the session stuck.
     if (stateTimer) return;
     stateTimer = setTimeout(() => {
       stateTimer = null;

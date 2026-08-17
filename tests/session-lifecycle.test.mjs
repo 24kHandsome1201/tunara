@@ -35,6 +35,16 @@ function apply(session, update) {
   return { ...session, ...update.patch };
 }
 
+test("untracked agents are identified without activity status", () => {
+  const s = apply(baseSession(), agentDetectedUpdate(baseSession(), "AM", NOW));
+  assert.equal(s.agent, "AM");
+  assert.equal(s.agentActivity, undefined);
+  assert.equal(s.runState, "idle");
+  assert.equal(agentBusyUpdate(s, NOW + 1), null);
+  assert.equal(agentReadyUpdate(s, true, NOW + 1), null);
+  assert.equal(agentWaitingConfirmationUpdate(s, true), null);
+});
+
 test("agent lifecycle: detected → busy → ready → exited clears agent and marks done/failed", () => {
   let s = baseSession();
 
