@@ -85,7 +85,7 @@ export function WallpaperSettings() {
   }
 
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div data-settings-section="wallpaper" style={{ marginBottom: 8 }}>
       <ToggleRow
         label={t("settings.appearance.wallpaper")}
         hint={t("settings.appearance.wallpaper.hint")}
