@@ -16,14 +16,14 @@ import {
   sshReadDir,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
-import { CloseIcon, DownloadIcon, RefreshIcon, SearchIcon, UploadFolderIcon, UploadIcon, PanelEmptyState, PanelLoadingState } from "./shared";
+import { PanelEmptyState, PanelLoadingState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { useT, t as staticT } from "@/modules/i18n";
-import { breadcrumbSegments } from "./lib/breadcrumbs";
+import { ExplorerNav, ExplorerRemoteTools, ExplorerSearchRow } from "./file-explorer/chrome";
 import { copyText } from "./lib/clipboard";
 import { knownRemoteExplorerRoot } from "./lib/file-explorer-root";
 import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
@@ -48,7 +48,7 @@ import { RemoteFsMutationDialog } from "@/modules/ssh/remote-fs/RemoteFsMutation
 import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel";
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
 import { Modal, useModalBehavior } from "./overlays/Modal";
-import { FileContentIcon, FileIcon, FileNameIcon, FolderIcon, folderEmptyIcon, TreeChevron } from "./file-explorer/icons";
+import { FileIcon, FolderIcon, folderEmptyIcon, TreeChevron } from "./file-explorer/icons";
 import {
   compactRelativePath,
   formatModifiedTime,
@@ -1096,219 +1096,71 @@ export function FileExplorer({
           {t("explorer.remote_disconnected")}
         </div>
       )}
-      <div className="explorer-toolbar">
-        <button
-          onClick={() => { if (canGoUp) goUp(); }}
-          disabled={!canGoUp}
-          aria-disabled={!canGoUp}
-          className="hover-bg"
-          title={t("explorer.go_up")}
-          aria-label={t("explorer.go_up")}
-          style={{
-            width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none",
-            background: "transparent", cursor: canGoUp ? "pointer" : "not-allowed",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            opacity: canGoUp ? 1 : 0.3, flexShrink: 0, pointerEvents: canGoUp ? "auto" : "none",
+      <ExplorerNav
+        t={t}
+        canGoUp={canGoUp}
+        onGoUp={goUp}
+        currentPath={currentPath}
+        breadcrumbRoot={breadcrumbRoot}
+        onNavigate={(path) => { setNavDir("out"); setCurrentPath(path); }}
+        onRefresh={refresh}
+      />
+      <ExplorerSearchRow
+        t={t}
+        searchMode={searchMode}
+        searchQuery={searchQuery}
+        onToggleSearchMode={search.toggleSearchMode}
+        onQueryChange={search.setQuery}
+        onClearQuery={() => search.setQuery("")}
+        includeHidden={includeHidden}
+        onToggleHidden={() => setIncludeHidden((v) => !v)}
+        onInputKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            if (searchQuery) search.setQuery("");
+            else event.currentTarget.blur();
+            return;
+          }
+          if (event.key !== "ArrowDown") return;
+          const first = resultsListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
+          if (!first) return;
+          event.preventDefault();
+          first.focus();
+        }}
+      />
+      {isRemote && (
+        <ExplorerRemoteTools
+          t={t}
+          bindingKey={treeRequestContext}
+          showPlaces={Boolean(prefsKey)}
+          followTerminalCwd={followTerminalCwd}
+          onToggleFollowCwd={() => {
+            if (!prefsKey) return;
+            useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => ({ ...prefs, followTerminalCwd: !prefs.followTerminalCwd }));
           }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <div className="explorer-breadcrumbs" title={currentPath}>
-          {breadcrumbSegments(currentPath, breadcrumbRoot).map((seg, idx, arr) => {
-            const isLast = idx === arr.length - 1;
-            const isCurrent = seg.targetPath === currentPath;
-            const showSeparator = idx < arr.length - 1;
-            return (
-              <span key={`${idx}:${seg.targetPath}`} style={{ display: "inline-flex", alignItems: "center", gap: 2, minWidth: 0 }}>
-                <button
-                  onClick={() => {
-                    if (isCurrent) return;
-                    setNavDir("out");
-                    setCurrentPath(seg.targetPath);
-                  }}
-                  disabled={isCurrent}
-                  aria-current={isCurrent ? "page" : undefined}
-                  className={isCurrent ? undefined : "hover-bg"}
-                  title={seg.isCollapsed ? seg.targetPath : seg.label}
-                  style={{
-                    height: 20,
-                    padding: "0 5px",
-                    borderRadius: "var(--r-btn)",
-                    border: "none",
-                    background: "transparent",
-                    cursor: isCurrent ? "default" : "pointer",
-                    fontSize: "var(--fs-meta)",
-                    lineHeight: "16px",
-                    fontFamily: "var(--font-mono)",
-                    color: isLast ? "var(--c-text-3)" : undefined,
-                    fontWeight: isLast ? 500 : 400,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    minWidth: seg.isCollapsed ? undefined : 24,
-                    flexShrink: seg.isCollapsed ? 0 : 1,
-                  }}
-                >
-                  {seg.label}
-                </button>
-                {showSeparator && (
-                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>›</span>
-                )}
-              </span>
-            );
-          })}
-        </div>
-        <button
-          onClick={refresh}
-          className="hover-bg"
-          title={t("explorer.refresh")}
-          aria-label={t("explorer.refresh")}
-          style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-        >
-          <RefreshIcon />
-        </button>
-        {isRemote && prefsKey && (
-          <>
-            <button
-              type="button"
-              className="hover-bg"
-              aria-pressed={followTerminalCwd}
-              title={t(followTerminalCwd ? "explorer.follow_cwd_on" : "explorer.follow_cwd")}
-              aria-label={t("explorer.follow_cwd")}
-              onClick={() => useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => ({ ...prefs, followTerminalCwd: !prefs.followTerminalCwd }))}
-              style={{
-                height: 26, minWidth: 26, padding: "0 6px", borderRadius: "var(--r-btn)", border: "none",
-                background: followTerminalCwd ? "var(--c-accent-bg-light)" : "transparent",
-                color: followTerminalCwd ? "var(--c-accent)" : "var(--c-text-5)",
-                cursor: "pointer", flexShrink: 0, fontSize: "var(--fs-meta)", fontWeight: 700,
-              }}
-            >
-              cwd
-            </button>
-            <button
-              type="button"
-              className="hover-bg"
-              title={hostPrefs.favoritePaths.includes(currentPath) ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
-              aria-label={hostPrefs.favoritePaths.includes(currentPath) ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
-              onClick={() => useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => toggleHostFavoritePath(prefs, currentPath))}
-              style={{
-                width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent",
-                color: hostPrefs.favoritePaths.includes(currentPath) ? "var(--c-accent)" : "var(--c-text-5)",
-                cursor: "pointer", flexShrink: 0,
-              }}
-            >
-              ★
-            </button>
-            <label className="sr-only" htmlFor={`explorer-paths-${sessionId}`}>{t("explorer.paths")}</label>
-            <select
-              id={`explorer-paths-${sessionId}`}
-              className="ui-control"
-              aria-label={t("explorer.paths")}
-              value=""
-              onChange={(event) => {
-                const path = event.target.value;
-                if (path) { setNavDir("in"); setCurrentPath(path); }
-              }}
-              style={{ maxWidth: 120, height: 26, fontSize: "var(--fs-meta)" }}
-            >
-              <option value="">{t("explorer.paths")}</option>
-              {hostPrefs.favoritePaths.length > 0 && (
-                <optgroup label={t("explorer.paths_favorites")}>
-                  {hostPrefs.favoritePaths.map((path) => <option key={`fav:${path}`} value={path}>{path}</option>)}
-                </optgroup>
-              )}
-              {hostPrefs.recentPaths.length > 0 && (
-                <optgroup label={t("explorer.paths_recent")}>
-                  {hostPrefs.recentPaths.map((path) => <option key={`recent:${path}`} value={path}>{path}</option>)}
-                </optgroup>
-              )}
-            </select>
-          </>
-        )}
-        <button
-          onClick={() => setIncludeHidden((v) => !v)}
-          className="hover-bg"
-          title={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
-          aria-label={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
-          aria-pressed={includeHidden}
-          style={{
-            height: 26,
-            minWidth: 26,
-            padding: "0 var(--sp-2)",
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: includeHidden ? "var(--c-accent-bg-light)" : "transparent",
-            color: includeHidden ? "var(--c-accent)" : "var(--c-text-5)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "var(--fs-meta)",
-            lineHeight: "16px",
-            fontFamily: "var(--font-mono)",
-            fontWeight: 700,
-            flexShrink: 0,
+          isFavorite={hostPrefs.favoritePaths.includes(currentPath)}
+          onToggleFavorite={() => {
+            if (!prefsKey) return;
+            useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => toggleHostFavoritePath(prefs, currentPath));
           }}
-        >
-          .*
-        </button>
-        {isRemote && (
-          <div className="explorer-toolbar-transfers">
-            <button
-              onClick={() => { void uploadToRemoteDirectory(currentPath); }}
-              disabled={remoteDisconnected || upload !== null}
-              className="hover-bg"
-              title={t("explorer.upload")}
-              aria-label={t("explorer.upload")}
-              style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected || upload ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-            >
-              <UploadIcon />
-            </button>
-            {binding && (
-              <>
-                <button
-                  onClick={() => { void uploadFolderToRemoteDirectory(currentPath); }}
-                  disabled={remoteDisconnected}
-                  className="hover-bg"
-                  title={t("explorer.upload_folder")}
-                  aria-label={t("explorer.upload_folder")}
-                  style={{ width: 26, height: 26, borderRadius: "var(--r-btn)", border: "none", background: "transparent", color: "var(--c-text-4)", cursor: remoteDisconnected ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-                >
-                  <UploadFolderIcon />
-                </button>
-                <button
-                  onClick={() => { void downloadSelectedFiles(); }}
-                  disabled={remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing}
-                  className="hover-bg"
-                  title={t("explorer.download.batch_action", { count: selectedDownloads.size })}
-                  aria-label={t("explorer.download.batch_action", { count: selectedDownloads.size })}
-                  style={{ minWidth: 26, height: 26, padding: "0 4px", borderRadius: "var(--r-btn)", border: "none", background: selectedDownloads.size > 0 ? "var(--c-accent-bg-light)" : "transparent", color: selectedDownloads.size > 0 ? "var(--c-accent)" : "var(--c-text-4)", cursor: remoteDisconnected || selectedDownloads.size === 0 || batchDownloadPreparing ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 2, flexShrink: 0 }}
-                >
-                  <DownloadIcon />
-                  {selectedDownloads.size > 0 && <span aria-hidden="true" style={{ fontSize: "var(--fs-meta)" }}>{selectedDownloads.size}</span>}
-                </button>
-              </>
-            )}
-            {activeTransferNotice > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  useUIStore.getState().setPanelVisible(true);
-                  useUIStore.getState().setInspectorTab("transfers");
-                }}
-                className="hover-bg"
-                title={t("explorer.transfers_open")}
-                aria-label={t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
-                style={{ minWidth: 26, height: 26, padding: "0 6px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-accent-border)", background: "var(--c-accent-bg-soft)", color: "var(--c-accent)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--fs-meta)", fontWeight: 650, flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                {t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+          favoritePaths={hostPrefs.favoritePaths}
+          recentPaths={hostPrefs.recentPaths}
+          onJumpToPath={(path) => { setNavDir("in"); setCurrentPath(path); }}
+          remoteDisconnected={remoteDisconnected}
+          uploadBusy={upload !== null}
+          onUploadFile={() => { void uploadToRemoteDirectory(currentPath); }}
+          showFolderTransfer={Boolean(binding)}
+          onUploadFolder={() => { void uploadFolderToRemoteDirectory(currentPath); }}
+          selectedDownloadCount={selectedDownloads.size}
+          batchDownloadPreparing={batchDownloadPreparing}
+          onDownloadSelected={() => { void downloadSelectedFiles(); }}
+          activeTransferNotice={activeTransferNotice}
+          onOpenTransfers={() => {
+            useUIStore.getState().setPanelVisible(true);
+            useUIStore.getState().setInspectorTab("transfers");
+          }}
+        />
+      )}
 
       {upload && (
         <div className="explorer-transfer-status">
@@ -1330,61 +1182,6 @@ export function FileExplorer({
           <progress className="ui-progress" aria-label={t("explorer.download.progress_label")} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
         </div>
       )}
-
-      <div
-        style={{ padding: "6px var(--sp-2)", borderBottom: "1px solid var(--c-border-1)", flexShrink: 0 }}
-      >
-        <div className="explorer-search" style={{ background: "var(--c-bg-3)", borderRadius: "var(--r-input)", display: "flex", alignItems: "center", gap: 7, padding: "5px var(--sp-2)", border: "1px solid var(--c-control-border)", transition: "border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease" }}>
-          <button
-            onClick={search.toggleSearchMode}
-            title={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
-            aria-label={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
-            aria-pressed={searchMode === "content"}
-            className="hover-bg"
-            style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: searchMode === "content" ? "var(--c-accent-bg-light)" : "transparent", color: searchMode === "content" ? "var(--c-accent)" : "var(--c-text-5)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-          >
-            {searchMode === "content" ? <FileContentIcon /> : <FileNameIcon />}
-          </button>
-          <SearchIcon />
-          <input
-            className="ui-native-control"
-            type="text"
-            value={searchQuery}
-            onChange={(e) => search.setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                // Esc 先清空，已空则让出焦点
-                if (searchQuery) {
-                  search.setQuery("");
-                } else {
-                  (e.currentTarget as HTMLInputElement).blur();
-                }
-              } else if (e.key === "ArrowDown") {
-                // 下箭头从搜索框直达第一个结果按钮
-                const first = resultsListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
-                if (first) {
-                  e.preventDefault();
-                  first.focus();
-                }
-              }
-            }}
-            placeholder={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
-            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontFamily: "var(--font-ui)", minWidth: 0 }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => search.setQuery("")}
-              className="hover-bg"
-              title={t("explorer.clear_search")}
-              aria-label={t("explorer.clear_search")}
-              style={{ width: 18, height: 18, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--c-text-5)", flexShrink: 0 }}
-            >
-              <CloseIcon size={11} strokeWidth={2.4} />
-            </button>
-          )}
-        </div>
-      </div>
 
       <div
         key={contentKey}

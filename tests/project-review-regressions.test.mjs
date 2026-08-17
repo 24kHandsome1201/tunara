@@ -676,6 +676,7 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   const explorer = read("src/ui/FileExplorer.tsx");
   // The search state machine moved to a dedicated hook module.
   const explorerSearch = read("src/ui/file-explorer/use-explorer-search.ts");
+  const explorerChrome = read("src/ui/file-explorer/chrome.tsx");
   const search = read("src-tauri/src/modules/fs/search.rs");
   const tree = read("src-tauri/src/modules/fs/tree.rs");
 
@@ -703,6 +704,7 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.match(explorerSearch, /searchGen\.invalidate\(\)/);
   assert.doesNotMatch(explorer, /disabled=\{isRemote\}/);
   assert.doesNotMatch(explorerSearch, /disabled=\{isRemote\}/);
+  assert.doesNotMatch(explorerChrome, /disabled=\{isRemote\}/);
   // Local and remote grep hits open the same persistent Tunara workspace tab;
   // SSH paths must never be handed to a local external editor.
   assert.match(explorer, /onClick=\{\(\) => openFile\(group\.path\)\}/);
@@ -710,7 +712,12 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   // not vanish into an empty catch.
   assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
   assert.doesNotMatch(explorer, /openInEditor\([^)]*\)\.catch\(\(\) => \{\}\)/);
-  assert.match(explorer, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
+  assert.match(explorerChrome, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
+  assert.match(explorerChrome, /aria-label=\{t\("explorer\.chrome\.nav"\)\}/);
+  assert.match(explorerChrome, /role="search"/);
+  assert.match(explorerChrome, /role="toolbar"/);
+  assert.match(explorerChrome, /className="explorer-places"/);
+  assert.match(explorerChrome, /className="explorer-transfers"/);
   assert.match(explorerSearch, /const next = m === "name" \? "content" : "name"/);
   assert.match(explorer, /setReloadKey\(\(n\) => n \+ 1\)/);
   assert.match(explorer, /setIncludeHidden\(\(v\) => !v\)/);
