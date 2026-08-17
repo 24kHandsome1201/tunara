@@ -1,6 +1,6 @@
 import { Channel } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { downloadFailureKey, FileExplorer, parseUploadFailure, sortExplorerEntries, uploadFailureKey } from "@/ui/FileExplorer";
 import { useUIStore } from "@/state/ui";
@@ -111,6 +111,101 @@ describe("FileExplorer directory navigation", () => {
     await screen.findByText("Directory is empty");
     fireEvent.click(screen.getByRole("button", { name: "Favorite this directory" }));
     expect(useSessionsStore.getState().hostFilePrefs["deploy@example:22"]?.favoritePaths).toEqual(["/srv/app"]);
+  });
+
+  test("groups chrome into directory, search, and remote tool bands", async () => {
+    useSessionsStore.setState({
+      activeSessionId: "remote",
+      hostFilePrefs: {},
+      sessions: [{
+        id: "remote",
+        title: "deploy@example",
+        dir: "/srv/app",
+        branch: "",
+        runState: "idle",
+        updatedAt: 1,
+        remote: { host: "example", port: 22, user: "deploy" },
+        ptyId: 40,
+      }],
+    });
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" />);
+    await screen.findByText("Directory is empty");
+
+    const nav = screen.getByRole("navigation", { name: "Directory" });
+    expect(within(nav).getByRole("button", { name: "Go to parent" })).toBeTruthy();
+    expect(within(nav).getByRole("button", { name: "Refresh file list" })).toBeTruthy();
+    expect(within(nav).queryByRole("button", { name: "Follow terminal directory" })).toBeNull();
+    expect(within(nav).queryByRole("button", { name: "Show dotfiles" })).toBeNull();
+    expect(within(nav).queryByRole("button", { name: "Upload file…" })).toBeNull();
+
+    const search = screen.getByRole("search", { name: "Search files" });
+    expect(within(search).getByPlaceholderText("Search current project")).toBeTruthy();
+    expect(within(search).getByRole("button", { name: "Show dotfiles" })).toBeTruthy();
+    expect(within(search).queryByRole("button", { name: "Refresh file list" })).toBeNull();
+
+    const tools = screen.getByRole("toolbar", { name: "Remote file tools" });
+    expect(within(tools).getByRole("button", { name: "Follow terminal directory" })).toBeTruthy();
+    expect(within(tools).getByRole("button", { name: "Favorite this directory" })).toBeTruthy();
+    expect(within(tools).getByRole("button", { name: "Upload file…" })).toBeTruthy();
+    expect(within(tools).queryByRole("button", { name: "Show dotfiles" })).toBeNull();
+    expect(within(tools).queryByRole("button", { name: "Go to parent" })).toBeNull();
+  });
+
+  test("keeps local files to directory and search bands", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    await screen.findByText("Directory is empty");
+
+    expect(screen.getByRole("navigation", { name: "Directory" })).toBeTruthy();
+    expect(within(screen.getByRole("search", { name: "Search files" })).getByRole("button", { name: "Show dotfiles" })).toBeTruthy();
+    expect(screen.queryByRole("toolbar", { name: "Remote file tools" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Upload file…" })).toBeNull();
+  });
+
+  test("jumps to a favorite remote directory from the places menu", async () => {
+    const readPaths: string[] = [];
+    useSessionsStore.setState({
+      activeSessionId: "remote",
+      hostFilePrefs: {
+        "deploy@example:22": {
+          favoritePaths: ["/var/log"],
+          recentPaths: ["/tmp"],
+          followTerminalCwd: false,
+        },
+      },
+      sessions: [{
+        id: "remote",
+        title: "deploy@example",
+        dir: "/srv/app",
+        branch: "",
+        runState: "idle",
+        updatedAt: 1,
+        remote: { host: "example", port: 22, user: "deploy" },
+        ptyId: 40,
+      }],
+    });
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_read_dir") {
+        readPaths.push((payload as { path: string }).path);
+        return [];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} />);
+    await waitFor(() => expect(readPaths).toContain("/srv/app"));
+    fireEvent.click(screen.getByRole("button", { name: "Favorite and recent directories" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "/var/log" }));
+    await waitFor(() => expect(readPaths).toContain("/var/log"));
   });
 });
 

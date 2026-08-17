@@ -125,6 +125,7 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
   const tokens = read("src/styles/tokens.css");
   const styles = read("src/styles/globals.css");
   const explorer = read("src/ui/FileExplorer.tsx");
+  const explorerChrome = read("src/ui/file-explorer/chrome.tsx");
   const inspector = read("src/ui/InspectorPanel.tsx");
   const preview = read("src/ui/PreviewPanel.tsx");
   const shared = read("src/ui/shared.tsx");
@@ -145,10 +146,11 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
   assert.doesNotMatch(styles, /content: "› "/);
   const explorerIcons = read("src/ui/file-explorer/icons.tsx");
   assert.doesNotMatch(explorer, /stroke="var\(--c-accent\)"/);
+  assert.doesNotMatch(explorerChrome, /stroke="var\(--c-accent\)"/);
   assert.doesNotMatch(explorerIcons, /stroke="var\(--c-accent\)"/);
-  assert.match(explorer, /<UploadIcon/);
-  assert.match(explorer, /<UploadFolderIcon/);
-  assert.match(explorer, /<DownloadIcon/);
+  assert.match(explorerChrome, /<UploadIcon/);
+  assert.match(explorerChrome, /<UploadFolderIcon/);
+  assert.match(explorerChrome, /<DownloadIcon/);
   assert.match(explorerIcons, /className="explorer-tree-chevron"/);
   assert.match(shared, /export function UploadIcon/);
   assert.match(shared, /export function UploadFolderIcon/);
