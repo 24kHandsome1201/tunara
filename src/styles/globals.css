@@ -591,7 +591,9 @@ select.ui-control {
   color: var(--c-text-3);
   font-weight: 500;
   cursor: default;
+  flex-shrink: 0;
 }
+.explorer-breadcrumb:last-child { flex-shrink: 0; }
 .explorer-breadcrumb-link { cursor: pointer; }
 .explorer-breadcrumb[data-collapsed="true"] > button { flex-shrink: 0; min-width: 0; }
 .explorer-breadcrumb-sep {
@@ -700,6 +702,9 @@ select.ui-control {
   font-weight: 650;
   flex-shrink: 0;
   white-space: nowrap;
+}
+.explorer-tree-node {
+  overflow: visible;
 }
 .explorer-tree-toggle {
   display: inline-flex;

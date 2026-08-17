@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
-/** 目录行距：30px 按钮 + 2px marginBottom，恒定值（展开态只改底色不改高度）。 */
+/** 未展开时的目录行距：30px 行 + 2px marginBottom。展开后子树高度不固定。 */
 const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
@@ -923,12 +923,27 @@ export function FileExplorer({
           setListingFocusIndex(listingIndex);
         }}
         onClick={(event) => {
-          if (event.target !== event.currentTarget && (event.target as HTMLElement).closest("[role=group], button, input")) return;
+          const target = event.target as HTMLElement;
+          if (target.closest("button, input")) return;
+          const originItem = target.closest("[role=treeitem]");
+          if (originItem && originItem !== event.currentTarget) return;
           if (batchSelectable && (event.ctrlKey || event.metaKey || event.shiftKey)) {
             toggleDownloadSelection(node, event.shiftKey);
             return;
           }
-          if (isDir) { setNavDir("in"); setCurrentPath(node.path); } else openFile(node.path);
+          if (isDir) {
+            // A second click in a double-click enters the folder; the first
+            // click still expands so nested children stay visible in the tree.
+            if (event.detail > 1) {
+              setNavDir("in");
+              setCurrentPath(node.path);
+              return;
+            }
+            if (expanded) collapsePath(node.path);
+            else expandDirectory(node.path);
+            return;
+          }
+          openFile(node.path);
         }}
         onContextMenu={(event) => { event.preventDefault(); openMenu(event.clientX, event.clientY, event.currentTarget); }}
         onKeyDown={(event) => {
@@ -989,9 +1004,24 @@ export function FileExplorer({
             }
           }
         }}
-        className="hover-bg"
-        style={{ width: "100%", minHeight: 30, padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`, borderRadius: "var(--r-btn)", border: dropHighlightPath === node.path ? "1px dashed var(--c-accent)" : "none", background: dropHighlightPath === node.path ? "color-mix(in srgb, var(--c-accent) 12%, transparent)" : batchSelected || active ? "var(--c-accent-bg-light)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: binding ? "20px minmax(0, 1fr) minmax(42px, 92px) 28px" : "minmax(0, 1fr) minmax(42px, 92px) 28px", columnGap: 4, alignItems: "center", textAlign: "left", marginBottom: 2 }}
+        className="explorer-tree-node"
+        style={{ width: "100%", marginBottom: 2, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "stretch" }}
       >
+        <div
+          className="hover-bg"
+          style={{
+            minHeight: 30,
+            padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`,
+            borderRadius: "var(--r-btn)",
+            border: dropHighlightPath === node.path ? "1px dashed var(--c-accent)" : "none",
+            background: dropHighlightPath === node.path ? "color-mix(in srgb, var(--c-accent) 12%, transparent)" : batchSelected || active ? "var(--c-accent-bg-light)" : "transparent",
+            display: "grid",
+            gridTemplateColumns: binding ? "20px minmax(0, 1fr) minmax(42px, 92px) 28px" : "minmax(0, 1fr) minmax(42px, 92px) 28px",
+            columnGap: 4,
+            alignItems: "center",
+            textAlign: "left",
+          }}
+        >
         {binding && (
           <input
             type="checkbox"
@@ -1044,13 +1074,14 @@ export function FileExplorer({
         >
           <span aria-hidden="true">⋯</span>
         </button>
+        </div>
         {isDir && expanded && children.length > 0 && (
-          <div role="group" style={{ gridColumn: "1 / -1", marginLeft: -8 }}>
+          <div role="group">
             {children.map(renderTreeNode)}
           </div>
         )}
         {isDir && expanded && treeErrors[node.path]?.kind === "readFailed" && (
-          <div role="group" style={{ gridColumn: "1 / -1", padding: "2px 0 4px 22px" }}>
+          <div role="group" style={{ padding: "2px 0 4px 22px" }}>
             <div role="alert" style={{ color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
               {t("explorer.read_dir_failed")}
             </div>

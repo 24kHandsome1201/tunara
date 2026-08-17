@@ -1006,9 +1006,55 @@ describe("FileExplorer workspace files", () => {
     expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
     expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
 
-    fireEvent.click(src);
+    fireEvent.keyDown(src, { key: "Enter" });
     await waitFor(() => expect(reads[reads.length - 1]).toBe("/tmp/repo/src"));
     expect(screen.getByRole("button", { name: "src" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  test("clicking a local folder expands nested children instead of replacing the listing", async () => {
+    const reads: string[] = [];
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      const path = (payload as { path: string }).path;
+      reads.push(path);
+      if (path === "/tmp/repo") return [
+        { name: "src", kind: "dir", size: 0, mtime: 2_000 },
+        { name: "lib", kind: "dir", size: 0, mtime: 1_500 },
+        { name: "README.md", kind: "file", size: 1, mtime: 1_000 },
+      ];
+      if (path === "/tmp/repo/src") return [
+        { name: "index.ts", kind: "file", size: 1, mtime: 1_000 },
+        { name: "nested", kind: "dir", size: 0, mtime: 1_000 },
+      ];
+      return [{ name: "deep.ts", kind: "file", size: 1, mtime: 1_000 }];
+    });
+
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    const src = await screen.findByRole("treeitem", { name: /^src/ });
+    const row = (item: HTMLElement) => {
+      const header = item.querySelector(":scope > .hover-bg");
+      if (!header) throw new Error("missing explorer row");
+      return header;
+    };
+    // Click the visible row, not the outer treeitem: nested folders live
+    // inside [role=group], which used to swallow the expand handler.
+    fireEvent.click(row(src));
+    expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
+    const nested = screen.getByRole("treeitem", { name: /^nested/ });
+    expect(src.getAttribute("aria-expanded")).toBe("true");
+    expect(nested.getAttribute("aria-level")).toBe("2");
+    expect(screen.getByRole("treeitem", { name: /^lib/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(row(nested));
+    expect(await screen.findByRole("treeitem", { name: /^deep\.ts/ })).toBeTruthy();
+    expect(nested.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("treeitem", { name: /^deep\.ts/ }).getAttribute("aria-level")).toBe("3");
+    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
+    expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src", "/tmp/repo/src/nested"]);
+
+    fireEvent.click(row(src), { detail: 2 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "src" }).getAttribute("aria-current")).toBe("page"));
   });
 
   test("retries a rejected nested directory read instead of caching an empty result", async () => {
