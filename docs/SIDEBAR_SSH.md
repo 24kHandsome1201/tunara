@@ -285,5 +285,6 @@ Known hosts 编辑继续留在设置 → SSH，不进侧栏。
 | 连接断了怎么办 | 动态条原位重连 | Overview 重连；诊断报告若保留则在 Overview |
 | 远端文件 / 传输 / 转发 | 不放 | Files、Transfers、Forwarding |
 | 改 known_hosts | 不放 | 设置 → SSH |
+| 这台机器打开了哪些文件？ | 不放（避免和第二份标签条重复） | 标题栏当前设备工作面，见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md) |
 
-侧栏适配完成后，[FEATURES.md](./FEATURES.md) 已写成「本地按目录、SSH 按主机」。不要再改回「只按工作目录分组」。
+侧栏适配完成后，[FEATURES.md](./FEATURES.md) 已写成「本地按目录、SSH 按主机」。不要再改回「只按工作目录分组」。标题栏不要再把全部会话和跨设备文件平铺成第二条定位器。

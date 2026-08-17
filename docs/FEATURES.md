@@ -28,7 +28,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 | 区域 | 入口 | 职责 |
 |------|------|------|
-| 标题栏 | [`src/ui/Titlebar.tsx`](../src/ui/Titlebar.tsx) | 会话/文件标签、新建、纯净模式、命令面板、设置 |
+| 标题栏 | [`src/ui/Titlebar.tsx`](../src/ui/Titlebar.tsx) | 当前设备的文件标签；侧栏收起时再加上该设备的终端，多设备时用压缩菜单切换 |
 | 侧栏 | [`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx) | 本地按目录、SSH 按主机分组的会话、统一动态、搜索 |
 | 主区 | [`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) | xterm 分栏，或与终端并列的文件标签 |
 | 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | Overview / Changes / Files / Preview / Notes，以及 SSH 专用页 |
@@ -130,7 +130,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 5. 文件、预览与轻编辑
 
-本地与 SSH 共用 Files 表面；打开的文件可作为工作区标签与终端并列（1.17.0）。
+本地与 SSH 共用 Files 表面；打开的文件作为**当前设备**的工作区标签与终端并列（见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)）。侧栏打开时标题栏不再倒全部会话。
 
 | 能力 | 边界 | 代码 |
 |------|------|------|

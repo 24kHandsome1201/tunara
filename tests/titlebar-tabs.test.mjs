@@ -14,6 +14,9 @@ test("titlebar session tabs expose selection and close as separate controls", ()
   assert.match(tabButton, /className="tab-close hover-close"/);
   assert.equal((tabButton.match(/tabIndex=\{tabIndex \?\? 0\}/g) ?? []).length, 2);
   assert.match(source, /role="tablist"[\s\S]*?aria-label=\{t\("titlebar\.tabs"\)\}/);
+  assert.match(source, /titlebarWorkingSet/);
+  assert.match(source, /data-titlebar-device/);
+  assert.doesNotMatch(source, /`\$\{session\.remote\.user\}@\$\{session\.remote\.host\}`/);
 });
 
 test("keyboard focus reveals the otherwise quiet close affordance", () => {

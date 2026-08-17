@@ -32,13 +32,18 @@ const session: Session = {
   updatedAt: 1,
 };
 
-function renderTitlebar() {
+function renderTitlebar(options?: {
+  sessions?: Session[];
+  activeSessionId?: string;
+  sidebarVisible?: boolean;
+}) {
+  const sessions = options?.sessions ?? [session];
   return render(
     <Titlebar
-      sessions={[session]}
-      activeSessionId={session.id}
+      sessions={sessions}
+      activeSessionId={options?.activeSessionId ?? sessions[0]?.id ?? session.id}
       panelVisible
-      sidebarVisible
+      sidebarVisible={options?.sidebarVisible ?? true}
       onToggleSidebar={() => {}}
       onTogglePanel={() => {}}
       onSelectSession={(id) => useSessionsStore.getState().setActive(id)}
@@ -60,7 +65,7 @@ describe("workspace file and terminal tabs", () => {
     });
     const fileTabId = useUIStore.getState().activeFileTabId!;
     useUIStore.getState().setFileTabDirty(fileTabId, true);
-    renderTitlebar();
+    renderTitlebar({ sidebarVisible: false });
 
     const terminalTab = screen.getByRole("tab", { name: "Terminal" });
     const fileTab = screen.getByRole("tab", { name: /notes\.txt/ });
@@ -85,12 +90,12 @@ describe("workspace file and terminal tabs", () => {
       fileName: "notes.txt",
     });
     const fileTabId = useUIStore.getState().activeFileTabId!;
-    renderTitlebar();
+    renderTitlebar({ sidebarVisible: false });
 
     fireEvent.keyDown(screen.getByRole("button", { name: "Close notes.txt" }), { key: "ArrowLeft" });
     expect(useUIStore.getState().activeFileTabId).toBe(fileTabId);
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "notes.txt" }), { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: /notes\.txt/ }), { key: "ArrowLeft" });
     expect(useUIStore.getState().activeFileTabId).toBeNull();
   });
 
@@ -128,7 +133,7 @@ describe("workspace file and terminal tabs", () => {
     useUIStore.getState().openFileTab({ sessionId: session.id, filePath: "/tmp/project/a.txt", fileName: "a.txt" });
     useUIStore.getState().openFileTab({ sessionId: secondSession.id, filePath: "/tmp/project/b.txt", fileName: "b.txt" });
     const activeFileTabId = useUIStore.getState().activeFileTabId;
-    renderTitlebar();
+    renderTitlebar({ sessions: [session, secondSession], activeSessionId: secondSession.id });
 
     fireEvent.click(screen.getByRole("button", { name: "Close a.txt" }));
     expect(useSessionsStore.getState().activeSessionId).toBe(secondSession.id);
@@ -270,5 +275,84 @@ describe("workspace file and terminal tabs", () => {
       pendingInput: "cd '/srv/project/a; $(touch PWNED)' && less -- 'notes '\"'\"'final'\"'\"'.txt'",
       pendingInputSubmit: true,
     });
+  });
+
+  test("sidebar-open titlebar shows only the current device file and marks SSH origin", () => {
+    const localSession = { ...session, id: "local-1", title: "App", dir: "/tmp/app" };
+    const remoteSession: Session = {
+      ...session,
+      id: "ssh-1",
+      title: "Pi",
+      dir: "/etc",
+      remote: { host: "pi", port: 22, user: "tuna" },
+    };
+    useSessionsStore.setState({ sessions: [localSession, remoteSession], activeSessionId: remoteSession.id });
+    useUIStore.getState().openFileTab({ sessionId: localSession.id, filePath: "/tmp/app/notes.txt", fileName: "notes.txt" });
+    useUIStore.getState().openFileTab({ sessionId: remoteSession.id, filePath: "/etc/hosts", fileName: "hosts" });
+    renderTitlebar({ sessions: [localSession, remoteSession], activeSessionId: remoteSession.id, sidebarVisible: true });
+
+    expect(screen.getByRole("tab", { name: /hosts/ }).closest("[data-workspace-tab-kind]")?.getAttribute("data-workspace-tab-kind")).toBe("file");
+    expect(screen.getByRole("tab", { name: /hosts/ }).closest("[data-workspace-tab-origin]")?.getAttribute("data-workspace-tab-origin")).toBe("ssh");
+    expect(screen.getByRole("tab", { name: /hosts/ }).closest("[data-workspace-tab-kind]")?.querySelector("[data-workspace-tab-origin-glyph]")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: /notes\.txt/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "App" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Pi" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /tuna@pi/ })).toBeNull();
+  });
+
+  test("closing an active file does not select a file from another device", () => {
+    const localSession = { ...session, id: "local-1", title: "App", dir: "/tmp/app" };
+    const remoteSession: Session = {
+      ...session,
+      id: "ssh-1",
+      title: "Pi",
+      dir: "/srv",
+      remote: { host: "pi", port: 22, user: "tuna" },
+    };
+    useSessionsStore.setState({ sessions: [localSession, remoteSession], activeSessionId: remoteSession.id });
+    useUIStore.getState().openFileTab({ sessionId: localSession.id, filePath: "/tmp/app/notes.txt", fileName: "notes.txt" });
+    useUIStore.getState().openFileTab({ sessionId: remoteSession.id, filePath: "/srv/README.md", fileName: "README.md" });
+    renderTitlebar({ sessions: [localSession, remoteSession], activeSessionId: remoteSession.id });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close README.md" }));
+    expect(useSessionsStore.getState().activeSessionId).toBe(remoteSession.id);
+    expect(useUIStore.getState()).toMatchObject({
+      activeFileTabId: null,
+      fileTabs: [{ fileName: "notes.txt" }],
+    });
+  });
+
+  test("collapsed sidebar shows a device menu for multiple devices and can jump hosts", () => {
+    const localSession = { ...session, id: "local-1", title: "App", dir: "/tmp/app" };
+    const remoteSession: Session = {
+      ...session,
+      id: "ssh-1",
+      title: "Pi",
+      dir: "/etc",
+      remote: { host: "pi", port: 22, user: "tuna" },
+    };
+    useSessionsStore.setState({ sessions: [localSession, remoteSession], activeSessionId: remoteSession.id });
+    useUIStore.getState().openFileTab({ sessionId: localSession.id, filePath: "/tmp/app/notes.txt", fileName: "notes.txt" });
+    useUIStore.getState().openFileTab({ sessionId: remoteSession.id, filePath: "/etc/hosts", fileName: "hosts" });
+    useUIStore.getState().setFileTabDirty(`${localSession.id}\0/tmp/app/notes.txt`, true);
+    renderTitlebar({ sessions: [localSession, remoteSession], activeSessionId: remoteSession.id, sidebarVisible: false });
+
+    const deviceButton = screen.getByRole("button", { name: /tuna@pi/ });
+    expect(deviceButton.getAttribute("data-titlebar-device-kind")).toBe("ssh");
+    expect(screen.getByRole("tab", { name: /hosts/ }).closest("[data-workspace-tab-kind]")?.querySelector("[data-workspace-tab-origin-glyph]")).toBeNull();
+    expect(screen.queryByRole("tab", { name: /notes\.txt/ })).toBeNull();
+
+    fireEvent.click(deviceButton);
+    expect(screen.getByRole("menuitem", { name: "tuna@pi (current)" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: /notes\.txt/ }));
+    expect(useSessionsStore.getState().activeSessionId).toBe(localSession.id);
+    expect(useUIStore.getState().activeFileTabId).toBe(`${localSession.id}\0/tmp/app/notes.txt`);
+  });
+
+  test("a single-device window does not render the device switcher", () => {
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+    renderTitlebar({ sidebarVisible: false });
+    expect(screen.queryByRole("button", { name: /project/ })).toBeNull();
+    expect(document.querySelector("[data-titlebar-device]")).toBeNull();
   });
 });
