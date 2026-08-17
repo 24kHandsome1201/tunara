@@ -31,6 +31,7 @@
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | 视觉与交互约定 |
 | [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 右侧栏现状与收敛提案（非产品合同） |
 | [SIDEBAR_SSH.md](./SIDEBAR_SSH.md) | 左侧栏 SSH 按主机分组：已落地合同、落地前根因与后续体验项 |
+| [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md) | 标题栏按当前设备收口工作面：设计提案（尚未落地） |
 
 ## 发布、验收与历史
 
