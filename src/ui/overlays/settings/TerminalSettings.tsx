@@ -27,7 +27,7 @@ import {
   TOGGLE_ROW,
 } from "./controls";
 
-function WallpaperSettings() {
+export function WallpaperSettings() {
   const t = useT();
   const enabled = useUIStore((s) => s.terminalWallpaperEnabled);
   const source = useUIStore((s) => s.terminalWallpaperSource);
