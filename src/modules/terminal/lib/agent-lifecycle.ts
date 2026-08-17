@@ -146,11 +146,13 @@ export function sessionDisplayRunState(session: Session): RunState {
 export type AgentScreenState = "ready" | "busy" | "waiting_confirmation" | null;
 
 export const CODEX_PROMPT_PATTERN = /^\s*›(?:\s|$)/;
+// Live turn chrome only. Codex keeps the composer visible while a turn runs and
+// paints the status row *above* `›`, so a bare "Working" in transcript or an
+// idle goal/background footer must not decide the session.
 export const CODEX_BUSY_INDICATORS = [
-  /\bWorking\b/i,
-  /esc to interrupt/i,
-  /Pursuing goal/i,
-  /background terminal running/i,
+  /to interrupt/i,
+  /\bWorking\b[^\n]*\(\s*\d/i,
+  /\bThinking\b[^\n]*\(\s*\d/i,
 ] as const;
 export const PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT = 12;
 
@@ -194,23 +196,11 @@ export function detectCodexScreenState(text: string): AgentScreenState {
   const recent = lines.slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT);
   const recentText = recent.join("\n");
   if (hasCodexConfirmationPrompt(recent)) return "waiting_confirmation";
-  let promptIndex = -1;
-  for (let i = recent.length - 1; i >= 0; i -= 1) {
-    if (isCodexPromptLine(recent[i])) {
-      promptIndex = i;
-      break;
-    }
-  }
-
-  if (promptIndex >= 0) {
-    const currentTurnText = recent.slice(promptIndex + 1).join("\n");
-    return hasCodexBusyIndicator(currentTurnText) ? "busy" : "ready";
-  }
-
-  if (hasCodexBusyIndicator(recentText)) {
-    return "busy";
-  }
-
+  // The live status row sits above the still-visible composer. Busy chrome in
+  // the recent window therefore wins over `›`; only an interrupt/elapsed status
+  // line counts, so a newer idle composer is not stuck on leftover transcript.
+  if (hasCodexBusyIndicator(recentText)) return "busy";
+  if (recent.some(isCodexPromptLine)) return "ready";
   return null;
 }
 

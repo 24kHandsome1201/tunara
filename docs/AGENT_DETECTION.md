@@ -213,7 +213,10 @@ file (`detectCodexScreenState`, `CODEX_BUSY_INDICATORS`,
 `CODEX_PROMPT_PATTERN`), driven by
 [`terminal-prompt-agent-state.ts`](../src/modules/terminal/lib/terminal-prompt-agent-state.ts):
 because Codex doesn't emit hook events, Tunara scrapes the last few rendered
-lines to decide `ready` vs `busy`.
+lines to decide `ready` vs `busy`. Current Codex keeps the `›` composer visible
+while a turn runs and paints `Working (… • esc to interrupt)` *above* it, so a
+live interrupt/elapsed status row wins over the composer; a bare "Working" in
+transcript or an idle goal/background footer does not.
 
 ### Resume
 

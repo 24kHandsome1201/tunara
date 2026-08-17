@@ -1782,7 +1782,23 @@ test("Codex screen replay moves between busy and idle without real Codex", () =>
 
   assert.equal(detectCodexScreenState("Codex\nWorking\nesc to interrupt"), "busy");
   assert.equal(detectCodexScreenState("Codex\n› fix this\nWorking\nesc to interrupt"), "busy");
-  assert.equal(detectCodexScreenState("Codex\nWorking\nesc to interrupt\n› "), "ready");
+  assert.equal(
+    detectCodexScreenState("Codex\nWorking (12s • esc to interrupt)\n› "),
+    "busy",
+    "current Codex keeps the composer visible under the live status row",
+  );
+  assert.equal(detectCodexScreenState("Codex\nThinking (5s • esc to interrupt)\n› follow-up"), "busy");
+  assert.equal(
+    detectCodexScreenState("Codex\nI'll start Working on the tests\n› "),
+    "ready",
+    "transcript mentioning Working is not live turn chrome",
+  );
+  assert.equal(
+    detectCodexScreenState("Codex\n› \nPursuing goal"),
+    "ready",
+    "goal footer is not a live turn",
+  );
+  assert.equal(detectCodexScreenState("Codex\n› \n2 background terminals running"), "ready");
   assert.equal(h.apply(agentBusyUpdate(h.session, 20)), true);
   assert.equal(h.session.agentActivity, "running");
   assert.equal(isSessionBusy(h.session), true);
@@ -1884,7 +1900,7 @@ test("prompt agent screen tracker does not mark ready Codex prompt redraws as bu
   let busyCount = 0;
   let readyCount = 0;
   const tracker = createPromptAgentScreenStateTracker({
-    terminal: makeTailTerminal(["Codex", "Working", "esc to interrupt", "› "]),
+    terminal: makeTailTerminal(["Codex", "I'll start Working on the tests", "› "]),
     getSessionId: () => "s-1",
     getCurrentSession: () => session,
     onBusy: () => {
@@ -1903,6 +1919,35 @@ test("prompt agent screen tracker does not mark ready Codex prompt redraws as bu
   await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
   assert.equal(busyCount, 0);
   assert.equal(readyCount, 0);
+
+  tracker.dispose();
+});
+
+test("prompt agent screen tracker marks Codex busy when the live status sits above the composer", async () => {
+  let session = makeSession({ agent: "CX", agentActivity: "idle" });
+  let busyCount = 0;
+  let readyCount = 0;
+  const tracker = createPromptAgentScreenStateTracker({
+    terminal: makeTailTerminal(["Codex", "Working (12s • esc to interrupt)", "› "]),
+    getSessionId: () => "s-1",
+    getCurrentSession: () => session,
+    onBusy: () => {
+      busyCount += 1;
+      session = { ...session, agentActivity: "running" };
+    },
+    onReady: () => {
+      readyCount += 1;
+      session = { ...session, agentActivity: "idle" };
+    },
+  });
+
+  tracker.schedule();
+  assert.equal(busyCount, 0);
+
+  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
+  assert.equal(busyCount, 1);
+  assert.equal(readyCount, 0);
+  assert.equal(session.agentActivity, "running");
 
   tracker.dispose();
 });
