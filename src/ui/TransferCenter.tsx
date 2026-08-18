@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTransferStore } from "@/modules/ssh/transfer-store";
+import { useTransferStore, type TransferItem } from "@/modules/ssh/transfer-store";
 import { useT } from "@/modules/i18n";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import type { InspectorScopedPanelProps } from "./inspector-scope";
@@ -8,10 +8,67 @@ import { formatTransferEta, formatTransferRate, transferEta, transferRate } from
 import { canResumeRecovery } from "@/modules/ssh/transfer-resume";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import { useSessionsStore } from "@/state/sessions";
+import type { MutableRefObject, ReactNode } from "react";
+
+function TransferCard({ id, children }: { id: string; children: (item: TransferItem) => ReactNode }) {
+  const item = useTransferStore((state) => state.itemsById.get(id));
+  return item ? children(item) : null;
+}
+
+function BatchSummary({ batchId, cancelBatch, confirmAction }: {
+  batchId: string;
+  cancelBatch: (batchId: string) => Promise<void>;
+  confirmAction: (message: string) => Promise<boolean>;
+}) {
+  const t = useT();
+  const batch = useTransferStore((state) => state.aggregateByBatch.get(batchId));
+  if (!batch || batch.total < 2) return null;
+  return (
+    <li className="transfer-card transfer-card--batch">
+      <span className="transfer-card-summary">{t("transfer.batch.summary", { ...batch })}</span>
+      {(batch.running > 0 || batch.queued > 0) && (
+        <PanelActionButton aria-label={t("transfer.batch.cancel_label", { count: batch.total })} onClick={() => void confirmAction(t("transfer.confirm.cancel_batch", { count: batch.total })).then((approved) => { if (approved) return cancelBatch(batchId); })}>
+          {t("transfer.batch.cancel")}
+        </PanelActionButton>
+      )}
+      <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.batch.progress", { count: batch.total })} max={batch.total} value={batch.progress} />
+    </li>
+  );
+}
+
+function AnnouncementController({ visibleIds, announceRef }: {
+  visibleIds: readonly string[];
+  announceRef: MutableRefObject<(value: string) => void>;
+}) {
+  const t = useT();
+  const [announcement, setAnnouncement] = useState("");
+  const revision = useTransferStore((state) => state.revision);
+  const announced = useRef(new Map<string, { status: string; bucket: number; at: number }>());
+  useEffect(() => { announceRef.current = setAnnouncement; }, [announceRef]);
+  useEffect(() => {
+    const visibleItems = visibleIds.flatMap((id) => { const item = useTransferStore.getState().itemsById.get(id); return item ? [item] : []; });
+    const now = Date.now();
+    const keys = new Set(visibleItems.map((item) => `${item.transferId}:${item.attempt}`));
+    for (const key of announced.current.keys()) if (!keys.has(key)) announced.current.delete(key);
+    for (const item of visibleItems) {
+      const key = `${item.transferId}:${item.attempt}`;
+      const previous = announced.current.get(key);
+      const total = item.event?.totalBytes ?? 0;
+      const percent = total > 0 ? Math.min(100, Math.round((item.event?.bytesTransferred ?? 0) / total * 100)) : 0;
+      const bucket = Math.floor(percent / 10);
+      if (!previous) setAnnouncement(t("transfer.announcement.started", { file: item.source }));
+      else if (previous.status !== item.status && ["completed", "cancelled", "failed", "needsReconcile"].includes(item.status)) setAnnouncement(t(`transfer.announcement.${item.status}`, { file: item.source }));
+      else if (item.status === "running" && (bucket > previous.bucket || now - previous.at >= 2_000)) setAnnouncement(t("transfer.announcement.progress", { file: item.source, percent }));
+      else continue;
+      announced.current.set(key, { status: item.status, bucket, at: now });
+    }
+  }, [revision, setAnnouncement, t, visibleIds]);
+  return <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>;
+}
 
 export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelProps> = {}) {
   const t = useT();
-  const items = useTransferStore((state) => state.items);
+  const order = useTransferStore((state) => state.order);
   const cancel = useTransferStore((state) => state.cancel);
   const cancelBatch = useTransferStore((state) => state.cancelBatch);
   const cancelAll = useTransferStore((state) => state.cancelAll);
@@ -25,63 +82,29 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
   const dismissRecovery = useTransferStore((state) => state.dismissRecovery);
   const logicalSessionId = inspectorScope?.logicalSessionId;
   const [global, setGlobal] = useState(!logicalSessionId);
-  const visibleItems = useMemo(() => global || !logicalSessionId ? items : items.filter((item) => item.binding.logicalSessionId === logicalSessionId), [global, items, logicalSessionId]);
+  const visibleIds = useMemo(() => global || !logicalSessionId ? order : order.filter((id) => useTransferStore.getState().idsBySession.get(logicalSessionId)?.has(id)), [global, order, logicalSessionId]);
   const visibleRecoveries = useMemo(() => global || !logicalSessionId ? recoveries : recoveries.filter((item) => item.record.session === logicalSessionId), [global, recoveries, logicalSessionId]);
-  const visibleBatches = useMemo(() => {
-    const grouped = new Map<string, typeof visibleItems>();
-    for (const item of visibleItems) {
-      if (!item.batchId) continue;
-      grouped.set(item.batchId, [...(grouped.get(item.batchId) ?? []), item]);
+  const visibleBatches = useMemo(() => [...new Set(visibleIds.flatMap((id) => useTransferStore.getState().itemsById.get(id)?.batchId ?? []))], [visibleIds]);
+  const statusSummary = useTransferStore((state) => {
+    let activeCount = 0; let clearableCount = 0;
+    const ids = global || !logicalSessionId ? state.order : state.idsBySession.get(logicalSessionId) ?? [];
+    for (const id of ids) {
+      const status = state.itemsById.get(id)?.status;
+      if (status === "queued" || status === "running") activeCount++;
+      if (status === "completed" || status === "cancelled" || status === "failed") clearableCount++;
     }
-    return [...grouped.entries()]
-      .filter(([, batchItems]) => batchItems.length > 1)
-      .map(([batchId, batchItems]) => {
-        const completed = batchItems.filter((item) => item.status === "completed").length;
-        const running = batchItems.filter((item) => item.status === "running").length;
-        const queued = batchItems.filter((item) => item.status === "queued").length;
-        const failed = batchItems.filter((item) => item.status === "failed" || item.status === "needsReconcile").length;
-        const cancelled = batchItems.filter((item) => item.status === "cancelled").length;
-        const progress = batchItems.reduce((total, item) => {
-          if (["completed", "failed", "cancelled", "needsReconcile"].includes(item.status)) return total + 1;
-          const bytes = item.event?.bytesTransferred ?? 0;
-          const itemTotal = item.event?.totalBytes ?? 0;
-          return total + (itemTotal > 0 ? Math.min(1, bytes / itemTotal) : 0);
-        }, 0);
-        return { batchId, total: batchItems.length, completed, running, queued, failed, cancelled, progress };
-      });
-  }, [visibleItems]);
-  const [announcement, setAnnouncement] = useState("");
-  const announced = useRef(new Map<string, { status: string; bucket: number; at: number }>());
-  useEffect(() => {
-    const now = Date.now();
-    const keys = new Set(visibleItems.map((item) => `${item.transferId}:${item.attempt}`));
-    for (const key of announced.current.keys()) if (!keys.has(key)) announced.current.delete(key);
-    for (const item of visibleItems) {
-      const key = `${item.transferId}:${item.attempt}`;
-      const previous = announced.current.get(key);
-      const total = item.event?.totalBytes ?? 0;
-      const percent = total > 0 ? Math.min(100, Math.round((item.event?.bytesTransferred ?? 0) / total * 100)) : 0;
-      const bucket = Math.floor(percent / 10);
-      if (!previous) {
-        setAnnouncement(t("transfer.announcement.started", { file: item.source }));
-      } else if (previous.status !== item.status && ["completed", "cancelled", "failed", "needsReconcile"].includes(item.status)) {
-        setAnnouncement(t(`transfer.announcement.${item.status}`, { file: item.source }));
-      } else if (item.status === "running" && (bucket > previous.bucket || now - previous.at >= 2_000)) {
-        setAnnouncement(t("transfer.announcement.progress", { file: item.source, percent }));
-      } else {
-        continue;
-      }
-      announced.current.set(key, { status: item.status, bucket, at: now });
-    }
-  }, [visibleItems, t]);
+    return `${activeCount}:${clearableCount}`;
+  });
+  const announceRef = useRef<(value: string) => void>(() => undefined);
   const confirmAction = (message: string) => confirm(message, { kind: "warning" });
-  const hasAnyContent = items.length > 0 || recoveries.length > 0;
-  const hasVisibleContent = visibleItems.length > 0 || visibleRecoveries.length > 0;
-  const canCancel = visibleItems.some((item) => item.status === "queued" || item.status === "running");
-  const canClear = visibleItems.some((item) => ["completed", "cancelled", "failed"].includes(item.status));
+  const hasAnyContent = order.length > 0 || recoveries.length > 0;
+  const hasVisibleContent = visibleIds.length > 0 || visibleRecoveries.length > 0;
+  const [activeCount, clearableCount] = statusSummary.split(":").map(Number);
+  const canCancel = activeCount > 0;
+  const canClear = clearableCount > 0;
   return (
     <section aria-label={t("transfer.center.aria_label")} data-inspector-scope={inspectorScope?.key} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
+      <AnnouncementController visibleIds={visibleIds} announceRef={announceRef} />
       <PanelToolbar title={global ? t("transfer.center.global_title") : t("transfer.center.session_title")}>
         {logicalSessionId && (global || hasAnyContent) && (
           <PanelActionButton onClick={() => setGlobal((value) => !value)}>
@@ -111,34 +134,14 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
             <section aria-label={t("transfer.batch.title")} className="transfer-section">
               <h3 className="transfer-section-title">{t("transfer.batch.title")}</h3>
               <ul className="transfer-list">
-                {visibleBatches.map((batch) => (
-                  <li key={batch.batchId} className="transfer-card transfer-card--batch">
-                    <span className="transfer-card-summary">
-                      {t("transfer.batch.summary", batch)}
-                    </span>
-                    {(batch.running > 0 || batch.queued > 0) && (
-                      <PanelActionButton
-                        aria-label={t("transfer.batch.cancel_label", { count: batch.total })}
-                        onClick={() => void confirmAction(t("transfer.confirm.cancel_batch", { count: batch.total })).then((approved) => { if (approved) return cancelBatch(batch.batchId); })}
-                      >
-                        {t("transfer.batch.cancel")}
-                      </PanelActionButton>
-                    )}
-                    <progress
-                      className="ui-progress"
-                      style={{ width: "100%" }}
-                      aria-label={t("transfer.batch.progress", { count: batch.total })}
-                      max={batch.total}
-                      value={batch.progress}
-                    />
-                  </li>
-                ))}
+                {visibleBatches.map((batchId) => <BatchSummary key={batchId} batchId={batchId} cancelBatch={cancelBatch} confirmAction={confirmAction} />)}
               </ul>
             </section>
           )}
-          {visibleItems.length > 0 && (
+          {visibleIds.length > 0 && (
             <ul className="transfer-list">
-              {visibleItems.map((item) => (
+              {visibleIds.map((id) => (
+                <TransferCard key={id} id={id}>{(item) => (
                 <li key={`${item.transferId}-${item.attempt}`} className="transfer-card" data-status={item.status}>
                   <div className="transfer-card-heading">
                     <strong title={item.source}>{item.source.split(/[\\/]/).pop() || item.source}</strong>
@@ -170,16 +173,17 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                         {t("transfer.preview")}
                       </PanelActionButton>
                     )}
-                    {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") setAnnouncement(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
+                    {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") announceRef.current(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
                   </div>
                   {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" className="transfer-warning">{t("transfer.residue", { path: item.outcome.residuePath })}</div>}
                   {item.event?.totalBytes != null && <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
                 </li>
+                )}</TransferCard>
               ))}
             </ul>
           )}
           {visibleRecoveries.length > 0 && (
-            <section aria-label={t("transfer.recovery.title")} className="transfer-section" style={{ marginTop: visibleItems.length > 0 ? 14 : 0 }}>
+            <section aria-label={t("transfer.recovery.title")} className="transfer-section" style={{ marginTop: visibleIds.length > 0 ? 14 : 0 }}>
               <h3 className="transfer-section-title">{t("transfer.recovery.title")}</h3>
               <ul className="transfer-list">
                 {visibleRecoveries.map(({ record, observation, busy, error }) => (
@@ -190,9 +194,9 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     </span>
                     {error && <div role="alert" className="transfer-warning">{t(`transfer.recovery.error.${error}`)}</div>}
                     <div className="transfer-card-actions">
-                      <PanelActionButton disabled={busy} onClick={() => void reconcileRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.reconcile.${result}`)))}>{t("transfer.recovery.reconcile")}</PanelActionButton>
-                      <PanelActionButton disabled={busy || !canResumeRecovery(record)} title={canResumeRecovery(record) ? undefined : t("transfer.recovery.resume_unavailable")} onClick={() => void resumeRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.resume.${result}`)))}>{t("transfer.recovery.resume")}</PanelActionButton>
-                      <PanelActionButton disabled={busy || record.partial.kind === "remote"} title={record.partial.kind === "remote" ? t("transfer.recovery.remote_cleanup_unavailable") : undefined} onClick={() => void confirmAction(t("transfer.confirm.restart")).then((approved) => { if (approved) return restartRecovery(record.recoveryId).then((result) => setAnnouncement(t(`transfer.recovery.restart.${result}`))); })}>{t("transfer.recovery.restart")}</PanelActionButton>
+                      <PanelActionButton disabled={busy} onClick={() => void reconcileRecovery(record.recoveryId).then((result) => announceRef.current(t(`transfer.recovery.reconcile.${result}`)))}>{t("transfer.recovery.reconcile")}</PanelActionButton>
+                      <PanelActionButton disabled={busy || !canResumeRecovery(record)} title={canResumeRecovery(record) ? undefined : t("transfer.recovery.resume_unavailable")} onClick={() => void resumeRecovery(record.recoveryId).then((result) => announceRef.current(t(`transfer.recovery.resume.${result}`)))}>{t("transfer.recovery.resume")}</PanelActionButton>
+                      <PanelActionButton disabled={busy || record.partial.kind === "remote"} title={record.partial.kind === "remote" ? t("transfer.recovery.remote_cleanup_unavailable") : undefined} onClick={() => void confirmAction(t("transfer.confirm.restart")).then((approved) => { if (approved) return restartRecovery(record.recoveryId).then((result) => announceRef.current(t(`transfer.recovery.restart.${result}`))); })}>{t("transfer.recovery.restart")}</PanelActionButton>
                       <PanelActionButton disabled={busy || record.partial.kind === "remote"} title={record.partial.kind === "remote" ? t("transfer.recovery.remote_cleanup_unavailable") : undefined} onClick={() => void confirmAction(t("transfer.confirm.delete_partial")).then((approved) => { if (approved) return deleteRecoveryPartial(record.recoveryId); })}>{t("transfer.recovery.delete_partial")}</PanelActionButton>
                       <PanelActionButton disabled={busy} onClick={() => void confirmAction(t("transfer.confirm.dismiss")).then((approved) => { if (approved) return dismissRecovery(record.recoveryId); })}>{t("transfer.recovery.dismiss")}</PanelActionButton>
                     </div>

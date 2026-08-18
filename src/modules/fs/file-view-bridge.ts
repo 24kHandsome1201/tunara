@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ResourceRef } from "@/modules/resources/resource-ref";
 import { isFileViewWindow, type FileViewWindow } from "@/modules/fs/file-view-window";
+import type { ReadResult } from "./fs-bridge";
+import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 
 export const FILE_HEAD_LINE_PRESETS = [100, 500, 1_000, 2_000] as const;
 export const DEFAULT_FILE_HEAD_LINES = 1_000;
@@ -23,6 +25,23 @@ export type FileHeadResultV1 =
 export interface FileViewErrorV1 {
   code: "INVALID_REQUEST" | "CANCELLED" | "FILE_CHANGED" | "PERMISSION_DENIED" | "STALE_BINDING" | "READ_FAILED";
   message: string;
+}
+
+export type FileObservationV1 = {
+  kind: "file" | "directory" | "symlink" | "other";
+  size?: number;
+  mode?: number;
+  modifiedAt?: number;
+};
+export type ReadIfChangedViewV1 = { kind: "preview" } | { kind: "head" | "tail"; lineLimit: number };
+export type ReadIfChangedResultV1 =
+  | { status: "unchanged"; observation: FileObservationV1 }
+  | { status: "changed"; observation: FileObservationV1; value: ReadResult | FileHeadResultV1 };
+
+export function sshReadIfChangedV1(request: {
+  requestId: string; binding: SessionBindingV1; path: string; known?: FileObservationV1; view: ReadIfChangedViewV1;
+}): Promise<ReadIfChangedResultV1> {
+  return invoke<ReadIfChangedResultV1>("ssh_fs_read_if_changed_v1", request);
 }
 
 let requestSequence = 0;

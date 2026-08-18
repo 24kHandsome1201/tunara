@@ -135,7 +135,7 @@ their own commands.
 | `ssh_fs_stat_v1` / `ssh_fs_chmod_v1` | Remote metadata and chmod when the server supports it | [`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx) |
 | `ssh_fs_home` | Resolve the remote home location (not the listing root) when no OSC 7 cwd is known | `sshHome`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_search` / `ssh_fs_grep` | Cancellable remote filename/content search over exec channels | `sshSearch` / `sshGrep`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
-| `ssh_git_status` / `ssh_git_diff` / `ssh_git_ahead_behind` | Read-only remote Git inspection over exec channels | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
+| `ssh_remote_git_snapshot_v1` / `ssh_git_diff` | Generation-safe remote Git snapshot and read-only diff over exec channels | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 | `ssh_git_workspace_context` | Read-only remote repository/common-dir/worktree discovery with the same shape as local discovery | [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 
 ### `fs` — local filesystem browsing, search, and safe writes [`modules/fs`](../src-tauri/src/modules/fs/mod.rs)

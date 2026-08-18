@@ -13,6 +13,66 @@ export function validateManifest(source: ManifestSource, limits?: ManifestLimits
   return invoke<FolderManifest>("validate_manifest", { source, limits });
 }
 
+export type UploadDestinationStateV1 = "absent" | "fileConflict" | "mergeDirectory" | "blockingNonDirectory";
+export interface UploadPreflightRequestV1 {
+  operationId: string;
+  binding: SessionBindingV1;
+  localSources: string[];
+  destinationRoot: string;
+  limits?: ManifestLimits;
+}
+export interface UploadPlanItemV1 {
+  itemId: string;
+  sourcePath: string;
+  relativePath: string;
+  kind: "file" | "dir";
+  bytes: number;
+  proposedDestination: string;
+  destination: UploadDestinationStateV1;
+  suggestedRename?: string;
+}
+export interface UploadPlanV1 {
+  planId: string;
+  expiresAt: number;
+  binding: SessionBindingV1;
+  items: UploadPlanItemV1[];
+}
+export type UploadActionV1 = "replace" | "rename" | "skip";
+export interface UploadDecisionV1 { itemId: string; action: UploadActionV1 }
+export type UploadMaterializationStatusV1 = "ready" | "conflict" | "outcomeUnknown" | "expired" | "stale";
+export type UploadMaterializationItemStatusV1 = "ready" | "skipped" | "applied" | "desiredStateObserved" | "conflict" | "outcomeUnknown";
+export interface UploadMaterializationResultV1 {
+  planId: string;
+  operationId: string;
+  status: UploadMaterializationStatusV1;
+  items: Array<{ itemId: string; status: UploadMaterializationItemStatusV1; destinationPath?: string }>;
+  partialDirectories: string[];
+  descriptors: Array<{ itemId: string; sourcePath: string; destinationPath: string; overwrite: boolean }>;
+}
+
+export function sshUploadPreflightV1(request: UploadPreflightRequestV1): Promise<UploadPlanV1> {
+  return invoke<UploadPlanV1>("ssh_upload_preflight_v1", { request });
+}
+
+export function sshUploadMaterializeV1(
+  planId: string,
+  operationId: string,
+  decisions: UploadDecisionV1[],
+): Promise<UploadMaterializationResultV1> {
+  return invoke<UploadMaterializationResultV1>("ssh_upload_materialize_v1", {
+    request: { planId, operationId, decisions },
+  });
+}
+
+export function sshUploadMaterializationReconcileV1(
+  planId: string,
+  operationId: string,
+): Promise<UploadMaterializationResultV1> {
+  return invoke<UploadMaterializationResultV1>("ssh_upload_materialization_reconcile_v1", {
+    request: { planId, operationId },
+  });
+}
+
 export interface SshUploadProgress {
   transferred: number;
   total: number;

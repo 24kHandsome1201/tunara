@@ -1,6 +1,6 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { FilePreview } from "@/ui/FilePreview";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -18,10 +18,22 @@ function renderLocal(fileName = "notes.txt") {
 }
 
 function renderSsh(fileName = "notes.txt") {
-  render(<FilePreview filePath={`/tmp/${fileName}`} fileName={fileName} fill remotePtyId={41} onClose={() => {}} />);
+  render(<FilePreview filePath={`/tmp/${fileName}`} fileName={fileName} fill remotePtyId={41} resource={{
+    transport: "ssh", logicalSessionId: "remote-session", path: `/tmp/${fileName}`,
+    binding: { logicalSessionId: "remote-session", physicalPtyId: 41, transportGeneration: "generation-1" },
+  }} onClose={() => {}} />);
+}
+
+function sshResource(ptyId: number, path: string, logicalSessionId = "remote-draft") {
+  return { transport: "ssh" as const, logicalSessionId, path,
+    binding: { logicalSessionId, physicalPtyId: ptyId, transportGeneration: `generation-${ptyId}` } };
 }
 
 describe("FilePreview editor behavior", () => {
+  beforeEach(() => {
+    useSessionsStore.setState({ sessions: [], activeSessionId: null });
+  });
+
   test("previews image bytes with loading, zoom, keyboard, and fullscreen states", async () => {
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:image-preview");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -149,12 +161,14 @@ describe("FilePreview editor behavior", () => {
         runState: "idle",
         remote: { host: "dev.example", port: 2202, user: "mawei", identityFile: "~/.ssh/id_ed25519" },
         ptyId: 41,
+        transportGeneration: "generation-1",
+        connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
         updatedAt: 1,
       }],
     });
     useUIStore.setState({ overlay: null, sshPrefill: null });
     mockIPC((command) => {
-      if (command === "ssh_fs_read_file") throw "no session for id 41";
+      if (command === "ssh_fs_read_if_changed_v1") throw "no session for id 41";
       throw new Error(`unexpected command: ${command}`);
     });
 
@@ -305,11 +319,12 @@ describe("FilePreview editor behavior", () => {
   test("contains an SSH reload rejection and explains the disconnected state", async () => {
     let reads = 0;
     mockIPC((command) => {
-      if (command === "ssh_fs_read_file") {
+      if (command === "ssh_fs_read_if_changed_v1") {
         reads += 1;
-        if (reads === 1) return original;
+        if (reads === 1) return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
         throw "no session for id 41";
       }
+      if (command === "ssh_fs_read_file") throw "no session for id 41";
       if (command === "ssh_fs_write_text_file") {
         return { status: "conflict", currentFingerprint: "d".repeat(64) };
       }
@@ -385,7 +400,7 @@ describe("FilePreview editor behavior", () => {
     const calls: Array<{ command: string; payload: unknown }> = [];
     mockIPC((command, payload) => {
       calls.push({ command, payload });
-      if (command === "ssh_fs_read_file") return original;
+      if (command === "ssh_fs_read_if_changed_v1") return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
       if (command === "ssh_fs_write_text_file") throw token;
       if (command === "ssh_fs_reconcile_text_write") {
         return { status: "saved", fingerprint: attemptedFingerprint, size: 13 };
@@ -394,7 +409,7 @@ describe("FilePreview editor behavior", () => {
     });
 
     const first = render(
-      <FilePreview filePath="/tmp/notes.txt" fileName="notes.txt" fill remotePtyId={41} onClose={() => {}} />,
+      <FilePreview filePath="/tmp/notes.txt" fileName="notes.txt" fill remotePtyId={41} resource={sshResource(41, "/tmp/notes.txt")} onClose={() => {}} />,
     );
     const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
     fireEvent.change(editor, { target: { value: "remote draft\n" } });
@@ -403,7 +418,7 @@ describe("FilePreview editor behavior", () => {
     expect(screen.getByText(/temporary file may still need cleanup/i)).toBeTruthy();
     first.unmount();
 
-    render(<FilePreview filePath="/tmp/notes.txt" fileName="notes.txt" fill remotePtyId={84} onClose={() => {}} />);
+    render(<FilePreview filePath="/tmp/notes.txt" fileName="notes.txt" fill remotePtyId={84} resource={sshResource(84, "/tmp/notes.txt")} onClose={() => {}} />);
     const restored = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
     expect(restored.value).toBe("remote draft\n");
     await screen.findByText("Save result not confirmed");
@@ -427,12 +442,12 @@ describe("FilePreview editor behavior", () => {
     const calls: string[] = [];
     mockIPC((command) => {
       calls.push(command);
-      if (command === "ssh_fs_read_file") return original;
+      if (command === "ssh_fs_read_if_changed_v1") return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
       throw new Error(`unexpected command: ${command}`);
     });
 
     const view = render(
-      <FilePreview sessionId="remote-draft" filePath="/srv/notes.txt" fileName="notes.txt" fill remote remotePtyId={41} onClose={() => {}} />,
+      <FilePreview sessionId="remote-draft" filePath="/srv/notes.txt" fileName="notes.txt" fill remote remotePtyId={41} resource={sshResource(41, "/srv/notes.txt")} onClose={() => {}} />,
     );
     const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
     fireEvent.change(editor, { target: { value: "preserved remote draft\n" } });
@@ -448,11 +463,11 @@ describe("FilePreview editor behavior", () => {
     expect(calls).not.toContain("fs_write_text_file");
 
     view.rerender(
-      <FilePreview sessionId="remote-draft" filePath="/srv/notes.txt" fileName="notes.txt" fill remote remotePtyId={84} onClose={() => {}} />,
+      <FilePreview sessionId="remote-draft" filePath="/srv/notes.txt" fileName="notes.txt" fill remote remotePtyId={84} resource={sshResource(84, "/srv/notes.txt")} onClose={() => {}} />,
     );
     const restored = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
     expect(restored.value).toBe("preserved remote draft\n");
-    expect(calls.filter((command) => command === "ssh_fs_read_file")).toHaveLength(2);
+    expect(calls.filter((command) => command === "ssh_fs_read_if_changed_v1")).toHaveLength(2);
   });
 
   test("offers a 1000-line bounded local view without using download", async () => {
@@ -498,7 +513,11 @@ describe("FilePreview editor behavior", () => {
     };
     mockIPC((command, payload) => {
       calls.push({ command, payload: payload as Record<string, unknown> });
-      if (command === "ssh_fs_read_file") return { kind: "toolarge", size: 12_000_000, limit: 10_485_760 };
+      if (command === "ssh_fs_read_if_changed_v1") return {
+        status: "changed",
+        observation: { kind: "file", size: 12_000_000, mode: 0o644, modifiedAt: 1_000 },
+        value: { kind: "toolarge", size: 12_000_000, limit: 10_485_760 },
+      };
       if (command === "ssh_fs_read_dir") return [];
       if (command === "ssh_file_view_head_v1") {
         return { kind: "text", content: "remote\n", size: 12_000_000, revision: "r2", lineCount: 1, lineLimit: 1000, byteLimit: 262_144, truncated: true };

@@ -4,6 +4,7 @@
 // 与后端 git/mod.rs 的只读 IPC 契约对齐；commit.rs 仅是 Rust 测试 fixture。
 
 import { invoke } from "@tauri-apps/api/core";
+import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 
 export interface FileChange {
   path: string;
@@ -88,13 +89,8 @@ export function gitUnwatch(repoPath: string): Promise<void> {
 }
 
 // ── Remote git (over an SSH exec channel) ─────────────────────────────────
-// Mirror the local git_status/git_diff contract so DiffPanel can render a
-// remote repo without caring about the transport. `sessionId` is the
-// SshSession's pty id (the same u32 PtyState id the terminal uses).
-
-export function sshGitStatus(sessionId: number, cwd: string): Promise<StatusResult> {
-  return invoke<StatusResult>("ssh_git_status", { sessionId, cwd });
-}
+// Diff and workspace discovery keep their specialized read-only commands;
+// aggregate status/upstream refreshes use sshRemoteGitSnapshotV1 below.
 
 export function sshGitDiff(
   sessionId: number,
@@ -110,10 +106,6 @@ export function cancelGitDiff(requestId: string): Promise<boolean> {
   return invoke<boolean>("fs_cancel_search", { requestId });
 }
 
-export function sshGitAheadBehind(sessionId: number, cwd: string): Promise<RemoteState> {
-  return invoke<RemoteState>("ssh_git_ahead_behind", { sessionId, cwd });
-}
-
 export function sshGitWorkspaceContext(
   sessionId: number,
   cwd: string,
@@ -125,4 +117,24 @@ export function sshGitWorkspaceContext(
 
 export function cancelGitRequest(requestId: string): Promise<boolean> {
   return invoke<boolean>("fs_cancel_search", { requestId });
+}
+
+export type RemoteGitErrorKind = "notRepository" | "transportUnavailable" | "timeout" | "permissionDenied" | "gitUnavailable" | "pathUnavailable" | "cancelled" | "unknown";
+export interface RemoteGitErrorV1 { kind: RemoteGitErrorKind; retryable: boolean }
+export interface RemoteGitSnapshotV1 {
+  requestId: string; generation: number; binding: SessionBindingV1; observedAt: number;
+  freshness: "fresh" | "stale";
+  repo?: { status: StatusResult; upstream: RemoteState; workspace?: WorkspaceContext };
+  unavailableFields: Array<{ field: "workspace"; kind: RemoteGitErrorKind }>;
+  error?: RemoteGitErrorV1;
+}
+
+export function sshRemoteGitSnapshotV1(request: {
+  requestId: string; generation: number; binding: SessionBindingV1; cwd: string; repositoryKey: string; force: boolean;
+}): Promise<RemoteGitSnapshotV1> {
+  return invoke<RemoteGitSnapshotV1>("ssh_remote_git_snapshot_v1", { request });
+}
+
+export function cancelRemoteGitSnapshot(requestId: string): Promise<boolean> {
+  return invoke<boolean>("cancel_operation_v1", { request: { domain: "remoteGit", requestId } });
 }

@@ -16,6 +16,10 @@ export interface TreeLoadError {
   kind: "readFailed";
 }
 
+export type ExplorerTreeRow =
+  | (ExplorerTreeNode & { kind: "node"; expanded: boolean })
+  | { kind: "loadError"; parentPath: string; level: number };
+
 export interface TreeListingOptions {
   entries: DirEntry[];
   currentPath: string;
@@ -32,8 +36,12 @@ export interface TreeListingOptions {
 
 export interface TreeListing {
   visibleTreeNodes: ExplorerTreeNode[];
+  /** Semantic preorder rows, including fixed-height directory load errors. */
+  visibleTreeRows: ExplorerTreeRow[];
   /** O(1) lookup of a node's index in visibleTreeNodes (roving focus, virtual scroll). */
   nodeIndexByPath: ReadonlyMap<string, number>;
+  /** O(1) lookup of a node's fixed-height row index (virtual geometry, DnD). */
+  rowIndexByPath: ReadonlyMap<string, number>;
   /** O(1) lookup of a node's direct children (null key = the root listing). */
   childrenByParent: ReadonlyMap<string | null, ExplorerTreeNode[]>;
   expandedPaths: Set<string>;
@@ -44,6 +52,22 @@ export interface TreeListing {
   beginListingEpoch: () => void;
   /** Drop expansion state after the root listing reloaded. */
   resetExpansion: () => void;
+}
+
+export function buildExplorerTreeRows(
+  nodes: readonly ExplorerTreeNode[],
+  expandedPaths: ReadonlySet<string>,
+  treeErrors: Readonly<Record<string, TreeLoadError>>,
+): ExplorerTreeRow[] {
+  const rows: ExplorerTreeRow[] = [];
+  for (const node of nodes) {
+    const expanded = node.entry.kind === "dir" && expandedPaths.has(node.path);
+    rows.push({ ...node, kind: "node", expanded });
+    if (expanded && treeErrors[node.path]?.kind === "readFailed") {
+      rows.push({ kind: "loadError", parentPath: node.path, level: node.level + 1 });
+    }
+  }
+  return rows;
 }
 
 /**
@@ -177,9 +201,23 @@ export function useTreeListing({
     return { nodeIndexByPath: indexByPath, childrenByParent: byParent };
   }, [visibleTreeNodes]);
 
+  const visibleTreeRows = useMemo(
+    () => buildExplorerTreeRows(visibleTreeNodes, expandedPaths, treeErrors),
+    [expandedPaths, treeErrors, visibleTreeNodes],
+  );
+  const rowIndexByPath = useMemo(() => {
+    const result = new Map<string, number>();
+    visibleTreeRows.forEach((row, index) => {
+      if (row.kind === "node") result.set(row.path, index);
+    });
+    return result;
+  }, [visibleTreeRows]);
+
   return {
     visibleTreeNodes,
+    visibleTreeRows,
     nodeIndexByPath,
+    rowIndexByPath,
     childrenByParent,
     expandedPaths,
     treeErrors,

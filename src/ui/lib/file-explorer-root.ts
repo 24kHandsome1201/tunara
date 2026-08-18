@@ -8,7 +8,7 @@ export function knownRemoteExplorerRoot(rootDir: string): string | null {
   return trimmed.startsWith("/") ? trimmed : null;
 }
 
-/** SSH listings always start at the remote filesystem root, not the session cwd. */
+/** Files breadcrumbs and parent-directory walks are rooted at `/` for local and SSH. */
 export function remoteExplorerListingRoot(): "/" {
   return "/";
 }

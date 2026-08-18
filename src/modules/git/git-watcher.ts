@@ -3,6 +3,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { gitWatch, gitUnwatch } from "./git-bridge";
 import { createSerializedAsyncQueue, createWatchRefCount } from "./lib/watch-refcount";
 import { sameRepoPath } from "./lib/path-normalize";
+import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 
 interface GitChangedPayload {
   repoPath: string;
@@ -67,10 +68,12 @@ const refCount = createWatchRefCount({
 });
 
 export function acquireGitWatch(repoPath: string): void {
+  recordFrontendPerf("gitWatchAcquires");
   refCount.acquire(repoPath);
 }
 
 export function releaseGitWatch(repoPath: string): void {
+  recordFrontendPerf("gitWatchReleases");
   refCount.release(repoPath);
 }
 

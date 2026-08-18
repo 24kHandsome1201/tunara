@@ -94,6 +94,8 @@ function createPreviewCommandProvenance(terminalId: string, command: string, sub
 interface SessionsState {
   sessions: Session[];
   activeSessionId: string | null;
+  /** In-memory persisted-projection change counter; never written to disk. */
+  workspacePersistenceRevision: number;
   renamingSessionId: string | null;
   launchedSessionIds: Record<string, true>;
   gitNonce: Record<string, number>;
@@ -163,6 +165,44 @@ let nextId = 1;
 const CLOSE_CONFIRM_WINDOW_MS = 3_000;
 const closeConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const dirCloseConfirmationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const WORKSPACE_SESSION_FIELDS = [
+  "id",
+  "title",
+  "dir",
+  "branch",
+  "customTitle",
+  "remote",
+  "mascot",
+  "pinned",
+  "note",
+  "agentResume",
+] as const satisfies readonly (keyof Session)[];
+
+function sameWorkspaceValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameWorkspaceValue(value, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index]
+      && sameWorkspaceValue(leftRecord[key], rightRecord[key]));
+}
+
+export function sessionPatchChangesWorkspaceProjection(session: Session, patch: Partial<Session>): boolean {
+  const current = session as unknown as Record<string, unknown>;
+  const candidate = patch as unknown as Record<string, unknown>;
+  return WORKSPACE_SESSION_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(patch, field)
+    && !sameWorkspaceValue(current[field], candidate[field]));
+}
 
 export {
   bumpGitNonce,
@@ -267,6 +307,7 @@ function scheduleDirCloseConfirmationExpiry(dir: string, clear: (dir: string) =>
 export const useSessionsStore = create<SessionsState>()((set, get) => ({
   sessions: [],
   activeSessionId: null,
+  workspacePersistenceRevision: 0,
   renamingSessionId: null,
   launchedSessionIds: {},
   gitNonce: {},
@@ -284,6 +325,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     set((state) => ({
       sessions: [...state.sessions, s],
       activeSessionId: s.id,
+      workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
       launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
       // Remote sessions' dir is "user@host", not a local path — keep it out
       // of the recent-dirs affordance.
@@ -308,6 +350,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   removeSession: (id) => {
     if (!requestDirtyDraftAction([id], () => get().removeSession(id))) return;
     const removedSession = get().sessions.find((session) => session.id === id);
+    if (!removedSession) return;
     if (removedSession?.remote) {
       recordLocalUsageEvent({
         event: "ssh.session.closed",
@@ -343,6 +386,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       return {
         sessions,
         activeSessionId,
+        workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
         closeConfirmations,
         launchedSessionIds: nextLaunchedSessionIds,
         gitNonce,
@@ -353,6 +397,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (wasActive && splitFocusSessionId && get().sessions.some((s) => s.id === splitFocusSessionId)) {
       set((state) => ({
         activeSessionId: splitFocusSessionId,
+        workspacePersistenceRevision: state.activeSessionId === splitFocusSessionId
+          ? state.workspacePersistenceRevision
+          : state.workspacePersistenceRevision + 1,
         launchedSessionIds: { ...state.launchedSessionIds, [splitFocusSessionId]: true },
       }));
     }
@@ -368,6 +415,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       accepted = true;
       return {
         activeSessionId: id,
+        workspacePersistenceRevision: state.activeSessionId === id
+          ? state.workspacePersistenceRevision
+          : state.workspacePersistenceRevision + 1,
         launchedSessionIds: { ...state.launchedSessionIds, [id]: true },
         recentSessionIds: [id, ...state.recentSessionIds.filter((sid) => sid !== id)],
         sessions: state.sessions.map((s) =>
@@ -403,7 +453,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   refreshGit: (id) => {
     // Both local and remote sessions refresh via the nonce bump. For remote
     // (SSH) sessions, MainArea's effect routes the nonce change to
-    // ssh_git_status over the exec channel instead of the local git2 path.
+    // the generation-safe remote snapshot instead of the local git2 path.
     scheduleGitRefresh(id, set);
   },
 
@@ -424,16 +474,36 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   },
 
   recordRecentDir: (dir) =>
-    set((state) => ({ recentDirs: pushRecentDir(state.recentDirs, dir) })),
+    set((state) => {
+      const recentDirs = pushRecentDir(state.recentDirs, dir);
+      if (recentDirs.length === state.recentDirs.length
+        && recentDirs.every((value, index) => value === state.recentDirs[index])) return {};
+      return {
+        recentDirs,
+        workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
+      };
+    }),
 
   recordRecentCommand: (command) =>
-    set((state) => ({ recentCommands: pushRecentCommand(state.recentCommands, command) })),
+    set((state) => {
+      const recentCommands = pushRecentCommand(state.recentCommands, command);
+      if (recentCommands.length === state.recentCommands.length
+        && recentCommands.every((value, index) => value === state.recentCommands[index])) return {};
+      return {
+        recentCommands,
+        workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
+      };
+    }),
 
   patchHostFilePrefs: (key, patch) =>
     set((state) => {
       if (!key || key === "__proto__" || key === "prototype" || key === "constructor") return {};
       const next = sanitizeHostFilePrefs(patch(state.hostFilePrefs[key] ?? emptyHostFilePrefs()));
-      return { hostFilePrefs: { ...state.hostFilePrefs, [key]: next } };
+      if (sameWorkspaceValue(state.hostFilePrefs[key], next)) return {};
+      return {
+        hostFilePrefs: { ...state.hostFilePrefs, [key]: next },
+        workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
+      };
     }),
 
   togglePinnedSession: (id) =>
@@ -441,6 +511,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       sessions: state.sessions.map((s) =>
         s.id === id ? { ...s, pinned: !s.pinned, updatedAt: Date.now() } : s,
       ),
+      workspacePersistenceRevision: state.sessions.some((session) => session.id === id)
+        ? state.workspacePersistenceRevision + 1
+        : state.workspacePersistenceRevision,
     })),
 
   appendTimeline: (id, type, detail) => {
@@ -513,13 +586,19 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   setSessionNote: (id, note) => {
     const cleanNote = sanitizeSessionNote(note);
     let saved = false;
-    set((state) => ({
-      sessions: state.sessions.map((s) => {
+    set((state) => {
+      const sessions = state.sessions.map((s) => {
         if (s.id !== id || (s.note ?? "") === cleanNote) return s;
         saved = true;
         return { ...s, note: cleanNote || undefined, updatedAt: Date.now() };
-      }),
-    }));
+      });
+      return {
+        sessions,
+        workspacePersistenceRevision: saved
+          ? state.workspacePersistenceRevision + 1
+          : state.workspacePersistenceRevision,
+      };
+    });
     if (saved) get().appendTimeline(id, "note_saved");
   },
 
@@ -592,6 +671,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   updateSession: (id, patch) => {
     const previous = get().sessions.find((s) => s.id === id);
+    const projectionChanged = previous
+      ? sessionPatchChangesWorkspaceProjection(previous, patch)
+      : false;
     if (patch.changes !== undefined && previous && shouldRecordGitChange(previous.changes?.files, patch.changes?.files)) {
       const fileCount = patch.changes?.files?.length ?? 0;
       get().appendTimeline(id, "git_change", fileCount > 0 ? `${fileCount} files` : "clean");
@@ -600,6 +682,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       sessions: state.sessions.map((s) =>
         s.id === id ? { ...s, ...patch, updatedAt: Date.now() } : s,
       ),
+      workspacePersistenceRevision: projectionChanged
+        ? state.workspacePersistenceRevision + 1
+        : state.workspacePersistenceRevision,
     }));
     const session = get().sessions.find((s) => s.id === id);
     if (session && !isSessionBusy(session) && getNumberRecordValue(get().closeConfirmations, id) > 0) {
@@ -942,7 +1027,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       const globalTo = sessions.findIndex((s) => s.id === targetId);
       const [item] = sessions.splice(globalFrom, 1);
       sessions.splice(globalTo, 0, item);
-      return { sessions };
+      return {
+        sessions,
+        workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
+      };
     }),
 
   newTerminal: () => {
