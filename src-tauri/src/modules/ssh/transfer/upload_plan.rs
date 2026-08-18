@@ -312,12 +312,7 @@ fn remote_parent(path: &str) -> Result<&str, String> {
 }
 
 fn hinted_kind(attributes: &FileAttributes) -> Option<RemotePathKindV1> {
-    match attributes.permissions? & libc::S_IFMT {
-        libc::S_IFREG => Some(RemotePathKindV1::File),
-        libc::S_IFDIR => Some(RemotePathKindV1::Directory),
-        libc::S_IFLNK => Some(RemotePathKindV1::Symlink),
-        _ => None,
-    }
+    super::remote_kind_from_unix_mode(attributes.permissions?)
 }
 
 fn classify_present(kind: UploadItemKindV1, present: RemotePathKindV1) -> UploadDestinationStateV1 {

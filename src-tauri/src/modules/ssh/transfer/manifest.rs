@@ -579,14 +579,7 @@ fn join_remote(parent: &str, name: &str) -> String {
 }
 
 fn hinted_kind(mode: Option<u32>) -> Option<RemotePathKindV1> {
-    match mode? & libc::S_IFMT {
-        libc::S_IFREG => Some(RemotePathKindV1::File),
-        libc::S_IFDIR => Some(RemotePathKindV1::Directory),
-        libc::S_IFLNK => Some(RemotePathKindV1::Symlink),
-        0 => None,
-        // Missing and unknown READDIR attrs are explicitly fallback cases.
-        _ => None,
-    }
+    super::remote_kind_from_unix_mode(mode?)
 }
 
 #[tauri::command]
@@ -667,14 +660,14 @@ mod tests {
         assert_eq!(hinted_kind(Some(0)), None);
         assert_eq!(hinted_kind(Some(0o150000)), None);
         assert_eq!(
-            hinted_kind(Some(libc::S_IFREG | 0o644)),
+            hinted_kind(Some((libc::S_IFREG as u32) | 0o644)),
             Some(RemotePathKindV1::File)
         );
         // A regular hint can never override an authoritative symlink LSTAT.
         let authoritative = identity(RemotePathKindV1::Symlink, Some(1), 1);
-        assert_ne!(hinted_kind(Some(libc::S_IFREG)), Some(authoritative.kind));
+        assert_ne!(hinted_kind(Some(libc::S_IFREG as u32)), Some(authoritative.kind));
         assert_eq!(
-            hinted_kind(Some(libc::S_IFLNK)),
+            hinted_kind(Some(libc::S_IFLNK as u32)),
             Some(RemotePathKindV1::Symlink)
         );
     }
