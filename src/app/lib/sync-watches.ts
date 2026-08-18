@@ -21,6 +21,15 @@ export function gitWatchDirsForSessions(sessions: Iterable<GitWatchSessionLike>)
   return dirs;
 }
 
+/** Stable local-directory-set projection, independent of session runtime state. */
+export function gitWatchDirProjection(sessions: Iterable<GitWatchSessionLike>): string[] {
+  return [...new Set(gitWatchDirsForSessions(sessions))].sort();
+}
+
+export function sameGitWatchDirProjection(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((dir, index) => dir === right[index]);
+}
+
 export function diffWatchedDirs(
   prev: ReadonlySet<string>,
   desired: Iterable<string | null | undefined>,

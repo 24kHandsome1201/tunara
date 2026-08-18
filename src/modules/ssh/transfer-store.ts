@@ -12,6 +12,7 @@ import { t } from "@/modules/i18n";
 import { localUsageDuration, localUsageErrorCategory, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 import { pushRateSample, type TransferRateSample } from "./transfer-rate";
 import { canResumeRecovery } from "./transfer-resume";
+import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 
 export type TransferConflict = "skip" | "replace" | "rename";
 export type TransferDirection = "upload" | "download";
@@ -33,9 +34,19 @@ export interface TransferRecoveryItem {
   busy: boolean;
   error?: "offline" | "identityMismatch" | "unsupported" | "failed";
 }
+export interface TransferAggregate {
+  total: number; completed: number; running: number; queued: number; failed: number; cancelled: number; progress: number;
+}
 type Runner = (item: TransferItem, event: (value: SshTransferEvent) => void) => Promise<{ outcome: SshTransferOutcome }>;
 export interface TransferState {
-  items: TransferItem[];
+  readonly itemsById: ReadonlyMap<string, TransferItem>; readonly order: readonly string[]; readonly queuedIds: ReadonlySet<string>;
+  readonly idsByBatch: ReadonlyMap<string, ReadonlySet<string>>; readonly idsBySession: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly aggregateByBatch: ReadonlyMap<string, TransferAggregate>; readonly aggregateBySession: ReadonlyMap<string, TransferAggregate>;
+  revision: number; orderRevision: number;
+  materializeItems(): TransferItem[];
+  /** Explicit fixture/import boundary; product code must use enqueue. */
+  replaceItemsForTest(items: readonly TransferItem[]): void;
+  readonly testMetrics: { publications: number; pumpRuns: number; pumpCandidates: number };
   recoveries: TransferRecoveryItem[]; journalLoaded: boolean;
   enqueue(request: TransferRequest): string; enqueueBatch(requests: TransferRequest[], batchId?: string): string[];
   cancel(transferId: string): Promise<void>; cancelBatch(batchId: string): Promise<void>; cancelAll(logicalSessionId?: string): Promise<void>;
@@ -63,16 +74,17 @@ const defaultRunner: Runner = (item, event) => {
 const FINISHED_LIMIT = 200;
 const UNRESOLVED_LIMIT = 200;
 const active = (item: TransferItem) => item.status === "queued" || item.status === "running";
-const boundHistory = (items: TransferItem[]) => {
-  const finished = items.filter((item) => !active(item));
-  const unresolved = finished.filter((item) => item.status === "needsReconcile");
-  const resolved = finished.filter((item) => item.status !== "needsReconcile");
-  const remove = new Set([
-    ...unresolved.slice(0, Math.max(0, unresolved.length - UNRESOLVED_LIMIT)),
-    ...resolved.slice(0, Math.max(0, resolved.length - FINISHED_LIMIT)),
-  ]);
-  return items.filter((item) => !remove.has(item));
-};
+const contribution = (item: TransferItem) => ({
+  completed: item.status === "completed" ? 1 : 0,
+  running: item.status === "running" ? 1 : 0,
+  queued: item.status === "queued" ? 1 : 0,
+  failed: item.status === "failed" || item.status === "needsReconcile" ? 1 : 0,
+  cancelled: item.status === "cancelled" ? 1 : 0,
+  progress: ["completed", "failed", "cancelled", "needsReconcile"].includes(item.status) ? 1
+    : item.status === "running" && (item.event?.totalBytes ?? 0) > 0
+      ? Math.min(1, (item.event?.bytesTransferred ?? 0) / item.event!.totalBytes!) : 0,
+});
+const emptyAggregate = (): TransferAggregate => ({ total: 0, completed: 0, running: 0, queued: 0, failed: 0, cancelled: 0, progress: 0 });
 const recoveryError = (error: unknown): TransferRecoveryItem["error"] => {
   const message = String(error).toLowerCase();
   if (message.includes("identity") || message.includes("hash") || message.includes("changed")) return "identityMismatch";
@@ -107,33 +119,105 @@ function recordTransferRecovery(
 /** UI scheduling is advisory; Rust independently enforces the same limits. */
 export function createTransferStore(run: Runner = defaultRunner) {
   let pumping = false;
+  let runningGlobal = 0;
+  const runningByBinding = new Map<string, number>();
+  const runningIds = new Set<string>();
   const pendingRetries = new Set<string>();
+  const itemsById = new Map<string, TransferItem>();
+  const queuedIds = new Set<string>();
+  const idsByBatch = new Map<string, Set<string>>();
+  const idsBySession = new Map<string, Set<string>>();
+  const aggregateByBatch = new Map<string, TransferAggregate>();
+  const aggregateBySession = new Map<string, TransferAggregate>();
+  const resolvedHistory: string[] = [];
+  const unresolvedHistory: string[] = [];
+  const metrics = { publications: 0, pumpRuns: 0, pumpCandidates: 0 };
   const useStore = create<TransferState>((set, get) => {
+    const bindingKey = (binding: SessionBindingV1) => `${binding.logicalSessionId}\0${binding.physicalPtyId}\0${binding.transportGeneration}`;
+    const publish = (order?: string[]) => {
+      metrics.publications++; recordFrontendPerf("transferStoreWrites");
+      set((state) => ({ ...(order ? { order, orderRevision: state.orderRevision + 1 } : {}), revision: state.revision + 1 }));
+    };
+    const adjustAggregate = (map: Map<string, TransferAggregate>, key: string, previous?: TransferItem, next?: TransferItem) => {
+      const value = { ...(map.get(key) ?? emptyAggregate()) };
+      value.total += (next ? 1 : 0) - (previous ? 1 : 0);
+      const before = previous ? contribution(previous) : undefined; const after = next ? contribution(next) : undefined;
+      for (const field of ["completed", "running", "queued", "failed", "cancelled", "progress"] as const) value[field] += (after?.[field] ?? 0) - (before?.[field] ?? 0);
+      if (value.total === 0) map.delete(key); else map.set(key, value);
+    };
+    const indexItem = (item: TransferItem) => {
+      itemsById.set(item.transferId, item);
+      if (item.status === "queued") queuedIds.add(item.transferId);
+      if (item.status === "running") { const key = bindingKey(item.binding); runningIds.add(item.transferId); runningGlobal++; runningByBinding.set(key, (runningByBinding.get(key) ?? 0) + 1); }
+      if (item.batchId) { const ids = idsByBatch.get(item.batchId) ?? new Set<string>(); ids.add(item.transferId); idsByBatch.set(item.batchId, ids); adjustAggregate(aggregateByBatch, item.batchId, undefined, item); }
+      const session = item.binding.logicalSessionId; const ids = idsBySession.get(session) ?? new Set<string>(); ids.add(item.transferId); idsBySession.set(session, ids); adjustAggregate(aggregateBySession, session, undefined, item);
+    };
+    const removeItem = (transferId: string, order: string[]) => {
+      const item = itemsById.get(transferId); if (!item) return;
+      itemsById.delete(transferId); queuedIds.delete(transferId); runningIds.delete(transferId);
+      if (item.batchId) { idsByBatch.get(item.batchId)?.delete(transferId); adjustAggregate(aggregateByBatch, item.batchId, item, undefined); }
+      idsBySession.get(item.binding.logicalSessionId)?.delete(transferId); adjustAggregate(aggregateBySession, item.binding.logicalSessionId, item, undefined);
+      const index = order.indexOf(transferId); if (index >= 0) order.splice(index, 1);
+      let historyIndex = resolvedHistory.indexOf(transferId); if (historyIndex >= 0) resolvedHistory.splice(historyIndex, 1);
+      historyIndex = unresolvedHistory.indexOf(transferId); if (historyIndex >= 0) unresolvedHistory.splice(historyIndex, 1);
+    };
+    const boundTerminal = (item: TransferItem, order: string[]) => {
+      const queue = item.status === "needsReconcile" ? unresolvedHistory : resolvedHistory;
+      queue.push(item.transferId); const limit = item.status === "needsReconcile" ? UNRESOLVED_LIMIT : FINISHED_LIMIT;
+      while (queue.length > limit) removeItem(queue.shift()!, order);
+    };
+    const patchItem = (transferId: string, expectedAttempt: number, fn: (item: TransferItem) => TransferItem | undefined) => {
+      const previous = itemsById.get(transferId);
+      if (!previous || previous.attempt !== expectedAttempt) return false;
+      const next = fn(previous); if (!next || next === previous) return false;
+      itemsById.set(transferId, next);
+      if (previous.status === "queued") queuedIds.delete(transferId); if (next.status === "queued") queuedIds.add(transferId);
+      if (previous.status !== next.status) {
+        if (previous.status === "running") { const key = bindingKey(previous.binding); runningIds.delete(transferId); runningGlobal--; runningByBinding.set(key, (runningByBinding.get(key) ?? 1) - 1); }
+        if (next.status === "running") { const key = bindingKey(next.binding); runningIds.add(transferId); runningGlobal++; runningByBinding.set(key, (runningByBinding.get(key) ?? 0) + 1); }
+      }
+      if (next.batchId) adjustAggregate(aggregateByBatch, next.batchId, previous, next);
+      adjustAggregate(aggregateBySession, next.binding.logicalSessionId, previous, next);
+      const previousHistory = previous.status === "needsReconcile" ? unresolvedHistory : resolvedHistory;
+      const nextHistory = next.status === "needsReconcile" ? unresolvedHistory : resolvedHistory;
+      const historyTransition = (!active(next) && (active(previous) || previousHistory !== nextHistory));
+      if (active(next) && !active(previous)) {
+        const historyIndex = previousHistory.indexOf(transferId);
+        if (historyIndex >= 0) previousHistory.splice(historyIndex, 1);
+      }
+      if (historyTransition) {
+        const historyIndex = previousHistory.indexOf(transferId);
+        if (historyIndex >= 0) previousHistory.splice(historyIndex, 1);
+        const order = [...get().order];
+        boundTerminal(next, order);
+        publish(order.length !== get().order.length ? order : undefined);
+      } else publish();
+      return true;
+    };
     const pump = () => {
       if (pumping) return; pumping = true;
       queueMicrotask(() => {
         pumping = false;
-        const state = get();
-        const running = state.items.filter((x) => x.status === "running");
-        let global = running.length;
-        const connections = new Map<number, number>();
-        for (const item of running) connections.set(item.binding.physicalPtyId, (connections.get(item.binding.physicalPtyId) ?? 0) + 1);
-        for (const item of state.items) {
-          if (global >= 4 || item.status !== "queued" || item.cancelRequested) continue;
-          const count = connections.get(item.binding.physicalPtyId) ?? 0;
+        metrics.pumpRuns++;
+        for (const transferId of queuedIds) {
+          metrics.pumpCandidates++;
+          const item = itemsById.get(transferId); if (!item) continue;
+          if (runningGlobal >= 4) break;
+          if (item.status !== "queued" || item.cancelRequested) continue;
+          const count = runningByBinding.get(bindingKey(item.binding)) ?? 0;
           if (count >= 2) continue;
-          global++; connections.set(item.binding.physicalPtyId, count + 1);
-          set((s) => ({ items: s.items.map((x) => x === item ? { ...x, status: "running", startedAt: Date.now(), rateSamples: [] } : x) }));
+          patchItem(item.transferId, item.attempt, (x) => x.status === "queued" ? { ...x, status: "running", startedAt: Date.now(), rateSamples: [] } : undefined);
           const startedAt = Date.now();
-          void run(item, (event) => set((s) => ({ items: s.items.map((x) => {
-            if (x.transferId !== item.transferId || x.attempt !== item.attempt) return x;
+          void run(item, (event) => patchItem(item.transferId, item.attempt, (x) => {
+            if (x.status !== "running") return undefined;
             const nextEvent = acceptSshTransferEvent(x.event, event);
+            if (nextEvent === x.event) return undefined;
             return {
               ...x,
               event: nextEvent,
               rateSamples: pushRateSample(x.rateSamples ?? [], { at: Date.now(), bytes: nextEvent?.bytesTransferred ?? 0 }),
             };
-          }) })))
+          }))
             .then(({ outcome }) => {
               const outcomeName = outcome.status === "completed" ? "completed"
                 : outcome.status === "cancelled" ? "cancelled"
@@ -148,8 +232,8 @@ export function createTransferStore(run: Runner = defaultRunner) {
                 errorCategory: outcome.status === "completed" ? undefined : outcome.status === "cancelled" ? "cancelled" : "io",
                 attributes: { direction: item.direction, operation: item.direction, attempt: String(item.attempt) },
               });
-              set((s) => ({ items: boundHistory(s.items.map((x) => x.transferId === item.transferId && x.attempt === item.attempt
-                ? { ...x, outcome, status: outcome.status === "completed" ? "completed" : outcome.status === "cancelled" ? "cancelled" : outcome.status === "outcomeUnknown" ? "needsReconcile" : "failed" } : x)) }));
+              const status = outcome.status === "completed" ? "completed" : outcome.status === "cancelled" ? "cancelled" : outcome.status === "outcomeUnknown" ? "needsReconcile" : "failed";
+              patchItem(item.transferId, item.attempt, (x) => x.status === "running" ? { ...x, outcome, status } : undefined);
               if (outcome.status === "completed" && item.direction === "upload" && !item.batchId) {
                 useUIStore.getState().addToast({
                   sessionId: item.binding.logicalSessionId,
@@ -177,8 +261,7 @@ export function createTransferStore(run: Runner = defaultRunner) {
                 errorCategory: localUsageErrorCategory(error),
                 attributes: { direction: item.direction, operation: item.direction, attempt: String(item.attempt) },
               });
-              set((s) => ({ items: boundHistory(s.items.map((x) => x.transferId === item.transferId && x.attempt === item.attempt
-                ? { ...x, status: "failed", error: error instanceof Error ? error.message : String(error) } : x)) }));
+              patchItem(item.transferId, item.attempt, (x) => x.status === "running" ? { ...x, status: "failed", error: error instanceof Error ? error.message : String(error) } : undefined);
             })
             .finally(pump);
         }
@@ -195,14 +278,34 @@ export function createTransferStore(run: Runner = defaultRunner) {
         outcome: request.conflict === "skip" ? "skipped" : "scheduled",
         attributes: { direction: request.direction, operation: request.direction, attempt: "1" },
       });
-      set((s) => ({ items: boundHistory([...s.items, item]) })); pump(); return transferId;
+      indexItem(item); const order = [...get().order, transferId]; if (!active(item)) boundTerminal(item, order); publish(order); pump(); return transferId;
     };
     return {
-      items: [], recoveries: [], journalLoaded: false, enqueue,
-      enqueueBatch: (requests, batchId = id()) => requests.map((request) => enqueue({ ...request, batchId })),
+      itemsById, order: [], queuedIds, idsByBatch, idsBySession, aggregateByBatch, aggregateBySession, testMetrics: metrics,
+      revision: 0, orderRevision: 0, recoveries: [], journalLoaded: false, enqueue,
+      materializeItems: () => get().order.flatMap((transferId) => { const item = itemsById.get(transferId); return item ? [item] : []; }),
+      replaceItemsForTest: (items) => {
+        itemsById.clear(); queuedIds.clear(); runningIds.clear(); idsByBatch.clear(); idsBySession.clear(); aggregateByBatch.clear(); aggregateBySession.clear(); runningByBinding.clear(); resolvedHistory.length = 0; unresolvedHistory.length = 0; runningGlobal = 0;
+        const order: string[] = []; for (const item of items) { indexItem(item); order.push(item.transferId); if (!active(item)) (item.status === "needsReconcile" ? unresolvedHistory : resolvedHistory).push(item.transferId); }
+        publish(order);
+      },
+      enqueueBatch: (requests, batchId = id()) => {
+        const transferIds: string[] = [];
+        const additions = requests.map((request) => {
+          const transferId = request.transferId ?? id(); transferIds.push(transferId);
+          recordLocalUsageEvent({
+            event: "ssh.transfer.queued", sessionId: request.binding.logicalSessionId, correlationId: transferId,
+            success: request.conflict !== "skip", outcome: request.conflict === "skip" ? "skipped" : "scheduled",
+            attributes: { direction: request.direction, operation: request.direction, attempt: "1" },
+          });
+          return { ...request, batchId, transferId, attempt: 1, status: request.conflict === "skip" ? "cancelled" as const : "queued" as const, cancelRequested: false };
+        });
+        const order = [...get().order]; for (const item of additions) { indexItem(item); order.push(item.transferId); if (!active(item)) boundTerminal(item, order); }
+        publish(order); pump(); return transferIds;
+      },
       cancel: async (transferId) => {
-        const item = get().items.find((x) => x.transferId === transferId); if (!item) return;
-        set((s) => ({ items: boundHistory(s.items.map((x) => x.transferId === transferId ? { ...x, cancelRequested: true, status: x.status === "queued" ? "cancelled" : x.status } : x)) }));
+        const item = itemsById.get(transferId); if (!item) return;
+        patchItem(transferId, item.attempt, (x) => active(x) ? { ...x, cancelRequested: true, status: x.status === "queued" ? "cancelled" : x.status } : undefined);
         if (item.status === "running") await sshTransferCancel(item.transferId, item.attempt); pump();
         recordLocalUsageEvent({
           event: "ssh.transfer.cancelled",
@@ -214,13 +317,14 @@ export function createTransferStore(run: Runner = defaultRunner) {
         });
       },
       cancelBatch: async (batchId) => {
-        await Promise.all(get().items
-          .filter((item) => item.batchId === batchId && active(item))
-          .map((item) => get().cancel(item.transferId)));
+        await Promise.all([...idsByBatch.get(batchId) ?? []].map((transferId) => itemsById.get(transferId)).filter((item): item is TransferItem => !!item && active(item)).map((item) => get().cancel(item.transferId)));
       },
-      cancelAll: async (logicalSessionId) => { await Promise.all(get().items.filter((x) => (!logicalSessionId || x.binding.logicalSessionId === logicalSessionId) && (x.status === "queued" || x.status === "running")).map((x) => get().cancel(x.transferId))); },
+      cancelAll: async (logicalSessionId) => {
+        const ids = logicalSessionId ? [...idsBySession.get(logicalSessionId) ?? []] : [...queuedIds, ...runningIds];
+        await Promise.all(ids.map((transferId) => get().cancel(transferId)));
+      },
       retry: async (transferId, confirmFresh) => {
-        const item = get().items.find((x) => x.transferId === transferId);
+        const item = itemsById.get(transferId);
         if (!item || (item.status !== "failed" && item.status !== "cancelled") || pendingRetries.has(transferId)) return "notRetryable";
         pendingRetries.add(transferId);
         try {
@@ -232,8 +336,7 @@ export function createTransferStore(run: Runner = defaultRunner) {
             || binding.transportGeneration !== item.binding.transportGeneration;
           if ((item.conflict === "replace" || replacement)
             && !(await confirmFresh?.(item.conflict === "replace" ? "replace" : "replacement"))) return "replacementDeclined";
-          const stillRetryable = () => get().items.find((candidate) => candidate.transferId === transferId
-            && candidate.attempt === originalAttempt && (candidate.status === "failed" || candidate.status === "cancelled"));
+          const stillRetryable = () => { const candidate = itemsById.get(transferId); return candidate?.attempt === originalAttempt && (candidate.status === "failed" || candidate.status === "cancelled") ? candidate : undefined; };
           if (!stillRetryable()) return "notRetryable";
           const latest = currentReadySessionBinding(item.binding.logicalSessionId);
           if (!latest) return "offline";
@@ -243,9 +346,8 @@ export function createTransferStore(run: Runner = defaultRunner) {
             if (!confirmed) return "offline";
             binding = confirmed;
           }
-          set((s) => ({ items: s.items.map((x) => x.transferId === transferId && x.attempt === originalAttempt
-            && (x.status === "failed" || x.status === "cancelled")
-            ? { ...x, binding, attempt: x.attempt + 1, status: "queued", outcome: undefined, error: undefined, event: undefined, cancelRequested: false } : x) }));
+          patchItem(transferId, originalAttempt, (x) => x.status === "failed" || x.status === "cancelled"
+            ? { ...x, binding, attempt: x.attempt + 1, status: "queued", outcome: undefined, error: undefined, event: undefined, cancelRequested: false } : undefined);
           recordLocalUsageEvent({
             event: "ssh.transfer.retry",
             sessionId: binding.logicalSessionId,
@@ -259,8 +361,11 @@ export function createTransferStore(run: Runner = defaultRunner) {
           pendingRetries.delete(transferId);
         }
       },
-      clearFinished: (logicalSessionId) => set((s) => ({ items: s.items.filter((item) => active(item) || item.status === "needsReconcile"
-        || (logicalSessionId !== undefined && item.binding.logicalSessionId !== logicalSessionId)) })),
+      clearFinished: (logicalSessionId) => {
+        const candidates = logicalSessionId ? [...idsBySession.get(logicalSessionId) ?? []] : [...resolvedHistory]; const order = [...get().order];
+        for (const transferId of candidates) { const item = itemsById.get(transferId); if (item && !active(item) && item.status !== "needsReconcile") removeItem(transferId, order); }
+        publish(order);
+      },
       loadJournal: async () => {
         try {
           const records = await sshTransferJournalLoad();
@@ -283,17 +388,10 @@ export function createTransferStore(run: Runner = defaultRunner) {
         try {
           const result = await sshTransferRecoveryReconcile(resolved, recoveryId);
           if (result.completed) {
-            set((s) => ({
-              recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId),
-              items: boundHistory(s.items.map((item) => item.transferId === recovery.record.transferId
-                && item.attempt === recovery.record.attempt && item.status === "needsReconcile"
-                ? {
-                    ...item,
-                    status: "completed",
-                    outcome: { status: "completed", bytesTransferred: result.record.bytes },
-                    error: undefined,
-                  } : item)),
-            }));
+            patchItem(recovery.record.transferId, recovery.record.attempt, (item) => item.status === "needsReconcile" ? {
+              ...item, status: "completed", outcome: { status: "completed", bytesTransferred: result.record.bytes }, error: undefined,
+            } : undefined);
+            set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));
             recordTransferRecovery(recovery.record, recoveryId, "reconcile", "completed", startedAt);
             return "completed";
           }

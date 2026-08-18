@@ -10,6 +10,23 @@ use super::auth::AuthOptions;
 use super::connection::{ConnectParams, HostKeyPolicy, SshSession};
 use crate::modules::pty::PtyEvent;
 
+const RTT_MATRIX_MS: [u64; 3] = [20, 100, 250];
+const FIXTURE_PREFIX: &str = "/tmp/tunara-rtt-benchmark-";
+
+fn validate_fixture(path: &str) -> Result<(), &'static str> {
+    let rest = path
+        .strip_prefix(FIXTURE_PREFIX)
+        .ok_or("fixture must be under isolated /tmp prefix")?;
+    if rest.is_empty() || rest.starts_with('/') || rest.contains("/../") || rest.ends_with("/..") {
+        return Err("fixture must name an isolated /tmp directory");
+    }
+    Ok(())
+}
+
+fn paired_record(baseline: serde_json::Value, after: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({ "baseline": baseline, "after": after })
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
@@ -85,7 +102,8 @@ async fn real_ssh_rtt_operations_benchmark() {
         .unwrap_or(22);
     let user = std::env::var("TUNARA_SSH_SMOKE_USER").unwrap_or_else(|_| "root".into());
     let cwd = std::env::var("TUNARA_SSH_SMOKE_CWD")
-        .unwrap_or_else(|_| "/root/qclaw-wechat-client".into());
+        .expect("set TUNARA_SSH_SMOKE_CWD to an isolated /tmp/tunara-rtt-benchmark-* fixture");
+    validate_fixture(&cwd).expect("unsafe RTT benchmark fixture");
     let samples = std::env::var("TUNARA_SSH_RTT_SAMPLES")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -93,7 +111,7 @@ async fn real_ssh_rtt_operations_benchmark() {
     assert!(samples > 0 && samples <= 10, "sample count must be 1..=10");
 
     let mut scenarios = Vec::new();
-    for rtt_ms in [100u64, 200u64] {
+    for rtt_ms in RTT_MATRIX_MS {
         let mut connect = Vec::new();
         let mut pwd = Vec::new();
         let mut preview = Vec::new();
@@ -207,7 +225,7 @@ async fn real_ssh_rtt_operations_benchmark() {
             drop(session);
         }
 
-        scenarios.push(serde_json::json!({
+        let after = serde_json::json!({
             "configuredRttMs": rtt_ms,
             "samples": samples,
             "connect": latency_summary(&connect),
@@ -217,7 +235,11 @@ async fn real_ssh_rtt_operations_benchmark() {
             "diffStat": latency_summary(&diff),
             "sftpReadDir": latency_summary(&sftp),
             "cancelEffective": latency_summary(&cancel),
-        }));
+        });
+        scenarios.push(paired_record(
+            serde_json::json!({ "configuredRttMs": 0, "samples": samples }),
+            after,
+        ));
     }
     eprintln!(
         "M1_SSH_RTT_RESULT {}",
@@ -229,4 +251,26 @@ async fn real_ssh_rtt_operations_benchmark() {
         }))
         .expect("serialize RTT benchmark")
     );
+}
+
+#[test]
+fn benchmark_contract_is_paired_and_fixture_is_fail_closed() {
+    assert_eq!(RTT_MATRIX_MS, [20, 100, 250]);
+    assert!(validate_fixture("/tmp/tunara-rtt-benchmark-run-1").is_ok());
+    for unsafe_path in [
+        "/root/repo",
+        "/tmp/other",
+        "/tmp/tunara-rtt-benchmark-",
+        "/tmp/tunara-rtt-benchmark-run/../repo",
+    ] {
+        assert!(
+            validate_fixture(unsafe_path).is_err(),
+            "accepted {unsafe_path}"
+        );
+    }
+    let value = paired_record(
+        serde_json::json!({"count": 1}),
+        serde_json::json!({"count": 2}),
+    );
+    assert!(value.get("baseline").is_some() && value.get("after").is_some());
 }

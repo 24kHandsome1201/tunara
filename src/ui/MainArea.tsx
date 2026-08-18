@@ -123,7 +123,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const activeDir = active?.dir;
   const activePtyId = active?.ptyId;
   const activeRemoteKey = active?.remote
-    ? `${active.remote.user}@${active.remote.host}:${active.remote.port}`
+    ? `${active.remote.host}:${active.remote.port}`
     : undefined;
 
   const remote = useSessionGitContext({
@@ -132,6 +132,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
     activePtyId,
     activeIsRemote,
     activeRemoteKey,
+    activeTransportGeneration: active?.transportGeneration,
     nonce,
   });
   useWorkspaceHydration(sessions, activeId);
@@ -235,6 +236,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             >
               <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
                 <FilePreview
+                  active={active}
                   sessionId={tab.sessionId}
                   filePath={tab.filePath}
                   fileName={tab.fileName}

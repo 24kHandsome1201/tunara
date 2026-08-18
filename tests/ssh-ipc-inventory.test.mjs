@@ -20,6 +20,10 @@ const mapped = {
   "transfer/legacy.rs": { ssh_fs_download: "Transfer", ssh_fs_upload: "Transfer" },
   "transfer/engine.rs": { ssh_transfer_download: "Transfer", ssh_transfer_upload: "Transfer" },
   "transfer/manifest.rs": { validate_manifest: "Manifest" },
+  "transfer/upload_plan.rs": Object.fromEntries([
+    "ssh_upload_preflight_v1", "ssh_upload_materialize_v1",
+    "ssh_upload_materialization_reconcile_v1",
+  ].map((name) => [name, "Manifest"])),
   "transfer_journal.rs": Object.fromEntries([
     "ssh_transfer_journal_load", "ssh_transfer_journal_save", "ssh_transfer_journal_list_owned_partials",
     "ssh_transfer_journal_cleanup", "ssh_transfer_recovery_prepare",
@@ -34,7 +38,7 @@ const mapped = {
     "ssh_forwarding_reconnect_snapshot", "ssh_forwarding_reconnect_rebuild",
   ].map((name) => [name, "Forwarding"])),
   "remote_git.rs": Object.fromEntries([
-    "ssh_git_status", "ssh_git_diff", "ssh_git_ahead_behind", "ssh_git_workspace_context",
+    "ssh_git_diff", "ssh_git_workspace_context",
     "ssh_fs_search", "ssh_fs_grep",
   ].map((name) => [name, "RemoteGit"])),
 };
@@ -46,6 +50,8 @@ const exemptions = new Set([
   "ssh_open_v2", "ssh_diagnostic_run_v1", "ssh_cancel_open",
   "ssh_diagnostic_cancel_v1", "ssh_fs_cancel_upload", "ssh_transfer_cancel",
   "ssh_file_view_head_v1", "ssh_file_view_tail_v1",
+  "ssh_fs_read_if_changed_v1",
+  "ssh_remote_git_snapshot_v1",
 ]);
 
 const addedSshCommands = [
@@ -61,6 +67,9 @@ const addedSshCommands = [
   "ssh_transfer_journal_list_owned_partials", "ssh_transfer_journal_cleanup",
   "ssh_transfer_recovery_prepare", "ssh_transfer_recovery_reconcile",
   "ssh_transfer_recovery_dismiss", "validate_manifest",
+  "ssh_fs_read_if_changed_v1",
+  "ssh_upload_preflight_v1", "ssh_upload_materialize_v1",
+  "ssh_upload_materialization_reconcile_v1",
 ];
 
 function functionSource(source, name) {
@@ -84,8 +93,8 @@ test("registered SSH command inventory is explicit and complete", () => {
   assert.deepEqual(new Set(registrations), new Set([...expected, ...exemptions]));
 });
 
-test("all 32 added SSH commands are registered, permitted, and present in generated ACL", async () => {
-  assert.equal(addedSshCommands.length, 32);
+test("all 36 added SSH commands are registered, permitted, and present in generated ACL", async () => {
+  assert.equal(addedSshCommands.length, 36);
   const permission = await readFile(new URL("src-tauri/permissions/main.toml", root), "utf8");
   const acl = JSON.parse(await readFile(new URL("src-tauri/gen/schemas/acl-manifests.json", root), "utf8"));
   const generated = acl["__app-acl__"].permissions["allow-main-commands"].commands.allow;
@@ -103,13 +112,13 @@ test("every non-exempt registered SSH Result<String> command maps its final erro
       assert.ok(registrations.includes(name), `${file}:${name} is not registered`);
       const fn = functionSource(source, name);
       const gitStatusCommands = new Set([
-        "ssh_git_status",
         "ssh_git_diff",
-        "ssh_git_ahead_behind",
         "ssh_git_workspace_context",
       ]);
       const mapper = kind === "RemoteGit" && gitStatusCommands.has(name)
         ? /map_remote_git_error\(/
+        : file === "transfer/upload_plan.rs"
+          ? /(?:safe_ipc_error|map_err\(safe\)|safe\()/
         : new RegExp(`safe_ipc_error\\(\\s*(?:crate::modules::ssh::)?SshIpcErrorKind::${kind}\\b`);
       assert.match(fn, mapper, `${file}:${name} must map its final Err as ${kind}`);
     }

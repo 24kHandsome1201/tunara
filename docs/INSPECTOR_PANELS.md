@@ -94,10 +94,10 @@
 | 本地 diff | `gitDiff` | `git_diff` |
 | 本地 ahead/behind | `gitAheadBehind` | `git_ahead_behind` |
 | 远程 diff | `sshGitDiff` | `ssh_git_diff` |
-| 远程 ahead/behind | `sshGitAheadBehind` | `ssh_git_ahead_behind` |
+| 远程 status / ahead/behind | `sshRemoteGitSnapshotV1` | `ssh_remote_git_snapshot_v1` |
 | 取消进行中的远程 diff | `cancelGitDiff` | `fs_cancel_search` |
 
-文件列表本身来自会话上已刷新的 `session.changes`（本地 `git_status` / 远程 `ssh_git_status`），不由本面板单独拉全量 status。
+文件列表本身来自会话上已刷新的 `session.changes`（本地 `git_status` / 远程 `ssh_remote_git_snapshot_v1`），不由本面板单独拉全量 status。
 
 ### 现状问题
 

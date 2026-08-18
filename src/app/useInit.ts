@@ -1,8 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useSessionsStore } from "@/state/sessions";
-import type { Session } from "@/ui/types";
 import { loadUserConfig, useUIStore } from "@/state/ui";
-import { loadWorkspaceSnapshot, saveWorkspaceSnapshot, type WorkspaceSnapshotV1 } from "@/state/persist";
+import {
+  loadWorkspaceSnapshot,
+  saveWorkspaceSnapshot,
+  type WorkspaceProjectionV1,
+  type WorkspaceSnapshotV1,
+} from "@/state/persist";
 import { useWorkflowsStore } from "@/state/workflows";
 import { t } from "@/modules/i18n/core.ts";
 import {
@@ -15,12 +19,18 @@ import { platform } from "@tauri-apps/plugin-os";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
 import { toPersistedSession } from "@/state/persist-snapshot";
-import { diffWatchedDirs, gitWatchDirsForSessions } from "./lib/sync-watches";
+import {
+  diffWatchedDirs,
+  gitWatchDirProjection,
+  sameGitWatchDirProjection,
+} from "./lib/sync-watches";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 import { splitLayoutSessionIds } from "@/modules/session/split-layout";
+import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 
-function buildSnapshot(): WorkspaceSnapshotV1 {
+function buildWorkspaceProjection(): WorkspaceProjectionV1 {
+  recordFrontendPerf("workspaceProjections");
   const st = useSessionsStore.getState();
   const ui = useUIStore.getState();
   const agentResume: WorkspaceSnapshotV1["agentResume"] = {};
@@ -29,7 +39,6 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
   }
   return {
     version: 1,
-    savedAt: Date.now(),
     activeSessionId: st.activeSessionId,
     sessions: st.sessions.map(toPersistedSession),
     ui: {
@@ -53,6 +62,10 @@ function buildSnapshot(): WorkspaceSnapshotV1 {
   };
 }
 
+function buildSnapshot(): WorkspaceSnapshotV1 {
+  return { ...buildWorkspaceProjection(), savedAt: Date.now() };
+}
+
 export function useInit() {
   const initRef = useRef(false);
   useEffect(() => {
@@ -63,6 +76,7 @@ export function useInit() {
     // App.ready until both config and workspace hydration finish so a slow
     // config read cannot initialize the first PTY with default-only settings.
     const configReady = loadUserConfig();
+    let workspaceHydrated = false;
 
     const notifiedPersistenceFailures = new Set<"restore" | "save">();
     const notifyPersistenceFailure = (kind: "restore" | "save", detail?: string) => {
@@ -81,11 +95,13 @@ export function useInit() {
 
       if (result.status === "error") {
         notifyPersistenceFailure("restore", result.error);
+        workspaceHydrated = true;
         useUIStore.setState({ ready: true });
         return;
       }
 
       if (result.status === "empty") {
+        workspaceHydrated = true;
         useUIStore.setState({ ready: true });
         return;
       }
@@ -127,6 +143,7 @@ export function useInit() {
       useSessionsStore.setState({
         sessions: merged,
         activeSessionId,
+        workspacePersistenceRevision: current.workspacePersistenceRevision,
         launchedSessionIds,
         recentDirs: snapshot.recentDirs,
         recentCommands: snapshot.recentCommands,
@@ -154,6 +171,7 @@ export function useInit() {
         restoreTerminalSnapshots(snapshot.terminals);
       }
 
+      workspaceHydrated = true;
       useUIStore.setState({ ready: true });
     });
 
@@ -209,17 +227,26 @@ export function useInit() {
     // Serialize writes so a slower debounced save cannot finish after the
     // close-time flush and overwrite its newer snapshot.
     let persistQueue = Promise.resolve<"saved" | "blocked" | "error">("saved");
-    const persistNow = () => {
+    const persistNow = (terminalDirtyAlreadyConsumed = false) => {
+      const includedTerminalDirty = terminalDirtyAlreadyConsumed || consumeTerminalSnapshotDirty();
       const snapshot = buildSnapshot();
-      const operation = persistQueue.then(() => saveWorkspaceSnapshot(snapshot));
+      const operation = persistQueue.then(() => {
+        recordFrontendPerf("persistenceStoreWrites");
+        recordFrontendPerf("persistenceIpc");
+        return saveWorkspaceSnapshot(snapshot);
+      });
       persistQueue = operation;
       return operation.then((result) => {
+        if (result !== "saved" && includedTerminalDirty) markTerminalSnapshotDirty();
         if (result !== "saved") notifyPersistenceFailure("save");
         return result;
       });
     };
     const scheduleSave = () => {
-      if (saveTimer) clearTimeout(saveTimer);
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        recordFrontendPerf("persistenceDebounceMerges");
+      }
       saveTimer = setTimeout(() => {
         saveTimer = null;
         void persistNow();
@@ -231,6 +258,7 @@ export function useInit() {
         win.onCloseRequested(async (event) => {
           event.preventDefault();
           const finishClose = async () => {
+            recordFrontendPerf("closeFlushes");
             if (saveTimer) {
               clearTimeout(saveTimer);
               saveTimer = null;
@@ -252,18 +280,18 @@ export function useInit() {
     registerUnlisten("git watcher", startGitWatcherListener);
 
     let watchedDirs: ReadonlySet<string> = new Set<string>();
-    const syncGitWatches = (sessions: readonly Session[]) => {
+    let watchedDirProjection: readonly string[] = [];
+    const syncGitWatches = (nextProjection: readonly string[]) => {
       const { toAcquire, toRelease, next } = diffWatchedDirs(
         watchedDirs,
-        // Keep the watch list local-only. Remote sessions use pseudo dirs like
-        // user@host, which cannot be watched by the local Git watcher.
-        gitWatchDirsForSessions(sessions),
+        nextProjection,
       );
       for (const dir of toAcquire) acquireGitWatch(dir);
       for (const dir of toRelease) releaseGitWatch(dir);
       watchedDirs = next;
     };
-    syncGitWatches(useSessionsStore.getState().sessions);
+    watchedDirProjection = gitWatchDirProjection(useSessionsStore.getState().sessions);
+    syncGitWatches(watchedDirProjection);
 
     const onWindowFocus = () => {
       const activeId = useSessionsStore.getState().activeSessionId;
@@ -271,18 +299,26 @@ export function useInit() {
     };
     window.addEventListener("focus", onWindowFocus);
 
-    let prevSessions = useSessionsStore.getState().sessions;
-    const unsubSessions = useSessionsStore.subscribe((state) => {
-      if (state.sessions !== prevSessions) {
-        prevSessions = state.sessions;
-        syncGitWatches(state.sessions);
-        scheduleSave();
+    let previousPersistenceRevision = useSessionsStore.getState().workspacePersistenceRevision;
+    const unsubWorkspacePersistence = useSessionsStore.subscribe((state) => {
+      if (state.workspacePersistenceRevision !== previousPersistenceRevision) {
+        previousPersistenceRevision = state.workspacePersistenceRevision;
+        if (workspaceHydrated) scheduleSave();
       }
+    });
+
+    const unsubGitWatchProjection = useSessionsStore.subscribe((state) => {
+      const nextProjection = gitWatchDirProjection(state.sessions);
+      if (sameGitWatchDirProjection(watchedDirProjection, nextProjection)) return;
+      watchedDirProjection = nextProjection;
+      syncGitWatches(nextProjection);
     });
 
     const unsubUI = useUIStore.subscribe(
       (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.broadcastInput, s.explorerFollowCwd, s.shellIntegrationHintDismissed] as const,
-      () => scheduleSave(),
+      () => {
+        if (workspaceHydrated) scheduleSave();
+      },
       { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
     );
 
@@ -290,7 +326,7 @@ export function useInit() {
     const unsubWorkflows = useWorkflowsStore.subscribe((state) => {
       if (state.workflows !== prevWorkflows) {
         prevWorkflows = state.workflows;
-        scheduleSave();
+        if (workspaceHydrated) scheduleSave();
       }
     });
 
@@ -300,12 +336,12 @@ export function useInit() {
     // output performs no redundant serialize + IPC + disk write every 30s.
     const timer = setInterval(() => {
       if (!consumeTerminalSnapshotDirty()) return;
-      void persistNow().then((result) => {
-        if (result !== "saved") markTerminalSnapshotDirty();
-      });
+      recordFrontendPerf("terminalBackstopFlushes");
+      void persistNow(true);
     }, 30_000);
     return () => {
-      unsubSessions();
+      unsubWorkspacePersistence();
+      unsubGitWatchProjection();
       unsubUI();
       unsubWorkflows();
       if (saveTimer) {

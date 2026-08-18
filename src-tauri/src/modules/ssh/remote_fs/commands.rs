@@ -13,16 +13,16 @@ use super::{
     RemotePathKindV1,
 };
 
-pub(super) const CONTROL_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const CONTROL_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub(super) fn validate_operation_id(operation_id: &str) -> Result<(), String> {
+pub(crate) fn validate_operation_id(operation_id: &str) -> Result<(), String> {
     if operation_id.is_empty() || operation_id.len() > 128 {
         return Err("operationId must contain 1-128 characters".into());
     }
     Ok(())
 }
 
-pub(super) fn validate_remote_path(path: &str) -> Result<(), String> {
+pub(crate) fn validate_remote_path(path: &str) -> Result<(), String> {
     if path.len() > 16 * 1024 || !path.starts_with('/') || path.contains('\0') {
         return Err("remote path must be a bounded absolute POSIX path".into());
     }
@@ -70,7 +70,7 @@ fn operation_paths(request: &MutationRequestV1) -> Result<(&str, Option<&str>), 
     }
 }
 
-pub(super) fn identity(attributes: FileAttributes) -> PathIdentityV1 {
+pub(crate) fn identity(attributes: FileAttributes) -> PathIdentityV1 {
     let kind = if attributes.is_symlink() {
         RemotePathKindV1::Symlink
     } else if attributes.is_dir() {
@@ -85,6 +85,24 @@ pub(super) fn identity(attributes: FileAttributes) -> PathIdentityV1 {
         size: attributes.size,
         mode: attributes.permissions,
         modified_at: attributes.mtime,
+    }
+}
+
+/// Authoritative, bounded pathname LSTAT primitive shared by remote preview
+/// and manifest code. `PathIdentityV1` is only a weak change detector: SFTP v3
+/// exposes no inode/generation identity and this must not be described as an
+/// atomic snapshot or used as a save precondition by itself.
+pub(crate) async fn lstat_identity_bounded(
+    sftp: &russh_sftp::client::SftpSession,
+    path: &str,
+    timeout: Duration,
+) -> Result<PathIdentityV1, String> {
+    validate_remote_path(path)?;
+    let _in_flight = crate::modules::perf_counters::sftp_lstat_begin();
+    match tokio::time::timeout(timeout.min(CONTROL_TIMEOUT), sftp.symlink_metadata(path)).await {
+        Ok(Ok(attributes)) => Ok(identity(attributes)),
+        Ok(Err(error)) => Err(format!("lstat {path} failed: {error}")),
+        Err(_) => Err(format!("lstat {path} timed out")),
     }
 }
 
@@ -232,6 +250,47 @@ async fn mutate(
     }
 }
 
+pub(crate) async fn execute_mutation(
+    sftp: &russh_sftp::client::SftpSession,
+    request: &MutationRequestV1,
+) -> Result<MutationResultV1, String> {
+    let before = observations(sftp, request).await?;
+    if let Some(result) = evaluate_precondition(
+        request,
+        &before.source,
+        &before.source_parent,
+        before.destination.as_ref(),
+        before.destination_parent.as_ref(),
+    ) {
+        return Ok(result);
+    }
+
+    match mutate(sftp, request).await {
+        Ok(()) => Ok(MutationResultV1::new(
+            &request.operation_id,
+            MutationStatusV1::Applied,
+            "the remote server accepted the mutation",
+        )),
+        Err(error) => {
+            if let Some(result) = explicit_error(request, &error) {
+                return Ok(result);
+            }
+            // No blind retry after timeout/connection loss. Re-observe once on
+            // this live binding and report only what pathname state proves.
+            let after = observations(sftp, request).await?;
+            Ok(reconcile(request, &after))
+        }
+    }
+}
+
+pub(crate) async fn reconcile_mutation(
+    sftp: &russh_sftp::client::SftpSession,
+    request: &MutationRequestV1,
+) -> Result<MutationResultV1, String> {
+    let observed = observations(sftp, request).await?;
+    Ok(reconcile(request, &observed))
+}
+
 #[tauri::command]
 pub async fn ssh_fs_mutate_v1(
     state: tauri::State<'_, PtyState>,
@@ -239,33 +298,7 @@ pub async fn ssh_fs_mutate_v1(
 ) -> Result<MutationResultV1, String> {
     (async {
         let sftp = sftp_common::session_for_binding(&state, &request.binding).await?;
-        let before = observations(&sftp, &request).await?;
-        if let Some(result) = evaluate_precondition(
-            &request,
-            &before.source,
-            &before.source_parent,
-            before.destination.as_ref(),
-            before.destination_parent.as_ref(),
-        ) {
-            return Ok(result);
-        }
-
-        match mutate(&sftp, &request).await {
-            Ok(()) => Ok(MutationResultV1::new(
-                &request.operation_id,
-                MutationStatusV1::Applied,
-                "the remote server accepted the mutation",
-            )),
-            Err(error) => {
-                if let Some(result) = explicit_error(&request, &error) {
-                    return Ok(result);
-                }
-                // No blind retry after timeout/connection loss. Re-observe once on
-                // this live binding and report only what pathname state proves.
-                let after = observations(&sftp, &request).await?;
-                Ok(reconcile(&request, &after))
-            }
-        }
+        execute_mutation(&sftp, &request).await
     })
     .await
     .map_err(|error: String| {
@@ -282,8 +315,7 @@ pub async fn ssh_fs_reconcile_mutation_v1(
 ) -> Result<MutationResultV1, String> {
     (async {
         let sftp = sftp_common::session_for_binding(&state, &request.binding).await?;
-        let observed = observations(&sftp, &request).await?;
-        Ok(reconcile(&request, &observed))
+        reconcile_mutation(&sftp, &request).await
     })
     .await
     .map_err(|error: String| {

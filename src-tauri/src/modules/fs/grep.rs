@@ -32,6 +32,27 @@ pub struct FsSearchCancellationState {
 }
 
 impl FsSearchCancellationState {
+    fn operation_key(domain: &str, request_id: &str) -> String {
+        format!("{domain}\0{request_id}")
+    }
+
+    pub(crate) fn register_operation(&self, domain: &str, request_id: &str) -> Arc<AtomicBool> {
+        self.register(&Self::operation_key(domain, request_id))
+    }
+
+    pub(crate) fn finish_operation(
+        &self,
+        domain: &str,
+        request_id: &str,
+        cancelled: &Arc<AtomicBool>,
+    ) {
+        self.finish(&Self::operation_key(domain, request_id), cancelled)
+    }
+
+    pub(crate) fn cancel_operation(&self, domain: &str, request_id: &str) -> bool {
+        self.cancel(&Self::operation_key(domain, request_id))
+    }
+
     pub(crate) fn register(&self, request_id: &str) -> Arc<AtomicBool> {
         let cancelled = Arc::new(AtomicBool::new(false));
         let mut registry = self.inner.lock();
@@ -324,11 +345,42 @@ pub fn fs_cancel_search(
     Ok(state.cancel(&request_id))
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelOperationV1Request {
+    domain: String,
+    request_id: String,
+}
+
+#[tauri::command]
+pub fn cancel_operation_v1(
+    request: CancelOperationV1Request,
+    state: State<'_, FsSearchCancellationState>,
+) -> Result<bool, String> {
+    validate_request_id(&request.request_id)?;
+    if !matches!(request.domain.as_str(), "remoteGit" | "fsSearch") {
+        return Err("invalid operation domain".into());
+    }
+    Ok(state.cancel_operation(&request.domain, &request.request_id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{build_globset, fs_grep_blocking, validate_request_id, FsSearchCancellationState};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn operation_cancellation_is_namespaced_and_handles_precancel() {
+        let state = FsSearchCancellationState::default();
+        assert!(state.cancel_operation("remoteGit", "same"));
+        let remote = state.register_operation("remoteGit", "same");
+        let search = state.register_operation("fsSearch", "same");
+        assert!(remote.load(Ordering::Acquire));
+        assert!(!search.load(Ordering::Acquire));
+        state.finish_operation("remoteGit", "same", &remote);
+        state.finish_operation("fsSearch", "same", &search);
+    }
 
     #[test]
     fn build_globset_returns_none_for_empty_patterns() {

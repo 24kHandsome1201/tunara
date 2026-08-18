@@ -4,6 +4,7 @@ import { t } from "../modules/i18n/core.ts";
 import type { ConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
 import type { SessionMascotId } from "../modules/session/session-mascot.ts";
 import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
+import type { RemoteGitErrorV1, RemoteState } from "../modules/git/git-bridge.ts";
 import type { PreviewCommandProvenance, PreviewSource } from "../modules/preview/preview-source.ts";
 import type { SshAuthMethod } from "../modules/ssh/hosts-model.ts";
 import type { ForwardReconnectIntent } from "../modules/terminal/lib/pty-bridge.ts";
@@ -106,6 +107,9 @@ export interface Session {
 
   // ── git 改动 ──
   gitState?: GitState;
+  gitFreshness?: "fresh" | "stale";
+  gitError?: RemoteGitErrorV1;
+  gitRemoteState?: RemoteState;
   // 不携带展示用 summary 字符串：本地化的统计行由 DiffPanel 按当前语言
   // 从 files 现算，后端/状态层不再固化任何 UI 语言。
   changes?: {
@@ -306,4 +310,3 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-

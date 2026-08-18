@@ -120,6 +120,7 @@ pub fn run() {
             fs::search::fs_search,
             fs::grep::fs_grep,
             fs::grep::fs_cancel_search,
+            fs::grep::cancel_operation_v1,
             // Tunara 新增（§3.7.2 CLI 路径解析）
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
@@ -206,6 +207,7 @@ pub fn run() {
             // §ssh-client Phase 3 SFTP 远程文件(只读浏览 + 下载)
             modules::ssh::sftp::ssh_fs_read_dir,
             modules::ssh::sftp::ssh_fs_read_file,
+            modules::ssh::sftp::ssh_fs_read_if_changed_v1,
             modules::ssh::sftp::ssh_file_view_head_v1,
             modules::ssh::sftp::ssh_file_view_tail_v1,
             modules::ssh::sftp::ssh_fs_write_text_file,
@@ -218,6 +220,9 @@ pub fn run() {
             modules::ssh::transfer::engine::ssh_transfer_upload,
             modules::ssh::transfer::engine::ssh_transfer_cancel,
             modules::ssh::transfer::manifest::validate_manifest,
+            modules::ssh::transfer::upload_plan::ssh_upload_preflight_v1,
+            modules::ssh::transfer::upload_plan::ssh_upload_materialize_v1,
+            modules::ssh::transfer::upload_plan::ssh_upload_materialization_reconcile_v1,
             modules::ssh::transfer_journal::ssh_transfer_journal_load,
             modules::ssh::transfer_journal::ssh_transfer_journal_save,
             modules::ssh::transfer_journal::ssh_transfer_journal_list_owned_partials,
@@ -229,11 +234,9 @@ pub fn run() {
             modules::ssh::remote_fs::commands::ssh_fs_reconcile_mutation_v1,
             modules::ssh::remote_fs::metadata::ssh_fs_stat_v1,
             modules::ssh::remote_fs::metadata::ssh_fs_chmod_v1,
-            // Remote git status/diff over the SSH exec channel (review rail for
-            // SSH sessions — complements the read-only local git2 path).
-            modules::ssh::remote_git::ssh_git_status,
+            // Remote git review operations over the SSH exec channel.
+            modules::ssh::remote_git::ssh_remote_git_snapshot_v1,
             modules::ssh::remote_git::ssh_git_diff,
-            modules::ssh::remote_git::ssh_git_ahead_behind,
             modules::ssh::remote_git::ssh_git_workspace_context,
             modules::ssh::remote_git::ssh_fs_search,
             modules::ssh::remote_git::ssh_fs_grep,

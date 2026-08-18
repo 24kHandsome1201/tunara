@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { diffWatchedDirs, gitWatchDirsForSessions } from "../src/app/lib/sync-watches.ts";
+import {
+  diffWatchedDirs,
+  gitWatchDirProjection,
+  gitWatchDirsForSessions,
+  sameGitWatchDirProjection,
+} from "../src/app/lib/sync-watches.ts";
 
 test("diffWatchedDirs returns an empty plan when prev and desired match", () => {
   const prev = new Set(["/a", "/b"]);
@@ -75,4 +80,20 @@ test("gitWatchDirsForSessions keeps duplicate local dirs for diffWatchedDirs to 
   const { toAcquire, next } = diffWatchedDirs(new Set(), dirs);
   assert.deepEqual(toAcquire, ["/repo"]);
   assert.equal(next.size, 1);
+});
+
+test("local-directory projection ignores runtime changes, ordering, duplicates, and remote pseudo dirs", () => {
+  const baseline = gitWatchDirProjection([
+    { dir: "/b", runState: "idle" },
+    { dir: "/a/", connection: { phase: "ready" } },
+    { dir: "/a", terminalProgress: { value: 10 } },
+    { dir: "root@example", remote: { host: "example" } },
+  ]);
+  const afterRuntimeBurst = gitWatchDirProjection([
+    { dir: "/a", runState: "running", terminalProgress: { value: 99 } },
+    { dir: "/b/", connection: { phase: "disconnected" } },
+  ]);
+  assert.deepEqual(baseline, ["/a", "/b"]);
+  assert.equal(sameGitWatchDirProjection(baseline, afterRuntimeBurst), true);
+  assert.equal(sameGitWatchDirProjection(baseline, ["/a", "/c"]), false);
 });

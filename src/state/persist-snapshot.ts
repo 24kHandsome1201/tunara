@@ -165,6 +165,9 @@ export interface WorkspaceSnapshotV1 {
   workflows: Workflow[];
 }
 
+/** Stable persisted content; savedAt is materialized only for an actual write. */
+export type WorkspaceProjectionV1 = Omit<WorkspaceSnapshotV1, "savedAt">;
+
 export const DEFAULT_UI_LAYOUT_V2: PersistedUILayoutV2 = {
   sidebarVisible: true,
   panelVisible: true,

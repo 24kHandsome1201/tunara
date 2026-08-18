@@ -50,13 +50,14 @@ import {
   parseFileViewError,
   readFileHeadV1,
   readFileTailV1,
+  sshReadIfChangedV1,
+  type FileObservationV1,
   type FileHeadResultV1,
   type FileViewErrorV1,
 } from "@/modules/fs/file-view-bridge";
+import { previewRefreshKey, previewRefreshScheduler } from "@/modules/resources/preview-refresh-scheduler";
 import type { FileViewWindow } from "@/modules/fs/file-view-window";
 import { useModalBehavior } from "./overlays/Modal";
-
-const PREVIEW_AUTO_REFRESH_MS = 2500;
 
 function sameFileHeadResult(current: FileHeadResultV1 | null, next: FileHeadResultV1): boolean {
   if (!current || current.kind !== next.kind) return false;
@@ -96,6 +97,7 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 }
 
 interface FilePreviewProps {
+  active?: boolean;
   sessionId?: string;
   filePath: string;
   fileName: string;
@@ -678,6 +680,9 @@ function EditorSurface({
   onClose,
   onDirtyChange,
   onNeedsAttention,
+  active,
+  resource,
+  connectionReady,
 }: {
   sessionId: string | null;
   filePath: string;
@@ -691,6 +696,9 @@ function EditorSurface({
   onClose: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onNeedsAttention?: () => void;
+  active: boolean;
+  resource: ResourceRef;
+  connectionReady: boolean;
 }) {
   const t = useT();
   const isRemote = remote || remotePtyId !== undefined;
@@ -806,6 +814,7 @@ function EditorSurface({
 
   const fingerprintRef = useRef(fingerprint);
   fingerprintRef.current = fingerprint;
+  const refreshObservationRef = useRef<FileObservationV1 | undefined>(undefined);
   const refreshBlockedRef = useRef(false);
   refreshBlockedRef.current = dirty
     || remoteDisconnected
@@ -814,27 +823,27 @@ function EditorSurface({
     || saveState === "reconciling"
     || saveState === "unknown"
     || saveState === "conflict";
+  const bindingReady = resource.transport === "local"
+    || Boolean(resource.binding) && !remoteDisconnected && connectionReady;
+  const refreshKey = previewRefreshKey(resource, "preview");
 
-  useEffect(() => {
-    let inFlight = false;
-    const timer = window.setInterval(() => {
-      if (refreshBlockedRef.current || document.visibilityState !== "visible" || inFlight) return;
-      inFlight = true;
-      const read = remotePtyId === undefined ? fsReadFile(filePath) : sshReadFile(remotePtyId, filePath);
-      void read
-        .then((result) => {
-          if (refreshBlockedRef.current) return;
-          if (result.kind !== "text" || !result.fingerprint) return;
-          if (result.fingerprint === fingerprintRef.current) return;
-          setContent(result.content);
-          setSavedContent(result.content);
-          setFingerprint(result.fingerprint);
-        })
-        .catch(() => {})
-        .finally(() => { inFlight = false; });
-    }, PREVIEW_AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [filePath, remotePtyId]);
+  useEffect(() => { previewRefreshScheduler.poke(); }, [active, bindingReady, dirty, saveState]);
+
+  useEffect(() => previewRefreshScheduler.subscribe({
+    key: refreshKey,
+    eligible: () => active && bindingReady && !refreshBlockedRef.current,
+    read: ({ force }) => resource.transport === "ssh" && resource.binding
+      ? sshReadIfChangedV1({ requestId: createFileViewRequestId(), binding: resource.binding, path: filePath,
+          known: force ? undefined : refreshObservationRef.current, view: { kind: "preview" } })
+          .then((reply) => { refreshObservationRef.current = reply.observation; return reply.status === "changed" ? reply.value as ReadResult : null; })
+      : fsReadFile(filePath),
+    commit: (result) => {
+      if (!active || !bindingReady || refreshBlockedRef.current || !result || result.kind !== "text" || !result.fingerprint) return;
+      if (result.fingerprint === fingerprintRef.current) return;
+      setContent(result.content); setSavedContent(result.content); setFingerprint(result.fingerprint);
+    },
+  }), [active, bindingReady, filePath, refreshKey, resource.binding?.logicalSessionId,
+    resource.binding?.physicalPtyId, resource.binding?.transportGeneration, resource.transport]);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -1226,7 +1235,7 @@ function EditorSurface({
   );
 }
 
-export function FilePreview({ sessionId, filePath, fileName, resource, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId, remote = remotePtyId !== undefined }: FilePreviewProps) {
+export function FilePreview({ active = true, sessionId, filePath, fileName, resource, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId, remote = remotePtyId !== undefined }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
   const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
@@ -1239,27 +1248,67 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
   const activeHeadRequestRef = useRef<string | null>(null);
   const viewedWindowRef = useRef<FileViewWindow>("head");
   const readingRef = useRef(false);
+  const observationRef = useRef<FileObservationV1 | undefined>(undefined);
+  const loadedContentKeyRef = useRef<string | null>(null);
   const siblings = useSiblingPaths(filePath, remote, remotePtyId);
   const remoteSession = useSessionsStore((state) => !remote
     ? undefined
     : state.sessions.find((session) =>
       (sessionId !== undefined && session.id === sessionId)
       || (remotePtyId !== undefined && session.ptyId === remotePtyId)));
+  const remoteConnectionReady = !remote
+    || !remoteSession
+    || remoteSession.connection?.phase === "ready";
+  const remoteBindingReady = !remote
+    || Boolean(resource?.binding) && remotePtyId !== undefined && remoteConnectionReady;
+  const bindingLogicalId = resource?.binding?.logicalSessionId;
+  const bindingPtyId = resource?.binding?.physicalPtyId;
+  const bindingGeneration = resource?.binding?.transportGeneration;
+  const contentKey = remote && resource?.binding
+    ? `ssh\0${resource.binding.logicalSessionId}\0${resource.binding.physicalPtyId}\0${resource.binding.transportGeneration}\0${filePath}`
+    : `${remote ? "ssh" : "local"}\0${filePath}`;
+
+  useEffect(() => { previewRefreshScheduler.poke(); }, [active, remoteBindingReady]);
 
   useEffect(() => {
     let cancelled = false;
+    // Keep an already loaded editor mounted while its SSH binding is absent so
+    // dirty drafts survive a disconnect. A replacement binding gets a new key
+    // and must perform a fresh authoritative read before becoming current.
+    if (loadedContentKeyRef.current !== contentKey && (!remote || resource?.binding)) {
+      loadedContentKeyRef.current = null;
+      observationRef.current = undefined;
+      setResult(null);
+    }
+    if (!active) {
+      readingRef.current = false;
+      return;
+    }
     readingRef.current = true;
-    if (remote && remotePtyId === undefined) {
+    // Remote initial reads fail closed until the complete logical/physical/generation binding exists.
+    if (!remoteBindingReady) {
       readingRef.current = false;
       setReadError({ kind: "disconnected", detail: "" });
       return;
     }
+    if (loadedContentKeyRef.current === contentKey) {
+      readingRef.current = false;
+      setReadError(null);
+      return;
+    }
     setResult(null);
     setReadError(null);
-    const read =
-      remote ? sshReadFile(remotePtyId!, filePath) : fsReadFile(filePath);
+    const read = remote && resource?.binding
+      ? sshReadIfChangedV1({ requestId: createFileViewRequestId(), binding: resource.binding, path: filePath, view: { kind: "preview" } })
+          .then((reply) => { observationRef.current = reply.observation; if (reply.status !== "changed") throw new Error("initial read unchanged"); return reply.value as ReadResult; })
+      : fsReadFile(filePath);
     read
-      .then((r) => { if (!cancelled) setResult(r); })
+      .then((r) => {
+        if (!cancelled) {
+          loadedContentKeyRef.current = contentKey;
+          setResult(r);
+        }
+      })
       .catch((error) => {
         if (!cancelled) {
           setReadError({ kind: classifyFileOperationError(error), detail: String(error) });
@@ -1269,7 +1318,8 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
         if (!cancelled) readingRef.current = false;
       });
     return () => { cancelled = true; };
-  }, [filePath, readAttempt, remote, remotePtyId]);
+  }, [active, contentKey, readAttempt, remote, remotePtyId, remoteBindingReady,
+    bindingLogicalId, bindingPtyId, bindingGeneration]);
 
   useEffect(() => {
     setHeadResult(null);
@@ -1330,34 +1380,50 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
     void cancelFileHeadViewV1(requestId).catch(() => {});
   };
 
-  const startHeadViewRef = useRef(startHeadView);
-  startHeadViewRef.current = startHeadView;
+  useEffect(() => {
+    if (!headResult || !resource) return;
+    const refreshKey = previewRefreshKey(resource, viewedWindowRef.current, headLineLimit);
+    return previewRefreshScheduler.subscribe({
+      key: refreshKey,
+      eligible: () => active && remoteBindingReady && Boolean(headResult),
+      read: ({ force }): Promise<FileHeadResultV1 | null> => {
+        const requestId = createFileViewRequestId();
+        if (resource.transport === "ssh" && resource.binding) {
+          return sshReadIfChangedV1({ requestId, binding: resource.binding, path: filePath,
+            known: force ? undefined : observationRef.current,
+            view: { kind: viewedWindowRef.current, lineLimit: headLineLimit } }).then((reply) => {
+              observationRef.current = reply.observation;
+              return reply.status === "changed" ? reply.value as FileHeadResultV1 : null;
+            });
+        }
+        const read = viewedWindowRef.current === "tail" ? readFileTailV1 : readFileHeadV1;
+        return read(resource, headLineLimit, requestId);
+      },
+      commit: (next) => {
+        if (active && remoteBindingReady && next) setHeadResult((current) => sameFileHeadResult(current, next) ? current : next);
+      },
+    });
+  }, [active, remoteBindingReady, filePath, headLineLimit, headResult, resource?.transport,
+    resource?.logicalSessionId, resource?.path, bindingLogicalId, bindingPtyId, bindingGeneration]);
 
   useEffect(() => {
-    if (!headResult) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      startHeadViewRef.current(true);
-    }, PREVIEW_AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [filePath, headResult]);
-
-  useEffect(() => {
-    if (result?.kind !== "image") return;
-    let inFlight = false;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible" || inFlight || remote && remotePtyId === undefined) return;
-      inFlight = true;
-      const read = remote ? sshReadFile(remotePtyId!, filePath) : fsReadFile(filePath);
-      void read
-        .then((next) => {
-          setResult((current) => (current?.kind === "image" && sameImageResult(current, next) ? current : next));
-        })
-        .catch(() => {})
-        .finally(() => { inFlight = false; });
-    }, PREVIEW_AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [filePath, remote, remotePtyId, result?.kind]);
+    if (result?.kind !== "image" || !resource) return;
+    return previewRefreshScheduler.subscribe({
+      key: previewRefreshKey(resource, "preview"),
+      eligible: () => active && remoteBindingReady,
+      read: ({ force }): Promise<ReadResult | null> => remote && resource.binding
+        ? sshReadIfChangedV1({ requestId: createFileViewRequestId(), binding: resource.binding, path: filePath,
+          known: force ? undefined : observationRef.current, view: { kind: "preview" } }).then((reply) => {
+            observationRef.current = reply.observation;
+            return reply.status === "changed" ? reply.value as ReadResult : null;
+          })
+        : fsReadFile(filePath),
+      commit: (next) => {
+        if (active && remoteBindingReady && next) setResult((current) => (current?.kind === "image" && sameImageResult(current, next) ? current : next));
+      },
+    });
+  }, [active, remoteBindingReady, filePath, remote, resource?.transport, resource?.logicalSessionId,
+    resource?.path, bindingLogicalId, bindingPtyId, bindingGeneration, result?.kind]);
 
   const retryRead = () => {
     if (readingRef.current) return;
@@ -1384,6 +1450,11 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
     ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
     : "";
   const canViewHead = result?.kind === "toolarge" || (result?.kind === "text" && Boolean(result.truncated));
+  const previewResource: ResourceRef = resource ?? {
+    transport: remote ? "ssh" : "local",
+    logicalSessionId: sessionId ?? "local-preview",
+    path: filePath,
+  };
 
   if (fill && result?.kind === "text" && result.fingerprint) {
     return (
@@ -1401,6 +1472,9 @@ export function FilePreview({ sessionId, filePath, fileName, resource, onClose, 
         onClose={onClose}
         onDirtyChange={onDirtyChange}
         onNeedsAttention={onNeedsAttention}
+        active={active}
+        resource={previewResource}
+        connectionReady={remoteConnectionReady}
       />
     );
   }

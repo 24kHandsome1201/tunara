@@ -18,6 +18,7 @@ export type {
   PersistedSessionV2,
   PersistedTerminalSnapshot,
   PersistedUILayoutV2,
+  WorkspaceProjectionV1,
   WorkspaceSnapshotV1,
 } from "./persist-snapshot.ts";
 

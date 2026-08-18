@@ -26,6 +26,7 @@ use std::sync::Arc;
 use parking_lot::{Condvar, Mutex, RwLock};
 
 use tauri::ipc::Channel;
+use tokio::sync::watch;
 
 pub use session::Session;
 pub use session::{
@@ -63,10 +64,20 @@ impl Default for PtyState {
 impl PtyState {
     fn retire(entry: Option<Arc<BindingEntry>>) {
         if let Some(entry) = entry {
+            let drain_started = std::time::Instant::now();
             let mut state = entry.state.lock();
             state.valid = false;
+            let _ = entry.retired.send(true);
             while state.active != 0 {
                 entry.drained.wait(&mut state);
+            }
+            let drain_micros = drain_started
+                .elapsed()
+                .as_micros()
+                .min(u128::from(u64::MAX)) as u64;
+            crate::modules::perf_counters::binding_lease_drain(drain_micros);
+            if drain_micros > 500_000 {
+                log::warn!("SSH binding commit leases took {drain_micros}us to drain");
             }
         }
     }
@@ -176,6 +187,7 @@ impl PtyState {
         &self,
         binding: &crate::modules::ssh::diagnostics::SessionBindingV1,
     ) -> Option<Arc<Session>> {
+        crate::modules::perf_counters::binding_lock_acquisition();
         let sessions = self.sessions.read();
         let logical = self.logical_sessions.read();
         let bindings = self.ssh_bindings.read();
@@ -192,6 +204,7 @@ impl PtyState {
         &self,
         binding: &crate::modules::ssh::diagnostics::SessionBindingV1,
     ) -> Result<CommitLease, String> {
+        crate::modules::perf_counters::binding_lock_acquisition();
         let logical = self.logical_sessions.read();
         let bindings = self.ssh_bindings.read();
         let entry = bindings
@@ -207,6 +220,31 @@ impl PtyState {
         state.active += 1;
         drop(state);
         Ok(CommitLease { entry })
+    }
+
+    /// Subscribe to retirement of the exact, currently authoritative binding.
+    /// Locking the entry state through subscription closes the race with
+    /// retirement: either this rejects an invalid entry or its receiver sees
+    /// the subsequent `true` notification.
+    pub fn subscribe_binding_retired(
+        &self,
+        binding: &crate::modules::ssh::diagnostics::SessionBindingV1,
+    ) -> Result<watch::Receiver<bool>, String> {
+        crate::modules::perf_counters::binding_lock_acquisition();
+        let logical = self.logical_sessions.read();
+        let bindings = self.ssh_bindings.read();
+        let entry = bindings
+            .get(&binding.physical_pty_id)
+            .filter(|entry| entry.binding == *binding)
+            .filter(|_| logical.get(&binding.logical_session_id) == Some(&binding.physical_pty_id))
+            .ok_or_else(|| "stale or invalid SSH session binding".to_string())?;
+        let state = entry.state.lock();
+        if !state.valid {
+            return Err("stale or invalid SSH session binding".into());
+        }
+        let receiver = entry.retired.subscribe();
+        drop(state);
+        Ok(receiver)
     }
 
     /// Resolve the physical PTY currently owned by a logical frontend session.
@@ -324,6 +362,7 @@ struct BindingEntry {
     binding: crate::modules::ssh::diagnostics::SessionBindingV1,
     state: Mutex<LeaseState>,
     drained: Condvar,
+    retired: watch::Sender<bool>,
 }
 struct LeaseState {
     valid: bool,
@@ -331,6 +370,7 @@ struct LeaseState {
 }
 impl BindingEntry {
     fn new(binding: crate::modules::ssh::diagnostics::SessionBindingV1) -> Self {
+        let (retired, _) = watch::channel(false);
         Self {
             binding,
             state: Mutex::new(LeaseState {
@@ -338,6 +378,7 @@ impl BindingEntry {
                 active: 0,
             }),
             drained: Condvar::new(),
+            retired,
         }
     }
 }
@@ -588,6 +629,114 @@ mod tests {
             .unwrap();
         assert!(state.acquire_commit_lease(&first).is_err());
         assert!(state.acquire_commit_lease(&second).is_ok());
+    }
+
+    #[test]
+    fn binding_retirement_subscription_observes_replacement() {
+        let state = PtyState::default();
+        let first = state
+            .insert_ssh(binding_test_session("watch"), "watch", "one".into())
+            .unwrap();
+        let mut retired = state.subscribe_binding_retired(&first).unwrap();
+        assert!(!*retired.borrow());
+
+        let second = state
+            .insert_ssh(binding_test_session("watch"), "watch", "two".into())
+            .unwrap();
+
+        assert!(*retired.borrow_and_update());
+        assert!(
+            retired.has_changed().is_err(),
+            "retired entry drops its final sender after replacement"
+        );
+        assert!(state.subscribe_binding_retired(&first).is_err());
+        assert!(state.subscribe_binding_retired(&second).is_ok());
+    }
+
+    #[test]
+    fn binding_retirement_subscription_observes_remove_and_close_all() {
+        let state = PtyState::default();
+        let removed = state
+            .insert_ssh(
+                binding_test_session("watch-remove"),
+                "watch-remove",
+                "one".into(),
+            )
+            .unwrap();
+        let removed_retired = state.subscribe_binding_retired(&removed).unwrap();
+        state.remove_logical("watch-remove");
+        assert!(*removed_retired.borrow());
+
+        let closed = state
+            .insert_ssh(
+                binding_test_session("watch-close-all"),
+                "watch-close-all",
+                "two".into(),
+            )
+            .unwrap();
+        let closed_retired = state.subscribe_binding_retired(&closed).unwrap();
+        state.close_all();
+        assert!(*closed_retired.borrow());
+    }
+
+    #[test]
+    fn binding_retirement_subscription_rejects_invalid_entry() {
+        let state = PtyState::default();
+        let binding = state
+            .insert_ssh(
+                binding_test_session("invalid-watch"),
+                "invalid-watch",
+                "one".into(),
+            )
+            .unwrap();
+        let entry = state
+            .ssh_bindings
+            .read()
+            .get(&binding.physical_pty_id)
+            .cloned()
+            .unwrap();
+        PtyState::retire(Some(entry));
+
+        assert!(state.subscribe_binding_retired(&binding).is_err());
+    }
+
+    #[test]
+    fn binding_retirement_signal_precedes_commit_lease_drain() {
+        let state = Arc::new(PtyState::default());
+        let binding = state
+            .insert_ssh(
+                binding_test_session("drain-watch"),
+                "drain-watch",
+                "one".into(),
+            )
+            .unwrap();
+        let lease = state.acquire_commit_lease(&binding).unwrap();
+        let mut retired = state.subscribe_binding_retired(&binding).unwrap();
+        let replacement = binding_test_session("drain-watch");
+        let (done_tx, done_rx) = mpsc::channel();
+        let replace_state = Arc::clone(&state);
+        let handle = std::thread::spawn(move || {
+            replace_state
+                .insert_ssh(replacement, "drain-watch", "two".into())
+                .unwrap();
+            done_tx.send(()).unwrap();
+        });
+
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(retired.changed())
+            .expect("retirement sender remains live");
+        assert!(*retired.borrow_and_update());
+        assert!(
+            done_rx.try_recv().is_err(),
+            "replacement must still be waiting for the active lease"
+        );
+
+        drop(lease);
+        done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("replacement completes after lease drain");
+        handle.join().unwrap();
     }
 
     #[test]

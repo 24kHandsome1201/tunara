@@ -6,6 +6,7 @@ import { downloadFailureKey, FileExplorer, parseUploadFailure, sortExplorerEntri
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
+import { buildExplorerTreeRows, type ExplorerTreeNode } from "@/ui/file-explorer/use-tree-listing";
 
 describe("FileExplorer directory navigation", () => {
   test.each([
@@ -271,31 +272,39 @@ describe("FileExplorer directory navigation", () => {
 
 describe("FileExplorer workspace files", () => {
   test("queues files and folders through the typed transfer intent path and prevents browser drop navigation", async () => {
-    useTransferStore.setState({ items: [] });
+    useTransferStore.getState().replaceItemsForTest([]);
     const calls: Array<{ command: string; payload: unknown }> = [];
-    const createdDirectories = new Set<string>();
     let dialogOpen = 0;
     mockIPC((command, payload) => {
       calls.push({ command, payload });
       if (command === "ssh_fs_read_dir") return [];
       if (command === "plugin:dialog|open") return ++dialogOpen === 1 ? "/home/alice/report.txt" : "/home/alice/project";
-      if (command === "fs_read_dir") {
-        if ((payload as { path: string }).path === "/home/alice/project") return [];
-        throw new Error("not a directory");
+      if (command === "ssh_upload_preflight_v1") {
+        const request = (payload as { request: { operationId: string; binding: unknown; localSources: string[] } }).request;
+        const folder = request.localSources[0].endsWith("project");
+        const items = folder ? [
+          { itemId: "project", sourcePath: "/home/alice/project", relativePath: "project", kind: "dir", bytes: 0, proposedDestination: "/srv/app/project", destination: "absent" },
+          { itemId: "nested", sourcePath: "/home/alice/project/nested", relativePath: "project/nested", kind: "dir", bytes: 0, proposedDestination: "/srv/app/project/nested", destination: "absent" },
+          { itemId: "nested-file", sourcePath: "/home/alice/project/nested/a.txt", relativePath: "project/nested/a.txt", kind: "file", bytes: 2, proposedDestination: "/srv/app/project/nested/a.txt", destination: "absent" },
+        ] : [
+          { itemId: "report", sourcePath: "/home/alice/report.txt", relativePath: "report.txt", kind: "file", bytes: 2, proposedDestination: "/srv/app/report.txt", destination: "absent" },
+        ];
+        return { planId: folder ? "plan-folder" : "plan-file", expiresAt: Date.now() + 60_000, binding: request.binding, items };
       }
-      if (command === "validate_manifest") return {
-        files: [{ path: "nested", kind: "dir", bytes: 0 }, { path: "nested/a.txt", kind: "file", bytes: 2 }],
-        totalBytes: 2,
-      };
-      if (command === "ssh_fs_stat_v1") {
-        const path = (payload as { path: string }).path;
-        if (path.endsWith(".txt") || ((path === "/srv/app/project" || path === "/srv/app/project/nested") && !createdDirectories.has(path))) throw new Error("SSH_REMOTE_FS_NOT_FOUND");
-        return { path, kind: "directory", precondition: { kind: "directory" }, capability: {} };
-      }
-      if (command === "ssh_fs_mutate_v1") {
-        const request = (payload as { request: { operationId: string; operation: { path: string } } }).request;
-        createdDirectories.add(request.operation.path);
-        return { operationId: request.operationId, status: "applied", message: "created", atomic: false };
+      if (command === "ssh_upload_materialize_v1") {
+        const request = (payload as { request: { planId: string; operationId: string } }).request;
+        const folder = request.planId === "plan-folder";
+        return {
+          planId: request.planId, operationId: request.operationId, status: "ready", partialDirectories: folder ? ["/srv/app/project", "/srv/app/project/nested"] : [],
+          items: folder ? [
+            { itemId: "project", status: "applied", destinationPath: "/srv/app/project" },
+            { itemId: "nested", status: "applied", destinationPath: "/srv/app/project/nested" },
+            { itemId: "nested-file", status: "ready", destinationPath: "/srv/app/project/nested/a.txt" },
+          ] : [{ itemId: "report", status: "ready", destinationPath: "/srv/app/report.txt" }],
+          descriptors: folder
+            ? [{ itemId: "nested-file", sourcePath: "/home/alice/project/nested/a.txt", destinationPath: "/srv/app/project/nested/a.txt", overwrite: false }]
+            : [{ itemId: "report", sourcePath: "/home/alice/report.txt", destinationPath: "/srv/app/report.txt", overwrite: false }],
+        };
       }
       if (command === "ssh_transfer_upload") return { outcome: { status: "completed", bytesTransferred: 2 } };
       throw new Error(`unexpected command: ${command}`);
@@ -311,32 +320,40 @@ describe("FileExplorer workspace files", () => {
       && (payload as { remotePath: string }).remotePath === "/srv/app/report.txt")).toBe(true));
 
     fireEvent.click(screen.getByRole("button", { name: "Upload folder…" }));
-    await waitFor(() => expect(calls.some(({ command, payload }) => command === "validate_manifest"
-      && (payload as { source: { root: string } }).source.root === "/home/alice/project")).toBe(true));
+    await waitFor(() => expect(calls.some(({ command, payload }) => command === "ssh_upload_preflight_v1"
+      && (payload as { request: { localSources: string[] } }).request.localSources[0] === "/home/alice/project")).toBe(true));
     await waitFor(() => expect(calls.some(({ command, payload }) => command === "ssh_transfer_upload"
       && (payload as { remotePath: string }).remotePath === "/srv/app/project/nested/a.txt")).toBe(true));
-    const operations = calls.filter(({ command }) => command === "ssh_fs_mutate_v1" || command === "ssh_transfer_upload");
+    const operations = calls.filter(({ command }) => command.startsWith("ssh_upload_") || command === "ssh_transfer_upload");
     expect(operations.slice(-3).map(({ command }) => command)).toEqual([
-      "ssh_fs_mutate_v1", "ssh_fs_mutate_v1", "ssh_transfer_upload",
+      "ssh_upload_preflight_v1", "ssh_upload_materialize_v1", "ssh_transfer_upload",
     ]);
-    expect(operations.slice(-3, -1).map(({ payload }) =>
-      (payload as { request: { operation: { path: string } } }).request.operation.path,
-    )).toEqual(["/srv/app/project", "/srv/app/project/nested"]);
+    expect(calls.some(({ command }) => command === "ssh_fs_stat_v1" || command === "ssh_fs_mutate_v1")).toBe(false);
   });
 
   test("applies rename-all to upload conflicts without sending overwrite", async () => {
-    useTransferStore.setState({ items: [] });
+    useTransferStore.getState().replaceItemsForTest([]);
     const uploads: Array<{ remotePath: string; overwrite: boolean }> = [];
     let confirmations = 0;
     mockIPC((command, payload) => {
       if (command === "ssh_fs_read_dir") return [];
       if (command === "plugin:dialog|open") return ["/tmp/a.txt", "/tmp/b.txt"];
       if (command === "plugin:dialog|message") return ++confirmations === 1 ? "Cancel" : "Ok";
-      if (command === "fs_read_dir") throw new Error("not a directory");
-      if (command === "ssh_fs_stat_v1") {
-        const path = (payload as { path: string }).path;
-        if (path.includes(" (1).")) throw new Error("SSH_REMOTE_FS_NOT_FOUND");
-        return { path, kind: "file", precondition: { kind: "file", size: 1 }, capability: {} };
+      if (command === "ssh_upload_preflight_v1") {
+        const request = (payload as { request: { binding: unknown } }).request;
+        return {
+          planId: "rename-plan", expiresAt: Date.now() + 60_000, binding: request.binding,
+          items: ["a", "b"].map((name) => ({ itemId: name, sourcePath: `/tmp/${name}.txt`, relativePath: `${name}.txt`, kind: "file", bytes: 1, proposedDestination: `/srv/app/${name}.txt`, destination: "fileConflict", suggestedRename: `/srv/app/${name} (1).txt` })),
+        };
+      }
+      if (command === "ssh_upload_materialize_v1") {
+        const request = (payload as { request: { operationId: string; decisions: Array<{ itemId: string; action: string }> } }).request;
+        expect(request.decisions).toEqual([{ itemId: "a", action: "rename" }, { itemId: "b", action: "rename" }]);
+        return {
+          planId: "rename-plan", operationId: request.operationId, status: "ready", partialDirectories: [],
+          items: ["a", "b"].map((name) => ({ itemId: name, status: "ready", destinationPath: `/srv/app/${name} (1).txt` })),
+          descriptors: ["a", "b"].map((name) => ({ itemId: name, sourcePath: `/tmp/${name}.txt`, destinationPath: `/srv/app/${name} (1).txt`, overwrite: false })),
+        };
       }
       if (command === "ssh_transfer_upload") {
         uploads.push(payload as { remotePath: string; overwrite: boolean });
@@ -354,36 +371,39 @@ describe("FileExplorer workspace files", () => {
   });
 
   test("creates an empty uploaded folder and does not enqueue files when mkdir fails", async () => {
-    useTransferStore.setState({ items: [] });
+    useTransferStore.getState().replaceItemsForTest([]);
     let fail = false;
-    const mutations: string[] = [];
+    const materializations: string[] = [];
     mockIPC((command, payload) => {
       if (command === "ssh_fs_read_dir") return [];
       if (command === "plugin:dialog|open") return fail ? "/tmp/broken" : "/tmp/empty";
-      if (command === "fs_read_dir") return [];
-      if (command === "validate_manifest") return { files: [], totalBytes: 0 };
-      if (command === "ssh_fs_stat_v1") {
-        const path = (payload as { path: string }).path;
-        if (path === "/srv/app/empty" || path === "/srv/app/broken") throw new Error("SSH_REMOTE_FS_NOT_FOUND");
-        return { path, kind: "directory", precondition: { kind: "directory" }, capability: {} };
+      if (command === "ssh_upload_preflight_v1") {
+        const request = (payload as { request: { binding: unknown; localSources: string[] } }).request;
+        const name = request.localSources[0].split("/").pop()!;
+        return { planId: `${name}-plan`, expiresAt: Date.now() + 60_000, binding: request.binding, items: [{ itemId: name, sourcePath: request.localSources[0], relativePath: name, kind: "dir", bytes: 0, proposedDestination: `/srv/app/${name}`, destination: "absent" }] };
       }
-      if (command === "ssh_fs_mutate_v1") {
-        const request = (payload as { request: { operationId: string; operation: { path: string } } }).request;
-        mutations.push(request.operation.path);
-        return { operationId: request.operationId, status: fail ? "conflict" : "applied", message: "typed", atomic: false };
+      if (command === "ssh_upload_materialize_v1") {
+        const request = (payload as { request: { planId: string; operationId: string } }).request;
+        const name = request.planId.replace("-plan", "");
+        materializations.push(name);
+        return {
+          planId: request.planId, operationId: request.operationId, status: fail ? "conflict" : "ready", descriptors: [],
+          partialDirectories: fail ? [] : [`/srv/app/${name}`],
+          items: [{ itemId: name, status: fail ? "conflict" : "applied", destinationPath: `/srv/app/${name}` }],
+        };
       }
       throw new Error(`unexpected command: ${command}`);
     });
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={53} transportGeneration="generation" />);
     await screen.findByText("Directory is empty");
     fireEvent.click(screen.getByRole("button", { name: "Upload folder…" }));
-    await waitFor(() => expect(mutations).toEqual(["/srv/app/empty"]));
-    expect(useTransferStore.getState().items).toEqual([]);
+    await waitFor(() => expect(materializations).toEqual(["empty"]));
+    expect(useTransferStore.getState().materializeItems()).toEqual([]);
 
     fail = true;
     fireEvent.click(screen.getByRole("button", { name: "Upload folder…" }));
-    await waitFor(() => expect(mutations).toEqual(["/srv/app/empty", "/srv/app/broken"]));
-    expect(useTransferStore.getState().items).toEqual([]);
+    await waitFor(() => expect(materializations).toEqual(["empty", "broken"]));
+    expect(useTransferStore.getState().materializeItems()).toEqual([]);
     expect(screen.queryByText(/Queued .*broken/i)).toBeNull();
   });
 
@@ -781,7 +801,7 @@ describe("FileExplorer workspace files", () => {
   });
 
   test("selects multiple remote files and queues safe typed downloads into one folder", async () => {
-    useTransferStore.setState({ items: [] });
+    useTransferStore.getState().replaceItemsForTest([]);
     const downloads: Array<{ remotePath: string; localPath: string; binding: { transportGeneration: string } }> = [];
     mockIPC((command, payload) => {
       const path = (payload as { path?: string }).path;
@@ -814,7 +834,7 @@ describe("FileExplorer workspace files", () => {
       ["/srv/app/notes.txt", "/home/alice/Downloads/notes.txt", "download-generation"],
       ["/srv/app/report.txt", "/home/alice/Downloads/report (1).txt", "download-generation"],
     ]);
-    expect(useTransferStore.getState().items.every(({ batchId }) => typeof batchId === "string")).toBe(true);
+    expect(useTransferStore.getState().materializeItems().every(({ batchId }) => typeof batchId === "string")).toBe(true);
   });
 
   test("shows an immediate indeterminate download state and clears it on completion", async () => {
@@ -952,6 +972,22 @@ describe("FileExplorer workspace files", () => {
     ], "modified", "desc").map((entry) => entry.name)).toEqual(["alpha.txt", "zeta.txt"]);
   });
 
+  test("builds semantic preorder rows with load failures adjacent to their expanded directory", () => {
+    const nodes: ExplorerTreeNode[] = [
+      { entry: { name: "src", kind: "dir", size: 0, mtime: 0 }, path: "/repo/src", parentPath: null, level: 1, posInSet: 1, setSize: 2 },
+      { entry: { name: "index.ts", kind: "file", size: 1, mtime: 0 }, path: "/repo/src/index.ts", parentPath: "/repo/src", level: 2, posInSet: 1, setSize: 1 },
+      { entry: { name: "README.md", kind: "file", size: 1, mtime: 0 }, path: "/repo/README.md", parentPath: null, level: 1, posInSet: 2, setSize: 2 },
+    ];
+
+    expect(buildExplorerTreeRows(nodes, new Set(["/repo/src"]), { "/repo/src": { kind: "readFailed" } }))
+      .toEqual([
+        { ...nodes[0], kind: "node", expanded: true },
+        { kind: "loadError", parentPath: "/repo/src", level: 2 },
+        { ...nodes[1], kind: "node", expanded: false },
+        { ...nodes[2], kind: "node", expanded: false },
+      ]);
+  });
+
   test("exposes tree hierarchy metadata and supports lazy tree keyboard navigation", async () => {
     const reads: string[] = [];
     mockIPC((command, payload) => {
@@ -982,13 +1018,23 @@ describe("FileExplorer workspace files", () => {
     expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
     expect(src.getAttribute("aria-expanded")).toBe("true");
     expect(child.getAttribute("aria-level")).toBe("2");
-    expect(src.querySelector('[role="group"]')?.contains(child)).toBe(true);
+    expect(src.parentElement).toBe(tree);
+    expect(child.parentElement).toBe(tree);
+    expect(tree.querySelector('[role="group"]')).toBeNull();
+    expect(src.style.height).toBe("32px");
+    expect(child.style.height).toBe("32px");
     expect(tree.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
 
     fireEvent.keyDown(src, { key: "ArrowRight" });
     expect(document.activeElement).toBe(child);
     fireEvent.keyDown(child, { key: "ArrowLeft" });
     expect(document.activeElement).toBe(src);
+    fireEvent.keyDown(src, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(child);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse src" }));
+    expect(screen.queryByRole("treeitem", { name: /^index\.ts/ })).toBeNull();
+    expect(document.activeElement).toBe(src);
+    expect(tree.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
     fireEvent.keyDown(src, { key: "End" });
     expect(document.activeElement).toBe(readme);
     fireEvent.keyDown(readme, { key: "Home" });
@@ -1048,8 +1094,8 @@ describe("FileExplorer workspace files", () => {
       if (!header) throw new Error("missing explorer row");
       return header;
     };
-    // Click the visible row, not the outer treeitem: nested folders live
-    // inside [role=group], which used to swallow the expand handler.
+    // The semantic model is flat; clicking a directory row expands it in
+    // preorder without introducing nested role=group containers.
     fireEvent.click(row(src));
     expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
     const nested = screen.getByRole("treeitem", { name: /^nested/ });
@@ -1116,7 +1162,7 @@ describe("FileExplorer workspace files", () => {
     } finally { vi.useRealTimers(); }
   });
 
-  test("moves keyboard focus across a virtualized directory slice", async () => {
+  test("virtualizes 10k rows while retaining focused rows across scroll and keyboard boundaries", async () => {
     const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
     Object.defineProperty(HTMLElement.prototype, "clientHeight", {
       configurable: true,
@@ -1124,8 +1170,8 @@ describe("FileExplorer workspace files", () => {
     });
     mockIPC((command) => {
       if (command === "fs_read_dir") {
-        return Array.from({ length: 101 }, (_, index) => ({
-          name: `file-${String(index).padStart(3, "0")}.txt`,
+        return Array.from({ length: 10_000 }, (_, index) => ({
+          name: `file-${String(index).padStart(4, "0")}.txt`,
           kind: "file",
           size: 1,
           mtime: index,
@@ -1136,12 +1182,66 @@ describe("FileExplorer workspace files", () => {
 
     try {
       render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
-      const first = await screen.findByRole("treeitem", { name: /^file-000\.txt/ });
+      const tree = await screen.findByRole("tree", { name: "Files and directories" });
+      const first = await screen.findByRole("treeitem", { name: /^file-0000\.txt/ });
+      expect(tree.querySelectorAll('[role="treeitem"]').length).toBeLessThanOrEqual(50);
+      expect(tree.getAttribute("data-tree-row-count")).toBe("10000");
       first.focus();
       for (let index = 1; index <= 11; index += 1) {
         fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowDown" });
-        await waitFor(() => expect(document.activeElement?.textContent).toContain(`file-${String(index).padStart(3, "0")}.txt`));
+        await waitFor(() => expect(document.activeElement?.textContent).toContain(`file-${String(index).padStart(4, "0")}.txt`));
       }
+      const focused = document.activeElement as HTMLElement;
+      const scroller = tree.parentElement as HTMLElement;
+      scroller.scrollTop = 5_000 * 32 + 33;
+      fireEvent.scroll(scroller);
+      const middle = await screen.findByRole("treeitem", { name: /^file-5000\.txt/ });
+      expect(focused.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focused);
+      expect(tree.querySelectorAll('[role="treeitem"]').length).toBeLessThanOrEqual(50);
+
+      fireEvent.contextMenu(middle, { clientX: 10, clientY: 10 });
+      const menu = screen.getByRole("menu");
+      scroller.scrollTop = 8_000 * 32 + 33;
+      fireEvent.scroll(scroller);
+      expect(middle.isConnected).toBe(true);
+      fireEvent.keyDown(menu, { key: "Escape" });
+      await waitFor(() => expect(document.activeElement).toBe(middle));
+
+      fireEvent.keyDown(middle, { key: "End" });
+      await waitFor(() => expect(document.activeElement?.textContent).toContain("file-9999.txt"));
+      expect(tree.querySelectorAll('[role="treeitem"]').length).toBeLessThanOrEqual(50);
+    } finally {
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+      else delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    }
+  });
+
+  test("uses the same bounded virtualizer after expanding a large subtree", async () => {
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() { return this.classList.contains("scroll-fade-y") ? 640 : 0; },
+    });
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      const path = (payload as { path: string }).path;
+      if (path === "/tmp/repo") return [
+        { name: "src", kind: "dir", size: 0, mtime: 0 },
+        ...Array.from({ length: 100 }, (_, index) => ({ name: `root-${String(index).padStart(3, "0")}.txt`, kind: "file", size: 1, mtime: index })),
+      ];
+      return Array.from({ length: 200 }, (_, index) => ({ name: `child-${String(index).padStart(3, "0")}.txt`, kind: "file", size: 1, mtime: index }));
+    });
+
+    try {
+      render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+      const tree = await screen.findByRole("tree", { name: "Files and directories" });
+      fireEvent.click(await screen.findByRole("button", { name: "Expand src" }));
+      const child = await screen.findByRole("treeitem", { name: /^child-000\.txt/ });
+      expect(tree.getAttribute("data-tree-row-count")).toBe("301");
+      expect(tree.querySelector('[role="group"]')).toBeNull();
+      expect(child.getAttribute("aria-level")).toBe("2");
+      expect(tree.querySelectorAll('[role="treeitem"]').length).toBeLessThanOrEqual(50);
     } finally {
       if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
       else delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;

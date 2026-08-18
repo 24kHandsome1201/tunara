@@ -108,7 +108,7 @@ test("discovery flows keep empty-state recents, preview prompts, and OSC 133 hin
   assert.match(app, /WorkspaceEmptyState/);
   assert.match(empty, /collectRecentTerminalDirs\(recentDirs, undefined, 5\)/);
   assert.match(empty, /sidebar\.new_terminal_in_directory/);
-  assert.match(init, /if \(result\.status === "empty"\) \{\s*useUIStore\.setState\(\{ ready: true \}\);/);
+  assert.match(init, /if \(result\.status === "empty"\) \{\s*workspaceHydrated = true;\s*useUIStore\.setState\(\{ ready: true \}\);/);
   assert.doesNotMatch(sessions, /createSession\("~"/);
   assert.match(overview, /overview\.shell_integration\.title/);
   assert.match(terminal, /markShellIntegrationSeen\(sessionIdRef\.current\)/);
@@ -847,7 +847,9 @@ test("session persistence is debounced and still flushed on close", () => {
   assert.match(init, /scheduleSave\(\);/);
   // 30s backstop flush is gated on the terminal-snapshot dirty flag, so an idle
   // or hidden app with no new output performs no redundant serialize + disk write.
-  assert.match(init, /setInterval\(\(\) => \{[\s\S]*?if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(result\) => \{[\s\S]*?if \(result !== "saved"\) markTerminalSnapshotDirty\(\);[\s\S]*?\}, 30_000\)/);
+  assert.match(init, /const includedTerminalDirty = terminalDirtyAlreadyConsumed \|\| consumeTerminalSnapshotDirty\(\)/);
+  assert.match(init, /if \(result !== "saved" && includedTerminalDirty\) markTerminalSnapshotDirty\(\)/);
+  assert.match(init, /setInterval\(\(\) => \{[\s\S]*?if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(true\);[\s\S]*?\}, 30_000\)/);
   assert.match(persistenceDoc, /consumeTerminalSnapshotDirty\(\)[\s\S]*?only flushes when terminal scrollback has[\s\S]*?changed since the last save/);
   assert.doesNotMatch(persistenceDoc, /setInterval\(persistNow, 30_000\) saves every 30 s/);
   assert.match(init, /onCloseRequested\(async \(event\) => \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?clearTimeout\(saveTimer\);[\s\S]*?const result = await persistNow\(\);[\s\S]*?if \(result === "error"\) return;[\s\S]*?await win\.hide\(\)/);
@@ -873,7 +875,8 @@ test("terminal snapshot writes flip a dirty flag the persist backstop consumes",
   assert.match(snap, /if \(snapshots\.delete\(sessionId\)\) dirty = true;/);
   assert.doesNotMatch(snap, /restoreTerminalSnapshots[\s\S]*?dirty = true/);
   assert.match(init, /import \{[\s\S]*markTerminalSnapshotDirty[\s\S]*\} from "@\/modules\/terminal\/lib\/terminal-snapshot"/);
-  assert.match(init, /if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(\)\.then\(\(result\) => \{[\s\S]*?if \(result !== "saved"\) markTerminalSnapshotDirty\(\);/);
+  assert.match(init, /if \(!consumeTerminalSnapshotDirty\(\)\) return;[\s\S]*?persistNow\(true\);/);
+  assert.match(init, /if \(result !== "saved" && includedTerminalDirty\) markTerminalSnapshotDirty\(\);/);
   assert.match(sessions, /removeTerminalSnapshot\(id\)/);
   assert.match(scheduler, /shouldCapture = \(\) => true/);
   assert.match(scheduler, /if \(!shouldCapture\(\)\) return;/);
@@ -915,13 +918,13 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   // Remote (SSH) sessions route through the exec-channel git path, not the
   // local git2 path — guard that the remote branch exists and the local calls
   // never receive a raw dir.
-  assert.match(gitContext, /sshGitStatus\(activePtyId!, activeDir \?\? ""\)/);
+  assert.match(gitContext, /sshRemoteGitSnapshotV1\(\{ requestId, generation, binding, cwd: activeDir \?\? ""/);
   assert.doesNotMatch(gitContext, /gitAheadBehind\(active\.dir\)/);
   assert.doesNotMatch(gitContext, /gitStatus\(active\.dir\)/);
   // The git effect depends on captured primitives, never the whole `active`
   // object: updateSession bumps updatedAt on every patch, and the effect
   // itself calls updateSession, so an object dependency would loop.
-  assert.match(gitContext, /\}, \[activeDir, activeId, activePtyId, activeIsRemote, activeRemoteKey, nonce\]\);/);
+  assert.match(gitContext, /\}, \[activeDir, activeId, activePtyId, activeIsRemote, activeRemoteKey, activeTransportGeneration, nonce\]\);/);
   // The localized changes summary is composed in DiffPanel from `files`; the
   // store no longer carries a pre-baked display string.
   assert.match(gitContext, /changes: status \? \{ files: status\.files \} : undefined/);
@@ -975,7 +978,8 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(init, /const agentResume: WorkspaceSnapshotV1\["agentResume"\] = \{\}/);
   assert.match(init, /if \(s\.agentResume\) agentResume\[s\.id\] = s\.agentResume/);
   assert.match(init, /sessions: st\.sessions\.map\(toPersistedSession\)/);
-  assert.match(init, /gitWatchDirsForSessions\(sessions\)/);
+  assert.match(init, /gitWatchDirProjection\(state\.sessions\)/);
+  assert.match(init, /sameGitWatchDirProjection\(watchedDirProjection, nextProjection\)/);
   assert.match(init, /agentResume,/);
   assert.match(init, /recentDirs: st\.recentDirs/);
   assert.match(init, /recentCommands: st\.recentCommands/);

@@ -1,17 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   gitAheadBehind,
   gitStatus,
   gitWorkspaceContext,
-  cancelGitRequest,
-  sshGitAheadBehind,
-  sshGitStatus,
-  sshGitWorkspaceContext,
+  cancelRemoteGitSnapshot,
+  sshRemoteGitSnapshotV1,
   type RemoteState,
   type StatusResult,
   type WorkspaceContext,
 } from "@/modules/git/git-bridge";
+import { deriveRemoteGitState, forceForNonce, snapshotMatches } from "@/modules/git/remote-git-state";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { withCurrentDirtyFiles } from "@/modules/git/workspace-context";
 import { useSessionsStore } from "@/state/sessions";
@@ -22,6 +21,7 @@ interface SessionGitContextInput {
   activePtyId?: number;
   activeIsRemote: boolean;
   activeRemoteKey?: string;
+  activeTransportGeneration?: string;
   nonce: number;
 }
 
@@ -58,9 +58,12 @@ export function useSessionGitContext({
   activePtyId,
   activeIsRemote,
   activeRemoteKey,
+  activeTransportGeneration,
   nonce,
 }: SessionGitContextInput): RemoteState | null {
   const [remoteState, setRemoteState] = useState<RemoteState | null>(null);
+  const generationRef = useRef(0);
+  const previousNonceRef = useRef(nonce);
 
   useEffect(() => {
     if (!activeId) {
@@ -94,18 +97,40 @@ export function useSessionGitContext({
     }
 
     let cancelled = false;
-    const requestId = `workspace-${activeId}-${Date.now()}-${nonce}`;
-    setRemoteState(null);
+    const generation = ++generationRef.current;
+    const requestId = `remote-git-${activeId}-${generation}`;
+    const existing = useSessionsStore.getState().sessions.find((session) => session.id === activeId);
+    setRemoteState(existing?.gitRemoteState ?? null);
     useSessionsStore.getState().updateSession(activeId, { workspaceState: "loading" });
 
     const load = async () => {
-      const requests = activeIsRemote
-        ? [
-            sshGitAheadBehind(activePtyId!, activeDir ?? ""),
-            sshGitStatus(activePtyId!, activeDir ?? ""),
-            sshGitWorkspaceContext(activePtyId!, activeDir ?? "", activeRemoteKey ?? "remote", requestId),
-          ] as const
-        : [
+      if (activeIsRemote) {
+        if (!activeTransportGeneration) {
+          useSessionsStore.getState().updateSession(activeId, { workspaceState: existing?.workspace ? "ready" : "unavailable" });
+          return;
+        }
+        const binding = { logicalSessionId: activeId, physicalPtyId: activePtyId!, transportGeneration: activeTransportGeneration };
+        const force = forceForNonce(previousNonceRef.current, nonce);
+        previousNonceRef.current = nonce;
+        const snapshot = await sshRemoteGitSnapshotV1({ requestId, generation, binding, cwd: activeDir ?? "", repositoryKey: activeRemoteKey ?? "remote", force });
+        if (cancelled || !snapshotMatches(snapshot, requestId, generation, binding)) return;
+        const gitState = deriveRemoteGitState(snapshot);
+        setRemoteState(snapshot.repo?.upstream ?? null);
+        const previous = useSessionsStore.getState().sessions.find((session) => session.id === activeId);
+        const resolvedWorkspace = snapshot.repo?.workspace ? withCurrentDirtyFiles(snapshot.repo.workspace, snapshot.repo.status) : undefined;
+        useSessionsStore.getState().updateSession(activeId, {
+          gitState,
+          gitFreshness: snapshot.freshness,
+          gitError: snapshot.error,
+          gitRemoteState: snapshot.repo?.upstream,
+          branch: snapshot.repo?.status.branch ?? (gitState === "notGit" ? "" : previous?.branch ?? ""),
+          changes: snapshot.repo ? { files: snapshot.repo.status.files } : (gitState === "notGit" ? undefined : previous?.changes),
+          workspace: resolvedWorkspace ?? (gitState === "notGit" ? undefined : previous?.workspace),
+          workspaceState: resolvedWorkspace ? "ready" : gitState === "notGit" ? "notGit" : "unavailable",
+        });
+        return;
+      }
+      const requests = [
             gitAheadBehind(repoPath!),
             gitStatus(repoPath!),
             gitWorkspaceContext(repoPath!),
@@ -123,9 +148,9 @@ export function useSessionGitContext({
     void load();
     return () => {
       cancelled = true;
-      if (activeIsRemote) void cancelGitRequest(requestId);
+      if (activeIsRemote) void cancelRemoteGitSnapshot(requestId);
     };
-  }, [activeDir, activeId, activePtyId, activeIsRemote, activeRemoteKey, nonce]);
+  }, [activeDir, activeId, activePtyId, activeIsRemote, activeRemoteKey, activeTransportGeneration, nonce]);
 
   return remoteState;
 }

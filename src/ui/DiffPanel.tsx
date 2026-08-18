@@ -5,7 +5,6 @@ import {
   gitDiff,
   gitAheadBehind,
   sshGitDiff,
-  sshGitAheadBehind,
   type FileChange,
   type FileDiff,
   type RemoteState,
@@ -563,11 +562,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     // channel, so the bottom indicator matches the local review rail instead
     // of always showing a bare "Git" label.
     if (isRemote) {
-      if (session.ptyId === undefined) return () => { cancelled = true; };
-      const ptyId = session.ptyId;
-      sshGitAheadBehind(ptyId, session.dir)
-        .then((r) => !cancelled && setRemote(r))
-        .catch(() => !cancelled && setRemote(null));
+      setRemote(session.gitRemoteState ?? null);
       return () => { cancelled = true; cancelAllDiffRequests(); };
     }
     gitAheadBehind(repoPath!)
@@ -577,7 +572,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       cancelled = true;
       cancelAllDiffRequests();
     };
-  }, [repoPath, session.id, session.ptyId, session.dir, nonce, notGit, isRemote, cancelAllDiffRequests]);
+  }, [repoPath, session.id, session.ptyId, session.dir, session.gitRemoteState, nonce, notGit, isRemote, cancelAllDiffRequests]);
 
   useEffect(() => {
     if (expandedFileKey && !files.some((f) => fileRowKey(f) === expandedFileKey)) {

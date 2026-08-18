@@ -12,7 +12,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     fileParallelism: false,
-    include: ["tests/ui/**/*.test.tsx"],
+    include: ["tests/ui/**/*.test.{ts,tsx}"],
     setupFiles: ["./tests/ui/setup.ts"],
   },
 });

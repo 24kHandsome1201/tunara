@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
-/** 未展开时的目录行距：30px 行 + 2px marginBottom。展开后子树高度不固定。 */
+/** Fixed semantic tree-row height shared by navigation, DnD and virtualization. */
 const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
@@ -27,7 +27,7 @@ import { ExplorerNav, ExplorerRemoteTools, ExplorerSearchRow } from "./file-expl
 import { copyText } from "./lib/clipboard";
 import { knownRemoteExplorerRoot, remoteExplorerListingRoot, remoteExplorerSearchRoot } from "./lib/file-explorer-root";
 import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
-import { dropDestinationFromListing } from "@/modules/ssh/drop-target";
+import { dropDestinationFromListing, type DropListingNode } from "@/modules/ssh/drop-target";
 import {
   emptyHostFilePrefs,
   hostFilePrefsKey,
@@ -61,9 +61,11 @@ import {
 import { downloadFailureKey } from "./file-explorer/transfer-failures";
 import { queueLocalTransferPaths } from "./file-explorer/upload-preflight";
 import { useExplorerSearch } from "./file-explorer/use-explorer-search";
-import { useTreeListing, type ExplorerTreeNode } from "./file-explorer/use-tree-listing";
+import { useTreeListing, type ExplorerTreeNode, type ExplorerTreeRow } from "./file-explorer/use-tree-listing";
+import { mountedTreeRowIndexes } from "./file-explorer/tree-virtual";
 import { useDirectUpload } from "./file-explorer/use-direct-upload";
 import { SearchLimitControl, SearchRetryButton } from "./file-explorer/search-controls";
+import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 
 // Re-exported for existing importers/tests; implementations moved to ./file-explorer/.
 export { downloadFailureKey, parseUploadFailure, uploadFailureKey, type UploadFailure } from "./file-explorer/transfer-failures";
@@ -97,6 +99,7 @@ export function FileExplorer({
   remote = remotePtyId !== undefined,
   remoteHost,
 }: FileExplorerProps) {
+  recordFrontendPerf("renders");
   const t = useT();
   const isRemote = remote;
   const remoteDisconnected = isRemote && remotePtyId === undefined;
@@ -242,12 +245,11 @@ export function FileExplorer({
     s.fileTabs.find((tab) => tab.id === s.activeFileTabId && tab.sessionId === sessionId)?.filePath,
   );
   const resultsListRef = useRef<HTMLDivElement>(null);
-  // 目录列表虚拟滚动：行距恒定 32px（30 按钮 + 2 margin），仅列表很长时启用
   const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
   const [listingFocusIndex, setListingFocusIndex] = useState(0);
   const explorerRef = useRef<HTMLDivElement>(null);
-  const listingDropRef = useRef<{ currentPath: string; nodes: ExplorerTreeNode[] }>({ currentPath: "", nodes: [] });
+  const listingDropRef = useRef<{ currentPath: string; nodes: DropListingNode[] }>({ currentPath: "", nodes: [] });
   const [dropActive, setDropActive] = useState(false);
   const [dropHighlightPath, setDropHighlightPath] = useState<string | null>(null);
   const [dropMessage, setDropMessage] = useState("");
@@ -269,10 +271,9 @@ export function FileExplorer({
   treeRequestContextRef.current = treeRequestContext;
   const {
     visibleTreeNodes,
+    visibleTreeRows,
     nodeIndexByPath,
-    childrenByParent,
-    expandedPaths,
-    treeErrors,
+    rowIndexByPath,
     expandDirectory,
     collapsePath,
     beginListingEpoch,
@@ -311,6 +312,7 @@ export function FileExplorer({
   });
   const focusedPathRef = useRef<string | null>(null);
   const menuReturnPathRef = useRef<string | null>(null);
+  const [menuReturnPath, setMenuReturnPath] = useState<string | null>(null);
   const suppressMenuFocusRef = useRef(false);
   const typeaheadRef = useRef({ text: "", timer: 0 });
   const binding = useMemo<SessionBindingV1 | null>(() => isRemote
@@ -319,7 +321,7 @@ export function FileExplorer({
     ? { logicalSessionId: sessionId, physicalPtyId: remotePtyId, transportGeneration }
     : null, [isRemote, remotePtyId, sessionId, transportGeneration]);
   const activeTransferNotice = useTransferStore((s) =>
-    s.items.filter((item) => item.binding.logicalSessionId === sessionId && (item.status === "queued" || item.status === "running")).length
+    (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
   );
   const mutationRequestIsCurrent = !mutationRequest || !!binding
@@ -376,11 +378,7 @@ export function FileExplorer({
           scrollTop: resultsListRef.current?.scrollTop ?? 0,
           inset: LISTING_TOP_INSET,
           rowHeight: LISTING_ROW_HEIGHT,
-          nodes: listing.nodes.map((node) => ({
-            path: node.path,
-            parentPath: node.parentPath,
-            kind: node.entry.kind,
-          })),
+          nodes: listing.nodes,
           currentPath: listing.currentPath,
         })
         : { path: listing.currentPath, highlightPath: null };
@@ -548,30 +546,31 @@ export function FileExplorer({
 
   const canGoUp = currentPath !== "/";
   const breadcrumbRoot = remoteExplorerListingRoot();
-  listingDropRef.current = { currentPath, nodes: visibleTreeNodes };
+  const dropListingNodes = useMemo<DropListingNode[]>(() => visibleTreeRows.map((row) => row.kind === "node"
+    ? { path: row.path, parentPath: row.parentPath, kind: row.entry.kind }
+    : { path: row.parentPath, parentPath: row.parentPath, kind: "dir" }), [visibleTreeRows]);
+  listingDropRef.current = { currentPath, nodes: dropListingNodes };
   const selectableDownloadNodes = useMemo(() => binding
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
     : [], [binding, visibleTreeNodes, downloadLimits]);
 
-  // ── 目录列表虚拟滚动（仅非搜索态的大目录启用；搜索结果本身有 searchLimit 分页）──
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
+  const listingNodeCount = visibleTreeNodes.length;
+  const listingRowCount = visibleTreeRows.length;
   useLayoutEffect(() => {
-    const el = resultsListRef.current;
-    if (!el) return;
-    const update = () => setListScroll({ top: el.scrollTop, height: el.clientHeight });
+    const element = resultsListRef.current;
+    if (!element) return;
+    const update = () => setListScroll({ top: element.scrollTop, height: element.clientHeight });
     update();
-    el.addEventListener("scroll", update, { passive: true });
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(element);
     return () => {
-      el.removeEventListener("scroll", update);
-      ro.disconnect();
+      element.removeEventListener("scroll", update);
+      observer?.disconnect();
     };
   }, [contentKey]);
-  const listingRowCount = visibleTreeNodes.length;
-  // Nested groups have variable height, so only virtualize the unexpanded root
-  // list. Once a directory is expanded, render the semantic hierarchy in full.
-  const virtualizeListing = !isSearching && expandedPaths.size === 0 && listingRowCount > 100;
+  const virtualizeListing = !isSearching && listingRowCount > 100;
   const listingSlice = virtualizeListing
     ? computeVirtualSlice(
         listingRowCount,
@@ -580,9 +579,20 @@ export function FileExplorer({
         LISTING_ROW_HEIGHT,
       )
     : { first: 0, last: listingRowCount, topPad: 0, bottomPad: 0 };
+  const focusedPath = focusedPathRef.current;
+  const rovingFocusPath = focusedPath && nodeIndexByPath.has(focusedPath)
+    ? focusedPath
+    : visibleTreeNodes[Math.max(0, Math.min(listingFocusIndex, listingNodeCount - 1))]?.path;
+  const mountedTreeIndexes = virtualizeListing
+    ? mountedTreeRowIndexes(listingRowCount, listingSlice, [
+        rowIndexByPath.get(rovingFocusPath ?? "") ?? -1,
+        rowIndexByPath.get(dropHighlightPath ?? "") ?? -1,
+        rowIndexByPath.get(menuReturnPath ?? "") ?? -1,
+      ])
+    : Array.from({ length: listingRowCount }, (_, index) => index);
   useEffect(() => {
-    setListingFocusIndex((current) => Math.max(0, Math.min(current, listingRowCount - 1)));
-  }, [listingRowCount]);
+    setListingFocusIndex((current) => Math.max(0, Math.min(current, listingNodeCount - 1)));
+  }, [listingNodeCount]);
 
   useEffect(() => {
     setListingFocusIndex(0);
@@ -595,18 +605,36 @@ export function FileExplorer({
     if (index >= 0) setListingFocusIndex(index);
   }, [nodeIndexByPath, isSearching]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const focusedPath = focusedPathRef.current;
+    if (!focusedPath || isSearching || nodeIndexByPath.has(focusedPath)) return;
+    let ancestor = parentPath(focusedPath);
+    while (ancestor !== focusedPath) {
+      const index = nodeIndexByPath.get(ancestor);
+      if (index !== undefined) {
+        focusedPathRef.current = ancestor;
+        setListingFocusIndex(index);
+        setPendingListingFocus(index);
+        return;
+      }
+      if (ancestor === "/") break;
+      const next = parentPath(ancestor);
+      if (next === ancestor) break;
+      ancestor = next;
+    }
+    focusedPathRef.current = null;
+    setListingFocusIndex(0);
+  }, [isSearching, nodeIndexByPath]);
+
+  useLayoutEffect(() => {
     if (pendingListingFocus === null) return;
     const target = resultsListRef.current?.querySelector<HTMLElement>(
       `[data-listing-index="${pendingListingFocus}"]`,
     );
-    if (!target) {
-      setPendingListingFocus(null);
-      return;
-    }
+    if (!target) return;
     target.focus({ preventScroll: true });
     setPendingListingFocus(null);
-  }, [pendingListingFocus, listingSlice.first, listingSlice.last]);
+  }, [listingSlice.first, listingSlice.last, pendingListingFocus, rovingFocusPath]);
 
   function refresh() {
     if (remoteDisconnected) return;
@@ -632,13 +660,16 @@ export function FileExplorer({
     setListingFocusIndex(target);
     const list = resultsListRef.current;
     const mounted = list?.querySelector<HTMLElement>(`[data-listing-index="${target}"]`);
-    if (mounted) mounted.focus();
-    else if (list) {
-      const rowTop = LISTING_TOP_INSET + target * LISTING_ROW_HEIGHT;
-      list.scrollTop = Math.max(0, rowTop - Math.max(0, list.clientHeight - LISTING_ROW_HEIGHT));
-      setListScroll({ top: list.scrollTop, height: list.clientHeight });
-      setPendingListingFocus(target);
+    if (mounted) {
+      mounted.focus();
+      return;
     }
+    const rowIndex = rowIndexByPath.get(node.path);
+    if (!list || rowIndex === undefined) return;
+    const rowTop = LISTING_TOP_INSET + rowIndex * LISTING_ROW_HEIGHT;
+    list.scrollTop = Math.max(0, rowTop - Math.max(0, list.clientHeight - LISTING_ROW_HEIGHT));
+    setListScroll({ top: list.scrollTop, height: list.clientHeight });
+    setPendingListingFocus(target);
   }
 
   function restoreMenuFocus() {
@@ -883,16 +914,17 @@ export function FileExplorer({
     }
   }
 
-  function renderTreeNode(node: ExplorerTreeNode) {
+  function renderTreeNode(row: Extract<ExplorerTreeRow, { kind: "node" }>, rowIndex: number) {
+    const node = row;
     const listingIndex = nodeIndexByPath.get(node.path) ?? -1;
     const isDir = node.entry.kind === "dir";
-    const expanded = isDir && expandedPaths.has(node.path);
-    const children = childrenByParent.get(node.path) ?? [];
+    const expanded = row.expanded;
     const active = activeFilePath === node.path;
     const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes;
     const batchSelected = selectedDownloads.has(node.path);
     const openMenu = (x: number, y: number, opener: HTMLElement) => {
       menuReturnPathRef.current = node.path;
+      setMenuReturnPath(node.path);
       menuReturnFocusRef.current = opener;
       setContextMenu({ position: { x, y }, items: treeMenuItems(node), bindingKey: treeRequestContext });
     };
@@ -905,13 +937,14 @@ export function FileExplorer({
         aria-expanded={isDir ? expanded : undefined}
         aria-setsize={node.setSize}
         aria-posinset={node.posInSet}
-        aria-selected={batchSelectable ? batchSelected : undefined}
+        aria-selected={batchSelectable ? batchSelected : active}
         data-explorer-item
         data-listing-index={listingIndex}
+        data-tree-row-index={rowIndex}
         data-tree-path={node.path}
         data-drop-target={dropHighlightPath === node.path ? "true" : undefined}
         data-file-path={!isDir ? node.path : undefined}
-        tabIndex={listingFocusIndex === listingIndex ? 0 : -1}
+        tabIndex={rovingFocusPath === node.path ? 0 : -1}
         onFocus={(event) => {
           if (event.target !== event.currentTarget) return;
           focusedPathRef.current = node.path;
@@ -1000,7 +1033,17 @@ export function FileExplorer({
           }
         }}
         className="explorer-tree-node"
-        style={{ width: "100%", marginBottom: 2, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "stretch" }}
+        style={{
+          width: "100%",
+          height: LISTING_ROW_HEIGHT,
+          cursor: "pointer",
+          ...(virtualizeListing ? {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            transform: `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)`,
+          } : {}),
+        }}
       >
         <div
           className="hover-bg"
@@ -1020,6 +1063,7 @@ export function FileExplorer({
         {binding && (
           <input
             type="checkbox"
+            tabIndex={-1}
             className="ui-choice"
             aria-label={node.entry.kind === "file" ? t("explorer.download.select_file", { file: node.entry.name }) : undefined}
             checked={batchSelected}
@@ -1070,21 +1114,37 @@ export function FileExplorer({
           <span aria-hidden="true">⋯</span>
         </button>
         </div>
-        {isDir && expanded && children.length > 0 && (
-          <div role="group">
-            {children.map(renderTreeNode)}
-          </div>
-        )}
-        {isDir && expanded && treeErrors[node.path]?.kind === "readFailed" && (
-          <div role="group" style={{ padding: "2px 0 4px 22px" }}>
-            <div role="alert" style={{ color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
-              {t("explorer.read_dir_failed")}
-            </div>
-            <button type="button" className="ui-button" onClick={() => expandDirectory(node.path)}>
-              {t("explorer.search_retry")}
-            </button>
-          </div>
-        )}
+      </div>
+    );
+  }
+
+  function renderTreeRow(row: ExplorerTreeRow, rowIndex: number) {
+    if (row.kind === "node") return renderTreeNode(row, rowIndex);
+    return (
+      <div
+        key={`${row.parentPath}:load-error`}
+        data-tree-row-index={rowIndex}
+        style={{
+          height: LISTING_ROW_HEIGHT,
+          paddingLeft: 8 + (row.level - 1) * 16,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          ...(virtualizeListing ? {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            transform: `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)`,
+          } : {}),
+        }}
+      >
+        <span role="alert" style={{ color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
+          {t("explorer.read_dir_failed")}
+        </span>
+        <button type="button" tabIndex={-1} className="ui-button" onClick={() => expandDirectory(row.parentPath)}>
+          {t("explorer.search_retry")}
+        </button>
       </div>
     );
   }
@@ -1223,33 +1283,9 @@ export function FileExplorer({
         onKeyDown={(e) => {
           // 结果/树列表方向键漫游：↑↓ 在列表内按钮间移动焦点
           if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+          if (!isSearching) return;
           const list = e.currentTarget as HTMLElement;
           const active = document.activeElement as HTMLElement | null;
-          const listingIndex = active?.dataset.listingIndex;
-          if (virtualizeListing && listingIndex !== undefined) {
-            e.preventDefault();
-            const current = Number(listingIndex);
-            const targetIndex = Math.max(0, Math.min(
-              listingRowCount - 1,
-              current + (e.key === "ArrowDown" ? 1 : -1),
-            ));
-            if (targetIndex === current) return;
-            const mountedTarget = list.querySelector<HTMLElement>(`[data-listing-index="${targetIndex}"]`);
-            if (mountedTarget) {
-              setListingFocusIndex(targetIndex);
-              mountedTarget.focus();
-              return;
-            }
-            const rowTop = LISTING_TOP_INSET + targetIndex * LISTING_ROW_HEIGHT;
-            const nextTop = rowTop < list.scrollTop
-              ? rowTop
-              : Math.max(0, rowTop + LISTING_ROW_HEIGHT - list.clientHeight);
-            list.scrollTop = nextTop;
-            setListScroll({ top: nextTop, height: list.clientHeight });
-            setListingFocusIndex(targetIndex);
-            setPendingListingFocus(targetIndex);
-            return;
-          }
           const items = Array.from(list.querySelectorAll<HTMLElement>("[data-explorer-item]"));
           if (items.length === 0) return;
           e.preventDefault();
@@ -1392,12 +1428,15 @@ export function FileExplorer({
                 );
               })}
             </div>
-            <div role="tree" aria-label={t("explorer.file_list")} aria-multiselectable={binding ? "true" : undefined}>
-              {virtualizeListing && <div aria-hidden="true" role="presentation" style={{ height: listingSlice.topPad }} />}
-              {(childrenByParent.get(null) ?? [])
-                .slice(listingSlice.first, listingSlice.last)
-                .map(renderTreeNode)}
-              {virtualizeListing && <div aria-hidden="true" role="presentation" style={{ height: listingSlice.bottomPad }} />}
+            <div
+              role="tree"
+              aria-label={t("explorer.file_list")}
+              aria-multiselectable={binding ? "true" : undefined}
+              data-tree-row-count={listingRowCount}
+              data-tree-mounted-count={mountedTreeIndexes.length}
+              style={virtualizeListing ? { position: "relative", height: listingRowCount * LISTING_ROW_HEIGHT } : undefined}
+            >
+              {mountedTreeIndexes.map((index) => renderTreeRow(visibleTreeRows[index], index))}
             </div>
           </>
         )}

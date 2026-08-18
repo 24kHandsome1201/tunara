@@ -6,6 +6,7 @@ import { TransferCenter } from "@/ui/TransferCenter";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { mockIPC } from "@tauri-apps/api/mocks";
+import { deltaFrontendPerf, resetFrontendPerf, snapshotFrontendPerf } from "@/modules/perf/benchmark-counters";
 
 const request = (physicalPtyId: number) => ({
   binding: { logicalSessionId: `session-${physicalPtyId}`, physicalPtyId, transportGeneration: `generation-${physicalPtyId}` },
@@ -25,7 +26,8 @@ const recoveryRecord: TransferJournalRecord = {
 };
 
 beforeEach(() => {
-  useTransferStore.setState({ items: [], recoveries: [] });
+  useTransferStore.getState().replaceItemsForTest([]);
+  useTransferStore.setState({ recoveries: [] });
   useSessionsStore.setState({ sessions: [{
     id: "session-1", title: "one", dir: "/", branch: "", runState: "idle", updatedAt: 1,
     remote: { host: "one.example", port: 22, user: "deploy", authMethod: "agent" },
@@ -46,14 +48,50 @@ describe("transfer queue", () => {
     releases.forEach((release) => release());
   });
 
+  it.each([1_000, 10_000])("indexes and aggregates a %i-item batch with bounded pump work", async (count) => {
+    resetFrontendPerf();
+    const baseline = snapshotFrontendPerf();
+    const store = createTransferStore(async () => new Promise(() => {}));
+    const requests = Array.from({ length: count }, (_, index) => ({
+      ...request(index % 10),
+      transferId: `scale-${count}-${index}`,
+    }));
+    const startedAt = performance.now();
+
+    store.getState().enqueueBatch(requests, `batch-${count}`);
+    await tick();
+
+    const elapsedMs = performance.now() - startedAt;
+    const state = store.getState();
+    const aggregate = state.aggregateByBatch.get(`batch-${count}`);
+    expect(state.itemsById.size).toBe(count);
+    expect(state.order).toHaveLength(count);
+    expect(state.idsByBatch.get(`batch-${count}`)?.size).toBe(count);
+    expect(aggregate).toMatchObject({ total: count, running: 4, queued: count - 4 });
+    expect(state.testMetrics).toEqual({ publications: 5, pumpRuns: 1, pumpCandidates: 5 });
+    const after = snapshotFrontendPerf();
+    console.info("RUNTIME_TRANSFER_SCALE_RESULT", JSON.stringify({
+      buildRevision: process.env.TUNARA_BENCHMARK_REVISION ?? "working-tree",
+      platform: `${process.platform}-${process.arch}`,
+      samples: 1,
+      units: "ms",
+      count,
+      elapsedMs: Number(elapsedMs.toFixed(3)),
+      baseline,
+      after,
+      delta: deltaFrontendPerf(after, baseline),
+      store: state.testMetrics,
+    }));
+  });
+
   it("cancels queued items and retries with a new attempt", async () => {
     const runner = vi.fn(async () => ({ outcome: { status: "cancelled" as const, bytesTransferred: 0, residuePath: null } }));
     const store = createTransferStore(runner);
     const id = store.getState().enqueue(request(1));
     await tick(); await tick();
-    expect(store.getState().items[0].status).toBe("cancelled");
+    expect(store.getState().materializeItems()[0].status).toBe("cancelled");
     await store.getState().retry(id, () => true);
-    expect(store.getState().items[0].attempt).toBe(2);
+    expect(store.getState().materializeItems()[0].attempt).toBe(2);
   });
 
   it("toasts a remote preview action when a single upload completes", async () => {
@@ -82,41 +120,41 @@ describe("transfer queue", () => {
     } }));
     const id = store.getState().enqueue(request(1));
     await tick(); await tick();
-    expect(store.getState().items[0].status).toBe("needsReconcile");
+    expect(store.getState().materializeItems()[0].status).toBe("needsReconcile");
     store.getState().retry(id);
-    expect(store.getState().items[0]).toMatchObject({ status: "needsReconcile", attempt: 1 });
+    expect(store.getState().materializeItems()[0]).toMatchObject({ status: "needsReconcile", attempt: 1 });
   });
 
   it("scopes cancel all to one logical session across physical hosts", async () => {
     const store = createTransferStore(async () => new Promise(() => {}));
     const first = { ...request(1), transferId: "first", attempt: 1, status: "queued" as const, cancelRequested: false };
     const second = { ...request(2), transferId: "second", attempt: 1, status: "queued" as const, cancelRequested: false };
-    store.setState({ items: [first, second] });
+    store.getState().replaceItemsForTest([first, second]);
     await store.getState().cancelAll("session-1");
-    expect(store.getState().items.find((item) => item.transferId === "first")?.status).toBe("cancelled");
-    expect(store.getState().items.find((item) => item.transferId === "second")?.status).not.toBe("cancelled");
+    expect(store.getState().materializeItems().find((item) => item.transferId === "first")?.status).toBe("cancelled");
+    expect(store.getState().materializeItems().find((item) => item.transferId === "second")?.status).not.toBe("cancelled");
   });
 
   it("cancels only queued and running items in one upload batch", async () => {
     const store = createTransferStore(async () => new Promise(() => {}));
-    store.setState({ items: [
+    store.getState().replaceItemsForTest([
       { ...request(1), transferId: "running", batchId: "batch-a", attempt: 1, status: "running", cancelRequested: false },
       { ...request(1), transferId: "queued", batchId: "batch-a", attempt: 1, status: "queued", cancelRequested: false },
       { ...request(1), transferId: "done", batchId: "batch-a", attempt: 1, status: "completed", cancelRequested: false },
       { ...request(1), transferId: "other", batchId: "batch-b", attempt: 1, status: "queued", cancelRequested: false },
-    ] });
+    ]);
     mockIPC((command) => command === "ssh_transfer_cancel" ? "accepted" : undefined);
 
     await store.getState().cancelBatch("batch-a");
 
-    expect(store.getState().items.map(({ transferId, status }) => [transferId, status])).toEqual([
+    expect(store.getState().materializeItems().map(({ transferId, status }) => [transferId, status])).toEqual([
       ["running", "running"],
       ["queued", "cancelled"],
       ["done", "completed"],
       ["other", "running"],
     ]);
-    expect(store.getState().items.find((item) => item.transferId === "running")?.cancelRequested).toBe(true);
-    expect(store.getState().items.find((item) => item.transferId === "other")?.cancelRequested).toBe(false);
+    expect(store.getState().materializeItems().find((item) => item.transferId === "running")?.cancelRequested).toBe(true);
+    expect(store.getState().materializeItems().find((item) => item.transferId === "other")?.cancelRequested).toBe(false);
   });
 
   it("resolves a replacement binding for a fresh retry and rejects offline retry", async () => {
@@ -128,7 +166,7 @@ describe("transfer queue", () => {
     const confirmReplacement = vi.fn(async () => true);
     expect(await store.getState().retry(transferId, confirmReplacement)).toBe("queued");
     expect(confirmReplacement).toHaveBeenCalledOnce();
-    expect(store.getState().items[0].binding).toMatchObject({ physicalPtyId: 9, transportGeneration: "replacement" });
+    expect(store.getState().materializeItems()[0].binding).toMatchObject({ physicalPtyId: 9, transportGeneration: "replacement" });
 
     await tick(); await tick();
     useSessionsStore.setState((state) => ({ sessions: state.sessions.map((session) => ({ ...session, connection: { ...session.connection!, phase: "disconnected" } })) }));
@@ -153,28 +191,28 @@ describe("transfer queue", () => {
     release();
     expect(await retrying).toBe("queued");
     expect(reasons).toEqual(["replace", "replacement"]);
-    expect(store.getState().items[0].binding).toMatchObject({ physicalPtyId: 8, transportGeneration: "during-dialog" });
+    expect(store.getState().materializeItems()[0].binding).toMatchObject({ physicalPtyId: 8, transportGeneration: "during-dialog" });
   });
 
   it("bounds finished history, preserves unresolved items, and clears finished", async () => {
     const store = createTransferStore(async () => ({ outcome: { status: "completed" as const, bytesTransferred: 1 } }));
     for (let index = 0; index < 205; index++) store.getState().enqueue({ ...request(1), transferId: `done-${index}` });
-    for (let index = 0; index < 1_000 && store.getState().items.some((item) => item.status === "queued" || item.status === "running"); index++) await tick();
-    expect(store.getState().items.filter((item) => item.status === "completed").length).toBeLessThanOrEqual(200);
-    store.setState((state) => ({ items: [...state.items, { ...request(1), transferId: "unknown", attempt: 1, status: "needsReconcile", cancelRequested: false }] }));
+    for (let index = 0; index < 1_000 && store.getState().materializeItems().some((item) => item.status === "queued" || item.status === "running"); index++) await tick();
+    expect(store.getState().materializeItems().filter((item) => item.status === "completed").length).toBeLessThanOrEqual(200);
+    store.getState().replaceItemsForTest([...store.getState().materializeItems(), { ...request(1), transferId: "unknown", attempt: 1, status: "needsReconcile", cancelRequested: false }]);
     store.getState().clearFinished();
-    expect(store.getState().items).toHaveLength(1);
-    expect(store.getState().items[0].status).toBe("needsReconcile");
+    expect(store.getState().materializeItems()).toHaveLength(1);
+    expect(store.getState().materializeItems()[0].status).toBe("needsReconcile");
   });
 
   it("clears finished history only inside the requested logical-session scope", () => {
     const store = createTransferStore();
-    store.setState({ items: [
+    store.getState().replaceItemsForTest([
       { ...request(1), transferId: "one", attempt: 1, status: "completed", cancelRequested: false },
       { ...request(2), transferId: "two", attempt: 1, status: "failed", cancelRequested: false },
-    ] });
+    ]);
     store.getState().clearFinished("session-1");
-    expect(store.getState().items.map((item) => item.transferId)).toEqual(["two"]);
+    expect(store.getState().materializeItems().map((item) => item.transferId)).toEqual(["two"]);
   });
 
   it("loads interrupted journal records as unresolved recovery work", async () => {
@@ -196,20 +234,18 @@ describe("transfer queue", () => {
       return { record: recoveryRecord, observation: "finalMatches", completed: true };
     });
     const store = createTransferStore();
-    store.setState({
-      items: [{
+    store.getState().replaceItemsForTest([{
         ...request(1), transferId: recoveryRecord.transferId, attempt: recoveryRecord.attempt,
         status: "needsReconcile", cancelRequested: false,
         outcome: { status: "outcomeUnknown", bytesTransferred: 3, code: "outcomeUnknown", message: "unknown", residuePath: recoveryRecord.partial.path },
-      }],
-      recoveries: [{ record: recoveryRecord, busy: false }],
-    });
+    }]);
+    store.setState({ recoveries: [{ record: recoveryRecord, busy: false }] });
     expect(await store.getState().reconcileRecovery(recoveryRecord.recoveryId)).toBe("completed");
-    expect(store.getState().items[0]).toMatchObject({
+    expect(store.getState().materializeItems()[0]).toMatchObject({
       status: "completed",
       outcome: { status: "completed", bytesTransferred: 3 },
     });
-    expect("residuePath" in store.getState().items[0].outcome!).toBe(false);
+    expect("residuePath" in store.getState().materializeItems()[0].outcome!).toBe(false);
   });
 
   it("unlocks restart recovery after unsupported cleanup and permits a later retry", async () => {
@@ -289,7 +325,7 @@ describe("Transfer Center announcements", () => {
       event: { transferId: "second", attempt: 1, sequence: 2, phase: "terminal", bytesTransferred: 50, totalBytes: 50 },
     };
     const third: TransferItem = { ...request(1), transferId: "third", batchId: "batch", attempt: 1, status: "queued", cancelRequested: false };
-    useTransferStore.setState({ items: [first, second, third] });
+    useTransferStore.getState().replaceItemsForTest([first, second, third]);
 
     render(<TransferCenter />);
 
@@ -314,7 +350,7 @@ describe("Transfer Center announcements", () => {
     mockIPC((command) => command === "plugin:dialog|message" ? "Ok" : undefined);
     const first: TransferItem = { ...request(1), source: "first", transferId: "first", attempt: 1, status: "queued", cancelRequested: false };
     const second: TransferItem = { ...request(2), source: "second", transferId: "second", attempt: 1, status: "completed", cancelRequested: false };
-    useTransferStore.setState({ items: [first, second] });
+    useTransferStore.getState().replaceItemsForTest([first, second]);
     render(<TransferCenter inspectorScope={{ kind: "logical-session", key: "session:session-1", logicalSessionId: "session-1" }} />);
 
     expect(screen.getByRole("button", { name: "Cancel first" })).toBeTruthy();
@@ -323,9 +359,9 @@ describe("Transfer Center announcements", () => {
       screen.getByRole("button", { name: "Cancel all transfers in this session" }).click();
       await tick();
     });
-    expect(useTransferStore.getState().items.find((item) => item.transferId === "first")?.status).toBe("cancelled");
-    expect(useTransferStore.getState().items.find((item) => item.transferId === "second")?.status).toBe("completed");
-    useTransferStore.setState({ items: [] });
+    expect(useTransferStore.getState().materializeItems().find((item) => item.transferId === "first")?.status).toBe("cancelled");
+    expect(useTransferStore.getState().materializeItems().find((item) => item.transferId === "second")?.status).toBe("completed");
+    useTransferStore.getState().replaceItemsForTest([]);
   });
 
   it("announces start, each 10 percent or two seconds, cancellation, and terminal states", async () => {
@@ -334,26 +370,26 @@ describe("Transfer Center announcements", () => {
     const item: TransferItem = {
       ...request(1), transferId: "live-1", attempt: 1, status: "queued", cancelRequested: false,
     };
-    useTransferStore.setState({ items: [item] });
+    useTransferStore.getState().replaceItemsForTest([item]);
     try {
       render(<TransferCenter />);
       expect(screen.getByText("Transfer started: a")).toBeTruthy();
 
-      act(() => useTransferStore.setState({ items: [{ ...item, status: "running", event: { transferId: "live-1", attempt: 1, sequence: 1, phase: "transferring", bytesTransferred: 9, totalBytes: 100 } }] }));
+      act(() => useTransferStore.getState().replaceItemsForTest([{ ...item, status: "running", event: { transferId: "live-1", attempt: 1, sequence: 1, phase: "transferring", bytesTransferred: 9, totalBytes: 100 } }]));
       expect(screen.getByText("Transfer started: a")).toBeTruthy();
-      act(() => useTransferStore.setState({ items: [{ ...item, status: "running", event: { transferId: "live-1", attempt: 1, sequence: 2, phase: "transferring", bytesTransferred: 10, totalBytes: 100 } }] }));
+      act(() => useTransferStore.getState().replaceItemsForTest([{ ...item, status: "running", event: { transferId: "live-1", attempt: 1, sequence: 2, phase: "transferring", bytesTransferred: 10, totalBytes: 100 } }]));
       expect(screen.getByText("Transfer progress: a, 10%")).toBeTruthy();
 
       vi.setSystemTime(3_001);
-      act(() => useTransferStore.setState({ items: [{ ...item, status: "running", event: { transferId: "live-1", attempt: 1, sequence: 3, phase: "transferring", bytesTransferred: 11, totalBytes: 100 } }] }));
+      act(() => useTransferStore.getState().replaceItemsForTest([{ ...item, status: "running", event: { transferId: "live-1", attempt: 1, sequence: 3, phase: "transferring", bytesTransferred: 11, totalBytes: 100 } }]));
       expect(screen.getByText("Transfer progress: a, 11%")).toBeTruthy();
 
-      act(() => useTransferStore.setState({ items: [{ ...item, status: "cancelled" }] }));
+      act(() => useTransferStore.getState().replaceItemsForTest([{ ...item, status: "cancelled" }]));
       expect(screen.getByText("Transfer cancelled: a")).toBeTruthy();
-      act(() => useTransferStore.setState({ items: [{ ...item, status: "completed" }] }));
+      act(() => useTransferStore.getState().replaceItemsForTest([{ ...item, status: "completed" }]));
       expect(screen.getByText("Transfer completed: a")).toBeTruthy();
     } finally {
-      useTransferStore.setState({ items: [] });
+      useTransferStore.getState().replaceItemsForTest([]);
       vi.useRealTimers();
     }
   });
@@ -368,7 +404,7 @@ describe("Transfer Center announcements", () => {
       status: "completed",
       cancelRequested: false,
     };
-    useTransferStore.setState({ items: [item] });
+    useTransferStore.getState().replaceItemsForTest([item]);
     render(<TransferCenter />);
     fireEvent.click(screen.getByRole("button", { name: "Preview /srv/app/notes.json" }));
     expect(useUIStore.getState().fileTabs).toEqual([expect.objectContaining({

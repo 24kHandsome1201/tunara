@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tauri::{AppHandle, Manager, State};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -145,10 +146,14 @@ struct Rule {
 }
 
 async fn stop_rule(cancel: watch::Sender<bool>, mut completed: watch::Receiver<bool>) {
+    let started = Instant::now();
     let _ = cancel.send(true);
     if !*completed.borrow() {
         let _ = completed.changed().await;
     }
+    crate::modules::perf_counters::cancel_latency(
+        started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+    );
 }
 
 #[derive(Clone, Copy)]
@@ -168,7 +173,7 @@ fn cancel_bound_rule(
     binding: &SessionBindingV1,
     rule_id: &str,
     kind: RuleKind,
-) -> Result<watch::Receiver<bool>, String> {
+) -> Result<(watch::Receiver<bool>, Instant), String> {
     valid_token(&binding.logical_session_id, "binding.logicalSessionId")?;
     valid_token(&binding.transport_generation, "binding.transportGeneration")?;
     valid_token(rule_id, "ruleId")?;
@@ -200,17 +205,42 @@ fn cancel_bound_rule(
         {
             return Err("forward rule does not belong to this SSH binding".into());
         }
+        let started = Instant::now();
         let _ = rule.cancel.send(true);
-        rule.completed.clone()
+        (rule.completed.clone(), started)
     };
     drop(binding_lease);
     Ok(completed)
 }
 
-async fn wait_for_rule_stop(mut completed: watch::Receiver<bool>) {
+async fn wait_for_rule_stop(mut completed: watch::Receiver<bool>, started: Instant) {
     if !*completed.borrow() {
         let _ = completed.changed().await;
     }
+    crate::modules::perf_counters::cancel_latency(
+        started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+    );
+}
+
+/// Wait for the exact binding to retire. A dropped sender is terminal too: the
+/// binding entry can no longer prove that this rule belongs to a live session.
+async fn wait_for_binding_retirement(retired: &mut watch::Receiver<bool>) {
+    if *retired.borrow_and_update() {
+        return;
+    }
+    let _ = retired.changed().await;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RuleExit {
+    Cancelled,
+    TransportClosed,
+    BindingRetired,
+    ListenerClosed,
+}
+
+fn preserve_reconnect_snapshot(exit: RuleExit, transport_lost: bool) -> bool {
+    matches!(exit, RuleExit::TransportClosed | RuleExit::BindingRetired) && transport_lost
 }
 
 async fn finish_relays(relays: &mut tokio::task::JoinSet<Result<(), String>>) {
@@ -319,6 +349,7 @@ pub async fn ssh_local_forward_start(
     if target_port == 0 {
         return Err("targetPort must be non-zero".into());
     }
+    let mut binding_retired = pty.subscribe_binding_retired(&binding)?;
     let (physical_id, generation) = ssh_generation(&pty, &binding)?;
     if matches!(generation.as_ref(), Session::Ssh(ssh) if ssh.transport_lost()) {
         return Err("SSH session binding is stale".into());
@@ -349,9 +380,11 @@ pub async fn ssh_local_forward_start(
         .local_addr()
         .map_err(|e| format!("cannot read local forward address: {e}"))?
         .port();
+    let binding_lease = pty.acquire_commit_lease(&binding)?;
     let (physical_after, generation_after) = ssh_generation(&pty, &binding)?;
     if physical_after != physical_id
         || !Arc::ptr_eq(&generation, &generation_after)
+        || *binding_retired.borrow()
         || matches!(generation_after.as_ref(), Session::Ssh(ssh) if ssh.transport_lost())
     {
         return Err("SSH session generation changed while starting forward".into());
@@ -397,41 +430,39 @@ pub async fn ssh_local_forward_start(
     if !ssh_generation(&pty, &binding).is_ok_and(|(_, current)| {
         Arc::ptr_eq(&current, &generation)
             && matches!(current.as_ref(), Session::Ssh(ssh) if !ssh.transport_lost())
-    }) {
+    }) || *binding_retired.borrow()
+    {
         if let Ok(mut rules) = state.rules.lock() {
             rules.remove(&rule_id);
         }
         let _ = cancel.send(true);
         return Err("SSH session generation changed while registering forward".into());
     }
+    drop(binding_lease);
 
     let preserve_for_snapshot = view.recreate_on_reconnect;
     tokio::spawn(async move {
         let mut relays = tokio::task::JoinSet::new();
-        let mut transport_closed = false;
-        loop {
-            let pty = app.state::<PtyState>();
-            let current = pty.get_for_ssh_binding(&binding);
-            if current
-                .as_ref()
-                .is_none_or(|s| !Arc::ptr_eq(s, &generation))
-            {
-                break;
-            }
-            let Session::Ssh(ssh) = generation.as_ref() else {
-                break;
-            };
+        let Session::Ssh(ssh) = generation.as_ref() else {
+            let _ = cancel.send(true);
+            cleanup_rule_registration(app, rule_id, generation, false);
+            let _ = completion_tx.send(true);
+            return;
+        };
+        let exit = loop {
             tokio::select! {
                 biased;
-                _ = cancelled.changed() => break,
-                _ = ssh.wait_closed() => { transport_closed = ssh.transport_lost(); break; },
-                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {},
+                _ = cancelled.changed() => break RuleExit::Cancelled,
+                _ = ssh.wait_closed() => break RuleExit::TransportClosed,
+                _ = wait_for_binding_retirement(&mut binding_retired) => break RuleExit::BindingRetired,
                 accepted = listener.accept(), if can_accept_connection(relays.len()) => match accepted {
                     Ok((stream, peer)) if peer.ip().is_loopback() => {
-                        if *cancelled.borrow() { break; }
+                        if *cancelled.borrow() { break RuleExit::Cancelled; }
                         let pty = app.state::<PtyState>();
                         let current = pty.get_for_ssh_binding(&binding);
-                        if current.as_ref().is_none_or(|s| !Arc::ptr_eq(s, &generation)) { break; }
+                        if current.as_ref().is_none_or(|s| !Arc::ptr_eq(s, &generation)) {
+                            break RuleExit::BindingRetired;
+                        }
                         let generation = generation.clone();
                         let host = target_host.clone();
                         let relay_cancelled = cancelled.clone();
@@ -441,11 +472,12 @@ pub async fn ssh_local_forward_start(
                         });
                     }
                     Ok(_) => {},
-                    Err(_) => break,
+                    Err(_) => break RuleExit::ListenerClosed,
                 },
                 _ = relays.join_next(), if !relays.is_empty() => {},
             }
-        }
+        };
+        let transport_lost = ssh.transport_lost();
         drop(listener);
         let _ = cancel.send(true);
         finish_relays(&mut relays).await;
@@ -453,7 +485,7 @@ pub async fn ssh_local_forward_start(
             app,
             rule_id,
             generation,
-            preserve_for_snapshot && transport_closed,
+            preserve_for_snapshot && preserve_reconnect_snapshot(exit, transport_lost),
         );
         let _ = completion_tx.send(true);
     });
@@ -513,8 +545,9 @@ pub async fn ssh_local_forward_stop(
     rule_id: String,
 ) -> Result<(), String> {
     (async {
-        let completed = cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Local)?;
-        wait_for_rule_stop(completed).await;
+        let (completed, started) =
+            cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Local)?;
+        wait_for_rule_stop(completed, started).await;
         Ok(())
     })
     .await
@@ -638,6 +671,7 @@ pub async fn ssh_dynamic_forward_start(
 ) -> Result<DynamicForwardView, String> {
     (async {
     let bind_ip = parse_bind(&bind_host)?;
+    let mut binding_retired = pty.subscribe_binding_retired(&binding)?;
     let (physical_id, generation) = ssh_generation(&pty, &binding)?;
     if matches!(generation.as_ref(), Session::Ssh(ssh) if ssh.transport_lost()) {
         return Err("SSH session binding is stale".into());
@@ -662,9 +696,11 @@ pub async fn ssh_dynamic_forward_start(
         .await
         .map_err(|e| format!("cannot bind dynamic forward: {e}"))?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let binding_lease = pty.acquire_commit_lease(&binding)?;
     let (after_id, after) = ssh_generation(&pty, &binding)?;
     if after_id != physical_id
         || !Arc::ptr_eq(&generation, &after)
+        || *binding_retired.borrow()
         || matches!(after.as_ref(), Session::Ssh(ssh) if ssh.transport_lost())
     {
         return Err("SSH session generation changed while starting forward".into());
@@ -708,50 +744,47 @@ pub async fn ssh_dynamic_forward_start(
     if pty.get_for_ssh_binding(&binding).is_none_or(|current| {
         !Arc::ptr_eq(&current, &generation)
             || !matches!(current.as_ref(), Session::Ssh(ssh) if !ssh.transport_lost())
-    }) {
+    }) || *binding_retired.borrow()
+    {
         if let Ok(mut rules) = state.rules.lock() {
             rules.remove(&rule_id);
         }
         let _ = cancel.send(true);
         return Err("SSH session generation changed while registering forward".into());
     }
+    drop(binding_lease);
     let preserve_for_snapshot = view.recreate_on_reconnect;
     tokio::spawn(async move {
         let mut relays = tokio::task::JoinSet::new();
-        let mut transport_closed = false;
-        loop {
-            let pty = app.state::<PtyState>();
-            let current = pty.get_for_ssh_binding(&binding);
-            if current
-                .as_ref()
-                .is_none_or(|s| !Arc::ptr_eq(s, &generation))
-            {
-                break;
-            }
-            let Session::Ssh(ssh) = generation.as_ref() else {
-                break;
-            };
+        let Session::Ssh(ssh) = generation.as_ref() else {
+            let _ = cancel.send(true);
+            cleanup_rule_registration(app, rule_id, generation, false);
+            let _ = completion_tx.send(true);
+            return;
+        };
+        let exit = loop {
             tokio::select! {
                 biased;
-                _ = cancelled.changed() => break,
-                _ = ssh.wait_closed() => { transport_closed = ssh.transport_lost(); break; },
-                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {},
+                _ = cancelled.changed() => break RuleExit::Cancelled,
+                _ = ssh.wait_closed() => break RuleExit::TransportClosed,
+                _ = wait_for_binding_retirement(&mut binding_retired) => break RuleExit::BindingRetired,
                 accepted = listener.accept(), if can_accept_connection(relays.len()) => match accepted {
                     Ok((stream, peer)) if peer.ip().is_loopback() => {
-                        if *cancelled.borrow() { break; }
+                        if *cancelled.borrow() { break RuleExit::Cancelled; }
                         let pty = app.state::<PtyState>();
                         let current = pty.get_for_ssh_binding(&binding);
                         if current.as_ref().is_none_or(|s| !Arc::ptr_eq(s, &generation)) {
-                            break;
+                            break RuleExit::BindingRetired;
                         }
                         relays.spawn(serve_dynamic(stream, generation.clone(), cancelled.clone()));
                     }
                     Ok(_) => continue,
-                    Err(_) => break,
+                    Err(_) => break RuleExit::ListenerClosed,
                 },
                 _ = relays.join_next(), if !relays.is_empty() => {},
             }
-        }
+        };
+        let transport_lost = ssh.transport_lost();
         drop(listener);
         let _ = cancel.send(true);
         finish_relays(&mut relays).await;
@@ -759,7 +792,7 @@ pub async fn ssh_dynamic_forward_start(
             app,
             rule_id,
             generation,
-            preserve_for_snapshot && transport_closed,
+            preserve_for_snapshot && preserve_reconnect_snapshot(exit, transport_lost),
         );
         let _ = completion_tx.send(true);
     });
@@ -819,8 +852,9 @@ pub async fn ssh_dynamic_forward_stop(
     rule_id: String,
 ) -> Result<(), String> {
     (async {
-        let completed = cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Dynamic)?;
-        wait_for_rule_stop(completed).await;
+        let (completed, started) =
+            cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Dynamic)?;
+        wait_for_rule_stop(completed, started).await;
         Ok(())
     })
     .await
@@ -1154,6 +1188,7 @@ pub async fn ssh_remote_forward_start(
         if local_target_port == 0 {
             return Err("localTargetPort must be non-zero".into());
         }
+        let mut binding_retired = pty.subscribe_binding_retired(&binding)?;
         let (physical_id, generation) = ssh_generation(&pty, &binding)?;
         if matches!(generation.as_ref(), Session::Ssh(ssh) if ssh.transport_lost()) {
             return Err("SSH session binding is stale".into());
@@ -1189,11 +1224,15 @@ pub async fn ssh_remote_forward_start(
         if actual_port == 0 {
             return Err("remote forward did not allocate a port".into());
         }
-        let (physical_after, generation_after) = ssh_generation(&pty, &binding)?;
-        if physical_after != physical_id
-            || !Arc::ptr_eq(&generation, &generation_after)
-            || matches!(generation_after.as_ref(), Session::Ssh(ssh) if ssh.transport_lost())
-        {
+        let still_current = ssh_generation(&pty, &binding).is_ok_and(
+            |(physical_after, generation_after)| {
+                physical_after == physical_id
+                    && Arc::ptr_eq(&generation, &generation_after)
+                    && !*binding_retired.borrow()
+                    && matches!(generation_after.as_ref(), Session::Ssh(ssh) if !ssh.transport_lost())
+            },
+        );
+        if !still_current {
             let Session::Ssh(ssh) = generation.as_ref() else {
                 return Err("SSH session generation changed while starting forward".into());
             };
@@ -1202,6 +1241,15 @@ pub async fn ssh_remote_forward_start(
                 .await;
             return Err("SSH session generation changed while starting forward".into());
         }
+        let binding_lease = match pty.acquire_commit_lease(&binding) {
+            Ok(lease) => lease,
+            Err(error) => {
+                let _ = ssh
+                    .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
+                    .await;
+                return Err(error);
+            }
+        };
 
         let rule_id = format!("rf-{}", state.next_id.fetch_add(1, Ordering::Relaxed) + 1);
         let view = RemoteForwardView {
@@ -1242,6 +1290,7 @@ pub async fn ssh_remote_forward_start(
             }
         };
         if over_session_limit {
+            drop(binding_lease);
             let Session::Ssh(ssh) = generation.as_ref() else {
                 return Err(format!(
                     "session forward limit ({MAX_RULES_PER_SESSION}) reached"
@@ -1268,6 +1317,7 @@ pub async fn ssh_remote_forward_start(
                 rules.remove(&rule_id);
             }
             let _ = cancel.send(true);
+            drop(binding_lease);
             let _ = ssh
                 .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
                 .await;
@@ -1276,44 +1326,41 @@ pub async fn ssh_remote_forward_start(
         if !ssh_generation(&pty, &binding).is_ok_and(|(_, current)| {
             Arc::ptr_eq(&current, &generation)
                 && matches!(current.as_ref(), Session::Ssh(ssh) if !ssh.transport_lost())
-        }) {
+        }) || *binding_retired.borrow()
+        {
             if let Ok(mut rules) = state.rules.lock() {
                 rules.remove(&rule_id);
             }
             ssh.reverse_forward_hub()
                 .remove(&remote_ip.to_string(), u32::from(actual_port));
             let _ = cancel.send(true);
+            drop(binding_lease);
             let _ = ssh
                 .cancel_tcpip_forward(&remote_ip.to_string(), u32::from(actual_port))
                 .await;
             return Err("SSH session generation changed while registering forward".into());
         }
+        drop(binding_lease);
 
         let preserve_for_snapshot = view.recreate_on_reconnect;
         let hub = ssh.reverse_forward_hub().clone();
         let bind_host = remote_ip.to_string();
         tokio::spawn(async move {
             let mut cancelled = cancelled;
-            let mut transport_closed = false;
-            loop {
-                let pty = app.state::<PtyState>();
-                let current = pty.get_for_ssh_binding(&binding);
-                if current
-                    .as_ref()
-                    .is_none_or(|s| !Arc::ptr_eq(s, &generation))
-                {
-                    break;
-                }
-                let Session::Ssh(ssh) = generation.as_ref() else {
-                    break;
-                };
-                tokio::select! {
-                    biased;
-                    _ = cancelled.changed() => break,
-                    _ = ssh.wait_closed() => { transport_closed = ssh.transport_lost(); break; },
-                    _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {},
-                }
-            }
+            let Session::Ssh(ssh) = generation.as_ref() else {
+                let _ = cancel.send(true);
+                hub.remove(&bind_host, u32::from(actual_port));
+                cleanup_rule_registration(app, rule_id, generation, false);
+                let _ = completion_tx.send(true);
+                return;
+            };
+            let exit = tokio::select! {
+                biased;
+                _ = cancelled.changed() => RuleExit::Cancelled,
+                _ = ssh.wait_closed() => RuleExit::TransportClosed,
+                _ = wait_for_binding_retirement(&mut binding_retired) => RuleExit::BindingRetired,
+            };
+            let transport_lost = ssh.transport_lost();
             let _ = cancel.send(true);
             hub.remove(&bind_host, u32::from(actual_port));
             if let Session::Ssh(ssh) = generation.as_ref() {
@@ -1325,7 +1372,7 @@ pub async fn ssh_remote_forward_start(
                 app,
                 rule_id,
                 generation,
-                preserve_for_snapshot && transport_closed,
+                preserve_for_snapshot && preserve_reconnect_snapshot(exit, transport_lost),
             );
             let _ = completion_tx.send(true);
         });
@@ -1388,8 +1435,9 @@ pub async fn ssh_remote_forward_stop(
     rule_id: String,
 ) -> Result<(), String> {
     (async {
-        let completed = cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Remote)?;
-        wait_for_rule_stop(completed).await;
+        let (completed, started) =
+            cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Remote)?;
+        wait_for_rule_stop(completed, started).await;
         Ok(())
     })
     .await
@@ -1510,6 +1558,54 @@ mod tests {
         assert!(!*rx.borrow());
         tx.send(true).unwrap();
         assert!(*rx.borrow());
+    }
+
+    #[tokio::test]
+    async fn binding_retirement_wait_is_immediate_and_fail_closed() {
+        let (retire, mut retired) = watch::channel(false);
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(10),
+                wait_for_binding_retirement(&mut retired),
+            )
+            .await
+            .is_err(),
+            "a live binding must not retire spontaneously"
+        );
+        retire.send(true).unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            wait_for_binding_retirement(&mut retired),
+        )
+        .await
+        .expect("retirement state is retained without polling");
+
+        let (sender, mut dropped) = watch::channel(false);
+        drop(sender);
+        tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            wait_for_binding_retirement(&mut dropped),
+        )
+        .await
+        .expect("a lost binding authority fails closed");
+    }
+
+    #[test]
+    fn reconnect_snapshot_requires_transport_loss_from_a_lifecycle_exit() {
+        assert!(preserve_reconnect_snapshot(RuleExit::TransportClosed, true));
+        assert!(preserve_reconnect_snapshot(RuleExit::BindingRetired, true));
+        assert!(!preserve_reconnect_snapshot(RuleExit::Cancelled, true));
+        assert!(!preserve_reconnect_snapshot(RuleExit::ListenerClosed, true));
+        assert!(!preserve_reconnect_snapshot(
+            RuleExit::TransportClosed,
+            false
+        ));
+    }
+
+    #[test]
+    fn forwarding_lifecycle_has_no_timer_poll_fallback() {
+        let forbidden = ["from_millis", "(100)"].concat();
+        assert!(!include_str!("forwarding.rs").contains(&forbidden));
     }
 
     #[test]

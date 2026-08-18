@@ -8,7 +8,7 @@
 // Each command takes the session `id` (the same u32 PtyState id the terminal
 // uses) and reaches the live SSH connection's SFTP subsystem.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Component, Path};
@@ -262,6 +262,87 @@ pub enum RemoteReadResult {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileObservationV1 {
+    pub kind: FileObservationKindV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FileObservationKindV1 {
+    File,
+    Directory,
+    Symlink,
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ReadIfChangedViewV1 {
+    Preview,
+    Head { line_limit: u32 },
+    Tail { line_limit: u32 },
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum ReadIfChangedValueV1 {
+    Preview(RemoteReadResult),
+    Bounded(FileHeadResultV1),
+}
+
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ReadIfChangedResultV1 {
+    Unchanged {
+        observation: FileObservationV1,
+    },
+    Changed {
+        observation: FileObservationV1,
+        value: ReadIfChangedValueV1,
+    },
+}
+
+fn observation(attrs: &FileAttributes) -> FileObservationV1 {
+    let kind = if attrs.is_symlink() {
+        FileObservationKindV1::Symlink
+    } else if attrs.is_regular() {
+        FileObservationKindV1::File
+    } else if attrs.is_dir() {
+        FileObservationKindV1::Directory
+    } else {
+        FileObservationKindV1::Other
+    };
+    FileObservationV1 {
+        kind,
+        size: attrs.size,
+        mode: attrs.permissions,
+        modified_at: attrs.mtime.map(remote_mtime_millis),
+    }
+}
+
+/// Missing attrs are deliberately never evidence of equality.
+fn observation_completely_matches(known: &FileObservationV1, current: &FileObservationV1) -> bool {
+    known.kind == current.kind
+        && known.size.is_some()
+        && known.size == current.size
+        && known.mode.is_some()
+        && known.mode == current.mode
+        && known.modified_at.is_some()
+        && known.modified_at == current.modified_at
+}
+
 fn content_fingerprint(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
@@ -473,6 +554,7 @@ pub async fn ssh_fs_read_file(
     (async {
         let sftp = sftp_for(&state, id).await?;
 
+        crate::modules::perf_counters::sftp_lstat();
         let link_meta = await_stage(
             "lstat remote file",
             SFTP_CONTROL_TIMEOUT,
@@ -508,6 +590,7 @@ pub async fn ssh_fs_read_file(
                 .read_to_end(&mut bytes),
         )
         .await?;
+        crate::modules::perf_counters::sftp_read_bytes(bytes.len());
 
         let truncated =
             size > MAX_TEXT_PREVIEW_BYTES || bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES;
@@ -585,6 +668,99 @@ pub async fn ssh_fs_read_file(
     .await
     .map_err(|error: String| {
         crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpRead, error)
+    })
+}
+
+/// Poll a preview through a complete SSH binding. LSTAT observations are only
+/// change hints: they are not fingerprints and are never accepted by writes.
+#[tauri::command]
+pub async fn ssh_fs_read_if_changed_v1(
+    state: tauri::State<'_, PtyState>,
+    request_id: String,
+    binding: SessionBindingV1,
+    path: String,
+    known: Option<FileObservationV1>,
+    view: ReadIfChangedViewV1,
+) -> Result<ReadIfChangedResultV1, FileViewErrorV1> {
+    crate::modules::perf_counters::binding_timer_poll();
+    // Keep registration alive until nested reads and final identity checks finish.
+    let _registration = RequestRegistration::register(request_id.clone())?;
+    validate_remote_edit_path(&path).map_err(|_| FileViewErrorV1::invalid_request())?;
+    if Path::new(&path)
+        .components()
+        .any(|part| matches!(part, Component::CurDir))
+    {
+        return Err(FileViewErrorV1::invalid_request());
+    }
+    let sftp = super::sftp_common::session_for_binding(state.inner(), &binding)
+        .await
+        .map_err(|_| FileViewErrorV1::stale_binding())?;
+    crate::modules::perf_counters::sftp_lstat();
+    let before_attrs = await_stage(
+        "lstat refresh file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.symlink_metadata(&path),
+    )
+    .await
+    .map_err(|error| remote_file_view_error(&error))?;
+    let before = observation(&before_attrs);
+    if before.kind != FileObservationKindV1::File {
+        return Err(FileViewErrorV1::read_failed());
+    }
+    if known
+        .as_ref()
+        .is_some_and(|value| observation_completely_matches(value, &before))
+    {
+        return Ok(ReadIfChangedResultV1::Unchanged {
+            observation: before,
+        });
+    }
+    let value = match view {
+        ReadIfChangedViewV1::Preview => ReadIfChangedValueV1::Preview(
+            ssh_fs_read_file(state.clone(), binding.physical_pty_id, path.clone())
+                .await
+                .map_err(|_| FileViewErrorV1::read_failed())?,
+        ),
+        ReadIfChangedViewV1::Head { line_limit } => ReadIfChangedValueV1::Bounded(
+            ssh_file_view_head_v1(
+                state.clone(),
+                binding.clone(),
+                path.clone(),
+                line_limit,
+                format!("{}-head", &request_id[..request_id.len().min(100)]),
+            )
+            .await?,
+        ),
+        ReadIfChangedViewV1::Tail { line_limit } => ReadIfChangedValueV1::Bounded(
+            ssh_file_view_tail_v1(
+                state.clone(),
+                binding.clone(),
+                path.clone(),
+                line_limit,
+                format!("{}-tail", &request_id[..request_id.len().min(100)]),
+            )
+            .await?,
+        ),
+    };
+    // Revalidate both binding and authoritative LSTAT after all content bytes.
+    super::sftp_common::session_for_binding(state.inner(), &binding)
+        .await
+        .map_err(|_| FileViewErrorV1::stale_binding())?;
+    crate::modules::perf_counters::sftp_lstat();
+    let after_attrs = await_stage(
+        "restat refresh file",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.symlink_metadata(&path),
+    )
+    .await
+    .map_err(|_| FileViewErrorV1::changed())?;
+    let after = observation(&after_attrs);
+    if !observation_completely_matches(&before, &after) {
+        return Err(FileViewErrorV1::changed());
+    }
+    Ok(ReadIfChangedResultV1::Changed {
+        observation: after,
+        value,
     })
 }
 
@@ -2007,13 +2183,14 @@ pub async fn ssh_fs_home(state: tauri::State<'_, PtyState>, id: u32) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::{
-        cancel_upload, choose_remote_home, preserved_upload_mode, read_remote_editable_bytes,
-        reconcile_text_write_with_sftp, remote_mtime_millis, remote_replace_lock_owner_path,
-        remote_replace_lock_path, remote_sibling_temp_path, remote_write_lock, shell_quote,
-        stale_replace_lock_error, uncertain_upload_error, upload_residue_error,
-        usable_remote_dir_name, validate_download_target, validate_fingerprint,
-        validate_remote_edit_path, write_text_transaction, RemoteWriteIo, SftpWriteAdapter,
-        TransactionOutcome, UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
+        cancel_upload, choose_remote_home, observation_completely_matches, preserved_upload_mode,
+        read_remote_editable_bytes, reconcile_text_write_with_sftp, remote_mtime_millis,
+        remote_replace_lock_owner_path, remote_replace_lock_path, remote_sibling_temp_path,
+        remote_write_lock, shell_quote, stale_replace_lock_error, uncertain_upload_error,
+        upload_residue_error, usable_remote_dir_name, validate_download_target,
+        validate_fingerprint, validate_remote_edit_path, write_text_transaction,
+        FileObservationKindV1, FileObservationV1, ReadIfChangedResultV1, RemoteWriteIo,
+        SftpWriteAdapter, TransactionOutcome, UploadRegistration, WriteRequest, REMOTE_WRITE_LOCKS,
     };
     use crate::modules::pty::PtyEvent;
     use crate::modules::ssh::auth::AuthOptions;
@@ -2023,6 +2200,49 @@ mod tests {
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
     use tauri::ipc::Channel;
+
+    #[test]
+    fn refresh_observation_requires_every_authoritative_attribute() {
+        let complete = FileObservationV1 {
+            kind: FileObservationKindV1::File,
+            size: Some(7),
+            mode: Some(0o644),
+            modified_at: Some(1_000),
+        };
+        assert!(observation_completely_matches(&complete, &complete));
+        let unknown = FileObservationV1 {
+            modified_at: None,
+            ..complete.clone()
+        };
+        assert!(!observation_completely_matches(&unknown, &complete));
+        assert!(!observation_completely_matches(&complete, &unknown));
+    }
+
+    #[test]
+    fn refresh_wire_is_camel_case_and_tagged() {
+        let value = serde_json::to_value(ReadIfChangedResultV1::Unchanged {
+            observation: FileObservationV1 {
+                kind: FileObservationKindV1::File,
+                size: Some(1),
+                mode: Some(0o600),
+                modified_at: Some(2),
+            },
+        })
+        .unwrap();
+        assert_eq!(value["status"], "unchanged");
+        assert_eq!(value["observation"]["modifiedAt"], 2);
+    }
+
+    #[test]
+    fn refresh_view_deserializes_camel_case_line_limit() {
+        let view: super::ReadIfChangedViewV1 =
+            serde_json::from_value(serde_json::json!({ "kind": "head", "lineLimit": 500 }))
+                .unwrap();
+        assert!(matches!(
+            view,
+            super::ReadIfChangedViewV1::Head { line_limit: 500 }
+        ));
+    }
 
     #[test]
     fn remote_directory_mtime_is_normalized_to_epoch_milliseconds() {

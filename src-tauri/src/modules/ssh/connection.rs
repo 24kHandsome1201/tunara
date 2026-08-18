@@ -1419,6 +1419,7 @@ impl SshSession {
                     timeout.as_secs()
                 ));
             };
+            crate::modules::perf_counters::sftp_readdir();
             let page = match tokio::time::timeout(remaining, raw.readdir(handle.clone())).await {
                 Ok(Ok(page)) => page,
                 Ok(Err(SftpError::Status(status))) if status.status_code == StatusCode::Eof => {
@@ -1759,6 +1760,7 @@ impl SshSession {
     /// Execute a probe where a non-zero status is part of the caller's state
     /// machine rather than a transport failure (for example, Git with no
     /// upstream). All other SSH commands should use `exec`.
+    #[cfg(test)]
     pub async fn exec_allow_nonzero(
         &self,
         command: &str,
@@ -1843,6 +1845,7 @@ async fn exec_on(
         handle.channel_open_session(),
     )
     .await?;
+    crate::modules::perf_counters::ssh_exec_channel();
     if cancelled.is_some_and(|token| token.load(Ordering::Acquire)) {
         let _ = channel.close().await;
         return Err("remote command cancelled".into());
