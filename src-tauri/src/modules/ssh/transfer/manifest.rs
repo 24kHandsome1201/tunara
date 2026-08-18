@@ -665,7 +665,10 @@ mod tests {
         );
         // A regular hint can never override an authoritative symlink LSTAT.
         let authoritative = identity(RemotePathKindV1::Symlink, Some(1), 1);
-        assert_ne!(hinted_kind(Some(libc::S_IFREG as u32)), Some(authoritative.kind));
+        assert_ne!(
+            hinted_kind(Some(libc::S_IFREG as u32)),
+            Some(authoritative.kind)
+        );
         assert_eq!(
             hinted_kind(Some(libc::S_IFLNK as u32)),
             Some(RemotePathKindV1::Symlink)
