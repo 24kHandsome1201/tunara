@@ -22,6 +22,10 @@ export interface RawAppearanceConfig {
   terminal_host_modifier: "shift" | "meta" | "alt";
   language: string;
   global_shortcut: string;
+  terminal_wallpaper?: boolean;
+  terminal_wallpaper_source?: string;
+  terminal_wallpaper_blur?: number;
+  terminal_wallpaper_veil?: number;
 }
 
 export interface RawTerminalInteractionsConfig {

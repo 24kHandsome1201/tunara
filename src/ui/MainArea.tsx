@@ -1,5 +1,7 @@
 import { lazy, memo, Suspense, useRef } from "react";
 import { TerminalView } from "./TerminalView";
+import { TerminalWallpaper } from "./TerminalWallpaper";
+import { usePrefersReducedTransparency } from "./usePrefersReducedTransparency";
 import type { Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -114,6 +116,9 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const activeFileTabId = useUIStore((s) => s.activeFileTabId);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const fileSurfaceActive = !pure && activeFileTabId !== null;
+  const wallpaperEnabled = useUIStore((s) => s.terminalWallpaperEnabled);
+  const reducedTransparency = usePrefersReducedTransparency();
+  const wallpaperActive = wallpaperEnabled && !reducedTransparency;
 
   // Captured as primitives so the git effect depends on exactly the fields it
   // reads. Depending on the whole `active` object would re-run the effect on
@@ -182,6 +187,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         minHeight: 0,
         overflow: "hidden",
         borderRadius: pure ? 0 : "var(--r-btn)",
+        zIndex: 1,
         boxShadow: !pure && s.id === activeSessionId ? activeMarker : "none",
         transition: pure ? "none" : "box-shadow var(--duration-normal) var(--ease-smooth)",
       };
@@ -195,6 +201,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         flexDirection: "column",
         minWidth: 0,
         minHeight: 0,
+        zIndex: 1,
       };
     }
 
@@ -204,9 +211,11 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   return (
     <div
       data-terminal-canvas={pure ? "pure" : "workspace"}
+      data-terminal-wallpaper={wallpaperActive ? "on" : "off"}
       style={{ flex: 1, display: "flex", flexDirection: "column", background: pure ? "var(--terminal-canvas-bg, var(--c-bg-white))" : "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}
     >
       <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        <TerminalWallpaper />
         {mountedSessions.map((s) => (
           <div
             key={s.id}
@@ -232,7 +241,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               data-workspace-file-tab={tab.id}
               aria-hidden={active ? undefined : true}
               inert={active ? undefined : true}
-              style={{ position: "absolute", inset: 0, display: active ? "flex" : "none", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--c-bg-white)" }}
+              style={{ position: "absolute", inset: 0, display: active ? "flex" : "none", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--c-bg-white)", zIndex: 2 }}
             >
               <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
                 <FilePreview

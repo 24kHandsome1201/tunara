@@ -1,7 +1,22 @@
 import { useEffect, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useUIStore, type CursorStyle, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import {
+  clearTerminalWallpaper,
+  importTerminalWallpaper,
+} from "@/modules/terminal/lib/terminal-wallpaper-bridge";
+import {
+  MAX_WALLPAPER_BLUR,
+  MAX_WALLPAPER_VEIL,
+  MIN_WALLPAPER_BLUR,
+  MIN_WALLPAPER_VEIL,
+  TERMINAL_WALLPAPER_SOURCES,
+} from "@/modules/terminal/lib/terminal-wallpaper";
+import { wallpaperTextureUrl } from "@/modules/terminal/lib/terminal-wallpaper-textures";
+import { usePrefersReducedTransparency } from "@/ui/usePrefersReducedTransparency";
+import {
+  RangeRow,
   SECTION_HINT,
   SECTION_LABEL,
   SECTION_LABEL_INLINE,
@@ -11,6 +26,149 @@ import {
   ToggleRow,
   TOGGLE_ROW,
 } from "./controls";
+
+export function WallpaperSettings() {
+  const t = useT();
+  const enabled = useUIStore((s) => s.terminalWallpaperEnabled);
+  const source = useUIStore((s) => s.terminalWallpaperSource);
+  const blur = useUIStore((s) => s.terminalWallpaperBlur);
+  const veil = useUIStore((s) => s.terminalWallpaperVeil);
+  const setEnabled = useUIStore((s) => s.setTerminalWallpaperEnabled);
+  const setSource = useUIStore((s) => s.setTerminalWallpaperSource);
+  const setBlur = useUIStore((s) => s.setTerminalWallpaperBlur);
+  const setVeil = useUIStore((s) => s.setTerminalWallpaperVeil);
+  const addToast = useUIStore((s) => s.addToast);
+  const reducedTransparency = usePrefersReducedTransparency();
+  const [busy, setBusy] = useState(false);
+
+  async function chooseCustom() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+      });
+      if (typeof selected !== "string" || !selected) return;
+      await importTerminalWallpaper(selected);
+      setSource("custom");
+      setEnabled(true);
+      useUIStore.getState().bumpTerminalWallpaperRevision();
+    } catch {
+      addToast({
+        title: t("settings.appearance.wallpaper.invalid"),
+        subtitle: "",
+        variant: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeCustom() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await clearTerminalWallpaper();
+      if (source === "custom") setSource("paper");
+      useUIStore.getState().bumpTerminalWallpaperRevision();
+    } catch {
+      addToast({
+        title: t("settings.appearance.wallpaper.invalid"),
+        subtitle: "",
+        variant: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div data-settings-section="wallpaper" style={{ marginBottom: 8 }}>
+      <ToggleRow
+        label={t("settings.appearance.wallpaper")}
+        hint={t("settings.appearance.wallpaper.hint")}
+        checked={enabled}
+        onChange={setEnabled}
+      />
+      {reducedTransparency && enabled && (
+        <div style={{ ...SECTION_HINT, marginTop: -12, marginBottom: 16 }}>{t("settings.appearance.wallpaper.reduced")}</div>
+      )}
+      {enabled && (
+        <div>
+          <div style={SECTION_LABEL}>{t("settings.appearance.wallpaper.source")}</div>
+          <div role="radiogroup" aria-label={t("settings.appearance.wallpaper.source")} style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 16 }}>
+            {TERMINAL_WALLPAPER_SOURCES.map((id) => {
+              const selected = source === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => { if (id === "custom") void chooseCustom(); else setSource(id); }}
+                  style={{
+                    height: 56,
+                    borderRadius: "var(--r-btn)",
+                    border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)",
+                    background: id === "custom" ? "var(--c-bg-white)" : `center / 80px url("${wallpaperTextureUrl(id)}")`,
+                    color: "var(--c-text-2)",
+                    fontSize: "var(--fs-meta)",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    overflow: "hidden",
+                  }}
+                >
+                  {t(`settings.appearance.wallpaper.${id}`)}
+                </button>
+              );
+            })}
+          </div>
+          {source === "custom" && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={() => void chooseCustom()}
+                disabled={busy}
+                style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: "pointer" }}
+              >
+                {t("settings.appearance.wallpaper.choose")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeCustom()}
+                disabled={busy}
+                style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-3)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}
+              >
+                {t("settings.appearance.wallpaper.remove")}
+              </button>
+            </div>
+          )}
+          <RangeRow
+            label={t("settings.appearance.wallpaper.blur")}
+            ariaLabel={t("settings.appearance.wallpaper.blur")}
+            value={blur}
+            min={MIN_WALLPAPER_BLUR}
+            max={MAX_WALLPAPER_BLUR}
+            display={`${blur}px`}
+            onChange={setBlur}
+          />
+          <RangeRow
+            label={t("settings.appearance.wallpaper.veil")}
+            ariaLabel={t("settings.appearance.wallpaper.veil")}
+            value={veil}
+            min={MIN_WALLPAPER_VEIL}
+            max={MAX_WALLPAPER_VEIL}
+            display={`${veil}%`}
+            onChange={setVeil}
+          />
+          <div style={{ ...SECTION_HINT, marginBottom: 24 }}>{t("settings.appearance.wallpaper.sixel")}</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CursorStylePicker({ value, onChange }: { value: CursorStyle; onChange: (v: CursorStyle) => void }) {
   const t = useT();
@@ -143,6 +301,7 @@ export function TerminalSettings() {
       <ToggleRow label={t("settings.appearance.bell_notification")} hint={t("settings.appearance.bell_notification.hint")} checked={bellNotification} onChange={setBellNotification} />
       <ToggleRow label={t("settings.appearance.clipboard_write")} hint={t("settings.appearance.clipboard_write.hint")} checked={terminalClipboardWrite} onChange={() => setTerminalClipboardWrite(!terminalClipboardWrite)} />
       <ToggleRow label={t("settings.appearance.inline_images")} hint={t("settings.appearance.inline_images.hint")} checked={terminalInlineImages} onChange={setTerminalInlineImages} />
+      <WallpaperSettings />
       <ToggleRow label={t("settings.appearance.pure_files_button")} hint={t("settings.appearance.pure_files_button.hint")} checked={showPureModeFilesButton} onChange={setShowPureModeFilesButton} />
       <div style={{ marginTop: 24 }}>
         <div style={SECTION_LABEL}>{t("settings.appearance.external_editor")}</div>

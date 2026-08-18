@@ -13,6 +13,7 @@ const MAX_WEBGL_CONTEXTS = 8;
 interface ContextEntry {
   addon: WebglAddon;
   term: Terminal;
+  transparent: boolean;
 }
 
 const contextMap = new Map<string, ContextEntry>();
@@ -72,6 +73,7 @@ export function useTerminalWebgl(
   termReady: boolean,
   fitRef?: RefObject<FitAddon | null>,
   ptyRef?: RefObject<PtySession | null>,
+  allowTransparency = false,
 ) {
   useEffect(() => {
     if (!TERMINAL_BENCHMARK_MODE) return;
@@ -88,7 +90,7 @@ export function useTerminalWebgl(
 
     // Reuse existing context for this session (e.g. after tab switch back).
     const existing = contextMap.get(sessionId);
-    if (existing && existing.term === term) {
+    if (existing && existing.term === term && (!allowTransparency || existing.transparent)) {
       webglRef.current = existing.addon;
       touchLRU(sessionId);
       return;
@@ -116,7 +118,7 @@ export function useTerminalWebgl(
       });
       term.loadAddon(webgl);
       webglRef.current = webgl;
-      contextMap.set(sessionId, { addon: webgl, term });
+      contextMap.set(sessionId, { addon: webgl, term, transparent: allowTransparency });
       touchLRU(sessionId);
       evictIfNeeded();
       // WebGL replaces the renderer and changes cell metrics. The init path
@@ -134,7 +136,7 @@ export function useTerminalWebgl(
       console.debug("[useTerminalWebgl] WebGL addon init failed, falling back to DOM renderer", e);
       webglRef.current = null;
     }
-  }, [active, sessionId, termRef, webglRef, termReady, fitRef, ptyRef]);
+  }, [active, allowTransparency, sessionId, termRef, webglRef, termReady, fitRef, ptyRef]);
 
   // Release on unmount. Inactive terminals keep their context for fast
   // tab-switching; LRU eviction handles the cap.

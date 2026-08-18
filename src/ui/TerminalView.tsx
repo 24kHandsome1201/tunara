@@ -45,6 +45,7 @@ import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
+import { usePrefersReducedTransparency } from "./usePrefersReducedTransparency";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
 import { allocateTerminalInstanceEpoch, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
@@ -99,10 +100,13 @@ function TerminalViewImpl({
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const screenReaderMode = useUIStore((s) => s.terminalScreenReaderMode); const terminalTheme = useUIStore((s) => s.terminalTheme); const accent = useUIStore((s) => s.accent);
+  const wallpaperEnabled = useUIStore((s) => s.terminalWallpaperEnabled);
+  const reducedTransparency = usePrefersReducedTransparency();
+  const wallpaperActive = wallpaperEnabled && !reducedTransparency;
   useTerminalRuntimeSync({
     sessionId, active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, terminalTheme, accent,
   });
-  useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef);
+  useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef, wallpaperActive);
   useEffect(() => {
     const pty = ptyRef.current;
     if (!pendingInput || !pty) return;
@@ -133,6 +137,7 @@ function TerminalViewImpl({
         cursorStyle,
         screenReaderMode,
         atlasIsolationKey: sessionId,
+        allowTransparency: wallpaperActive,
         linkHandler: createTerminalHyperlinkHandler(openUrl, linkInputRef.current.shouldActivate),
       });
       termRef.current = term;
@@ -160,6 +165,7 @@ function TerminalViewImpl({
       // WebGL renderer is managed by useTerminalWebgl (LRU context pool).
       // Inline images (SIXEL + iTerm IIP), loaded after WebGL so it adopts the
       // active renderer. Opt-out via Settings; takes effect on the next terminal.
+      // Wallpaper keeps these canvases opaque so plots sit on top of the fog.
       if (useUIStore.getState().terminalInlineImages) {
         cleanups.push(registerTerminalImage(term));
       }

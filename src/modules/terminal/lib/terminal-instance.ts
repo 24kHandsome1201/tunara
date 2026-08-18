@@ -18,6 +18,7 @@ interface TerminalInstanceOptions {
   screenReaderMode: boolean;
   atlasIsolationKey?: string;
   linkHandler?: ILinkHandler | null;
+  allowTransparency?: boolean;
 }
 
 export function createTerminalInstance({
@@ -33,6 +34,7 @@ export function createTerminalInstance({
   screenReaderMode,
   atlasIsolationKey,
   linkHandler,
+  allowTransparency = false,
 }: TerminalInstanceOptions): Terminal {
   return new Terminal({
     fontFamily: withAtlasIsolationFontFamily(
@@ -52,6 +54,7 @@ export function createTerminalInstance({
     // when there's no existing selection, so the context-menu Copy targets it.
     rightClickSelectsWord: true,
     allowProposedApi: true,
+    allowTransparency,
     linkHandler,
   });
 }

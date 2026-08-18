@@ -1551,7 +1551,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
   assert.match(terminal, /atlasIsolationKey: sessionId/);
-  assert.match(terminal, /useTerminalWebgl\(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef\)/);
+  assert.match(terminal, /useTerminalWebgl\(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef, wallpaperActive\)/);
   assert.match(terminalInstance, /withAtlasIsolationFontFamily/);
   assert.match(terminalRuntimeSync, /withAtlasIsolationFontFamily/);
   assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl, linkInputRef\.current\.shouldActivate\)/);
@@ -1745,7 +1745,9 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // restore. 580→625 covers input ownership plus binding-aware terminal
   // actions; their state machines remain extracted into terminal lib modules.
   // 625→630 covers the OSC 133 seen-marker used by the Overview hint.
-  assert.ok(terminal.split("\n").length < 630);
+  // 630→640 covers optional terminal wallpaper (allowTransparency + reduced-
+  // transparency gate); the layer itself lives in TerminalWallpaper.tsx.
+  assert.ok(terminal.split("\n").length < 640);
   // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
   assert.ok(sidebar.split("\n").length < 430);
 });

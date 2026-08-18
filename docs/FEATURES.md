@@ -58,6 +58,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 右键与复制 | 智能/菜单/禁用三档；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
 | 会话恢复 | serialize 快照 + 安全历史 | [`terminal-snapshot.ts`](../src/modules/terminal/lib/terminal-snapshot.ts) |
 | OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 9 / 99 / 777 通知、OSC 9;4 进度、OSC 52 剪贴板 | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
+| 可选终端背景 | 默认关。终端列纹理/本机图片 + 可调模糊与遮罩；外壳仍是实色。关掉即恢复当前主题画布 | [`TERMINAL_WALLPAPER.md`](./TERMINAL_WALLPAPER.md) · [`terminal-wallpaper.ts`](../src/modules/terminal/lib/terminal-wallpaper.ts) |
 
 分栏默认快捷键：⌘D 水平、⌘⇧D 垂直；焦点按几何方向 ⌘[ / ⌘] / ⌘⇧[ / ⌘⇧]。
 
@@ -183,7 +184,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | 页签 | 内容 |
 |------|------|
 | Appearance | 统一界面+终端配色（9 套）、8 色 accent |
-| Terminal | 字体、光标、scrollback、行内图、右键行为、外部编辑器 |
+| Terminal | 字体、光标、scrollback、行内图、可选终端背景、右键行为、外部编辑器 |
 | Accessibility | 读屏模式；macOS 可跳转系统隐私设置 |
 | Shortcuts | 可配置快捷键；终端 Copy / Safe Paste / 菜单绑定带风险提示 |
 | Workflows | 用户命令模板；可选 starter（status / 测试 / TODO / 大文件 / 端口） |

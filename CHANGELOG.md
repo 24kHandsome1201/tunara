@@ -13,6 +13,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 ### 产品与体验
 - SSH 文件面板把「浏览根」和「当前位置」拆开：目录树与面包屑始终从远端 `/` 往下走，主目录和终端 cwd 只是起点/快捷位置，不再把 `/` 嵌在 `/` 下面。
 - 远端非 Git 目录不再刷 `RemoteGit` 警告；确认过的仓库才会继续做 status/workspace 探测，debug 日志只保留脱敏后的 git 类别。
+- 设置 → 终端可选用纹理或本机图片作为终端列背景，并调节模糊与遮罩。默认关闭，外壳仍是实色；关掉即恢复当前主题画布。
 
 ## [2.0.0] - 2026-08-16
 

@@ -4,11 +4,13 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { useUIStore, type CursorStyle } from "@/state/ui";
 import type { TerminalThemeName, ThemeType } from "./types";
-import { getTerminalTheme } from "@/styles/terminalTheme";
+import { getTerminalTheme, isTerminalThemeDark } from "@/styles/terminalTheme";
+import { applyWallpaperToTerminalTheme, resolveWallpaperLayer } from "@/modules/terminal/lib/terminal-wallpaper";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 import { issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
+import { usePrefersReducedTransparency } from "./usePrefersReducedTransparency";
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
 
@@ -48,6 +50,11 @@ export function useTerminalRuntimeSync({
   accent,
 }: TerminalRuntimeSyncOptions) {
   const presentationMode = useUIStore((s) => s.presentationMode);
+  const wallpaperEnabled = useUIStore((s) => s.terminalWallpaperEnabled);
+  const wallpaperSource = useUIStore((s) => s.terminalWallpaperSource);
+  const wallpaperBlur = useUIStore((s) => s.terminalWallpaperBlur);
+  const wallpaperVeil = useUIStore((s) => s.terminalWallpaperVeil);
+  const reducedTransparency = usePrefersReducedTransparency();
 
   useEffect(() => {
     if (!active) return;
@@ -84,7 +91,19 @@ export function useTerminalRuntimeSync({
     term.options.cursorStyle = cursorStyle;
     term.options.cursorBlink = cursorBlink;
     term.options.screenReaderMode = screenReaderMode;
-    term.options.theme = getTerminalTheme(theme, terminalTheme, accent);
+    const palette = getTerminalTheme(theme, terminalTheme, accent);
+    const wallpaper = resolveWallpaperLayer({
+      enabled: wallpaperEnabled,
+      source: wallpaperSource,
+      blur: wallpaperBlur,
+      veil: wallpaperVeil,
+      themeBackground: palette.background,
+      themeForeground: palette.foreground,
+      isDarkTheme: isTerminalThemeDark(terminalTheme, theme),
+      reducedTransparency,
+    });
+    if (wallpaper.active) term.options.allowTransparency = true;
+    term.options.theme = applyWallpaperToTerminalTheme(palette, wallpaper);
     try {
       fit?.fit();
       if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows).catch(() => {});
@@ -104,5 +123,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, termRef, terminalTheme, theme]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, reducedTransparency, screenReaderMode, scrollback, sessionId, termRef, terminalTheme, theme, wallpaperBlur, wallpaperEnabled, wallpaperSource, wallpaperVeil]);
 }
