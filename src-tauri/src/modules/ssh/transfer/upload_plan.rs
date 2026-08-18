@@ -1548,8 +1548,19 @@ mod tests {
             .is_ok());
     }
 
+    fn attrs(permissions: Option<u32>) -> FileAttributes {
+        FileAttributes {
+            permissions,
+            ..FileAttributes::empty()
+        }
+    }
+
     #[test]
     fn explicit_symlink_hint_is_never_a_file_or_directory_conflict() {
+        assert_eq!(
+            hinted_kind(&attrs(Some(super::super::S_IFLNK | 0o777))),
+            Some(RemotePathKindV1::Symlink)
+        );
         assert_eq!(
             classify_present(UploadItemKindV1::File, RemotePathKindV1::Symlink),
             UploadDestinationStateV1::BlockingNonDirectory
@@ -1558,5 +1569,15 @@ mod tests {
             classify_present(UploadItemKindV1::Dir, RemotePathKindV1::Symlink),
             UploadDestinationStateV1::BlockingNonDirectory
         );
+        assert_eq!(
+            hinted_kind(&attrs(Some(super::super::S_IFREG | 0o644))),
+            Some(RemotePathKindV1::File)
+        );
+        assert_eq!(
+            hinted_kind(&attrs(Some(super::super::S_IFDIR | 0o755))),
+            Some(RemotePathKindV1::Directory)
+        );
+        assert_eq!(hinted_kind(&attrs(None)), None);
+        assert_eq!(hinted_kind(&attrs(Some(0))), None);
     }
 }

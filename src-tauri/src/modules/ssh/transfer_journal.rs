@@ -507,6 +507,8 @@ fn securely_delete_local_partial(record: &TransferJournalRecord) -> Result<(), S
             std::io::Error::last_os_error()
         ));
     }
+    // Local `stat.st_mode` is `mode_t`; keep both sides as libc types.
+    // Remote SFTP attributes are `u32` and must not use these constants.
     if stat.st_dev as u64 != opened.dev()
         || stat.st_ino as u64 != opened.ino()
         || stat.st_size as u64 != opened.len()

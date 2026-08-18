@@ -660,17 +660,21 @@ mod tests {
         assert_eq!(hinted_kind(Some(0)), None);
         assert_eq!(hinted_kind(Some(0o150000)), None);
         assert_eq!(
-            hinted_kind(Some(super::super::unix_mode_u32(libc::S_IFREG) | 0o644)),
+            hinted_kind(Some(super::super::S_IFREG | 0o644)),
             Some(RemotePathKindV1::File)
+        );
+        assert_eq!(
+            hinted_kind(Some(super::super::S_IFDIR | 0o755)),
+            Some(RemotePathKindV1::Directory)
         );
         // A regular hint can never override an authoritative symlink LSTAT.
         let authoritative = identity(RemotePathKindV1::Symlink, Some(1), 1);
         assert_ne!(
-            hinted_kind(Some(super::super::unix_mode_u32(libc::S_IFREG))),
+            hinted_kind(Some(super::super::S_IFREG)),
             Some(authoritative.kind)
         );
         assert_eq!(
-            hinted_kind(Some(super::super::unix_mode_u32(libc::S_IFLNK))),
+            hinted_kind(Some(super::super::S_IFLNK)),
             Some(RemotePathKindV1::Symlink)
         );
     }
