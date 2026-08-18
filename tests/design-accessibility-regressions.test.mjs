@@ -156,3 +156,22 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
   assert.match(shared, /export function UploadFolderIcon/);
   assert.match(shared, /export function DownloadIcon/);
 });
+
+test("Files keeps aligned action-aware columns and a non-wrapping compact SSH toolbar", () => {
+  const styles = read("src/styles/globals.css");
+  const explorer = read("src/ui/FileExplorer.tsx");
+  const chrome = read("src/ui/file-explorer/chrome.tsx");
+
+  assert.match(styles, /\.file-explorer \{ container: file-explorer \/ inline-size; \}/);
+  assert.match(styles, /\.explorer-listing-grid \{[\s\S]*?grid-template-columns: var\(--explorer-listing-columns\)/);
+  assert.match(styles, /\.explorer-listing-grid\[data-selectable="true"\] \{[\s\S]*?20px minmax\(0, 1fr\) minmax\(42px, 92px\) 28px/);
+  assert.match(styles, /@container file-explorer \(max-width: 280px\) \{[\s\S]*?\.explorer-listing-modified \{ display: none; \}[\s\S]*?20px minmax\(0, 1fr\) 28px/);
+  assert.equal((explorer.match(/explorer-listing-grid/g) ?? []).length, 2);
+  assert.match(explorer, /className="hover-bg explorer-listing-grid explorer-listing-row"/);
+  assert.match(explorer, /className="explorer-listing-grid explorer-listing-header"/);
+  assert.match(styles, /\.explorer-tools \{ justify-content: space-between; flex-wrap: nowrap; \}/);
+  assert.match(styles, /\.explorer-transfer-entry \{[\s\S]*?width: 48px/);
+  assert.match(chrome, /className="explorer-transfer-count"/);
+  assert.match(chrome, /role="group" aria-label=\{t\("explorer\.chrome\.places"\)\}/);
+  assert.match(chrome, /role="group" aria-label=\{t\("explorer\.chrome\.transfers"\)\}/);
+});

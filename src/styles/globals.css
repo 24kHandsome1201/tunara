@@ -563,6 +563,7 @@ select.ui-control {
 /* Files chrome is three stacked bands: where you are, what to find, then
    remote places/transfers. Navigation never shares a wrapping row with
    filters or SSH actions, so the path stays readable in a 320px inspector. */
+.file-explorer { container: file-explorer / inline-size; }
 .explorer-nav,
 .explorer-search-row,
 .explorer-tools {
@@ -675,12 +676,17 @@ select.ui-control {
   background: var(--c-accent-bg-light);
   color: var(--c-accent);
 }
-.explorer-tools { justify-content: space-between; flex-wrap: wrap; }
+.explorer-tools { justify-content: space-between; flex-wrap: nowrap; }
 .explorer-places,
 .explorer-transfers {
   display: flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
+  padding: 1px 2px;
+  border: 1px solid var(--c-border-1);
+  border-radius: var(--r-input);
+  background: var(--c-bg-2);
 }
 .explorer-transfers { margin-left: auto; }
 .explorer-download-armed,
@@ -695,11 +701,12 @@ select.ui-control {
 }
 .explorer-download-count { font-size: var(--fs-meta); font-weight: 650; }
 .explorer-transfer-entry {
-  min-width: var(--h-titlebar-control);
+  width: 48px;
   height: var(--h-titlebar-control);
-  padding: 0 6px;
+  padding: 0 5px;
+  gap: 4px;
   border-radius: var(--r-btn);
-  border: 1px solid var(--c-accent-border);
+  border: 0;
   background: var(--c-accent-bg-soft);
   color: var(--c-accent);
   cursor: pointer;
@@ -710,6 +717,86 @@ select.ui-control {
   font-weight: 650;
   flex-shrink: 0;
   white-space: nowrap;
+}
+.explorer-transfer-count {
+  min-width: 16px;
+  max-width: 22px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: var(--r-pill);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--c-accent);
+  color: var(--c-bg-white);
+  font: 700 var(--fs-meta)/16px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.explorer-listing-grid {
+  --explorer-listing-columns: minmax(0, 1fr) minmax(42px, 92px) 28px;
+  display: grid;
+  grid-template-columns: var(--explorer-listing-columns);
+  column-gap: 4px;
+  align-items: center;
+  text-align: left;
+}
+.explorer-listing-grid[data-selectable="true"] {
+  --explorer-listing-columns: 20px minmax(0, 1fr) minmax(42px, 92px) 28px;
+}
+.explorer-listing-header {
+  height: 24px;
+  padding: 0 var(--sp-1) 0 var(--sp-2);
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--c-border-1);
+}
+.explorer-listing-row {
+  min-height: 30px;
+  border-radius: var(--r-btn);
+}
+.explorer-listing-name {
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.explorer-listing-modified { min-width: 0; }
+.explorer-listing-row .explorer-listing-modified {
+  color: var(--c-text-5);
+  font: var(--fs-meta) var(--font-mono);
+  text-align: right;
+  pointer-events: none;
+}
+button.explorer-listing-action {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--c-text-4);
+  cursor: pointer;
+}
+.explorer-state-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+}
+.explorer-state-shell .panel-state { width: min(100%, 280px); }
+@container file-explorer (max-width: 340px) {
+  .explorer-place-secondary { display: none; }
+}
+@container file-explorer (max-width: 280px) {
+  .explorer-place-shortcut,
+  .explorer-listing-modified { display: none; }
+  .explorer-listing-grid {
+    --explorer-listing-columns: minmax(0, 1fr) 28px;
+  }
+  .explorer-listing-grid[data-selectable="true"] {
+    --explorer-listing-columns: 20px minmax(0, 1fr) 28px;
+  }
 }
 .explorer-tree-node {
   overflow: visible;

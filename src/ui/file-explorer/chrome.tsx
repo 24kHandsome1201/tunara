@@ -11,18 +11,20 @@ function ExplorerChipButton({
   label,
   title,
   onClick,
+  className,
   children,
 }: {
   pressed?: boolean;
   label: string;
   title?: string;
   onClick: () => void;
+  className?: string;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
-      className="hover-bg explorer-chip-button"
+      className={["hover-bg", "explorer-chip-button", className].filter(Boolean).join(" ")}
       aria-pressed={pressed}
       aria-label={label}
       title={title ?? label}
@@ -225,7 +227,6 @@ export function ExplorerRemoteTools({
 }) {
   const [placesMenu, setPlacesMenu] = useState<{ items: MenuEntry[]; position: { x: number; y: number } } | null>(null);
   const hasHome = Boolean(homeDir && homeDir !== listingRoot);
-  const hasSavedPlaces = favoritePaths.length > 0 || recentPaths.length > 0;
 
   const openPlaces = (event: { currentTarget: HTMLElement }) => {
     const items: MenuEntry[] = [];
@@ -233,6 +234,20 @@ export function ExplorerRemoteTools({
     items.push({ id: "loc:root", label: t("explorer.go_root"), icon: "folder", action: () => onJumpToPath(listingRoot) });
     if (hasHome && homeDir) {
       items.push({ id: "loc:home", label: t("explorer.go_home"), icon: "folder", action: () => onJumpToPath(homeDir) });
+    }
+    if (showPlaces) {
+      items.push(null);
+      items.push({
+        id: "action:follow-cwd",
+        label: t(followTerminalCwd ? "explorer.follow_cwd_disable" : "explorer.follow_cwd"),
+        action: onToggleFollowCwd,
+      });
+      items.push({
+        id: "action:favorite",
+        label: t(isFavorite ? "explorer.favorite_remove" : "explorer.favorite_add"),
+        icon: "pin",
+        action: onToggleFavorite,
+      });
     }
     if (favoritePaths.length > 0) {
       items.push({ type: "heading", label: t("explorer.paths_favorites") });
@@ -252,11 +267,12 @@ export function ExplorerRemoteTools({
 
   return (
     <div className="explorer-tools" role="toolbar" aria-label={t("explorer.chrome.tools")}>
-      <div className="explorer-places">
+      <div className="explorer-places" role="group" aria-label={t("explorer.chrome.places")}>
         <ExplorerChipButton
           pressed={currentPath === listingRoot}
           label={t("explorer.go_root")}
           onClick={() => onJumpToPath(listingRoot)}
+          className="explorer-place-shortcut"
         >
           /
         </ExplorerChipButton>
@@ -265,6 +281,7 @@ export function ExplorerRemoteTools({
             pressed={currentPath === homeDir}
             label={t("explorer.go_home")}
             onClick={() => onJumpToPath(homeDir)}
+            className="explorer-place-shortcut"
           >
             ~
           </ExplorerChipButton>
@@ -276,6 +293,7 @@ export function ExplorerRemoteTools({
               label={t("explorer.follow_cwd")}
               title={t(followTerminalCwd ? "explorer.follow_cwd_on" : "explorer.follow_cwd")}
               onClick={onToggleFollowCwd}
+              className="explorer-place-secondary"
             >
               cwd
             </ExplorerChipButton>
@@ -284,23 +302,24 @@ export function ExplorerRemoteTools({
               aria-label={isFavorite ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
               data-active={isFavorite ? "true" : "false"}
               onClick={onToggleFavorite}
+              className="explorer-place-secondary"
               style={isFavorite ? { color: "var(--c-accent)" } : undefined}
             >
               ★
             </PanelIconButton>
-            <PanelIconButton
-              title={hasSavedPlaces ? t("explorer.paths") : t("explorer.paths_empty")}
-              aria-label={t("explorer.paths")}
-              aria-haspopup="menu"
-              aria-expanded={placesMenu !== null}
-              onClick={(event) => openPlaces(event)}
-            >
-              <PlacesIcon />
-            </PanelIconButton>
           </>
         )}
+        <PanelIconButton
+          title={t("explorer.paths")}
+          aria-label={t("explorer.paths")}
+          aria-haspopup="menu"
+          aria-expanded={placesMenu !== null}
+          onClick={(event) => openPlaces(event)}
+        >
+          <PlacesIcon />
+        </PanelIconButton>
       </div>
-      <div className="explorer-transfers">
+      <div className="explorer-transfers" role="group" aria-label={t("explorer.chrome.transfers")}>
         <PanelIconButton
           onClick={onUploadFile}
           disabled={remoteDisconnected || uploadBusy}
@@ -342,7 +361,15 @@ export function ExplorerRemoteTools({
             title={t("explorer.transfers_open")}
             aria-label={t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
           >
-            {t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M7 7h11" />
+              <path d="m15 4 3 3-3 3" />
+              <path d="M17 17H6" />
+              <path d="m9 14-3 3 3 3" />
+            </svg>
+            <span aria-hidden="true" className="explorer-transfer-count">
+              {activeTransferNotice > 99 ? "99+" : activeTransferNotice}
+            </span>
           </button>
         )}
       </div>

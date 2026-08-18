@@ -6,7 +6,7 @@
 - IPC、传输与托管 state：[ARCHITECTURE.md](./ARCHITECTURE.md)
 - 已落地能力叙事：[ROADMAP.md](./ROADMAP.md)
 
-当前发布版本见根目录 `package.json`（撰写时为 2.0.0）。
+当前发布版本见根目录 `package.json`（撰写时为 2.0.1）。
 
 ## 产品是什么
 

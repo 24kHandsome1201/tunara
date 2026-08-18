@@ -210,11 +210,65 @@ describe("FileExplorer directory navigation", () => {
     expect(within(search).queryByRole("button", { name: "Refresh file list" })).toBeNull();
 
     const tools = screen.getByRole("toolbar", { name: "Remote file tools" });
+    expect(within(tools).getByRole("group", { name: "Remote locations" })).toBeTruthy();
+    expect(within(tools).getByRole("group", { name: "File transfers" })).toBeTruthy();
     expect(within(tools).getByRole("button", { name: "Follow terminal directory" })).toBeTruthy();
     expect(within(tools).getByRole("button", { name: "Favorite this directory" })).toBeTruthy();
     expect(within(tools).getByRole("button", { name: "Upload file…" })).toBeTruthy();
     expect(within(tools).queryByRole("button", { name: "Show dotfiles" })).toBeNull();
     expect(within(tools).queryByRole("button", { name: "Go to parent" })).toBeNull();
+  });
+
+  test("uses the same four-track listing contract for an SSH header and row", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_home") return "/home/deploy";
+      if (command === "ssh_fs_read_dir") return [{ name: "report.txt", kind: "file", size: 7, mtime: 1_000 }];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" />);
+    const item = await screen.findByRole("treeitem", { name: "report.txt" });
+    const header = screen.getByRole("button", { name: "Name, ascending" }).closest<HTMLElement>(".explorer-listing-header");
+    const row = item.querySelector<HTMLElement>(":scope > .explorer-listing-row");
+
+    expect(header?.classList.contains("explorer-listing-grid")).toBe(true);
+    expect(row?.classList.contains("explorer-listing-grid")).toBe(true);
+    expect(header?.dataset.selectable).toBe("true");
+    expect(row?.dataset.selectable).toBe("true");
+    expect(header?.children).toHaveLength(4);
+    expect(row?.children).toHaveLength(4);
+    expect(header?.querySelector(".explorer-listing-modified")).toBeTruthy();
+    expect(row?.querySelector(".explorer-listing-modified")).toBeTruthy();
+    expect(header?.querySelector(".explorer-listing-action")).toBeTruthy();
+    expect(row?.querySelector("button.explorer-listing-action")).toBeTruthy();
+  });
+
+  test("shows active transfers as a compact icon and numeric badge", async () => {
+    useTransferStore.getState().replaceItemsForTest([{
+      transferId: "active-1",
+      binding: { logicalSessionId: "remote", physicalPtyId: 40, transportGeneration: "g1" },
+      direction: "upload",
+      source: "/tmp/report.txt",
+      destination: "/srv/app/report.txt",
+      conflict: "replace",
+      attempt: 1,
+      status: "queued",
+      cancelRequested: false,
+    }]);
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" />);
+    await screen.findByText("Directory is empty");
+    const entry = screen.getByRole("button", { name: "1 in progress" });
+    expect(entry.querySelector("svg")).toBeTruthy();
+    expect(entry.querySelector(".explorer-transfer-count")?.textContent).toBe("1");
+    expect(entry.textContent).toBe("1");
+    fireEvent.click(entry);
+    expect(useUIStore.getState().inspectorTab).toBe("transfers");
+    useTransferStore.getState().replaceItemsForTest([]);
   });
 
   test("keeps local files to directory and search bands", async () => {
@@ -939,6 +993,40 @@ describe("FileExplorer workspace files", () => {
     expect(await screen.findByText("SSH disconnected · showing a read-only cached tree")).toBeTruthy();
     expect(screen.getByRole("treeitem", { name: /^cached\.txt/ })).toBeTruthy();
     expect(calls).not.toContain("fs_read_dir");
+  });
+
+  test("shows an explicit disconnected state instead of loading when no SSH cache exists", async () => {
+    const calls: string[] = [];
+    mockIPC((command) => {
+      calls.push(command);
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="deploy@example" remote />);
+
+    expect(await screen.findByText("SSH disconnected · no cached files available")).toBeTruthy();
+    expect(screen.getByText("Remote files are unavailable")).toBeTruthy();
+    expect(screen.getByText("Reconnect SSH to load this directory.")).toBeTruthy();
+    expect(screen.queryByText("Loading")).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  test("centers a directory error with an accessible retry action", async () => {
+    let attempts = 0;
+    mockIPC((command) => {
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      attempts += 1;
+      if (attempts === 1) throw new Error("temporary failure");
+      return [];
+    });
+
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.closest(".explorer-state-shell")).toBeTruthy();
+    expect(within(alert).getByText("Cannot read directory")).toBeTruthy();
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Directory is empty")).toBeTruthy();
+    expect(attempts).toBe(2);
   });
 
   test("sorts each file group by name or modified time in both directions", async () => {

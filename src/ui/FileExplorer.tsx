@@ -16,7 +16,7 @@ import {
   sshReadDir,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
-import { PanelEmptyState, PanelLoadingState } from "./shared";
+import { PanelEmptyState, PanelLoadingState, PanelState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -203,6 +203,7 @@ export function FileExplorer({
   const [homeDir, setHomeDir] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState(isRemote ? "" : rootDir);
   const [entries, setEntries] = useState<DirEntry[]>([]);
+  const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
@@ -461,13 +462,18 @@ export function FileExplorer({
     setNavDir(null);
     search.resetSearch();
     if (isRemote) {
-      if (remotePtyId === undefined) return;
       const listingRoot = remoteExplorerListingRoot();
-      setHomeDir(null);
       setBaseDir(listingRoot);
       const knownStart = knownRemoteExplorerRoot(rootDir);
       if (knownStart) setCurrentPath((current) => current || knownStart);
-      else setLoading(true);
+      if (remoteDisconnected) {
+        setCurrentPath((current) => current || knownStart || listingRoot);
+        setLoading(false);
+        return;
+      }
+      if (remotePtyId === undefined) return;
+      setHomeDir(null);
+      if (!knownStart) setLoading(true);
       let cancelled = false;
       sshHome(remotePtyId)
         .then((home) => {
@@ -498,7 +504,7 @@ export function FileExplorer({
     // Follow-cwd applies later OSC 7 updates. Including rootDir here would
     // clear search and reset local/remote explorers on every shell cd.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
-  }, [isRemote, remotePtyId, sessionId]);
+  }, [isRemote, remotePtyId, remoteDisconnected, sessionId]);
 
   useEffect(() => {
     if (!isRemote || !followTerminalCwd) return;
@@ -530,6 +536,7 @@ export function FileExplorer({
       .then((e) => {
         if (!cancelled) {
           setEntries(e);
+          setCachedListingKey(`${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`);
           resetExpansion();
           setLoading(false);
         }
@@ -537,6 +544,7 @@ export function FileExplorer({
       .catch(() => {
         if (!cancelled) {
           setEntries([]);
+          setCachedListingKey(null);
           setError(true);
           setLoading(false);
         }
@@ -555,6 +563,7 @@ export function FileExplorer({
     : [], [binding, visibleTreeNodes, downloadLimits]);
 
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
+  const hasCachedRemoteListing = remoteDisconnected && cachedListingKey === `remote\0${sessionId}\0${currentPath}`;
   const listingNodeCount = visibleTreeNodes.length;
   const listingRowCount = visibleTreeRows.length;
   useLayoutEffect(() => {
@@ -1046,18 +1055,12 @@ export function FileExplorer({
         }}
       >
         <div
-          className="hover-bg"
+          className="hover-bg explorer-listing-grid explorer-listing-row"
+          data-selectable={binding ? "true" : undefined}
           style={{
-            minHeight: 30,
             padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`,
-            borderRadius: "var(--r-btn)",
             border: dropHighlightPath === node.path ? "1px dashed var(--c-accent)" : "none",
             background: dropHighlightPath === node.path ? "color-mix(in srgb, var(--c-accent) 12%, transparent)" : batchSelected || active ? "var(--c-accent-bg-light)" : "transparent",
-            display: "grid",
-            gridTemplateColumns: binding ? "20px minmax(0, 1fr) minmax(42px, 92px) 28px" : "minmax(0, 1fr) minmax(42px, 92px) 28px",
-            columnGap: 4,
-            alignItems: "center",
-            textAlign: "left",
           }}
         >
         {binding && (
@@ -1074,7 +1077,7 @@ export function FileExplorer({
             style={{ margin: 0, visibility: node.entry.kind === "file" ? "visible" : "hidden" }}
           />
         )}
-        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, height: 30 }}>
+        <span className="explorer-listing-name">
           {isDir ? (
             <button
               type="button"
@@ -1096,11 +1099,11 @@ export function FileExplorer({
           )}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)", pointerEvents: "none" }}>{node.entry.name}</span>
         </span>
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", textAlign: "right", pointerEvents: "none" }}>{formatModifiedTime(node.entry.mtime)}</span>
+        <span className="explorer-listing-modified">{formatModifiedTime(node.entry.mtime)}</span>
         <button
           type="button"
           tabIndex={-1}
-          className="hover-bg"
+          className="hover-bg explorer-listing-action"
           aria-label={`${t("common.more_actions")}: ${node.entry.name}`}
           title={t("common.more_actions")}
           onClick={(event) => {
@@ -1109,7 +1112,6 @@ export function FileExplorer({
             const rect = event.currentTarget.getBoundingClientRect();
             openMenu(rect.right, rect.bottom, event.currentTarget);
           }}
-          style={{ width: 26, height: 26, padding: 0, border: 0, borderRadius: "var(--r-btn)", background: "transparent", color: "var(--c-text-4)", cursor: "pointer" }}
         >
           <span aria-hidden="true">⋯</span>
         </button>
@@ -1170,6 +1172,7 @@ export function FileExplorer({
   return (
     <div
       ref={explorerRef}
+      className="file-explorer"
       onDragEnter={(event) => { event.preventDefault(); if (binding) setDropActive(true); }}
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false); }}
@@ -1184,7 +1187,7 @@ export function FileExplorer({
       {dropMessage && <div role="status" aria-live="polite" className="sr-only">{dropMessage}</div>}
       {remoteDisconnected && (
         <div role="status" aria-live="polite" style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)" }}>
-          {t("explorer.remote_disconnected")}
+          {t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")}
         </div>
       )}
       <ExplorerNav
@@ -1385,15 +1388,36 @@ export function FileExplorer({
             </>
           )
           )
+        ) : remoteDisconnected && !hasCachedRemoteListing ? (
+          <div className="explorer-state-shell">
+            <PanelEmptyState
+              label={t("explorer.remote_unavailable")}
+              sublabel={t("explorer.remote_unavailable_hint")}
+              compact={false}
+            />
+          </div>
         ) : loading ? (
-          <PanelLoadingState label={t("explorer.loading")} />
+          <div className="explorer-state-shell"><PanelLoadingState label={t("explorer.loading")} /></div>
         ) : error ? (
-          <PanelEmptyState label={t("explorer.read_dir_failed")} sublabel={currentPath} />
+          <div className="explorer-state-shell">
+            <PanelState state={{
+              kind: "error",
+              label: t("explorer.read_dir_failed"),
+              detail: currentPath,
+              retryLabel: t("explorer.search_retry"),
+              onRetry: refresh,
+            }} />
+          </div>
         ) : entries.length === 0 ? (
-          <PanelEmptyState icon={folderEmptyIcon} label={t("explorer.dir_empty")} />
+          <div className="explorer-state-shell">
+            <PanelEmptyState icon={folderEmptyIcon} label={t("explorer.dir_empty")} compact={false} />
+          </div>
         ) : (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: binding ? "20px minmax(0, 1fr) 92px" : "minmax(0, 1fr) 92px", columnGap: 6, alignItems: "center", height: 24, padding: "0 var(--sp-2)", marginBottom: 3, borderBottom: "1px solid var(--c-border-1)" }}>
+            <div
+              className="explorer-listing-grid explorer-listing-header"
+              data-selectable={binding ? "true" : undefined}
+            >
               {binding && (
                 <input
                   type="checkbox"
@@ -1410,7 +1434,7 @@ export function FileExplorer({
                 const label = t(key === "name" ? "explorer.column.name" : "explorer.column.modified");
                 const directionLabel = t(sort.direction === "asc" ? "explorer.sort.ascending" : "explorer.sort.descending");
                 return (
-                  <div key={key}>
+                  <div key={key} className={key === "modified" ? "explorer-listing-modified" : undefined}>
                     <button
                       type="button"
                       onClick={() => changeSort(key)}
@@ -1427,6 +1451,7 @@ export function FileExplorer({
                   </div>
                 );
               })}
+              <span className="explorer-listing-action" aria-hidden="true" />
             </div>
             <div
               role="tree"
