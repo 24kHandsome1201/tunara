@@ -104,7 +104,7 @@ function TerminalViewImpl({
   const reducedTransparency = usePrefersReducedTransparency();
   const wallpaperActive = wallpaperEnabled && !reducedTransparency;
   useTerminalRuntimeSync({
-    sessionId, active, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, terminalTheme, accent,
+    sessionId, active, termReady: ptyReady, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, terminalTheme, accent, allowTransparency: wallpaperActive,
   });
   useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef, wallpaperActive);
   useEffect(() => {

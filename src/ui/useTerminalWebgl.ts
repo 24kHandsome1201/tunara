@@ -14,6 +14,7 @@ interface ContextEntry {
   addon: WebglAddon;
   term: Terminal;
   transparent: boolean;
+  rendererRef: RefObject<TerminalWebglRenderer | null>;
 }
 
 const contextMap = new Map<string, ContextEntry>();
@@ -56,6 +57,7 @@ function evictIfNeeded() {
     const entry = contextMap.get(evictId);
     if (entry) {
       try { entry.addon.dispose(); } catch (e) { console.debug("[useTerminalWebgl] dispose on LRU eviction failed", e); }
+      if (entry.rendererRef.current === entry.addon) entry.rendererRef.current = null;
       contextMap.delete(evictId);
     }
   }
@@ -86,21 +88,25 @@ export function useTerminalWebgl(
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
-    if (!active) return;
 
     // Reuse existing context for this session (e.g. after tab switch back).
     const existing = contextMap.get(sessionId);
-    if (existing && existing.term === term && (!allowTransparency || existing.transparent)) {
+    if (existing && existing.term === term && existing.transparent === allowTransparency) {
       webglRef.current = existing.addon;
-      touchLRU(sessionId);
+      if (active) touchLRU(sessionId);
       return;
     }
     if (existing) {
       try { existing.addon.dispose(); } catch (e) { console.debug("[useTerminalWebgl] dispose replaced renderer failed", e); }
+      if (existing.rendererRef.current === existing.addon) existing.rendererRef.current = null;
       contextMap.delete(sessionId);
       const index = lruOrder.indexOf(sessionId);
       if (index >= 0) lruOrder.splice(index, 1);
     }
+    // A transparency change invalidates cached renderers even for inactive
+    // panes. Leave those panes on DOM until activation instead of keeping a
+    // renderer whose alpha mode no longer matches terminal.options.
+    if (!active) return;
 
     // Create a new WebGL context.
     try {
@@ -118,7 +124,7 @@ export function useTerminalWebgl(
       });
       term.loadAddon(webgl);
       webglRef.current = webgl;
-      contextMap.set(sessionId, { addon: webgl, term, transparent: allowTransparency });
+      contextMap.set(sessionId, { addon: webgl, term, transparent: allowTransparency, rendererRef: webglRef });
       touchLRU(sessionId);
       evictIfNeeded();
       // WebGL replaces the renderer and changes cell metrics. The init path
@@ -145,6 +151,7 @@ export function useTerminalWebgl(
       const entry = contextMap.get(sessionId);
       if (entry) {
         try { entry.addon.dispose(); } catch (e) { console.debug("[useTerminalWebgl] dispose on unmount failed", e); }
+        if (entry.rendererRef.current === entry.addon) entry.rendererRef.current = null;
         contextMap.delete(sessionId);
         const idx = lruOrder.indexOf(sessionId);
         if (idx >= 0) lruOrder.splice(idx, 1);

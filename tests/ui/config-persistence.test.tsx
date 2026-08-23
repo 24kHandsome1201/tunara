@@ -1,5 +1,5 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
@@ -10,13 +10,14 @@ import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance
 import { registerTerminalAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { useTerminalRuntimeSync } from "@/ui/useTerminalRuntimeSync";
 
-function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light" }: { enabled: boolean; terminal: Terminal; theme?: "light" | "dark" }) {
+function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light", allowTransparency = false }: { enabled: boolean; terminal: Terminal; theme?: "light" | "dark"; allowTransparency?: boolean }) {
   const termRef = useRef<Terminal | null>(terminal);
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef(null);
   useTerminalRuntimeSync({
     sessionId: "screen-reader-runtime",
     active: true,
+    termReady: true,
     termRef,
     fitRef,
     ptyRef,
@@ -30,6 +31,7 @@ function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light" }: { en
     theme,
     terminalTheme: "default",
     accent: "#c2683c",
+    allowTransparency,
   });
   return null;
 }
@@ -313,6 +315,65 @@ test("runtime theme swaps repaint the current terminal frame", async () => {
   await waitFor(() => expect(terminal.options.theme?.background).toBe("#0f0b09"));
   expect(rebuild).toHaveBeenCalled();
   expect(refresh).toHaveBeenCalledWith(0, terminal.rows - 1);
+  unregisterRebuild();
+  terminal.dispose();
+});
+
+test("wallpaper transparency toggles restore the live terminal's opaque theme", async () => {
+  const terminal = createTerminalInstance({
+    fontSize: 14,
+    fontFamily: "JetBrains Mono",
+    nerdFontFallback: true,
+    scrollback: 2000,
+    theme: "light",
+    terminalTheme: "default",
+    accent: "#c2683c",
+    cursorBlink: true,
+    cursorStyle: "bar",
+    screenReaderMode: false,
+  });
+  const view = render(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} />);
+
+  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} allowTransparency />);
+  await waitFor(() => expect(terminal.options.allowTransparency).toBe(true));
+  expect(terminal.options.theme?.background).toBe("#00000000");
+
+  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} />);
+  await waitFor(() => expect(terminal.options.allowTransparency).toBe(false));
+  expect(terminal.options.theme?.background).toBe("#fffdfb");
+
+  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="dark" allowTransparency />);
+  await waitFor(() => expect(terminal.options.allowTransparency).toBe(true));
+  expect(terminal.options.theme?.background).toBe("#00000000");
+
+  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="dark" />);
+  await waitFor(() => expect(terminal.options.allowTransparency).toBe(false));
+  expect(terminal.options.theme?.background).toBe("#0f0b09");
+
+  terminal.dispose();
+});
+
+test("wallpaper blur and veil sliders do not churn xterm or its shared WebGL atlas", () => {
+  const terminal = createTerminalInstance({
+    fontSize: 14,
+    fontFamily: "JetBrains Mono",
+    nerdFontFallback: true,
+    scrollback: 2000,
+    theme: "light",
+    terminalTheme: "default",
+    accent: "#c2683c",
+    cursorBlink: true,
+    cursorStyle: "bar",
+    screenReaderMode: false,
+  });
+  const rebuild = vi.fn();
+  const unregisterRebuild = registerTerminalAtlasRebuilder(rebuild);
+  render(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} allowTransparency />);
+  rebuild.mockClear();
+
+  act(() => useUIStore.setState({ terminalWallpaperBlur: 31, terminalWallpaperVeil: 84 }));
+
+  expect(rebuild).not.toHaveBeenCalled();
   unregisterRebuild();
   terminal.dispose();
 });

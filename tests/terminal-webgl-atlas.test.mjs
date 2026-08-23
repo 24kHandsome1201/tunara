@@ -193,6 +193,19 @@ test("WebGL renderer swap refits the grid and resizes the PTY", async () => {
   assert.match(source, /ptyRef\?\.current\?\.resize\(term\.cols, term\.rows\)\?\.catch/);
 });
 
+test("WebGL cache reuse requires an exact transparency-mode match", async () => {
+  const source = await import("node:fs").then((fs) =>
+    fs.readFileSync(new URL("../src/ui/useTerminalWebgl.ts", import.meta.url), "utf8"),
+  );
+  assert.match(source, /existing\.transparent === allowTransparency/);
+  assert.doesNotMatch(source, /!allowTransparency \|\| existing\.transparent/);
+  assert.match(source, /if \(existing\.rendererRef\.current === existing\.addon\) existing\.rendererRef\.current = null/);
+  assert.ok(
+    source.indexOf("if (existing)") < source.indexOf("if (!active) return"),
+    "inactive panes must discard a renderer whose alpha mode became stale",
+  );
+});
+
 test("PTY resize is sent promptly after fit so TUI grids stay aligned", async () => {
   const ResizeObserverStub = class {
     constructor(cb) { ResizeObserverStub.lastCb = cb; }
