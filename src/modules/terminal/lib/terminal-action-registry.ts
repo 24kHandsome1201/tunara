@@ -120,11 +120,18 @@ function terminalKeyActionForEvent(event: KeyboardEvent): TerminalKeyResolution 
 }
 
 function consumeTerminalKeyEvent(event: KeyboardEvent): false {
-  // Returning false only stops xterm's own key processing; it does not cancel
-  // the browser default. Explicitly cancel so a Safe Paste shortcut cannot also
-  // emit a native paste event and write the clipboard twice.
   event.preventDefault();
   return false;
+}
+
+export function isNativeTerminalPasteShortcut(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey">,
+  macOS = isMac,
+): boolean {
+  if (event.key.toLowerCase() !== "v" || event.altKey) return false;
+  return macOS
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey;
 }
 
 /** Returns false when a terminal-scoped action consumed this xterm key event. */
@@ -134,6 +141,14 @@ export function handleTerminalInteractionKeyEvent(
   event: KeyboardEvent,
 ): boolean {
   if (event.type !== "keydown" || actions.get(sessionId)?.terminal !== terminal) return true;
+  if (isNativeTerminalPasteShortcut(event)) {
+    // Stop xterm from translating the keydown into PTY input, but deliberately
+    // do not preventDefault: Wry must create the trusted native `paste` event
+    // whose clipboardData is consumed by registerTerminalPasteProtection.
+    // This also leaves IME composition and key repeat under native event
+    // dispatch instead of initiating parallel clipboard IPC reads here.
+    return false;
+  }
   const action = terminalKeyActionForEvent(event);
   if (!action) return true;
   if (action === "conflict") return consumeTerminalKeyEvent(event);

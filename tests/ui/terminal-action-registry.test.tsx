@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import type { Terminal } from "@xterm/xterm";
-import { captureTerminalActionTarget, copyActiveTerminal, handleTerminalInteractionKeyEvent, openTerminalMenu, registerTerminalActions, registerTerminalMenuAction, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
+import { captureTerminalActionTarget, copyActiveTerminal, handleTerminalInteractionKeyEvent, isNativeTerminalPasteShortcut, openTerminalMenu, registerTerminalActions, registerTerminalMenuAction, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import {
   allocateTerminalInstanceEpoch,
   recordTerminalFocusIntent,
@@ -20,6 +20,7 @@ function fakeTerminal(selection = ""): Terminal {
     options: { disableStdin: false },
     modes: { bracketedPasteMode: false },
     getSelection: () => selection,
+    focus: vi.fn(),
     input: vi.fn(),
     paste: vi.fn(),
   } as unknown as Terminal;
@@ -134,6 +135,8 @@ function keyEvent(key: string, overrides: Partial<KeyboardEvent> = {}): Keyboard
     metaKey: false,
     altKey: false,
     shiftKey: false,
+    repeat: false,
+    isComposing: false,
     preventDefault: vi.fn(),
     ...overrides,
   } as KeyboardEvent;
@@ -169,17 +172,66 @@ test("Copy remains available for a read-only or exited active terminal", () => {
   dispose();
 });
 
-test("configured Safe Paste cancels native paste and uses the binding-aware registry once", async () => {
-  vi.mocked(readClipboardText).mockResolvedValue("echo safe");
+test("native paste shortcuts stop xterm without cancelling Wry's native paste event", () => {
   const terminal = fakeTerminal();
   const dispose = registerTarget(terminal);
 
-  const event = keyEvent("v", { ctrlKey: true, shiftKey: true });
+  for (const overrides of [
+    { ctrlKey: true },
+    { ctrlKey: true, shiftKey: true },
+    { ctrlKey: true, repeat: true },
+    { ctrlKey: true, isComposing: true },
+  ]) {
+    const event = keyEvent("v", overrides);
+    expect(handleTerminalInteractionKeyEvent("pane-a", terminal, event)).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  }
+  expect(readClipboardText).not.toHaveBeenCalled();
+  expect(terminal.input).not.toHaveBeenCalled();
+  expect(terminal.paste).not.toHaveBeenCalled();
+  dispose();
+});
+
+test("native paste shortcut detection covers macOS, Windows, and Linux modifiers", () => {
+  expect(isNativeTerminalPasteShortcut(keyEvent("v", { metaKey: true }), true)).toBe(true);
+  expect(isNativeTerminalPasteShortcut(keyEvent("v", { ctrlKey: true }), true)).toBe(false);
+  expect(isNativeTerminalPasteShortcut(keyEvent("v", { ctrlKey: true }), false)).toBe(true);
+  expect(isNativeTerminalPasteShortcut(keyEvent("v", { ctrlKey: true, shiftKey: true }), false)).toBe(true);
+  expect(isNativeTerminalPasteShortcut(keyEvent("v", { ctrlKey: true, altKey: true }), false)).toBe(false);
+});
+
+test("a custom non-native Safe Paste binding uses clipboard-manager once", async () => {
+  vi.mocked(readClipboardText).mockResolvedValue("echo safe");
+  const terminal = fakeTerminal();
+  const dispose = registerTarget(terminal);
+  useUIStore.setState({
+    keybindings: { ...defaultKeybindingsForPlatform("linux"), safePaste: "Ctrl+Shift+X" },
+  });
+
+  const event = keyEvent("x", { ctrlKey: true, shiftKey: true });
   expect(handleTerminalInteractionKeyEvent("pane-a", terminal, event)).toBe(false);
   expect(event.preventDefault).toHaveBeenCalledOnce();
   await vi.waitFor(() => expect(terminal.paste).toHaveBeenCalledWith("echo safe"));
   expect(terminal.paste).toHaveBeenCalledOnce();
+  expect(terminal.focus).toHaveBeenCalledOnce();
   expect(readClipboardText).toHaveBeenCalledOnce();
+  dispose();
+});
+
+test("clipboard permission denial never reaches the PTY and shows a content-free warning", async () => {
+  const addToast = vi.fn();
+  useUIStore.setState({ addToast });
+  vi.mocked(readClipboardText).mockRejectedValue(new Error("permission denied: secret must not be logged"));
+  const terminal = fakeTerminal();
+  const dispose = registerTarget(terminal);
+
+  await safePasteActiveTerminal("pane-a");
+
+  expect(terminal.input).not.toHaveBeenCalled();
+  expect(terminal.paste).not.toHaveBeenCalled();
+  expect(terminal.focus).not.toHaveBeenCalled();
+  expect(addToast).toHaveBeenCalledOnce();
+  expect(JSON.stringify(addToast.mock.calls)).not.toContain("secret");
   dispose();
 });
 

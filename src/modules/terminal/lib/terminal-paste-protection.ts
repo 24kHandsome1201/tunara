@@ -14,6 +14,7 @@ export interface TerminalPasteWarning {
 interface PasteTarget {
   element?: HTMLElement | null;
   modes?: { bracketedPasteMode: boolean };
+  focus?(): void;
   input?(data: string, wasUserInput?: boolean): void;
   paste(data: string): void;
 }
@@ -27,6 +28,10 @@ export function pasteWithCapturedBracketedMode(
   bracketedPasteMode: boolean,
 ): void {
   if (term.element && !term.element.isConnected) return;
+  // Context menus, titlebar controls, command palette, and native warning
+  // dialogs can move DOM focus. Restore it only after the continuation's
+  // binding/staleness check and immediately before writing to the PTY.
+  term.focus?.();
   if (!bracketedPasteMode || !term.input) {
     term.paste(text);
     return;

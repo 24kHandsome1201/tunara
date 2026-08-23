@@ -137,14 +137,17 @@ test("a rejecting confirmer is treated as cancel, not an unhandled rejection", a
 test("confirmed paste preserves bracketed mode captured before a native dialog focus transition", () => {
   const pasted = [];
   const input = [];
+  let focused = 0;
   const term = {
     modes: { bracketedPasteMode: false },
+    focus: () => { focused += 1; },
     input: (text, wasUserInput) => input.push([text, wasUserInput]),
     paste: (text) => pasted.push(text),
   };
   pasteWithCapturedBracketedMode(term, "line1\nline2", true);
   assert.deepEqual(pasted, []);
   assert.deepEqual(input, [["\u001b[200~line1\rline2\u001b[201~", true]]);
+  assert.equal(focused, 1);
 });
 
 test("captured bracketed paste normalizes LF and CRLF exactly like xterm", () => {
@@ -170,12 +173,15 @@ test("ordinary paste does not wait when bracketed mode was not active before con
 
 test("confirmed paste is ignored after its terminal element is detached", () => {
   const pasted = [];
+  let focused = 0;
   pasteWithCapturedBracketedMode({
     element: { isConnected: false },
+    focus: () => { focused += 1; },
     input: (text) => pasted.push(text),
     paste: (text) => pasted.push(text),
   }, "line1\nline2", true);
   assert.deepEqual(pasted, []);
+  assert.equal(focused, 0);
 });
 
 test("shared protected-paste entry captures bracketed mode before the async confirmer", async () => {
@@ -268,6 +274,53 @@ test("registered paste protection rejects safe text delivered to a stale target"
   assert.equal(stopped, 1);
 });
 
+test("native safe-text paste preserves clipboardData for xterm's own paste handler", () => {
+  let pasteListener;
+  let clipboardReads = 0;
+  const pastedByGuard = [];
+  const element = {
+    isConnected: true,
+    addEventListener: (_type, listener) => { pasteListener = listener; },
+    removeEventListener() {},
+  };
+  registerTerminalPasteProtection({
+    element,
+    paste: (text) => pastedByGuard.push(text),
+  }, () => { throw new Error("safe text must not confirm"); });
+  let prevented = 0;
+  let stopped = 0;
+  pasteListener({
+    clipboardData: { getData: (type) => { clipboardReads += 1; assert.equal(type, "text/plain"); return "echo native"; } },
+    preventDefault: () => { prevented += 1; },
+    stopPropagation: () => { stopped += 1; },
+  });
+
+  assert.equal(clipboardReads, 1);
+  assert.equal(prevented, 0);
+  assert.equal(stopped, 0);
+  assert.deepEqual(pastedByGuard, [], "the guard must not fake xterm's downstream native handler");
+});
+
+test("native empty or image-only paste is a no-op and remains native", () => {
+  for (const types of [[], ["image/png"]]) {
+    let pasteListener;
+    let pasted = 0;
+    const element = {
+      isConnected: true,
+      addEventListener: (_type, listener) => { pasteListener = listener; },
+      removeEventListener() {},
+    };
+    registerTerminalPasteProtection({ element, paste: () => { pasted += 1; } }, () => true);
+    const event = {
+      clipboardData: { types, getData: () => "" },
+      preventDefault: () => { throw new Error("empty native paste must not be cancelled"); },
+      stopPropagation: () => { throw new Error("empty native paste must not be stopped"); },
+    };
+    pasteListener(event);
+    assert.equal(pasted, 0);
+  }
+});
+
 // ── structural guard ─────────────────────────────────────────────────────
 
 test("no window.confirm/alert/prompt anywhere in src (silent no-ops in wry)", () => {
@@ -290,36 +343,42 @@ test("no window.confirm/alert/prompt anywhere in src (silent no-ops in wry)", ()
 
 test("context-menu paste delegates to the binding-aware safe-paste registry", () => {
   const chrome = readFileSync(join(import.meta.dirname, "..", "src/ui/TerminalViewChrome.tsx"), "utf8");
+  const titlebar = readFileSync(join(import.meta.dirname, "..", "src/ui/Titlebar.tsx"), "utf8");
+  const palette = readFileSync(join(import.meta.dirname, "..", "src/ui/overlays/CommandPalette.tsx"), "utf8");
   const registry = readFileSync(join(import.meta.dirname, "..", "src/modules/terminal/lib/terminal-action-registry.ts"), "utf8");
   const clipboard = readFileSync(join(import.meta.dirname, "..", "src/ui/lib/clipboard.ts"), "utf8");
   assert.match(chrome, /safePasteActiveTerminal\(sessionId\)/);
+  assert.match(titlebar, /safePasteActiveTerminal\(activeSessionId\)/);
+  assert.match(palette, /safePasteActiveTerminal\(activeSession\.id\)/);
   assert.match(chrome, /id: "paste"[\s\S]*?icon: "paste"/);
-  assert.doesNotMatch(chrome, /navigator\.clipboard|\.paste\(text\)|requestProtectedTerminalPaste/);
+  for (const surface of [chrome, titlebar, palette]) {
+    assert.doesNotMatch(surface, /navigator\.clipboard|\.paste\(text\)|requestProtectedTerminalPaste|plugin-clipboard-manager/);
+  }
   assert.match(registry, /const action = captureTerminalActionTarget\(sessionId, registration\.terminal\);[\s\S]*?await readClipboardText\(\)/);
   assert.doesNotMatch(registry, /await navigator\.clipboard\.readText/);
   assert.match(registry, /requestProtectedTerminalPaste\([\s\S]*?\(\) => action\.isCurrent\(\)/);
   assert.match(registry, /if \(!protectedPaste && action\.isCurrent\(\)\) \{[\s\S]*?pasteWithCapturedBracketedMode\(registration\.terminal, text, bracketedPasteRequired\)/);
-  assert.match(clipboard, /invoke<string>\("clipboard_read_text"\)/);
-  assert.match(clipboard, /"__TAURI_INTERNALS__" in window/);
-  assert.match(clipboard, /navigator\.clipboard\.readText\(\)[\s\S]*second native "Paste" button/);
+  assert.match(clipboard, /import \{ readText \} from "@tauri-apps\/plugin-clipboard-manager"/);
+  assert.match(clipboard, /return await readText\(\)/);
+  assert.doesNotMatch(clipboard, /navigator\.clipboard\.readText|invoke<.*clipboard/);
 });
 
-test("Safe Paste reads the native clipboard command instead of WKWebView readText", () => {
+test("menu Safe Paste uses least-privilege Tauri clipboard-manager text reads", () => {
+  const packageJson = JSON.parse(readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8"));
   const cargo = readFileSync(join(import.meta.dirname, "..", "src-tauri/Cargo.toml"), "utf8");
   const lib = readFileSync(join(import.meta.dirname, "..", "src-tauri/src/lib.rs"), "utf8");
   const modules = readFileSync(join(import.meta.dirname, "..", "src-tauri/src/modules/mod.rs"), "utf8");
-  const clipboardRs = readFileSync(join(import.meta.dirname, "..", "src-tauri/src/modules/clipboard.rs"), "utf8");
   const permission = readFileSync(join(import.meta.dirname, "..", "src-tauri/permissions/main.toml"), "utf8");
   const capability = JSON.parse(readFileSync(join(import.meta.dirname, "..", "src-tauri/capabilities/default.json"), "utf8"));
-  assert.match(modules, /pub mod clipboard;/);
-  assert.doesNotMatch(cargo, /arboard|tauri-plugin-clipboard-manager/);
-  assert.match(lib, /modules::clipboard::clipboard_read_text/);
-  assert.doesNotMatch(lib, /tauri_plugin_clipboard_manager/);
-  assert.match(clipboardRs, /spawn_blocking\(read_os_clipboard_text\)/);
-  assert.match(clipboardRs, /pbpaste/);
-  assert.match(clipboardRs, /wl-paste/);
-  assert.match(clipboardRs, /xclip/);
-  assert.match(permission, /"clipboard_read_text"/);
-  assert.equal(capability.permissions.includes("clipboard-manager:allow-read-text"), false);
+  assert.ok(packageJson.dependencies["@tauri-apps/plugin-clipboard-manager"]);
+  assert.match(cargo, /tauri-plugin-clipboard-manager = "2\.3"/);
+  assert.match(lib, /tauri_plugin_clipboard_manager::init\(\)/);
+  assert.doesNotMatch(lib, /clipboard_read_text/);
+  assert.doesNotMatch(modules, /pub mod clipboard;/);
+  assert.doesNotMatch(permission, /clipboard/);
+  assert.deepEqual(capability.permissions.filter((value) => value.startsWith("clipboard-manager:")), [
+    "clipboard-manager:allow-read-text",
+  ]);
+  assert.equal(capability.permissions.includes("clipboard-manager:allow-write-text"), false);
   assert.equal(capability.permissions.includes("clipboard-manager:default"), false);
 });

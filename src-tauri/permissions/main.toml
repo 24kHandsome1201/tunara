@@ -36,7 +36,6 @@ commands.allow = [
   "terminal_wallpaper_import",
   "terminal_wallpaper_load",
   "terminal_wallpaper_clear",
-  "clipboard_read_text",
   "local_usage_log_record",
   "local_usage_log_set_enabled",
   "local_usage_log_status",

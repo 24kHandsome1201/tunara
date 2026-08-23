@@ -20,8 +20,10 @@ multi-binding/conditional-trigger schema:
   one optional menu binding plus Copy Selection and Safe Paste. New Terminal
   and Split keep their existing actions and bindings. Each action has at most
   one configurable binding in v1; conflicts are rejected rather than resolved
-  by declaration order. Terminal-scoped shortcuts cancel the browser default
-  when handled (preventing shortcut plus native-paste duplication); a conflict
+  by declaration order. Native paste shortcuts stop xterm key processing but
+  preserve the browser default, so Wry emits one trusted `paste` event carrying
+  `clipboardData`; the shortcut keydown itself is never forwarded to the PTY.
+  Other handled terminal shortcuts cancel the browser default. A conflict
   introduced by hand-edited TOML is consumed without executing either terminal
   action or forwarding the chord to the PTY. Plain/Alt-only terminal chords are
   treated as risky because they can steal ordinary shell or TUI input.
@@ -32,12 +34,12 @@ multi-binding/conditional-trigger schema:
   variants such as Ctrl+Shift+F10 remain independently configurable.
 - Every paste path uses the binding-aware terminal action registry and the
   existing async safe-paste confirmation. Menu, shortcut, and command-palette
-  paste read the OS clipboard through the native `clipboard_read_text` command —
-  not `navigator.clipboard.readText()` — so WKWebView/WebKitGTK cannot show a
-  second Paste button after the user already chose Paste. The target identity
-  and bracketed paste mode are captured before awaiting clipboard access or
-  confirmation; even a safe single-line native paste is rejected if its
-  captured target is already stale.
+  paste read text through Tauri clipboard-manager (capability:
+  `clipboard-manager:allow-read-text`) — not `navigator.clipboard.readText()`.
+  Keyboard paste instead consumes the native event's `clipboardData`. The target
+  identity and bracketed paste mode are captured before awaiting clipboard
+  access or confirmation; even a safe single-line native paste is rejected if
+  its captured target is already stale.
 
 ## Persistence and compatibility
 

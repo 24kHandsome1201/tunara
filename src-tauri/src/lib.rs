@@ -60,6 +60,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         // window.confirm/alert are silent no-ops inside wry's WKWebView (no JS
         // dialog UI delegate) — native confirms must go through this plugin.
         .plugin(tauri_plugin_dialog::init());
@@ -144,7 +145,6 @@ pub fn run() {
             modules::wallpaper::terminal_wallpaper_import,
             modules::wallpaper::terminal_wallpaper_load,
             modules::wallpaper::terminal_wallpaper_clear,
-            modules::clipboard::clipboard_read_text,
             modules::local_usage_log::local_usage_log_record,
             modules::local_usage_log::local_usage_log_set_enabled,
             modules::local_usage_log::local_usage_log_status,

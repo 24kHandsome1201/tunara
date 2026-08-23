@@ -81,7 +81,8 @@ term.attachCustomKeyEventHandler((e) =>
 
 行为：
 - **复制**：`term.getSelection()` 有值才 enabled；点击 → `navigator.clipboard.writeText(sel)`。
-- **粘贴**：`navigator.clipboard.readText()` → `term.paste(text)`（经 paste protection）。
+- **粘贴**：调用 `safePasteActiveTerminal(sessionId)`；该入口通过 Tauri
+  clipboard-manager 的只读文本权限读取，并保留 paste protection、目标绑定和焦点恢复。
 
 菜单定位用鼠标坐标；点击空白/Esc 关闭（复用现有菜单关闭逻辑）。
 
@@ -98,7 +99,7 @@ const onContextMenu = (e: React.MouseEvent) => {
       { label: t("term.copy"), disabled: !term.getSelection(),
         onClick: () => { const s = term.getSelection(); if (s) navigator.clipboard.writeText(s).catch(()=>{}); } },
       { label: t("term.paste"),
-        onClick: async () => { try { const txt = await navigator.clipboard.readText(); if (txt) term.paste(txt); } catch {} } },
+        onClick: () => { void safePasteActiveTerminal(sessionId); } },
     ],
   });
 };

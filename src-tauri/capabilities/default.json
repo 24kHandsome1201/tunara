@@ -21,6 +21,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-is-fullscreen",
     "opener:default",
+    "clipboard-manager:allow-read-text",
     "dialog:allow-confirm",
     "dialog:allow-open",
     "dialog:allow-save",

@@ -1,4 +1,3 @@
-pub mod clipboard;
 pub mod config;
 pub mod fs;
 pub mod local_usage_log;
