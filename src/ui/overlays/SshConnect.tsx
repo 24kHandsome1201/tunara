@@ -679,7 +679,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               </div>
               <div style={{ flex: 2, minWidth: 180 }}>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} />
+                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value)} />
                 {portInvalid && (
                   <span id="ssh-connect-port-error" role="alert" style={{ display: "block", marginTop: 5, fontSize: "var(--fs-meta)", color: "var(--c-warning-text)", lineHeight: 1.35 }}>
                     {t("ssh.port_invalid")}

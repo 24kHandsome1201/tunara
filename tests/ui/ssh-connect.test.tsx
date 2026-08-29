@@ -127,6 +127,13 @@ describe("SSH connection sheet", () => {
     expect(error.parentElement).toBe(port.parentElement);
     expect(authError).toBeTruthy();
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(port, { target: { value: "0" } });
+    expect(screen.getByText("Port must be a number between 1 and 65535")).toBeTruthy();
+    fireEvent.change(port, { target: { value: "abc" } });
+    expect(screen.getByText("Port must be a number between 1 and 65535")).toBeTruthy();
+    expect(port.getAttribute("aria-invalid")).toBe("true");
+    expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   test("a config key suggestion is discarded when Password is selected and never saved", async () => {
