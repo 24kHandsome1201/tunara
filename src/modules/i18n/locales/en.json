@@ -561,7 +561,7 @@
   "inspector.tab.diagnostics": "Diagnostics",
   "inspector.tab.known_hosts": "Known hosts",
   "inspector.scope.global": "Global",
-  "inspector.scope.profile": "Profile",
+  "inspector.scope.profile": "Scope: Profile",
   "inspector.scope.logical_session": "Session",
   "inspector.scope.transport_binding": "Connection",
   "inspector.scope.description.global": "Applies across sessions and profiles.",

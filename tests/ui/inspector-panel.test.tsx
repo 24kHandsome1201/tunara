@@ -73,6 +73,7 @@ test("mounts only the active Inspector panel and keeps specialist tools in overf
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   expect(screen.queryByTestId("overview-panel")).toBeNull();
   expect(screen.getByTestId("changes-panel")).toBeTruthy();
+  expect(screen.getByText("Scope: Profile")).toBeTruthy();
 
   fireEvent.click(screen.getByRole("tab", { name: "Files" }));
   expect(screen.queryByTestId("changes-panel")).toBeNull();

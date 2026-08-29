@@ -561,7 +561,7 @@
   "inspector.tab.diagnostics": "诊断",
   "inspector.tab.known_hosts": "已知主机",
   "inspector.scope.global": "全局",
-  "inspector.scope.profile": "配置",
+  "inspector.scope.profile": "范围：配置",
   "inspector.scope.logical_session": "会话",
   "inspector.scope.transport_binding": "连接",
   "inspector.scope.description.global": "适用于所有会话与配置。",
