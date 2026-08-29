@@ -672,21 +672,21 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
           <section aria-labelledby="ssh-endpoint-label" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <span id="ssh-endpoint-label" style={labelStyle}>{t("ssh.endpoint")}</span>
-            <div style={{ display: "flex", gap: 10 }}>
-              <div style={{ flex: 3 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <div style={{ flex: 3, minWidth: 0 }}>
                 <label htmlFor="ssh-connect-host" style={labelStyle}>{t("ssh.host")}</label>
                 <input ref={hostRef} id="ssh-connect-host" className="ui-control" style={fieldStyle} value={host} placeholder={t("ssh.host_placeholder")} onChange={(event) => setHost(event.target.value)} spellCheck={false} autoCapitalize="off" />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 2, minWidth: 180 }}>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
                 <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} />
+                {portInvalid && (
+                  <span id="ssh-connect-port-error" role="alert" style={{ display: "block", marginTop: 5, fontSize: "var(--fs-meta)", color: "var(--c-warning-text)", lineHeight: 1.35 }}>
+                    {t("ssh.port_invalid")}
+                  </span>
+                )}
               </div>
             </div>
-            {portInvalid && (
-              <span id="ssh-connect-port-error" role="alert" style={{ display: "block", marginTop: -5, fontSize: "var(--fs-meta)", color: "var(--c-warning-text)", lineHeight: 1.35 }}>
-                {t("ssh.port_invalid")}
-              </span>
-            )}
             <div>
               <label htmlFor="ssh-connect-user" style={labelStyle}>{t("ssh.user")}</label>
               <input id="ssh-connect-user" className="ui-control" style={fieldStyle} value={user} placeholder={t("ssh.user_placeholder")} onChange={(event) => setUser(event.target.value)} spellCheck={false} autoCapitalize="off" />
