@@ -63,7 +63,7 @@ export function Settings({ onClose }: SettingsProps) {
       backdropZIndex={200}
       zIndex={201}
       className="settings-dialog"
-      style={{ width: 620, maxWidth: "calc(100vw - 32px)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "min(82dvh, 760px)", animation: "sheetIn var(--duration-normal) var(--ease-out-back)" }}
+      style={{ width: 620, maxWidth: "calc(100vw - 32px)", overflow: "hidden", display: "flex", flexDirection: "column", height: "min(82dvh, 760px)", maxHeight: "min(82dvh, 760px)", animation: "sheetIn var(--duration-normal) var(--ease-out-back)" }}
     >
         <div className="settings-dialog-header">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -77,7 +77,7 @@ export function Settings({ onClose }: SettingsProps) {
             role="tablist"
             aria-label={t("settings.title")}
             onKeyDown={handleTabListKeyDown}
-            style={{ display: "flex", gap: 18, borderBottom: "1px solid var(--c-border-1)", overflowX: "auto", overscrollBehaviorX: "contain", scrollSnapType: "x proximity" }}
+            style={{ display: "flex", gap: 12, borderBottom: "1px solid var(--c-border-1)", overflowX: "auto", overscrollBehaviorX: "contain", scrollSnapType: "x proximity" }}
           >
             {TABS.map((tab) => (
               <button

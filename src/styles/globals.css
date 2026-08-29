@@ -542,7 +542,7 @@ select.ui-control {
    and responsive spacing live here. */
 .settings-dialog { container: settings-dialog / inline-size; }
 .settings-dialog-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--c-border-1); flex-shrink: 0; }
-#settings-tabpanel { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px; }
+#settings-tabpanel { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px 32px; scroll-padding-block-end: 16px; }
 .settings-dialog-footer {
   min-height: 54px;
   padding: 10px 22px;
