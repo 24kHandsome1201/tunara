@@ -64,7 +64,7 @@ function TabButton({
       data-active={active ? "true" : "false"}
       style={{
         height: 36,
-        padding: "0 9px",
+        padding: "0 6px",
         borderRadius: 0,
         border: "none",
         borderBottom: active ? "2px solid var(--c-accent)" : "2px solid transparent",
