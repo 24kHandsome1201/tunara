@@ -64,31 +64,39 @@ function profileMatches(profile: SshHostProfile, query: string): boolean {
 function ProfileRow({
   profile,
   source,
+  selected,
   onSelect,
   onDelete,
   deletePending,
 }: {
   profile: SshHostProfile;
   source: SshProfileSourceV1;
+  selected: boolean;
   onSelect: () => void;
   onDelete?: () => void;
   deletePending?: boolean;
 }) {
   const t = useT();
   return (
-    <div role="listitem" style={{ display: "flex", alignItems: "center", gap: 6, borderRadius: "var(--r-btn)" }}>
+    <div
+      role="listitem"
+      className="ssh-profile-item"
+      data-selected={selected}
+      data-source={source}
+      style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: "var(--r-btn)" }}
+    >
       <button
         type="button"
         onClick={onSelect}
+        aria-pressed={selected}
         className="hover-bg ssh-profile-row"
         style={{
           flex: 1,
           minWidth: 0,
           display: "flex",
-          flexDirection: "column",
-          alignItems: "stretch",
-          gap: 2,
-          padding: "7px 8px",
+          alignItems: "center",
+          gap: 9,
+          padding: "8px",
           border: "none",
           borderRadius: "var(--r-btn)",
           background: "transparent",
@@ -97,16 +105,30 @@ function ProfileRow({
           textAlign: "left",
         }}
       >
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-body)", fontWeight: 550 }}>
-          {profile.label || `${profile.user}@${profile.host}`}
+        <span className="ssh-profile-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="7" rx="2" />
+            <rect x="3" y="13" width="18" height="7" rx="2" />
+            <path d="M7 7.5h.01M7 16.5h.01" />
+          </svg>
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>
-            {profile.user ? `${profile.user}@` : ""}{profile.host}{profile.port !== 22 ? `:${profile.port}` : ""}
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-body)", fontWeight: 600 }}>
+            {profile.label || `${profile.user}@${profile.host}`}
           </span>
-          <span className="ssh-profile-auth" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-            {source === "sshConfig" ? "~/.ssh/config" : profile.authMethod ? t(`ssh.auth.${profile.authMethod}.short`) : t("ssh.auth.choose.short")}
+          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, marginTop: 2, color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>
+              {profile.user ? `${profile.user}@` : ""}{profile.host}{profile.port !== 22 ? `:${profile.port}` : ""}
+            </span>
+            {profile.proxyJumpProfileId && <span className="ssh-profile-route">ProxyJump</span>}
           </span>
+        </span>
+        <span className="ssh-profile-source">
+          {source === "sshConfig"
+            ? "~/.ssh/config"
+            : profile.authMethod
+              ? t(`ssh.auth.${profile.authMethod}.short`)
+              : t("ssh.auth.choose.short")}
         </span>
       </button>
       {onDelete && (
@@ -115,8 +137,8 @@ function ProfileRow({
           onClick={onDelete}
           title={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
           aria-label={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
-          className="hover-close"
-          style={{ width: 24, height: 24, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: deletePending ? "var(--c-error)" : "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          className="hover-close ssh-profile-delete"
+          style={{ width: 28, height: 28, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: deletePending ? "var(--c-error)" : "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
         >
           <CloseIcon />
         </button>
@@ -140,6 +162,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [host, setHost] = useState(prefill?.host ?? "");
   const [port, setPort] = useState(prefill?.port ? String(prefill.port) : "22");
   const [user, setUser] = useState(prefill?.user ?? "");
+  const [profileLabel, setProfileLabel] = useState("");
   const [authMethod, setAuthMethod] = useState<SshAuthMethod | undefined>(prefill?.authMethod);
   const [identityFile, setIdentityFile] = useState(prefill?.identityFile ?? "");
   const [certificateFile, setCertificateFile] = useState(prefill?.certificateFile ?? "");
@@ -185,13 +208,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
     if (prefill?.host) hostRef.current?.focus();
   }, [prefill?.host]);
 
-  const refreshConfig = async (announce: boolean) => {
-    const generation = ++configGeneration.current;
-    setLoadingConfig(true);
-    setPanelModel((current) => ({ ...current, configProfiles: [], configSkipped: 0, configDiagnostics: [] }));
-    // A target or jump may depend on the old resolver generation. Reset the
-    // whole route so refreshed endpoints can never inherit stale auth state.
+  const resetConnectionForm = () => {
     setSelectedProfile(null);
+    setRouteResolution(null);
+    setProfileLabel("");
     setHost("");
     setPort("22");
     setUser("");
@@ -200,13 +220,23 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setCertificateFile("");
     setPassword("");
     setKeyPassphrase("");
+    setSaveProfile(false);
     setJumpProfileId("");
     setJumpAuthMethod(undefined);
     setJumpIdentityFile("");
     setJumpCertificateFile("");
     setJumpPassword("");
     setJumpKeyPassphrase("");
-    setRouteResolution(null);
+    requestAnimationFrame(() => hostRef.current?.focus());
+  };
+
+  const refreshConfig = async (announce: boolean) => {
+    const generation = ++configGeneration.current;
+    setLoadingConfig(true);
+    setPanelModel((current) => ({ ...current, configProfiles: [], configSkipped: 0, configDiagnostics: [] }));
+    // A target or jump may depend on the old resolver generation. Reset the
+    // whole route so refreshed endpoints can never inherit stale auth state.
+    resetConnectionForm();
     try {
       const result = await importSshConfig();
       if (generation !== configGeneration.current) return;
@@ -246,8 +276,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   const fillFrom = (profileId: string, source: SshProfileSourceV1) => {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
+    const sourceProfiles = source === "saved" ? panelModel.savedProfiles : panelModel.configProfiles;
+    const selected = sourceProfiles.find((profile) => profile.id === profileId);
     setSelectedProfile({ id: profileId, source });
     setRouteResolution(resolution);
+    setProfileLabel(selected?.label ?? "");
+    setSaveProfile(source === "saved");
     setJumpProfileId("");
     if (resolution.status === "rejected") return;
     const { target: profile, jump } = resolution.route;
@@ -274,6 +308,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
         .then((savedProfiles) => {
           setPanelModel((current) => ({ ...current, savedProfiles }));
           useUIStore.getState().bumpSshProfilesEpoch();
+          if (selectedProfile?.source === "saved" && selectedProfile.id === id) {
+            resetConnectionForm();
+          }
         })
         .catch(() => useUIStore.getState().addToast({ title: t("ssh.profile.remove_failed"), subtitle: "", variant: "error" }));
     });
@@ -437,7 +474,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
       ...(jumpAuthMethod === "key" && jumpIdentityFile.trim() ? { identityFile: jumpIdentityFile.trim() } : {}),
       ...(jumpAuthMethod === "key" && jumpCertificateFile.trim() ? { certificateFile: jumpCertificateFile.trim() } : {}),
     } } : undefined;
-
     const remote: RemoteInfo = {
       host: trimmedHost,
       port: safePort,
@@ -500,7 +536,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       );
       void actions.onSave({
         id: existing?.id ?? makeHostId(),
-        label: existing?.label ?? `${trimmedUser}@${trimmedHost}`,
+        label: profileLabel.trim() || existing?.label || `${trimmedUser}@${trimmedHost}`,
         host: trimmedHost,
         port: safePort,
         user: trimmedUser,
@@ -553,6 +589,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     // A connection opens into its terminal. Keep remote Files opt-in even when
     // the inspector was left on Files for the previous local session.
     useUIStore.getState().setInspectorTab("overview");
+    useUIStore.getState().showTerminal();
     setOverlay(null);
     onClose();
   };
@@ -586,6 +623,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         aria-labelledby="ssh-connect-title"
         aria-describedby="ssh-connect-subtitle"
         aria-busy={connecting}
+        className="ssh-connect-dialog"
         tabIndex={0}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
@@ -612,9 +650,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
           top: "50%",
           left: "50%",
           transform: "translate(-50%, -50%)",
-          width: 520,
+          width: 860,
           maxWidth: "calc(100vw - 32px)",
-          maxHeight: "calc(100vh - 32px)",
+          height: 680,
+          maxHeight: "calc(100dvh - 32px)",
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
@@ -626,7 +665,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           outline: "none",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--c-border-2)", flexShrink: 0 }}>
+        <div className="ssh-connect-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--c-border-2)", flexShrink: 0 }}>
           <div>
             <span id="ssh-connect-title" style={{ display: "block", fontSize: "var(--fs-title)", fontWeight: 650, color: "var(--c-text-primary)" }}>
               {prefill?.reconnectSessionId ? t("ssh.reconnect.title") : t("ssh.title")}
@@ -640,33 +679,50 @@ export function SshConnect({ onClose }: SshConnectProps) {
           </button>
         </div>
 
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 15, overflowY: "auto", minHeight: 0 }}>
-          <section aria-labelledby="ssh-sources-label" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div className="ssh-connect-body" style={{ minHeight: 0, flex: 1 }}>
+          <section className="ssh-profiles-panel" aria-labelledby="ssh-sources-label" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <span id="ssh-sources-label" style={{ ...labelStyle, marginBottom: 0 }}>{t("ssh.quick_connect")}</span>
+              <span id="ssh-sources-label" className="ssh-panel-title" style={{ ...labelStyle, marginBottom: 0 }}>{t("ssh.quick_connect")}</span>
               <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", cursor: loadingConfig ? "wait" : "pointer", padding: "3px 5px", borderRadius: "var(--r-btn)" }}>
                 {loadingConfig ? t("ssh.config.loading") : t("ssh.config.refresh")}
               </button>
             </div>
+            {!prefill?.reconnectSessionId && (
+              <button type="button" className="ui-button ssh-new-connection" onClick={resetConnectionForm}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                {t("ssh.new_connection")}
+              </button>
+            )}
             {hasSources ? (
               <>
                 <div style={{ position: "relative" }}>
                   <span aria-hidden="true" style={{ position: "absolute", left: 9, top: 9, color: "var(--c-text-5)", display: "flex" }}><SearchIcon /></span>
                   <input id="ssh-profile-search" className="ui-control" aria-label={t("ssh.search_placeholder")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("ssh.search_placeholder")} spellCheck={false} style={{ ...fieldStyle, paddingLeft: 30 }} />
                 </div>
-                <div role="list" aria-label={t("ssh.quick_connect")} style={{ maxHeight: 132, overflowY: "auto", border: "1px solid var(--c-border-2)", borderRadius: "var(--r-input)", padding: 3 }}>
+                <div role="list" aria-label={t("ssh.quick_connect")} className="ssh-profile-list">
+                  {filteredHosts.length > 0 && <div role="presentation" className="ssh-profile-group-label">{t("ssh.source.saved")} · {filteredHosts.length}</div>}
                   {filteredHosts.map((profile) => (
                     <ProfileRow
                       key={`saved:${profile.id}`}
                       profile={profile}
                       source="saved"
+                      selected={selectedProfile?.id === profile.id && selectedProfile.source === "saved"}
                       onSelect={() => fillFrom(profile.id, "saved")}
                       onDelete={() => { void actions.onRemove(profile.id); }}
                       deletePending={isPending(`ssh-profile:${profile.id}`)}
                     />
                   ))}
+                  {filteredConfigHosts.length > 0 && <div role="presentation" className="ssh-profile-group-label">~/.ssh/config · {filteredConfigHosts.length}</div>}
                   {filteredConfigHosts.map((profile) => (
-                    <ProfileRow key={`config:${profile.id}`} profile={profile} source="sshConfig" onSelect={() => fillFrom(profile.id, "sshConfig")} />
+                    <ProfileRow
+                      key={`config:${profile.id}`}
+                      profile={profile}
+                      source="sshConfig"
+                      selected={selectedProfile?.id === profile.id && selectedProfile.source === "sshConfig"}
+                      onSelect={() => fillFrom(profile.id, "sshConfig")}
+                    />
                   ))}
                   {filteredHosts.length + filteredConfigHosts.length === 0 && (
                     <div role="listitem" style={{ padding: "12px 8px", textAlign: "center", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.search_empty")}</div>
@@ -674,8 +730,17 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 </div>
               </>
             ) : !loadingConfig ? (
-              <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.sources_empty")}</span>
-            ) : null}
+              <div className="ssh-profiles-empty">
+                <span className="ssh-profiles-empty-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="7" rx="2" />
+                    <rect x="3" y="13" width="18" height="7" rx="2" />
+                    <path d="M7 7.5h.01M7 16.5h.01" />
+                  </svg>
+                </span>
+                <span>{t("ssh.sources_empty")}</span>
+              </div>
+            ) : <div className="ssh-profiles-loading" role="status">{t("ssh.config.loading")}</div>}
             {configSkipped > 0 && (
               <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning-text)", lineHeight: 1.4 }}>
                 {t("ssh.config.skipped", { count: configSkipped })}
@@ -684,21 +749,24 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <span role="status" style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
               {t("ssh.config.summary", { available: configHosts.length, skipped: configSkipped })}
             </span>
-            <details ref={diagnosticsRef} tabIndex={-1} aria-label={t("ssh.config.diagnostics") }>
-              <summary>{t("ssh.config.diagnostics")}</summary>
-              <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.support_matrix")}</p>
-              <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.never_execute")}</p>
-              {configDiagnostics.map((item, index) => (
-                <button type="button" onClick={() => actions.onOpenConfigDiagnostic(item)} key={`${item.source}:${item.line ?? ""}:${index}`} style={{ display: "block", border: 0, background: "transparent", padding: 0, color: "inherit", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", textAlign: "left" }}>
-                  {[item.severity, item.source + (item.line == null ? "" : `:${item.line}`), item.alias, item.code, item.directive].filter((part): part is string => Boolean(part)).join(" · ")}
-                </button>
-              ))}
-            </details>
+            {(configDiagnostics.length > 0 || configSkipped > 0) && (
+              <details ref={diagnosticsRef} tabIndex={-1} aria-label={t("ssh.config.diagnostics")} className="ssh-config-diagnostics">
+                <summary>{t("ssh.config.diagnostics")}</summary>
+                <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.support_matrix")}</p>
+                <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.never_execute")}</p>
+                {configDiagnostics.map((item, index) => (
+                  <button type="button" onClick={() => actions.onOpenConfigDiagnostic(item)} key={`${item.source}:${item.line ?? ""}:${index}`} style={{ display: "block", border: 0, background: "transparent", padding: 0, color: "inherit", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", textAlign: "left" }}>
+                    {[item.severity, item.source + (item.line == null ? "" : `:${item.line}`), item.alias, item.code, item.directive].filter((part): part is string => Boolean(part)).join(" · ")}
+                  </button>
+                ))}
+              </details>
+            )}
           </section>
 
-          <section aria-labelledby="ssh-endpoint-label" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-            <span id="ssh-endpoint-label" style={labelStyle}>{t("ssh.endpoint")}</span>
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <div className="ssh-connect-form">
+          <section className="ssh-form-section" aria-labelledby="ssh-endpoint-label" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+            <span id="ssh-endpoint-label" className="ssh-section-title" style={labelStyle}>{t("ssh.endpoint")}</span>
+            <div className="ssh-endpoint-grid" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <div style={{ flex: 3, minWidth: 0 }}>
                 <label htmlFor="ssh-connect-host" style={labelStyle}>{t("ssh.host")}</label>
                 <input ref={hostRef} id="ssh-connect-host" className="ui-control" style={fieldStyle} value={host} placeholder={t("ssh.host_placeholder")} onChange={(event) => setHost(event.target.value)} spellCheck={false} autoCapitalize="off" />
@@ -825,6 +893,20 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <input className="ui-choice" type="checkbox" checked={saveProfile} onChange={(event) => setSaveProfile(event.target.checked)} />
             <span>{t("ssh.saveProfile")}<span style={{ display: "block", marginTop: 1, color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.saveProfileHint")}</span></span>
           </label>
+          {saveProfile && (
+            <div className="ssh-profile-name-field">
+              <label htmlFor="ssh-profile-name" style={labelStyle}>{t("ssh.profile.name")}</label>
+              <input
+                id="ssh-profile-name"
+                className="ui-control"
+                style={fieldStyle}
+                value={profileLabel}
+                placeholder={host.trim() ? `${user.trim() || t("ssh.user_placeholder")}@${host.trim()}` : t("ssh.profile.name_placeholder")}
+                onChange={(event) => setProfileLabel(event.target.value)}
+                spellCheck={false}
+              />
+            </div>
+          )}
 
           <details>
             <summary style={{ cursor: "pointer", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>{t("ssh.advanced")}</summary>
@@ -837,6 +919,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               <span>{t("ssh.autoReconnect")}<span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.4 }}>{t("ssh.autoReconnectHint")}</span></span>
             </label>
           </details>
+        </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)", flexShrink: 0 }}>

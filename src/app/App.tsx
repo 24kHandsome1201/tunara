@@ -10,6 +10,7 @@ import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteracti
 import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { ToastContainer } from "@/ui/Toast";
 import { WorkspaceEmptyState } from "@/ui/WorkspaceEmptyState";
+import { SshHostsDashboard } from "@/ui/SshHostsDashboard";
 import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
@@ -31,7 +32,14 @@ import { useAppServices } from "./useAppServices";
 // hoisting them keeps their identity constant across App re-renders — which
 // lets the memoized Titlebar skip re-rendering when only unrelated state moved.
 const closeSessionById = (id: string) => useSessionsStore.getState().closeSession(id);
-const newTerminal = () => useSessionsStore.getState().newTerminal();
+const selectSession = (id: string) => {
+  useSessionsStore.getState().setActive(id);
+  useUIStore.getState().showTerminal();
+};
+const newTerminal = () => {
+  useUIStore.getState().showTerminal();
+  useSessionsStore.getState().newTerminal();
+};
 const newTerminalInDirectory = () => { void openNewTerminalDirectoryDialog(); };
 const openSettings = () => useUIStore.getState().openSettings();
 
@@ -58,6 +66,7 @@ const toggleSidebarWithoutStacking = () => {
 };
 const togglePanelWithoutStacking = () => {
   const s = useUIStore.getState();
+  s.showTerminal();
   if (!s.panelVisible && auxiliarySurfaceToCloseOnOpen(currentLayoutInput(), "panel") === "sidebar") {
     s.setSidebarVisible(false);
   }
@@ -288,10 +297,10 @@ export default function App() {
   const ready = useUIStore((s) => s.ready);
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
-  const setActive = useSessionsStore((s) => s.setActive);
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const panelVisible = useUIStore((s) => s.panelVisible);
   const presentationMode = useUIStore((s) => s.presentationMode);
+  const mainSurface = useUIStore((s) => s.mainSurface);
   const inspectorTab = useUIStore((s) => s.inspectorTab);
   const overlay = useUIStore((s) => s.overlay);
   const setOverlay = useUIStore((s) => s.setOverlay);
@@ -327,9 +336,10 @@ export default function App() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const workspaceMode = presentationMode === "workspace";
+  const terminalSurface = !workspaceMode || mainSurface === "terminal";
   const presentedSidebarVisible = workspaceMode && sidebarVisible;
   const pureFilesVisible = !workspaceMode && panelVisible && inspectorTab === "files";
-  const presentedPanelVisible = (workspaceMode && panelVisible) || pureFilesVisible;
+  const presentedPanelVisible = (workspaceMode && terminalSurface && panelVisible) || pureFilesVisible;
   const {
     sidebarOverlay,
     panelOverlay,
@@ -370,7 +380,7 @@ export default function App() {
         sidebarVisible={sidebarVisible}
         onToggleSidebar={toggleSidebarWithoutStacking}
         onTogglePanel={togglePanelWithoutStacking}
-        onSelectSession={setActive}
+        onSelectSession={selectSession}
         onCloseSession={closeSessionById}
         onNewTerminal={newTerminal}
         onNewTerminalInDirectory={newTerminalInDirectory}
@@ -415,7 +425,7 @@ export default function App() {
               <Sidebar
                 sessions={sessions}
                 activeSessionId={activeSessionId ?? ""}
-                onSelectSession={setActive}
+                onSelectSession={selectSession}
                 onNewTerminal={newTerminal}
                 onNewTerminalInDirectory={newTerminalInDirectory}
                 onCloseSession={closeSessionById}
@@ -430,14 +440,18 @@ export default function App() {
         )}
 
         {sessions.length > 0 && (
-          <MainArea
-            key="terminal-main-area"
-            sessions={sessions}
-            activeSessionId={activeSessionId ?? ""}
-          />
+          <div style={{ flex: 1, display: terminalSurface ? "flex" : "none", minWidth: 0, minHeight: 0 }}>
+            <MainArea
+              key="terminal-main-area"
+              sessions={sessions}
+              activeSessionId={activeSessionId ?? ""}
+            />
+          </div>
         )}
 
-        {workspaceMode && sessions.length === 0 && (
+        {workspaceMode && mainSurface === "ssh-hosts" && <SshHostsDashboard sessions={sessions} />}
+
+        {workspaceMode && terminalSurface && sessions.length === 0 && (
           <WorkspaceEmptyState
             onNewTerminal={newTerminal}
             onNewTerminalInDirectory={newTerminalInDirectory}
@@ -445,7 +459,7 @@ export default function App() {
           />
         )}
 
-        {activeSession && (
+        {activeSession && terminalSurface && (
           <div
             className="tunara-panel"
             aria-hidden={presentedPanelVisible ? undefined : true}

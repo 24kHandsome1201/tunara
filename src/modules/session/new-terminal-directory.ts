@@ -18,6 +18,7 @@ const directoryTerminalController = createDirectoryTerminalController({
     return typeof selected === "string" ? selected : null;
   },
   createTerminal: (directory) => {
+    useUIStore.getState().showTerminal();
     useSessionsStore.getState().newTerminalInDir(directory);
   },
   onFailure: () => {

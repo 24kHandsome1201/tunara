@@ -3,8 +3,9 @@ import { useT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { loadSshProfilesPanel } from "@/modules/ssh/hosts-bridge";
 import { hostProfileButtonLabel, sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
-import type { SshHostProfile, SshProfilesPanelModelV1 } from "@/modules/ssh/hosts-model";
+import type { SshProfilesPanelModelV1, SshProfileSourceV1 } from "@/modules/ssh/hosts-model";
 import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session/sidebar-groups";
+import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import type { Session } from "./types";
 
 const EMPTY_PANEL: SshProfilesPanelModelV1 = {
@@ -25,15 +26,19 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
   const t = useT();
   const overlay = useUIStore((state) => state.overlay);
   const sshProfilesEpoch = useUIStore((state) => state.sshProfilesEpoch);
+  const mainSurface = useUIStore((state) => state.mainSurface);
   const [panel, setPanel] = useState<SshProfilesPanelModelV1>(EMPTY_PANEL);
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
+      setLoading(true);
       void loadSshProfilesPanel()
         .then((next) => { if (!cancelled) setPanel(next); })
-        .catch(() => { if (!cancelled) setPanel(EMPTY_PANEL); });
+        .catch(() => { if (!cancelled) setPanel(EMPTY_PANEL); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     };
     load();
     const onFocus = () => load();
@@ -44,10 +49,13 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
     };
   }, [overlay, sshProfilesEpoch]);
 
-  const profiles: SshHostProfile[] = [...panel.savedProfiles, ...panel.configProfiles].slice(0, 8);
-  if (profiles.length === 0) return null;
+  const profiles: Array<{ profile: SshProfilesPanelModelV1["savedProfiles"][number]; source: SshProfileSourceV1 }> = [
+    ...panel.savedProfiles.map((profile) => ({ profile, source: "saved" as const })),
+    ...panel.configProfiles.map((profile) => ({ profile, source: "sshConfig" as const })),
+  ];
+  const visibleProfiles = profiles.slice(0, 8);
 
-  const expanded = expandedOverride ?? sessions.length === 0;
+  const expanded = expandedOverride ?? (sessions.length === 0 || mainSurface === "ssh-hosts");
 
   return (
     <section aria-label={t("sidebar.hosts.aria_label")} style={{ padding: "0 12px 8px" }}>
@@ -97,41 +105,56 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
       </button>
       {expanded && (
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {profiles.map((profile) => {
+          <button
+            type="button"
+            className="hover-bg sidebar-hosts-manage"
+            aria-current={mainSurface === "ssh-hosts" ? "page" : undefined}
+            onClick={() => useUIStore.getState().openSshHosts()}
+          >
+            <span className="sidebar-hosts-manage-icon" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" />
+                <path d="M7 7.5h.01M7 16.5h.01" />
+              </svg>
+            </span>
+            <span>{t("sidebar.hosts.manage")}</span>
+            <span aria-hidden="true" style={{ marginLeft: "auto" }}>›</span>
+          </button>
+          {loading && profiles.length === 0 && <span className="sidebar-hosts-state" role="status">{t("sidebar.hosts.loading")}</span>}
+          {!loading && profiles.length === 0 && <span className="sidebar-hosts-state">{t("sidebar.hosts.empty")}</span>}
+          {visibleProfiles.map(({ profile, source }) => {
             const live = liveSessionsOnEndpoint(sessions, profile);
             const latest = representativeSession(live, activeSessionId);
+            const online = live.some((session) => readyBindingForSession(session));
+            const connecting = !online && live.some((session) => session.connection && !["failed", "disconnected", "exited"].includes(session.connection.phase));
             return (
               <button
-                key={`${profile.id}:${profile.host}`}
-                className="hover-bg"
+                key={`${source}:${profile.id}:${profile.host}`}
+                className="hover-bg sidebar-host-row"
+                data-status={online ? "online" : connecting ? "connecting" : "offline"}
+                aria-label={hostProfileButtonLabel(profile)}
                 title={latest ? t("sidebar.hosts.focus_session") : hostProfileButtonLabel(profile)}
                 onClick={() => {
                   if (latest) {
                     onSelectSession(latest.id);
                     return;
                   }
-                  useUIStore.getState().openSshConnect(sshConnectPrefillFromProfile(profile, panel, panel.savedProfiles.some((item) => item.id === profile.id) ? "saved" : "sshConfig"));
-                }}
-                style={{
-                  textAlign: "left",
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--c-text-2)",
-                  fontSize: "var(--fs-secondary)",
-                  fontFamily: "var(--font-ui)",
-                  cursor: "pointer",
-                  borderRadius: "var(--r-btn)",
-                  padding: "5px 8px",
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  useUIStore.getState().openSshConnect(sshConnectPrefillFromProfile(profile, panel, source));
                 }}
               >
-                {hostProfileButtonLabel(profile)}
+                <span className="sidebar-host-status-dot" aria-hidden="true" />
+                <span className="sidebar-host-copy">
+                  <strong>{hostProfileButtonLabel(profile)}</strong>
+                  <small>{profile.user}@{profile.host}{profile.port === 22 ? "" : `:${profile.port}`} · {source === "saved" ? t("ssh.source.saved") : "config"}</small>
+                </span>
               </button>
             );
           })}
+          {profiles.length > visibleProfiles.length && (
+            <button type="button" className="sidebar-hosts-more" onClick={() => useUIStore.getState().openSshHosts()}>
+              {t("sidebar.hosts.more", { count: profiles.length - visibleProfiles.length })}
+            </button>
+          )}
         </div>
       )}
     </section>

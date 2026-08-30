@@ -18,7 +18,7 @@ beforeEach(() => {
   resetAppLifecycleForTests();
   hydrateLocalUsageLoggingEnabled(false);
   useSessionsStore.setState({ activeSessionId: "ui-test-session" });
-  useUIStore.setState({ presentationMode: "workspace", fileTabs: [], activeFileTabId: null, localUsageLoggingEnabled: false, terminalWallpaperEnabled: false, terminalWallpaperSource: "paper" });
+  useUIStore.setState({ presentationMode: "workspace", mainSurface: "terminal", fileTabs: [], activeFileTabId: null, localUsageLoggingEnabled: false, terminalWallpaperEnabled: false, terminalWallpaperSource: "paper" });
 });
 
 afterEach(() => {

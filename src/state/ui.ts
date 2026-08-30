@@ -28,6 +28,7 @@ import { hydrateLocalUsageLoggingEnabled, setLocalUsageLoggingEnabled } from "@/
 
 export type CursorStyle = "bar" | "block" | "underline";
 export type PresentationMode = "workspace" | "pure";
+export type MainSurface = "terminal" | "ssh-hosts";
 export type { SplitState } from "@/modules/session/split-layout";
 
 export interface AppearanceSettings {
@@ -340,6 +341,7 @@ interface UIState extends AppearanceSettings {
   configPath: string;
   configError: string | null;
   presentationMode: PresentationMode;
+  mainSurface: MainSurface;
   nativeFullscreen: boolean;
   sidebarVisible: boolean;
   panelVisible: boolean;
@@ -379,6 +381,8 @@ interface UIState extends AppearanceSettings {
 
   setPresentationMode: (mode: PresentationMode) => void;
   togglePresentationMode: () => void;
+  showTerminal: () => void;
+  openSshHosts: () => void;
   setNativeFullscreen: (fullscreen: boolean) => void;
   toggleBroadcastInput: () => void;
   setExplorerFollowCwd: (enabled: boolean) => void;
@@ -461,6 +465,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     configPath: "",
     configError: null,
     presentationMode: "workspace",
+    mainSurface: "terminal",
     nativeFullscreen: false,
     sidebarVisible: true,
     panelVisible: true,
@@ -494,19 +499,28 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setPresentationMode: (presentationMode) => set(presentationMode === "pure"
       ? {
           presentationMode,
+          mainSurface: "terminal",
           overlay: null,
           sshPrefill: null,
           pendingWorkflow: null,
         }
-      : { presentationMode, overlay: null, sshPrefill: null }),
+      : { presentationMode, mainSurface: "terminal", overlay: null, sshPrefill: null }),
     togglePresentationMode: () => set((state) => state.presentationMode === "workspace"
       ? {
           presentationMode: "pure",
+          mainSurface: "terminal",
           overlay: null,
           sshPrefill: null,
           pendingWorkflow: null,
         }
-      : { presentationMode: "workspace", overlay: null, sshPrefill: null }),
+      : { presentationMode: "workspace", mainSurface: "terminal", overlay: null, sshPrefill: null }),
+    showTerminal: () => set({ mainSurface: "terminal" }),
+    openSshHosts: () => set({
+      presentationMode: "workspace",
+      mainSurface: "ssh-hosts",
+      overlay: null,
+      sshPrefill: null,
+    }),
     setNativeFullscreen: (nativeFullscreen) => set({ nativeFullscreen }),
     toggleBroadcastInput: () => set((s) => ({ broadcastInput: !s.broadcastInput })),
     setExplorerFollowCwd: (explorerFollowCwd) => set({ explorerFollowCwd }),
@@ -533,17 +547,18 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     openFileTab: (tab) => set((state) => {
       const id = workspaceFileTabId(tab.sessionId, tab.filePath);
       if (state.fileTabs.some((candidate) => candidate.id === id)) {
-        return { activeFileTabId: id };
+        return { activeFileTabId: id, mainSurface: "terminal" };
       }
       return {
         fileTabs: [...state.fileTabs, { ...tab, id, dirty: false }],
         activeFileTabId: id,
+        mainSurface: "terminal",
       };
     }),
     setActiveFileTab: (id) => set((state) =>
-      state.fileTabs.some((tab) => tab.id === id) ? { activeFileTabId: id } : {},
+      state.fileTabs.some((tab) => tab.id === id) ? { activeFileTabId: id, mainSurface: "terminal" } : {},
     ),
-    activateTerminal: () => set({ activeFileTabId: null }),
+    activateTerminal: () => set({ activeFileTabId: null, mainSurface: "terminal" }),
     closeFileTab: (id) => set((state) => {
       const index = state.fileTabs.findIndex((tab) => tab.id === id);
       if (index < 0) return {};

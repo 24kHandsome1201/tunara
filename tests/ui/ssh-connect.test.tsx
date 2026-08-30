@@ -214,6 +214,40 @@ describe("SSH connection sheet", () => {
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
   });
 
+  test("persists a custom display name for a newly saved server", async () => {
+    const saves: Array<Record<string, unknown>> = [];
+    useUIStore.setState({ mainSurface: "ssh-hosts" });
+    mockIPC((command, payload) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+      if (command === "ssh_hosts_save") {
+        const profile = (payload as { profile: Record<string, unknown> }).profile;
+        saves.push(profile);
+        return [profile];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    await screen.findByText("No saved connections. Enter connection details below.");
+    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "database.internal" } });
+    fireEvent.change(screen.getByLabelText("User"), { target: { value: "admin" } });
+    fireEvent.click(screen.getByRole("radio", { name: /^SSH Agent/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Primary database" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(useUIStore.getState().mainSurface).toBe("terminal");
+    expect(saves[0]).toMatchObject({
+      label: "Primary database",
+      host: "database.internal",
+      port: 22,
+      user: "admin",
+      auth_method: "agent",
+    });
+  });
+
   test("reconnecting publishes no stale PTY and remounts a fresh terminal parser", async () => {
     const calls: string[] = [];
     mockIPC((command) => {

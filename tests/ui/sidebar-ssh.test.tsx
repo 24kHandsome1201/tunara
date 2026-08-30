@@ -80,7 +80,7 @@ test("saved hosts collapse when sessions exist and focus a live session on click
     />,
   );
 
-  const toggle = await screen.findByRole("button", { name: /Saved hosts · 1/ });
+  const toggle = await screen.findByRole("button", { name: /SSH hosts · 1/ });
   expect(screen.queryByRole("button", { name: "lab box" })).toBeNull();
   fireEvent.click(toggle);
   fireEvent.click(await screen.findByRole("button", { name: "lab box" }));
@@ -104,7 +104,7 @@ test("saved hosts open the connect sheet when the host has no live session", asy
     />,
   );
 
-  fireEvent.click(await screen.findByRole("button", { name: /Saved hosts · 1/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /SSH hosts · 1/ }));
   fireEvent.click(await screen.findByRole("button", { name: "other box" }));
   await waitFor(() => expect(useUIStore.getState().overlay).toBe("ssh"));
 });

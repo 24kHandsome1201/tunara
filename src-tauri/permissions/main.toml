@@ -110,6 +110,7 @@ commands.allow = [
   "ssh_fs_stat_v1",
   "ssh_fs_chmod_v1",
   "ssh_remote_git_snapshot_v1",
+  "ssh_system_snapshot_v1",
   "ssh_git_diff",
   "ssh_git_workspace_context",
   "ssh_fs_search",

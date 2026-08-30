@@ -109,7 +109,12 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           section: s.pinned ? t("palette.section.pinned_sessions") : t("palette.section.session"),
           scopes: ["session"],
           originalIndex: idx++,
-          action: () => { setActive(s.id); uiStore.getState().recordCommandUse(`switch-${s.id}`); onClose(); },
+          action: () => {
+            setActive(s.id);
+            uiStore.getState().showTerminal();
+            uiStore.getState().recordCommandUse(`switch-${s.id}`);
+            onClose();
+          },
         });
       });
 
@@ -123,6 +128,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("new-terminal");
+        uiStore.getState().showTerminal();
         useSessionsStore.getState().newTerminal();
         onClose();
       },
@@ -139,6 +145,20 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         uiStore.getState().recordCommandUse("new-terminal-directory");
         onClose();
         void openNewTerminalDirectoryDialog();
+      },
+    });
+
+    cmds.push({
+      id: "open-ssh-hosts",
+      label: t("palette.cmd.open_ssh_hosts"),
+      icon: <CmdIcon d="M3 4h18v7H3zM3 13h18v7H3zM7 7.5h.01M7 16.5h.01" />,
+      section: t("palette.section.action"),
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        uiStore.getState().recordCommandUse("open-ssh-hosts");
+        uiStore.getState().openSshHosts();
+        onClose();
       },
     });
 
@@ -203,6 +223,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           return;
         }
         sessionsState.setActive(target);
+        uiStore.getState().showTerminal();
         onClose();
       },
     });
@@ -286,6 +307,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           originalIndex: idx++,
           action: () => {
             uiStore.getState().recordCommandUse("new-terminal-current-dir");
+            uiStore.getState().showTerminal();
             useSessionsStore.getState().newTerminalInDir(activeSession.dir);
             onClose();
           },
@@ -303,6 +325,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           originalIndex: idx++,
           action: () => {
             uiStore.getState().recordCommandUse(`new-terminal-recent-dir-${entry.dir}`);
+            uiStore.getState().showTerminal();
             useSessionsStore.getState().newTerminalInDir(entry.dir);
             onClose();
           },

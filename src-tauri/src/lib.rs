@@ -239,6 +239,7 @@ pub fn run() {
             modules::ssh::remote_fs::metadata::ssh_fs_chmod_v1,
             // Remote git review operations over the SSH exec channel.
             modules::ssh::remote_git::ssh_remote_git_snapshot_v1,
+            modules::ssh::system_monitor::ssh_system_snapshot_v1,
             modules::ssh::remote_git::ssh_git_diff,
             modules::ssh::remote_git::ssh_git_workspace_context,
             modules::ssh::remote_git::ssh_fs_search,

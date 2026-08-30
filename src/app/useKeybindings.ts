@@ -48,6 +48,7 @@ export function useKeybindings() {
       switch (action) {
         case "newTerminal":
         case "newTerminalAlt":
+          ui.showTerminal();
           st.newTerminal();
           break;
         case "closeSession": {
@@ -70,6 +71,7 @@ export function useKeybindings() {
           break;
         case "togglePanel":
           if (ui.presentationMode === "pure") break;
+          ui.showTerminal();
           if (!ui.panelVisible && auxiliarySurfaceToCloseOnOpen({
             viewportWidth: ui.viewportWidth, sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible,
             sidebarWidth: ui.sidebarWidth, panelWidth: ui.panelWidth, terminalColumnCount: splitHorizontalPaneCount(ui.split),
@@ -77,9 +79,11 @@ export function useKeybindings() {
           ui.togglePanel();
           break;
         case "splitHorizontal":
+          ui.showTerminal();
           if (canSplitLayout(ui.split)) st.splitWithNewSession("horizontal");
           break;
         case "splitVertical":
+          ui.showTerminal();
           if (canSplitLayout(ui.split)) st.splitWithNewSession("vertical");
           break;
         case "focusSplitLeft":
@@ -88,7 +92,7 @@ export function useKeybindings() {
         case "focusSplitDown": {
           const direction = action.replace("focusSplit", "").toLowerCase() as SplitFocusDirection;
           const target = splitFocusTarget(ui.split, st.activeSessionId, direction);
-          if (target) { const previous = st.activeSessionId; st.setActive(target); announcePureNavigation(previous); }
+          if (target) { const previous = st.activeSessionId; st.setActive(target); ui.showTerminal(); announcePureNavigation(previous); }
           break;
         }
         case "commandPalette":
@@ -113,12 +117,13 @@ export function useKeybindings() {
           break;
         case "selectLastTab":
           if (handleFileSurfaceSelectLast()) break;
-          if (st.sessions.length > 0) { const previous = st.activeSessionId; st.setActive(st.sessions[st.sessions.length - 1].id); announcePureNavigation(previous); }
+          if (st.sessions.length > 0) { const previous = st.activeSessionId; st.setActive(st.sessions[st.sessions.length - 1].id); ui.showTerminal(); announcePureNavigation(previous); }
           break;
         case "cycleNextSession": {
           if (handleFileSurfaceCycle("next")) break;
           const previous = st.activeSessionId;
           st.cycleSession("next");
+          ui.showTerminal();
           announcePureNavigation(previous);
           break;
         }
@@ -126,6 +131,7 @@ export function useKeybindings() {
           if (handleFileSurfaceCycle("prev")) break;
           const previous = st.activeSessionId;
           st.cycleSession("prev");
+          ui.showTerminal();
           announcePureNavigation(previous);
           break;
         }
@@ -137,6 +143,7 @@ export function useKeybindings() {
           }
           const previous = st.activeSessionId;
           st.setActive(target);
+          ui.showTerminal();
           announcePureNavigation(previous);
           break;
         }
@@ -145,7 +152,7 @@ export function useKeybindings() {
           if (!tabMatch) break;
           const idx = Number(tabMatch[1]) - 1;
           if (handleFileSurfaceSelectIndex(idx)) break;
-          if (idx < st.sessions.length) { const previous = st.activeSessionId; st.setActive(st.sessions[idx].id); announcePureNavigation(previous); }
+          if (idx < st.sessions.length) { const previous = st.activeSessionId; st.setActive(st.sessions[idx].id); ui.showTerminal(); announcePureNavigation(previous); }
         }
       }
     };
