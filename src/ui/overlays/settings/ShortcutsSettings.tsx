@@ -77,7 +77,7 @@ function KeybindingRow({ editor, scope, action, allowDisable }: { editor: Keybin
   const columns = allowDisable ? "minmax(150px, 1fr) 170px auto auto" : "minmax(150px, 1fr) 180px auto";
   const overrideSpan = allowDisable ? "2 / 5" : "2 / 4";
   return (
-    <div style={{ display: "grid", gridTemplateColumns: columns, gap: 8, alignItems: "center" }}>
+    <div className="settings-keybinding-row" style={{ display: "grid", gridTemplateColumns: columns, gap: 8, alignItems: "center" }}>
       <label htmlFor={`binding-${action}`} style={{ fontSize: "var(--fs-secondary)" }}>{t(`settings.keybindings.action.${action}`)}</label>
       <input
         id={`binding-${action}`}
@@ -122,7 +122,7 @@ export function ShortcutsSettings() {
           </button>
         </div>
         <div style={{ ...SECTION_HINT, marginBottom: 10 }}>{t("settings.terminal_interactions.hint")}</div>
-        <label htmlFor="terminal-secondary-click" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, fontSize: "var(--fs-secondary)" }}>
+        <label htmlFor="terminal-secondary-click" className="settings-interaction-row" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, fontSize: "var(--fs-secondary)" }}>
           <span>{t("settings.terminal_interactions.secondary_click")}</span>
           <select
             id="terminal-secondary-click"
@@ -153,7 +153,7 @@ export function ShortcutsSettings() {
             )}
           </div>
         )}
-        <label htmlFor="terminal-host-modifier" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, marginTop: 10, fontSize: "var(--fs-secondary)" }}>
+        <label htmlFor="terminal-host-modifier" className="settings-interaction-row" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, marginTop: 10, fontSize: "var(--fs-secondary)" }}>
           <span>{t("settings.appearance.host_modifier")}</span>
           <select id="terminal-host-modifier" className="settings-control" value={terminalHostModifier} onChange={(event) => setTerminalHostModifier(event.target.value as "shift" | "meta" | "alt")}>
             <option value="shift">Shift</option><option value="meta">Cmd/Meta</option><option value="alt">Alt/Option</option>

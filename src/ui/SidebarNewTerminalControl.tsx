@@ -55,13 +55,13 @@ export function SidebarNewTerminalControl({
             height: "100%",
             minWidth: 0,
             flex: 1,
-            padding: "0 8px 0 10px",
+            padding: "0 6px 0 8px",
             border: "none",
             background: "transparent",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: 5,
             transition: "background var(--duration-fast) var(--ease-smooth)",
           }}
         >
@@ -69,10 +69,11 @@ export function SidebarNewTerminalControl({
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-accent)", lineHeight: 1 }}>
+          <span className="sidebar-new-terminal-label" style={{ fontSize: "var(--fs-secondary)", fontWeight: 600, color: "var(--c-accent)", lineHeight: 1 }}>
             {t("sidebar.new_terminal")}
           </span>
           <span
+            className="sidebar-new-terminal-shortcut"
             style={{
               marginLeft: "auto",
               height: 18,

@@ -558,6 +558,25 @@ select.ui-control {
   .settings-dialog-header, #settings-tabpanel { padding-inline: 16px; }
   .settings-dialog-footer { padding-inline: 16px; align-items: stretch; flex-direction: column-reverse; }
   .settings-dialog-footer > div { justify-content: flex-end; }
+  .settings-interaction-row { grid-template-columns: minmax(0, 1fr) !important; align-items: stretch !important; gap: 6px !important; }
+  .settings-interaction-row > .settings-control { width: 100%; }
+  .settings-keybinding-row { grid-template-columns: minmax(0, 1fr) auto auto !important; }
+  .settings-keybinding-row > label { grid-column: 1 / -1; }
+  .settings-keybinding-row > .settings-action-button[style] { grid-column: 1 / -1 !important; }
+}
+
+/* The sidebar is user-resizable down to 200px. Keep the primary action on one
+   line at its default width, then trade the redundant shortcut hint for label
+   space before allowing text truncation at the narrowest supported width. */
+.tunara-sidebar { container: tunara-sidebar / inline-size; }
+.sidebar-new-terminal-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container tunara-sidebar (max-width: 260px) {
+  .sidebar-new-terminal-shortcut { display: none !important; }
 }
 
 /* Files chrome is three stacked bands: where you are, what to find, then
