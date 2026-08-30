@@ -25,6 +25,7 @@ import { splitToolbarOverflow } from "./lib/toolbar-overflow";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
 import { copyActiveTerminal, safePasteActiveTerminal, searchActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import { TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, type TerminalContextAnnouncement } from "@/modules/terminal/lib/terminal-context-announcement";
+import type { ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
@@ -553,6 +554,57 @@ function WorkspaceTabIcon({ kind }: { kind: "terminal" | "file" }) {
   );
 }
 
+function deviceConnectionColor(phase: ConnectionPhase | null): string {
+  if (phase === "ready") return "var(--c-success)";
+  if (phase === "failed" || phase === "disconnected" || phase === "exited") return "var(--c-error)";
+  if (phase === "needsUserAction" || phase === "verifyingHostKey") return "var(--c-warning)";
+  return phase ? "var(--c-accent)" : "var(--c-text-7)";
+}
+
+function DeviceIdentityContent({
+  label,
+  kind,
+  connectionPhase,
+  foreignDirtyCount,
+}: {
+  label: string;
+  kind: "local" | "ssh" | null;
+  connectionPhase: ConnectionPhase | null;
+  foreignDirtyCount: number;
+}) {
+  return (
+    <>
+      {kind === "ssh" && (
+        <span
+          aria-hidden="true"
+          data-titlebar-connection-phase={connectionPhase ?? "unknown"}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: deviceConnectionColor(connectionPhase),
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <span style={{
+        fontSize: "var(--fs-secondary)",
+        fontWeight: 600,
+        color: "var(--c-text-primary)",
+        fontFamily: "var(--font-ui)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}>
+        {label}
+      </span>
+      {foreignDirtyCount > 0 && (
+        <span className="workspace-tab-dirty" aria-hidden="true" />
+      )}
+    </>
+  );
+}
+
 function TabButton({
   isActive,
   label,
@@ -977,6 +1029,34 @@ function TitlebarImpl({
           ? "linear-gradient(to right, #000 calc(100% - 24px), transparent 100%)"
           : undefined;
   const titlebarControlTransform = _isMac ? `translateY(${MAC_TITLEBAR_CONTROL_Y_OFFSET}px)` : undefined;
+  const deviceConnectionLabel = workingSet.deviceConnectionPhase
+    ? t(`connection.phase.${workingSet.deviceConnectionPhase}`)
+    : "";
+  const deviceAccessibleName = [
+    workingSet.deviceKind === "ssh"
+      ? `${workingSet.deviceLabel}, ${t("workspace.ssh")}`
+      : workingSet.deviceLabel,
+    deviceConnectionLabel,
+    workingSet.foreignDirtyCount > 0
+      ? t("titlebar.device.unsaved_other", { count: workingSet.foreignDirtyCount })
+      : "",
+  ].filter(Boolean).join(", ");
+  const deviceTitle = [workingSet.deviceDetail || workingSet.deviceLabel, deviceConnectionLabel]
+    .filter(Boolean).join(" · ");
+  const deviceIdentityStyle = {
+    height: "var(--h-titlebar-control)",
+    maxWidth: 160,
+    padding: "0 8px",
+    marginLeft: 2,
+    borderRadius: "var(--r-btn)",
+    border: "none",
+    background: "transparent",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+    transform: titlebarControlTransform,
+  } satisfies React.CSSProperties;
 
   if (presentationMode === "pure") {
     if (nativeFullscreen) {
@@ -1067,62 +1147,47 @@ function TitlebarImpl({
         </button>
       </div>
 
-      {workingSet.showDeviceMenu && (
-        <button
-          ref={deviceBtnRef}
-          type="button"
-          data-titlebar-device={workingSet.deviceKey ?? ""}
-          data-titlebar-device-kind={workingSet.deviceKind ?? "local"}
-          title={workingSet.deviceDetail || workingSet.deviceLabel}
-          aria-label={[
-            workingSet.deviceKind === "ssh"
-              ? `${workingSet.deviceLabel}, ${t("workspace.ssh")}`
-              : workingSet.deviceLabel,
-            workingSet.foreignDirtyCount > 0
-              ? t("titlebar.device.unsaved_other", { count: workingSet.foreignDirtyCount })
-              : "",
-          ].filter(Boolean).join(", ")}
-          aria-haspopup="menu"
-          aria-expanded={deviceMenu !== null}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={openDeviceMenu}
-          onContextMenu={openDeviceMenu}
-          className="hover-bg"
-          style={{
-            height: "var(--h-titlebar-control)",
-            maxWidth: 160,
-            padding: "0 8px",
-            marginLeft: 2,
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            flexShrink: 0,
-            transform: titlebarControlTransform,
-            WebkitAppRegion: "no-drag",
-          } as DragStyle}
-        >
-          {workingSet.deviceKind === "ssh" && (
-            <span aria-hidden="true" style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", lineHeight: 1 }}>⇄</span>
-          )}
-          <span style={{
-            fontSize: "var(--fs-secondary)",
-            fontWeight: 600,
-            color: "var(--c-text-primary)",
-            fontFamily: "var(--font-ui)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}>
-            {workingSet.deviceLabel}
-          </span>
-          {workingSet.foreignDirtyCount > 0 && (
-            <span className="workspace-tab-dirty" aria-hidden="true" />
-          )}
-        </button>
+      {workingSet.showDeviceIdentity && (
+        workingSet.showDeviceMenu ? (
+          <button
+            ref={deviceBtnRef}
+            type="button"
+            data-titlebar-device={workingSet.deviceKey ?? ""}
+            data-titlebar-device-kind={workingSet.deviceKind ?? "local"}
+            title={deviceTitle}
+            aria-label={deviceAccessibleName}
+            aria-haspopup="menu"
+            aria-expanded={deviceMenu !== null}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={openDeviceMenu}
+            onContextMenu={openDeviceMenu}
+            className="hover-bg"
+            style={{ ...deviceIdentityStyle, cursor: "pointer", WebkitAppRegion: "no-drag" } as DragStyle}
+          >
+            <DeviceIdentityContent
+              label={workingSet.deviceLabel}
+              kind={workingSet.deviceKind}
+              connectionPhase={workingSet.deviceConnectionPhase}
+              foreignDirtyCount={workingSet.foreignDirtyCount}
+            />
+          </button>
+        ) : (
+          <div
+            role="status"
+            data-titlebar-device={workingSet.deviceKey ?? ""}
+            data-titlebar-device-kind={workingSet.deviceKind ?? "local"}
+            title={deviceTitle}
+            aria-label={deviceAccessibleName}
+            style={{ ...deviceIdentityStyle, WebkitAppRegion: "drag" } as DragStyle}
+          >
+            <DeviceIdentityContent
+              label={workingSet.deviceLabel}
+              kind={workingSet.deviceKind}
+              connectionPhase={workingSet.deviceConnectionPhase}
+              foreignDirtyCount={workingSet.foreignDirtyCount}
+            />
+          </div>
+        )
       )}
 
       {showTabs ? (

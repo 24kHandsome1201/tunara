@@ -23,6 +23,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
         name: w.name.trim(),
         template: w.template,
         ...(w.description?.trim() ? { description: w.description.trim() } : {}),
+        ...(w.autoSubmit ? { autoSubmit: true } : {}),
       };
       const idx = state.workflows.findIndex((x) => x.id === id);
       if (idx === -1) return { workflows: [...state.workflows, next] };

@@ -6,9 +6,9 @@ import { promptableParams, resolveTemplate, type DynamicContext } from "@/module
 import { useFocusTrap } from "./useFocusTrap";
 
 /**
- * App-level prompt that fills a workflow's {{params}} before running it. Shown
+ * App-level prompt that fills a workflow's {{params}} before preparing it. Shown
  * when a parameterized workflow is chosen from the command palette. Fully
- * keyboard-drivable: Enter runs, Escape cancels.
+ * keyboard-drivable: Enter prepares or runs, Escape cancels.
  */
 export function WorkflowParamPrompt() {
   const t = useT();
@@ -65,11 +65,11 @@ export function WorkflowParamPrompt() {
       }
       sessions.updateSession(pending.targetSessionId, {
         pendingInput: command,
-        pendingInputSubmit: false,
+        pendingInputSubmit: pending.autoSubmit === true,
       });
       sessions.setActive(pending.targetSessionId);
     } else {
-      sessions.newTerminalWithInput(command, pending.dir);
+      sessions.newTerminalWithInput(command, pending.dir, pending.autoSubmit);
     }
     setPendingWorkflow(null);
   };
@@ -197,7 +197,7 @@ export function WorkflowParamPrompt() {
               fontWeight: 500,
             }}
           >
-            {t("workflow.run")}
+            {t(pending.autoSubmit ? "workflow.run" : "workflow.fill")}
           </button>
         </div>
       </div>

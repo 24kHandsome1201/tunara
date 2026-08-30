@@ -338,8 +338,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       }
 
       // Local workflows keep opening a fresh terminal. Remote workflows fill
-      // the current SSH PTY without auto-submitting, so a remote cwd is never
-      // misused as a local launch directory.
+      // the current SSH PTY (and submit only when explicitly configured), so a
+      // remote cwd is never misused as a local launch directory.
       for (const wf of workflows) {
         cmds.push({
           id: `workflow-${wf.id}`,
@@ -359,16 +359,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                 dir: activeSession.dir,
                 branch: activeSession.branch,
                 targetSessionId: activeSession.remote ? activeSession.id : undefined,
+                autoSubmit: wf.autoSubmit,
               });
             } else {
               const command = resolveTemplate(wf.template, {}, { cwd: activeSession.dir, branch: activeSession.branch });
               if (activeSession.remote) {
                 useSessionsStore.getState().updateSession(activeSession.id, {
                   pendingInput: command,
-                  pendingInputSubmit: false,
+                  pendingInputSubmit: wf.autoSubmit === true,
                 });
               } else {
-                useSessionsStore.getState().newTerminalWithInput(command, activeSession.dir);
+                useSessionsStore.getState().newTerminalWithInput(command, activeSession.dir, wf.autoSubmit);
               }
             }
             onClose();

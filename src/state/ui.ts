@@ -309,6 +309,8 @@ export interface PendingWorkflow {
   /** Remote workflows fill the existing SSH terminal instead of spawning a
    * local terminal with a remote path. */
   targetSessionId?: string;
+  /** Submit after resolving parameters instead of leaving the command editable. */
+  autoSubmit?: boolean;
 }
 
 export interface WorkspaceFileTab {

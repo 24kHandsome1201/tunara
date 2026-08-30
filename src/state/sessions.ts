@@ -144,7 +144,7 @@ interface SessionsState {
   reorderInGroup: (groupKey: string, fromIndex: number, toIndex: number) => void;
   newTerminal: () => void;
   newTerminalInDir: (dir: string) => void;
-  newTerminalWithInput: (input: string, dir?: string) => void;
+  newTerminalWithInput: (input: string, dir?: string, submit?: boolean) => void;
   openFileInTerminal: (sourceSessionId: string, directory: string, fileName: string) => void;
   splitWithNewSession: (direction: SplitDirection, sourceSessionId?: string) => void;
   duplicateOnHost: (sourceSessionId?: string) => void;
@@ -893,12 +893,12 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().addSession(createSession(dir, { title: t("session.default_title") }));
   },
 
-  newTerminalWithInput: (input, dir) => {
+  newTerminalWithInput: (input, dir, submit = false) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
     get().addSession(createSession(dir ?? localTerminalCwdFromSession(active), {
       title: t("session.default_title"),
       pendingInput: input,
-      pendingInputSubmit: false,
+      pendingInputSubmit: submit,
     }));
   },
 

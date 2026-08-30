@@ -32,12 +32,14 @@ export function WorkflowsSettings() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [template, setTemplate] = useState("");
+  const [autoSubmit, setAutoSubmit] = useState(false);
 
   const reset = () => {
     setEditingId(null);
     setName("");
     setDescription("");
     setTemplate("");
+    setAutoSubmit(false);
   };
 
   const startEdit = (w: Workflow) => {
@@ -45,6 +47,7 @@ export function WorkflowsSettings() {
     setName(w.name);
     setDescription(w.description ?? "");
     setTemplate(w.template);
+    setAutoSubmit(w.autoSubmit === true);
   };
 
   const canSave = name.trim().length > 0 && template.trim().length > 0;
@@ -56,6 +59,7 @@ export function WorkflowsSettings() {
       name: name.trim(),
       description: description.trim() || undefined,
       template,
+      autoSubmit,
     });
     reset();
   };
@@ -97,6 +101,11 @@ export function WorkflowsSettings() {
               <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {w.template}
               </div>
+              {w.autoSubmit && (
+                <div style={{ marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-success)", fontWeight: 600 }}>
+                  {t("settings.workflows.auto_submit")}
+                </div>
+              )}
             </button>
             <button
               onClick={() => {
@@ -128,6 +137,22 @@ export function WorkflowsSettings() {
             ? t("settings.workflows.params", { params: previewParams.join(", ") })
             : t("settings.workflows.no_params")}
         </div>
+        <label style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "0 8px", alignItems: "start", cursor: "pointer", padding: "4px 0" }}>
+          <input
+            type="checkbox"
+            checked={autoSubmit}
+            onChange={(event) => setAutoSubmit(event.target.checked)}
+            style={{ marginTop: 2, accentColor: "var(--c-accent)" }}
+          />
+          <span>
+            <span style={{ display: "block", fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontWeight: 500 }}>
+              {t("settings.workflows.auto_submit")}
+            </span>
+            <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)", lineHeight: 1.4 }}>
+              {t("settings.workflows.auto_submit_hint")}
+            </span>
+          </span>
+        </label>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           {editingId && (
             <button onClick={reset} className="hover-bg" style={{ padding: "5px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-primary)", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>

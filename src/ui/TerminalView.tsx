@@ -46,7 +46,7 @@ import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlo
 import { usePrefersReducedTransparency } from "./usePrefersReducedTransparency";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
-import { allocateTerminalInstanceEpoch, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
+import { allocateTerminalInstanceEpoch, createDeferredTerminalFocus, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -399,6 +399,7 @@ function TerminalViewImpl({
         snapshotScheduler.flush();
         setExitCode(code);
       };
+      const sshReadyFocus = createDeferredTerminalFocus();
       const generationGate = createTerminalPtyGenerationGate({
         onData: (bytes: Uint8Array, acknowledge: () => void, _generation: string) => { if (TERMINAL_BENCHMARK_MODE) recordTerminalBenchmarkOutput(sessionIdRef.current, bytes);
           const guarded = oscGuard.push(bytes);
@@ -419,8 +420,8 @@ function TerminalViewImpl({
         },
         onTransportLost: (_reason: string, generation: string) => { handleSshTransportLost(sessionIdRef.current, generation, (cleanup) => cleanups.push(cleanup)); finishGeneration(SSH_DISCONNECTED_EXIT_CODE, generation); },
         onExit: (code: number, generation: string) => { finishGeneration(code, generation); },
-        onConnectionStatus: (phase: PtyConnectionStatusPhase, generation: string) => { if (!disposed) recordPtyConnectionStatus(sessionIdRef.current, phase, generation); },
-        onPendingConnectionStatus: (phase: PtyConnectionStatusPhase) => { if (!disposed) recordPendingPtyConnectionStatus(sessionIdRef.current, phase); },
+        onConnectionStatus: (phase: PtyConnectionStatusPhase, generation: string) => { if (!disposed) { recordPtyConnectionStatus(sessionIdRef.current, phase, generation); if (transport === "ssh" && phase === "ready") sshReadyFocus.ready(); } },
+        onPendingConnectionStatus: (phase: PtyConnectionStatusPhase) => { if (!disposed) { recordPendingPtyConnectionStatus(sessionIdRef.current, phase); if (transport === "ssh" && phase === "ready") sshReadyFocus.ready(); } },
       });
       const ptyHandlers = generationGate.handlers; let pty;
       try {
@@ -474,7 +475,7 @@ function TerminalViewImpl({
         transportGeneration: pty.generation,
         terminalInstanceEpoch: terminalInstanceEpochRef.current,
       }, () => term.focus()));
-      if (activeRef.current) setLogicalActiveTerminalPane(sessionIdRef.current);
+      if (activeRef.current) { setLogicalActiveTerminalPane(sessionIdRef.current); if (transport === "ssh") sshReadyFocus.capture(sessionIdRef.current); }
       useSessionsStore.getState().updateSession(sessionIdRef.current, {
         ptyId: pty.id,
         transportGeneration: pty.generation,

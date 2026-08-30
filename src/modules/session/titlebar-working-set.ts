@@ -1,4 +1,5 @@
 import type { Session } from "../../ui/types.ts";
+import type { ConnectionPhase } from "../terminal/lib/connection-state.ts";
 import {
   groupSessionsForSidebar,
   localDirFromGroup,
@@ -43,7 +44,9 @@ export interface TitlebarWorkingSet {
   terminals: Session[];
   files: TitlebarFileTabRef[];
   showTerminals: boolean;
+  showDeviceIdentity: boolean;
   showDeviceMenu: boolean;
+  deviceConnectionPhase: ConnectionPhase | null;
   showOriginGlyph: boolean;
   devices: TitlebarDevice[];
   foreignDirtyCount: number;
@@ -112,6 +115,10 @@ export function titlebarWorkingSet(input: {
   );
   const showTerminals = !input.sidebarVisible;
   const showDeviceMenu = showTerminals && devices.length >= 2;
+  const showDeviceIdentity = showDeviceMenu || (showTerminals && current?.kind === "ssh");
+  const currentSession = current
+    ? representativeSession(current.sessions, active?.id ?? "")
+    : undefined;
 
   return {
     deviceKey,
@@ -121,8 +128,10 @@ export function titlebarWorkingSet(input: {
     terminals: current?.sessions ?? [],
     files,
     showTerminals,
+    showDeviceIdentity,
     showDeviceMenu,
-    showOriginGlyph: !showDeviceMenu,
+    deviceConnectionPhase: current?.kind === "ssh" ? currentSession?.connection?.phase ?? null : null,
+    showOriginGlyph: !showDeviceIdentity,
     devices,
     foreignDirtyCount: foreignDirtyFiles.length,
     foreignDirtyFiles,

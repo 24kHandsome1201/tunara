@@ -229,7 +229,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
       recentCommands: ["git status", "bad\ncmd", "git status", "pnpm test"],
       commandUsage: Object.fromEntries(commandUsageEntries),
       workflows: [
-        { id: "wf-1", name: " Review ", template: " pnpm test ", description: " Run tests " },
+        { id: "wf-1", name: " Review ", template: " pnpm test ", description: " Run tests ", autoSubmit: true },
         { id: "bad", name: "", template: "x" },
       ],
     });
@@ -273,7 +273,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.deepEqual(Object.keys(snapshot.commandUsage).slice(0, 3), ["cmd-54", "cmd-53", "cmd-52"]);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.commandUsage, "__proto__"), false);
     assert.deepEqual(snapshot.workflows, [
-      { id: "wf-1", name: "Review", template: " pnpm test ", description: "Run tests" },
+      { id: "wf-1", name: "Review", template: " pnpm test ", description: "Run tests", autoSubmit: true },
     ]);
     assert.equal(warnings.length, 1);
   } finally {

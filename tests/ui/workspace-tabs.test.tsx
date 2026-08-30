@@ -349,6 +349,24 @@ describe("workspace file and terminal tabs", () => {
     expect(useUIStore.getState().activeFileTabId).toBe(`${localSession.id}\0/tmp/app/notes.txt`);
   });
 
+  test("a collapsed single-SSH window shows static identity and readiness", () => {
+    const remoteSession: Session = {
+      ...session,
+      id: "ssh-only",
+      title: "Pi",
+      dir: "/srv",
+      remote: { host: "pi", port: 22, user: "tuna" },
+      connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
+    };
+    useSessionsStore.setState({ sessions: [remoteSession], activeSessionId: remoteSession.id });
+    renderTitlebar({ sessions: [remoteSession], activeSessionId: remoteSession.id, sidebarVisible: false });
+
+    const identity = screen.getByRole("status", { name: "tuna@pi, SSH, Ready" });
+    expect(identity.getAttribute("data-titlebar-device-kind")).toBe("ssh");
+    expect(identity.querySelector("[data-titlebar-connection-phase='ready']")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /tuna@pi/ })).toBeNull();
+  });
+
   test("a single-device window does not render the device switcher", () => {
     useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
     renderTitlebar({ sidebarVisible: false });

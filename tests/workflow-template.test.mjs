@@ -45,12 +45,12 @@ test("sanitizeWorkflow rejects malformed entries", () => {
   assert.equal(sanitizeWorkflow({ id: "1", name: "n", template: "  " }), null);
   assert.equal(sanitizeWorkflow({ name: "n", template: "x" }), null); // no id
   assert.deepEqual(
-    sanitizeWorkflow({ id: "1", name: " n ", template: "x", description: " d " }),
-    { id: "1", name: "n", template: "x", description: "d" },
+    sanitizeWorkflow({ id: "1", name: " n ", template: "x", description: " d ", autoSubmit: true }),
+    { id: "1", name: "n", template: "x", description: "d", autoSubmit: true },
   );
   // Empty description is dropped, not kept as "".
   assert.deepEqual(
-    sanitizeWorkflow({ id: "1", name: "n", template: "x", description: "" }),
+    sanitizeWorkflow({ id: "1", name: "n", template: "x", description: "", autoSubmit: false }),
     { id: "1", name: "n", template: "x" },
   );
 });

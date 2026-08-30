@@ -62,6 +62,35 @@ export function runBindingAwareContinuation(token: TerminalFocusReturnToken, con
   return true;
 }
 
+/** Focus once both an active terminal binding and backend readiness exist.
+ * The captured return token prevents a late ready event from stealing focus. */
+export function createDeferredTerminalFocus(): {
+  capture: (paneId: string) => boolean;
+  ready: () => boolean;
+} {
+  let ready = false;
+  let attempted = false;
+  let token: TerminalFocusReturnToken | null = null;
+  const tryFocus = () => {
+    if (attempted || !ready || !token) return false;
+    attempted = true;
+    const captured = token;
+    token = null;
+    return returnTerminalFocus(captured);
+  };
+  return {
+    capture: (paneId) => {
+      if (attempted) return false;
+      token = issueFocusReturnToken(paneId);
+      return tryFocus();
+    },
+    ready: () => {
+      ready = true;
+      return tryFocus();
+    },
+  };
+}
+
 export function resetTerminalBindingsForTests(): void {
   bindings.clear();
   nextTerminalEpoch = 0;

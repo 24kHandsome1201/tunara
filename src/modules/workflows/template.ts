@@ -16,6 +16,8 @@ export interface Workflow {
   description?: string;
   /** Command text with `{{param}}` placeholders. */
   template: string;
+  /** Submit the resolved command instead of leaving it editable at the prompt. */
+  autoSubmit?: boolean;
 }
 
 const PLACEHOLDER = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
@@ -181,5 +183,6 @@ export function sanitizeWorkflow(raw: unknown): Workflow | null {
   if (typeof w.description === "string" && w.description.trim()) {
     out.description = w.description.trim();
   }
+  if (w.autoSubmit === true) out.autoSubmit = true;
   return out;
 }

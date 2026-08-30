@@ -28,7 +28,7 @@ function SshDialogHarness() {
 describe("SSH connection sheet", () => {
   beforeEach(() => {
     useSessionsStore.setState({ sessions: [], activeSessionId: null });
-    useUIStore.setState({ overlay: "ssh", sshPrefill: null, inspectorTab: "files" });
+    useUIStore.setState({ overlay: "ssh", sshPrefill: null, inspectorTab: "files", sidebarVisible: true });
   });
 
   afterEach(() => {
@@ -54,6 +54,7 @@ describe("SSH connection sheet", () => {
   });
 
   test("requires an explicit method and keeps Password strictly password-only", async () => {
+    useUIStore.setState({ sidebarVisible: false });
     mockEmptySources();
     render(<SshConnect onClose={vi.fn()} />);
 
@@ -81,6 +82,7 @@ describe("SSH connection sheet", () => {
       authMethod: "password",
       injectShellIntegration: true,
     });
+    expect(useUIStore.getState().sidebarVisible).toBe(false);
     expect(useUIStore.getState().inspectorTab).toBe("changes");
     expect(JSON.stringify(session)).not.toContain(secret);
     expect(takeSshCredentials(session.id)?.password).toBe(secret);

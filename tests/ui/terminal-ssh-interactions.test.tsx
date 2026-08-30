@@ -994,8 +994,42 @@ test("workflow parameters keep a scrollable body and reachable footer", () => {
   expect(dialog.style.maxHeight).toBe("calc(100vh - 32px)");
   const scrollBody = screen.getByLabelText("one").parentElement?.parentElement as HTMLElement;
   expect(scrollBody.style.overflowY).toBe("auto");
-  expect(screen.getByRole("button", { name: "Run" }).parentElement?.style.borderTop).toContain("var(--c-border-2)");
+  expect(screen.getByRole("button", { name: "Fill command" }).parentElement?.style.borderTop).toContain("var(--c-border-2)");
   useUIStore.setState({ pendingWorkflow: null });
+});
+
+test("an opted-in parameterized workflow submits to its SSH terminal", () => {
+  const session: Session = {
+    id: "workflow-ssh",
+    title: "Pi",
+    dir: "/srv",
+    branch: "main",
+    runState: "idle",
+    updatedAt: 1,
+    remote: { host: "pi", port: 22, user: "tuna" },
+  };
+  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+  useUIStore.setState({
+    pendingWorkflow: {
+      workflowId: "herdr-task",
+      name: "Herdr task",
+      template: "herdr --task {{task}}",
+      dir: session.dir,
+      branch: session.branch,
+      targetSessionId: session.id,
+      autoSubmit: true,
+    },
+  });
+  render(<WorkflowParamPrompt />);
+
+  fireEvent.change(screen.getByLabelText("task"), { target: { value: "review" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+  expect(useSessionsStore.getState().sessions[0]).toMatchObject({
+    pendingInput: "herdr --task review",
+    pendingInputSubmit: true,
+  });
+  expect(useUIStore.getState().pendingWorkflow).toBeNull();
 });
 
 test("host key prompt constrains height and safely focuses Reject", () => {

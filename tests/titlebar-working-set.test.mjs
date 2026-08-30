@@ -162,6 +162,20 @@ test("a single-device window does not show the device menu", () => {
   assert.equal(working.foreignDirtyCount, 0);
 });
 
+test("a collapsed single-SSH window exposes identity and connection state without a device menu", () => {
+  const session = remote("ssh-1", "/srv", { user: "tuna", host: "pi" }, { connection: { phase: "ready" } });
+  const working = titlebarWorkingSet({
+    sessions: [session],
+    fileTabs: [],
+    activeSessionId: session.id,
+    sidebarVisible: false,
+  });
+  assert.equal(working.showDeviceMenu, false);
+  assert.equal(working.showDeviceIdentity, true);
+  assert.equal(working.deviceConnectionPhase, "ready");
+  assert.equal(working.showOriginGlyph, false);
+});
+
 test("foreign dirty files stay off the current strip and surface on the device menu", () => {
   const localSession = local("local-1", "/tmp/app");
   const sshSession = remote("ssh-1", "/srv", { user: "alice", host: "prod", port: 2222 });
