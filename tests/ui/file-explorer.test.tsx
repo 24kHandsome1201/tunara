@@ -1011,6 +1011,34 @@ describe("FileExplorer workspace files", () => {
     expect(calls).toEqual([]);
   });
 
+  test("offers an in-context reconnect action when remote Files is disconnected", async () => {
+    useSessionsStore.setState({
+      sessions: [{
+        id: "remote-reconnect",
+        title: "deploy@example",
+        dir: "/srv/app",
+        branch: "main",
+        runState: "failed",
+        updatedAt: 1,
+        remote: { host: "example", port: 22, user: "deploy", authMethod: "agent" },
+        connection: { transport: "ssh", phase: "disconnected", source: "transport", updatedAt: 1 },
+      }],
+      activeSessionId: "remote-reconnect",
+    });
+    mockIPC((command) => { throw new Error(`unexpected command: ${command}`); });
+
+    render(<FileExplorer sessionId="remote-reconnect" rootDir="/srv/app" remote />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
+
+    expect(useUIStore.getState().overlay).toBe("ssh");
+    expect(useUIStore.getState().sshPrefill).toMatchObject({
+      host: "example",
+      port: 22,
+      user: "deploy",
+      reconnectSessionId: "remote-reconnect",
+    });
+  });
+
   test("centers a directory error with an accessible retry action", async () => {
     let attempts = 0;
     mockIPC((command) => {

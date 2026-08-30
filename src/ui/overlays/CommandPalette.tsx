@@ -46,6 +46,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const listRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
+  const executingRef = useRef(false);
   useFocusTrap(dialogRef);
 
   const sessions = useSessionsStore((s) => s.sessions);
@@ -640,6 +641,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     selected?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
+  const execute = (command: Command | undefined) => {
+    if (!command || executingRef.current) return;
+    executingRef.current = true;
+    try {
+      command.action();
+    } catch (error) {
+      executingRef.current = false;
+      throw error;
+    }
+  };
+
   function handleKeyDown(e: React.KeyboardEvent) {
     // 中文/日文/韩文 IME 合成期间，Arrow / Enter 应由 IME 接管，
     // 不要触发列表导航或执行命令。Escape 仍然允许关闭浮层。
@@ -668,7 +680,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       if (ranked.length > 0) setSelectedIndex(ranked.length - 1);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      ranked[selectedIndex]?.action();
+      execute(ranked[selectedIndex]);
     }
   }
 
@@ -793,7 +805,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                     id={`palette-option-${globalIdx}`}
                     aria-selected={isSelected}
                     data-cmd-index={globalIdx}
-                    onClick={() => cmd.action()}
+                    onClick={() => execute(cmd)}
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     style={{
                       position: "relative",

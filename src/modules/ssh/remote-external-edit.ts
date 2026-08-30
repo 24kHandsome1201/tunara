@@ -6,7 +6,13 @@ import { openInEditorWithToast } from "@/ui/lib/open-in-editor";
 import { useUIStore } from "@/state/ui";
 import { t } from "@/modules/i18n";
 
-const watchers = new Map<string, ReturnType<typeof setInterval>>();
+type RemoteEditWatcher = {
+  timer: ReturnType<typeof setInterval>;
+  localPath: string;
+  remotePath: string;
+};
+
+const watchers = new Map<string, RemoteEditWatcher>();
 
 export async function remoteEditStagingPath(sessionId: string, remotePath: string): Promise<string> {
   return invoke<string>("remote_edit_staging_path", { sessionId, remotePath });
@@ -19,17 +25,53 @@ function watcherKey(sessionId: string, remotePath: string): string {
 export function stopRemoteExternalEdit(sessionId: string, remotePath?: string): void {
   if (remotePath) {
     const key = watcherKey(sessionId, remotePath);
-    const timer = watchers.get(key);
-    if (timer) clearInterval(timer);
+    const watcher = watchers.get(key);
+    if (watcher) clearInterval(watcher.timer);
     watchers.delete(key);
     return;
   }
-  for (const [key, timer] of watchers) {
+  for (const [key, watcher] of watchers) {
     if (key.startsWith(`${sessionId}\0`)) {
-      clearInterval(timer);
+      clearInterval(watcher.timer);
       watchers.delete(key);
     }
   }
+}
+
+function finishRemoteExternalEdits(sessionId: string, sessionClosed: boolean): void {
+  for (const [key, watcher] of watchers) {
+    if (!key.startsWith(`${sessionId}\0`)) continue;
+    clearInterval(watcher.timer);
+    watchers.delete(key);
+    if (sessionClosed) {
+      useUIStore.getState().addToast({
+        title: t("preview.editor.external_remote_sync_failed"),
+        subtitle: t("preview.editor.external_remote_session_closed_body", { path: watcher.localPath }),
+        variant: "error",
+      });
+      continue;
+    }
+    useUIStore.getState().addToast({
+      sessionId,
+      title: t("preview.editor.external_remote_sync_failed"),
+      subtitle: t("preview.editor.external_remote_sync_failed_body", { path: watcher.localPath }),
+      variant: "error",
+      action: {
+        kind: "open-remote-preview",
+        sessionId,
+        path: watcher.remotePath,
+        label: t("explorer.open_in_tunara"),
+      },
+    });
+  }
+}
+
+export function interruptRemoteExternalEdit(sessionId: string): void {
+  finishRemoteExternalEdits(sessionId, false);
+}
+
+export function closeRemoteExternalEdits(sessionId: string): void {
+  finishRemoteExternalEdits(sessionId, true);
 }
 
 export async function openRemoteInExternalEditor(options: {
@@ -52,23 +94,66 @@ export async function openRemoteInExternalEditor(options: {
     return;
   }
   await sshDownload(remotePtyId, remotePath, localPath);
-  await openInEditorWithToast(editor, localPath, { sessionId });
+  const opened = await openInEditorWithToast(editor, localPath, { sessionId });
+  if (!opened) return;
   const key = watcherKey(sessionId, remotePath);
   const existing = watchers.get(key);
-  if (existing) clearInterval(existing);
+  if (existing) clearInterval(existing.timer);
   let fingerprint = remote.fingerprint;
   let lastContent = remote.content;
+  let syncing = false;
   const timer = setInterval(() => {
+    if (syncing) return;
+    syncing = true;
     void fsReadFile(localPath).then(async (result) => {
-      if (result.kind !== "text" || result.content === lastContent) return;
+      if (result.kind !== "text") {
+        stopWithError(
+          t("preview.editor.external_remote_sync_failed"),
+          t("preview.editor.external_remote_sync_failed_body", { path: localPath }),
+        );
+        return;
+      }
+      if (result.content === lastContent) return;
+      if (watchers.get(key)?.timer !== timer) return;
       const written = await sshWriteTextFile(binding, remotePath, result.content, fingerprint);
+      if (watchers.get(key)?.timer !== timer) return;
       if (written.status === "saved") {
         fingerprint = written.fingerprint;
         lastContent = result.content;
+        return;
       }
-    }).catch(() => {});
+      stopWithError(
+        t("preview.editor.conflict_title"),
+        t("preview.editor.external_remote_conflict_body", { path: localPath }),
+      );
+    }).catch(() => {
+      stopWithError(
+        t("preview.editor.external_remote_sync_failed"),
+        t("preview.editor.external_remote_sync_failed_body", { path: localPath }),
+      );
+    }).finally(() => {
+      syncing = false;
+    });
   }, 1_200);
-  watchers.set(key, timer);
+  function stopWithError(title: string, subtitle: string) {
+    const activeWatcher = watchers.get(key);
+    if (activeWatcher?.timer !== timer) return;
+    clearInterval(activeWatcher.timer);
+    watchers.delete(key);
+    useUIStore.getState().addToast({
+      sessionId,
+      title,
+      subtitle,
+      variant: "error",
+      action: {
+        kind: "open-remote-preview",
+        sessionId,
+        path: remotePath,
+        label: t("explorer.open_in_tunara"),
+      },
+    });
+  }
+  watchers.set(key, { timer, localPath, remotePath });
   useUIStore.getState().addToast({
     sessionId,
     title: t("preview.editor.external_remote"),

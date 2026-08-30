@@ -15,7 +15,7 @@ import {
   sshHome,
   sshReadDir,
 } from "@/modules/ssh/remote-fs-bridge";
-import { formatSize } from "./types";
+import { formatSize, reconnectPrefillFromSession } from "./types";
 import { PanelEmptyState, PanelLoadingState, PanelState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
@@ -103,7 +103,8 @@ export function FileExplorer({
   const t = useT();
   const isRemote = remote;
   const remoteDisconnected = isRemote && remotePtyId === undefined;
-  const remoteInfo = useSessionsStore((state) => state.sessions.find((session) => session.id === sessionId)?.remote);
+  const remoteSession = useSessionsStore((state) => state.sessions.find((session) => session.id === sessionId));
+  const remoteInfo = remoteSession?.remote;
   const prefsKey = remoteInfo ? hostFilePrefsKey(remoteInfo) : null;
   const storedPrefs = useSessionsStore((state) => (prefsKey ? state.hostFilePrefs[prefsKey] : undefined));
   const hostPrefs = storedPrefs ?? emptyHostFilePrefs();
@@ -808,7 +809,17 @@ export function FileExplorer({
     return isRemote
       ? [
           { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => openFile(node.path) },
-          { id: "file:open-editor", label: t("preview.editor.external_remote"), icon: "editor", disabled: remoteDisconnected || !binding, action: () => { if (binding) void openRemoteInExternalEditor({ sessionId, binding, remotePath: node.path, editor: externalEditor }).catch(() => {}); } },
+          { id: "file:open-editor", label: t("preview.editor.external_remote"), icon: "editor", disabled: remoteDisconnected || !binding, action: () => {
+            if (!binding) return;
+            void openRemoteInExternalEditor({ sessionId, binding, remotePath: node.path, editor: externalEditor }).catch(() => {
+              useUIStore.getState().addToast({
+                sessionId,
+                title: t("preview.editor.external_remote"),
+                subtitle: t("preview.editor.external_remote_open_failed"),
+                variant: "error",
+              });
+            });
+          } },
           { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
           { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
@@ -1163,6 +1174,11 @@ export function FileExplorer({
     void openResource(resourceRefForSession(owner, path), "preview");
   }
 
+  function reconnectRemote() {
+    if (!remoteSession?.remote) return;
+    useUIStore.getState().openSshConnect(reconnectPrefillFromSession(remoteSession));
+  }
+
   function changeSort(key: SortKey) {
     setSort((current) => current.key === key
       ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
@@ -1186,8 +1202,13 @@ export function FileExplorer({
       )}
       {dropMessage && <div role="status" aria-live="polite" className="sr-only">{dropMessage}</div>}
       {remoteDisconnected && (
-        <div role="status" aria-live="polite" style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)" }}>
-          {t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")}
+        <div style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span role="status" aria-live="polite">{t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")}</span>
+          {remoteSession?.remote && (
+            <button type="button" className="ui-button" onClick={reconnectRemote} style={{ flexShrink: 0, minHeight: 24, padding: "2px 8px", fontSize: "var(--fs-meta)" }}>
+              {t("terminal.exited.reconnect")}
+            </button>
+          )}
         </div>
       )}
       <ExplorerNav

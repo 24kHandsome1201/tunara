@@ -1285,7 +1285,7 @@ function EditorSurface({
                   useUIStore.getState().addToast({
                     sessionId,
                     title: t("preview.editor.external_remote"),
-                    subtitle: t("preview.editor.save_failed_body"),
+                    subtitle: t("preview.editor.external_remote_open_failed"),
                     variant: "error",
                   });
                 });

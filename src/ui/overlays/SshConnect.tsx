@@ -162,8 +162,23 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [jumpKeyPassphrase, setJumpKeyPassphrase] = useState("");
   const configGeneration = useRef(0);
   const diagnosticsRef = useRef<HTMLDetailsElement>(null);
+  const connectAttemptRef = useRef(0);
+  const connectInFlightRef = useRef(false);
+  const [connecting, setConnecting] = useState(false);
 
   useFocusTrap(containerRef);
+
+  useEffect(() => () => {
+    connectAttemptRef.current += 1;
+    connectInFlightRef.current = false;
+  }, []);
+
+  const cancelConnect = () => {
+    connectAttemptRef.current += 1;
+    connectInFlightRef.current = false;
+    setConnecting(false);
+    onClose();
+  };
 
   useEffect(() => {
     (prefill?.host ? hostRef : containerRef).current?.querySelector?.("input")?.focus();
@@ -404,10 +419,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const canConnect = host.trim().length > 0
     && user.trim().length > 0
     && (portText.length === 0 || parseSshPort(portText) !== null)
-    && methodReady && jumpReady && !routeError && !loadingConfig;
+    && methodReady && jumpReady && !routeError && !loadingConfig && !connecting;
 
   const connect = async () => {
-    if (!canConnect || !authMethod) return;
+    if (!canConnect || !authMethod || connectInFlightRef.current) return;
+    connectInFlightRef.current = true;
+    const attempt = ++connectAttemptRef.current;
+    setConnecting(true);
     const safePort = normalizeSshPort(port);
     const trimmedHost = host.trim();
     const trimmedUser = user.trim();
@@ -419,29 +437,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
       ...(jumpAuthMethod === "key" && jumpIdentityFile.trim() ? { identityFile: jumpIdentityFile.trim() } : {}),
       ...(jumpAuthMethod === "key" && jumpCertificateFile.trim() ? { certificateFile: jumpCertificateFile.trim() } : {}),
     } } : undefined;
-
-    if (saveProfile) {
-      const selectedSaved = selectedProfile?.source === "saved"
-        ? hosts.find((candidate) => candidate.id === selectedProfile.id)
-        : undefined;
-      const existing = selectedSaved ?? hosts.find((candidate) =>
-        candidate.host === trimmedHost
-        && candidate.port === safePort
-        && candidate.user === trimmedUser
-        && (candidate.proxyJumpProfileId ?? "") === jumpProfileId
-      );
-      void actions.onSave({
-        id: existing?.id ?? makeHostId(),
-        label: existing?.label ?? `${trimmedUser}@${trimmedHost}`,
-        host: trimmedHost,
-        port: safePort,
-        user: trimmedUser,
-        authMethod,
-        identityFile: trimmedId,
-        certificateFile: trimmedCertificate,
-        ...(jumpProfileId ? { proxyJumpProfileId: jumpProfileId } : {}),
-      });
-    }
 
     const remote: RemoteInfo = {
       host: trimmedHost,
@@ -473,18 +468,48 @@ export function SshConnect({ onClose }: SshConnectProps) {
       : createRemoteSession(remote);
     let reconnectForwards = prefill?.reconnectForwards;
     if (existingSession?.remote && sameEndpoint) {
-      if (forwardSnapshotInFlight.current) return;
+      if (forwardSnapshotInFlight.current) {
+        connectInFlightRef.current = false;
+        setConnecting(false);
+        return;
+      }
       forwardSnapshotInFlight.current = true;
       try {
         reconnectForwards = await captureSshReconnectForwards(existingSession);
       } catch {
+        if (attempt !== connectAttemptRef.current) return;
         useUIStore.getState().addToast({ title: t("ssh.forward.snapshotFailed"), subtitle: "", variant: "error" });
+        connectInFlightRef.current = false;
+        setConnecting(false);
         return;
       } finally {
         forwardSnapshotInFlight.current = false;
       }
     }
 
+    if (attempt !== connectAttemptRef.current) return;
+    if (saveProfile) {
+      const selectedSaved = selectedProfile?.source === "saved"
+        ? hosts.find((candidate) => candidate.id === selectedProfile.id)
+        : undefined;
+      const existing = selectedSaved ?? hosts.find((candidate) =>
+        candidate.host === trimmedHost
+        && candidate.port === safePort
+        && candidate.user === trimmedUser
+        && (candidate.proxyJumpProfileId ?? "") === jumpProfileId
+      );
+      void actions.onSave({
+        id: existing?.id ?? makeHostId(),
+        label: existing?.label ?? `${trimmedUser}@${trimmedHost}`,
+        host: trimmedHost,
+        port: safePort,
+        user: trimmedUser,
+        authMethod,
+        identityFile: trimmedId,
+        certificateFile: trimmedCertificate,
+        ...(jumpProfileId ? { proxyJumpProfileId: jumpProfileId } : {}),
+      });
+    }
     stashSshCredentials(session.id, {
       password: authMethod === "password" ? password : undefined,
       keyPassphrase: authMethod === "key" ? keyPassphrase || undefined : undefined,
@@ -553,19 +578,20 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   return (
     <>
-      <div aria-hidden="true" onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
+      <div aria-hidden="true" onClick={cancelConnect} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
       <div
         ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="ssh-connect-title"
         aria-describedby="ssh-connect-subtitle"
+        aria-busy={connecting}
         tabIndex={0}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            onClose();
+            cancelConnect();
             return;
           }
           const target = event.target;
@@ -609,7 +635,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               {t("ssh.subtitle")}
             </span>
           </div>
-          <button type="button" onClick={onClose} aria-label={t("common.close")} className="hover-bg" style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button type="button" onClick={cancelConnect} aria-label={t("common.close")} className="hover-bg" style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <CloseIcon />
           </button>
         </div>
@@ -816,9 +842,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)", flexShrink: 0 }}>
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.credentialsHint")}</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={onClose} className="ui-button" style={{ padding: "6px 16px", fontSize: "var(--fs-body)" }}>{t("common.cancel")}</button>
+            <button type="button" onClick={cancelConnect} className="ui-button" style={{ padding: "6px 16px", fontSize: "var(--fs-body)" }}>{t("common.cancel")}</button>
             <button type="button" onClick={connect} disabled={!canConnect} className="ui-button ui-button--primary" style={{ padding: "6px 18px", fontSize: "var(--fs-body)", fontWeight: 500 }}>
-              {prefill?.reconnectSessionId ? t("terminal.exited.reconnect") : t("ssh.connect")}
+              {connecting ? t("ssh.connecting") : prefill?.reconnectSessionId ? t("terminal.exited.reconnect") : t("ssh.connect")}
             </button>
           </div>
         </div>

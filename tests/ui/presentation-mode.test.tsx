@@ -448,3 +448,23 @@ test("workspace command palette keeps mouse-free terminal recovery actions", () 
   expect(screen.getByText("Open terminal shortcut menu")).toBeTruthy();
   expect(screen.getByText("New terminal")).toBeTruthy();
 });
+
+test("command palette executes a repeated Enter intent only once", () => {
+  useSessionsStore.setState({ sessions: [], activeSessionId: null });
+  useUIStore.setState({
+    configLoaded: false,
+    presentationMode: "workspace",
+    overlay: "command-palette",
+  });
+  const onClose = vi.fn();
+  render(<CommandPalette onClose={onClose} />);
+
+  const input = screen.getByRole("combobox");
+  fireEvent.change(input, { target: { value: "New terminal" } });
+  const dialog = screen.getByRole("dialog");
+  fireEvent.keyDown(dialog, { key: "Enter" });
+  fireEvent.keyDown(dialog, { key: "Enter" });
+
+  expect(useSessionsStore.getState().sessions).toHaveLength(1);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});

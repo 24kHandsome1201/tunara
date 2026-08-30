@@ -13,15 +13,16 @@ export function openInEditorWithToast(
   editor: string,
   path: string,
   opts?: { sessionId?: string; line?: number; column?: number },
-): Promise<void> {
+): Promise<boolean> {
   const sessionId = resolveToastSessionId(opts?.sessionId);
-  return openInEditor(editor, path, opts?.line, opts?.column).catch(() => {
-    if (!sessionId) return;
+  return openInEditor(editor, path, opts?.line, opts?.column).then(() => true).catch(() => {
+    if (!sessionId) return false;
     useUIStore.getState().addToast({
       sessionId,
       title: t("diff.toast.editor_not_found"),
       subtitle: editor,
       variant: "error",
     });
+    return false;
   });
 }

@@ -51,6 +51,7 @@ import {
   scheduleGitRefresh,
 } from "./sessions-git";
 import { clearSshCredentials } from "@/modules/ssh/pending-credentials";
+import { closeRemoteExternalEdits, interruptRemoteExternalEdit } from "@/modules/ssh/remote-external-edit";
 import {
   splitLayoutHasSession,
   splitLayoutSessionIds,
@@ -367,6 +368,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     clearQueuedGitNonceBump(id);
     removeTerminalSnapshot(id);
     clearSshCredentials(id);
+    closeRemoteExternalEdits(id);
     useUIStore.getState().closeFileTabsForSession(id);
     const wasActive = get().activeSessionId === id;
     const splitFocusSessionId = useUIStore.getState().removeSplitPane(id);
@@ -535,6 +537,9 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const previousPhase = session.connection?.phase;
     const connection = reduceConnectionEvidence(session.connection, event);
     if (connection === session.connection) return;
+    if (connection.transport === "ssh" && previousPhase === "ready" && connection.phase !== "ready") {
+      interruptRemoteExternalEdit(id);
+    }
     if (connection.transport === "ssh") {
       const outcome = connection.phase === "failed" ? "failed"
         : connection.phase === "needsUserAction" ? "needs_user_action"

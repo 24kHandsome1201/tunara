@@ -1,5 +1,5 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
@@ -85,6 +85,28 @@ describe("SSH connection sheet", () => {
     expect(JSON.stringify(session)).not.toContain(secret);
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
     expect(takeSshCredentials(session.id)).toBeUndefined();
+  });
+
+  test("locks a submitted connection so repeated activation creates only one session", async () => {
+    mockEmptySources();
+    const onClose = vi.fn();
+    render(<SshConnect onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole("radio", { name: /^SSH Agent/ }));
+    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "once.example" } });
+    fireEvent.change(screen.getByLabelText("User"), { target: { value: "deploy" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+
+    fireEvent.click(connect);
+    fireEvent.click(connect);
+
+    expect(useSessionsStore.getState().sessions).toHaveLength(1);
+    expect(useSessionsStore.getState().sessions[0].remote?.host).toBe("once.example");
+    expect(connect.disabled).toBe(true);
+    expect(connect.textContent).toBe("Connecting…");
+    expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("true");
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   test("Enter in the profile search field does not submit Connect", async () => {
@@ -250,6 +272,65 @@ describe("SSH connection sheet", () => {
     expect(session.reconnectNonce).toBe(5);
     expect(session.terminalMountNonce).toBe(5);
     expect(calls).toContain("ssh_forwarding_reconnect_snapshot");
+  });
+
+  test("cancelled reconnect ignores a delayed forwarding snapshot", async () => {
+    let resolveSnapshot: ((value: unknown) => void) | undefined;
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      if (command === "ssh_forwarding_reconnect_snapshot") {
+        return new Promise((resolve) => { resolveSnapshot = resolve; });
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    useSessionsStore.setState({
+      sessions: [{
+        id: "cancelled-reconnect",
+        title: "deploy@old.example",
+        dir: "/srv/app",
+        branch: "main",
+        runState: "idle",
+        updatedAt: 1,
+        reconnectNonce: 4,
+        terminalMountNonce: 4,
+        ptyId: 91,
+        transportGeneration: "ssh:old",
+        remote: { host: "old.example", port: 22, user: "deploy", authMethod: "agent" },
+        connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
+      }],
+      activeSessionId: "cancelled-reconnect",
+    });
+    useUIStore.setState({
+      overlay: "ssh",
+      sshPrefill: {
+        host: "old.example",
+        port: 22,
+        user: "deploy",
+        authMethod: "agent",
+        reconnectSessionId: "cancelled-reconnect",
+      },
+    });
+    const onClose = vi.fn();
+    render(<SshConnect onClose={onClose} />);
+
+    const reconnect = screen.getByRole("button", { name: "Reconnect" }) as HTMLButtonElement;
+    await waitFor(() => expect(reconnect.disabled).toBe(false));
+    fireEvent.click(reconnect);
+    expect(screen.getByRole("button", { name: "Connecting…" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await act(async () => { resolveSnapshot?.([]); });
+
+    expect(useSessionsStore.getState().sessions).toHaveLength(1);
+    expect(useSessionsStore.getState().sessions[0]).toMatchObject({
+      id: "cancelled-reconnect",
+      ptyId: 91,
+      transportGeneration: "ssh:old",
+      reconnectNonce: 4,
+      terminalMountNonce: 4,
+      connection: { phase: "ready" },
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   test("a reconnect edited to another endpoint opens a new session and preserves the old boundary", async () => {
