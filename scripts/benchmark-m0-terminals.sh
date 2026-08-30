@@ -47,7 +47,6 @@ write_fixture() {
         title: ("基线终端 " + (($i + 1) | tostring)),
         dir: $dir,
         branch: $branch,
-        mascot: (["cat", "dog", "fox", "panda", "hamster", "frog", "koala", "penguin", "rabbit", "otter", "raccoon", "owl"][$i % 12]),
         updatedAt: ($now + $i)
       };
       {

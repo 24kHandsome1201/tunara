@@ -9,7 +9,7 @@
  * can branch on it. Callers that just want fire-and-forget can ignore the
  * result — failures never throw. Toast/feedback is intentionally NOT done here:
  * the toast store is keyed by `sessionId`, and most copy points (sidebar,
- * file explorer, session overview) have no session context, so feedback stays
+ * file explorer) have no session context, so feedback stays
  * the caller's decision.
  *
  * Menu-triggered reads use Tauri's clipboard-manager plugin. Keyboard paste

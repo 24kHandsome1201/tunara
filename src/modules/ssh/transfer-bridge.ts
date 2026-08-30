@@ -1,6 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
-import { localUsageDuration, localUsageErrorCategory, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 export const MANIFEST_LIMITS = { maxDepth: 32, maxEntries: 10_000, maxPathBytes: 4_096, maxTotalBytes: 10 * 1024 ** 3 } as const;
 export interface ManifestLimits { maxDepth?: number; maxEntries?: number; maxPathBytes?: number; maxTotalBytes?: number }
@@ -78,59 +77,9 @@ export interface SshUploadProgress {
   total: number;
 }
 
-function transferSizeBucket(bytes: number): string {
-  if (bytes === 0) return "empty";
-  if (bytes < 1024 ** 2) return "under_1m";
-  if (bytes < 10 * 1024 ** 2) return "under_10m";
-  if (bytes < 100 * 1024 ** 2) return "under_100m";
-  return "over_100m";
-}
-
-function withLegacyTransferUsage(
-  ptyId: number,
-  transferId: string,
-  direction: "upload" | "download",
-  action: () => Promise<number>,
-): Promise<number> {
-  const startedAt = Date.now();
-  recordLocalUsageEvent({
-    event: "ssh.transfer.queued",
-    sessionId: `pty:${ptyId}`,
-    correlationId: transferId,
-    success: true,
-    outcome: "scheduled",
-    attributes: { direction, operation: direction, attempt: "1" },
-  });
-  return action().then((bytes) => {
-    recordLocalUsageEvent({
-      event: "ssh.transfer.finished",
-      sessionId: `pty:${ptyId}`,
-      correlationId: transferId,
-      durationMs: localUsageDuration(startedAt),
-      success: true,
-      outcome: "completed",
-      attributes: { direction, operation: direction, attempt: "1", size_bucket: transferSizeBucket(bytes) },
-    });
-    return bytes;
-  }).catch((error) => {
-    recordLocalUsageEvent({
-      event: "ssh.transfer.finished",
-      sessionId: `pty:${ptyId}`,
-      correlationId: transferId,
-      durationMs: localUsageDuration(startedAt),
-      success: false,
-      outcome: "failed",
-      errorCategory: localUsageErrorCategory(error),
-      attributes: { direction, operation: direction, attempt: "1" },
-    });
-    throw error;
-  });
-}
-
 /** Legacy transfer IPC adapter; command names and payloads are unchanged. */
 export function sshDownload(id: number, remotePath: string, localPath: string): Promise<number> {
-  const transferId = `legacy-download:${id}:${Date.now()}`;
-  return withLegacyTransferUsage(id, transferId, "download", () => invoke<number>("ssh_fs_download", { id, remotePath, localPath }));
+  return invoke<number>("ssh_fs_download", { id, remotePath, localPath });
 }
 
 export function sshUpload(
@@ -143,22 +92,13 @@ export function sshUpload(
 ): Promise<number> {
   const progress = new Channel<SshUploadProgress>();
   progress.onmessage = onProgress;
-  return withLegacyTransferUsage(id, transferId, "upload", () => invoke<number>("ssh_fs_upload", {
+  return invoke<number>("ssh_fs_upload", {
     id, transferId, localPath, remotePath, overwrite, onProgress: progress,
-  }));
+  });
 }
 
 export function sshCancelUpload(transferId: string): Promise<boolean> {
-  return invoke<boolean>("ssh_fs_cancel_upload", { transferId }).then((accepted) => {
-    recordLocalUsageEvent({
-      event: "ssh.transfer.cancelled",
-      correlationId: transferId,
-      success: accepted,
-      outcome: accepted ? "cancelled" : "skipped",
-      attributes: { operation: "cancel" },
-    });
-    return accepted;
-  });
+  return invoke<boolean>("ssh_fs_cancel_upload", { transferId });
 }
 
 export type SshTransferPhase = "preparing" | "transferring" | "committing" | "terminal";

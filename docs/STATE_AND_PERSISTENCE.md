@@ -33,7 +33,6 @@ closeConfirmations: Record<string, number>     // "press close again" timestamps
 dirCloseConfirmations: Record<string, number>  // same, for "close all in dir"
 recentDirs: string[]                      // hydrated from the snapshot on init
 recentCommands: string[]                  // hydrated from the snapshot on init
-sessionTimelines: Record<string, TimelineEvent[]> // bounded, runtime-only recent activity
 ```
 
 `Session` itself (defined in `src/ui/types.ts`) carries both persisted fields
@@ -90,8 +89,8 @@ configLoaded / configPath / configError  // user-config load status
 sidebarVisible / panelVisible
 overlay: OverlayType                 // null | "settings" | "command-palette" | "ssh"
 split: SplitState                    // recursive pane tree, max 4 leaves ({ root })
-inspectorTab: InspectorTab           // overview | changes | files | preview | notes
-                                     // SSH: + transfers | metadata | forwarding | diagnostics | knownHosts
+inspectorTab: InspectorTab           // changes | files | preview
+                                     // SSH: + transfers | forwarding
 presentationMode: "workspace" | "pure"
 fileTabs: WorkspaceFileTab[]         // files opened beside the terminal
 toasts: Toast[]                      // capped, last 3
@@ -119,8 +118,8 @@ are session-scoped open documents and are not part of `PersistedUILayoutV2`.
 1. **User config** (`loadUserConfig` / the appearance subscriber): the
    `AppearanceSettings` half (theme, accent, fonts, scrollback, sidebar/panel
    width, terminal theme, external editor, bell, clipboard/inline-image flags,
-   optional terminal wallpaper (off by default), terminal interaction triggers, keybindings, language, global shortcut,
-   local usage logging) is loaded via `loadUserConfig()` and written through
+   optional terminal wallpaper (off by default), terminal interaction triggers,
+   keybindings, language, and global shortcut) is loaded and written through
    `src/modules/config/config-bridge.ts` to the backend config file. A
    `subscribeWithSelector` subscription over `PERSIST_KEYS` debounces saves at
    300 ms and is suppressed during hydration (the `configHydrating` flag) and
@@ -136,8 +135,7 @@ are session-scoped open documents and are not part of `PersistedUILayoutV2`.
 Stores user-defined command templates that can be launched from the command
 palette. The store is restored from and written into the workspace snapshot;
 unlike the removed fixed Runbook catalog, it does not inject built-in recovery
-or rollback actions. Optional starter workflows are copied into this store only
-when the user explicitly adds them.
+or rollback actions.
 
 ## 2. Persistence layer (`src/state/persist.ts`)
 
@@ -167,12 +165,12 @@ Only a narrow slice of `Session` is written. `PersistedSession` is a `Pick`:
 
 ```ts
 type PersistedSession = Pick<Session, "id" | "title" | "dir" | "branch" | "updatedAt">
-  & { customTitle?: string; remote?: Session["remote"]; pinned?: boolean; note?: string };
+  & { customTitle?: string; remote?: Session["remote"]; pinned?: boolean };
 ```
 
 So the persisted fields are: **`id`, `title`, `dir`, `branch`, `updatedAt`,
-`customTitle` (only if set), `remote` (only if set), `pinned` (only when true),
-and sanitized `note` (only if non-empty)**.
+`customTitle` (only if set), `remote` (only if set), and `pinned` (only when
+true)**. There is no per-session note field.
 
 Everything else on `Session` is **ephemeral** and recomputed live after
 restart, including `runState` (forced back to `"idle"` on restore via
@@ -182,10 +180,6 @@ restart, including `runState` (forced back to `"idle"` on restore via
 is *not* part of `PersistedSession` but is persisted **separately** in the
 snapshot's top-level `agentResume` map (keyed by session id) and re-attached to
 the session on restore.
-
-`sessionTimelines` is also ephemeral store-level state: it is capped in memory,
-shown as recent activity in Overview, and intentionally absent from
-`WorkspaceSnapshotV1`. It is not an event journal or audit history.
 
 `remote` carries only the SSH connection descriptor (host/port/user/identity
 path) — **no secrets**. `persist-snapshot.ts` sanitizes it by white-listing
@@ -250,20 +244,6 @@ Tunara has written anything the legacy file is never read again.
 
 > The project name changed from **Conduit** to **Tunara**; this fallback is the
 > upgrade bridge for users who persisted state under the old name.
-
-### Tunara 1.16 Agent data
-
-Tunara 1.16 briefly shipped an opt-in persistent Agent Event Store under
-`<app_local_data_dir>/agent-events`. The current product does not mount or read
-that store. Because it may contain private prompts and tool payloads, an
-upgraded user can remove it from **Settings > App > Legacy Agent history**.
-
-Cleanup is deliberately not automatic. The UI asks for an irreversible-action
-confirmation, and the Rust command requires a separate `confirmed: true` flag.
-The backend derives the fixed `agent-events` path from Tauri's
-`app_local_data_dir`; it accepts no caller-provided path, treats missing data as
-an idempotent success, and never follows a replacement symlink outside the app
-data directory. No legacy payload is returned to the renderer.
 
 ## 4. Sanitizers (defending the restore path)
 

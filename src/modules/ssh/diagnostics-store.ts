@@ -7,14 +7,6 @@ import {
 } from "./diagnostics-schema";
 
 const sessions = new Map<string, SshDiagnosticEventV1[]>();
-const listeners = new Set<() => void>();
-let open = false;
-let version = 0;
-
-function changed(): void {
-  version += 1;
-  for (const listener of listeners) listener();
-}
 
 const SAFE_CONTEXT_KEYS = new Set(["addressCount", "addressFamily", "attempt", "port", "timeoutMs"]);
 
@@ -44,17 +36,6 @@ export function sanitizeDiagnosticEvent(event: SshDiagnosticEventV1): SshDiagnos
   };
 }
 
-export const diagnosticsCenter = {
-  isOpen: () => open,
-  open: () => { open = true; changed(); },
-  close: () => { open = false; changed(); },
-  subscribe: (listener: () => void) => {
-    listeners.add(listener);
-    return () => { listeners.delete(listener); };
-  },
-  snapshot: () => version,
-};
-
 export function appendDiagnostic(sessionId: string, event: SshDiagnosticEventV1): void {
   const list = [...(sessions.get(sessionId) ?? []), sanitizeDiagnosticEvent(event)].slice(-100);
   sessions.delete(sessionId);
@@ -66,7 +47,6 @@ export function appendDiagnostic(sessionId: string, event: SshDiagnosticEventV1)
     values.shift();
     if (!values.length) sessions.delete(first);
   }
-  changed();
 }
 
 /** Lifecycle seam used by connect/transfer/forward owners without retaining backend error text. */
@@ -94,7 +74,4 @@ export function recordSshLifecycleDiagnostic(
 }
 
 export const diagnosticsForSession = (id: string): readonly SshDiagnosticEventV1[] => [...(sessions.get(id) ?? [])];
-export function clearDiagnostics(): void { sessions.clear(); changed(); }
-export function clearSessionDiagnostics(sessionId: string): void {
-  if (sessions.delete(sessionId)) changed();
-}
+export function clearDiagnostics(): void { sessions.clear(); }

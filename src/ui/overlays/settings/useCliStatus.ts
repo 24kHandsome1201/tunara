@@ -25,8 +25,8 @@ export interface CliStatus {
 
 /**
  * CLI resolution state for the settings dialog. Lives in the dialog shell
- * (not the CLI tab) so results survive tab switches: expensive PATH probes
- * run once per dialog opening, deferred until the CLI tab is first opened.
+ * (not the App panel) so results survive tab switches: expensive PATH probes
+ * run once per dialog opening, deferred until the advanced App panel is opened.
  */
 export function useCliStatus(activeTab: SettingsTab): CliStatus {
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
@@ -63,7 +63,7 @@ export function useCliStatus(activeTab: SettingsTab): CliStatus {
   }, [loadPreflights]);
 
   useEffect(() => {
-    if (activeTab !== "cli" || cliLoadStartedRef.current) return;
+    if (activeTab !== "app" || cliLoadStartedRef.current) return;
     cliLoadStartedRef.current = true;
     loadCliStatus();
   }, [activeTab, loadCliStatus]);

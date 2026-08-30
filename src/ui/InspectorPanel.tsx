@@ -12,8 +12,6 @@ import {
 import { type Session } from "./types";
 import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
-import { SessionOverviewPanel } from "./SessionOverviewPanel";
-import { SessionNotesPanel } from "./SessionNotesPanel";
 import { PreviewPanel } from "./PreviewPanel";
 import { useUIStore } from "@/state/ui";
 import type { InspectorTab } from "@/state/ui";
@@ -139,7 +137,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     isRemote,
     hasPreviewSource: hasActivePreviewSource(session.previewSources),
   });
-  const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "overview";
+  const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "changes";
   const secondaryTabActive = navigation.secondary.includes(tab);
   const visibleTabIds = secondaryTabActive ? [...navigation.primary, tab] : navigation.primary;
   const descriptor = INSPECTOR_TAB_DESCRIPTORS[tab];
@@ -229,12 +227,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
       break;
     case "preview":
       activePanel = <PreviewPanel session={session} />;
-      break;
-    case "notes":
-      activePanel = <SessionNotesPanel session={session} />;
-      break;
-    case "overview":
-      activePanel = <SessionOverviewPanel session={session} />;
       break;
   }
 

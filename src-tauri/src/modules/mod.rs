@@ -1,6 +1,5 @@
 pub mod config;
 pub mod fs;
-pub mod local_usage_log;
 pub mod perf_counters;
 pub mod preview;
 pub mod pty;

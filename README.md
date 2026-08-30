@@ -69,15 +69,11 @@ The sidebar is what visually separates Tunara from every other terminal. Local s
 - Close-confirm guard: a running session needs a double click — no accidental kills mid-task
 - Restores session list and UI layout across restarts
 
-### Workspace cockpit
+### Session management
 
-Tunara now has a small cockpit layer for people who keep several sessions open all day. It helps you see the state of the workspace, keep important sessions visible, and leave lightweight notes without leaving the terminal.
+Tunara keeps important sessions visible without turning the terminal into a project-management surface.
 
-- Session overview cards expose cwd, agent, Git, notes, and quick actions in one place
-- Session Notes add autosaved per-session scratchpads with task counts
 - Pinned sessions get a star marker and float higher in command-palette session results
-- Starter workflows can add common review, test, and diagnostic commands in one click
-- Overview keeps a bounded, runtime-only list of recent session activity; it is not a persistent Agent history
 
 Future direction, feature notes, and cost/value cuts live in [docs/ROADMAP.md](docs/ROADMAP.md), [docs/FEATURES.md](docs/FEATURES.md), and [docs/PRODUCT_REVIEW.md](docs/PRODUCT_REVIEW.md).
 
@@ -92,13 +88,13 @@ Remote sessions use a long-lived russh connection, not a wrapper around `/usr/bi
 - Batch upload/download with progress, cancel, and journaled recovery
 - Read-only remote Git review over a one-shot exec channel
 - Local and dynamic port forwarding, reconnect snapshots, connection diagnostics
-- Opt-in local SSH usage logs (off by default)
+- Saved and SSH-config hosts in a searchable online/offline server list
 
 ### Files and Inspector
 
 The right rail is a contextual Inspector, not only a diff. Local and SSH files can open as workspace tabs beside the terminal.
 
-- Tabs: Overview, Changes, Files, Preview, Notes; SSH adds Transfers, Metadata, Forwarding, Diagnostics, Known hosts
+- Tabs: Changes, Files, Preview; SSH adds Transfers and Forwarding
 - Markdown/MDX reading and bounded single-file edits (UTF-8, ≤256 KiB, fingerprint-checked)
 - Read-only Jupyter notebook preview (no code execution, no HTML/script/rich output)
 - Safe image previews and bounded “view beginning” for oversized text/logs
@@ -106,12 +102,12 @@ The right rail is a contextual Inspector, not only a diff. Local and SSH files c
 
 ### AI agent detection
 
-If you use CLI agents like Claude Code, Codex, or Aider day to day, Tunara recognizes them and pins a brand badge on the session. No setup — it kicks in the moment the PTY matches a known agent command.
+Tunara's deepest lifecycle and resume integrations prioritize Claude Code, Codex, Cursor, and OpenCode. It also recognizes additional agent CLIs and shows their brand badge when their command is detected.
 
-- Auto-detects 12 agent CLIs: Claude Code, Codex, Amp, Gemini, Copilot, Cursor, Droid, OpenCode, Pi, Auggie, Devin, Aider
-- Compact contextual strip shows agent state: starting / idle / running
-- Agent hooks listen for structured lifecycle events (start, thinking, tool call, done)
-- File-change counts per agent, plus an entry point to preview those changes
+- First-class support: Claude Code, Codex, Cursor, and OpenCode; lifecycle and resume availability varies by CLI
+- Basic command recognition: Amp, Gemini, Copilot, Droid, Pi, Auggie, Devin, and Aider
+- Compact contextual strip shows detected agent and available runtime state
+- File-change counts plus an entry point to review those changes when supported
 
 What it explicitly does **not** do: bundled AI chat, model integration, MCP orchestration, agent launcher, or structured parsing of agent stdout. Tunara recognizes who is running. It does not run the agent for you.
 
@@ -153,11 +149,7 @@ brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
 brew install --cask tunara
 ```
 
-Use Settings > App to check, install, and restart into a new release. Homebrew users can also update with `brew upgrade --cask tunara`.
-
-If Tunara 1.16 created local Agent history on this Mac, Settings > App shows a
-one-time option to delete that legacy data. Current versions do not read it,
-and never remove it without explicit confirmation.
+Use Settings > Advanced to check, install, and restart into a new release. Homebrew users can also update with `brew upgrade --cask tunara`.
 
 ### From source
 
@@ -190,7 +182,6 @@ Deeper developer docs live under [`docs/`](docs/). Start with the [docs index](d
 - [Features & code map](docs/FEATURES.md) — user-visible capabilities mapped to frontend and backend entry points.
 - [Architecture](docs/ARCHITECTURE.md) — the frontend↔backend IPC surface: Tauri commands, the three transports (`invoke` / `Channel<PtyEvent>` / `git-changed` & `agent-hook` events), and managed state.
 - [Testing](docs/TESTING.md) — the `.mjs`-imports-`.ts` pure-logic convention, UI component gate, Node/UI/Cargo split, and how to add a test.
-- [Local usage logging & privacy](docs/LOCAL_USAGE_LOGGING.md) — opt-in SSH diagnostics, JSONL schema, data exclusions, rotation, export, and failure behavior.
 - [Agent detection](docs/AGENT_DETECTION.md) — how agent detection & lifecycle work, plus a step-by-step checklist for adding a new agent.
 - [State & persistence](docs/STATE_AND_PERSISTENCE.md) — the three Zustand stores, persisted workspace snapshot, and contributor gotchas around restore-on-restart.
 - [Limited large-file viewing](docs/LIMITED_LARGE_FILE_VIEWING.md) — bounded first-N-line viewing for local and SSH text/log files, including IPC limits and safety behavior.

@@ -2,15 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
-import { previewActionNonce, previewBlockReason, previewCapture, previewClose, previewDisplayUrl, previewFitViewport, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewResetViewport, previewResetZoom, previewRestartPrepare, previewSendCaptureToSourceTerminal, previewSetViewport, previewSetZoom, previewStatus, previewTelemetryClear, previewTelemetrySend, previewTunnelClose, previewTunnelOpen, previewTunnelStatus } from "@/modules/preview/preview-window";
-import type { PreviewCaptureResult, PreviewRuntimeState, PreviewRuntimeStatus, PreviewTunnelState } from "@/modules/preview/preview-window";
+import { previewActionNonce, previewBlockReason, previewClose, previewDisplayUrl, previewGoBack, previewGoForward, previewNavigate, previewOpen, previewRefresh, previewRestartPrepare, previewStatus, previewTunnelClose, previewTunnelOpen, previewTunnelStatus } from "@/modules/preview/preview-window";
+import type { PreviewRuntimeState, PreviewRuntimeStatus, PreviewTunnelState } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
-import { copyText } from "./lib/clipboard";
 import { PanelEmptyState } from "./shared";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { issueFocusReturnToken, returnTerminalFocus } from "@/modules/terminal/lib/binding-aware-async-action";
-import { localUsageDuration, localUsageErrorCategory, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 function SourceCard({ source, session }: { source: PreviewSource; session: Session }) {
   const t = useT();
@@ -23,8 +21,6 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   const addressEditingRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [capture, setCapture] = useState<PreviewCaptureResult>();
-  const [captureNotice, setCaptureNotice] = useState<string>();
   const statusRequestRef = useRef(0);
 
   useEffect(() => {
@@ -67,31 +63,16 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   }, [isRemote, source]);
 
   const run = async (
-    operation: "open" | "refresh" | "close" | "navigate" | "tunnel_open" | "tunnel_close" | "restart" | "zoom" | "viewport",
     action: () => Promise<unknown>,
     pendingStatus?: PreviewRuntimeStatus,
     syncStatus = true,
   ) => {
-    const startedAt = Date.now();
-    let actionCompleted = false;
     setBusy(true);
     setError(undefined);
     statusRequestRef.current += 1;
     if (pendingStatus) setRuntimeState((current) => current ? { ...current, status: pendingStatus } : null);
     try {
       await action();
-      actionCompleted = true;
-      if (isRemote) {
-        recordLocalUsageEvent({
-          event: "ssh.preview.action",
-          sessionId: source.sessionId,
-          correlationId: source.terminalId,
-          durationMs: localUsageDuration(startedAt),
-          success: true,
-          outcome: "completed",
-          attributes: { operation },
-        });
-      }
       if (!syncStatus) return;
       const sequence = ++statusRequestRef.current;
       const status = await previewStatus(effectiveSource);
@@ -100,18 +81,6 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         if (status) setAddress(status.currentUrl);
       }
     } catch (cause) {
-      if (isRemote && !actionCompleted) {
-        recordLocalUsageEvent({
-          event: "ssh.preview.action",
-          sessionId: source.sessionId,
-          correlationId: source.terminalId,
-          durationMs: localUsageDuration(startedAt),
-          success: false,
-          outcome: "failed",
-          errorCategory: localUsageErrorCategory(cause),
-          attributes: { operation },
-        });
-      }
       setError(cause instanceof Error ? cause.message : String(cause));
       if (!syncStatus) return;
       try {
@@ -129,8 +98,6 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   const runtimeStatus = runtimeState?.status ?? null;
   const displayStatus = source.state === "stale" ? "stale" : runtimeStatus ?? "closed";
   const isOpen = runtimeState !== null;
-  const telemetry = runtimeState?.telemetry;
-  const hasTelemetry = !!telemetry?.events.length;
   const currentProvenance = session.previewCommandProvenance;
   const sourceProvenance = source.restartProvenance;
   const provenanceMatches = !!currentProvenance && !!sourceProvenance
@@ -172,59 +139,6 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
     }, 0);
   };
 
-  const capturePreview = async () => {
-    const startedAt = Date.now();
-    setBusy(true);
-    setError(undefined);
-    setCaptureNotice(undefined);
-    try {
-      const result = await previewCapture(effectiveSource);
-      setCapture(result);
-      setCaptureNotice(t("inspector.preview.capture_saved"));
-      if (isRemote) recordLocalUsageEvent({ event: "ssh.preview.action", sessionId: source.sessionId, correlationId: source.terminalId, durationMs: localUsageDuration(startedAt), success: true, outcome: "completed", attributes: { operation: "capture" } });
-    } catch (cause) {
-      if (isRemote) recordLocalUsageEvent({ event: "ssh.preview.action", sessionId: source.sessionId, correlationId: source.terminalId, durationMs: localUsageDuration(startedAt), success: false, outcome: "failed", errorCategory: localUsageErrorCategory(cause), attributes: { operation: "capture" } });
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copyCapture = async () => {
-    if (!capture) return;
-    const copied = await copyText(capture.preparedText);
-    setCaptureNotice(copied ? t("inspector.preview.capture_copied") : t("inspector.preview.capture_copy_failed"));
-  };
-
-  const copyTelemetry = async () => {
-    if (!telemetry) return;
-    const ok = await copyText(telemetry.text);
-    useUIStore.getState().addToast({
-      sessionId: session.id,
-      title: t(ok ? "clipboard.copy_success" : "clipboard.copy_failed"),
-      subtitle: "",
-      variant: ok ? "success" : "error",
-    });
-  };
-
-  const sendCapture = async () => {
-    if (!capture) return;
-    setBusy(true);
-    setError(undefined);
-    setCaptureNotice(undefined);
-    const startedAt = Date.now();
-    try {
-      const receipt = await previewSendCaptureToSourceTerminal(effectiveSource, capture.captureId);
-      setCaptureNotice(t("inspector.preview.capture_sent", { bytes: receipt.bytesWritten }));
-      if (isRemote) recordLocalUsageEvent({ event: "ssh.preview.action", sessionId: source.sessionId, correlationId: source.terminalId, durationMs: localUsageDuration(startedAt), success: true, outcome: "completed", attributes: { operation: "send_capture" } });
-    } catch (cause) {
-      if (isRemote) recordLocalUsageEvent({ event: "ssh.preview.action", sessionId: source.sessionId, correlationId: source.terminalId, durationMs: localUsageDuration(startedAt), success: false, outcome: "failed", errorCategory: localUsageErrorCategory(cause), attributes: { operation: "send_capture" } });
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const row = (label: string, value: string) => (
     <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
       <span style={{ color: "var(--c-text-5)" }}>{label}</span>
@@ -240,9 +154,9 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
           {t(`inspector.preview.status.${displayStatus}`)}
         </span>
       </div>
-      {isOpen && <form className="preview-toolbar" aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run("navigate", () => previewNavigate(effectiveSource, address), "loading"); }} style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-        <button className="preview-control" type="button" aria-label={t("inspector.preview.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run("navigate", () => previewGoBack(effectiveSource), "loading")}>←</button>
-        <button className="preview-control" type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run("navigate", () => previewGoForward(effectiveSource), "loading")}>→</button>
+      {isOpen && <form className="preview-toolbar" aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run(() => previewNavigate(effectiveSource, address), "loading"); }} style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+        <button className="preview-control" type="button" aria-label={t("inspector.preview.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoBack(effectiveSource), "loading")}>←</button>
+        <button className="preview-control" type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoForward(effectiveSource), "loading")}>→</button>
         <input className="preview-control ui-native-control" aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: "1 1 180px", fontFamily: "var(--font-mono)" }} />
         <button className="preview-control" type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
       </form>}
@@ -252,70 +166,22 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button data-preview-action="view-source-terminal" disabled={busy} onClick={viewSourceTerminal}>{t("inspector.preview.view_terminal")}</button>
         {isRemote ? (
-          <button className="preview-action-primary" data-preview-action="open-tunnel" disabled={busy || source.state !== "active" || source.workspaceResolution !== "resolved" || tunnelState?.status === "opening"} onClick={() => void run("tunnel_open", establishTunnelAndOpen, "opening", false)}>{t("inspector.preview.tunnel.open")}</button>
-        ) : <button className="preview-action-primary" disabled={busy || !!blocked} onClick={() => void run("open", () => previewOpen(effectiveSource), "opening")}>{isOpen ? t("inspector.preview.focus") : t("inspector.preview.open")}</button>}
-        <button disabled={busy || !!blocked || !isOpen || runtimeStatus === "opening" || runtimeStatus === "loading"} onClick={() => void run("refresh", () => previewRefresh(effectiveSource), "loading")}>{t("inspector.preview.refresh")}</button>
-        <button data-preview-action={isRemote ? "close-tunnel" : "close-preview"} disabled={busy || (!isOpen && !tunnelState)} onClick={() => void run(isRemote ? "tunnel_close" : "close", isRemote ? closeTunnelAndPreview : () => previewClose(effectiveSource), undefined, !isRemote)}>{isRemote ? t("inspector.preview.tunnel.close") : t("inspector.preview.close")}</button>
-        <button disabled={busy || (isRemote && !tunnelState?.localEndpoint)} onClick={() => void run("open", () => openUrl(isRemote ? tunnelState?.localEndpoint ?? "" : source.sourceUrl))}>{t("inspector.preview.external")}</button>
+          <button className="preview-action-primary" data-preview-action="open-tunnel" disabled={busy || source.state !== "active" || source.workspaceResolution !== "resolved" || tunnelState?.status === "opening"} onClick={() => void run(establishTunnelAndOpen, "opening", false)}>{t("inspector.preview.tunnel.open")}</button>
+        ) : <button className="preview-action-primary" disabled={busy || !!blocked} onClick={() => void run(() => previewOpen(effectiveSource), "opening")}>{isOpen ? t("inspector.preview.focus") : t("inspector.preview.open")}</button>}
+        <button disabled={busy || !!blocked || !isOpen || runtimeStatus === "opening" || runtimeStatus === "loading"} onClick={() => void run(() => previewRefresh(effectiveSource), "loading")}>{t("inspector.preview.refresh")}</button>
+        <button data-preview-action={isRemote ? "close-tunnel" : "close-preview"} disabled={busy || (!isOpen && !tunnelState)} onClick={() => void run(isRemote ? closeTunnelAndPreview : () => previewClose(effectiveSource), undefined, !isRemote)}>{isRemote ? t("inspector.preview.tunnel.close") : t("inspector.preview.close")}</button>
+        <button disabled={busy || (isRemote && !tunnelState?.localEndpoint)} onClick={() => void run(() => openUrl(isRemote ? tunnelState?.localEndpoint ?? "" : source.sourceUrl))}>{t("inspector.preview.external")}</button>
       </div>
       {displayStatus === "failed" && runtimeState && <section aria-label={t("inspector.preview.restart.title")} style={{ borderTop: "1px solid var(--c-border-1)", paddingTop: 7, display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 650 }}>{t("inspector.preview.restart.title")}</span>
-          <button data-preview-action="prepare-restart" disabled={busy || !restartUiEligible} title={t(`inspector.preview.restart.reason.${restartUiReason}`)} onClick={() => void run("restart", () => previewRestartPrepare(effectiveSource))}>{t("inspector.preview.restart.prepare")}</button>
+          <button data-preview-action="prepare-restart" disabled={busy || !restartUiEligible} title={t(`inspector.preview.restart.reason.${restartUiReason}`)} onClick={() => void run(() => previewRestartPrepare(effectiveSource))}>{t("inspector.preview.restart.prepare")}</button>
         </div>
         {runtimeState.restart.command && <code style={{ fontSize: "var(--fs-meta)", overflowWrap: "anywhere" }}>{runtimeState.restart.command}</code>}
         <div role="status" style={{ color: restartUiEligible ? "var(--c-text-4)" : "var(--c-warning)", fontSize: "var(--fs-meta)" }}>
           {t(`inspector.preview.restart.reason.${restartUiReason}`)}
         </div>
       </section>}
-      {isOpen && <details className="preview-disclosure">
-        <summary>{t("inspector.preview.view_controls")}</summary>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 8 }}>
-          <div aria-label={t("inspector.preview.zoom_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
-            <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.zoom")}</span>
-            {[0.75, 0.9, 1, 1.1, 1.25, 1.5].map((factor) => <button key={factor} disabled={busy || !!blocked || runtimeStatus !== "ready"} aria-pressed={Math.abs(runtimeState.zoomFactor - factor) < 0.001} onClick={() => void run("zoom", () => previewSetZoom(effectiveSource, factor))}>{Math.round(factor * 100)}%</button>)}
-            <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run("zoom", () => previewResetZoom(effectiveSource))}>{t("inspector.preview.reset")}</button>
-          </div>
-          <div aria-label={t("inspector.preview.viewport_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
-            <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.viewport")}</span>
-            {[[390, 844, "phone"], [768, 1024, "tablet"], [1280, 720, "desktop"]].map(([width, height, key]) => <button key={key} disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run("viewport", () => previewSetViewport(effectiveSource, Number(width), Number(height)))}>{t(`inspector.preview.viewport.${key}`)} {width}×{height}</button>)}
-            <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run("viewport", () => previewFitViewport(effectiveSource))}>{t("inspector.preview.fit")}</button>
-            <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void run("viewport", () => previewResetViewport(effectiveSource))}>{t("inspector.preview.reset")}</button>
-            <span role="status" style={{ color: runtimeState.viewport.exact ? "var(--c-text-4)" : "var(--c-warning)" }}>
-              {runtimeState.viewport.actualWidth}×{runtimeState.viewport.actualHeight}{runtimeState.viewport.exact ? "" : ` · ${t("inspector.preview.viewport_unavailable")}`}
-            </span>
-          </div>
-          <div aria-label={t("inspector.preview.capture_controls")} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--fs-meta)" }}>
-            <span style={{ color: "var(--c-text-5)" }}>{t("inspector.preview.capture")}</span>
-            <button disabled={busy || !!blocked || runtimeStatus !== "ready"} onClick={() => void capturePreview()}>{t("inspector.preview.capture_now")}</button>
-            <button disabled={busy || !capture} onClick={() => void copyCapture()}>{t("inspector.preview.capture_copy")}</button>
-            <button data-preview-action="send-capture" disabled={busy || !!blocked || !capture || effectiveSource.physicalPtyId === undefined || runtimeStatus !== "ready"} onClick={() => void sendCapture()}>{t("inspector.preview.capture_send")}</button>
-            {capture && <span title={capture.localRef} style={{ fontFamily: "var(--font-mono)", color: "var(--c-text-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
-              {capture.viewportCssWidth}×{capture.viewportCssHeight} CSS · {capture.imageWidth}×{capture.imageHeight} PNG · {capture.localRef}
-            </span>}
-          </div>
-          <section aria-label={t("inspector.preview.telemetry")} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-              <span style={{ fontWeight: 650 }}>{t("inspector.preview.telemetry")}</span>
-              <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{telemetry?.events.length ?? 0}/{32}</span>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-                <button disabled={busy || !hasTelemetry} onClick={() => { void copyTelemetry(); }}>{t("inspector.preview.telemetry.copy")}</button>
-                <button data-preview-action="send-telemetry" disabled={busy || !!blocked || !hasTelemetry || effectiveSource.physicalPtyId === undefined} onClick={() => void run("open", () => previewTelemetrySend(effectiveSource))}>{t("inspector.preview.telemetry.send")}</button>
-                <button disabled={busy || !hasTelemetry} onClick={() => void run("close", () => previewTelemetryClear(effectiveSource))}>{t("inspector.preview.telemetry.clear")}</button>
-              </div>
-            </div>
-            {!hasTelemetry ? <div style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("inspector.preview.telemetry.empty")}</div> : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {telemetry?.events.map((event, index) => <div key={`${event.kind}\0${event.message}\0${index}`} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflowWrap: "anywhere" }}>
-                  <span style={{ color: event.kind === "network-failure" ? "var(--c-warning)" : "var(--c-error)" }}>[{event.kind}]</span> {event.message}{event.count > 1 ? ` ×${event.count}` : ""}
-                </div>)}
-                {!!telemetry?.dropped && <div style={{ color: "var(--c-warning)", fontSize: "var(--fs-meta)" }}>{t("inspector.preview.telemetry.dropped")} {telemetry.dropped}</div>}
-              </div>
-            )}
-          </section>
-        </div>
-      </details>}
-      {captureNotice && <div role="status" style={{ fontSize: "var(--fs-meta)", color: "var(--c-success)" }}>{captureNotice}</div>}
       {displayStatus === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)" }}>{t("inspector.preview.failed_help")}</div>}
       {isRemote && tunnelState?.status === "failed" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-error)" }}>{tunnelState.reason ?? t("inspector.preview.tunnel.failed")}</div>}
       {displayStatus === "stale" && <div role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning)" }}>{t("inspector.preview.stale_help")}</div>}

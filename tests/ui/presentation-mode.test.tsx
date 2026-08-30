@@ -235,7 +235,7 @@ test("Pure Mode Files action remains available in the action strip and command p
     nativeFullscreen: false,
     showPureModeFilesButton: true,
     panelVisible: false,
-    inspectorTab: "overview",
+    inspectorTab: "changes",
   });
   const view = renderTitlebar();
 

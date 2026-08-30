@@ -41,7 +41,6 @@ const mapped = {
     "ssh_git_diff", "ssh_git_workspace_context",
     "ssh_fs_search", "ssh_fs_grep",
   ].map((name) => [name, "RemoteGit"])),
-  "system_monitor.rs": { ssh_system_snapshot_v1: "SystemMonitor" },
 };
 
 // Strict exemptions: these commands cannot leak a Result<String> error. The two

@@ -25,13 +25,11 @@ export interface InspectorScopedPanelProps {
 }
 
 export const INSPECTOR_TAB_DESCRIPTORS: Record<InspectorTab, InspectorTabDescriptor> = {
-  overview: { id: "overview", scope: "logical-session", titleKey: "inspector.tab.overview", descriptionKey: "inspector.scope.description.logical_session" },
   changes: { id: "changes", scope: "profile", titleKey: "diff.title", descriptionKey: "inspector.scope.description.profile" },
   files: { id: "files", scope: "transport-binding", titleKey: "inspector.tab.files", descriptionKey: "inspector.scope.description.transport_binding" },
   transfers: { id: "transfers", scope: "logical-session", titleKey: "inspector.tab.transfers", descriptionKey: "inspector.scope.description.logical_session" },
   forwarding: { id: "forwarding", scope: "transport-binding", titleKey: "inspector.tab.forwarding", descriptionKey: "inspector.scope.description.transport_binding" },
   preview: { id: "preview", scope: "logical-session", titleKey: "inspector.tab.preview", descriptionKey: "inspector.scope.description.logical_session" },
-  notes: { id: "notes", scope: "logical-session", titleKey: "inspector.tab.notes", descriptionKey: "inspector.scope.description.logical_session" },
 };
 
 export function bindingIdentity(binding: SessionBindingV1 | null): string | null {

@@ -49,9 +49,7 @@ function buildWorkspaceProjection(): WorkspaceProjectionV1 {
       collapsedDiffSections: ui.collapsedDiffSections,
       split: ui.split,
       inspectorTab: ui.inspectorTab,
-      broadcastInput: ui.broadcastInput,
       explorerFollowCwd: ui.explorerFollowCwd,
-      shellIntegrationHintDismissed: ui.shellIntegrationHintDismissed,
     },
     terminals: getAllTerminalSnapshots(),
     agentResume,
@@ -114,7 +112,6 @@ export function useInit() {
         title: p.title.trim() || t("session.default_title"),
         customTitle: p.customTitle || undefined,
         pinned: p.pinned || undefined,
-        note: p.note || undefined,
         agentResume: snapshot.agentResume[p.id],
         runState: "idle" as const,
       }));
@@ -159,9 +156,7 @@ export function useInit() {
         split: snapshot.ui.split,
         inspectorTab: snapshot.ui.inspectorTab,
         commandUsage: snapshot.commandUsage ?? {},
-        broadcastInput: snapshot.ui.broadcastInput === true,
         explorerFollowCwd: snapshot.ui.explorerFollowCwd !== false,
-        shellIntegrationHintDismissed: snapshot.ui.shellIntegrationHintDismissed === true,
       });
 
       if (snapshot.workflows?.length) {
@@ -317,7 +312,7 @@ export function useInit() {
     });
 
     const unsubUI = useUIStore.subscribe(
-      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.broadcastInput, s.explorerFollowCwd, s.shellIntegrationHintDismissed] as const,
+      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.explorerFollowCwd] as const,
       () => {
         if (workspaceHydrated) scheduleSave();
       },

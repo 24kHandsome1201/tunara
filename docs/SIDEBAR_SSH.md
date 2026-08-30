@@ -46,7 +46,7 @@
 |------|------|---------------------|
 | 新建 | [`SidebarNewTerminalControl.tsx`](../src/ui/SidebarNewTerminalControl.tsx) | 主按钮仍是本地终端；溢出菜单第三项打开 `SshConnect` |
 | 已保存主机 | [`SidebarHosts.tsx`](../src/ui/SidebarHosts.tsx) | 有会话时默认折叠；该主机已有活会话则聚焦该组，否则打开连接对话框 |
-| 搜索 | `Sidebar.tsx` 内 `filtered` | 匹配标题、`dir`、笔记，以及 `remote.user` / `remote.host` / `user@host[:port]` |
+| 搜索 | `Sidebar.tsx` 内 `filtered` | 匹配标题、`dir`，以及 `remote.user` / `remote.host` / `user@host[:port]` |
 | 统一动态 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) | SSH `failed` / `disconnected` 进「需要处理」；`connecting` 不进动态条 |
 | 分组 | [`sidebar-groups.ts`](../src/modules/session/sidebar-groups.ts) | 本地 `local:<dir>`，SSH `ssh:<user>@<host>:<port>`；OSC 7 只改卡片副标题 |
 | 组头 | [`SidebarDirGroupHeader.tsx`](../src/ui/SidebarDirGroupHeader.tsx) | SSH 组显示主机身份 +「SSH」；「+」走 `duplicateOnHost` |
@@ -81,14 +81,14 @@ OSC 7 之后，本地 `/tmp` 和远端 `/tmp` 的 `dir` 相同，`groupByDir` �
 
 ### 3.3 搜索和复制也会偏
 
-搜索只扫 `dir`。OSC 7 之后主机名不在 `dir` 里，搜 `prod` 找不到那条远程会话（除非标题或笔记里有）。组菜单「复制路径」在远程组上复制的可能是 `user@host`，也可能是 `/var/www`，调用方无法区分。
+搜索只扫 `dir`。OSC 7 之后主机名不在 `dir` 里，搜 `prod` 找不到那条远程会话（除非标题里有）。组菜单「复制路径」在远程组上复制的可能是 `user@host`，也可能是 `/var/www`，调用方无法区分。
 
 ### 3.4 已经做对的边界（不要回退）
 
 这些行为应保持，适配时只换分组键，不改传输语义：
 
 - 远程 `dir` 不写入 `recentDirs`，原生选目录器也不接收 `user@host`（[`local-terminal-cwd.ts`](../src/modules/session/local-terminal-cwd.ts)、[`new-terminal-directory-controller.ts`](../src/modules/session/new-terminal-directory-controller.ts)）。
-- Overview / 组头已经对纯远程组隐藏「在此目录新建本地终端」。
+- 组头已经对纯远程组隐藏「在此目录新建本地终端」。
 - `duplicateOnHost` 复制 `RemoteInfo`，不复制凭证；密码仍只在单次连接内存中。
 - 统一动态从 `connection.phase` 派生，不另存一套「SSH 状态」。
 - Inspector 仍按会话裁剪 SSH 页签；侧栏不重复那些页。
@@ -109,7 +109,7 @@ ssh:<user>@<host>:<port>     → 同一目标主机上的全部远程会话
 ```
 
 - 端口始终进入键（22 也不省略），避免 `host:22` 与 `host:2222` 合并。
-- **按目标主机聚，不按 ProxyJump 路由聚。** 直连和经跳板到同一 `user@host:port` 仍是同一台机器；跳板留在卡片/Overview。`route.profileId` 不进入组键。
+- **按目标主机聚，不按 ProxyJump 路由聚。** 直连和经跳板到同一 `user@host:port` 仍是同一台机器；跳板信息留在连接详情。`route.profileId` 不进入组键。
 - 两个 profile 指向同一 `user@host:port` 时合并为一组。组头优先用会话里能读到的 label；否则 `user@host`，非 22 端口再加 `:<port>`。
 - `__proto__` / `constructor` 等键继续走现有 `Map` + `Object.fromEntries` 路径，测试已覆盖。
 
@@ -282,7 +282,7 @@ Known hosts 编辑继续留在设置 → SSH，不进侧栏。
 | 我有哪些壳、在哪台机器？ | 按本地目录 / SSH 主机分组 | — |
 | 这台机器再开一个壳 | 组头 / 卡片「再开一个窗口」 | 命令面板已有 |
 | 连一台新机器 | 新建菜单、折叠的已保存主机 | `SshConnect` 对话框 |
-| 连接断了怎么办 | 动态条原位重连 | Overview 重连；诊断报告若保留则在 Overview |
+| 连接断了怎么办 | 动态条原位重连 | 终端故障提示与诊断报告 |
 | 远端文件 / 传输 / 转发 | 不放 | Files、Transfers、Forwarding |
 | 改 known_hosts | 不放 | 设置 → SSH |
 | 这台机器打开了哪些文件？ | 不放（避免和第二份标签条重复） | 标题栏当前设备工作面，见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md) |

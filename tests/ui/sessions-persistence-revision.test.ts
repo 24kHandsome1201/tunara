@@ -70,9 +70,7 @@ describe("workspace persistence revision", () => {
         { branch: "feature" },
         { customTitle: "Review" },
         { remote: { host: "box", port: 22, user: "alice" } },
-        { mascot: "fox" },
         { pinned: true },
-        { note: "durable note" },
         {
           agentResume: {
             agent: "CC",

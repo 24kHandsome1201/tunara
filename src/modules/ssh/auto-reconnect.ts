@@ -11,7 +11,6 @@ import {
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import type { Session } from "@/ui/types";
-import { recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 type RegisterCleanup = (cleanup: () => void) => void;
 
@@ -111,7 +110,6 @@ export async function beginSshAutoReconnect(
     const latest = useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionId);
     if (!latest?.remote || latest.sshReconnectLifecycle !== lifecycle) return;
     useSessionsStore.getState().handleConnectionEvent(sessionId, { type: "needsUserAction", reason: "pty" });
-    recordLocalUsageEvent({ event: "ssh.reconnect.failed", sessionId, success: false, outcome: "failed", errorCategory: "internal" });
     useUIStore.getState().addToast({ sessionId, title: t("ssh.forward.snapshotFailed"), subtitle: "", variant: "error" });
     return;
   }
@@ -125,7 +123,6 @@ export async function beginSshAutoReconnect(
   }
   if (latest.sshReconnectNeedsCredential) {
     useSessionsStore.getState().handleConnectionEvent(sessionId, { type: "needsUserAction", reason: "auth" });
-    recordLocalUsageEvent({ event: "ssh.reconnect.failed", sessionId, success: false, outcome: "needs_user_action", errorCategory: "auth" });
     return;
   }
   scheduleReconnect(sessionId, 1, lifecycle, forwards, registerCleanup);
@@ -172,13 +169,6 @@ export function handleSshReconnectFailure(
       reason: diagnostic.code === "hostKeyRejected" ? "hostKey" : "auth",
     });
     recordSshLifecycleDiagnostic(sessionId, "reconnect", "failed", diagnostic.code);
-    recordLocalUsageEvent({
-      event: "ssh.reconnect.failed",
-      sessionId,
-      success: false,
-      outcome: "needs_user_action",
-      errorCategory: diagnostic.code === "hostKeyRejected" ? "host_key" : "auth",
-    });
     return true;
   }
   if (!diagnostic?.retryable || !canRetrySshReconnect(attempt)) return false;
@@ -205,7 +195,6 @@ export function completeSshAutoReconnect(sessionId: string, binding: SessionBind
       sshReconnectForwards: undefined,
     });
     recordSshLifecycleDiagnostic(sessionId, "reconnect", "passed", "ok", binding);
-    recordLocalUsageEvent({ event: "ssh.reconnect.completed", sessionId, success: true, outcome: "completed" });
   };
   if (forwards.length > 0) {
     void rebuildReconnectForwards(binding, forwards).then((results) => {

@@ -307,11 +307,6 @@ export function TerminalViewChrome({
               disabled: !menu.canSplit,
               action: () => useSessionsStore.getState().splitWithNewSession("vertical", sessionId),
             },
-            {
-              id: "broadcast",
-              label: useUIStore.getState().broadcastInput ? t("term.broadcast.off") : t("term.broadcast.on"),
-              action: () => useUIStore.getState().toggleBroadcastInput(),
-            },
           ]}
         />
       )}

@@ -9,7 +9,7 @@ SSH remote loopback required gate 已关闭。隔离 identifier 的 optimized ma
 - 远端 URL 先保持 `remote-manual`；只有可信 main 的显式动作和新 256-bit nonce 能建立 tunnel。
 - Rust 前后两次核对 repository/worktree/workspace/session/terminal generation/physical PTY、SSH host/port/user、remote URL 与同一存活 session。
 - transport 仅复用既有 authenticated russh handle 的精确 loopback `direct-tcpip`；本地只绑定 OS 分配的 `127.0.0.1` 端口。没有 shell 拼接、端口扫描、任意代理、reverse/dynamic/SOCKS、凭据复制或远端配置修改。
-- 原始 remote source identity 与派生 local endpoint 同时可见且只驻留内存；Preview 页面 capability 仍只有 telemetry ingest。
+- 原始 remote source identity 与派生 local endpoint 同时可见且只驻留内存；Preview 页面 capability 没有任何 app command 权限。
 
 ## optimized macOS 实机矩阵
 

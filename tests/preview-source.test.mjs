@@ -201,17 +201,27 @@ test("每个 session 的 runtime 候选集合有固定上限", () => {
   assert.equal(merged[0].sourceUrl, "http://localhost:3010/");
 });
 
-test("不可信 Preview capability 只有严格 telemetry ingest，没有 core/plugin/app 高权限", () => {
+test("不可信 Preview capability 没有任何 app command、core 或 plugin 权限", () => {
   const capability = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/preview.json", import.meta.url), "utf8"));
-  assert.deepEqual(capability.permissions, ["allow-preview-telemetry-ingest"]);
-  const permission = readFileSync(new URL("../src-tauri/permissions/preview.toml", import.meta.url), "utf8");
-  assert.match(permission, /commands\.allow = \["preview_telemetry_ingest"\]/);
-  for (const forbidden of ["pty_write", "fs_read_file", "preview_tunnel_open", "preview_tunnel_close", "ssh_", "shell", "store", "opener", "core:"]) {
-    assert.equal(permission.includes(forbidden), false, `unexpected Preview permission: ${forbidden}`);
-  }
+  assert.deepEqual(capability.permissions, []);
+  assert.equal(capability.local, false);
 });
 
-test("可信 main ACL 明确覆盖全部既有 app command，且 ingest 只属于 Preview", () => {
+test("SSH Preview tunnel benchmark 通过 fixture 回传验证真实 WebView ACL", () => {
+  const fixture = readFileSync(new URL("../scripts/fixtures/phase3-preview-tunnel-server.py", import.meta.url), "utf8");
+  const benchmark = readFileSync(new URL("../src/app/usePhase3TunnelBenchmark.ts", import.meta.url), "utf8");
+
+  assert.match(fixture, /fetch\('\/acl-complete\?rejected='/);
+  assert.match(fixture, /TUNARA_TUNNEL_\{args\.label\}_ACL_COMPLETE/);
+  assert.match(benchmark, /readTerminalBenchmarkSnapshot\(sessionId\)/);
+  assert.match(fixture, /rejected == "file,store,pty,ssh,tunnel,app" and unexpected == "none"/);
+  assert.match(benchmark, /ACL_FAILED/);
+  assert.match(benchmark, /ACL_OK/);
+  assert.match(benchmark, /aclCompleted: aclA && aclB/);
+  assert.doesNotMatch(benchmark, /telemetryComplete|\.telemetry/);
+});
+
+test("可信 main ACL 明确覆盖全部已注册 app command", () => {
   const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
   const handler = lib.match(/generate_handler!\[([\s\S]*?)\]\)/)?.[1] ?? "";
   const registered = [...handler.matchAll(/(?:\w+::)+(\w+),/g)].map((match) => match[1]);
@@ -221,9 +231,8 @@ test("可信 main ACL 明确覆盖全部既有 app command，且 ingest 只属�
   const allowed = [...permission.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
   assert.deepEqual(
     [...allowed].sort(),
-    registered.filter((command) => command !== "preview_telemetry_ingest").sort(),
+    registered.sort(),
   );
-  assert.equal(allowed.includes("preview_telemetry_ingest"), false);
 
   const mainCapability = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
   assert.ok(mainCapability.permissions.includes("allow-main-commands"));

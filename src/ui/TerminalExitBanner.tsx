@@ -78,7 +78,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
     const store = useSessionsStore.getState();
     if (isRemote && session.remote) {
       // Keep the dead session and its snapshot until the replacement is
-      // configured. Cancelling the dialog must not destroy notes, split
+      // configured. Cancelling the dialog must not destroy split
       // placement, or scrollback.
       useUIStore.getState().openSshConnect(reconnectPrefillFromSession(session));
       return;

@@ -72,7 +72,6 @@ export function sessionMatchesSidebarSearch(session: Session, query: string): bo
   const { primary, subtitle } = deriveTitle(session);
   if (primary.toLowerCase().includes(q) || subtitle.toLowerCase().includes(q)) return true;
   if (session.dir.toLowerCase().includes(q)) return true;
-  if (session.note?.toLowerCase().includes(q) === true) return true;
   const remote = session.remote;
   if (!remote) return false;
   const haystack = [

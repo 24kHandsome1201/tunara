@@ -1,24 +1,20 @@
 import type { InspectorTab } from "@/state/ui";
 
 export const INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
-  "overview",
   "changes",
   "files",
   "preview",
-  "notes",
   "transfers",
   "forwarding",
 ];
 
 export const PRIMARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
-  "overview",
   "changes",
   "files",
 ];
 
 export const SECONDARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
   "preview",
-  "notes",
   "transfers",
   "forwarding",
 ];
@@ -27,7 +23,6 @@ export type InspectorOverflowSection = "workspace" | "transfer" | "ssh";
 
 export const INSPECTOR_OVERFLOW_SECTION: Partial<Record<InspectorTab, InspectorOverflowSection>> = {
   preview: "workspace",
-  notes: "workspace",
   transfers: "transfer",
   forwarding: "ssh",
 };

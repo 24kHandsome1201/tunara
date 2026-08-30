@@ -117,7 +117,6 @@ impl AppearanceConfig {
 }
 
 const TERMINAL_INTERACTIONS_VERSION: u16 = 1;
-const LOCAL_USAGE_LOGGING_VERSION: u16 = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
@@ -137,27 +136,10 @@ impl Default for TerminalInteractionsConfig {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
-pub struct LocalUsageLoggingConfig {
-    pub version: u16,
-    pub enabled: bool,
-}
-
-impl Default for LocalUsageLoggingConfig {
-    fn default() -> Self {
-        Self {
-            version: LOCAL_USAGE_LOGGING_VERSION,
-            enabled: false,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(default)]
 pub struct TunaraConfig {
     pub appearance: AppearanceConfig,
     pub keybindings: BTreeMap<String, String>,
     pub terminal_interactions: TerminalInteractionsConfig,
-    pub local_usage_logging: LocalUsageLoggingConfig,
 }
 
 impl Default for TunaraConfig {
@@ -166,7 +148,6 @@ impl Default for TunaraConfig {
             appearance: AppearanceConfig::default(),
             keybindings: default_keybindings(),
             terminal_interactions: TerminalInteractionsConfig::default(),
-            local_usage_logging: LocalUsageLoggingConfig::default(),
         }
     }
 }
@@ -431,28 +412,6 @@ fn merge_known_config(raw: &str, config: &TunaraConfig) -> Result<String, String
         );
     }
 
-    // As with terminal interactions, never reinterpret or downgrade a future
-    // local-log schema during an unrelated settings save.
-    let future_local_usage_logging = doc
-        .get("local_usage_logging")
-        .and_then(Item::as_table)
-        .and_then(|table| table.get("version"))
-        .and_then(Item::as_integer)
-        .is_some_and(|version| version > i64::from(LOCAL_USAGE_LOGGING_VERSION));
-    if !future_local_usage_logging {
-        let local_usage_logging = ensure_document_table(&mut doc, "local_usage_logging")?;
-        set_table_item(
-            local_usage_logging,
-            "version",
-            value(i64::from(config.local_usage_logging.version)),
-        );
-        set_table_item(
-            local_usage_logging,
-            "enabled",
-            value(config.local_usage_logging.enabled),
-        );
-    }
-
     Ok(doc.to_string())
 }
 
@@ -548,23 +507,6 @@ pub fn save_config(config: TunaraConfig) -> Result<(), String> {
     write_config(&path, &config)
 }
 
-/// Startup-only, fail-closed read used before renderer hydration. It never
-/// creates or repairs config: a missing, malformed, or future schema leaves
-/// local usage logging disabled.
-pub(crate) fn local_usage_logging_enabled() -> bool {
-    let Ok(path) = config_path() else {
-        return false;
-    };
-    let Ok(raw) = fs::read_to_string(path) else {
-        return false;
-    };
-    let Ok(config) = toml::from_str::<TunaraConfig>(&raw) else {
-        return false;
-    };
-    config.local_usage_logging.version == LOCAL_USAGE_LOGGING_VERSION
-        && config.local_usage_logging.enabled
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -598,7 +540,6 @@ mod tests {
             appearance: AppearanceConfig::default(),
             keybindings: old_default_keybindings(),
             terminal_interactions: TerminalInteractionsConfig::default(),
-            local_usage_logging: LocalUsageLoggingConfig::default(),
         };
         let old_raw = toml::to_string_pretty(&old).expect("serialize old defaults");
         assert!(raw_has_complete_old_keybindings(&old_raw));
@@ -613,7 +554,6 @@ mod tests {
             appearance: AppearanceConfig::default(),
             keybindings: old_backend_default_keybindings(),
             terminal_interactions: TerminalInteractionsConfig::default(),
-            local_usage_logging: LocalUsageLoggingConfig::default(),
         };
         let old_backend_raw =
             toml::to_string_pretty(&old_backend).expect("serialize old backend defaults");
@@ -802,8 +742,6 @@ font_size = 15
         assert!(!loaded.config.appearance.terminal_wallpaper);
         assert!(saved.contains("[terminal_interactions]"));
         assert!(saved.contains("secondary_click = \"smart\""));
-        assert!(saved.contains("[local_usage_logging]"));
-        assert!(saved.contains("enabled = false"));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
@@ -880,43 +818,6 @@ future_field = true
         assert!(future_saved.contains("version = 99"));
         assert!(future_saved.contains("secondary_click = \"future-gesture\""));
         assert!(future_saved.contains("future_field = true"));
-        assert!(future_saved.contains("theme = \"light\""));
-
-        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
-    }
-
-    #[test]
-    fn local_usage_logging_is_opt_in_and_preserves_future_schema_tables() {
-        let path = temp_config_path("local-usage-logging");
-        let defaults = TunaraConfig::default();
-        assert!(!defaults.local_usage_logging.enabled);
-
-        let mut enabled = defaults.clone();
-        enabled.local_usage_logging.enabled = true;
-        write_config(&path, &enabled).expect("persist enabled local usage logging");
-        let loaded = load_config_from_path(&path).expect("load enabled local usage logging");
-        assert_eq!(loaded.config.local_usage_logging.version, 1);
-        assert!(loaded.config.local_usage_logging.enabled);
-
-        fs::write(
-            &path,
-            r##"[appearance]
-theme = "dark"
-
-[local_usage_logging]
-version = 99
-enabled = true
-future_mode = "private-v2"
-"##,
-        )
-        .expect("write future local usage logging config");
-        enabled.appearance.theme = "light".into();
-        enabled.local_usage_logging.enabled = false;
-        write_config(&path, &enabled).expect("save around future local usage table");
-        let future_saved = fs::read_to_string(&path).expect("read future local usage merge");
-        assert!(future_saved.contains("version = 99"));
-        assert!(future_saved.contains("enabled = true"));
-        assert!(future_saved.contains("future_mode = \"private-v2\""));
         assert!(future_saved.contains("theme = \"light\""));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));

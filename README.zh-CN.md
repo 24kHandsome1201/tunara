@@ -67,15 +67,11 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 - 关闭确认：running 状态需要双击，避免误关跑到一半的任务
 - 跨重启恢复会话列表和 UI 布局
 
-### 工作区驾驶舱
+### 会话管理
 
-Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话、多个 agent、多个项目的人。它帮你看清当前状态，标出重点会话，还能把临时想法直接记在会话里。
+Tunara 让重点会话保持醒目，同时不把终端变成项目管理工具。
 
-- 会话概览卡片集中展示 cwd、agent、Git、笔记和常用操作
-- Session Notes 提供自动保存的会话草稿和任务计数
 - 置顶会话会显示星标，并在命令面板的会话结果里排得更靠前
-- 起步工作流可以一键加入 review、测试和排查类常用命令
-- Overview 保留有上限、仅当前运行期的会话最近活动；它不是持久 Agent 历史
 
 后续方向、功能记录和取舍见 [docs/ROADMAP.md](docs/ROADMAP.md)、[docs/FEATURES.md](docs/FEATURES.md)、[docs/PRODUCT_REVIEW.md](docs/PRODUCT_REVIEW.md)。
 
@@ -90,13 +86,13 @@ Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话�
 - 批量上传/下载：进度、取消、journal 恢复
 - 只读远程 Git review（一次性 exec channel）
 - 本地/动态端口转发、重连快照、连接诊断
-- 可选本地 SSH 使用日志（默认关闭）
+- 可搜索并按在线/离线筛选的已保存主机与 SSH config 主机列表
 
 ### 文件与检查器
 
 右栏是按上下文裁剪的检查器，不只是 diff。本地与 SSH 文件可以和工作区终端标签并列打开。
 
-- 页签：Overview、Changes、Files、Preview、Notes；SSH 另有 Transfers、Metadata、Forwarding、Diagnostics、Known hosts
+- 页签：Changes、Files、Preview；SSH 另有 Transfers 与 Forwarding
 - Markdown/MDX 阅读与有边界的单文件编辑（UTF-8、≤256 KiB、fingerprint 校验）
 - 只读 Jupyter notebook 预览（不执行代码，不渲染 HTML/脚本/富输出）
 - 安全图片预览，以及超大文本/日志的受限“查看开头”
@@ -104,12 +100,12 @@ Tunara 新增了一层轻量驾驶舱，适合一天里同时开着多个会话�
 
 ### AI Agent 识别
 
-如果你日常用 Claude Code、Codex、Aider 这些命令行 agent，Tunara 会自动认出来并在会话上挂一个品牌角标。不需要配置，启动时 PTY 一旦匹配到 agent 命令就生效。
+Tunara 优先为 Claude Code、Codex、Cursor、OpenCode 提供更完整的生命周期与恢复集成；其他命令行 agent 在命令被识别时也会显示品牌角标。
 
-- 自动识别 12 种 agent CLI：Claude Code、Codex、Amp、Gemini、Copilot、Cursor、Droid、OpenCode、Pi、Auggie、Devin、Aider
-- 紧凑上下文条显示 agent 状态：starting / idle / running
-- Agent hooks 监听结构化生命周期事件（启动、思考中、工具调用、结束）
-- Agent 改动文件计数 + 改动文件预览入口
+- 优先支持 Claude Code、Codex、Cursor、OpenCode；生命周期与 resume 能力因 CLI 而异
+- 基础命令识别覆盖 Amp、Gemini、Copilot、Droid、Pi、Auggie、Devin、Aider
+- 紧凑上下文条显示识别到的 agent 与可用运行状态
+- 支持时显示 Agent 改动文件计数与 Changes 入口
 
 明确不做：内置 AI 聊天、模型接入、MCP 编排、agent 启动器、agent stdout 结构化解析。Tunara 只是认出谁在跑，不替你管 agent。
 
@@ -151,10 +147,7 @@ brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
 brew install --cask tunara
 ```
 
-可在“设置 > 应用”中检查、安装更新并重启；Homebrew 用户也可运行 `brew upgrade --cask tunara`。
-
-如果 Tunara 1.16 曾在这台 Mac 上创建本地 Agent 历史，“设置 > 应用”会显示
-一次性的旧数据删除入口。当前版本不再读取这些数据，也绝不会在未经明确确认时自动删除。
+可在“设置 > 高级”中检查、安装更新并重启；Homebrew 用户也可运行 `brew upgrade --cask tunara`。
 
 ### 从源码构建
 
@@ -186,7 +179,6 @@ pnpm test             # 全部测试（Node + UI + Rust）
 - [功能与代码地图](docs/FEATURES.md) —— 用户可见能力对应到前端/后端入口。
 - [架构 Architecture](docs/ARCHITECTURE.md) —— 前后端 IPC：Tauri 命令、三种传输（`invoke` / `Channel<PtyEvent>` / `git-changed` 与 `agent-hook` 事件）、以及被托管的 state。
 - [测试 Testing](docs/TESTING.md) —— `.mjs` 直接 import `.ts` 的纯逻辑约定、UI 组件门、Node/UI/Cargo 分工，以及如何加测试。
-- [本地使用日志与隐私](docs/LOCAL_USAGE_LOGGING.md) —— 明确选择开启的 SSH 诊断、JSONL schema、敏感数据排除、轮转、导出与失败行为。
 - [Agent 识别](docs/AGENT_DETECTION.md) —— agent 识别与生命周期原理，以及新增一个 agent 的分步清单。
 - [状态与持久化 State & persistence](docs/STATE_AND_PERSISTENCE.md) —— 三个 Zustand store、持久化的 workspace 快照，以及恢复重启相关的注意点。
 - [大文件受限查看](docs/LIMITED_LARGE_FILE_VIEWING.md) —— 本地与 SSH 文本/日志的前 N 行受限查看、IPC 限额与安全行为。

@@ -42,7 +42,7 @@ Only the latest minor release line receives security fixes. At the time of writi
 - **Git write operations are not part of the main UI.** The current review panel is read-only; users run mutating Git commands from the terminal when they choose to.
 - **Terminal clipboard writes are opt-in.** OSC 52 clipboard writes are disabled by default and only enabled by `terminal_clipboard_write = true`; Tunara does not implement clipboard read responses.
 - **Signed updates.** Tauri updater configuration verifies update signatures before applying releases.
-- **No automatic product telemetry or log upload.** Optional local usage logs are disabled by default, pass through a native event/attribute allowlist, omit terminal and credential payloads, and can leave the machine only when the user manually exports and sends them. See [Local usage logging](docs/LOCAL_USAGE_LOGGING.md). Network access is limited to explicit user workflows, external CLIs launched by the user, and update checks.
+- **No product telemetry or usage-log collection.** Tunara does not record or upload product usage events. Network access is limited to explicit user workflows, external CLIs launched by the user, and update checks.
 
 ## What we can't promise
 

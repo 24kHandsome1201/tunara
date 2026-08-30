@@ -7,7 +7,6 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { resetDirtyDraftGuardForTests } from "@/modules/editor/dirty-draft-guard";
 import { resetTerminalBindingsForTests } from "@/modules/terminal/lib/binding-aware-async-action";
-import { hydrateLocalUsageLoggingEnabled } from "@/modules/usage-log/local-usage-log";
 import { resetAppLifecycleForTests } from "@/app/app-lifecycle";
 
 beforeEach(() => {
@@ -16,9 +15,8 @@ beforeEach(() => {
   resetDirtyDraftGuardForTests();
   resetTerminalBindingsForTests();
   resetAppLifecycleForTests();
-  hydrateLocalUsageLoggingEnabled(false);
   useSessionsStore.setState({ activeSessionId: "ui-test-session" });
-  useUIStore.setState({ presentationMode: "workspace", mainSurface: "terminal", fileTabs: [], activeFileTabId: null, localUsageLoggingEnabled: false, terminalWallpaperEnabled: false, terminalWallpaperSource: "paper" });
+  useUIStore.setState({ presentationMode: "workspace", mainSurface: "terminal", fileTabs: [], activeFileTabId: null, terminalWallpaperEnabled: false, terminalWallpaperSource: "paper" });
 });
 
 afterEach(() => {

@@ -38,7 +38,7 @@ migration.
 
 1. Launch Tunara and open **Settings** — confirm the app title and identifier
    show Tunara (dev builds may display as **Tuna** with `dev.tunara.app.dev`).
-2. Check that your sessions, notes, workflows, and layout restored correctly.
+2. Check that your sessions, workflows, and layout restored correctly. Legacy session-note fields are ignored.
 3. Confirm the plugin store now contains data under `tunara-sessions.json`.
    The legacy `conduit-sessions.json` may still exist on disk but should no
    longer be updated.

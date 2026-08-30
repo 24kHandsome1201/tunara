@@ -10,7 +10,6 @@ import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
 import { formatElapsed } from "./lib/elapsed";
-import { SessionMascotIcon } from "./SessionMascotIcon";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
@@ -42,27 +41,6 @@ function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean 
 function SessionIcon({ session }: { session: Session }) {
   const size = 24;
   const displayRunState = sessionDisplayRunState(session);
-
-  if (session.mascot) {
-    return (
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <div
-          style={{
-            width: size,
-            height: size,
-            borderRadius: "var(--r-badge)",
-            background: "var(--c-bg-3)",
-            display: "grid",
-            placeItems: "center",
-            overflow: "hidden",
-          }}
-        >
-          <SessionMascotIcon id={session.mascot} size={23} />
-        </div>
-        <StatusDot runState={displayRunState} unread={session.unread} />
-      </div>
-    );
-  }
 
   if (session.agent) {
     const style = getAgentCircleStyle(session.agent);
@@ -495,9 +473,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             <StatusMark runState={displayRunState} exitCode={session.lastExitCode} />
             {session.pinned && (
               <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>★</span>
-            )}
-            {session.note && (
-              <span title={t("sidebar.session.has_note")} aria-label={t("sidebar.session.has_note")} style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>✎</span>
             )}
             {editing ? (
               <input

@@ -52,9 +52,7 @@ test("persisted session helpers keep only durable fields and restore idle runtim
     runState: "running",
     updatedAt: 10,
     customTitle: " Work ",
-    mascot: "fox",
     pinned: true,
-    note: "ok\u0000note",
     agent: "CC",
     agentActivity: "running",
     lastCommand: "pnpm test",
@@ -78,9 +76,7 @@ test("persisted session helpers keep only durable fields and restore idle runtim
     branch: "main",
     updatedAt: 10,
     customTitle: "Work",
-    mascot: "fox",
     pinned: true,
-    note: "oknote",
     remote: {
       host: "box",
       port: 22,
@@ -170,7 +166,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
           ratio: 0.95,
         },
         // Snapshots written before persistent Agent Timeline was removed must
-        // still restore, but the retired tab falls back to Overview.
+        // still restore, but the retired tab falls back to Changes.
         inspectorTab: "timeline",
       },
       terminals: {
@@ -260,8 +256,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
         second: { type: "pane", sessionId: "s-b" },
       },
     });
-    assert.equal(snapshot.ui.inspectorTab, "overview");
-    assert.equal(snapshot.ui.shellIntegrationHintDismissed, false);
+    assert.equal(snapshot.ui.inspectorTab, "changes");
     assert.deepEqual(Object.keys(snapshot.terminals), ["s-a"]);
     assert.deepEqual(Object.keys(snapshot.agentResume), ["s-a", "s-active", "s-b"]);
     assert.deepEqual(snapshot.agentResume["s-active"].provenance, {
@@ -284,25 +279,6 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
   } finally {
     console.warn = originalWarn;
   }
-});
-
-test("snapshot sanitizer keeps a dismissed shell-integration hint", () => {
-  const snapshot = sanitizeSnapshot({
-    version: 1,
-    savedAt: 1,
-    activeSessionId: "s-a",
-    sessions: [persistedSession("s-a", "/repo")],
-    ui: {
-      sidebarVisible: true,
-      panelVisible: true,
-      collapsedDirs: {},
-      collapsedDiffSections: {},
-      split: { root: { type: "pane", sessionId: "s-a" } },
-      inspectorTab: "overview",
-      shellIntegrationHintDismissed: true,
-    },
-  });
-  assert.equal(snapshot?.ui.shellIntegrationHintDismissed, true);
 });
 
 test("snapshot sanitizer restores a four-pane BSP layout and keeps its nested ratios", () => {
@@ -342,7 +318,7 @@ test("snapshot sanitizer restores a four-pane BSP layout and keeps its nested ra
       collapsedDirs: {},
       collapsedDiffSections: {},
       split: { root },
-      inspectorTab: "overview",
+      inspectorTab: "changes",
     },
   });
 
@@ -497,13 +473,12 @@ test("snapshot sanitizer drops malformed optional session fields without droppin
         customTitle: { bad: true },
         mascot: "dragon",
         pinned: "yes",
-        note: 123,
       }),
       persistedSession("s-good", "/repo", 2, {
         customTitle: "  Keep me  ",
         mascot: "panda",
         pinned: true,
-        note: "ok",
+        note: "legacy note is ignored",
       }),
     ],
   });
@@ -517,9 +492,9 @@ test("snapshot sanitizer drops malformed optional session fields without droppin
     updatedAt: 1,
   });
   assert.equal(snapshot.sessions[1].customTitle, "Keep me");
-  assert.equal(snapshot.sessions[1].mascot, "panda");
+  assert.equal(snapshot.sessions[1].mascot, undefined);
   assert.equal(snapshot.sessions[1].pinned, true);
-  assert.equal(snapshot.sessions[1].note, "ok");
+  assert.equal("note" in snapshot.sessions[1], false);
 });
 
 test("snapshot sanitizer bounds terminal snapshot count and serialized size", () => {

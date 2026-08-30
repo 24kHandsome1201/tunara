@@ -88,7 +88,6 @@ write_workspace_fixture() {
             title: "M2 SSH 安全写验收",
             dir: $dir,
             branch: "",
-            mascot: "otter",
             remote: {
               host: $host,
               port: $port,

@@ -2,6 +2,7 @@
 import argparse
 import http.server
 import socket
+import urllib.parse
 
 
 parser = argparse.ArgumentParser()
@@ -34,13 +35,28 @@ PAGE = f"""<!doctype html>
     try {{ await invoke(name, payload); unexpected.push(category); }}
     catch (_) {{ rejected.push(category); }}
   }}
-  console.error('TUNARA_TUNNEL_{args.label}_ACL_COMPLETE rejected=' + rejected.join(',') + ' unexpected=' + (unexpected.join(',') || 'none'));
+  const rejectedResult = rejected.join(',');
+  const unexpectedResult = unexpected.join(',') || 'none';
+  console.error('TUNARA_TUNNEL_{args.label}_ACL_COMPLETE rejected=' + rejectedResult + ' unexpected=' + unexpectedResult);
+  fetch('/acl-complete?rejected=' + encodeURIComponent(rejectedResult) + '&unexpected=' + encodeURIComponent(unexpectedResult))
+    .catch(() => console.error('TUNARA_TUNNEL_{args.label}_ACL_REPORT_FAILED'));
 }})();
 </script>""".encode()
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        if url.path == "/acl-complete":
+            query = urllib.parse.parse_qs(url.query)
+            rejected = query.get("rejected", [""])[0]
+            unexpected = query.get("unexpected", [""])[0]
+            acl_ok = rejected == "file,store,pty,ssh,tunnel,app" and unexpected == "none"
+            result = "ACL_OK" if acl_ok else "ACL_FAILED"
+            print(f"TUNARA_TUNNEL_{args.label}_{result}", flush=True)
+            self.send_response(204)
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")

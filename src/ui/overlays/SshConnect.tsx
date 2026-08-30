@@ -588,7 +588,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     }
     // A connection opens into its terminal. Keep remote Files opt-in even when
     // the inspector was left on Files for the previous local session.
-    useUIStore.getState().setInspectorTab("overview");
+    useUIStore.getState().setInspectorTab("changes");
     useUIStore.getState().showTerminal();
     setOverlay(null);
     onClose();

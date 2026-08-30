@@ -2,7 +2,6 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { PreviewPanel } from "@/ui/PreviewPanel";
-import { useUIStore } from "@/state/ui";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 import type { Session } from "@/ui/types";
 import type { PreviewRuntimeState, PreviewTunnelState } from "@/modules/preview/preview-window";
@@ -13,9 +12,6 @@ function runtime(overrides: Partial<PreviewRuntimeState> = {}): PreviewRuntimeSt
     currentUrl: "http://127.0.0.1:41731/",
     canGoBack: false,
     canGoForward: false,
-    zoomFactor: 1,
-    viewport: { mode: "reset", requestedWidth: 980, requestedHeight: 720, actualWidth: 980, actualHeight: 720, outerWidth: 980, outerHeight: 748, exact: true },
-    telemetry: { generation: 1, events: [], dropped: 0, text: "Preview failures (generation 1)" },
     restart: { eligible: false, reason: "not-failed" },
     ...overrides,
   };
@@ -216,133 +212,4 @@ test("uses Rust-reported history state and submits addresses through the trusted
   fireEvent.change(address, { target: { value: "/b?q=1#two" } });
   fireEvent.submit(screen.getByRole("form", { name: "Preview navigation" }));
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_navigate", payload: { source: eligible, address: "/b?q=1#two" } }));
-});
-
-async function openViewControls() {
-  fireEvent.click(await screen.findByText("View controls"));
-}
-
-test("changes zoom and viewport only after Rust reports native state", async () => {
-  const calls: Array<{ command: string; payload: unknown }> = [];
-  let state = runtime();
-  const eligible = source();
-  mockIPC((command, payload) => {
-    calls.push({ command, payload });
-    if (command === "preview_status") return state;
-    if (command === "preview_set_zoom") {
-      state = runtime({ zoomFactor: 1.25 });
-      return undefined;
-    }
-    if (command === "preview_set_viewport") {
-      state = runtime({ viewport: { mode: "preset", requestedWidth: 390, requestedHeight: 844, actualWidth: 390, actualHeight: 844, outerWidth: 390, outerHeight: 872, exact: true } });
-      return undefined;
-    }
-    throw new Error(`unexpected command: ${command}`);
-  });
-  render(<PreviewPanel session={session([eligible])} />);
-  await openViewControls();
-
-  const zoom = await screen.findByRole("button", { name: "125%" });
-  expect(zoom.getAttribute("aria-pressed")).toBe("false");
-  fireEvent.click(zoom);
-  await waitFor(() => expect(zoom.getAttribute("aria-pressed")).toBe("true"));
-  fireEvent.click(screen.getByRole("button", { name: "Phone 390×844" }));
-  await screen.findByText("390×844");
-  expect(calls).toContainEqual({ command: "preview_set_zoom", payload: { source: eligible, factor: 1.25 } });
-  expect(calls).toContainEqual({ command: "preview_set_viewport", payload: { source: eligible, width: 390, height: 844 } });
-});
-
-test("shows bounded failures and explicitly copies, clears, or fills only the source PTY", async () => {
-  const calls: Array<{ command: string; payload: unknown }> = [];
-  const eligible = source({ sourceUrl: "http://127.0.0.1:41731/app?token=secret#private" });
-  let state = runtime({
-    currentUrl: eligible.sourceUrl,
-    telemetry: {
-      generation: 4,
-      events: [
-        { kind: "console-error", message: "Render failed", count: 2 },
-        { kind: "network-failure", message: "GET /api · HTTP 503 · fetch", count: 1 },
-      ],
-      dropped: 3,
-      text: "Preview failures (generation 4)\n[console-error] Render failed ×2\n[network-failure] GET /api · HTTP 503 · fetch",
-    },
-  });
-  mockIPC((command, payload) => {
-    calls.push({ command, payload });
-    if (command === "preview_status") return state;
-    if (command === "preview_telemetry_send") return undefined;
-    if (command === "preview_telemetry_clear") {
-      state = runtime({ telemetry: { generation: 4, events: [], dropped: 0, text: "Preview failures (generation 4)" } });
-      return undefined;
-    }
-    throw new Error(`unexpected command: ${command}`);
-  });
-  render(<PreviewPanel session={session([eligible])} />);
-  await openViewControls();
-
-  expect(await screen.findByText("Render failed ×2")).toBeTruthy();
-  useUIStore.setState({ toasts: [] });
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: async () => {} },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Copy" }));
-  await waitFor(() => {
-    const toasts = useUIStore.getState().toasts;
-    expect(toasts[toasts.length - 1]).toMatchObject({ title: "Copied", variant: "success" });
-  });
-  expect(screen.getByText("GET /api · HTTP 503 · fetch")).toBeTruthy();
-  expect(screen.queryByText(/token=secret/)).toBeNull();
-  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-telemetry"]')!);
-  await waitFor(() => expect(calls).toContainEqual({ command: "preview_telemetry_send", payload: { source: eligible } }));
-  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-  await screen.findByText("No console or network failures for this preview yet.");
-});
-
-test("captures only on explicit action and sends the safe reference to the bound PTY without execution", async () => {
-  const calls: Array<{ command: string; payload: unknown }> = [];
-  const eligible = source();
-  mockIPC((command, payload) => {
-    calls.push({ command, payload });
-    if (command === "preview_status") return runtime();
-    if (command === "preview_capture") {
-      return {
-        captureId: "capture-safe",
-        localRef: "$HOME/Library/Caches/test/preview-evidence/capture-safe.png",
-        sourceOrigin: "http://127.0.0.1:41731",
-        sourceSummary: "repo=repository-sha256:a worktree=worktree-sha256:b",
-        preparedText: "Preview screenshot: ref=$HOME/Library/Caches/test/preview-evidence/capture-safe.png origin=http://127.0.0.1:41731 source=redacted generation=4",
-        capturedAtMs: 10,
-        viewportCssWidth: 980,
-        viewportCssHeight: 720,
-        zoomFactor: 1,
-        windowGeneration: 4,
-        imageFormat: "png",
-        imageWidth: 1960,
-        imageHeight: 1440,
-        imageSha256: "abc",
-      };
-    }
-    if (command === "preview_send_capture_to_source_terminal") {
-      return { terminalRef: "terminal-sha256:c", bytesWritten: 142, executed: false };
-    }
-    throw new Error(`unexpected command: ${command}`);
-  });
-  render(<PreviewPanel session={session([eligible])} />);
-  await openViewControls();
-
-  expect(calls.some((call) => call.command === "preview_capture")).toBe(false);
-  fireEvent.click(await screen.findByRole("button", { name: "Capture PNG" }));
-  await waitFor(() => expect(calls).toContainEqual({
-    command: "preview_capture",
-    payload: { source: eligible, options: { format: "png" } },
-  }));
-  expect(await screen.findByText(/1960×1440 PNG/)).toBeTruthy();
-
-  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-preview-action="send-capture"]')!);
-  await waitFor(() => expect(calls).toContainEqual({
-    command: "preview_send_capture_to_source_terminal",
-    payload: { source: eligible, captureId: "capture-safe" },
-  }));
-  expect(await screen.findByText("Filled 142 bytes into the source terminal without executing.")).toBeTruthy();
 });

@@ -7,9 +7,9 @@ describe("inspector navigation", () => {
       filesOnly: false,
       isRemote: false,
     })).toEqual({
-      all: ["overview", "changes", "files", "preview", "notes"],
-      primary: ["overview", "changes", "files"],
-      secondary: ["preview", "notes"],
+      all: ["changes", "files", "preview"],
+      primary: ["changes", "files"],
+      secondary: ["preview"],
     });
   });
 
@@ -19,7 +19,6 @@ describe("inspector navigation", () => {
       isRemote: true,
     }).secondary).toEqual([
       "preview",
-      "notes",
       "transfers",
       "forwarding",
     ]);
@@ -27,7 +26,6 @@ describe("inspector navigation", () => {
 
   test("groups overflow tools into workspace, transfer, and SSH sections", () => {
     expect(INSPECTOR_OVERFLOW_SECTION.preview).toBe("workspace");
-    expect(INSPECTOR_OVERFLOW_SECTION.notes).toBe("workspace");
     expect(INSPECTOR_OVERFLOW_SECTION.transfers).toBe("transfer");
     expect(INSPECTOR_OVERFLOW_SECTION.forwarding).toBe("ssh");
   });
@@ -38,9 +36,9 @@ describe("inspector navigation", () => {
       isRemote: false,
       hasPreviewSource: true,
     })).toEqual({
-      all: ["overview", "changes", "files", "preview", "notes"],
-      primary: ["overview", "changes", "files", "preview"],
-      secondary: ["notes"],
+      all: ["changes", "files", "preview"],
+      primary: ["changes", "files", "preview"],
+      secondary: [],
     });
   });
 

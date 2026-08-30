@@ -133,7 +133,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotLoadResu
       collapsedDirs: {},
       collapsedDiffSections: {},
       split: emptySplitState(),
-      inspectorTab: "overview",
+      inspectorTab: "changes",
     };
 
     const migrated: WorkspaceSnapshotV1 = {

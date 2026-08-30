@@ -1,5 +1,5 @@
 import { useSessionsStore } from "@/state/sessions";
-import { useUIStore, type ExternalEditor } from "@/state/ui";
+import type { ExternalEditor } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
 import { knownRemoteCwd, sidebarGroupKey, sshEndpointLabel } from "@/modules/session/sidebar-groups";
@@ -21,7 +21,6 @@ export function buildSessionMenuItems({
   session,
   t,
   externalEditor,
-  onSelectSession,
   onCloseSession,
   groupSessions = [],
   canReorder = true,
@@ -33,27 +32,8 @@ export function buildSessionMenuItems({
     useSessionsStore.getState().reorderInGroup(sidebarGroupKey(session), groupIndex, next);
     onReordered?.(next + 1);
   };
-  const openNotes = () => {
-    onSelectSession(session.id);
-    const ui = useUIStore.getState();
-    ui.setPanelVisible(true);
-    ui.setInspectorTab("notes");
-  };
-  const chooseMascot = () => {
-    onSelectSession(session.id);
-    const ui = useUIStore.getState();
-    ui.setPanelVisible(true);
-    ui.setInspectorTab("overview");
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const picker = document.querySelector<HTMLElement>(`[data-session-mascot-picker="${session.id}"]`);
-      picker?.scrollIntoView({ block: "nearest" });
-      picker?.querySelector<HTMLButtonElement>("button[aria-pressed='true']")?.focus();
-    }));
-  };
   const items: MenuEntry[] = [
     { id: "session:pin", label: session.pinned ? t("sidebar.session.unpin") : t("sidebar.session.pin"), icon: "pin", action: () => { useSessionsStore.getState().togglePinnedSession(session.id); } },
-    { id: "session:mascot", label: t("sidebar.session.choose_mascot"), icon: "mascot", action: chooseMascot },
-    { id: "session:notes", label: t("sidebar.session.open_notes"), icon: "note", action: openNotes },
     ...(session.remote ? [{ id: "session:duplicate", label: t("sidebar.session.duplicate_host"), icon: "ssh" as const, action: () => { useSessionsStore.getState().duplicateOnHost(session.id); } }] : []),
     { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
     { id: "session:move-up", label: t("sidebar.session.move_up"), disabled: !canReorder || groupIndex <= 0, action: () => move(-1) },

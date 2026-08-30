@@ -33,16 +33,10 @@ export interface RawTerminalInteractionsConfig {
   secondary_click?: string;
 }
 
-export interface RawLocalUsageLoggingConfig {
-  version?: number;
-  enabled?: boolean;
-}
-
 export interface RawTunaraConfig {
   appearance: RawAppearanceConfig;
   keybindings: Record<string, string>;
   terminal_interactions?: RawTerminalInteractionsConfig;
-  local_usage_logging?: RawLocalUsageLoggingConfig;
 }
 
 export interface LoadedTunaraConfig {

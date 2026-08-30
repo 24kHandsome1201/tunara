@@ -8,7 +8,6 @@ import {
   sshEndpointIdentityFromRemote,
 } from "../src/modules/ssh/connection-share.ts";
 import { remoteExplorerFollowPath, terminalUploadDestination } from "../src/modules/ssh/remote-cwd.ts";
-import { broadcastTerminalInput, registerBroadcastWriter, resetBroadcastWritersForTests, writeRegisteredTerminalInput } from "../src/modules/terminal/lib/broadcast-input.ts";
 import { formatTransferEta, formatTransferRate, pushRateSample, transferEta, transferRate } from "../src/modules/ssh/transfer-rate.ts";
 import { canResumeRecovery } from "../src/modules/ssh/transfer-resume.ts";
 
@@ -51,31 +50,6 @@ test("follow-cwd only uses an absolute remote path", () => {
   assert.equal(terminalUploadDestination("/home/ubuntu", "notes.txt"), "/home/ubuntu/notes.txt");
   assert.equal(terminalUploadDestination("ubuntu@herd", "notes.txt"), null);
   assert.equal(terminalUploadDestination("/home/ubuntu", "../x"), null);
-});
-
-test("broadcast input fans out to other registered writers only", () => {
-  resetBroadcastWritersForTests();
-  const received = [];
-  registerBroadcastWriter("a", (data) => received.push(`a:${data}`));
-  const stopB = registerBroadcastWriter("b", (data) => received.push(`b:${data}`));
-  assert.equal(broadcastTerminalInput("a", "ls\n", ["a", "b", "c"]), 1);
-  assert.deepEqual(received, ["b:ls\n"]);
-  stopB();
-  assert.equal(broadcastTerminalInput("a", "pwd\n", ["a", "b"]), 0);
-  resetBroadcastWritersForTests();
-});
-
-test("writeRegisteredTerminalInput writes only to a live registered writer", () => {
-  resetBroadcastWritersForTests();
-  const received = [];
-  const stop = registerBroadcastWriter("pane", (data) => received.push(data));
-  assert.equal(writeRegisteredTerminalInput("pane", "/tmp/a.txt "), true);
-  assert.equal(writeRegisteredTerminalInput("missing", "/tmp/b.txt "), false);
-  assert.equal(writeRegisteredTerminalInput("pane", ""), false);
-  stop();
-  assert.equal(writeRegisteredTerminalInput("pane", "/tmp/c.txt "), false);
-  assert.deepEqual(received, ["/tmp/a.txt "]);
-  resetBroadcastWritersForTests();
 });
 
 test("transfer rate and ETA format from a moving window", () => {

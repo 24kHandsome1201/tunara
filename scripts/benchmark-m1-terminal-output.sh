@@ -71,7 +71,6 @@ write_fixture() {
           title: (if $i == 0 then "SSH 高输出终端" else "SSH 输入对照终端" end),
           dir: $dir,
           branch: $branch,
-          mascot: (if $i == 0 then "otter" else "panda" end),
           remote: {
             host: $host,
             port: $port,
@@ -116,7 +115,6 @@ write_fixture() {
         title: (if $i == 0 then "高输出终端" else "输入对照终端" end),
         dir: $dir,
         branch: $branch,
-        mascot: (if $i == 0 then "otter" else "panda" end),
         updatedAt: ($now + $i)
       };
       {

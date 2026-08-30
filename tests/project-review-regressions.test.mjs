@@ -39,8 +39,6 @@ test("persistent Agent Timeline is absent while lightweight Agent lifecycle rema
   const inspector = read("src/ui/InspectorPanel.tsx");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const sessions = read("src/state/sessions.ts");
-  const workspaceStore = read("src-tauri/src/modules/workspace_store.rs");
-  const settings = readSettingsSources();
 
   assert.equal(existsSync(resolve(root, "src-tauri/src/modules/agent_event_store.rs")), false);
   assert.equal(existsSync(resolve(root, "src/ui/AgentTimelinePanel.tsx")), false);
@@ -48,16 +46,9 @@ test("persistent Agent Timeline is absent while lightweight Agent lifecycle rema
   assert.doesNotMatch(`${inspector}\n${palette}`, /AgentTimeline|open-agent-timeline|inspector\.tab\.timeline/);
   assert.match(modules, /pub mod agent;/);
   assert.match(lib, /modules::agent::hooks::start_listener/);
-  assert.match(sessions, /sessionTimelines/);
-  assert.match(sessions, /appendTimelineEvent/);
-  assert.ok(existsSync(resolve(root, "src/state/timeline.ts")));
-  assert.match(lib, /modules::workspace_store::legacy_agent_data_delete/);
-  assert.match(permission, /"legacy_agent_data_delete"/);
-  assert.match(workspaceStore, /app_local_data_dir\.join\(LEGACY_AGENT_EVENTS_DIR\)/);
-  assert.match(workspaceStore, /pub async fn legacy_agent_data_delete\(\s*app: AppHandle,\s*confirmed: bool/);
-  assert.doesNotMatch(workspaceStore, /pub async fn legacy_agent_data_delete\([^)]*path:/s);
-  assert.match(settings, /tauriConfirmDialog\(t\("settings\.app\.legacy_agent_data\.confirm"\)/);
-  assert.match(settings, /invoke<"missing">\("legacy_agent_data_delete", \{ confirmed: true \}\)/);
+  assert.doesNotMatch(sessions, /sessionTimelines|appendTimelineEvent/);
+  assert.equal(existsSync(resolve(root, "src/state/timeline.ts")), false);
+  assert.doesNotMatch(`${lib}\n${permission}`, /legacy_agent_data/);
 });
 
 test("terminal chrome permanently omits agent status and command block surfaces", () => {
@@ -96,12 +87,11 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.match(globalAgentBar, /gbar\.action\.review/);
 });
 
-test("discovery flows keep empty-state recents, preview prompts, and OSC 133 hints", () => {
+test("discovery flows keep empty-state recents and preview prompts", () => {
   const app = read("src/app/App.tsx");
   const empty = read("src/ui/WorkspaceEmptyState.tsx");
   const init = read("src/app/useInit.ts");
   const sessions = read("src/state/sessions.ts");
-  const overview = read("src/ui/SessionOverviewPanel.tsx");
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const terminal = read("src/ui/TerminalView.tsx");
 
@@ -110,7 +100,6 @@ test("discovery flows keep empty-state recents, preview prompts, and OSC 133 hin
   assert.match(empty, /sidebar\.new_terminal_in_directory/);
   assert.match(init, /if \(result\.status === "empty"\) \{\s*workspaceHydrated = true;\s*useUIStore\.setState\(\{ ready: true \}\);/);
   assert.doesNotMatch(sessions, /createSession\("~"/);
-  assert.match(overview, /overview\.shell_integration\.title/);
   assert.match(terminal, /markShellIntegrationSeen\(sessionIdRef\.current\)/);
   assert.match(palette, /openInspectorTab\("changes", "open-session-changes"\)/);
   assert.match(palette, /openInspectorTab\("preview", "open-session-preview"\)/);
@@ -123,7 +112,7 @@ test("fixed runbooks stay removed while user-configurable workflows remain", () 
   assert.equal(existsSync(resolve(root, "src/modules/runbook/blueprints.ts")), false);
   assert.doesNotMatch(`${palette}\n${paletteFilter}`, /runbook|git restore --staged/iu);
   assert.match(palette, /useWorkflowsStore/);
-  assert.ok(existsSync(resolve(root, "src/modules/workflows/starters.ts")));
+  assert.equal(existsSync(resolve(root, "src/modules/workflows/starters.ts")), false);
 });
 
 test("node test script can import TypeScript sources on Node 24", () => {
@@ -493,11 +482,11 @@ test("settings exposes the signed updater flow and restart permission", () => {
   assert.ok(capability.permissions.includes("process:allow-restart"));
 });
 
-test("settings defers expensive CLI probes until the CLI tab is opened", () => {
+test("settings defers expensive CLI probes until Advanced is opened", () => {
   const settings = readSettingsSources();
 
   assert.match(settings, /const cliLoadStartedRef = useRef\(false\)/);
-  assert.match(settings, /if \(activeTab !== "cli" \|\| cliLoadStartedRef\.current\) return;/);
+  assert.match(settings, /if \(activeTab !== "app" \|\| cliLoadStartedRef\.current\) return;/);
   assert.match(settings, /cliLoadStartedRef\.current = true;[\s\S]*?loadCliStatus\(\)/);
 });
 
@@ -511,7 +500,6 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   const diffPanel = read("src/ui/DiffPanel.tsx");
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
-  const overviewPanel = read("src/ui/SessionOverviewPanel.tsx");
   const recordKeys = read("src/state/record-keys.ts");
   assert.match(persist, /const STORE_FILE = "tunara-sessions\.json";/);
   assert.match(persist, /const LEGACY_STORE_FILE = "conduit-sessions\.json";/);
@@ -611,9 +599,6 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(diffPanel, /getNumberRecordValue\(s\.gitNonce, session\.id\)/);
   assert.match(diffPanel, /hasTrueRecordKey\(collapsedSections, section\.key\)/);
   assert.match(diffPanel, /toggleDiffSectionCollapsed\(section\.key\)/);
-  assert.match(overviewPanel, /const EMPTY_TIMELINE: readonly TimelineEvent\[\] = Object\.freeze\(\[\]\);/);
-  assert.match(overviewPanel, /s\.sessionTimelines\[session\.id\] \?\? EMPTY_TIMELINE/);
-  assert.doesNotMatch(overviewPanel, /s\.sessionTimelines\[session\.id\] \?\? \[\]/);
   assert.doesNotMatch(diffPanel, /!!collapsedSections\[section\.key\]/);
   assert.doesNotMatch(diffPanel, /s\.gitNonce\[session\.id\]/);
   assert.doesNotMatch(diffPanel, /localStorage/);
@@ -1218,7 +1203,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /activeTab === "appearance"/);
   assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
   assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
-  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language, localUsageLoggingEnabled: s\.localUsageLoggingEnabled \}\)\)/);
+  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language \}\)\)/);
   assert.doesNotMatch(ui, /resetAppearance: \(\) => set\(\{ \.\.\.DEFAULT_SETTINGS, keybindings: \{ \.\.\.DEFAULT_KEYBINDINGS \} \}\)/);
 });
 
@@ -1748,7 +1733,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // The 580 ceiling left room for generation publication and inert SSH
   // restore. 580→625 covers input ownership plus binding-aware terminal
   // actions; their state machines remain extracted into terminal lib modules.
-  // 625→630 covers the OSC 133 seen-marker used by the Overview hint.
+  // 625→630 covers the OSC 133 seen-marker used by command-block metadata.
   // 630→640 covers optional terminal wallpaper (allowTransparency + reduced-
   // transparency gate); the layer itself lives in TerminalWallpaper.tsx.
   assert.ok(terminal.split("\n").length < 640);

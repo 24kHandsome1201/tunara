@@ -2,7 +2,6 @@
 import { AGENT_NAMES } from "../modules/agent/registry.ts";
 import { t } from "../modules/i18n/core.ts";
 import type { ConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
-import type { SessionMascotId } from "../modules/session/session-mascot.ts";
 import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
 import type { RemoteGitErrorV1, RemoteState } from "../modules/git/git-bridge.ts";
 import type { PreviewCommandProvenance, PreviewSource } from "../modules/preview/preview-source.ts";
@@ -62,9 +61,7 @@ export interface Session {
 
   // ── 用户自定义标题（优先级最高） ──
   customTitle?: string;
-  mascot?: SessionMascotId;
   pinned?: boolean;
-  note?: string;
 
   // ── 动态标题源（Warp 风格瀑布推导） ──
   lastCommand?: string;

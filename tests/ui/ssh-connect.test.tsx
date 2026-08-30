@@ -81,7 +81,7 @@ describe("SSH connection sheet", () => {
       authMethod: "password",
       injectShellIntegration: true,
     });
-    expect(useUIStore.getState().inspectorTab).toBe("overview");
+    expect(useUIStore.getState().inspectorTab).toBe("changes");
     expect(JSON.stringify(session)).not.toContain(secret);
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
     expect(takeSshCredentials(session.id)).toBeUndefined();

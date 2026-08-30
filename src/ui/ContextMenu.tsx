@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { returnTerminalFocus, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import type { ModalFocusReturnToken } from "./overlays/Modal";
 
-export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "note" | "mascot";
+export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin";
 
 export interface MenuItem {
   id?: string;
@@ -132,27 +132,6 @@ function MenuIcon({ name }: { name: MenuIconName }) {
     return (
       <svg {...common}>
         <path d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" />
-      </svg>
-    );
-  }
-  if (name === "note") {
-    return (
-      <svg {...common}>
-        <path d="M5 4h10l4 4v12H5z" />
-        <path d="M15 4v5h5" />
-        <path d="M8 13h8" />
-        <path d="M8 17h5" />
-      </svg>
-    );
-  }
-  if (name === "mascot") {
-    return (
-      <svg {...common}>
-        <circle cx="7" cy="7" r="2" />
-        <circle cx="17" cy="7" r="2" />
-        <circle cx="4.5" cy="13" r="1.8" />
-        <circle cx="19.5" cy="13" r="1.8" />
-        <path d="M8 18.2c0-2.6 1.8-4.7 4-4.7s4 2.1 4 4.7c0 1.6-1.3 2.8-2.8 2.1L12 19.7l-1.2.6C9.3 21 8 19.8 8 18.2Z" />
       </svg>
     );
   }

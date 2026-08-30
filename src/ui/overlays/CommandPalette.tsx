@@ -192,20 +192,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     cmds.push({
-      id: "toggle-broadcast-input",
-      label: uiStore.getState().broadcastInput ? t("palette.cmd.broadcast_off") : t("palette.cmd.broadcast_on"),
-      icon: <CmdIcon d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />,
-      section: t("palette.section.action"),
-      scopes: ["action", "terminal"],
-      originalIndex: idx++,
-      action: () => {
-        uiStore.getState().recordCommandUse("toggle-broadcast-input");
-        uiStore.getState().toggleBroadcastInput();
-        onClose();
-      },
-    });
-
-    cmds.push({
       id: "focus-latest-attention",
       label: t("palette.cmd.focus_latest_attention"),
       shortcut: formatShortcut(keybindings.focusLatestAttention),
@@ -288,7 +274,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         },
       });
 
-      const openInspectorTab = (tab: "overview" | "notes" | "changes" | "files" | "preview", usageId: string) => {
+      const openInspectorTab = (tab: "changes" | "files" | "preview", usageId: string) => {
         uiStore.getState().recordCommandUse(usageId);
         uiStore.getState().setPanelVisible(true);
         uiStore.getState().setInspectorTab(tab);
@@ -410,16 +396,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       }
 
       cmds.push({
-        id: "open-session-overview",
-        label: t("palette.cmd.open_session_overview"),
-        icon: <CmdIcon d="M4 5h16M4 12h10M4 19h7" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "app"],
-        originalIndex: idx++,
-        action: () => openInspectorTab("overview", "open-session-overview"),
-      });
-
-      cmds.push({
         id: "open-session-changes",
         label: t("palette.cmd.open_session_changes"),
         icon: <CmdIcon d="M4 5h16M4 12h16M8 19h8" />,
@@ -447,16 +423,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         scopes: ["action", "app"],
         originalIndex: idx++,
         action: () => openInspectorTab("preview", "open-session-preview"),
-      });
-
-      cmds.push({
-        id: "open-session-notes",
-        label: t("palette.cmd.open_session_notes"),
-        icon: <CmdIcon d="M5 4h10l4 4v12H5zM15 4v5h5M8 13h8M8 17h5" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "app"],
-        originalIndex: idx++,
-        action: () => openInspectorTab("notes", "open-session-notes"),
       });
 
       cmds.push({

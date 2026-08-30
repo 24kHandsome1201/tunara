@@ -6,9 +6,6 @@ import { useUIStore } from "../../src/state/ui";
 import type { Session } from "../../src/ui/types";
 import { clearDiagnostics } from "../../src/modules/ssh/diagnostics-store";
 
-vi.mock("../../src/ui/SessionOverviewPanel", () => ({
-  SessionOverviewPanel: () => <div data-testid="overview-panel" />,
-}));
 vi.mock("../../src/ui/DiffPanel", () => ({
   DiffPanel: () => <div data-testid="changes-panel" />,
 }));
@@ -51,28 +48,23 @@ function chooseSecondaryPanel(name: string) {
 
 beforeEach(() => {
   clearDiagnostics();
-  useUIStore.setState({ configLoaded: false, inspectorTab: "overview" });
+  useUIStore.setState({ configLoaded: false, inspectorTab: "changes" });
   useSessionsStore.setState({
     activeSessionId: session.id,
     sessions: [session],
-    sessionTimelines: {},
   });
 });
 
 test("mounts only the active Inspector panel and keeps specialist tools in overflow", async () => {
   render(<InspectorPanel session={remoteSession} filesOnly={false} />);
 
-  expect(screen.getByTestId("overview-panel")).toBeTruthy();
-  expect(screen.queryByTestId("changes-panel")).toBeNull();
+  expect(screen.getByTestId("changes-panel")).toBeTruthy();
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.queryByTestId("preview-panel")).toBeNull();
-  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Overview", "Changes", "Files"]);
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Changes", "Files"]);
   expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
   expect(screen.queryByRole("tab", { name: "Transfers" })).toBeNull();
 
-  fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
-  expect(screen.queryByTestId("overview-panel")).toBeNull();
-  expect(screen.getByTestId("changes-panel")).toBeTruthy();
   expect(screen.getByText("Scope: Profile")).toBeTruthy();
 
   fireEvent.click(screen.getByRole("tab", { name: "Files" }));
@@ -110,12 +102,11 @@ test("keeps the active tab visible and preserves APG roving focus navigation", a
 
   try {
     render(<InspectorPanel session={remoteSession} filesOnly={false} />);
-    const overview = screen.getByRole("tab", { name: "Overview" });
     const changes = screen.getByRole("tab", { name: "Changes" });
     const files = screen.getByRole("tab", { name: "Files" });
 
-    overview.focus();
-    fireEvent.keyDown(overview, { key: "End" });
+    changes.focus();
+    fireEvent.keyDown(changes, { key: "End" });
     await waitFor(() => expect(document.activeElement).toBe(files));
     expect(files.getAttribute("aria-selected")).toBe("true");
 
@@ -130,8 +121,8 @@ test("keeps the active tab visible and preserves APG roving focus navigation", a
 
     transfers.focus();
     fireEvent.keyDown(transfers, { key: "Home" });
-    await waitFor(() => expect(document.activeElement).toBe(overview));
-    expect(overview.getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(document.activeElement).toBe(changes));
+    expect(changes.getAttribute("aria-selected")).toBe("true");
   } finally {
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
   }
@@ -143,18 +134,7 @@ test("projects only Files controls in Pure Mode", () => {
   expect(screen.getByTestId("files-panel")).toBeTruthy();
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Files"]);
   expect(screen.queryByRole("button", { name: "More inspector tools" })).toBeNull();
-  expect(useUIStore.getState().inspectorTab).toBe("overview");
-});
-
-test("flushes a pending note when switching away before the debounce", () => {
-  render(<InspectorPanel session={session} filesOnly={false} />);
-  chooseSecondaryPanel("Notes");
-
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: "pending note" } });
-  fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
-
-  expect(useSessionsStore.getState().sessions.find((item) => item.id === session.id)?.note).toBe("pending note");
-  expect(screen.getByTestId("overview-panel")).toBeTruthy();
+  expect(useUIStore.getState().inspectorTab).toBe("changes");
 });
 
 test("offers forwarding only to SSH sessions and withholds the binding while reconnecting", async () => {

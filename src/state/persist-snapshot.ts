@@ -1,7 +1,6 @@
 import type { Session } from "../ui/types.ts";
 import type { Workflow } from "../modules/workflows/template.ts";
 import { sanitizeWorkflow } from "../modules/workflows/template.ts";
-import { sanitizeSessionNote } from "../modules/session/session-notes.ts";
 import {
   MAX_TERMINAL_SNAPSHOTS,
   MAX_TERMINAL_SNAPSHOT_SAFE_HISTORY_SIZE,
@@ -18,7 +17,6 @@ import {
   sanitizeHostFilePrefsMap,
   type HostFilePrefsV1,
 } from "../modules/ssh/host-file-prefs.ts";
-import { isSessionMascotId } from "../modules/session/session-mascot.ts";
 import {
   emptySplitState,
   sanitizeSplitLayout,
@@ -29,7 +27,7 @@ import {
 export type PersistedSession = Pick<
   Session,
   "id" | "title" | "dir" | "branch" | "updatedAt"
-> & { customTitle?: string; remote?: Session["remote"]; mascot?: Session["mascot"]; pinned?: boolean; note?: string };
+> & { customTitle?: string; remote?: Session["remote"]; pinned?: boolean };
 
 export type PersistedSessionV2 = PersistedSession;
 
@@ -102,10 +100,8 @@ export interface PersistedUILayoutV2 {
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   split: SplitState;
-  inspectorTab: "overview" | "changes" | "files" | "transfers" | "forwarding" | "preview" | "notes";
-  broadcastInput?: boolean;
+  inspectorTab: "changes" | "files" | "transfers" | "forwarding" | "preview";
   explorerFollowCwd?: boolean;
-  shellIntegrationHintDismissed?: boolean;
 }
 
 export interface PersistedTerminalSnapshot {
@@ -174,12 +170,11 @@ export const DEFAULT_UI_LAYOUT_V2: PersistedUILayoutV2 = {
   collapsedDirs: {},
   collapsedDiffSections: {},
   split: emptySplitState(),
-  inspectorTab: "overview",
+  inspectorTab: "changes",
 };
 
 export function toPersistedSession(s: Session): PersistedSession {
   const customTitle = typeof s.customTitle === "string" ? s.customTitle.trim() : "";
-  const note = sanitizeSessionNote(s.note);
   const p: PersistedSession = {
     id: s.id,
     title: s.title.trim() || t("session.default_title"),
@@ -188,9 +183,7 @@ export function toPersistedSession(s: Session): PersistedSession {
     updatedAt: s.updatedAt,
   };
   if (customTitle) p.customTitle = customTitle;
-  if (isSessionMascotId(s.mascot)) p.mascot = s.mascot;
   if (s.pinned === true) p.pinned = true;
-  if (note) p.note = note;
   // Persist remote connection info (no secrets) so an SSH session can be
   // re-established after restart. The connection itself is re-opened lazily
   // when the terminal mounts.
@@ -217,9 +210,7 @@ export function isPersistedSession(value: unknown): value is PersistedSession {
 
 export function sanitizePersistedSession(p: PersistedSession): PersistedSession {
   const customTitle = typeof p.customTitle === "string" ? p.customTitle.trim() : "";
-  const note = sanitizeSessionNote(p.note);
   const remote = sanitizeRemoteInfo(p.remote);
-  const mascot = isSessionMascotId(p.mascot) ? p.mascot : undefined;
   return {
     id: p.id,
     title: p.title.trim() || t("session.default_title"),
@@ -228,9 +219,7 @@ export function sanitizePersistedSession(p: PersistedSession): PersistedSession 
     updatedAt: p.updatedAt,
     ...(customTitle ? { customTitle } : {}),
     ...(remote ? { remote } : {}),
-    ...(mascot ? { mascot } : {}),
     ...(p.pinned === true ? { pinned: true } : {}),
-    ...(note ? { note } : {}),
   };
 }
 
@@ -291,12 +280,11 @@ function sanitizePersistedSplit(raw: unknown, sessionIds: ReadonlySet<string>): 
 }
 
 function isValidInspectorTab(v: unknown): v is PersistedUILayoutV2["inspectorTab"] {
-  return v === "overview" || v === "changes" || v === "files" || v === "transfers" || v === "forwarding" || v === "preview" || v === "notes";
+  return v === "changes" || v === "files" || v === "transfers" || v === "forwarding" || v === "preview";
 }
 
 function coerceInspectorTab(v: unknown): PersistedUILayoutV2["inspectorTab"] {
-  if (v === "metadata" || v === "diagnostics" || v === "knownHosts") return "overview";
-  return isValidInspectorTab(v) ? v : "overview";
+  return isValidInspectorTab(v) ? v : "changes";
 }
 
 function sanitizeTrueRecord(raw: unknown): Record<string, true> {
@@ -410,9 +398,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     const inspectorTab = coerceInspectorTab(uiRaw.inspectorTab);
 
     ui = { sidebarVisible, panelVisible, collapsedDirs, collapsedDiffSections, split, inspectorTab,
-      broadcastInput: uiRaw.broadcastInput === true,
       explorerFollowCwd: uiRaw.explorerFollowCwd !== false,
-      shellIntegrationHintDismissed: uiRaw.shellIntegrationHintDismissed === true,
     };
   } else {
     ui = { ...DEFAULT_UI_LAYOUT_V2 };

@@ -4,15 +4,14 @@ import { confirm as tauriConfirmDialog } from "@tauri-apps/plugin-dialog";
 import { CloseIcon } from "../shared";
 import { useT } from "@/modules/i18n";
 import { useAppUpdate } from "./useAppUpdate";
-import { useWorkflowsStore } from "@/state/workflows";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "../lib/tab-list-navigation";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { TerminalSettings } from "./settings/TerminalSettings";
 import { AccessibilitySettings } from "./settings/AccessibilitySettings";
 import { ShortcutsSettings } from "./settings/ShortcutsSettings";
-import { WorkflowsSettings } from "./settings/WorkflowsSettings";
 import { CliSettings } from "./settings/CliSettings";
 import { AppSettings } from "./settings/AppSettings";
+import { WorkflowsSettings } from "./settings/WorkflowsSettings";
 import { SshSettings } from "./settings/SshSettings";
 import { useCliStatus } from "./settings/useCliStatus";
 import { Modal } from "./Modal";
@@ -21,7 +20,7 @@ interface SettingsProps {
   onClose: () => void;
 }
 
-const TABS = ["appearance", "terminal", "accessibility", "shortcuts", "workflows", "cli", "ssh", "app"] as const;
+const TABS = ["appearance", "terminal", "accessibility", "shortcuts", "ssh", "app"] as const;
 
 /**
  * Settings dialog shell: chrome (backdrop, focus trap, tab list, footer) plus
@@ -35,10 +34,6 @@ export function Settings({ onClose }: SettingsProps) {
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
 
-  // Subscribe to the workflow count so the footer "clear all" button's
-  // disabled state stays reactive (getState() in render wouldn't re-render
-  // when workflows change, leaving the button enabled after a clear).
-  const workflowCount = useWorkflowsStore((s) => s.workflows.length);
   const appUpdate = useAppUpdate(activeTab);
   const cliStatus = useCliStatus(activeTab);
 
@@ -103,10 +98,31 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === "terminal" && <TerminalSettings />}
           {activeTab === "accessibility" && <AccessibilitySettings />}
           {activeTab === "shortcuts" && <ShortcutsSettings />}
-          {activeTab === "workflows" && <WorkflowsSettings />}
-          {activeTab === "cli" && <CliSettings {...cliStatus} />}
           {activeTab === "ssh" && <SshSettings />}
-          {activeTab === "app" && <AppSettings {...appUpdate} />}
+          {activeTab === "app" && (
+            <>
+              <AppSettings {...appUpdate} />
+              <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--c-border-1)" }}>
+                <WorkflowsSettings />
+              </div>
+              <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--c-border-1)" }}>
+                <CliSettings {...cliStatus} />
+                <button
+                  onClick={async () => {
+                    const ok = await tauriConfirmDialog(t("settings.cli.reset_overrides.confirm"), { kind: "warning" });
+                    if (!ok) return;
+                    invoke("clear_bin_overrides")
+                      .then(() => cliStatus.loadCliStatus())
+                      .catch(() => {});
+                  }}
+                  style={{ ...footerButtonStyle, marginTop: 12 }}
+                  className="hover-bg"
+                >
+                  {t("settings.cli.reset_overrides")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="settings-dialog-footer">
@@ -121,36 +137,6 @@ export function Settings({ onClose }: SettingsProps) {
               className="hover-bg"
             >
               {t("common.reset_defaults")}
-            </button>
-          ) : activeTab === "workflows" ? (
-            <button
-              onClick={async () => {
-                // wry's WKWebView renders no JS dialog UI, so use the Tauri
-                // dialog plugin (the paste-protection confirmer uses it too).
-                const ok = await tauriConfirmDialog(t("settings.workflows.clear_all.confirm"), { kind: "warning" });
-                if (!ok) return;
-                const workflows = useWorkflowsStore.getState().workflows;
-                for (const w of workflows) useWorkflowsStore.getState().removeWorkflow(w.id);
-              }}
-              disabled={workflowCount === 0}
-              style={footerButtonStyle}
-              className="hover-bg"
-            >
-              {t("settings.workflows.clear_all")}
-            </button>
-          ) : activeTab === "cli" ? (
-            <button
-              onClick={async () => {
-                const ok = await tauriConfirmDialog(t("settings.cli.reset_overrides.confirm"), { kind: "warning" });
-                if (!ok) return;
-                invoke("clear_bin_overrides")
-                  .then(() => cliStatus.loadCliStatus())
-                  .catch(() => {});
-              }}
-              style={footerButtonStyle}
-              className="hover-bg"
-            >
-              {t("settings.cli.reset_overrides")}
             </button>
           ) : <span />}
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>

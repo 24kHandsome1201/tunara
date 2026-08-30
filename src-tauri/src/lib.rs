@@ -74,25 +74,6 @@ pub fn run() {
         .manage(modules::preview::PreviewWindowState::default())
         .manage(modules::git::GitWatcherState::default())
         .setup(|app| {
-            let usage_log_state = app
-                .path()
-                .app_log_dir()
-                .map_err(|error| format!("resolve local usage log directory failed: {error}"))
-                .and_then(|directory| {
-                    modules::local_usage_log::LocalUsageLogState::new(
-                        directory.join("usage"),
-                        modules::config::local_usage_logging_enabled(),
-                    )
-                })
-                .unwrap_or_else(|error| {
-                    // Usage logging is an optional diagnostic aid. Path,
-                    // randomness, and disk failures must never block startup.
-                    log::warn!("local usage logging is unavailable: {error}");
-                    modules::local_usage_log::LocalUsageLogState::unavailable()
-                });
-            app.manage(usage_log_state);
-            app.state::<modules::local_usage_log::LocalUsageLogState>()
-                .record_startup();
             modules::ssh::transfer_journal::initialize(app.handle())
                 .map_err(std::io::Error::other)?;
             // 修 P0-4：启动时尽早探测 login shell PATH，供 resolve_all_bins 用（§3.7.2）。
@@ -145,29 +126,13 @@ pub fn run() {
             modules::wallpaper::terminal_wallpaper_import,
             modules::wallpaper::terminal_wallpaper_load,
             modules::wallpaper::terminal_wallpaper_clear,
-            modules::local_usage_log::local_usage_log_record,
-            modules::local_usage_log::local_usage_log_set_enabled,
-            modules::local_usage_log::local_usage_log_status,
-            modules::local_usage_log::local_usage_log_ensure_directory,
-            modules::local_usage_log::local_usage_log_clear,
-            modules::local_usage_log::local_usage_log_export,
             modules::workspace_store::workspace_store_file_state,
-            modules::workspace_store::legacy_agent_data_status,
-            modules::workspace_store::legacy_agent_data_delete,
             modules::preview::preview_open,
             modules::preview::preview_refresh,
             modules::preview::preview_status,
             modules::preview::preview_navigate,
             modules::preview::preview_go_back,
             modules::preview::preview_go_forward,
-            modules::preview::preview_set_zoom,
-            modules::preview::preview_reset_zoom,
-            modules::preview::preview_set_viewport,
-            modules::preview::preview_reset_viewport,
-            modules::preview::preview_fit_viewport,
-            modules::preview::preview_telemetry_ingest,
-            modules::preview::preview_telemetry_clear,
-            modules::preview::preview_telemetry_send,
             modules::preview::preview_terminal_command_started,
             modules::preview::preview_terminal_command_finished,
             modules::preview::preview_terminal_exited,
@@ -176,8 +141,6 @@ pub fn run() {
             modules::preview::preview_tunnel_status,
             modules::preview::preview_tunnel_close,
             modules::preview::preview_restart_prepare,
-            modules::preview::preview_capture,
-            modules::preview::preview_send_capture_to_source_terminal,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
             modules::ssh::ssh_open,
@@ -239,7 +202,6 @@ pub fn run() {
             modules::ssh::remote_fs::metadata::ssh_fs_chmod_v1,
             // Remote git review operations over the SSH exec channel.
             modules::ssh::remote_git::ssh_remote_git_snapshot_v1,
-            modules::ssh::system_monitor::ssh_system_snapshot_v1,
             modules::ssh::remote_git::ssh_git_diff,
             modules::ssh::remote_git::ssh_git_workspace_context,
             modules::ssh::remote_git::ssh_fs_search,

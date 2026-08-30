@@ -2,14 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/modules/i18n";
 import { loadSshProfilesPanel, type SshHostProfile, type SshProfileSourceV1, type SshProfilesPanelModelV1 } from "@/modules/ssh/hosts-bridge";
 import { hostProfileButtonLabel, sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
-import {
-  calculateSshSystemRates,
-  sshSystemSnapshotV1,
-  type SshSystemSnapshotV1,
-} from "@/modules/ssh/system-monitor-bridge";
-import { liveSessionsOnEndpoint, representativeSession, sidebarGroupKeyFromEndpoint } from "@/modules/session/sidebar-groups";
+import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session/sidebar-groups";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
-import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "./shared";
@@ -23,22 +17,6 @@ interface DashboardHost {
   profile: SshHostProfile;
 }
 
-interface MonitorReading {
-  status: "available" | "unsupported" | "unavailable";
-  bindingGeneration: string;
-  snapshot?: SshSystemSnapshotV1;
-  downloadBytesPerSecond?: number;
-  uploadBytesPerSecond?: number;
-  downloadHistory: number[];
-  uploadHistory: number[];
-}
-
-interface MonitorTarget {
-  endpointKey: string;
-  binding: SessionBindingV1;
-  hostKeys: string[];
-}
-
 const EMPTY_PANEL: SshProfilesPanelModelV1 = {
   schemaVersion: 1,
   savedProfiles: [],
@@ -46,56 +24,6 @@ const EMPTY_PANEL: SshProfilesPanelModelV1 = {
   configSkipped: 0,
   configDiagnostics: [],
 };
-
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value < 0) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let amount = value;
-  let index = 0;
-  while (amount >= 1024 && index < units.length - 1) {
-    amount /= 1024;
-    index += 1;
-  }
-  const digits = amount >= 100 || index === 0 ? 0 : amount >= 10 ? 1 : 2;
-  return `${amount.toFixed(digits)} ${units[index]}`;
-}
-
-function formatRate(value: number | undefined): string {
-  return value === undefined ? "—" : `${formatBytes(value)}/s`;
-}
-
-function formatUptime(value: number | undefined, t: ReturnType<typeof useT>): string {
-  if (value === undefined) return "—";
-  const days = Math.floor(value / 86_400);
-  const hours = Math.floor((value % 86_400) / 3_600);
-  const minutes = Math.floor((value % 3_600) / 60);
-  if (days > 0) return t("ssh.dashboard.uptime_days", { days, hours });
-  if (hours > 0) return t("ssh.dashboard.uptime_hours", { hours, minutes });
-  return t("ssh.dashboard.uptime_minutes", { minutes });
-}
-
-function memoryValues(snapshot: SshSystemSnapshotV1 | undefined) {
-  if (snapshot?.status !== "available") return null;
-  const used = Math.max(0, snapshot.memoryTotalBytes - snapshot.memoryAvailableBytes);
-  const percent = snapshot.memoryTotalBytes > 0
-    ? Math.max(0, Math.min(100, (used / snapshot.memoryTotalBytes) * 100))
-    : 0;
-  return { used, total: snapshot.memoryTotalBytes, percent };
-}
-
-function Sparkline({ values, tone }: { values: number[]; tone: "download" | "upload" }) {
-  const width = 132;
-  const height = 34;
-  const max = Math.max(...values, 1);
-  const points = values.length > 1
-    ? values.map((value, index) => `${(index / (values.length - 1)) * width},${height - (value / max) * (height - 3) - 1.5}`).join(" ")
-    : `0,${height - 2} ${width},${height - 2}`;
-  return (
-    <svg className="ssh-monitor-sparkline" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true" data-tone={tone}>
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function ServerIcon() {
   return (
@@ -116,14 +44,6 @@ function connectionState(live: Session[]) {
   return { kind: "offline" as const };
 }
 
-function readingMessage(reading: MonitorReading | undefined, online: boolean, t: ReturnType<typeof useT>): string {
-  if (!online) return t("ssh.dashboard.monitor.no_data");
-  if (!reading) return t("ssh.dashboard.monitor.sampling");
-  if (reading.status === "unsupported") return t("ssh.dashboard.monitor.unsupported");
-  if (reading.status === "unavailable") return t("ssh.dashboard.monitor.unavailable");
-  return "";
-}
-
 export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
   const t = useT();
   const sshProfilesEpoch = useUIStore((state) => state.sshProfilesEpoch);
@@ -133,7 +53,6 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<HostFilter>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [readings, setReadings] = useState<Record<string, MonitorReading>>({});
   const [loadNonce, setLoadNonce] = useState(0);
 
   useEffect(() => {
@@ -182,111 +101,9 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
     });
   }, [filter, hosts, query, sessions]);
 
-  const monitorTargets = useMemo<MonitorTarget[]>(() => {
-    const targets = new Map<string, MonitorTarget>();
-    // Filtering changes presentation only. Keep every connected endpoint
-    // sampled so an open detail panel cannot silently freeze when its card is
-    // hidden by a search or status filter.
-    for (const entry of hosts) {
-      const endpointKey = sidebarGroupKeyFromEndpoint(entry.profile);
-      const live = liveSessionsOnEndpoint(sessions, entry.profile);
-      const representative = representativeSession(live.filter((session) => readyBindingForSession(session)), useSessionsStore.getState().activeSessionId ?? "");
-      const binding = readyBindingForSession(representative);
-      if (!binding) continue;
-      const existing = targets.get(endpointKey);
-      if (existing) existing.hostKeys.push(entry.key);
-      else targets.set(endpointKey, { endpointKey, binding, hostKeys: [entry.key] });
-    }
-    return [...targets.values()];
-  }, [hosts, sessions]);
-  const monitorSignature = JSON.stringify(monitorTargets.map((target) => ({
-    endpointKey: target.endpointKey,
-    binding: target.binding,
-    hostKeys: target.hostKeys,
-  })));
-
-  useEffect(() => {
-    let cancelled = false;
-    let inFlight = false;
-    const sample = async () => {
-      if (inFlight || monitorTargets.length === 0) return;
-      inFlight = true;
-      await Promise.all(monitorTargets.map(async (target) => {
-        try {
-          const snapshot = await sshSystemSnapshotV1(target.binding);
-          if (cancelled) return;
-          setReadings((current) => {
-            const next = { ...current };
-            for (const hostKey of target.hostKeys) {
-              const previous = current[hostKey];
-              if (snapshot.status === "unsupported") {
-                next[hostKey] = {
-                  status: "unsupported",
-                  bindingGeneration: target.binding.transportGeneration,
-                  snapshot,
-                  downloadHistory: [],
-                  uploadHistory: [],
-                };
-                continue;
-              }
-              const previousSnapshot = previous?.status === "available"
-                && previous.bindingGeneration === target.binding.transportGeneration
-                ? previous.snapshot
-                : undefined;
-              const rates = calculateSshSystemRates(previousSnapshot, snapshot);
-              next[hostKey] = {
-                status: "available",
-                bindingGeneration: target.binding.transportGeneration,
-                snapshot,
-                downloadBytesPerSecond: rates?.downloadBytesPerSecond,
-                uploadBytesPerSecond: rates?.uploadBytesPerSecond,
-                downloadHistory: rates
-                  ? [...(previous?.downloadHistory ?? []), rates.downloadBytesPerSecond].slice(-20)
-                  : [],
-                uploadHistory: rates
-                  ? [...(previous?.uploadHistory ?? []), rates.uploadBytesPerSecond].slice(-20)
-                  : [],
-              };
-            }
-            return next;
-          });
-        } catch {
-          if (cancelled) return;
-          setReadings((current) => {
-            const next = { ...current };
-            for (const hostKey of target.hostKeys) {
-              next[hostKey] = {
-                status: "unavailable",
-                bindingGeneration: target.binding.transportGeneration,
-                downloadHistory: [],
-                uploadHistory: [],
-              };
-            }
-            return next;
-          });
-        }
-      }));
-      inFlight = false;
-    };
-    void sample();
-    const timer = window.setInterval(() => { void sample(); }, 5_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-    // The signature contains the generation-safe bindings and visible profile keys.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [monitorSignature]);
-
   const selected = hosts.find((host) => host.key === selectedKey) ?? null;
   const selectedLive = selected ? liveSessionsOnEndpoint(sessions, selected.profile) : [];
   const selectedConnection = connectionState(selectedLive);
-  const selectedBinding = selectedConnection.ready ? readyBindingForSession(selectedConnection.ready) : undefined;
-  const storedSelectedReading = selected ? readings[selected.key] : undefined;
-  const selectedReading = selectedBinding
-    && storedSelectedReading?.bindingGeneration === selectedBinding.transportGeneration
-    ? storedSelectedReading
-    : undefined;
 
   const openConnection = (entry: DashboardHost) => {
     const live = liveSessionsOnEndpoint(useSessionsStore.getState().sessions, entry.profile);
@@ -353,14 +170,6 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
             {visibleHosts.map((entry) => {
               const live = liveSessionsOnEndpoint(sessions, entry.profile);
               const connection = connectionState(live);
-              const online = connection.kind === "online";
-              const binding = connection.ready ? readyBindingForSession(connection.ready) : undefined;
-              const storedReading = readings[entry.key];
-              const reading = binding && storedReading?.bindingGeneration === binding.transportGeneration
-                ? storedReading
-                : undefined;
-              const memory = memoryValues(reading?.snapshot);
-              const message = readingMessage(reading, online, t);
               return (
                 <button
                   key={entry.key}
@@ -385,23 +194,6 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
                     <span><small>{t("ssh.dashboard.port")}</small><b>{entry.profile.port}</b></span>
                     <span><small>{t("ssh.dashboard.source")}</small><b>{entry.source === "saved" ? t("ssh.source.saved") : "~/.ssh/config"}</b></span>
                   </span>
-                  {memory && reading?.status === "available" ? (
-                    <>
-                      <span className="ssh-host-memory-row">
-                        <span>{t("ssh.dashboard.memory")}</span>
-                        <b>{formatBytes(memory.used)} / {formatBytes(memory.total)}</b>
-                      </span>
-                      <span className="ssh-host-memory-bar" aria-label={t("ssh.dashboard.memory_percent", { percent: Math.round(memory.percent) })}>
-                        <i style={{ width: `${memory.percent}%` }} />
-                      </span>
-                      <span className="ssh-host-network">
-                        <span><small>↓ {t("ssh.dashboard.download")}</small><b>{formatRate(reading.downloadBytesPerSecond)}</b></span>
-                        <span><small>↑ {t("ssh.dashboard.upload")}</small><b>{formatRate(reading.uploadBytesPerSecond)}</b></span>
-                      </span>
-                    </>
-                  ) : (
-                    <span className="ssh-host-no-monitor">{message}</span>
-                  )}
                 </button>
               );
             })}
@@ -439,40 +231,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
                 <div><dt>{t("ssh.user")}</dt><dd>{selected.profile.user}</dd></div>
                 <div><dt>{t("ssh.dashboard.source")}</dt><dd>{selected.source === "saved" ? t("ssh.source.saved") : "~/.ssh/config"}</dd></div>
                 <div><dt>{t("ssh.dashboard.sessions")}</dt><dd>{selectedLive.length}</dd></div>
-                <div><dt>{t("ssh.dashboard.uptime")}</dt><dd>{formatUptime(selectedReading?.snapshot?.status === "available" ? selectedReading.snapshot.uptimeSeconds : undefined, t)}</dd></div>
               </dl>
-            </section>
-
-            <section className="ssh-host-detail-section">
-              <div className="ssh-host-detail-section-title">
-                <h2>{t("ssh.dashboard.realtime")}</h2>
-                <span>{t("ssh.dashboard.refresh_interval")}</span>
-              </div>
-              {memoryValues(selectedReading?.snapshot) && selectedReading?.status === "available" ? (() => {
-                const memory = memoryValues(selectedReading.snapshot)!;
-                return (
-                  <div className="ssh-host-monitor-detail">
-                    <div className="ssh-host-memory-detail">
-                      <span><small>{t("ssh.dashboard.memory")}</small><b>{Math.round(memory.percent)}%</b></span>
-                      <span className="ssh-host-memory-bar"><i style={{ width: `${memory.percent}%` }} /></span>
-                      <em>{formatBytes(memory.used)} {t("ssh.dashboard.used_of", { total: formatBytes(memory.total) })}</em>
-                    </div>
-                    <div className="ssh-host-network-detail">
-                      <div>
-                        <span><small>↓ {t("ssh.dashboard.download")}</small><b>{formatRate(selectedReading.downloadBytesPerSecond)}</b></span>
-                        <Sparkline values={selectedReading.downloadHistory} tone="download" />
-                      </div>
-                      <div>
-                        <span><small>↑ {t("ssh.dashboard.upload")}</small><b>{formatRate(selectedReading.uploadBytesPerSecond)}</b></span>
-                        <Sparkline values={selectedReading.uploadHistory} tone="upload" />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })() : (
-                <div className="ssh-host-monitor-empty">{readingMessage(selectedReading, selectedConnection.kind === "online", t)}</div>
-              )}
-              <p className="ssh-host-monitor-note">{t("ssh.dashboard.monitor.note")}</p>
             </section>
           </div>
         </aside>

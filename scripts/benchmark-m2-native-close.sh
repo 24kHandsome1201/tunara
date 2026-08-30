@@ -79,7 +79,7 @@ write_fixture() {
   printf 'saved baseline\n' > "$fixture/draft.md"
   local now
   now="$(($(date +%s) * 1000))"
-  jq -n --arg dir "$fixture" --argjson now "$now" '{workspaceSnapshot:{version:1,savedAt:$now,activeSessionId:"m2-native-close",sessions:[{id:"m2-native-close",title:"M2 Native Close",dir:$dir,branch:"",mascot:"otter",updatedAt:$now}],terminals:{},agentResume:{},recentDirs:[$dir],recentCommands:[],commandUsage:{},workflows:[],ui:{sidebarVisible:false,panelVisible:true,collapsedDirs:{},collapsedDiffSections:{},inspectorTab:"files",split:{mode:"single",paneA:null,paneB:null,ratio:0.5}}}}' > "$STORE"
+  jq -n --arg dir "$fixture" --argjson now "$now" '{workspaceSnapshot:{version:1,savedAt:$now,activeSessionId:"m2-native-close",sessions:[{id:"m2-native-close",title:"M2 Native Close",dir:$dir,branch:"",updatedAt:$now}],terminals:{},agentResume:{},recentDirs:[$dir],recentCommands:[],commandUsage:{},workflows:[],ui:{sidebarVisible:false,panelVisible:true,collapsedDirs:{},collapsedDiffSections:{},inspectorTab:"files",split:{mode:"single",paneA:null,paneB:null,ratio:0.5}}}}' > "$STORE"
 }
 
 run_benchmark() {

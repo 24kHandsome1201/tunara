@@ -9,7 +9,6 @@ import { CloseIcon } from "./shared";
 import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { SessionMascotIcon } from "./SessionMascotIcon";
 import type { WorkspaceFileTab } from "@/state/ui";
 import { sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import {
@@ -527,7 +526,6 @@ interface TabButtonProps {
   accessibleName: string;
   tooltip?: string;
   dirty?: boolean;
-  mascot?: Session["mascot"];
   dirtyLabel: string;
   closeLabel: string;
   confirmCloseLabel: string;
@@ -564,7 +562,6 @@ function TabButton({
   accessibleName,
   tooltip,
   dirty,
-  mascot,
   dirtyLabel,
   closeLabel,
   confirmCloseLabel,
@@ -611,9 +608,7 @@ function TabButton({
           borderRadius: "var(--r-pill) 0 0 var(--r-pill)",
         }}
       >
-        {kind === "terminal" && mascot
-          ? <SessionMascotIcon id={mascot} size={18} />
-          : <WorkspaceTabIcon kind={kind} />}
+        <WorkspaceTabIcon kind={kind} />
         {showOriginGlyph && (
           <span
             aria-hidden="true"
@@ -1163,7 +1158,6 @@ function TitlebarImpl({
                 showOriginGlyph={Boolean(s.remote) && workingSet.showOriginGlyph}
                 accessibleName={terminalAccessibleName(s)}
                 tooltip={s.remote ? sshEndpointLabel(s.remote) : undefined}
-                mascot={s.mascot}
                 dirtyLabel={t("preview.editor.unsaved")}
                 closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
                 confirmCloseLabel={t("destructive.confirm_again.close")}

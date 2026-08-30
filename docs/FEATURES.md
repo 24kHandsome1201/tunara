@@ -31,7 +31,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 标题栏 | [`src/ui/Titlebar.tsx`](../src/ui/Titlebar.tsx) | 当前设备的文件标签；侧栏收起时再加上该设备的终端，多设备时用压缩菜单切换 |
 | 侧栏 | [`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx) | 本地按目录、SSH 按主机分组的会话、统一动态、搜索 |
 | 主区 | [`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) | xterm 分栏，或与终端并列的文件标签 |
-| 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | Overview / Changes / Files / Preview / Notes，以及 SSH 专用页 |
+| 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | Changes / Files / Preview，以及 SSH 专用 Transfers / Forwarding |
 
 窄窗口时侧栏和检查器改为覆盖层，优先保证终端可用宽度。布局不再使用固定 720/900px 断点，而是按终端列宽预算决定是否停靠，见 [`src/app/lib/app-shell-layout.ts`](../src/app/lib/app-shell-layout.ts)。
 
@@ -64,7 +64,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ---
 
-## 2. 会话侧栏与驾驶舱
+## 2. 会话侧栏
 
 **用户能做什么：** 本地按工作目录分组，SSH 按目标主机分组；置顶、重命名、模糊搜索（含主机名）、未读与运行标记；关闭 running 会话需二次确认；选择目录新建终端；在已连接主机上再开窗口。
 
@@ -74,13 +74,9 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 会话状态机 | [`src/state/sessions.ts`](../src/state/sessions.ts) · [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) |
 | 统一动态（需处理 / 运行中 / 可恢复） | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) |
 | 跳到最近需要处理的会话 | ⌘⇧U / `Mod+Shift+U`，只聚焦，不自动跑命令。[`session-attention.ts`](../src/modules/session/session-attention.ts) · [`useKeybindings.ts`](../src/app/useKeybindings.ts) |
-| Overview 卡片 | [`SessionOverviewPanel.tsx`](../src/ui/SessionOverviewPanel.tsx) |
-| Session Notes | [`SessionNotesPanel.tsx`](../src/ui/SessionNotesPanel.tsx) · [`session-notes.ts`](../src/modules/session/session-notes.ts) |
-| 吉祥物 | [`session-mascot.ts`](../src/modules/session/session-mascot.ts) |
 | 选择目录新建 | [`new-terminal-directory.ts`](../src/modules/session/new-terminal-directory.ts) |
 | 空状态（选目录主 CTA、最近目录；关光会话不再偷偷建 `~`） | [`WorkspaceEmptyState.tsx`](../src/ui/WorkspaceEmptyState.tsx) |
 | Agent 完成后看改动 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`ReviewChangesBar.tsx`](../src/ui/ReviewChangesBar.tsx) |
-| 最近活动 | 内存 `sessionTimelines`，不持久化；见 [`src/state/timeline.ts`](../src/state/timeline.ts) |
 
 工作区快照恢复会话列表、布局、终端 scrollback 和 Agent resume 意图，见 [STATE_AND_PERSISTENCE.md](./STATE_AND_PERSISTENCE.md)。
 
@@ -92,15 +88,13 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 | 页签 | 范围 | 内容 | 入口 |
 |------|------|------|------|
-| Overview | 会话 | cwd、Agent、Git、笔记、快捷动作；缺少 OSC 133 时可关闭说明 | [`SessionOverviewPanel.tsx`](../src/ui/SessionOverviewPanel.tsx) |
 | Changes | 仓库 profile | 只读 staged / unstaged / untracked | [`DiffPanel.tsx`](../src/ui/DiffPanel.tsx) |
 | Files | 传输绑定 | 目录树、搜索、预览、SSH 传输 | [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx) · [`FilePreview.tsx`](../src/ui/FilePreview.tsx) |
 | Preview | 会话 | workspace-bound WebView；有来源时提升为主 tab | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) · [`PreviewSuggestionBar.tsx`](../src/ui/PreviewSuggestionBar.tsx) |
-| Notes | 会话 | 自动保存草稿与待办计数 | [`SessionNotesPanel.tsx`](../src/ui/SessionNotesPanel.tsx) |
 | Transfers | SSH | 上传/下载进度、取消、恢复 | [`TransferCenter.tsx`](../src/ui/TransferCenter.tsx) |
 | Forwarding | SSH 绑定 | 本地/动态/反向端口转发 | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
 
-远端文件属性改为 Files 右键弹窗（[`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx)）。连接诊断并入 Overview 复制报告。known_hosts 在设置 → SSH。页签取舍见 [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md)。
+远端文件属性在 Files 右键弹窗中展示（[`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx)）。连接诊断保留独立故障处理路径，known_hosts 在设置 → SSH。页签取舍见 [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md)。
 
 纯净模式可只打开 Files（`filesOnly`），不展开整栏检查器。
 
@@ -115,6 +109,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 打开会话 | 当前路径走 `ssh_open_v2`（含 transport generation）；`ssh_open` 为兼容适配器 | [`src-tauri/src/modules/ssh/`](../src-tauri/src/modules/ssh/) · [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | 连接 UI | 直连 / ProxyJump（单跳）、Agent / 私钥 / 密码 / keyboard-interactive | [`SshConnect.tsx`](../src/ui/overlays/SshConnect.tsx) |
 | 主机 profile | 无凭证；可从 `~/.ssh/config` 导入静态 Host | [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
+| 服务器列表 | 搜索保存主机与 SSH config 主机，按真实会话状态筛选在线/离线；提供 Connect / Open terminal / Edit | [`SshHostsDashboard.tsx`](../src/ui/SshHostsDashboard.tsx) |
 | 主机密钥 | TOFU；`unknown` 可持久化，`unverifiable` 不写入 | `ssh_host_key_decision` · [`HostKeyPrompt.tsx`](../src/ui/overlays/HostKeyPrompt.tsx) |
 | 远程 Git | 一次性 exec channel，不占交互壳 | `ssh_git_*` · [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 | 远程搜索 | 文件名 / grep，可取消，LRU 缓存 | `ssh_fs_search` / `ssh_fs_grep` |
@@ -123,7 +118,6 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 传输 | 单文件与批量上传/下载、进度、取消、journal 恢复 | [`transfer/`](../src-tauri/src/modules/ssh/transfer/) · [`transfer-store.ts`](../src/modules/ssh/transfer-store.ts) |
 | 转发 | 本地端口转发与动态转发；重连快照 | `ssh_local_forward_*` / `ssh_dynamic_forward_*` |
 | 诊断 | 显式运行/取消的配置与连接诊断 | `ssh_diagnostic_*_v1` |
-| 使用日志 | 默认关闭的本地 JSONL | [LOCAL_USAGE_LOGGING.md](./LOCAL_USAGE_LOGGING.md) |
 
 认证与路由边界写在 SSH 连接界面文案里：不执行 `ProxyCommand` / `Match exec`；不支持 Windows agent 与原生 FIDO/PKCS#11。
 
@@ -161,7 +155,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 7. Agent 识别
 
-自动识别 12 种 CLI：Claude Code、Codex、Amp、Gemini、Copilot、Cursor、Droid、OpenCode、Pi、Auggie、Devin、Aider。数据源是一份 JSON：[`registry-data.json`](../src/modules/agent/registry-data.json)。
+优先支持 Claude Code、Codex、Cursor、OpenCode；具体生命周期与 resume 能力因 CLI 而异。Amp、Gemini、Copilot、Droid、Pi、Auggie、Devin、Aider 保留基础命令识别。数据源是 [`registry-data.json`](../src/modules/agent/registry-data.json)。
 
 Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、不保存持久 Agent 历史。详情与新增清单：[AGENT_DETECTION.md](./AGENT_DETECTION.md)。
 
@@ -169,7 +163,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 ## 8. Preview
 
-检查器 Preview 页控制独立的 loopback WebView：来源绑定到 repository / worktree / session / terminal generation；导航、缩放、viewport、失败摘要、截图、显式 SSH tunnel。不自动扫端口、不自动启动服务。合同见 [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。
+检查器 Preview 页控制独立的 loopback WebView：来源绑定到 repository / worktree / session / terminal generation；支持导航、安全重启准备和显式 SSH tunnel。不自动扫端口，不自动启动服务，独立 Preview 窗口没有 app command 权限。合同见 [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。
 
 检测到 localhost URL 时，终端上方给出一次性「打开 Preview」（仍只打开检查器页，不自动起 WebView）；有活跃来源时 Preview 从「更多」提升到主 tab。
 
@@ -179,7 +173,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 ## 9. 设置、快捷键与工作流
 
-设置对话框分八个页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
+设置对话框分六个一级页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
 
 | 页签 | 内容 |
 |------|------|
@@ -187,10 +181,8 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | Terminal | 字体、光标、scrollback、行内图、可选终端背景、右键行为、外部编辑器 |
 | Accessibility | 读屏模式；macOS 可跳转系统隐私设置 |
 | Shortcuts | 可配置快捷键；终端 Copy / Safe Paste / 菜单绑定带风险提示 |
-| Workflows | 用户命令模板；可选 starter（status / 测试 / TODO / 大文件 / 端口） |
-| CLI | Agent 二进制覆盖与预检 |
 | SSH | known_hosts 列表与删除 |
-| App | 签名更新、语言、全局唤起、本地使用日志、遗留 Agent 数据清理 |
+| Advanced | 应用更新、全局唤起、自定义工作流、Agent CLI 路径与预检，以及低频高级选项 |
 
 配置文件：`~/.config/tunara/config.toml`，经 [`config-bridge.ts`](../src/modules/config/config-bridge.ts) 读写。
 
@@ -230,8 +222,8 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | `modules/terminal/` | xterm 会话、OSC、粘贴、快照、Agent 生命周期解析 |
 | `modules/ssh/` | 主机、SFTP、传输、转发、诊断、远端变更 |
 | `modules/fs/` · `git/` · `agent/` · `editor/` · `preview/` | 各域 IPC 桥与纯逻辑 |
-| `modules/session/` | 分栏、笔记、吉祥物、注意力、选目录新建 |
-| `modules/workflows/` · `config/` · `i18n/` · `usage-log/` · `resources/` | 工作流、配置、文案、诊断日志、资源引用 |
+| `modules/session/` | 分栏、注意力、选目录新建 |
+| `modules/workflows/` · `config/` · `i18n/` · `resources/` | 工作流、配置、文案、资源引用 |
 | `state/` | Zustand：`sessions` · `ui` · `workflows`；`persist` 只做快照 I/O |
 | `ui/` | 壳层组件与 overlays |
 | `styles/` | design tokens 与终端/外壳配色 |
@@ -249,7 +241,6 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | `agent/` | hooks socket、wrapper、preflight |
 | `preview/` | Preview WebView 与 tunnel |
 | `resolver/` · `editor/` · `process/` | CLI 路径、外部编辑器、子进程 |
-| `config.rs` · `local_usage_log.rs` · `workspace_store.rs` | 配置、可选日志、快照健康与遗留清理 |
 
 命令注册中心：[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs)。
 

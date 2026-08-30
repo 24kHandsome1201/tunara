@@ -44,7 +44,6 @@ mod rtt_benchmark;
 mod safe_write;
 pub mod sftp;
 pub mod sftp_common;
-pub mod system_monitor;
 pub mod transfer;
 pub mod transfer_journal;
 
@@ -64,7 +63,6 @@ pub(crate) enum SshIpcErrorKind {
     RemoteFs,
     Forwarding,
     RemoteGit,
-    SystemMonitor,
 }
 
 /// Converts internal SSH failures to a fixed wire-safe message. `raw` is used
@@ -148,7 +146,6 @@ pub(crate) fn safe_ipc_error_with_policy(
         SshIpcErrorKind::RemoteFs => "SSH_REMOTE_FS_FAILED",
         SshIpcErrorKind::Forwarding => "SSH_FORWARDING_FAILED",
         SshIpcErrorKind::RemoteGit => "SSH_REMOTE_GIT_FAILED",
-        SshIpcErrorKind::SystemMonitor => "SSH_SYSTEM_MONITOR_FAILED",
     }
     .to_string()
 }
@@ -240,7 +237,6 @@ mod safe_ipc_error_tests {
             (SshIpcErrorKind::RemoteFs, "SSH_REMOTE_FS_FAILED"),
             (SshIpcErrorKind::Forwarding, "SSH_FORWARDING_FAILED"),
             (SshIpcErrorKind::RemoteGit, "SSH_REMOTE_GIT_FAILED"),
-            (SshIpcErrorKind::SystemMonitor, "SSH_SYSTEM_MONITOR_FAILED"),
         ];
         for (kind, expected) in cases {
             let command_result: Result<(), String> = Err(safe_ipc_error(kind, &canary));

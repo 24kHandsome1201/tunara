@@ -64,23 +64,6 @@ export interface PreviewRuntimeState {
   currentUrl: string;
   canGoBack: boolean;
   canGoForward: boolean;
-  zoomFactor: number;
-  viewport: {
-    mode: "preset" | "fit" | "reset";
-    requestedWidth: number;
-    requestedHeight: number;
-    actualWidth: number;
-    actualHeight: number;
-    outerWidth: number;
-    outerHeight: number;
-    exact: boolean;
-  };
-  telemetry: {
-    generation: number;
-    events: Array<{ kind: "console-error" | "unhandled-error" | "network-failure"; message: string; count: number }>;
-    dropped: number;
-    text: string;
-  };
   restart: {
     eligible: boolean;
     command?: string;
@@ -102,34 +85,6 @@ export function previewGoBack(source: PreviewSource): Promise<void> {
 
 export function previewGoForward(source: PreviewSource): Promise<void> {
   return invoke<void>("preview_go_forward", { source });
-}
-
-export function previewSetZoom(source: PreviewSource, factor: number): Promise<void> {
-  return invoke<void>("preview_set_zoom", { source, factor });
-}
-
-export function previewResetZoom(source: PreviewSource): Promise<void> {
-  return invoke<void>("preview_reset_zoom", { source });
-}
-
-export function previewSetViewport(source: PreviewSource, width: number, height: number): Promise<void> {
-  return invoke<void>("preview_set_viewport", { source, width, height });
-}
-
-export function previewResetViewport(source: PreviewSource): Promise<void> {
-  return invoke<void>("preview_reset_viewport", { source });
-}
-
-export function previewFitViewport(source: PreviewSource): Promise<void> {
-  return invoke<void>("preview_fit_viewport", { source });
-}
-
-export function previewTelemetryClear(source: PreviewSource): Promise<void> {
-  return invoke<void>("preview_telemetry_clear", { source });
-}
-
-export function previewTelemetrySend(source: PreviewSource): Promise<void> {
-  return invoke<void>("preview_telemetry_send", { source });
 }
 
 export function previewTerminalCommandStarted(context: PreviewSourceContext, provenance: PreviewCommandProvenance): Promise<void> {
@@ -160,40 +115,6 @@ export function previewDisplayUrl(raw: string): string {
   } catch {
     return "<invalid-url>";
   }
-}
-
-export interface PreviewCaptureResult {
-  captureId: string;
-  localRef: string;
-  sourceOrigin: string;
-  sourceSummary: string;
-  preparedText: string;
-  capturedAtMs: number;
-  viewportCssWidth: number;
-  viewportCssHeight: number;
-  zoomFactor: number;
-  windowGeneration: number;
-  imageFormat: "png";
-  imageWidth: number;
-  imageHeight: number;
-  imageSha256: string;
-}
-
-export interface PreviewSendReceipt {
-  terminalRef: string;
-  bytesWritten: number;
-  executed: false;
-}
-
-export function previewCapture(source: PreviewSource): Promise<PreviewCaptureResult> {
-  return invoke<PreviewCaptureResult>("preview_capture", { source, options: { format: "png" } });
-}
-
-export function previewSendCaptureToSourceTerminal(
-  source: PreviewSource,
-  captureId: string,
-): Promise<PreviewSendReceipt> {
-  return invoke<PreviewSendReceipt>("preview_send_capture_to_source_terminal", { source, captureId });
 }
 
 export function previewBlockReason(source: PreviewSource): "remote" | "stale" | "fallback" | null {

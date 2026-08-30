@@ -26,7 +26,6 @@
 | [M2_MARKDOWN_SAFE_EDITING.md](./M2_MARKDOWN_SAFE_EDITING.md) | Markdown / 单文件安全写合同 |
 | [LIMITED_LARGE_FILE_VIEWING.md](./LIMITED_LARGE_FILE_VIEWING.md) | 大文本前 N 行受限查看 |
 | [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md) | Preview 来源绑定与安全边界 |
-| [LOCAL_USAGE_LOGGING.md](./LOCAL_USAGE_LOGGING.md) | 可选本地 SSH 诊断日志 |
 | [THEME_SHELL_TINTING.md](./THEME_SHELL_TINTING.md) | 界面与终端统一配色 |
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | 视觉与交互约定 |
 | [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 右侧栏现状与收敛提案（非产品合同） |

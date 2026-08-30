@@ -1651,7 +1651,7 @@ textarea:focus-visible {
   color: var(--c-accent);
 }
 
-/* SSH host overview: card grid and its own inspector are one stable main
+/* SSH host dashboard: card grid and compact details are one stable main
    surface. On compact canvases the inspector becomes a full-page detail view
    rather than competing with the card grid for width. */
 .ssh-dashboard-container {
@@ -1771,7 +1771,7 @@ textarea:focus-visible {
 }
 .ssh-host-card {
   min-width: 0;
-  min-height: 226px;
+  min-height: 150px;
   padding: 15px;
   display: flex;
   flex-direction: column;
@@ -1836,25 +1836,6 @@ textarea:focus-visible {
 .ssh-host-card-meta b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ssh-host-card-meta small { color: var(--c-text-6); font-size: var(--fs-badge); font-weight: 600; }
 .ssh-host-card-meta b { margin-top: 3px; color: var(--c-text-3); font: 600 var(--fs-meta) var(--font-mono); }
-.ssh-host-memory-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--c-text-5); font-size: var(--fs-meta); }
-.ssh-host-memory-row b { color: var(--c-text-3); font: 600 var(--fs-meta) var(--font-mono); }
-.ssh-host-memory-bar { height: 6px; margin-top: 7px; display: block; overflow: hidden; border-radius: var(--r-pill); background: var(--c-bg-2); }
-.ssh-host-memory-bar i { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, var(--c-accent), color-mix(in srgb, var(--c-accent) 65%, var(--c-warning))); transition: width var(--duration-slow) var(--ease-out-expo); }
-.ssh-host-network { margin-top: 13px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.ssh-host-network > span + span { padding-left: 10px; border-left: 1px solid var(--c-border-1); }
-.ssh-host-network small,
-.ssh-host-network b { display: block; }
-.ssh-host-network small { color: var(--c-text-6); font-size: var(--fs-badge); }
-.ssh-host-network b { margin-top: 3px; color: var(--c-text-2); font: 650 var(--fs-secondary) var(--font-mono); }
-.ssh-host-no-monitor {
-  flex: 1;
-  min-height: 46px;
-  display: grid;
-  place-items: center;
-  color: var(--c-text-6);
-  font-size: var(--fs-meta);
-  text-align: center;
-}
 .ssh-dashboard-state,
 .ssh-dashboard-empty {
   min-height: 240px;
@@ -1905,22 +1886,6 @@ textarea:focus-visible {
 .ssh-host-facts > div + div { border-top: 1px solid var(--c-border-1); }
 .ssh-host-facts dt { color: var(--c-text-6); font-size: var(--fs-meta); }
 .ssh-host-facts dd { min-width: 0; margin: 0; color: var(--c-text-2); font: 600 var(--fs-meta) var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
-.ssh-host-detail-section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ssh-host-detail-section-title > span { color: var(--c-text-6); font-size: var(--fs-badge); }
-.ssh-host-memory-detail,
-.ssh-host-network-detail > div { padding: 12px; border: 1px solid var(--c-border-1); border-radius: var(--r-card); background: var(--c-bg-1); }
-.ssh-host-memory-detail > span:first-child,
-.ssh-host-network-detail > div > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ssh-host-memory-detail small,
-.ssh-host-network-detail small { color: var(--c-text-6); font-size: var(--fs-meta); }
-.ssh-host-memory-detail b,
-.ssh-host-network-detail b { color: var(--c-text-primary); font: 700 var(--fs-body) var(--font-mono); }
-.ssh-host-memory-detail em { display: block; margin-top: 7px; color: var(--c-text-6); font: normal var(--fs-meta) var(--font-mono); }
-.ssh-host-network-detail { margin-top: 9px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-.ssh-monitor-sparkline { width: 100%; height: 34px; margin-top: 9px; color: var(--c-success); }
-.ssh-monitor-sparkline[data-tone="upload"] { color: var(--c-accent); }
-.ssh-host-monitor-empty { min-height: 130px; display: grid; place-items: center; border: 1px dashed var(--c-border-2); border-radius: var(--r-card); color: var(--c-text-6); font-size: var(--fs-meta); text-align: center; }
-.ssh-host-monitor-note { margin: 9px 1px 0; color: var(--c-text-6); font-size: var(--fs-badge); line-height: var(--lh-copy); }
 
 @container ssh-dashboard (max-width: 760px) {
   .ssh-dashboard { grid-template-columns: minmax(0, 1fr); }
@@ -1938,7 +1903,6 @@ textarea:focus-visible {
   .ssh-dashboard-toolbar { padding: 8px 16px; }
   .ssh-dashboard-scroll { padding: 14px 16px 28px; }
   .ssh-host-grid { grid-template-columns: minmax(0, 1fr); }
-  .ssh-host-network-detail { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

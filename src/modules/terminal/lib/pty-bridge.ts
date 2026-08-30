@@ -10,7 +10,6 @@ import { appendDiagnostic, recordSshLifecycleDiagnostic } from "@/modules/ssh/di
 import { SSH_DIAGNOSTIC_CODES, SSH_DIAGNOSTIC_STAGES, type SshDiagnosticV1 } from "@/modules/ssh/diagnostics-schema";
 import type { BackendConnectionPhase } from "./connection-state";
 import { recordTerminalBenchmarkExit, TERMINAL_BENCHMARK_MODE } from "./terminal-benchmark";
-import { localUsageAuthMethod, localUsageDuration, localUsageErrorCategory, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 export type PtyEvent =
   | { type: "data"; data: string }
@@ -43,17 +42,7 @@ export type PtyEvent =
 
 function notifyHostKeyPersistence(
   event: Extract<PtyEvent, { type: "hostKeyPersistence" }>,
-  sessionId?: string,
 ): void {
-  const outcome = event.status === "saved" ? "saved"
-    : event.status === "sessionOnly" || event.status === "preCommitFailure" ? "session_only"
-      : "durability_unknown";
-  recordLocalUsageEvent({
-    event: "ssh.host_key.persistence",
-    sessionId,
-    success: event.status === "saved",
-    outcome,
-  });
   const host = event.port === 22 ? event.host : `${event.host}:${event.port}`;
   useUIStore.getState().addToast({
     title: t(`ssh.hostKey.persistence.${event.status}`),
@@ -68,27 +57,7 @@ export const SSH_DISCONNECTED_EXIT_CODE = -2;
 
 /** Reply to a pending SSH host-key prompt (backend ssh_open is parked on it). */
 export async function answerHostKeyPrompt(promptId: string, accept: boolean, remember = true): Promise<void> {
-  const startedAt = Date.now();
-  try {
-    await invoke("ssh_host_key_decision", { promptId, accept, remember });
-    recordLocalUsageEvent({
-      event: "ssh.host_key.decided",
-      correlationId: promptId,
-      durationMs: localUsageDuration(startedAt),
-      success: true,
-      outcome: accept ? "accepted" : "rejected",
-    });
-  } catch (error) {
-    recordLocalUsageEvent({
-      event: "ssh.host_key.decided",
-      correlationId: promptId,
-      durationMs: localUsageDuration(startedAt),
-      success: false,
-      outcome: "failed",
-      errorCategory: localUsageErrorCategory(error),
-    });
-    throw error;
-  }
+  await invoke("ssh_host_key_decision", { promptId, accept, remember });
 }
 
 export async function answerKeyboardInteractivePrompt(
@@ -667,19 +636,6 @@ export async function openSshPty(
   conn: SshConnectOptions,
 ): Promise<PtySession> {
   const openAttemptId = nextSshOpenAttemptId();
-  const openStartedAt = Date.now();
-  const connectionAttributes = {
-    auth_method: localUsageAuthMethod(conn.authMethod),
-    route: conn.jump ? "jump" : "direct",
-    ...(conn.jump ? { jump_auth_method: localUsageAuthMethod(conn.jump.authMethod) } : {}),
-  };
-  recordLocalUsageEvent({
-    event: "ssh.session.open_requested",
-    sessionId: logicalSessionId,
-    correlationId: openAttemptId,
-    outcome: "started",
-    attributes: connectionAttributes,
-  });
   for (const prompt of useUIStore.getState().keyboardInteractivePrompts) {
     if (prompt.origin.logicalSessionId !== logicalSessionId) continue;
     void answerKeyboardInteractivePrompt(prompt.promptId, null);
@@ -749,7 +705,7 @@ export async function openSshPty(
         handlers.onConnectionStatus?.(event.phase, generation);
         break;
       case "hostKeyPersistence":
-        notifyHostKeyPersistence(event, logicalSessionId);
+        notifyHostKeyPersistence(event);
         break;
       case "hostKeyPrompt":
       case "keyboardInteractivePrompt":
@@ -797,20 +753,10 @@ export async function openSshPty(
         pendingEvents.push(event);
         break;
       case "hostKeyPersistence":
-        notifyHostKeyPersistence(event, logicalSessionId);
+        notifyHostKeyPersistence(event);
         break;
       case "hostKeyPrompt":
         handlers.onPendingConnectionStatus?.("verifyingHostKey");
-        recordLocalUsageEvent({
-          event: "ssh.host_key.prompted",
-          sessionId: logicalSessionId,
-          correlationId: event.promptId,
-          outcome: "started",
-          attributes: {
-            hop_role: hostKeyHopRole,
-            reason: event.reason === "unverifiable" ? "unverifiable" : "unknown",
-          },
-        });
         // Queue the confirmation in the UI store; an app-level dialog renders
         // the head and calls answerHostKeyPrompt with the user's decision. The
         // backend ssh_open call is blocked inside check_server_key until then.
@@ -888,16 +834,6 @@ export async function openSshPty(
       throw new Error("SSH backend returned an inconsistent session binding");
     }
   } catch (error) {
-    recordLocalUsageEvent({
-      event: "ssh.session.open_failed",
-      sessionId: logicalSessionId,
-      correlationId: openAttemptId,
-      durationMs: localUsageDuration(openStartedAt),
-      success: false,
-      outcome: "failed",
-      errorCategory: localUsageErrorCategory(error),
-      attributes: connectionAttributes,
-    });
     // A host-key prompt can time out or its connection can fail while the
     // dialog is still queued. Remove only prompts owned by this open attempt;
     // otherwise the UI would show a dead fingerprint whose backend waiter is
@@ -920,15 +856,6 @@ export async function openSshPty(
   physicalId = id;
   acknowledger.setId(id);
   publishable = true;
-  recordLocalUsageEvent({
-    event: "ssh.session.opened",
-    sessionId: logicalSessionId,
-    correlationId: openAttemptId,
-    durationMs: localUsageDuration(openStartedAt),
-    success: true,
-    outcome: "completed",
-    attributes: connectionAttributes,
-  });
 
   return {
     id,

@@ -41,8 +41,8 @@ write_fixtures() {
     workspaceSnapshot: {
       version: 1, savedAt: $now, activeSessionId: "m2-local-a",
       sessions: [
-        { id: "m2-local-a", title: "M2 Local A", dir: $a, branch: "", mascot: "otter", updatedAt: $now },
-        { id: "m2-local-b", title: "M2 Local B", dir: $b, branch: "", mascot: "panda", updatedAt: $now }
+        { id: "m2-local-a", title: "M2 Local A", dir: $a, branch: "", updatedAt: $now },
+        { id: "m2-local-b", title: "M2 Local B", dir: $b, branch: "", updatedAt: $now }
       ],
       terminals: {}, agentResume: {}, recentDirs: [$a, $b], recentCommands: [], commandUsage: {}, workflows: [],
       ui: { sidebarVisible: false, panelVisible: true, collapsedDirs: {}, collapsedDiffSections: {}, inspectorTab: "files", split: { mode: "single", paneA: null, paneB: null, ratio: 0.5 } }

@@ -65,7 +65,7 @@ replace those interaction checks.
 - [ ] Resize the native window to its 640px minimum and verify the sidebar is
       an overlay rather than consuming the terminal canvas.
 - [ ] Sidebar can hide without leaving a dead resize gutter.
-- [ ] Inspector tabs (Overview / Notes / Diff / Files) stay reachable at ~960px
+- [ ] Inspector tabs (Changes / Files / Preview) stay reachable at ~960px
       width.
 - [ ] Command palette and overlays remain centered and scrollable.
 

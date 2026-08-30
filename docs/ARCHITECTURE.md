@@ -31,11 +31,10 @@ fixed three-pane layout under a custom titlebar:
   [`TerminalView`](../src/ui/TerminalView.tsx)): the actual terminals. xterm.js +
   WebGL, one per session, optionally split into two panes.
 - **Right: `InspectorPanel`** ([`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx)):
-  overview, read-only git diff ([`DiffPanel`](../src/ui/DiffPanel.tsx)),
+  read-only git diff ([`DiffPanel`](../src/ui/DiffPanel.tsx)),
   file tree ([`FileExplorer`](../src/ui/FileExplorer.tsx)), bounded text/Markdown
   reading and safe editing ([`FilePreview`](../src/ui/FilePreview.tsx)), Preview
-  controls, session notes, and SSH-only tabs (transfers, metadata, forwarding,
-  diagnostics, known hosts). Tab availability is computed in
+  controls, and SSH-only tabs (transfers and forwarding). Tab availability is computed in
   [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Only the
   active Inspector tab is mounted.
 
@@ -77,7 +76,7 @@ The Rust side is a single library crate, [`src-tauri/src/lib.rs`](../src-tauri/s
 that wires up plugins, registers the IPC handlers, manages shared state, and runs
 the event loop. Backend logic is split into modules under
 [`src-tauri/src/modules/`](../src-tauri/src/modules/): `pty`, `ssh`, `fs`, `git`,
-`agent`, `preview`, `resolver`, `editor`, `config`, `local_usage_log`,
+`agent`, `preview`, `resolver`, `editor`, `config`,
 `process`, `workspace_store`.
 
 ## IPC surface
@@ -187,32 +186,16 @@ the shell PATH.
 
 ### `config` — text config file [`modules/config`](../src-tauri/src/modules/config.rs)
 
-Reads/writes `~/.config/tunara/config.toml`, including the default-off local
-usage logging preference.
-
 | Command | Does | Frontend caller |
 |---|---|---|
 | `load_config` | Load appearance + keybindings config (with parse-error surfaced) | `loadTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
 | `save_config` | Write the config back to disk | `saveTunaraConfig`, [`config-bridge.ts`](../src/modules/config/config-bridge.ts) |
 
-### `local_usage_log` — opt-in local SSH diagnostics [`modules/local_usage_log`](../src-tauri/src/modules/local_usage_log.rs)
-
-| Command | Does | Frontend caller |
-|---|---|---|
-| `local_usage_log_record` | Best-effort validation, anonymization, rotation, and JSONL append for one allowlisted event | `recordLocalUsageEvent`, [`local-usage-log.ts`](../src/modules/usage-log/local-usage-log.ts) |
-| `local_usage_log_set_enabled` / `local_usage_log_status` | Atomically change native emission state or inspect location/capacity | Settings and UI config store via [`local-usage-log.ts`](../src/modules/usage-log/local-usage-log.ts) |
-| `local_usage_log_ensure_directory` | Create the private local directory before revealing it in the file manager | Settings |
-| `local_usage_log_export` / `local_usage_log_clear` | Manually export complete valid JSONL records or remove only managed log files | Settings |
-
-The Rust writer is the final privacy boundary: event names, outcomes, error
-categories, and attributes are allowlisted, while session/correlation values
-are salted and hashed per app run. See [Local usage logging](LOCAL_USAGE_LOGGING.md).
-
 ### `preview` — tunneled preview webview windows [`modules/preview`](../src-tauri/src/modules/preview.rs)
 
 Owns the secondary webview windows used to preview local/remote web apps and
-static files. Manages lifecycle (open/close/refresh), viewport sizing, zoom,
-capture, telemetry ingestion, and SSH-tunneled source access. State is held in
+static files. Manages lifecycle, source-bound navigation, restart preparation,
+and SSH-tunneled source access. State is held in
 `PreviewWindowState` (managed when the Tauri builder is created).
 
 | Command | Does | Frontend caller |
@@ -222,16 +205,10 @@ capture, telemetry ingestion, and SSH-tunneled source access. State is held in
 | `preview_status` | Report the runtime state of a preview window | `previewStatus`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
 | `preview_navigate` | Navigate a preview window to a URL/path | `previewNavigate`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
 | `preview_go_back` / `preview_go_forward` | History navigation | `previewGoBack` / `previewGoForward`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
-| `preview_set_zoom` / `preview_reset_zoom` | Set or reset zoom factor | `previewSetZoom` / `previewResetZoom`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
-| `preview_set_viewport` / `preview_reset_viewport` / `preview_fit_viewport` | Set, reset, or auto-fit the viewport size | `previewSetViewport` / `previewResetViewport` / `previewFitViewport`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
-| `preview_telemetry_ingest` | Accept nonce-bound telemetry from an instrumented preview page | Injected telemetry bridge in [`preview.rs`](../src-tauri/src/modules/preview.rs) |
-| `preview_telemetry_clear` / `preview_telemetry_send` | Clear captured failures or prepare them in the source terminal | `previewTelemetryClear` / `previewTelemetrySend`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
 | `preview_terminal_command_started` / `preview_terminal_command_finished` / `preview_terminal_exited` | Synchronize source-terminal lifecycle and command provenance | `previewTerminalCommandStarted` / `previewTerminalCommandFinished` / `previewTerminalExited`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
 | `preview_remote_source_observed` | Record a remote source before an explicit tunnel action | `previewRemoteSourceObserved`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
 | `preview_tunnel_open` / `preview_tunnel_status` / `preview_tunnel_close` | Open/status/close an SSH tunnel backing a remote preview | `previewTunnelOpen` / `previewTunnelStatus` / `previewTunnelClose`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
 | `preview_restart_prepare` | Prepare a proven failed source command in its terminal without executing it | `previewRestartPrepare`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
-| `preview_capture` | Capture a screenshot of the preview window | `previewCapture`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
-| `preview_send_capture_to_source_terminal` | Prepare a captured image reference in the source terminal without executing it | `previewSendCaptureToSourceTerminal`, [`preview-window.ts`](../src/modules/preview/preview-window.ts) |
 
 ### `workspace_store` — persistence health and legacy cleanup [`modules/workspace_store`](../src-tauri/src/modules/workspace_store.rs)
 
@@ -239,15 +216,11 @@ Reports whether the Tauri store plugin's session-persistence file
 (`tunara-sessions.json`, legacy `conduit-sessions.json`) is present on disk, so
 the frontend can distinguish a genuine first launch from a silently corrupted
 store (the store plugin's first `load` swallows read/parse errors and returns
-defaults). It also exposes a narrow compatibility path for explicitly deleting
-the discontinued v1.16 Agent Event Store without exposing its payloads or a
-caller-selected filesystem path.
+defaults).
 
 | Command | Does | Frontend caller |
 |---|---|---|
 | `workspace_store_file_state` | Report `missing` or `present` for a known store file | [`persist.ts`](../src/state/persist.ts) |
-| `legacy_agent_data_status` | Report whether fixed legacy `agent-events` data exists, without reading its contents | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
-| `legacy_agent_data_delete` | After explicit confirmation, delete only the fixed legacy directory; missing data is an idempotent success | [`Settings.tsx`](../src/ui/overlays/Settings.tsx) |
 
 ## The three transports
 
@@ -350,9 +323,8 @@ process-wide table inside [`fs/head.rs`](../src-tauri/src/modules/fs/head.rs).
 | [`ForwardingState`](../src-tauri/src/modules/ssh/forwarding.rs) | Active SSH local-forward listeners and their cancellation handles | `.manage(ForwardingState::default())`; forward commands create and close entries |
 | [`FsSearchCancellationState`](../src-tauri/src/modules/fs/grep.rs) | Pending, pre-cancelled, and recently finished filesystem-search request IDs | `.manage(FsSearchCancellationState::default())`; each request unregisters itself on completion |
 | [`ResolverState`](../src-tauri/src/modules/resolver/mod.rs) | User path overrides + the login-shell PATH dirs probed at startup | `.manage(ResolverState::default())`; `init_login_path()` called early in `.setup()` so `resolve_all_bins` works for GUI launches |
-| [`PreviewWindowState`](../src-tauri/src/modules/preview.rs) | Preview window generations, source/runtime status, tunnels, captures, and restart provenance | `.manage(PreviewWindowState::default())`; all tunnels close on `RunEvent::Exit` |
+| [`PreviewWindowState`](../src-tauri/src/modules/preview.rs) | Preview window generations, source/runtime status, tunnels, and restart provenance | `.manage(PreviewWindowState::default())`; all tunnels close on `RunEvent::Exit` |
 | [`GitWatcherState`](../src-tauri/src/modules/git/watcher.rs) | Refcounted per-repo filesystem debouncers + the `git_status` result cache | `.manage(GitWatcherState::default())`; entries created by `git_watch`, removed at refcount 0 by `git_unwatch` |
-| [`LocalUsageLogState`](../src-tauri/src/modules/local_usage_log.rs) | Default-off emission state, per-run anonymous-ID salt, active JSONL file, sequence, and rotation limits behind one mutex | Created fail-closed and `app.manage()`d in `.setup()` after resolving the native app log directory; disk failures never block startup or SSH flows |
 | [`HookListenerState`](../src-tauri/src/modules/agent/hooks.rs) | The agent-hook Unix socket path + a shutdown flag for its listener thread | Created by `start_listener(app.handle())` and `app.manage()`d in `.setup()`; `shutdown()` (removes the socket, stops the thread) on `RunEvent::Exit` |
 
 Teardown lives in the `RunEvent::Exit` arm of the `.run(|app, event| …)` closure

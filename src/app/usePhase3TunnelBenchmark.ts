@@ -16,6 +16,7 @@ import {
   type PreviewTunnelState,
 } from "@/modules/preview/preview-window";
 import {
+  readTerminalBenchmarkSnapshot,
   TERMINAL_BENCHMARK_VARIANT,
   waitForTerminalBenchmarkWriters,
   writeTerminalBenchmark,
@@ -66,21 +67,14 @@ async function runtimeReady(source: PreviewSource): Promise<boolean> {
   return waitFor(`Preview ready ${source.sourceUrl}`, async () => (await previewStatus(source))?.status === "ready");
 }
 
-async function telemetryComplete(source: PreviewSource, label: "A" | "B"): Promise<boolean> {
-  try {
-    return await waitFor(`Preview ACL ${label}`, async () => {
-      const events = (await previewStatus(source))?.telemetry.events ?? [];
-      const messages = events.map((event) => event.message);
-      return messages.some((message) => message.includes(`TUNARA_TUNNEL_${label}_ACL_COMPLETE`)
-        && message.includes("rejected=file,store,pty,ssh,tunnel,app")
-        && message.includes("unexpected=none"));
-    });
-  } catch (error) {
-    const messages = (await previewStatus(source))?.telemetry.events.map((event) => event.message) ?? [];
-    const failure = new Error(`${String(error)}; telemetry=${JSON.stringify(messages)}`) as Error & { cause: unknown };
-    failure.cause = error;
-    throw failure;
-  }
+async function aclComplete(sessionId: string, label: "A" | "B"): Promise<boolean> {
+  return waitFor(`Preview ACL ${label}`, async () => {
+    const snapshot = await readTerminalBenchmarkSnapshot(sessionId);
+    if (snapshot.includes(`TUNARA_TUNNEL_${label}_ACL_FAILED`)) {
+      throw new Error(`Preview ACL ${label} allowed an unexpected command`);
+    }
+    return snapshot.includes(`TUNARA_TUNNEL_${label}_ACL_OK`);
+  });
 }
 
 function fulfilledTunnel(results: PromiseSettledResult<PreviewTunnelState>[]): PreviewTunnelState {
@@ -154,7 +148,10 @@ export function usePhase3TunnelBenchmark(ready: boolean): void {
       if (!tunnelB.previewSource || !tunnelB.localEndpoint) throw new Error("tunnel B missing derived endpoint");
       await previewOpen(tunnelB.previewSource);
       await Promise.all([runtimeReady(tunnelA.previewSource), runtimeReady(tunnelB.previewSource)]);
-      await Promise.all([telemetryComplete(tunnelA.previewSource, "A"), telemetryComplete(tunnelB.previewSource, "B")]);
+      const [aclA, aclB] = await Promise.all([
+        aclComplete(sessionA.id, "A"),
+        aclComplete(sessionB.id, "B"),
+      ]);
 
       const endpointsDistinct = tunnelA.localEndpoint !== tunnelB.localEndpoint;
       const sourcesDistinct = sourceA.workspaceId !== sourceB.workspaceId
@@ -163,9 +160,6 @@ export function usePhase3TunnelBenchmark(ready: boolean): void {
       const remotePortSame = tunnelA.remotePort === tunnelB.remotePort && tunnelA.remotePort === remotePort;
       const bothEndpointsReachable = (await previewTunnelStatus(sourceA))?.status === "ready"
         && (await previewTunnelStatus(sourceB))?.status === "ready";
-      const aclUnexpectedSuccesses = ((await previewStatus(tunnelA.previewSource))?.telemetry.text ?? "")
-        .includes("ACL_UNEXPECTED_SUCCESS_")
-        || ((await previewStatus(tunnelB.previewSource))?.telemetry.text ?? "").includes("ACL_UNEXPECTED_SUCCESS_");
       const crossWorktreeRejected = await rejected(() => previewTunnelOpen({ ...sourceA, worktreeId: sourceB.worktreeId }, previewActionNonce()));
       const staleRejected = await rejected(() => previewTunnelOpen({ ...sourceA, state: "stale" }, previewActionNonce()));
       const oldGenerationRejected = await rejected(() => previewTunnelOpen({ ...sourceA, physicalPtyId: sourceA.physicalPtyId! + 100_000 }, previewActionNonce()));
@@ -202,7 +196,7 @@ export function usePhase3TunnelBenchmark(ready: boolean): void {
         sameRemotePort: remotePortSame,
         distinctLocalEndpoints: endpointsDistinct,
         bothEndpointsReachable,
-        aclUnexpectedSuccesses: aclUnexpectedSuccesses ? 1 : 0,
+        aclCompleted: aclA && aclB,
         concurrentOpenRejected,
         nonceReplayRejected,
         crossWorktreeRejected,
@@ -217,7 +211,6 @@ export function usePhase3TunnelBenchmark(ready: boolean): void {
       };
       const passed = Object.entries(report).every(([key, value]) => {
         if (key === "benchmark") return true;
-        if (key === "aclUnexpectedSuccesses") return value === 0;
         return value === true;
       });
       await info(`[benchmark:phase3-tunnel] ${JSON.stringify({ ...report, passed })}`);

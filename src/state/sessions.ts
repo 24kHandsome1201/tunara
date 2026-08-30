@@ -27,7 +27,6 @@ import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
 import { setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 import { pushRecentCommand } from "./recent-commands";
-import { sanitizeSessionNote } from "@/modules/session/session-notes";
 import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
 import { sidebarGroupKey } from "@/modules/session/sidebar-groups";
 import { duplicateRemoteSessionFields } from "@/modules/ssh/connection-share";
@@ -39,12 +38,6 @@ import {
 } from "@/modules/ssh/host-file-prefs";
 import { removeTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot";
 import { getNumberRecordValue } from "@/state/record-keys";
-import {
-  appendTimelineEvent,
-  createTimelineEvent,
-  shouldRecordGitChange,
-  type TimelineEvent,
-} from "./timeline";
 import {
   cancelPendingGitRefresh,
   clearQueuedGitNonceBump,
@@ -78,7 +71,6 @@ import {
   previewTerminalExited,
 } from "@/modules/preview/preview-window";
 import { terminalFileViewerCommand } from "@/modules/terminal/lib/shell-command";
-import { localUsageAuthMethod, localUsageDuration, localUsageErrorCategory, localUsagePhase, recordLocalUsageEvent } from "@/modules/usage-log/local-usage-log";
 
 let previewCommandSequence = 0;
 
@@ -107,7 +99,6 @@ interface SessionsState {
   hostFilePrefs: Record<string, HostFilePrefsV1>;
   // Session ids in most-recently-active-first order, used by Mod+Tab cycling.
   recentSessionIds: string[];
-  sessionTimelines: Record<string, TimelineEvent[]>;
 
   addSession: (s: Session) => void;
   removeSession: (id: string) => void;
@@ -124,8 +115,6 @@ interface SessionsState {
   recordRecentCommand: (command: string) => void;
   patchHostFilePrefs: (key: string, patch: (prefs: HostFilePrefsV1) => HostFilePrefsV1) => void;
   togglePinnedSession: (id: string) => void;
-  setSessionNote: (id: string, note: string) => void;
-  appendTimeline: (id: string, type: TimelineEvent["type"], detail?: string) => void;
   handleConnectionEvent: (id: string, event: ConnectionEvent) => void;
 
   handleAgentDetected: (id: string, agent: AgentCode, command?: string) => void;
@@ -174,9 +163,7 @@ const WORKSPACE_SESSION_FIELDS = [
   "branch",
   "customTitle",
   "remote",
-  "mascot",
   "pinned",
-  "note",
   "agentResume",
 ] as const satisfies readonly (keyof Session)[];
 
@@ -318,7 +305,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   recentCommands: [],
   hostFilePrefs: {},
   recentSessionIds: [],
-  sessionTimelines: {},
 
   addSession: (s) => {
     const previousActiveSessionId = get().activeSessionId;
@@ -332,19 +318,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       // of the recent-dirs affordance.
       recentDirs: s.remote ? state.recentDirs : pushRecentDir(state.recentDirs, s.dir),
     }));
-    if (s.remote) {
-      recordLocalUsageEvent({
-        event: "ssh.session.created",
-        sessionId: s.id,
-        success: true,
-        outcome: "completed",
-        attributes: {
-          transport: "ssh",
-          auth_method: localUsageAuthMethod(s.remote.authMethod),
-          route: s.remote.route ? "jump" : "direct",
-        },
-      });
-    }
     ensureSessionVisibleInSplit(s.id, previousActiveSessionId);
   },
 
@@ -352,15 +325,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (!requestDirtyDraftAction([id], () => get().removeSession(id))) return;
     const removedSession = get().sessions.find((session) => session.id === id);
     if (!removedSession) return;
-    if (removedSession?.remote) {
-      recordLocalUsageEvent({
-        event: "ssh.session.closed",
-        sessionId: id,
-        success: true,
-        outcome: "completed",
-        attributes: { transport: "ssh" },
-      });
-    }
     cancelCloseConfirmationTimer(id);
     cancelPendingGitRefresh(id);
     // A bump queued in this same tick would otherwise re-create the session's
@@ -382,7 +346,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       const { [id]: _removed, ...closeConfirmations } = state.closeConfirmations;
       const { [id]: _launched, ...launchedSessionIds } = state.launchedSessionIds;
       const { [id]: _gitNonce, ...gitNonce } = state.gitNonce;
-      const { [id]: _timeline, ...sessionTimelines } = state.sessionTimelines;
       const nextLaunchedSessionIds = { ...launchedSessionIds };
       if (activeSessionId) nextLaunchedSessionIds[activeSessionId] = true;
       return {
@@ -392,7 +355,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         closeConfirmations,
         launchedSessionIds: nextLaunchedSessionIds,
         gitNonce,
-        sessionTimelines,
         recentSessionIds: state.recentSessionIds.filter((sid) => sid !== id),
       };
     });
@@ -518,19 +480,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
         : state.workspacePersistenceRevision,
     })),
 
-  appendTimeline: (id, type, detail) => {
-    const event = createTimelineEvent(type, detail);
-    set((state) => {
-      const current = state.sessionTimelines[id] ?? [];
-      return {
-        sessionTimelines: {
-          ...state.sessionTimelines,
-          [id]: appendTimelineEvent(current, event),
-        },
-      };
-    });
-  },
-
   handleConnectionEvent: (id, event) => {
     const session = get().sessions.find((candidate) => candidate.id === id);
     if (!session) return;
@@ -540,71 +489,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (connection.transport === "ssh" && previousPhase === "ready" && connection.phase !== "ready") {
       interruptRemoteExternalEdit(id);
     }
-    if (connection.transport === "ssh") {
-      const outcome = connection.phase === "failed" ? "failed"
-        : connection.phase === "needsUserAction" ? "needs_user_action"
-          : connection.phase === "disconnected" ? "failed"
-            : connection.phase === "reconnecting" ? "started"
-              : connection.phase === "ready" ? "completed" : "started";
-      recordLocalUsageEvent({
-        event: "ssh.connection.phase",
-        sessionId: id,
-        durationMs: session.connection?.updatedAt ? localUsageDuration(session.connection.updatedAt) : undefined,
-        success: connection.phase === "ready" ? true : connection.phase === "failed" || connection.phase === "disconnected" ? false : undefined,
-        outcome,
-        errorCategory: connection.phase === "failed"
-          ? localUsageErrorCategory(connection.reason ?? connection.source)
-          : connection.phase === "disconnected" ? "disconnected" : undefined,
-        attributes: {
-          transport: "ssh",
-          phase: localUsagePhase(connection.phase),
-          reason: connection.source === "hostKey" ? "host_key" : connection.source,
-        },
-      });
-      if (event.type === "reconnectRequested") {
-        recordLocalUsageEvent({ event: "ssh.reconnect.started", sessionId: id, outcome: "started" });
-      } else if (event.type === "reconnectScheduled") {
-        recordLocalUsageEvent({
-          event: "ssh.reconnect.scheduled",
-          sessionId: id,
-          outcome: "scheduled",
-          attributes: session.sshReconnectAttempt ? { attempt: String(session.sshReconnectAttempt) } : undefined,
-        });
-      } else if (connection.phase === "ready" && previousPhase === "reconnecting") {
-        recordLocalUsageEvent({ event: "ssh.reconnect.completed", sessionId: id, success: true, outcome: "completed" });
-      } else if (connection.phase === "failed" && previousPhase === "reconnecting") {
-        recordLocalUsageEvent({ event: "ssh.reconnect.failed", sessionId: id, success: false, outcome: "failed", errorCategory: "connect" });
-      } else if (connection.phase === "disconnected") {
-        recordLocalUsageEvent({ event: "ssh.disconnected", sessionId: id, success: false, outcome: "failed", errorCategory: "disconnected" });
-      }
-    }
-    if (connection.phase === "ready" && previousPhase !== "ready") {
-      get().appendTimeline(id, "connection_ready", connection.transport);
-    } else if (connection.phase === "failed") {
-      get().appendTimeline(id, "connection_failed", connection.reason);
-    } else if (connection.phase === "disconnected") {
-      get().appendTimeline(id, "connection_lost", connection.transport);
-    }
     get().updateSession(id, { connection });
-  },
-
-  setSessionNote: (id, note) => {
-    const cleanNote = sanitizeSessionNote(note);
-    let saved = false;
-    set((state) => {
-      const sessions = state.sessions.map((s) => {
-        if (s.id !== id || (s.note ?? "") === cleanNote) return s;
-        saved = true;
-        return { ...s, note: cleanNote || undefined, updatedAt: Date.now() };
-      });
-      return {
-        sessions,
-        workspacePersistenceRevision: saved
-          ? state.workspacePersistenceRevision + 1
-          : state.workspacePersistenceRevision,
-      };
-    });
-    if (saved) get().appendTimeline(id, "note_saved");
   },
 
   closeSessions: (ids, opts) => {
@@ -679,10 +564,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const projectionChanged = previous
       ? sessionPatchChangesWorkspaceProjection(previous, patch)
       : false;
-    if (patch.changes !== undefined && previous && shouldRecordGitChange(previous.changes?.files, patch.changes?.files)) {
-      const fileCount = patch.changes?.files?.length ?? 0;
-      get().appendTimeline(id, "git_change", fileCount > 0 ? `${fileCount} files` : "clean");
-    }
     set((state) => ({
       sessions: state.sessions.map((s) =>
         s.id === id ? { ...s, ...patch, updatedAt: Date.now() } : s,
@@ -707,10 +588,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     );
     const resumeChanged = agentResume !== session?.agentResume;
     if (update || resumeChanged) {
-      // The wrapper and native hook can report the same process start through
-      // different channels. Updating resume metadata must not manufacture a
-      // second lifecycle entry for an already-detected agent.
-      if (update) get().appendTimeline(id, "agent_start", AGENT_NAMES[agent] ?? agent);
       get().updateSession(id, {
         ...(update?.patch ?? {}),
         agentResume,
@@ -768,9 +645,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       || session?.agentActivity === "waiting_confirmation";
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
-    if (completedTurn) {
-      get().appendTimeline(id, "agent_stop", session?.agent ? (AGENT_NAMES[session.agent] ?? session.agent) : undefined);
-    }
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && completedTurn && session?.agent) {
@@ -797,7 +671,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     const update = agentBusyUpdate(session);
     if (update) {
-      if (session?.agent) get().appendTimeline(id, "agent_start", AGENT_NAMES[session.agent] ?? session.agent);
       get().updateSession(id, update.patch);
     }
   },
@@ -807,7 +680,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = isSessionObserved(get().activeSessionId, id);
     const update = agentExitedUpdate(session, exitCode, isActive);
     if (!update) return;
-    get().appendTimeline(id, "agent_stop", session?.agent ? (AGENT_NAMES[session.agent] ?? session.agent) : undefined);
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && session?.agent) {
@@ -841,18 +713,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     const update = commandDetectedUpdate(session, command);
     if (update) {
-      if (session?.remote) {
-        recordLocalUsageEvent({
-          event: "ssh.terminal.command_started",
-          sessionId: id,
-          correlationId: update.patch.startedAt ? `command:${update.patch.startedAt}` : undefined,
-          success: true,
-          outcome: "started",
-          attributes: { transport: "ssh" },
-        });
-      }
       get().recordRecentCommand(command);
-      get().appendTimeline(id, "command_start", command);
       get().updateSession(id, update.patch);
     }
   },
@@ -862,26 +723,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = isSessionObserved(get().activeSessionId, id);
     const update = commandFinishedUpdate(session, exitCode, isActive);
     if (!update) return;
-    if (session?.remote) {
-      recordLocalUsageEvent({
-        event: "ssh.terminal.command_finished",
-        sessionId: id,
-        correlationId: session.startedAt ? `command:${session.startedAt}` : undefined,
-        durationMs: session.startedAt ? localUsageDuration(session.startedAt) : undefined,
-        success: exitCode === 0,
-        outcome: exitCode === 0 ? "completed" : "failed",
-        attributes: {
-          transport: "ssh",
-          exit_status: exitCode === 0 ? "zero" : "nonzero",
-        },
-      });
-    }
     if (session?.previewCommandProvenance) {
       void previewTerminalCommandFinished(previewSourceContext(session), session.previewCommandProvenance).catch(() => {
         // A missing native completion record keeps restart fail-closed.
       });
     }
-    get().appendTimeline(id, "command_end", session?.lastCommand);
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
     if (!isActive && session?.lastCommand) {

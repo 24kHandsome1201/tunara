@@ -24,7 +24,6 @@ import {
   isTerminalWallpaperSource,
   type TerminalWallpaperSource,
 } from "@/modules/terminal/lib/terminal-wallpaper";
-import { hydrateLocalUsageLoggingEnabled, setLocalUsageLoggingEnabled } from "@/modules/usage-log/local-usage-log";
 
 export type CursorStyle = "bar" | "block" | "underline";
 export type PresentationMode = "workspace" | "pure";
@@ -55,7 +54,6 @@ export interface AppearanceSettings {
   keybindings: KeybindingConfig;
   language: Language;
   globalShortcut: string;
-  localUsageLoggingEnabled: boolean;
   terminalWallpaperEnabled: boolean;
   terminalWallpaperSource: TerminalWallpaperSource;
   terminalWallpaperBlur: number;
@@ -97,7 +95,6 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
-  localUsageLoggingEnabled: false,
   terminalWallpaperEnabled: DEFAULT_TERMINAL_WALLPAPER.enabled,
   terminalWallpaperSource: DEFAULT_TERMINAL_WALLPAPER.source,
   terminalWallpaperBlur: DEFAULT_TERMINAL_WALLPAPER.blur,
@@ -182,7 +179,6 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
 function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
   const appearance = sanitizeRawAppearance(config?.appearance);
   const terminalInteractions = config?.terminal_interactions;
-  const localUsageLogging = config?.local_usage_logging;
   // Do not interpret a future schema with this version's semantics. The Rust
   // merge path preserves the future table, while this client falls back to the
   // conservative smart policy until it understands that version.
@@ -194,8 +190,6 @@ function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings
     terminalSecondaryClick: secondaryClick === "menu" || secondaryClick === "disabled" || secondaryClick === "smart"
       ? secondaryClick
       : DEFAULT_SETTINGS.terminalSecondaryClick,
-    localUsageLoggingEnabled: (localUsageLogging?.version === undefined || localUsageLogging.version === 1)
-      && localUsageLogging?.enabled === true,
     keybindings: sanitizeKeybindings(config?.keybindings),
   };
 }
@@ -234,16 +228,12 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       version: 1,
       secondary_click: s.terminalSecondaryClick,
     },
-    local_usage_logging: {
-      version: 1,
-      enabled: s.localUsageLoggingEnabled,
-    },
   };
 }
 
-export type InspectorTab = "overview" | "changes" | "files" | "transfers" | "forwarding" | "preview" | "notes";
+export type InspectorTab = "changes" | "files" | "transfers" | "forwarding" | "preview";
 
-export type SettingsTab = "appearance" | "terminal" | "accessibility" | "shortcuts" | "workflows" | "cli" | "ssh" | "app";
+export type SettingsTab = "appearance" | "terminal" | "accessibility" | "shortcuts" | "ssh" | "app";
 
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
 
@@ -372,9 +362,7 @@ interface UIState extends AppearanceSettings {
   commandUsage: Record<string, number>;
   /** Bumped when saved SSH profiles or ~/.ssh/config import results change. Not persisted. */
   sshProfilesEpoch: number;
-  broadcastInput: boolean;
   explorerFollowCwd: boolean;
-  shellIntegrationHintDismissed: boolean;
   downloadMaxFiles: number;
   downloadMaxFileBytes: number;
   downloadMaxTotalBytes: number;
@@ -384,9 +372,7 @@ interface UIState extends AppearanceSettings {
   showTerminal: () => void;
   openSshHosts: () => void;
   setNativeFullscreen: (fullscreen: boolean) => void;
-  toggleBroadcastInput: () => void;
   setExplorerFollowCwd: (enabled: boolean) => void;
-  dismissShellIntegrationHint: () => void;
   setDownloadLimits: (limits: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number }) => void;
   setSidebarVisible: (visible: boolean) => void;
   setPanelVisible: (visible: boolean) => void;
@@ -451,7 +437,6 @@ interface UIState extends AppearanceSettings {
   setTerminalSecondaryClick: (mode: TerminalSecondaryClickMode) => void;
   resetTerminalInteractions: () => void;
   setGlobalShortcut: (shortcut: string) => void;
-  setLocalUsageLoggingEnabled: (enabled: boolean) => Promise<void>;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
   resetKeybindings: () => void;
   resetAppearance: () => void;
@@ -474,7 +459,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     trafficLightWidth: 0,
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: emptySplitState(),
-    inspectorTab: "overview" as InspectorTab,
+    inspectorTab: "changes" as InspectorTab,
     settingsTab: "appearance" as SettingsTab,
     fileTabs: [],
     activeFileTabId: null,
@@ -488,9 +473,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     sshProfilesEpoch: 0,
     // Hydrated from the workspace snapshot in useInit; starts empty.
     commandUsage: {},
-    broadcastInput: false,
     explorerFollowCwd: true,
-    shellIntegrationHintDismissed: false,
     downloadMaxFiles: 100,
     downloadMaxFileBytes: 100 * 1024 * 1024,
     downloadMaxTotalBytes: 1024 ** 3,
@@ -522,9 +505,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       sshPrefill: null,
     }),
     setNativeFullscreen: (nativeFullscreen) => set({ nativeFullscreen }),
-    toggleBroadcastInput: () => set((s) => ({ broadcastInput: !s.broadcastInput })),
     setExplorerFollowCwd: (explorerFollowCwd) => set({ explorerFollowCwd }),
-    dismissShellIntegrationHint: () => set({ shellIntegrationHintDismissed: true }),
     setDownloadLimits: (limits) => set((s) => ({
       downloadMaxFiles: limits.maxFiles ?? s.downloadMaxFiles,
       downloadMaxFileBytes: limits.maxFileBytes ?? s.downloadMaxFileBytes,
@@ -699,15 +680,10 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       };
     }),
     setGlobalShortcut: (globalShortcut) => set({ globalShortcut: typeof globalShortcut === "string" ? globalShortcut : DEFAULT_SETTINGS.globalShortcut }),
-    setLocalUsageLoggingEnabled: async (enabled) => {
-      const normalized = enabled === true;
-      await setLocalUsageLoggingEnabled(normalized);
-      set({ localUsageLoggingEnabled: normalized });
-    },
     setKeybinding: (action, binding) =>
       set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
     resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
-    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings, language: s.language, localUsageLoggingEnabled: s.localUsageLoggingEnabled })),
+    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings, language: s.language })),
     setLanguage: (language) => {
       const next = isLanguage(language) ? language : DEFAULT_SETTINGS.language;
       applyLanguage(next);
@@ -723,7 +699,6 @@ export async function loadUserConfig(): Promise<void> {
     const loaded = await loadTunaraConfig();
     const sanitized = sanitizeConfig(loaded.config);
     configHydrating = true;
-    hydrateLocalUsageLoggingEnabled(sanitized.localUsageLoggingEnabled);
     applyLanguage(sanitized.language);
     useUIStore.setState({
       ...sanitized,
@@ -739,7 +714,6 @@ export async function loadUserConfig(): Promise<void> {
     configHydrating = false;
   } catch (e) {
     configHydrating = true;
-    hydrateLocalUsageLoggingEnabled(false);
     useUIStore.setState({
       configLoaded: true,
       configError: e instanceof Error ? e.message : String(e),
@@ -758,7 +732,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut", "localUsageLoggingEnabled", "terminalWallpaperEnabled", "terminalWallpaperSource", "terminalWallpaperBlur", "terminalWallpaperVeil"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut", "terminalWallpaperEnabled", "terminalWallpaperSource", "terminalWallpaperBlur", "terminalWallpaperVeil"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();
