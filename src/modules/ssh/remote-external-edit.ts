@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fsReadFile } from "@/modules/fs/fs-bridge";
 import { sshDownload, sshReadFile, sshWriteTextFile } from "@/modules/ssh/remote-fs-bridge";
+import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { openInEditorWithToast } from "@/ui/lib/open-in-editor";
 import { useUIStore } from "@/state/ui";
 import { t } from "@/modules/i18n";
@@ -33,11 +34,12 @@ export function stopRemoteExternalEdit(sessionId: string, remotePath?: string): 
 
 export async function openRemoteInExternalEditor(options: {
   sessionId: string;
-  remotePtyId: number;
+  binding: SessionBindingV1;
   remotePath: string;
   editor: string;
 }): Promise<void> {
-  const { sessionId, remotePtyId, remotePath, editor } = options;
+  const { sessionId, binding, remotePath, editor } = options;
+  const remotePtyId = binding.physicalPtyId;
   const localPath = await remoteEditStagingPath(sessionId, remotePath);
   const remote = await sshReadFile(remotePtyId, remotePath);
   if (remote.kind !== "text" || !remote.fingerprint) {
@@ -59,7 +61,7 @@ export async function openRemoteInExternalEditor(options: {
   const timer = setInterval(() => {
     void fsReadFile(localPath).then(async (result) => {
       if (result.kind !== "text" || result.content === lastContent) return;
-      const written = await sshWriteTextFile(remotePtyId, remotePath, result.content, fingerprint);
+      const written = await sshWriteTextFile(binding, remotePath, result.content, fingerprint);
       if (written.status === "saved") {
         fingerprint = written.fingerprint;
         lastContent = result.content;

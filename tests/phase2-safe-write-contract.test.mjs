@@ -61,7 +61,10 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.match(transaction, /release_replace_lock/);
   assert.match(transaction, /async fn cleanup/);
   assert.match(backend, /mv -f --/);
-  assert.match(backend, /remote_write_lock\(id, &path\)/);
+  assert.match(backend, /remote_write_lock\(binding\.physical_pty_id, &path\)/);
+  assert.match(backend, /get_for_ssh_binding\(&binding\)/);
+  assert.match(backend, /acquire_commit_lease\(binding\)/);
+  assert.match(backend, /binding: SessionBindingV1/);
   assert.match(backend, /outcomeUnknown:/);
   assert.match(backend, /lockOwner=\{replace_lock_owner\}/);
   assert.match(backend, /cleanup_owned_write_residue/);
@@ -78,9 +81,12 @@ test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
   assert.doesNotMatch(backend, /remove_file\(&path\)/);
   assert.doesNotMatch(transaction, /remove.*target/);
   assert.match(bridge, /invoke<WriteTextResult>\("ssh_fs_write_text_file"/);
+  assert.match(bridge, /sshWriteTextFile\(\s*binding: SessionBindingV1/);
+  assert.match(bridge, /"ssh_fs_write_text_file", \{\s*binding,/);
   assert.match(runtime, /ssh::sftp::ssh_fs_write_text_file/);
   assert.match(runtime, /ssh::sftp::ssh_fs_reconcile_text_write/);
   assert.match(bridge, /invoke<WriteTextResult>\("ssh_fs_reconcile_text_write"/);
+  assert.match(bridge, /"ssh_fs_reconcile_text_write", \{\s*binding,/);
   assert.match(bridge, /parseSshWriteOutcomeUnknown\(error\)/);
   assert.match(reconcile, /cleanupPending: boolean/);
   assert.match(reconcile, /replaceLockOwner: string/);

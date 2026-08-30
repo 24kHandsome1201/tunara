@@ -96,6 +96,7 @@ pub(crate) fn safe_ipc_error_with_policy(
         } else if raw.contains("upload cancelled") || raw.contains(r#""kind":"cancelled""#) {
             "SSH_TRANSFER_CANCELLED"
         } else if raw.contains("does not support safe atomic overwrite")
+            || raw.contains("does not support safe atomic new-file upload")
             || raw.contains(r#""kind":"unsupported""#)
         {
             "SSH_TRANSFER_UNSUPPORTED"
@@ -570,28 +571,32 @@ async fn open_with_cancellation(
     open_attempt_id: &str,
     shared: Option<connection::SharedSshTransport>,
 ) -> Result<(SshSession, OpenAttemptGuard), String> {
-    if let Some(shared) = shared {
-        let logical_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
-        let (_cancel, guard) = register_open_attempt(open_attempt_id, logical_id);
-        let ssh = connection::SshSession::open_from_shared(params, on_event, shared).await?;
-        return Ok((ssh, guard));
-    }
     let logical_session_id = (!params.session_id.is_empty()).then_some(params.session_id.as_str());
     let (cancel, guard) = register_open_attempt(open_attempt_id, logical_session_id);
     let (cancel_transport, cancel_receiver) = tokio::sync::watch::channel(false);
-    let ssh = tokio::select! {
-        result = async {
-            if let Some(jump) = jump {
-                SshSession::open_via_jump(params, jump, on_event, cancel_receiver).await.map_err(|error| match error {
+    let open = async move {
+        if let Some(shared) = shared {
+            connection::SshSession::open_from_shared(params, on_event, shared, cancel_receiver)
+                .await
+        } else if let Some(jump) = jump {
+            SshSession::open_via_jump(params, jump, on_event, cancel_receiver)
+                .await
+                .map_err(|error| match error {
                     RoutedOpenError::Jump(message) => format!("jump hop: {message}"),
                     RoutedOpenError::Target(message) => format!("target hop: {message}"),
                 })
-            } else {
-                SshSession::open_with_cancel(params, on_event, cancel_receiver).await
-            }
-        } => result,
+        } else {
+            SshSession::open_with_cancel(params, on_event, cancel_receiver).await
+        }
+    };
+    tokio::pin!(open);
+    let ssh = tokio::select! {
+        result = &mut open => result,
         _ = cancel => {
             let _ = cancel_transport.send(true);
+            if let Ok(ssh) = (&mut open).await {
+                let _ = ssh.close();
+            }
             Err("SSH connection canceled".to_string())
         },
     }?;

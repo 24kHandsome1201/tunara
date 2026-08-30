@@ -20,7 +20,8 @@ const recoveryRecord: TransferJournalRecord = {
   recoveryId: "recovery-1", transferId: "old-transfer", attempt: 2, direction: "download",
   session: "session-1", endpoint: "one.example:22", user: "deploy", hostKey: "sha256:key",
   source: "/remote/a", sourceIdentity: { kind: "remote", path: "/remote/a", size: 3, permissions: 420 },
-  finalPath: "/home/user/a", partial: { kind: "local", path: "/home/user/.a.tunara-x.partial", size: 3, dev: 1, ino: 2 },
+  finalPath: "/home/user/a", overwrite: false,
+  partial: { kind: "local", path: "/home/user/.a.tunara-x.partial", size: 3, dev: 1, ino: 2 },
   phase: "paused", bytes: 3, prefixSha256: "a".repeat(64), finalSha256: null,
   commitIntent: false, paused: true, needsReconcile: true,
 };
@@ -290,17 +291,12 @@ describe("transfer queue", () => {
   });
 
   it("queues a byte-level resume from a verified partial without deleting it", async () => {
-    mockIPC((command) => {
-      if (command === "ssh_transfer_recovery_dismiss") return undefined;
-      throw new Error(`unexpected command: ${command}`);
-    });
     const runner = vi.fn(async (item) => {
       expect(item).toMatchObject({
         direction: "download",
         source: "/remote/a",
         destination: "/home/user/a",
-        resumeFrom: 3,
-        resumePartial: "/home/user/.a.tunara-x.partial",
+        recoveryId: "recovery-1",
         createParents: true,
       });
       return { outcome: { status: "completed" as const, bytesTransferred: 3 } };
@@ -311,6 +307,52 @@ describe("transfer queue", () => {
     expect(store.getState().recoveries).toEqual([]);
     await tick();
     expect(runner).toHaveBeenCalledOnce();
+  });
+
+  it("preserves explicit no-overwrite semantics for a hidden upload partial", async () => {
+    const uploadRecovery: TransferJournalRecord = {
+      ...recoveryRecord,
+      direction: "upload",
+      source: "/home/user/a",
+      sourceIdentity: { kind: "local", path: "/home/user/a", size: 3, dev: 1, ino: 2 },
+      finalPath: "/remote/a",
+      overwrite: false,
+      partial: { kind: "remote", path: "/remote/.a.tunara-x.partial", endpoint: recoveryRecord.endpoint, size: 3, permissions: 384 },
+    };
+    const runner = vi.fn(async (item) => {
+      expect(item).toMatchObject({ recoveryId: "recovery-1", conflict: "rename" });
+      return { outcome: { status: "completed" as const, bytesTransferred: 3 } };
+    });
+    const store = createTransferStore(runner);
+    store.setState({ recoveries: [{ record: uploadRecovery, busy: false }] });
+
+    expect(await store.getState().resumeRecovery(uploadRecovery.recoveryId)).toBe("queued");
+    await tick();
+    expect(runner).toHaveBeenCalledOnce();
+  });
+
+  it("restores a recovery record when its queued resume is cancelled before starting", async () => {
+    mockIPC((command) => {
+      if (command !== "ssh_transfer_journal_load") throw new Error(`unexpected command: ${command}`);
+      return [recoveryRecord];
+    });
+    const store = createTransferStore(async () => new Promise(() => {}));
+    store.getState().enqueueBatch(Array.from({ length: 4 }, (_, index) => ({
+      ...request(index + 10),
+      transferId: `blocker-${index}`,
+    })));
+    await tick();
+    store.setState({ recoveries: [{ record: recoveryRecord, busy: false }] });
+
+    expect(await store.getState().resumeRecovery(recoveryRecord.recoveryId)).toBe("queued");
+    const resumed = store.getState().materializeItems().find((item) => item.recoveryId === recoveryRecord.recoveryId);
+    expect(resumed?.status).toBe("queued");
+    expect(store.getState().recoveries).toEqual([]);
+
+    await store.getState().cancel(resumed!.transferId);
+
+    expect(store.getState().itemsById.get(resumed!.transferId)?.status).toBe("cancelled");
+    expect(store.getState().recoveries).toEqual([{ record: recoveryRecord, busy: false }]);
   });
 });
 

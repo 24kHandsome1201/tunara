@@ -198,9 +198,8 @@ export function acceptSshTransferEvent(
   return event.sequence > previous.sequence ? event : previous;
 }
 
-export type SshTransferResumeOptions = {
-  resumeFrom?: number;
-  resumePartial?: string;
+export type SshTransferOptions = {
+  recoveryId?: string;
   createParents?: boolean;
 };
 
@@ -211,12 +210,11 @@ export function sshTransferDownload(
   remotePath: string,
   localPath: string,
   onEvent: (event: SshTransferEvent) => void,
-  options?: SshTransferResumeOptions,
+  options?: SshTransferOptions,
 ): Promise<{ outcome: SshTransferOutcome }> {
   return invoke<{ outcome: SshTransferOutcome }>("ssh_transfer_download", {
     binding, transferId, attempt, remotePath, localPath, onEvent: transferChannel(onEvent),
-    resumeFrom: options?.resumeFrom ?? null,
-    resumePartial: options?.resumePartial ?? null,
+    recoveryId: options?.recoveryId ?? null,
     createParents: options?.createParents ?? null,
   });
 }
@@ -229,12 +227,11 @@ export function sshTransferUpload(
   remotePath: string,
   overwrite: boolean,
   onEvent: (event: SshTransferEvent) => void,
-  options?: SshTransferResumeOptions,
+  options?: SshTransferOptions,
 ): Promise<{ outcome: SshTransferOutcome }> {
   return invoke<{ outcome: SshTransferOutcome }>("ssh_transfer_upload", {
     binding, transferId, attempt, localPath, remotePath, overwrite, onEvent: transferChannel(onEvent),
-    resumeFrom: options?.resumeFrom ?? null,
-    resumePartial: options?.resumePartial ?? null,
+    recoveryId: options?.recoveryId ?? null,
   });
 }
 
@@ -260,6 +257,8 @@ export interface TransferJournalRecord {
     | { kind: "remote"; path: string; size: number; permissions: number | null }
     | { kind: "unverified" };
   finalPath: string;
+  /** Null only for journals written before publish semantics were explicit. */
+  overwrite: boolean | null;
   partial: TransferPartialIdentity;
   phase: string;
   bytes: number;

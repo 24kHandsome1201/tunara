@@ -103,13 +103,15 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
             <div style={{ color: updateStatus === "error" ? "var(--c-error)" : "var(--c-text-primary)", fontWeight: 600, marginBottom: 3 }}>
               {updateStatus === "checking" ? t("settings.app.updates.checking")
                 : updateStatus === "current" ? t("settings.app.updates.current")
-                : updateStatus === "available" || updateStatus === "downloading" || updateStatus === "restarting" ? t("settings.app.updates.available", { version: updateVersion })
+                : updateStatus === "available" || updateStatus === "downloading" || updateStatus === "restartReady" || updateStatus === "restarting" ? t("settings.app.updates.available", { version: updateVersion })
                 : updateStatus === "error" ? t("settings.app.updates.error")
                 : t("settings.app.updates.ready")}
             </div>
-            {(updateStatus === "downloading" || updateStatus === "restarting") && (
+            {(updateStatus === "downloading" || updateStatus === "restartReady" || updateStatus === "restarting") && (
               <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>
-                {updateStatus === "restarting"
+                {updateStatus === "restartReady"
+                  ? t("settings.app.updates.restart_ready")
+                  : updateStatus === "restarting"
                   ? t("settings.app.updates.restarting")
                   : updateProgress === null
                     ? t("settings.app.updates.downloading")
@@ -133,7 +135,7 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
               className={canInstallUpdate ? "hover-primary" : "hover-bg"}
               style={{ padding: "7px 12px", borderRadius: "var(--r-btn)", border: canInstallUpdate ? "none" : "1px solid var(--c-border-2)", background: canInstallUpdate ? "var(--c-btn-primary-bg)" : "var(--c-bg-white)", color: canInstallUpdate ? "var(--c-btn-primary-text)" : "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: updateBusy ? "wait" : "pointer" }}
             >
-              {canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("settings.app.updates.retry") : t("settings.app.updates.check")}
+              {updateStatus === "restartReady" ? t("settings.app.updates.restart") : canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("settings.app.updates.retry") : t("settings.app.updates.check")}
             </button>
           </div>
         </div>

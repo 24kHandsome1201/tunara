@@ -32,10 +32,12 @@ import { parseTabularPreview, tabularKindFromName, type TabularPreview } from "@
 import { parentDirectoryPath, siblingPreviewPaths } from "@/modules/editor/sibling-files";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import {
+  completeEditorDraftSaveAttempt,
   discardEditorDraft,
   editorDraftKey,
   readEditorDraft,
   retainEditorDraft,
+  subscribeEditorDraftCompletions,
   type EditorDraftSaveState,
 } from "@/modules/editor/editor-draft-registry";
 import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor/scroll-position";
@@ -726,12 +728,19 @@ function EditorSurface({
   const [mode, setMode] = useState<"edit" | "preview">(isNotebook ? "preview" : "edit");
   const [saveState, setSaveState] = useState<SaveState>(() => {
     if (!restoredDraft) return "idle";
+    if ((restoredDraft.saveState === "saving" || restoredDraft.saveState === "reconciling") && restoredDraft.saveAttemptId) {
+      return restoredDraft.saveState;
+    }
     if (restoredDraft.saveState === "saving" || restoredDraft.saveState === "reconciling") {
       return restoredDraft.unknownOutcome ? "unknown" : "error";
     }
     return restoredDraft.saveState;
   });
   const [unknownOutcome, setUnknownOutcome] = useState<SshWriteOutcomeUnknown | null>(restoredDraft?.unknownOutcome ?? null);
+  const [unknownAttemptContent, setUnknownAttemptContent] = useState<string | null>(
+    restoredDraft?.unknownAttemptContent ?? (restoredDraft?.unknownOutcome ? restoredDraft.content : null),
+  );
+  const [saveAttemptId, setSaveAttemptId] = useState<string | null>(restoredDraft?.saveAttemptId ?? null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findIndex, setFindIndex] = useState(-1);
@@ -741,6 +750,8 @@ function EditorSurface({
   const [operationError, setOperationError] = useState<OperationError | null>(null);
   const [reloadPending, setReloadPending] = useState(false);
   const dirty = content !== savedContent;
+  const mutationPending = saveState === "saving" || saveState === "reconciling" || saveState === "unknown";
+  const guardedDraft = dirty || mutationPending;
   const previewable = isMarkdown || tabularKindFromName(fileName) !== null;
   const siblings = useSiblingPaths(filePath, isRemote, remotePtyId);
   const lines = useMemo(() => content.split("\n"), [content]);
@@ -791,9 +802,9 @@ function EditorSurface({
   }, [filePath, sessionId]);
 
   useEffect(() => {
-    updateDirtyDraft(draftOwnerRef.current, dirty);
-    onDirtyChangeRef.current?.(dirty);
-  }, [dirty]);
+    updateDirtyDraft(draftOwnerRef.current, guardedDraft);
+    onDirtyChangeRef.current?.(guardedDraft);
+  }, [guardedDraft]);
 
   useLayoutEffect(() => {
     if (mode !== "edit") return;
@@ -809,9 +820,31 @@ function EditorSurface({
   }, [mode]);
 
   useEffect(() => {
-    retainEditorDraft(draftKey, { content, savedContent, fingerprint, saveState, unknownOutcome });
-  }, [content, draftKey, fingerprint, saveState, savedContent, unknownOutcome]);
+    retainEditorDraft(draftKey, {
+      content,
+      savedContent,
+      fingerprint,
+      saveState,
+      unknownOutcome,
+      unknownAttemptContent,
+      saveAttemptId,
+    });
+  }, [content, draftKey, fingerprint, saveAttemptId, saveState, savedContent, unknownAttemptContent, unknownOutcome]);
 
+  useEffect(() => subscribeEditorDraftCompletions(draftKey, (snapshot) => {
+    setSavedContent(snapshot.savedContent);
+    setFingerprint(snapshot.fingerprint);
+    setSaveState(snapshot.saveState);
+    setUnknownOutcome(snapshot.unknownOutcome);
+    setUnknownAttemptContent(snapshot.unknownAttemptContent);
+    setSaveAttemptId(snapshot.saveAttemptId);
+    if (snapshot.saveState === "saved") {
+      window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
+    }
+  }), [draftKey]);
+
+  const contentRef = useRef(content);
+  contentRef.current = content;
   const fingerprintRef = useRef(fingerprint);
   fingerprintRef.current = fingerprint;
   const refreshObservationRef = useRef<FileObservationV1 | undefined>(undefined);
@@ -847,12 +880,12 @@ function EditorSurface({
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
+      if (!guardedDraft) return;
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [guardedDraft]);
 
   const selectMatch = (direction: 1 | -1) => {
     const matchCount = mode === "preview" && isMarkdown ? previewMatchCount : matches.length;
@@ -873,64 +906,87 @@ function EditorSurface({
 
   const save = async () => {
     if (remoteDisconnected || !dirty || saveState === "saving" || saveState === "reconciling" || saveState === "unknown") return;
+    if (isRemote && (resource.transport !== "ssh" || !resource.binding)) return;
+    const attemptedContent = content;
+    const attemptId = globalThis.crypto?.randomUUID?.() ?? `editor-save-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    retainEditorDraft(draftKey, {
+      content,
+      savedContent,
+      fingerprint,
+      saveState: "saving",
+      unknownOutcome: null,
+      unknownAttemptContent: attemptedContent,
+      saveAttemptId: attemptId,
+    });
     setSaveState("saving");
     setUnknownOutcome(null);
+    setUnknownAttemptContent(attemptedContent);
+    setSaveAttemptId(attemptId);
     setOperationError(null);
     try {
-      const result = remotePtyId === undefined
-        ? await fsWriteTextFile(filePath, content, fingerprint)
-        : await sshWriteTextFile(remotePtyId, filePath, content, fingerprint);
+      const result = resource.transport === "ssh" && resource.binding
+        ? await sshWriteTextFile(resource.binding, filePath, attemptedContent, fingerprint)
+        : await fsWriteTextFile(filePath, attemptedContent, fingerprint);
       if (result.status === "conflict") {
         setOperationError(null);
-        setSaveState("conflict");
+        completeEditorDraftSaveAttempt(draftKey, attemptId, { status: "conflict" });
         return;
       }
-      setFingerprint(result.fingerprint);
-      setSavedContent(content);
       setOperationError(null);
-      setSaveState("saved");
-      window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
+      completeEditorDraftSaveAttempt(draftKey, attemptId, {
+        status: "saved",
+        fingerprint: result.fingerprint,
+      });
     } catch (error) {
       const outcome = remotePtyId === undefined ? null : parseSshWriteOutcomeUnknown(error);
       if (outcome) {
-        setUnknownOutcome(outcome);
         setOperationError(null);
-        setSaveState("unknown");
+        completeEditorDraftSaveAttempt(draftKey, attemptId, { status: "unknown", outcome });
         return;
       }
       setOperationError({ operation: "save", kind: classifyFileOperationError(error), detail: String(error) });
-      setSaveState("error");
+      completeEditorDraftSaveAttempt(draftKey, attemptId, { status: "error" });
     }
   };
 
   const reconcileUnknownSave = async () => {
-    if (remotePtyId === undefined || !unknownOutcome || saveState === "reconciling") return;
+    if (resource.transport !== "ssh" || !resource.binding || !unknownOutcome || unknownAttemptContent === null || saveState === "reconciling") return;
+    const attemptId = globalThis.crypto?.randomUUID?.() ?? `editor-reconcile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    retainEditorDraft(draftKey, {
+      content,
+      savedContent,
+      fingerprint,
+      saveState: "reconciling",
+      unknownOutcome,
+      unknownAttemptContent,
+      saveAttemptId: attemptId,
+    });
+    setSaveAttemptId(attemptId);
     setSaveState("reconciling");
     try {
       const { result } = await sshReconcileOutcomeUnknownTextWrite(
-        remotePtyId,
+        resource.binding,
         filePath,
         unknownOutcome.token,
       );
       if (result.status === "conflict") {
-        setUnknownOutcome(null);
-        setSaveState("conflict");
+        completeEditorDraftSaveAttempt(draftKey, attemptId, { status: "conflict" });
         return;
       }
-      setFingerprint(result.fingerprint);
-      setSavedContent(content);
-      setUnknownOutcome(null);
-      setSaveState("saved");
-      window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
+      completeEditorDraftSaveAttempt(draftKey, attemptId, {
+        status: "saved",
+        fingerprint: result.fingerprint,
+      });
     } catch {
       // The connection may still be down. Keep the signed outcome token and
       // draft mounted so the user can reconnect and retry the same check.
-      setSaveState("unknown");
+      completeEditorDraftSaveAttempt(draftKey, attemptId, { status: "retryUnknown" });
     }
   };
 
   const reload = async () => {
     if (remoteDisconnected || reloadPending) return;
+    const contentAtStart = content;
     setReloadPending(true);
     setOperationError(null);
     try {
@@ -942,10 +998,13 @@ function EditorSurface({
         setSaveState("error");
         return;
       }
+      if (contentRef.current !== contentAtStart) return;
       setContent(result.content);
       setSavedContent(result.content);
       setFingerprint(result.fingerprint);
       setUnknownOutcome(null);
+      setUnknownAttemptContent(null);
+      setSaveAttemptId(null);
       setOperationError(null);
       setSaveState("idle");
       setCloseConfirm(false);
@@ -1002,7 +1061,7 @@ function EditorSurface({
   };
 
   const requestClose = () => {
-    if (dirty) {
+    if (guardedDraft) {
       setCloseConfirm(true);
       return;
     }
@@ -1023,6 +1082,11 @@ function EditorSurface({
       // showing content that the central guard now considers clean.
       setCloseConfirm(false);
       setContent(savedContent);
+      setSaveState("idle");
+      setUnknownOutcome(null);
+      setUnknownAttemptContent(null);
+      setSaveAttemptId(null);
+      setOperationError(null);
       discardEditorDraft(draftKey);
       confirmDirtyDraftDiscard(draftOwnerRef.current);
       return;
@@ -1047,7 +1111,7 @@ function EditorSurface({
 
   return (
     <div className="file-editor-surface" onKeyDown={(event) => {
-      if (event.key === "Escape" && dirty) {
+      if (event.key === "Escape" && guardedDraft) {
         event.stopPropagation();
         setCloseConfirm(true);
       }
@@ -1064,7 +1128,7 @@ function EditorSurface({
         <div className="file-editor-identity">
           <span className="file-editor-kicker">{isRemote ? t("preview.editor.ssh") : t("preview.editor.local")}</span>
           <span className="file-editor-name" title={filePath}>{fileName}</span>
-          {dirty && <span className="file-editor-dirty" aria-label={t("preview.editor.unsaved")} />}
+          {guardedDraft && <span className="file-editor-dirty" aria-label={t("preview.editor.unsaved")} />}
         </div>
         <div className="file-editor-actions">
           {isNotebook ? (
@@ -1180,7 +1244,11 @@ function EditorSurface({
                 className="ui-native-control"
                 ref={textareaRef}
                 value={content}
-                onChange={(event) => { setContent(event.target.value); setSaveState("idle"); }}
+                readOnly={reloadPending}
+                onChange={(event) => {
+                  setContent(event.target.value);
+                  setSaveState((state) => state === "saving" || state === "reconciling" || state === "unknown" ? state : "idle");
+                }}
                 onScroll={(event) => {
                   sourceScrollRatioRef.current = normalizedScrollPosition(event.currentTarget.scrollTop, event.currentTarget.scrollHeight, event.currentTarget.clientHeight);
                   if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
@@ -1204,13 +1272,13 @@ function EditorSurface({
         <div className="file-editor-footer-actions">
           {isRemote ? (
             <button
-              disabled={remoteDisconnected || !sessionId || remotePtyId === undefined}
+              disabled={remoteDisconnected || !sessionId || resource.transport !== "ssh" || !resource.binding}
               title={t("preview.editor.external_remote_hint")}
               onClick={() => {
-                if (!sessionId || remotePtyId === undefined) return;
+                if (!sessionId || resource.transport !== "ssh" || !resource.binding) return;
                 void openRemoteInExternalEditor({
                   sessionId,
-                  remotePtyId,
+                  binding: resource.binding,
                   remotePath: filePath,
                   editor: externalEditor,
                 }).catch(() => {

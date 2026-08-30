@@ -475,7 +475,7 @@ pub struct SharedSshTransport {
 }
 
 async fn close_forward_channel_owned(channel: russh::Channel<russh::client::Msg>) {
-    // A forwarding channel is multiplexed with the interactive shell. Never
+    // A channel may be multiplexed with other interactive shells. Never
     // tear down the shared TCP transport merely because this channel's close
     // is slow; dropping the channel after the bounded close attempt cancels
     // only this open/relay.
@@ -491,6 +491,10 @@ impl ForwardChannel {
         Self {
             channel: Some(channel),
         }
+    }
+
+    fn into_inner(mut self) -> russh::Channel<russh::client::Msg> {
+        self.channel.take().expect("forward channel is present")
     }
 
     async fn finish(mut self) {
@@ -549,6 +553,86 @@ where
         _ = tokio::time::sleep(timeout) => Err("SSH port forward channel timed out".into()),
         result = &mut worker => result
             .map_err(|error| format!("SSH forward channel task failed: {error}"))?,
+    }
+}
+
+async fn await_pending_shell_open(
+    handle: Arc<Handle<ClientHandler>>,
+    cancelled: &mut watch::Receiver<bool>,
+    disconnected: &mut watch::Receiver<bool>,
+) -> Result<ForwardChannel, String> {
+    if *cancelled.borrow() {
+        return Err("SSH connection canceled".into());
+    }
+    if *disconnected.borrow() {
+        return Err("SSH session closed".into());
+    }
+    let mut worker = tokio::spawn(async move {
+        handle
+            .channel_open_session()
+            .await
+            .map(ForwardChannel::new)
+            .map_err(|error| format!("open session channel failed: {error}"))
+    });
+    tokio::select! {
+        biased;
+        _ = cancelled.changed() => Err("SSH connection canceled".into()),
+        _ = disconnected.changed() => Err("SSH session closed".into()),
+        _ = tokio::time::sleep(SSH_CHANNEL_SETUP_TIMEOUT) => Err(format!(
+            "open session channel timed out after {}s",
+            SSH_CHANNEL_SETUP_TIMEOUT.as_secs()
+        )),
+        result = &mut worker => result
+            .map_err(|error| format!("open session channel task failed: {error}"))?,
+    }
+}
+
+async fn await_pending_exec_open(
+    handle: Arc<Handle<ClientHandler>>,
+    cancelled: Option<&AtomicBool>,
+) -> Result<ForwardChannel, String> {
+    let mut worker = tokio::spawn(async move {
+        handle
+            .channel_open_session()
+            .await
+            .map(ForwardChannel::new)
+            .map_err(|error| format!("open exec channel failed: {error}"))
+    });
+    let cancellation = wait_for_exec_cancel(cancelled);
+    tokio::pin!(cancellation);
+    tokio::select! {
+        biased;
+        _ = &mut cancellation => Err("remote command cancelled".into()),
+        _ = tokio::time::sleep(SSH_CHANNEL_SETUP_TIMEOUT) => Err(format!(
+            "open exec channel timed out after {}s",
+            SSH_CHANNEL_SETUP_TIMEOUT.as_secs()
+        )),
+        result = &mut worker => result
+            .map_err(|error| format!("open exec channel task failed: {error}"))?,
+    }
+}
+
+async fn await_shell_setup_stage<T, E, F>(
+    label: &str,
+    cancelled: &mut watch::Receiver<bool>,
+    disconnected: &mut watch::Receiver<bool>,
+    future: F,
+) -> Result<T, String>
+where
+    E: Display,
+    F: Future<Output = Result<T, E>>,
+{
+    if *cancelled.borrow() {
+        return Err("SSH connection canceled".into());
+    }
+    if *disconnected.borrow() {
+        return Err("SSH session closed".into());
+    }
+    tokio::select! {
+        biased;
+        _ = cancelled.changed() => Err("SSH connection canceled".into()),
+        _ = disconnected.changed() => Err("SSH session closed".into()),
+        result = await_stage(label, SSH_CHANNEL_SETUP_TIMEOUT, future) => result,
     }
 }
 
@@ -760,6 +844,7 @@ impl SshSession {
             verified_host_key,
             transport_abort,
             reverse_hub,
+            cancel,
         )
         .await
     }
@@ -781,7 +866,7 @@ impl SshSession {
             .await
             .map_err(RoutedOpenError::Jump)?;
         let (target_handle, target_disconnected, verified_host_key, reverse_hub) =
-            connect_authenticated_stream(&target, on_event.clone(), cancel, stream)
+            connect_authenticated_stream(&target, on_event.clone(), cancel.clone(), stream)
                 .await
                 .map_err(RoutedOpenError::Target)?;
         Self::open_authenticated(
@@ -793,6 +878,7 @@ impl SshSession {
             verified_host_key,
             transport_abort,
             reverse_hub,
+            cancel,
         )
         .await
         .map_err(RoutedOpenError::Target)
@@ -808,6 +894,7 @@ impl SshSession {
         verified_host_key: Arc<std::sync::Mutex<Option<String>>>,
         transport_abort: Arc<std::net::TcpStream>,
         reverse_hub: ReverseForwardHub,
+        cancel: watch::Receiver<bool>,
     ) -> Result<SshSession, String> {
         let handle = Arc::new(handle);
         let verified = verified_host_key
@@ -833,6 +920,7 @@ impl SshSession {
                 jump_endpoint: None,
                 reverse_hub,
             },
+            cancel,
         )
         .await
     }
@@ -841,31 +929,30 @@ impl SshSession {
         params: ConnectParams,
         on_event: IpcChannel<PtyEvent>,
         shared: SharedSshTransport,
+        cancel: watch::Receiver<bool>,
     ) -> Result<SshSession, String> {
         if shared.transport_lost.load(Ordering::Acquire) {
             return Err("SSH transport is no longer live".into());
         }
         send_connection_status(&on_event, "openingShell");
-        Self::start_interactive_shell(params, on_event, shared).await
+        Self::start_interactive_shell(params, on_event, shared, cancel).await
     }
 
     async fn start_interactive_shell(
         params: ConnectParams,
         on_event: IpcChannel<PtyEvent>,
         shared: SharedSshTransport,
+        mut cancel: watch::Receiver<bool>,
     ) -> Result<SshSession, String> {
         let handle = shared.handle.clone();
         let mut disconnected = shared.disconnected.clone();
         send_connection_status(&on_event, "openingShell");
-        let mut channel = await_stage(
-            "open session channel",
-            SSH_CHANNEL_SETUP_TIMEOUT,
-            handle.channel_open_session(),
-        )
-        .await?;
-        if let Err(error) = await_stage(
+        let channel =
+            await_pending_shell_open(handle.clone(), &mut cancel, &mut disconnected).await?;
+        if let Err(error) = await_shell_setup_stage(
             "request PTY",
-            SSH_CHANNEL_SETUP_TIMEOUT,
+            &mut cancel,
+            &mut disconnected,
             channel.request_pty(
                 false,
                 "xterm-256color",
@@ -878,17 +965,18 @@ impl SshSession {
         )
         .await
         {
-            let _ = channel.close().await;
+            channel.finish().await;
             return Err(error);
         }
-        if let Err(error) = await_stage(
+        if let Err(error) = await_shell_setup_stage(
             "request shell",
-            SSH_CHANNEL_SETUP_TIMEOUT,
+            &mut cancel,
+            &mut disconnected,
             channel.request_shell(true),
         )
         .await
         {
-            let _ = channel.close().await;
+            channel.finish().await;
             return Err(error);
         }
 
@@ -900,17 +988,42 @@ impl SshSession {
         let mut bootstrap_output_filter = None;
         if params.inject_shell_integration || params.initial_cwd.is_some() {
             let completion_marker = bootstrap_completion_marker(&params.session_id);
-            match stage_remote_bootstrap(
+            let bootstrap_cancelled = AtomicBool::new(false);
+            let bootstrap = stage_remote_bootstrap(
                 &handle,
                 &params.session_id,
                 params.inject_shell_integration,
                 params.initial_cwd.as_deref(),
-            )
-            .await
-            {
+                Some(&bootstrap_cancelled),
+            );
+            tokio::pin!(bootstrap);
+            let staged = tokio::select! {
+                biased;
+                _ = cancel.changed() => {
+                    bootstrap_cancelled.store(true, Ordering::Release);
+                    let _ = (&mut bootstrap).await;
+                    channel.finish().await;
+                    return Err("SSH connection canceled".into());
+                }
+                _ = disconnected.changed() => {
+                    bootstrap_cancelled.store(true, Ordering::Release);
+                    let _ = (&mut bootstrap).await;
+                    channel.finish().await;
+                    return Err("SSH session closed".into());
+                }
+                result = &mut bootstrap => result,
+            };
+            match staged {
                 Ok(path) => {
                     let line = integration_source_line(&path);
-                    match channel.data(line.as_bytes()).await {
+                    match await_shell_setup_stage(
+                        "inject shell bootstrap",
+                        &mut cancel,
+                        &mut disconnected,
+                        channel.data(line.as_bytes()),
+                    )
+                    .await
+                    {
                         Ok(()) => {
                             bootstrap_output_filter = Some(SshBootstrapOutputFilter::new(
                                 line.as_bytes(),
@@ -924,7 +1037,14 @@ impl SshSession {
                     log::debug!("ssh bootstrap staging failed");
                     if let Some(cwd) = params.initial_cwd.as_deref() {
                         let line = initial_cwd_fallback_line(cwd, &params.session_id);
-                        match channel.data(line.as_bytes()).await {
+                        match await_shell_setup_stage(
+                            "inject initial cwd",
+                            &mut cancel,
+                            &mut disconnected,
+                            channel.data(line.as_bytes()),
+                        )
+                        .await
+                        {
                             Ok(()) => {
                                 bootstrap_output_filter = Some(SshBootstrapOutputFilter::new(
                                     line.as_bytes(),
@@ -939,6 +1059,16 @@ impl SshSession {
                 }
             }
         }
+
+        if *cancel.borrow() || *disconnected.borrow() {
+            channel.finish().await;
+            return Err(if *cancel.borrow() {
+                "SSH connection canceled".into()
+            } else {
+                "SSH session closed".into()
+            });
+        }
+        let mut channel = channel.into_inner();
 
         let (control, mut resize_rx) = SshControl::new();
         let pump_control = control.clone();
@@ -1316,6 +1446,17 @@ impl SshSession {
     /// Check overwrite support before streaming bytes so unsupported servers
     /// fail without leaving a remote partial file.
     pub async fn supports_sftp_posix_rename(&self) -> Result<bool, String> {
+        self.supports_sftp_extension("posix-rename@openssh.com")
+            .await
+    }
+
+    /// Check whether a new regular file can be published atomically without
+    /// replacing a racing destination.
+    pub async fn supports_sftp_hardlink(&self) -> Result<bool, String> {
+        self.supports_sftp_extension("hardlink@openssh.com").await
+    }
+
+    async fn supports_sftp_extension(&self, extension: &str) -> Result<bool, String> {
         let channel = await_stage(
             "open SFTP capability channel",
             SSH_CHANNEL_SETUP_TIMEOUT,
@@ -1340,13 +1481,7 @@ impl SshSession {
             raw.init(),
         )
         .await
-        .map(|version| {
-            version
-                .extensions
-                .get("posix-rename@openssh.com")
-                .map(String::as_str)
-                == Some("1")
-        });
+        .map(|version| version.extensions.get(extension).map(String::as_str) == Some("1"));
         let _ = raw.close_session();
         result
     }
@@ -1724,7 +1859,7 @@ impl SshSession {
     /// a "remote git unavailable" message instead of crashing the session.
     pub async fn exec(&self, command: &str, max_bytes: usize) -> Result<String, String> {
         exec_on(
-            &self.handle,
+            self.handle.clone(),
             command,
             max_bytes,
             Duration::from_secs(15),
@@ -1746,7 +1881,7 @@ impl SshSession {
         cancelled: Arc<AtomicBool>,
     ) -> Result<String, String> {
         exec_on(
-            &self.handle,
+            self.handle.clone(),
             command,
             max_bytes,
             Duration::from_secs(15),
@@ -1767,7 +1902,7 @@ impl SshSession {
         max_bytes: usize,
     ) -> Result<String, String> {
         exec_on(
-            &self.handle,
+            self.handle.clone(),
             command,
             max_bytes,
             Duration::from_secs(15),
@@ -1786,7 +1921,7 @@ impl SshSession {
         request_accepted: &(dyn Fn() + Sync),
     ) -> Result<String, String> {
         exec_on(
-            &self.handle,
+            self.handle.clone(),
             command,
             max_bytes,
             Duration::from_secs(15),
@@ -1828,7 +1963,7 @@ fn stderr_only_is_error(allow_nonzero: bool, exit_status: Option<u32>) -> bool {
 /// `SshSession::exec`, as a free function so it can also run during
 /// `SshSession::open` (integration staging) before the session is constructed.
 async fn exec_on(
-    handle: &Handle<ClientHandler>,
+    handle: Arc<Handle<ClientHandler>>,
     command: &str,
     max_bytes: usize,
     timeout: Duration,
@@ -1839,15 +1974,10 @@ async fn exec_on(
     if cancelled.is_some_and(|token| token.load(Ordering::Acquire)) {
         return Err("remote command cancelled".into());
     }
-    let mut channel = await_stage(
-        "open exec channel",
-        SSH_CHANNEL_SETUP_TIMEOUT,
-        handle.channel_open_session(),
-    )
-    .await?;
+    let mut channel = await_pending_exec_open(handle, cancelled).await?;
     crate::modules::perf_counters::ssh_exec_channel();
     if cancelled.is_some_and(|token| token.load(Ordering::Acquire)) {
-        let _ = channel.close().await;
+        channel.finish().await;
         return Err("remote command cancelled".into());
     }
     if let Err(error) = await_stage(
@@ -1857,7 +1987,7 @@ async fn exec_on(
     )
     .await
     {
-        let _ = channel.close().await;
+        channel.finish().await;
         return Err(error);
     }
     if let Some(notify) = request_accepted {
@@ -1934,7 +2064,7 @@ async fn exec_on(
     // released (russh does not do this on drop). On the clean Eof/Close
     // path it's a harmless no-op. Errors here are non-fatal — the command
     // already produced (or failed to produce) its output.
-    let _ = channel.close().await;
+    channel.finish().await;
 
     if timed_out {
         return Err(format!("exec timed out ({}s)", timeout.as_secs()));
@@ -2004,21 +2134,22 @@ async fn wait_for_exec_cancel(cancelled: Option<&AtomicBool>) {
 /// mktemp/base64 or with exec disabled; the caller can still attempt a bounded
 /// direct cwd restore.
 async fn stage_remote_bootstrap(
-    handle: &Handle<ClientHandler>,
+    handle: &Arc<Handle<ClientHandler>>,
     session_id: &str,
     inject_shell_integration: bool,
     initial_cwd: Option<&str>,
+    cancelled: Option<&AtomicBool>,
 ) -> Result<String, String> {
     let script = render_remote_bootstrap(session_id, inject_shell_integration, initial_cwd);
     let encoded = B64.encode(script.as_bytes());
     let command = integration_stage_command(&encoded);
     let out = exec_on(
-        handle,
+        handle.clone(),
         &command,
         4096,
         Duration::from_secs(5),
         false,
-        None,
+        cancelled,
         None,
     )
     .await?;

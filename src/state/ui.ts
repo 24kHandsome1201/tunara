@@ -757,6 +757,38 @@ function enqueueConfigSave(settings: RawTunaraConfig): Promise<void> {
   return operation;
 }
 
+function persistCurrentUserConfig(): Promise<void> {
+  return enqueueConfigSave(settingsToRawConfig(useUIStore.getState()))
+    .then(() => useUIStore.setState({ configError: null }))
+    .then(() => { configPersistFailing = false; })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      const alreadyFailing = configPersistFailing;
+      configPersistFailing = true;
+      useUIStore.setState({ configError: message });
+      if (!alreadyFailing) {
+        useUIStore.getState().addToast({ title: t("settings.config_error"), subtitle: message, variant: "error" });
+      }
+      throw error;
+    });
+}
+
+/** Drain the debounced config writer before a process-level restart. */
+export async function flushUserConfig(): Promise<boolean> {
+  const state = useUIStore.getState();
+  if (!state.configLoaded || configHydrating) return false;
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  try {
+    await persistCurrentUserConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 useUIStore.subscribe(
   (s) => PERSIST_KEYS.map((k) => s[k]),
   () => {
@@ -765,18 +797,7 @@ useUIStore.subscribe(
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       persistTimer = null;
-      enqueueConfigSave(settingsToRawConfig(useUIStore.getState()))
-        .then(() => useUIStore.setState({ configError: null }))
-        .then(() => { configPersistFailing = false; })
-        .catch((e) => {
-          const message = e instanceof Error ? e.message : String(e);
-          const alreadyFailing = configPersistFailing;
-          configPersistFailing = true;
-          useUIStore.setState({ configError: message });
-          if (!alreadyFailing) {
-            useUIStore.getState().addToast({ title: t("settings.config_error"), subtitle: message, variant: "error" });
-          }
-        });
+      void persistCurrentUserConfig().catch(() => {});
     }, 300);
   },
   { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },

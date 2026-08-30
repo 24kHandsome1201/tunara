@@ -18,7 +18,8 @@ use tokio::sync::Notify;
 use super::super::connection::await_stage;
 use super::super::diagnostics::SessionBindingV1;
 use super::super::transfer_journal::{
-    self, PartialIdentity, SourceIdentity, TransferJournalRecord,
+    self, PartialIdentity, RecoveryObservation, RecoveryPreparation, SourceIdentity,
+    TransferJournalRecord,
 };
 use super::super::{sftp, sftp_common};
 use crate::modules::pty::{PtyState, Session};
@@ -483,6 +484,49 @@ fn local_snapshot(path: &Path) -> Result<(u64, String, PartialIdentity), String>
     ))
 }
 
+fn validated_resume_record(
+    preparation: RecoveryPreparation,
+    direction: &str,
+    source: &str,
+    final_path: &str,
+) -> Result<TransferJournalRecord, String> {
+    let record = preparation.record;
+    if preparation.observation != RecoveryObservation::PartialMatches
+        || !record.paused
+        || record.commit_intent
+        || record.bytes == 0
+        || record.direction != direction
+        || record.source != source
+        || record.final_path != final_path
+    {
+        return Err("recovery record does not match the requested transfer".into());
+    }
+    let expected_shape = match direction {
+        "download" => {
+            matches!(&record.source_identity, SourceIdentity::Remote { .. })
+                && matches!(&record.partial, PartialIdentity::Local { .. })
+                && !record.overwrite.unwrap_or(false)
+        }
+        "upload" => {
+            matches!(&record.source_identity, SourceIdentity::Local { .. })
+                && matches!(&record.partial, PartialIdentity::Remote { .. })
+        }
+        _ => false,
+    };
+    if !expected_shape {
+        return Err("recovery record direction or path ownership is invalid".into());
+    }
+    Ok(record)
+}
+
+fn upload_overwrite(record: Option<&TransferJournalRecord>, requested: bool) -> bool {
+    record.map_or(requested, |record| {
+        record.overwrite.unwrap_or_else(|| {
+            matches!(&record.partial, PartialIdentity::Remote { path, .. } if path != &record.final_path)
+        })
+    })
+}
+
 fn validate_download_completion(bytes_transferred: u64, expected: u64) -> Result<(), String> {
     if bytes_transferred == expected {
         Ok(())
@@ -623,8 +667,7 @@ pub async fn ssh_transfer_download(
     attempt: u32,
     remote_path: String,
     local_path: String,
-    resume_from: Option<u64>,
-    resume_partial: Option<String>,
+    recovery_id: Option<String>,
     create_parents: Option<bool>,
     on_event: Channel<TransferEvent>,
 ) -> Result<TransferResponse, String> {
@@ -655,24 +698,29 @@ pub async fn ssh_transfer_download(
         if create_parents == Some(true) {
             sftp::ensure_download_parents(&local_path)?;
         }
-        let resume_offset = resume_from.unwrap_or(0);
         let target = sftp::validate_download_target(&local_path)?;
-        let partial = if resume_offset > 0 {
-            let path = resume_partial
-                .as_deref()
-                .filter(|path| !path.is_empty())
-                .ok_or("download resume partial path is required")?;
-            let candidate = PathBuf::from(path);
-            if !candidate.is_absolute()
-                || candidate
-                    .components()
-                    .any(|component| matches!(component, std::path::Component::ParentDir))
-            {
-                return Err("download resume partial must be an absolute path".into());
+        let resume_record = match recovery_id.as_deref() {
+            Some(recovery_id) => Some(validated_resume_record(
+                transfer_journal::ssh_transfer_recovery_prepare(
+                    app.clone(),
+                    state.clone(),
+                    binding.clone(),
+                    recovery_id.into(),
+                )
+                .await?,
+                "download",
+                &remote_path,
+                &target.display().to_string(),
+            )?),
+            None => None,
+        };
+        let resume_offset = resume_record.as_ref().map_or(0, |record| record.bytes);
+        let partial = match resume_record.as_ref().map(|record| &record.partial) {
+            Some(PartialIdentity::Local { path, .. }) => PathBuf::from(path),
+            Some(PartialIdentity::Remote { .. }) => {
+                return Err("download recovery partial must be local".into())
             }
-            candidate
-        } else {
-            random_partial_sibling(&target)?
+            None => random_partial_sibling(&target)?,
         };
         let sftp = resolve_session(&state, &binding).await?;
         let remote_metadata = await_stage(
@@ -724,48 +772,12 @@ pub async fn ssh_transfer_download(
         };
 
         let initial_identity = local_identity(&partial, resume_offset)?;
-        let recovery_id = match transfer_journal::create(
-            &app,
-            TransferJournalRecord {
-                recovery_id: String::new(),
-                transfer_id: transfer_id.clone(),
-                attempt,
-                direction: "download".into(),
-                session: Some(binding.logical_session_id.clone()),
-                endpoint,
-                user,
-                host_key,
-                source: remote_path.clone(),
-                source_identity: SourceIdentity::Remote {
-                    path: remote_path.clone(),
-                    size: total,
-                    permissions: remote_metadata.permissions,
-                },
-                final_path: target.display().to_string(),
-                partial: initial_identity,
-                phase: "transferring".into(),
-                bytes: resume_offset,
-                prefix_sha256: format!("{:x}", Sha256::digest([])),
-                final_sha256: None,
-                commit_intent: false,
-                paused: false,
-                needs_reconcile: false,
-            },
-        ) {
-            Ok(recovery_id) => recovery_id,
-            Err(error) => {
-                emitter.emit(TransferPhase::Terminal, 0, Some(total), true);
-                return Ok(TransferResponse {
-                    outcome: failed_outcome(
-                        0,
-                        format!("download journal allocation failed: {error}"),
-                        Some(partial.display().to_string()),
-                    ),
-                });
-            }
-        };
-
-        let mut bytes_transferred = resume_offset;
+        if resume_record
+            .as_ref()
+            .is_some_and(|record| record.partial != initial_identity)
+        {
+            return Err("download recovery partial identity changed before claim".into());
+        }
         let mut hasher = Sha256::new();
         if resume_offset > 0 {
             let mut existing = std::fs::File::open(&partial)
@@ -785,10 +797,75 @@ pub async fn ssh_transfer_download(
             if hashed != resume_offset {
                 return Err("download partial size does not match resume offset".into());
             }
+            if resume_record.as_ref().is_some_and(|record| {
+                format!("{:x}", hasher.clone().finalize()) != record.prefix_sha256
+            }) {
+                return Err("download recovery partial hash changed before claim".into());
+            }
         }
+        let recovery_id = if let Some(record) = &resume_record {
+            transfer_journal::reactivate(
+                &app,
+                &record.recovery_id,
+                record,
+                &transfer_id,
+                attempt,
+                &binding.logical_session_id,
+            )?
+            .recovery_id
+        } else {
+            match transfer_journal::create(
+                &app,
+                TransferJournalRecord {
+                    recovery_id: String::new(),
+                    transfer_id: transfer_id.clone(),
+                    attempt,
+                    direction: "download".into(),
+                    session: Some(binding.logical_session_id.clone()),
+                    endpoint,
+                    user,
+                    host_key,
+                    source: remote_path.clone(),
+                    source_identity: SourceIdentity::Remote {
+                        path: remote_path.clone(),
+                        size: total,
+                        permissions: remote_metadata.permissions,
+                    },
+                    final_path: target.display().to_string(),
+                    overwrite: Some(false),
+                    partial: initial_identity,
+                    phase: "transferring".into(),
+                    bytes: 0,
+                    prefix_sha256: format!("{:x}", Sha256::digest([])),
+                    final_sha256: None,
+                    commit_intent: false,
+                    paused: false,
+                    needs_reconcile: false,
+                },
+            ) {
+                Ok(recovery_id) => recovery_id,
+                Err(error) => {
+                    emitter.emit(TransferPhase::Terminal, 0, Some(total), true);
+                    return Ok(TransferResponse {
+                        outcome: failed_outcome(
+                            0,
+                            format!("download journal allocation failed: {error}"),
+                            Some(partial.display().to_string()),
+                        ),
+                    });
+                }
+            }
+        };
+
+        let mut bytes_transferred = resume_offset;
         let mut last_checkpoint = Instant::now();
         let mut buffer = vec![0_u8; 64 * 1024];
-        emitter.emit(TransferPhase::Transferring, 0, Some(total), true);
+        emitter.emit(
+            TransferPhase::Transferring,
+            resume_offset,
+            Some(total),
+            true,
+        );
         let transfer_result: Result<(), String> = async {
             loop {
                 if registration.cancelled.load(Ordering::Acquire) {
@@ -850,6 +927,37 @@ pub async fn ssh_transfer_download(
             {
                 return Err("remote download source changed during transfer".into());
             }
+            // Metadata cannot detect an in-place, same-size source mutation.
+            // Re-read the same open handle before publishing every download so
+            // neither a fresh nor resumed transfer can commit torn content.
+            use tokio::io::AsyncSeekExt;
+            remote
+                .seek(std::io::SeekFrom::Start(0))
+                .await
+                .map_err(|error| format!("rewind remote download for readback failed: {error}"))?;
+            let mut readback_hash = Sha256::new();
+            let mut readback_bytes = 0_u64;
+            loop {
+                let count = await_stage(
+                    "read remote download verification",
+                    CHUNK_TIMEOUT,
+                    remote.read(&mut buffer),
+                )
+                .await?;
+                if count == 0 {
+                    break;
+                }
+                readback_bytes = readback_bytes.saturating_add(count as u64);
+                if readback_bytes > bytes_transferred {
+                    return Err("remote download verification exceeded expected size".into());
+                }
+                readback_hash.update(&buffer[..count]);
+            }
+            if readback_bytes != bytes_transferred
+                || readback_hash.finalize()[..] != hasher.clone().finalize()[..]
+            {
+                return Err("remote download verification SHA-256 mismatch".into());
+            }
             Ok(())
         }
         .await;
@@ -878,86 +986,166 @@ pub async fn ssh_transfer_download(
                 failed_outcome(bytes_transferred, message, residue_path)
             }
         } else if registration.cancelled.load(Ordering::Acquire) {
-            transfer_journal::checkpoint(
-                &app,
-                &recovery_id,
-                bytes_transferred,
-                format!("{:x}", hasher.clone().finalize()),
-                local_identity(&partial, bytes_transferred)?,
-            )?;
-            transfer_journal::pause(&app, &recovery_id, false)?;
             let residue_path = Some(partial.display().to_string());
-            TransferOutcome::Cancelled {
-                bytes_transferred,
-                residue_path,
+            let persistence = local_identity(&partial, bytes_transferred).and_then(|identity| {
+                transfer_journal::checkpoint(
+                    &app,
+                    &recovery_id,
+                    bytes_transferred,
+                    format!("{:x}", hasher.clone().finalize()),
+                    identity,
+                )
+                .and_then(|_| transfer_journal::pause(&app, &recovery_id, false))
+            });
+            match persistence {
+                Ok(()) => TransferOutcome::Cancelled {
+                    bytes_transferred,
+                    residue_path,
+                },
+                Err(message) => {
+                    let _ = transfer_journal::pause(&app, &recovery_id, true);
+                    unknown_outcome(
+                        bytes_transferred,
+                        format!("download cancellation recovery state is unknown: {message}"),
+                        residue_path,
+                    )
+                }
             }
         } else {
             let final_hash = format!("{:x}", hasher.finalize());
-            transfer_journal::checkpoint(
-                &app,
-                &recovery_id,
-                bytes_transferred,
-                final_hash.clone(),
-                local_identity(&partial, bytes_transferred)?,
-            )?;
-            transfer_journal::commit_intent(&app, &recovery_id, final_hash)?;
-            if !registration.begin_commit() {
-                transfer_journal::pause(&app, &recovery_id, false)?;
-                return Ok(TransferResponse {
-                    outcome: TransferOutcome::Cancelled {
+            let persistence = local_identity(&partial, bytes_transferred).and_then(|identity| {
+                transfer_journal::checkpoint(
+                    &app,
+                    &recovery_id,
+                    bytes_transferred,
+                    final_hash.clone(),
+                    identity,
+                )
+                .and_then(|_| {
+                    transfer_journal::commit_intent(&app, &recovery_id, final_hash.clone())
+                })
+            });
+            if let Err(message) = persistence {
+                let _ = transfer_journal::pause(&app, &recovery_id, true);
+                unknown_outcome(
+                    bytes_transferred,
+                    format!("download commit intent could not be persisted: {message}"),
+                    Some(partial.display().to_string()),
+                )
+            } else if !registration.begin_commit() {
+                match transfer_journal::pause(&app, &recovery_id, false) {
+                    Ok(()) => TransferOutcome::Cancelled {
                         bytes_transferred,
                         residue_path: Some(partial.display().to_string()),
                     },
-                });
-            }
-            emitter.emit(
-                TransferPhase::Committing,
-                bytes_transferred,
-                Some(total),
-                true,
-            );
-            let _commit_lease = match state.acquire_commit_lease(&binding) {
-                Ok(lease) => lease,
-                Err(message) => {
-                    transfer_journal::pause(&app, &recovery_id, false)?;
-                    return Ok(TransferResponse {
-                        outcome: failed_outcome(
+                    Err(message) => unknown_outcome(
+                        bytes_transferred,
+                        format!("cancelled download recovery state is unknown: {message}"),
+                        Some(partial.display().to_string()),
+                    ),
+                }
+            } else {
+                emitter.emit(
+                    TransferPhase::Committing,
+                    bytes_transferred,
+                    Some(total),
+                    true,
+                );
+                match state.acquire_commit_lease(&binding) {
+                    Err(message) => match transfer_journal::pause(&app, &recovery_id, false) {
+                        Ok(()) => failed_outcome(
                             bytes_transferred,
                             message,
                             Some(partial.display().to_string()),
                         ),
-                    });
-                }
-            };
-            match publish_no_replace(&partial, &target).await {
-                Ok(()) => match transfer_journal::remove(&app, &recovery_id) {
-                    Ok(()) => TransferOutcome::Completed { bytes_transferred },
-                    Err(message) => {
-                        let _ = transfer_journal::pause(&app, &recovery_id, true);
-                        unknown_outcome(
+                        Err(pause_error) => unknown_outcome(
                             bytes_transferred,
-                            format!("download published but journal removal failed: {message}"),
-                            None,
-                        )
-                    }
-                },
-                Err((message, mutated)) if mutated => {
-                    let pause_error = transfer_journal::pause(&app, &recovery_id, true).err();
-                    unknown_outcome(
-                        bytes_transferred,
-                        pause_error.map_or(message.clone(), |error| {
-                            format!("{message}; recovery state could not be persisted: {error}")
-                        }),
-                        partial.exists().then(|| partial.display().to_string()),
-                    )
-                }
-                Err((message, _)) => {
-                    transfer_journal::pause(&app, &recovery_id, false)?;
-                    failed_outcome(
-                        bytes_transferred,
-                        message,
-                        Some(partial.display().to_string()),
-                    )
+                            format!("{message}; recovery state could not be persisted: {pause_error}"),
+                            Some(partial.display().to_string()),
+                        ),
+                    },
+                    Ok(_commit_lease) => match publish_no_replace(&partial, &target).await {
+                        Ok(()) => {
+                            // The hard link publishes the exact partial inode,
+                            // but another local process can write that inode.
+                            // Verify the final path before reporting Completed.
+                            match local_snapshot(&target) {
+                                Ok((published_bytes, published_hash, _))
+                                    if published_bytes == bytes_transferred
+                                        && published_hash == final_hash =>
+                                {
+                                    match transfer_journal::remove(&app, &recovery_id) {
+                                        Ok(()) => {
+                                            TransferOutcome::Completed { bytes_transferred }
+                                        }
+                                        Err(message) => {
+                                            let _ = transfer_journal::pause(
+                                                &app,
+                                                &recovery_id,
+                                                true,
+                                            );
+                                            unknown_outcome(
+                                                bytes_transferred,
+                                                format!(
+                                                    "download published but journal removal failed: {message}"
+                                                ),
+                                                None,
+                                            )
+                                        }
+                                    }
+                                }
+                                Ok(_) => {
+                                    let _ =
+                                        transfer_journal::pause(&app, &recovery_id, true);
+                                    unknown_outcome(
+                                        bytes_transferred,
+                                        "published download failed final SHA-256 verification",
+                                        Some(target.display().to_string()),
+                                    )
+                                }
+                                Err(message) => {
+                                    let _ =
+                                        transfer_journal::pause(&app, &recovery_id, true);
+                                    unknown_outcome(
+                                        bytes_transferred,
+                                        format!(
+                                            "published download could not be verified: {message}"
+                                        ),
+                                        Some(target.display().to_string()),
+                                    )
+                                }
+                            }
+                        },
+                        Err((message, mutated)) if mutated => {
+                            let pause_error =
+                                transfer_journal::pause(&app, &recovery_id, true).err();
+                            unknown_outcome(
+                                bytes_transferred,
+                                pause_error.map_or(message.clone(), |error| {
+                                    format!(
+                                        "{message}; recovery state could not be persisted: {error}"
+                                    )
+                                }),
+                                partial.exists().then(|| partial.display().to_string()),
+                            )
+                        }
+                        Err((message, _)) => {
+                            match transfer_journal::pause(&app, &recovery_id, false) {
+                                Ok(()) => failed_outcome(
+                                    bytes_transferred,
+                                    message,
+                                    Some(partial.display().to_string()),
+                                ),
+                                Err(pause_error) => unknown_outcome(
+                                    bytes_transferred,
+                                    format!(
+                                        "{message}; recovery state could not be persisted: {pause_error}"
+                                    ),
+                                    Some(partial.display().to_string()),
+                                ),
+                            }
+                        }
+                    },
                 }
             }
         };
@@ -1010,8 +1198,7 @@ pub async fn ssh_transfer_upload(
     local_path: String,
     remote_path: String,
     overwrite: bool,
-    resume_from: Option<u64>,
-    resume_partial: Option<String>,
+    recovery_id: Option<String>,
     on_event: Channel<TransferEvent>,
 ) -> Result<TransferResponse, String> {
     (async {
@@ -1055,16 +1242,31 @@ pub async fn ssh_transfer_upload(
             Session::Ssh(ssh) => ssh.transfer_identity(),
             Session::Local(_) => return Err("not a remote session".into()),
         };
+        let resume_record = match recovery_id.as_deref() {
+            Some(recovery_id) => Some(validated_resume_record(
+                transfer_journal::ssh_transfer_recovery_prepare(
+                    app.clone(),
+                    state.clone(),
+                    binding.clone(),
+                    recovery_id.into(),
+                )
+                .await?,
+                "upload",
+                &local_path,
+                &remote_path,
+            )?),
+            None => None,
+        };
+        let overwrite = upload_overwrite(resume_record.as_ref(), overwrite);
         let mut opened_source = OpenedUploadSource::open(Path::new(&local_path))?;
-        let resume = match (resume_partial.clone(), resume_from) {
-            (Some(path), Some(offset)) if offset > 0 => {
-                opened_source
-                    .file
-                    .seek(SeekFrom::Start(offset))
-                    .map_err(|error| format!("seek upload source for resume failed: {error}"))?;
-                Some((path, offset))
+        let resume = match resume_record.as_ref().map(|record| &record.partial) {
+            Some(PartialIdentity::Remote { path, .. }) => {
+                Some((path.clone(), resume_record.as_ref().unwrap().bytes))
             }
-            _ => None,
+            Some(PartialIdentity::Local { .. }) => {
+                return Err("upload recovery partial must be remote".into())
+            }
+            None => None,
         };
         #[cfg(unix)]
         let source_identity = SourceIdentity::Local {
@@ -1090,6 +1292,7 @@ pub async fn ssh_transfer_upload(
             hash: format!("{:x}", Sha256::digest([])),
             last: Instant::now(),
         });
+        let resume_snapshot = resume_record.clone();
         let result = sftp::upload_file(
             state.clone(),
             binding.physical_pty_id,
@@ -1103,7 +1306,6 @@ pub async fn ssh_transfer_upload(
             ),
             remote_path.clone(),
             overwrite,
-            sftp::UploadMode::Journaled,
             |progress| {
                 bytes_transferred.store(progress.transferred, Ordering::Release);
                 total.store(progress.total, Ordering::Release);
@@ -1119,38 +1321,59 @@ pub async fn ssh_transfer_upload(
             },
             Some(Arc::clone(&registration.cancelled)),
             |partial, _| {
-                let id = transfer_journal::create(
-                    &app,
-                    TransferJournalRecord {
-                        recovery_id: String::new(),
-                        transfer_id: key.transfer_id.clone(),
+                let (id, bytes, hash) = if let Some(record) = &resume_snapshot {
+                    if !matches!(&record.partial, PartialIdentity::Remote { path, endpoint: record_endpoint, .. }
+                        if path == partial && record_endpoint == &endpoint)
+                    {
+                        return Err("upload recovery partial changed before claim".into());
+                    }
+                    let claimed = transfer_journal::reactivate(
+                        &app,
+                        &record.recovery_id,
+                        record,
+                        &key.transfer_id,
                         attempt,
-                        direction: "upload".into(),
-                        session: Some(binding.logical_session_id.clone()),
-                        endpoint: endpoint.clone(),
-                        user: user.clone(),
-                        host_key: host_key.clone(),
-                        source: local_path.clone(),
-                        source_identity: source_identity.clone(),
-                        final_path: remote_path.clone(),
-                        partial: PartialIdentity::Remote {
-                            path: partial.into(),
+                        &binding.logical_session_id,
+                    )?;
+                    (claimed.recovery_id, claimed.bytes, claimed.prefix_sha256)
+                } else {
+                    let id = transfer_journal::create(
+                        &app,
+                        TransferJournalRecord {
+                            recovery_id: String::new(),
+                            transfer_id: key.transfer_id.clone(),
+                            attempt,
+                            direction: "upload".into(),
+                            session: Some(binding.logical_session_id.clone()),
                             endpoint: endpoint.clone(),
-                            size: 0,
-                            permissions: None,
+                            user: user.clone(),
+                            host_key: host_key.clone(),
+                            source: local_path.clone(),
+                            source_identity: source_identity.clone(),
+                            final_path: remote_path.clone(),
+                            overwrite: Some(overwrite),
+                            partial: PartialIdentity::Remote {
+                                path: partial.into(),
+                                endpoint: endpoint.clone(),
+                                size: 0,
+                                permissions: None,
+                            },
+                            phase: "transferring".into(),
+                            bytes: 0,
+                            prefix_sha256: format!("{:x}", Sha256::digest([])),
+                            final_sha256: None,
+                            commit_intent: false,
+                            paused: false,
+                            needs_reconcile: false,
                         },
-                        phase: "transferring".into(),
-                        bytes: 0,
-                        prefix_sha256: format!("{:x}", Sha256::digest([])),
-                        final_sha256: None,
-                        commit_intent: false,
-                        paused: false,
-                        needs_reconcile: false,
-                    },
-                )?;
+                    )?;
+                    (id, 0, format!("{:x}", Sha256::digest([])))
+                };
                 let mut j = journal.lock().unwrap_or_else(|p| p.into_inner());
                 j.id = Some(id);
                 j.partial = Some(partial.into());
+                j.bytes = bytes;
+                j.hash = hash;
                 Ok(())
             },
             |partial, bytes, hash| {
@@ -1293,6 +1516,116 @@ pub async fn ssh_transfer_upload(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn recovery_preparation(direction: &str) -> RecoveryPreparation {
+        let (source_identity, partial) = if direction == "download" {
+            (
+                SourceIdentity::Remote {
+                    path: "/remote/source".into(),
+                    size: 7,
+                    permissions: Some(0o640),
+                },
+                PartialIdentity::Local {
+                    path: "/home/user/.target.tunara-id.partial".into(),
+                    size: 3,
+                    dev: Some(1),
+                    ino: Some(2),
+                },
+            )
+        } else {
+            (
+                SourceIdentity::Local {
+                    path: "/home/user/source".into(),
+                    size: 7,
+                    dev: 1,
+                    ino: 2,
+                },
+                PartialIdentity::Remote {
+                    path: "/remote/.target.tunara-id.partial".into(),
+                    endpoint: "example:22".into(),
+                    size: 3,
+                    permissions: Some(0o600),
+                },
+            )
+        };
+        RecoveryPreparation {
+            record: TransferJournalRecord {
+                recovery_id: "recovery".into(),
+                transfer_id: "old-transfer".into(),
+                attempt: 1,
+                direction: direction.into(),
+                session: Some("session".into()),
+                endpoint: "example:22".into(),
+                user: "user".into(),
+                host_key: "key".into(),
+                source: if direction == "download" {
+                    "/remote/source".into()
+                } else {
+                    "/home/user/source".into()
+                },
+                source_identity,
+                final_path: if direction == "download" {
+                    "/home/user/target".into()
+                } else {
+                    "/remote/target".into()
+                },
+                overwrite: Some(direction == "upload"),
+                partial,
+                phase: "paused".into(),
+                bytes: 3,
+                prefix_sha256: "a".repeat(64),
+                final_sha256: None,
+                commit_intent: false,
+                paused: true,
+                needs_reconcile: true,
+            },
+            observation: RecoveryObservation::PartialMatches,
+        }
+    }
+
+    #[test]
+    fn resume_uses_only_a_matching_verified_journal_record() {
+        let download = validated_resume_record(
+            recovery_preparation("download"),
+            "download",
+            "/remote/source",
+            "/home/user/target",
+        )
+        .unwrap();
+        assert_eq!(download.bytes, 3);
+        assert!(matches!(download.partial, PartialIdentity::Local { .. }));
+
+        assert!(validated_resume_record(
+            recovery_preparation("download"),
+            "download",
+            "/remote/other",
+            "/home/user/target",
+        )
+        .is_err());
+        assert!(validated_resume_record(
+            recovery_preparation("upload"),
+            "download",
+            "/home/user/source",
+            "/remote/target",
+        )
+        .is_err());
+
+        let mut committing = recovery_preparation("upload");
+        committing.record.commit_intent = true;
+        assert!(validated_resume_record(
+            committing,
+            "upload",
+            "/home/user/source",
+            "/remote/target",
+        )
+        .is_err());
+
+        let mut no_replace = recovery_preparation("upload").record;
+        no_replace.overwrite = Some(false);
+        assert!(!upload_overwrite(Some(&no_replace), true));
+        no_replace.overwrite = None;
+        assert!(upload_overwrite(Some(&no_replace), false));
+    }
 
     fn unique_key(name: &str) -> TransferKey {
         transfer_key(format!("{name}-{}", std::process::id()), 1)

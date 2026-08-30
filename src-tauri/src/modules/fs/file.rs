@@ -1,5 +1,6 @@
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -9,6 +10,7 @@ const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const MAX_TEXT_PREVIEW_BYTES: u64 = 256 * 1024; // UI preview cap
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 pub(crate) const MAX_IMAGE_PIXELS: u64 = 40_000_000;
+static TEXT_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
 pub(crate) struct ImagePreview {
@@ -136,7 +138,8 @@ pub enum ReadResult {
         size: u64,
         truncated: bool,
         /// Present only when the complete editable payload was read. The UI
-        /// must return it on save so an external edit cannot be overwritten.
+        /// must return it on save so edits observed before final validation
+        /// are rejected instead of overwritten.
         #[serde(skip_serializing_if = "Option::is_none")]
         fingerprint: Option<String>,
     },
@@ -331,6 +334,13 @@ pub fn fs_write_text_file(
             "editable content exceeds {MAX_TEXT_PREVIEW_BYTES} bytes"
         ));
     }
+    // Tauri may execute two commands concurrently. Serialize the check/replace
+    // transaction so two editor surfaces with the same fingerprint cannot both
+    // report success while the later rename silently replaces the first.
+    let _write_guard = TEXT_WRITE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let target = super::expand_tilde(&path);
     let original_metadata =
         std::fs::symlink_metadata(&target).map_err(|error| error.to_string())?;
@@ -659,6 +669,53 @@ mod write_tests {
             }
         );
         assert_eq!(fs::read_to_string(&path).unwrap(), "external\n");
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn concurrent_editor_saves_cannot_both_replace_the_same_revision() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let path = fixture("concurrent.txt");
+        fs::write(&path, "before\n").unwrap();
+        let expected = content_fingerprint(b"before\n");
+        let barrier = Arc::new(Barrier::new(3));
+        let writers = ["first\n", "second\n"].map(|content| {
+            let path = path.clone();
+            let expected = expected.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                fs_write_text_file(
+                    path.to_string_lossy().into_owned(),
+                    content.into(),
+                    expected,
+                )
+                .unwrap()
+            })
+        });
+        barrier.wait();
+        let results = writers.map(|writer| writer.join().unwrap());
+
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, WriteResult::Saved { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, WriteResult::Conflict { .. }))
+                .count(),
+            1
+        );
+        assert!(matches!(
+            fs::read_to_string(&path).unwrap().as_str(),
+            "first\n" | "second\n"
+        ));
         fs::remove_file(path).unwrap();
     }
 

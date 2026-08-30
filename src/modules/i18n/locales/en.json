@@ -261,6 +261,8 @@
   "settings.app.updates.current": "Tunara is up to date",
   "settings.app.updates.available": "Tunara v{{version}} is available",
   "settings.app.updates.install": "Install and restart",
+  "settings.app.updates.restart": "Restart",
+  "settings.app.updates.restart_ready": "Installed. Save or discard open drafts, then restart.",
   "settings.app.updates.downloading": "Downloading update…",
   "settings.app.updates.progress": "Downloading {{progress}}%",
   "settings.app.updates.restarting": "Installed. Restarting Tunara…",

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DirEntry, GrepResponse, ReadResult, SearchHit, WriteTextResult } from "@/modules/fs/fs-bridge";
+import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { RemoteOperationCache, remoteOperationCacheKey } from "./remote-operation-cache.ts";
 import {
   parseSshWriteOutcomeUnknown,
@@ -59,13 +60,13 @@ export function sshReadFile(id: number, path: string): Promise<ReadResult> {
 }
 
 export function sshWriteTextFile(
-  id: number,
+  binding: SessionBindingV1,
   path: string,
   content: string,
   expectedFingerprint: string,
 ): Promise<WriteTextResult> {
-  return withFileUsage(id, "write_file", () => invoke<WriteTextResult>("ssh_fs_write_text_file", {
-    id,
+  return withFileUsage(binding.physicalPtyId, "write_file", () => invoke<WriteTextResult>("ssh_fs_write_text_file", {
+    binding,
     path,
     content,
     expectedFingerprint,
@@ -73,15 +74,15 @@ export function sshWriteTextFile(
 }
 
 export function sshReconcileTextWrite(
-  id: number,
+  binding: SessionBindingV1,
   path: string,
   attemptedFingerprint: string,
   expectedMode: number,
   replaceLockOwner: string,
 ): Promise<WriteTextResult> {
   requireSshWriteReconcileFields(attemptedFingerprint, expectedMode, replaceLockOwner);
-  return withFileUsage(id, "reconcile_write", () => invoke<WriteTextResult>("ssh_fs_reconcile_text_write", {
-    id,
+  return withFileUsage(binding.physicalPtyId, "reconcile_write", () => invoke<WriteTextResult>("ssh_fs_reconcile_text_write", {
+    binding,
     path,
     attemptedFingerprint,
     expectedMode,
@@ -100,14 +101,14 @@ export interface SshWriteReconcileResult {
  * honest recovery messaging after the backend has reconciled bytes + mode.
  */
 export async function sshReconcileOutcomeUnknownTextWrite(
-  id: number,
+  binding: SessionBindingV1,
   path: string,
   error: unknown,
 ): Promise<SshWriteReconcileResult> {
   const outcome = parseSshWriteOutcomeUnknown(error);
   if (!outcome) throw new Error("invalid SSH outcomeUnknown token");
   const result = await sshReconcileTextWrite(
-    id,
+    binding,
     path,
     outcome.attemptedFingerprint,
     outcome.expectedMode,

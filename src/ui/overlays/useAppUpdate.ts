@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { requestSafeAppRelaunch } from "@/app/app-lifecycle";
 
-export type UpdateStatus = "idle" | "checking" | "current" | "available" | "downloading" | "restarting" | "error";
+export type UpdateStatus = "idle" | "checking" | "current" | "available" | "downloading" | "restartReady" | "restarting" | "error";
 
 export function useAppUpdate(activeTab: string): {
   appVersion: string;
@@ -20,6 +21,7 @@ export function useAppUpdate(activeTab: string): {
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const updateRef = useRef<Update | null>(null);
   const appTabCheckStartedRef = useRef(false);
+  const restartInFlightRef = useRef(false);
 
   useEffect(() => {
     void getVersion().then(setAppVersion).catch(() => {});
@@ -56,6 +58,25 @@ export function useAppUpdate(activeTab: string): {
   const installUpdate = async () => {
     const update = updateRef.current;
     if (!update || updateStatus === "downloading" || updateStatus === "restarting") return;
+    const restart = () => {
+      if (restartInFlightRef.current) return;
+      const started = requestSafeAppRelaunch(relaunch, {
+        onStarting: () => {
+          restartInFlightRef.current = true;
+          setUpdateStatus("restarting");
+        },
+        onFailure: (error) => {
+          restartInFlightRef.current = false;
+          console.warn("[Settings] safe update restart failed", error);
+          setUpdateStatus("restartReady");
+        },
+      });
+      if (!started) setUpdateStatus("restartReady");
+    };
+    if (updateStatus === "restartReady") {
+      restart();
+      return;
+    }
     setUpdateStatus("downloading");
     setUpdateProgress(0);
     let downloaded = 0;
@@ -71,8 +92,7 @@ export function useAppUpdate(activeTab: string): {
           setUpdateProgress(100);
         }
       });
-      setUpdateStatus("restarting");
-      await relaunch();
+      restart();
     } catch (error) {
       console.warn("[Settings] update installation failed", error);
       setUpdateStatus("error");
@@ -86,6 +106,6 @@ export function useAppUpdate(activeTab: string): {
     void checkForUpdates();
   }, [activeTab, checkForUpdates]);
 
-  const canInstallUpdate = updateStatus === "available" || (updateStatus === "error" && !!updateRef.current);
+  const canInstallUpdate = updateStatus === "available" || updateStatus === "restartReady" || (updateStatus === "error" && !!updateRef.current);
   return { appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate };
 }

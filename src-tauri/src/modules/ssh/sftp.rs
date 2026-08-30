@@ -3,7 +3,7 @@
 // These mirror the local fs_* commands' return shapes (DirEntry / ReadResult)
 // so the frontend FileExplorer can switch data source by session kind without
 // caring about the transport. Read-only browse + download only — no remote
-// plus the conflict-safe text-write contract used by the Phase 2 editor.
+// plus the optimistic conflict-aware text-write contract used by the Phase 2 editor.
 //
 // Each command takes the session `id` (the same u32 PtyState id the terminal
 // uses) and reaches the live SSH connection's SFTP subsystem.
@@ -183,6 +183,43 @@ fn uncertain_upload_error(partial_path: &str) -> String {
         "upload outcome unknown after replacement; refresh the remote directory before retrying",
         Some(partial_path),
     )
+}
+
+async fn verify_remote_upload_content(
+    sftp: &russh_sftp::client::SftpSession,
+    path: &str,
+    expected_bytes: u64,
+    expected_hash: &str,
+) -> Result<(), String> {
+    let mut readback = await_stage(
+        "open remote upload readback",
+        SFTP_CONTROL_TIMEOUT,
+        sftp.open(path),
+    )
+    .await?;
+    let mut remote_hash = Sha256::new();
+    let mut remote_bytes = 0_u64;
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        let count = await_stage(
+            "read remote upload readback",
+            SFTP_CHUNK_TIMEOUT,
+            readback.read(&mut buffer),
+        )
+        .await?;
+        if count == 0 {
+            break;
+        }
+        remote_bytes = remote_bytes.saturating_add(count as u64);
+        if remote_bytes > expected_bytes {
+            return Err("remote upload readback exceeded expected size".into());
+        }
+        remote_hash.update(&buffer[..count]);
+    }
+    if remote_bytes != expected_bytes || format!("{:x}", remote_hash.finalize()) != expected_hash {
+        return Err("remote upload readback SHA-256 mismatch".into());
+    }
+    Ok(())
 }
 
 fn preserved_upload_mode(initial_mode: u32, final_mode: u32) -> Result<u32, String> {
@@ -984,15 +1021,17 @@ async fn read_remote_editable_bytes(
     Ok((bytes, mode))
 }
 
-/// Conflict-safe remote text save. SFTP prepares a create-new sibling with the
-/// original mode and drains all write acknowledgements. The final `mv` runs on
+/// Optimistic conflict-aware remote text save. Changes observed by the final
+/// validation are rejected; an uncooperative writer can still race publication.
+/// SFTP prepares a create-new sibling with the original mode and drains all
+/// write acknowledgements. The final `mv` runs on
 /// the same SSH connection because russh-sftp 2.3 does not expose OpenSSH's
 /// posix-rename extension; on the supported Unix hosts, same-directory `mv`
 /// delegates to atomic rename without ever removing the destination first.
 #[tauri::command]
 pub async fn ssh_fs_write_text_file(
     state: tauri::State<'_, PtyState>,
-    id: u32,
+    binding: SessionBindingV1,
     path: String,
     content: String,
     expected_fingerprint: String,
@@ -1008,14 +1047,22 @@ pub async fn ssh_fs_write_text_file(
     // Serialize saves issued by this app for the same remote path. The second
     // caller must re-read after the first commits and report a conflict instead
     // of letting two equal fingerprints both pass the pre-rename check.
-    let write_lock = remote_write_lock(id, &path);
-    let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+    let write_lock = remote_write_lock(binding.physical_pty_id, &path);
+    let session = state
+        .get_for_ssh_binding(&binding)
+        .ok_or_else(|| "stale or invalid SSH session binding".to_string())?;
     let ssh = match session.as_ref() {
         Session::Ssh(ssh) => ssh,
         Session::Local(_) => return Err("not a remote session".into()),
     };
     let sftp = ssh.sftp().await?;
-    let adapter = SftpWriteAdapter::new(&sftp, ssh, id);
+    let adapter = SftpWriteAdapter::new_bound(
+        &sftp,
+        ssh,
+        state.inner(),
+        &binding,
+        binding.physical_pty_id,
+    );
     let mut outcome = None;
     for attempt in 0..16 {
         let temporary = remote_sibling_temp_path(&path, attempt)?;
@@ -1069,6 +1116,8 @@ pub async fn ssh_fs_write_text_file(
 struct SftpWriteAdapter<'a> {
     sftp: &'a russh_sftp::client::SftpSession,
     ssh: &'a super::connection::SshSession,
+    binding_guard: Option<(&'a PtyState, &'a SessionBindingV1)>,
+    commit_lease: std::sync::Mutex<Option<crate::modules::pty::CommitLease>>,
     #[cfg(feature = "m2-safe-write-benchmark")]
     session_id: u32,
     #[cfg(test)]
@@ -1078,6 +1127,7 @@ struct SftpWriteAdapter<'a> {
 }
 
 impl<'a> SftpWriteAdapter<'a> {
+    #[cfg(test)]
     fn new(
         sftp: &'a russh_sftp::client::SftpSession,
         ssh: &'a super::connection::SshSession,
@@ -1087,6 +1137,30 @@ impl<'a> SftpWriteAdapter<'a> {
         Self {
             sftp,
             ssh,
+            binding_guard: None,
+            commit_lease: std::sync::Mutex::new(None),
+            #[cfg(feature = "m2-safe-write-benchmark")]
+            session_id,
+            #[cfg(test)]
+            replace_request_hook: None,
+            #[cfg(test)]
+            replace_response_delay: None,
+        }
+    }
+
+    fn new_bound(
+        sftp: &'a russh_sftp::client::SftpSession,
+        ssh: &'a super::connection::SshSession,
+        state: &'a PtyState,
+        binding: &'a SessionBindingV1,
+        #[cfg_attr(not(feature = "m2-safe-write-benchmark"), allow(unused_variables))]
+        session_id: u32,
+    ) -> Self {
+        Self {
+            sftp,
+            ssh,
+            binding_guard: Some((state, binding)),
+            commit_lease: std::sync::Mutex::new(None),
             #[cfg(feature = "m2-safe-write-benchmark")]
             session_id,
             #[cfg(test)]
@@ -1294,28 +1368,51 @@ impl RemoteWriteIo for SftpWriteAdapter<'_> {
                 "isolated M2 benchmark injected a one-shot release failure".into(),
             ));
         }
-        let lock = remote_replace_lock_path(target).map_err(IoError)?;
-        let owner_path = remote_replace_lock_owner_path(target).map_err(IoError)?;
-        let observed = read_remote_replace_lock_owner(self.sftp, target).await?;
-        if observed != owner {
-            return Err(IoError("remote replace lock owner changed".into()));
+        let result = async {
+            let lock = remote_replace_lock_path(target).map_err(IoError)?;
+            let owner_path = remote_replace_lock_owner_path(target).map_err(IoError)?;
+            let observed = read_remote_replace_lock_owner(self.sftp, target).await?;
+            if observed != owner {
+                return Err(IoError("remote replace lock owner changed".into()));
+            }
+            await_stage(
+                "remove remote replace lock owner",
+                SFTP_CONTROL_TIMEOUT,
+                self.sftp.remove_file(owner_path),
+            )
+            .await
+            .map_err(IoError)?;
+            await_stage(
+                "release remote replace lock",
+                SFTP_CONTROL_TIMEOUT,
+                self.sftp.remove_dir(lock),
+            )
+            .await
+            .map_err(IoError)
         }
-        await_stage(
-            "remove remote replace lock owner",
-            SFTP_CONTROL_TIMEOUT,
-            self.sftp.remove_file(owner_path),
-        )
-        .await
-        .map_err(IoError)?;
-        await_stage(
-            "release remote replace lock",
-            SFTP_CONTROL_TIMEOUT,
-            self.sftp.remove_dir(lock),
-        )
-        .await
-        .map_err(IoError)
+        .await;
+        self.commit_lease
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        result
     }
     async fn atomic_replace(&self, temporary: &str, target: &str) -> Result<(), ReplaceError> {
+        if let Some((state, binding)) = self.binding_guard {
+            let lease = state
+                .acquire_commit_lease(binding)
+                .map_err(ReplaceError::NotSent)?;
+            let mut held = self
+                .commit_lease
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if held.is_some() {
+                return Err(ReplaceError::NotSent(
+                    "remote write commit lease is already held".into(),
+                ));
+            }
+            *held = Some(lease);
+        }
         let command = format!(
             "mv -f -- {} {}",
             shell_quote(temporary),
@@ -1415,14 +1512,19 @@ async fn cleanup_owned_write_residue(
 #[tauri::command]
 pub async fn ssh_fs_reconcile_text_write(
     state: tauri::State<'_, PtyState>,
-    id: u32,
+    binding: SessionBindingV1,
     path: String,
     attempted_fingerprint: String,
     expected_mode: u32,
     replace_lock_owner: String,
 ) -> Result<crate::modules::fs::file::WriteResult, String> {
     (async {
-        let sftp = sftp_for(&state, id).await?;
+        let sftp = super::sftp_common::session_for_binding(state.inner(), &binding).await?;
+        // Reconciliation removes transaction-owned remote residue. Keep the
+        // exact generation authoritative from the final observation through
+        // cleanup so a reconnect cannot turn this into a mutation on a retired
+        // connection.
+        let _lease = state.acquire_commit_lease(&binding)?;
         reconcile_text_write_with_sftp(
             &sftp,
             &path,
@@ -1722,14 +1824,12 @@ pub(crate) fn cancel_upload(transfer_id: String) -> bool {
 }
 
 /// Upload one user-selected regular local file to an absolute remote path.
-/// New files use SFTP EXCLUDE for atomic no-overwrite behavior. Explicit
-/// replacements are streamed to a hidden sibling and committed with OpenSSH's
-/// posix-rename SFTP extension. It is supported by OpenSSH on Linux/macOS/BSD,
-/// avoids login-shell and GNU `mv` assumptions, and cannot move the temporary
-/// file inside a directory racing into the destination pathname. We fail before
-/// transfer when that safe primitive is unavailable. Cancellation and I/O
-/// failures never truncate the existing destination,
-/// and a racing directory cannot capture the temporary file as a child.
+/// New files and replacements are streamed to a hidden sibling.
+/// New files are atomically published with OpenSSH's hardlink extension, whose
+/// create-if-absent semantics cannot replace a racing destination. Replacements
+/// use posix-rename. We fail before transfer when the required safe primitive is
+/// unavailable. Cancellation and I/O failures never expose partial bytes at the
+/// final pathname or truncate an existing destination.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn upload_file(
     state: tauri::State<'_, PtyState>,
@@ -1739,7 +1839,6 @@ pub(crate) async fn upload_file(
     opened_source: Option<std::fs::File>,
     remote_path: String,
     overwrite: bool,
-    mode: UploadMode,
     mut on_progress: impl FnMut(UploadProgress),
     external_cancel: Option<Arc<AtomicBool>>,
     mut on_allocated: impl FnMut(&str, u64) -> Result<(), String>,
@@ -1770,6 +1869,7 @@ pub(crate) async fn upload_file(
     } else {
         None
     };
+    let validate_opened_source_here = opened_source.is_none();
     let mut source = match opened_source {
         Some(file) => tokio::fs::File::from_std(file),
         None => tokio::fs::File::open(local)
@@ -1795,6 +1895,32 @@ pub(crate) async fn upload_file(
     #[cfg(not(unix))]
     let _ = path_metadata;
     let total = opened_metadata.len();
+    let initial_source_hash = if validate_opened_source_here {
+        let mut hash = Sha256::new();
+        let mut bytes = 0_u64;
+        let mut buffer = vec![0_u8; 64 * 1024];
+        loop {
+            let count = source
+                .read(&mut buffer)
+                .await
+                .map_err(|error| format!("snapshot upload source failed: {error}"))?;
+            if count == 0 {
+                break;
+            }
+            bytes = bytes.saturating_add(count as u64);
+            hash.update(&buffer[..count]);
+        }
+        source
+            .seek(std::io::SeekFrom::Start(0))
+            .await
+            .map_err(|error| format!("rewind upload source failed: {error}"))?;
+        if bytes != total {
+            return Err("upload source length changed during initial snapshot".into());
+        }
+        Some(format!("{:x}", hash.finalize()))
+    } else {
+        None
+    };
 
     let session = state.get(id).ok_or_else(|| "no session".to_string())?;
     let ssh = match session.as_ref() {
@@ -1814,6 +1940,26 @@ pub(crate) async fn upload_file(
     } else {
         None
     };
+    let resumed_direct_destination = resume
+        .as_ref()
+        .is_some_and(|(partial, _)| partial == &remote_path);
+    let atomic_no_replace = !overwrite && !resumed_direct_destination;
+    if atomic_no_replace {
+        match await_stage(
+            "check remote upload destination",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.symlink_metadata(&remote_path),
+        )
+        .await
+        {
+            Ok(_) => return Err("remote destination already exists".into()),
+            Err(error) if error.to_ascii_lowercase().contains("no such") => {}
+            Err(error) => return Err(error),
+        }
+        if !ssh.supports_sftp_hardlink().await? {
+            return Err("remote SFTP server does not support safe atomic new-file upload".into());
+        }
+    }
 
     let upload_path = if let Some((partial, offset)) = resume.clone() {
         use tokio::io::AsyncSeekExt;
@@ -1834,7 +1980,7 @@ pub(crate) async fn upload_file(
             .await
             .map_err(|error| format!("seek remote upload partial failed: {error}"))?;
         (partial, file)
-    } else if overwrite {
+    } else if overwrite || atomic_no_replace {
         let mut temporary = None;
         for attempt in 0..16 {
             let candidate = remote_sibling_temp_path(&remote_path, attempt)?;
@@ -1997,47 +2143,68 @@ pub(crate) async fn upload_file(
     if let Err(error) = transfer_result {
         return Err(upload_residue_error(&partial_path, error));
     }
-    let final_hash = format!("{:x}", content_hash.finalize());
-    if overwrite && mode == UploadMode::Journaled {
-        // Mandatory full SFTP readback proves the server-side partial bytes
-        // before any rename mutation is attempted.
-        let mut readback = await_stage(
-            "open remote upload readback",
-            SFTP_CONTROL_TIMEOUT,
-            sftp.open(&partial_path),
-        )
-        .await?;
-        let mut remote_hash = Sha256::new();
-        let mut remote_bytes = 0_u64;
-        loop {
-            let count = await_stage(
-                "read remote upload readback",
-                SFTP_CHUNK_TIMEOUT,
-                readback.read(&mut buffer),
+    let streamed_hash = format!("{:x}", content_hash.clone().finalize());
+    if transferred != total {
+        return Err(upload_residue_error(
+            &partial_path,
+            format!(
+                "upload source changed during transfer: transferred {transferred} of {total} bytes"
+            ),
+        ));
+    }
+    if let Some(initial_source_hash) = initial_source_hash {
+        let metadata = source.metadata().await.map_err(|error| {
+            upload_residue_error(
+                &partial_path,
+                format!("revalidate upload source failed: {error}"),
             )
-            .await?;
+        })?;
+        source
+            .seek(std::io::SeekFrom::Start(0))
+            .await
+            .map_err(|error| {
+                upload_residue_error(
+                    &partial_path,
+                    format!("rewind upload source for validation failed: {error}"),
+                )
+            })?;
+        let mut final_source_hash = Sha256::new();
+        let mut final_source_bytes = 0_u64;
+        loop {
+            let count = source.read(&mut buffer).await.map_err(|error| {
+                upload_residue_error(
+                    &partial_path,
+                    format!("validate upload source failed: {error}"),
+                )
+            })?;
             if count == 0 {
                 break;
             }
-            remote_bytes = remote_bytes.saturating_add(count as u64);
-            if remote_bytes > transferred {
-                return Err(upload_residue_error(
-                    &partial_path,
-                    "remote upload readback exceeded expected size".into(),
-                ));
-            }
-            remote_hash.update(&buffer[..count]);
+            final_source_bytes = final_source_bytes.saturating_add(count as u64);
+            final_source_hash.update(&buffer[..count]);
         }
-        if remote_bytes != transferred || format!("{:x}", remote_hash.finalize()) != final_hash {
+        if !metadata.is_file()
+            || metadata.len() != total
+            || final_source_bytes != total
+            || streamed_hash != initial_source_hash
+            || format!("{:x}", final_source_hash.finalize()) != initial_source_hash
+        {
             return Err(upload_residue_error(
                 &partial_path,
-                "remote upload readback SHA-256 mismatch".into(),
+                "upload source contents changed during transfer".into(),
             ));
         }
     }
+    let final_hash = format!("{:x}", content_hash.finalize());
+    // Mandatory full SFTP readback proves the server-side partial bytes before
+    // any upload is committed. Exclusive creation does not stop another remote
+    // process from mutating the new path.
+    verify_remote_upload_content(&sftp, &partial_path, transferred, &final_hash)
+        .await
+        .map_err(|error| upload_residue_error(&partial_path, error))?;
     if overwrite {
-        let _commit_lease =
-            on_commit(final_hash).map_err(|error| upload_residue_error(&partial_path, error))?;
+        let _commit_lease = on_commit(final_hash.clone())
+            .map_err(|error| upload_residue_error(&partial_path, error))?;
         if let Err(error) = registration.begin_commit() {
             return Err(upload_residue_error(&partial_path, error));
         }
@@ -2050,20 +2217,60 @@ pub(crate) async fn upload_file(
             // not unlink either pathname: SFTP cannot prove path ownership.
             return Err(uncertain_upload_error(&partial_path));
         }
+        if verify_remote_upload_content(&sftp, &remote_path, transferred, &final_hash)
+            .await
+            .is_err()
+        {
+            // The rename succeeded, so a failed final-path verification is an
+            // indeterminate published outcome, never a completed upload.
+            return Err(uncertain_upload_error(&remote_path));
+        }
     } else {
-        let _commit_lease =
-            on_commit(final_hash).map_err(|error| upload_residue_error(&partial_path, error))?;
+        let _commit_lease = on_commit(final_hash.clone())
+            .map_err(|error| upload_residue_error(&partial_path, error))?;
         if let Err(error) = registration.begin_commit() {
             return Err(upload_residue_error(&partial_path, error));
         }
+        if partial_path != remote_path {
+            match await_stage(
+                "publish remote upload without replacement",
+                SFTP_CONTROL_TIMEOUT,
+                sftp.hardlink(&partial_path, &remote_path),
+            )
+            .await
+            {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Err(upload_residue_error(
+                        &partial_path,
+                        "remote SFTP hardlink support disappeared before publish".into(),
+                    ));
+                }
+                Err(_) => {
+                    // A lost response cannot prove whether the final hard link
+                    // was created. Keep both paths and require reconciliation.
+                    return Err(uncertain_upload_error(&partial_path));
+                }
+            }
+            if verify_remote_upload_content(&sftp, &remote_path, transferred, &final_hash)
+                .await
+                .is_err()
+            {
+                return Err(uncertain_upload_error(&remote_path));
+            }
+            if await_stage(
+                "remove published remote upload temporary file",
+                SFTP_CONTROL_TIMEOUT,
+                sftp.remove_file(&partial_path),
+            )
+            .await
+            .is_err()
+            {
+                return Err(uncertain_upload_error(&partial_path));
+            }
+        }
     }
     Ok(transferred)
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum UploadMode {
-    Legacy,
-    Journaled,
 }
 
 /// Legacy single-file upload IPC adapter. New callers should use
@@ -2085,7 +2292,6 @@ pub(crate) async fn legacy_upload_file(
         None,
         remote_path,
         overwrite,
-        UploadMode::Legacy,
         |progress| {
             let _ = on_progress.send(progress);
         },

@@ -45,7 +45,8 @@ export function parseUploadFailure(error: unknown): UploadFailure {
   }
   const message = raw.toLowerCase();
   if (message.includes("upload cancelled")) return { kind: "cancelled" };
-  if (message.includes("does not support safe atomic overwrite")) return { kind: "unsupported" };
+  if (message.includes("does not support safe atomic overwrite")
+    || message.includes("does not support safe atomic new-file upload")) return { kind: "unsupported" };
   if (message.includes("permissions changed during upload")) return { kind: "changed" };
   if (message.includes("outcome unknown after replacement")) return { kind: "uncertain" };
   if (message.includes("partial upload may remain")) return { kind: "partial" };

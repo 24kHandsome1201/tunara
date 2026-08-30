@@ -34,3 +34,20 @@ test("update reminders route directly to the App settings tab", () => {
   assert.match(toast, /animationPlayState: paused \? "paused" : "running"/);
   assert.doesNotMatch(toast, /animation: paused \? "none"/);
 });
+
+test("installed updates guard drafts and flush both durable stores before relaunch", () => {
+  const appUpdate = read("src/ui/overlays/useAppUpdate.ts");
+  const lifecycle = read("src/app/app-lifecycle.ts");
+  const init = read("src/app/useInit.ts");
+  const ui = read("src/state/ui.ts");
+
+  assert.match(appUpdate, /requestSafeAppRelaunch\(relaunch/);
+  assert.match(appUpdate, /updateStatus === "restartReady"/);
+  assert.doesNotMatch(appUpdate, /await relaunch\(\)/);
+  assert.match(lifecycle, /requestActiveDirtyDraftAction/);
+  assert.match(lifecycle, /Promise\.all\(\[\s*workspaceFlush\(\),\s*flushUserConfig\(\)/);
+  assert.match(lifecycle, /workspaceResult !== "saved" \|\| !configSaved/);
+  assert.match(init, /registerWorkspaceFlush\(\(\) => persistNow\(\)\)/);
+  assert.match(ui, /export async function flushUserConfig\(\): Promise<boolean>/);
+  assert.match(ui, /clearTimeout\(persistTimer\)/);
+});

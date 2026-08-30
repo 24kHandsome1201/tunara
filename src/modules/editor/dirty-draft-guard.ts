@@ -9,6 +9,7 @@ export interface DirtyDraftRegistration {
 interface PendingDraftAction {
   owner: symbol;
   run: () => void;
+  priority: number;
 }
 
 const drafts = new Map<symbol, DirtyDraftRegistration>();
@@ -29,9 +30,17 @@ export function updateDirtyDraft(owner: symbol, dirty: boolean): void {
   if (!dirty && pendingAction?.owner === owner) pendingAction = null;
 }
 
-function requestDraftAction(draft: DirtyDraftRegistration | undefined, run: () => void): boolean {
+function requestDraftAction(
+  draft: DirtyDraftRegistration | undefined,
+  run: () => void,
+  priority = 0,
+): boolean {
   if (!draft?.dirty) return true;
-  pendingAction = { owner: draft.owner, run };
+  // A process restart must not be silently replaced by a later window-hide or
+  // navigation request, even when another draft owns that request's prompt.
+  // Equal-priority navigation remains latest-intent-wins.
+  if (pendingAction && pendingAction.priority > priority) return false;
+  pendingAction = { owner: draft.owner, run, priority };
   draft.requestConfirmation();
   return false;
 }
@@ -68,14 +77,18 @@ export function requestDirtyDraftFileAction(
  * session navigation, this always affects the active editor regardless of the
  * session that owns it.
  */
-export function requestActiveDirtyDraftAction(run: () => void): boolean {
+export function requestActiveDirtyDraftAction(
+  run: () => void,
+  priority: "normal" | "restart" = "normal",
+): boolean {
   const draft = [...drafts.values()].find((candidate) => candidate.dirty);
+  const actionPriority = priority === "restart" ? 2 : 1;
   return requestDraftAction(draft, () => {
     // An application-wide close affects every mounted file tab. Re-enter the
     // guard after each discard so multiple dirty files are confirmed one by
     // one instead of letting the first confirmation discard the rest.
-    if (requestActiveDirtyDraftAction(run)) run();
-  });
+    if (requestActiveDirtyDraftAction(run, priority)) run();
+  }, actionPriority);
 }
 
 export function confirmDirtyDraftDiscard(owner: symbol): boolean {

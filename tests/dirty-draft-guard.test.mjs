@@ -128,6 +128,49 @@ test("latest blocked intent replaces an older navigation intent", () => {
   assert.deepEqual(runs, ["second"]);
 });
 
+test("restart intent cannot be replaced by a later window-hide intent", () => {
+  const owner = Symbol("draft");
+  const runs = [];
+  registerDirtyDraft({ owner, sessionId: "a", filePath: "/a.txt", dirty: true, requestConfirmation: () => {} });
+
+  requestActiveDirtyDraftAction(() => runs.push("restart"), "restart");
+  requestActiveDirtyDraftAction(() => runs.push("hide"));
+  confirmDirtyDraftDiscard(owner);
+  assert.deepEqual(runs, ["restart"]);
+});
+
+test("restart intent supersedes an earlier window-hide intent", () => {
+  const owner = Symbol("draft");
+  const runs = [];
+  registerDirtyDraft({ owner, sessionId: "a", filePath: "/a.txt", dirty: true, requestConfirmation: () => {} });
+
+  requestActiveDirtyDraftAction(() => runs.push("hide"));
+  requestActiveDirtyDraftAction(() => runs.push("restart"), "restart");
+  confirmDirtyDraftDiscard(owner);
+  assert.deepEqual(runs, ["restart"]);
+});
+
+test("restart intent cannot be replaced by an action for another dirty draft", () => {
+  const first = Symbol("first");
+  const second = Symbol("second");
+  const confirmations = [];
+  const runs = [];
+  registerDirtyDraft({ owner: first, sessionId: "a", filePath: "/a.txt", dirty: true, requestConfirmation: () => confirmations.push("first") });
+  registerDirtyDraft({ owner: second, sessionId: "b", filePath: "/b.txt", dirty: true, requestConfirmation: () => confirmations.push("second") });
+
+  requestActiveDirtyDraftAction(() => runs.push("restart"), "restart");
+  requestDirtyDraftAction(["b"], () => runs.push("close-second"));
+  assert.deepEqual(confirmations, ["first"]);
+
+  assert.equal(confirmDirtyDraftDiscard(first), true);
+  assert.deepEqual(confirmations, ["first", "second"]);
+  requestDirtyDraftAction(["b"], () => runs.push("close-second"));
+  assert.deepEqual(confirmations, ["first", "second"]);
+
+  assert.equal(confirmDirtyDraftDiscard(second), true);
+  assert.deepEqual(runs, ["restart"]);
+});
+
 test("session removal is guarded while tab selection keeps mounted drafts intact", async () => {
   const source = await readFile(new URL("../src/state/sessions.ts", import.meta.url), "utf8");
   const setActive = source.slice(source.indexOf("setActive: (id)"), source.indexOf("// Cycle to the next/prev session"));
@@ -140,7 +183,7 @@ test("session removal is guarded while tab selection keeps mounted drafts intact
 test("editor registers dirty state and resolves pending navigation through its discard UI", async () => {
   const source = await readFile(new URL("../src/ui/FilePreview.tsx", import.meta.url), "utf8");
   assert.match(source, /registerDirtyDraft\(\{/);
-  assert.match(source, /updateDirtyDraft\(draftOwnerRef\.current, dirty\)/);
+  assert.match(source, /updateDirtyDraft\(draftOwnerRef\.current, guardedDraft\)/);
   assert.match(source, /confirmDirtyDraftDiscard\(draftOwnerRef\.current\)/);
   assert.match(source, /cancelDirtyDraftAction\(draftOwnerRef\.current\)/);
   assert.match(source, /setCloseConfirm\(false\);\s*setContent\(savedContent\);[\s\S]*discardEditorDraft\(draftKey\);\s*confirmDirtyDraftDiscard/);

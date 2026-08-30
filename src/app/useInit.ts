@@ -28,6 +28,7 @@ import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
+import { registerWorkspaceFlush } from "./app-lifecycle";
 
 function buildWorkspaceProjection(): WorkspaceProjectionV1 {
   recordFrontendPerf("workspaceProjections");
@@ -252,6 +253,7 @@ export function useInit() {
         void persistNow();
       }, 500);
     };
+    const unregisterWorkspaceFlush = registerWorkspaceFlush(() => persistNow());
 
     if (win) {
       registerUnlisten("window close", () =>
@@ -340,6 +342,7 @@ export function useInit() {
       void persistNow(true);
     }, 30_000);
     return () => {
+      unregisterWorkspaceFlush();
       unsubWorkspacePersistence();
       unsubGitWatchProjection();
       unsubUI();

@@ -261,6 +261,8 @@
   "settings.app.updates.current": "Tunara 已是最新版本",
   "settings.app.updates.available": "Tunara v{{version}} 可用",
   "settings.app.updates.install": "安装并重启",
+  "settings.app.updates.restart": "重启",
+  "settings.app.updates.restart_ready": "安装完成。请保存或丢弃打开的草稿，然后重启。",
   "settings.app.updates.downloading": "正在下载更新…",
   "settings.app.updates.progress": "正在下载 {{progress}}%",
   "settings.app.updates.restarting": "安装完成，正在重启 Tunara…",

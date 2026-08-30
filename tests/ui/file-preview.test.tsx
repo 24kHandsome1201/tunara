@@ -1,5 +1,5 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { FilePreview } from "@/ui/FilePreview";
 import { useSessionsStore } from "@/state/sessions";
@@ -362,7 +362,7 @@ describe("FilePreview editor behavior", () => {
     expect(editor.value).toBe("protected draft\n");
   });
 
-  test("disables reload and suppresses duplicate reads while one is pending", async () => {
+  test("locks reload input, suppresses duplicate reads, and never overwrites a raced edit", async () => {
     let reads = 0;
     let finishReload: ((value: typeof original) => void) | undefined;
     const pendingReload = new Promise<typeof original>((resolve) => { finishReload = resolve; });
@@ -378,7 +378,7 @@ describe("FilePreview editor behavior", () => {
     });
 
     renderLocal();
-    const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" });
+    const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
     fireEvent.change(editor, { target: { value: "pending draft\n" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("The file changed on disk");
@@ -387,10 +387,16 @@ describe("FilePreview editor behavior", () => {
     fireEvent.click(reload);
     const pendingButton = await screen.findByRole("button", { name: "Reloading…" }) as HTMLButtonElement;
     expect(pendingButton.disabled).toBe(true);
+    expect(editor.readOnly).toBe(true);
     fireEvent.click(pendingButton);
     expect(reads).toBe(2);
+    // Models an input event already queued when Reload was clicked. The result
+    // must not overwrite content newer than the request.
+    fireEvent.change(editor, { target: { value: "raced draft\n" } });
     finishReload?.(original);
     await waitFor(() => expect(screen.queryByText("Reloading…")).toBeNull());
+    expect(editor.value).toBe("raced draft\n");
+    expect(editor.readOnly).toBe(false);
   });
 
   test("retains an unknown SSH save across a new PTY and reconciles with the replacement handle", async () => {
@@ -415,6 +421,15 @@ describe("FilePreview editor behavior", () => {
     fireEvent.change(editor, { target: { value: "remote draft\n" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Save result not confirmed");
+    expect(calls).toContainEqual({
+      command: "ssh_fs_write_text_file",
+      payload: {
+        binding: { logicalSessionId: "remote-draft", physicalPtyId: 41, transportGeneration: "generation-41" },
+        path: "/tmp/notes.txt",
+        content: "remote draft\n",
+        expectedFingerprint: original.fingerprint,
+      },
+    });
     expect(screen.getByText(/temporary file may still need cleanup/i)).toBeTruthy();
     first.unmount();
 
@@ -428,13 +443,208 @@ describe("FilePreview editor behavior", () => {
     expect(calls).toContainEqual({
       command: "ssh_fs_reconcile_text_write",
       payload: {
-        id: 84,
+        binding: { logicalSessionId: "remote-draft", physicalPtyId: 84, transportGeneration: "generation-84" },
         path: "/tmp/notes.txt",
         attemptedFingerprint,
         expectedMode: 0o640,
         replaceLockOwner,
       },
     });
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("delivers a late unknown SSH save result to the remounted editor", async () => {
+    const attemptedFingerprint = "f".repeat(64);
+    const replaceLockOwner = "e".repeat(64);
+    const token = `outcomeUnknown:${attemptedFingerprint}:640:lockOwner=${replaceLockOwner}:cleanupPending=true`;
+    let rejectWrite: ((reason?: unknown) => void) | undefined;
+    const pendingWrite = new Promise<never>((_resolve, reject) => { rejectWrite = reject; });
+    const calls: Array<{ command: string; payload: unknown }> = [];
+    mockIPC((command, payload) => {
+      calls.push({ command, payload });
+      if (command === "ssh_fs_read_if_changed_v1") {
+        return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
+      }
+      if (command === "ssh_fs_write_text_file") return pendingWrite;
+      if (command === "ssh_fs_reconcile_text_write") {
+        return { status: "saved", fingerprint: attemptedFingerprint, size: 13 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const first = render(
+      <FilePreview sessionId="remote-draft" filePath="/tmp/late.txt" fileName="late.txt" fill remotePtyId={41} resource={sshResource(41, "/tmp/late.txt")} onClose={() => {}} />,
+    );
+    const editor = await screen.findByRole("textbox", { name: "Edit late.txt" });
+    fireEvent.change(editor, { target: { value: "remote draft\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Saving");
+    first.unmount();
+
+    render(
+      <FilePreview sessionId="remote-draft" filePath="/tmp/late.txt" fileName="late.txt" fill remotePtyId={84} resource={sshResource(84, "/tmp/late.txt")} onClose={() => {}} />,
+    );
+    const restored = await screen.findByRole("textbox", { name: "Edit late.txt" }) as HTMLTextAreaElement;
+    expect(restored.value).toBe("remote draft\n");
+    await screen.findByText("Saving");
+
+    rejectWrite?.(token);
+    await screen.findByText("Save result not confirmed");
+    fireEvent.click(screen.getByRole("button", { name: "Check remote result" }));
+    await screen.findByText("Saved");
+    expect(calls).toContainEqual({
+      command: "ssh_fs_reconcile_text_write",
+      payload: {
+        binding: { logicalSessionId: "remote-draft", physicalPtyId: 84, transportGeneration: "generation-84" },
+        path: "/tmp/late.txt",
+        attemptedFingerprint,
+        expectedMode: 0o640,
+        replaceLockOwner,
+      },
+    });
+  });
+
+  test("reconciliation marks only the attempted SSH content as saved", async () => {
+    const attemptedFingerprint = "f".repeat(64);
+    const replaceLockOwner = "e".repeat(64);
+    const token = `outcomeUnknown:${attemptedFingerprint}:640:lockOwner=${replaceLockOwner}:cleanupPending=true`;
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_if_changed_v1") {
+        return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
+      }
+      if (command === "ssh_fs_write_text_file") throw token;
+      if (command === "ssh_fs_reconcile_text_write") {
+        return { status: "saved", fingerprint: attemptedFingerprint, size: 10 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderSsh();
+    const editor = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "attempted\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Save result not confirmed");
+
+    fireEvent.change(editor, { target: { value: "newer draft\n" } });
+    expect(screen.getByText("Save result not confirmed")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Check remote result" }));
+
+    await screen.findByText("Saved");
+    expect(editor.value).toBe("newer draft\n");
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("delivers a late SSH reconciliation result to the remounted editor", async () => {
+    const attemptedFingerprint = "f".repeat(64);
+    const replaceLockOwner = "e".repeat(64);
+    const token = `outcomeUnknown:${attemptedFingerprint}:640:lockOwner=${replaceLockOwner}:cleanupPending=true`;
+    let reconciled = false;
+    let finishReconcile: ((value: { status: "saved"; fingerprint: string; size: number }) => void) | undefined;
+    const pendingReconcile = new Promise<{ status: "saved"; fingerprint: string; size: number }>((resolve) => {
+      finishReconcile = resolve;
+    });
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_if_changed_v1") {
+        return reconciled
+          ? { status: "changed", observation: { kind: "file", size: 10, mode: 0o640, modifiedAt: 2 }, value: { ...original, content: "attempted\n", size: 10, fingerprint: attemptedFingerprint } }
+          : { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
+      }
+      if (command === "ssh_fs_write_text_file") throw token;
+      if (command === "ssh_fs_reconcile_text_write") return pendingReconcile;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const first = render(
+      <FilePreview sessionId="remote-session" filePath="/tmp/late-reconcile.txt" fileName="late-reconcile.txt" fill remotePtyId={41} resource={sshResource(41, "/tmp/late-reconcile.txt", "remote-session")} onClose={() => {}} />,
+    );
+    const editor = await screen.findByRole("textbox", { name: "Edit late-reconcile.txt" }) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "attempted\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Save result not confirmed");
+    fireEvent.click(screen.getByRole("button", { name: "Check remote result" }));
+    await screen.findByText("Checking result");
+    first.unmount();
+
+    render(
+      <FilePreview sessionId="remote-session" filePath="/tmp/late-reconcile.txt" fileName="late-reconcile.txt" fill remotePtyId={84} resource={sshResource(84, "/tmp/late-reconcile.txt", "remote-session")} onClose={() => {}} />,
+    );
+    await screen.findByText("Checking result");
+    await act(async () => {
+      reconciled = true;
+      finishReconcile?.({ status: "saved", fingerprint: attemptedFingerprint, size: 10 });
+      await pendingReconcile;
+    });
+
+    await screen.findByText("Saved");
+    expect((screen.getByRole("textbox", { name: "Edit late-reconcile.txt" }) as HTMLTextAreaElement).value).toBe("attempted\n");
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("guards an unresolved SSH mutation even after the text is changed back", async () => {
+    const attemptedFingerprint = "f".repeat(64);
+    const replaceLockOwner = "e".repeat(64);
+    const token = `outcomeUnknown:${attemptedFingerprint}:640:lockOwner=${replaceLockOwner}:cleanupPending=true`;
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_if_changed_v1") {
+        return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
+      }
+      if (command === "ssh_fs_write_text_file") throw token;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilePreview sessionId="remote-session" filePath="/tmp/guarded.txt" fileName="guarded.txt" fill remotePtyId={41} resource={sshResource(41, "/tmp/guarded.txt", "remote-session")} onClose={() => {}} />);
+    const editor = await screen.findByRole("textbox", { name: "Edit guarded.txt" }) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "attempted\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Save result not confirmed");
+    fireEvent.change(editor, { target: { value: original.content } });
+
+    const run = vi.fn();
+    act(() => { expect(requestActiveDirtyDraftAction(run)).toBe(false); });
+    expect(run).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(run).toHaveBeenCalledOnce();
+    expect(screen.queryByText("Save result not confirmed")).toBeNull();
+  });
+
+  test("explicit discard invalidates a late SSH reconciliation result", async () => {
+    const attemptedFingerprint = "f".repeat(64);
+    const replaceLockOwner = "e".repeat(64);
+    const token = `outcomeUnknown:${attemptedFingerprint}:640:lockOwner=${replaceLockOwner}:cleanupPending=true`;
+    let finishReconcile: ((value: { status: "saved"; fingerprint: string; size: number }) => void) | undefined;
+    const pendingReconcile = new Promise<{ status: "saved"; fingerprint: string; size: number }>((resolve) => {
+      finishReconcile = resolve;
+    });
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_if_changed_v1") {
+        return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
+      }
+      if (command === "ssh_fs_write_text_file") throw token;
+      if (command === "ssh_fs_reconcile_text_write") return pendingReconcile;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilePreview sessionId="remote-session" filePath="/tmp/discard-reconcile.txt" fileName="discard-reconcile.txt" fill remotePtyId={41} resource={sshResource(41, "/tmp/discard-reconcile.txt", "remote-session")} onClose={() => {}} />);
+    const editor = await screen.findByRole("textbox", { name: "Edit discard-reconcile.txt" }) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "attempted\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Save result not confirmed");
+    fireEvent.click(screen.getByRole("button", { name: "Check remote result" }));
+    await screen.findByText("Checking result");
+
+    const run = vi.fn();
+    act(() => { expect(requestActiveDirtyDraftAction(run)).toBe(false); });
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(run).toHaveBeenCalledOnce();
+    expect(editor.value).toBe(original.content);
+
+    await act(async () => {
+      finishReconcile?.({ status: "saved", fingerprint: attemptedFingerprint, size: 10 });
+      await pendingReconcile;
+    });
+    expect(screen.queryByText("Saved")).toBeNull();
+    expect(screen.getByText("Saved on disk")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
 

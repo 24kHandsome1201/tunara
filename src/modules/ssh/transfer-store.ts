@@ -20,12 +20,12 @@ export type TransferStatus = "queued" | "running" | "completed" | "cancelled" | 
 export interface TransferRequest {
   transferId?: string; batchId?: string; binding: SessionBindingV1; direction: TransferDirection;
   source: string; destination: string; conflict: TransferConflict;
-  resumeFrom?: number; resumePartial?: string; createParents?: boolean;
+  recoveryId?: string; createParents?: boolean;
 }
-export interface TransferItem extends Required<Omit<TransferRequest, "batchId" | "transferId" | "resumeFrom" | "resumePartial" | "createParents">> {
+export interface TransferItem extends Required<Omit<TransferRequest, "batchId" | "transferId" | "recoveryId" | "createParents">> {
   transferId: string; batchId?: string; attempt: number; status: TransferStatus;
   event?: SshTransferEvent; outcome?: SshTransferOutcome; error?: string; cancelRequested: boolean;
-  resumeFrom?: number; resumePartial?: string; createParents?: boolean;
+  recoveryId?: string; createParents?: boolean;
   rateSamples?: TransferRateSample[]; startedAt?: number;
 }
 export interface TransferRecoveryItem {
@@ -63,8 +63,7 @@ export interface TransferState {
 const id = () => globalThis.crypto?.randomUUID?.() ?? `transfer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const defaultRunner: Runner = (item, event) => {
   const options = {
-    resumeFrom: item.resumeFrom,
-    resumePartial: item.resumePartial,
+    recoveryId: item.recoveryId,
     createParents: item.createParents,
   };
   return item.direction === "upload"
@@ -248,7 +247,7 @@ export function createTransferStore(run: Runner = defaultRunner) {
                   },
                 });
               }
-              if (outcome.status === "outcomeUnknown" || ("residuePath" in outcome && outcome.residuePath)) void get().loadJournal();
+              if (item.recoveryId || outcome.status === "outcomeUnknown" || ("residuePath" in outcome && outcome.residuePath)) void get().loadJournal();
             })
             .catch((error: unknown) => {
               recordLocalUsageEvent({
@@ -262,6 +261,7 @@ export function createTransferStore(run: Runner = defaultRunner) {
                 attributes: { direction: item.direction, operation: item.direction, attempt: String(item.attempt) },
               });
               patchItem(item.transferId, item.attempt, (x) => x.status === "running" ? { ...x, status: "failed", error: error instanceof Error ? error.message : String(error) } : undefined);
+              if (item.recoveryId) void get().loadJournal();
             })
             .finally(pump);
         }
@@ -306,7 +306,9 @@ export function createTransferStore(run: Runner = defaultRunner) {
       cancel: async (transferId) => {
         const item = itemsById.get(transferId); if (!item) return;
         patchItem(transferId, item.attempt, (x) => active(x) ? { ...x, cancelRequested: true, status: x.status === "queued" ? "cancelled" : x.status } : undefined);
-        if (item.status === "running") await sshTransferCancel(item.transferId, item.attempt); pump();
+        if (item.status === "running") await sshTransferCancel(item.transferId, item.attempt);
+        else if (item.status === "queued" && item.recoveryId) await get().loadJournal();
+        pump();
         recordLocalUsageEvent({
           event: "ssh.transfer.cancelled",
           sessionId: item.binding.logicalSessionId,
@@ -496,18 +498,17 @@ export function createTransferStore(run: Runner = defaultRunner) {
         }
         set((s) => ({ recoveries: s.recoveries.map((item) => item === recovery ? { ...item, busy: true, error: undefined } : item) }));
         try {
-          await sshTransferRecoveryDismiss(recoveryId);
           const binding = currentReadySessionBinding(recovery.record.session) ?? resolved;
           const direction = recovery.record.direction === "upload" ? "upload" : "download";
-          const overwrite = direction === "upload" && recovery.record.partial.path !== recovery.record.finalPath;
+          const overwrite = direction === "upload" && (recovery.record.overwrite
+            ?? recovery.record.partial.path !== recovery.record.finalPath);
           get().enqueue({
             binding,
             direction,
             source: recovery.record.source,
             destination: recovery.record.finalPath,
             conflict: overwrite ? "replace" : "rename",
-            resumeFrom: recovery.record.bytes,
-            resumePartial: recovery.record.partial.path,
+            recoveryId,
             createParents: direction === "download",
           });
           set((s) => ({ recoveries: s.recoveries.filter((item) => item.record.recoveryId !== recoveryId) }));

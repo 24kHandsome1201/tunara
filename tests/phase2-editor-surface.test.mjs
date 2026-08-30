@@ -6,19 +6,22 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 
 test("editable previews use the same fingerprint-safe save contract locally and over SSH", () => {
   const preview = read("src/ui/FilePreview.tsx");
+  const registry = read("src/modules/editor/editor-draft-registry.ts");
 
   assert.match(preview, /result\?\.kind === "text" && result\.fingerprint/);
-  assert.match(preview, /fsWriteTextFile\(filePath, content, fingerprint\)/);
-  assert.match(preview, /sshWriteTextFile\(remotePtyId, filePath, content, fingerprint\)/);
+  assert.match(preview, /const attemptedContent = content/);
+  assert.match(preview, /fsWriteTextFile\(filePath, attemptedContent, fingerprint\)/);
+  assert.match(preview, /sshWriteTextFile\(resource\.binding, filePath, attemptedContent, fingerprint\)/);
   assert.match(preview, /result\.status === "conflict"/);
-  assert.match(preview, /setSavedContent\(content\)/);
+  assert.match(registry, /savedContent: attemptedContent/);
 });
 
 test("dirty drafts keep explicit close, conflict, reload, find, and external escape hatches", () => {
   const preview = read("src/ui/FilePreview.tsx");
 
   assert.match(preview, /const dirty = content !== savedContent/);
-  assert.match(preview, /if \(dirty\) \{\s*setCloseConfirm\(true\)/);
+  assert.match(preview, /const guardedDraft = dirty \|\| mutationPending/);
+  assert.match(preview, /if \(guardedDraft\) \{\s*setCloseConfirm\(true\)/);
   assert.match(preview, /role="alert"/);
   assert.match(preview, /void reload\(\)/);
   assert.match(preview, /catch \(error\) \{\s*setOperationError\(\{ operation: "reload", kind: classifyFileOperationError\(error\), detail: String\(error\) \}\)/);

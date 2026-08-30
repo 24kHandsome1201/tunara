@@ -55,7 +55,7 @@ pub enum PartialIdentity {
     },
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferJournalRecord {
     pub recovery_id: String,
@@ -70,6 +70,8 @@ pub struct TransferJournalRecord {
     #[serde(default)]
     pub source_identity: SourceIdentity,
     pub final_path: String,
+    #[serde(default)]
+    pub overwrite: Option<bool>,
     pub partial: PartialIdentity,
     pub phase: String,
     pub bytes: u64,
@@ -84,7 +86,7 @@ pub struct TransferJournalRecord {
     pub needs_reconcile: bool,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RecoveryObservation {
     PartialMatches,
@@ -259,6 +261,27 @@ fn interrupt_records(records: &mut [TransferJournalRecord]) {
     }
 }
 
+fn same_partial_owner(left: &PartialIdentity, right: &PartialIdentity) -> bool {
+    match (left, right) {
+        (PartialIdentity::Local { path: left, .. }, PartialIdentity::Local { path: right, .. }) => {
+            left == right
+        }
+        (
+            PartialIdentity::Remote {
+                path: left_path,
+                endpoint: left_endpoint,
+                ..
+            },
+            PartialIdentity::Remote {
+                path: right_path,
+                endpoint: right_endpoint,
+                ..
+            },
+        ) => left_path == right_path && left_endpoint == right_endpoint,
+        _ => false,
+    }
+}
+
 pub fn initialize(app: &tauri::AppHandle) -> Result<(), String> {
     transaction(app, |records| {
         interrupt_records(records);
@@ -271,6 +294,12 @@ pub(crate) fn create(
     mut record: TransferJournalRecord,
 ) -> Result<String, String> {
     transaction(app, |records| {
+        if records
+            .iter()
+            .any(|existing| same_partial_owner(&existing.partial, &record.partial))
+        {
+            return Err("transfer partial already has a journal owner".into());
+        }
         for _ in 0..16 {
             let mut random = [0; 16];
             getrandom::fill(&mut random).map_err(|e| e.to_string())?;
@@ -336,6 +365,61 @@ pub(crate) fn remove(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         Ok(())
     })
 }
+
+fn reactivate_record(
+    records: &mut [TransferJournalRecord],
+    recovery_id: &str,
+    expected: &TransferJournalRecord,
+    transfer_id: &str,
+    attempt: u32,
+    logical_session_id: &str,
+) -> Result<TransferJournalRecord, String> {
+    let index = records
+        .iter()
+        .position(|record| record.recovery_id == recovery_id)
+        .ok_or("unknown recovery id")?;
+    if records[index] != *expected || !records[index].paused {
+        return Err("recovery record changed before resume claim".into());
+    }
+    if records[index].commit_intent || records[index].bytes == 0 {
+        return Err("recovery record is not resumable".into());
+    }
+    if records.iter().enumerate().any(|(other_index, record)| {
+        other_index != index && same_partial_owner(&record.partial, &records[index].partial)
+    }) {
+        return Err("transfer partial has multiple journal owners".into());
+    }
+
+    let current = &mut records[index];
+    current.transfer_id = transfer_id.into();
+    current.attempt = attempt;
+    current.session = Some(logical_session_id.into());
+    current.phase = "transferring".into();
+    current.paused = false;
+    current.needs_reconcile = false;
+    Ok(current.clone())
+}
+
+pub(crate) fn reactivate(
+    app: &tauri::AppHandle,
+    recovery_id: &str,
+    expected: &TransferJournalRecord,
+    transfer_id: &str,
+    attempt: u32,
+    logical_session_id: &str,
+) -> Result<TransferJournalRecord, String> {
+    transaction(app, |records| {
+        reactivate_record(
+            records,
+            recovery_id,
+            expected,
+            transfer_id,
+            attempt,
+            logical_session_id,
+        )
+    })
+}
+
 fn find<'a>(
     rs: &'a mut [TransferJournalRecord],
     id: &str,
@@ -908,6 +992,7 @@ mod tests {
                 permissions: None,
             },
             final_path: "f".into(),
+            overwrite: Some(false),
             partial: PartialIdentity::Local {
                 path: p.display().to_string(),
                 size: 3,
@@ -946,6 +1031,41 @@ mod tests {
         assert!(records
             .iter()
             .all(|r| r.paused && r.needs_reconcile && r.phase == "paused"));
+    }
+
+    #[test]
+    fn resume_claim_is_single_owner_compare_and_swap() {
+        let mut expected = rec(Path::new(".a.tunara-claim.partial"));
+        expected.paused = true;
+        expected.needs_reconcile = true;
+        expected.phase = "paused".into();
+        let mut records = vec![expected.clone()];
+
+        let claimed = reactivate_record(
+            &mut records,
+            &expected.recovery_id,
+            &expected,
+            "new-transfer",
+            3,
+            "session-a",
+        )
+        .unwrap();
+        assert_eq!(claimed.recovery_id, expected.recovery_id);
+        assert_eq!(claimed.transfer_id, "new-transfer");
+        assert_eq!(claimed.attempt, 3);
+        assert_eq!(claimed.session.as_deref(), Some("session-a"));
+        assert!(!claimed.paused);
+        assert!(!claimed.needs_reconcile);
+
+        assert!(reactivate_record(
+            &mut records,
+            &expected.recovery_id,
+            &expected,
+            "second-transfer",
+            1,
+            "session-b",
+        )
+        .is_err());
     }
 
     #[test]

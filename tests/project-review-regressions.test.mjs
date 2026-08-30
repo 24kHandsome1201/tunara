@@ -475,6 +475,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
 test("settings exposes the signed updater flow and restart permission", () => {
   const settings = readSettingsSources();
   const appUpdate = read("src/ui/overlays/useAppUpdate.ts");
+  const appLifecycle = read("src/app/app-lifecycle.ts");
   const lib = read("src-tauri/src/lib.rs");
   const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
   const capability = JSON.parse(read("src-tauri/capabilities/desktop.json"));
@@ -482,7 +483,9 @@ test("settings exposes the signed updater flow and restart permission", () => {
   assert.match(settings, /useAppUpdate\(activeTab\)/);
   assert.match(appUpdate, /check\(\{ timeout: 15_000 \}\)/);
   assert.match(appUpdate, /update\.downloadAndInstall/);
-  assert.match(appUpdate, /await relaunch\(\)/);
+  assert.match(appUpdate, /requestSafeAppRelaunch\(relaunch/);
+  assert.doesNotMatch(appUpdate, /await relaunch\(\)/);
+  assert.match(appLifecycle, /await relaunch\(\)/);
   assert.match(lib, /tauri_plugin_updater::Builder::new\(\)\.build\(\)/);
   assert.match(lib, /tauri_plugin_process::init\(\)/);
   assert.ok(defaultCapability.permissions.includes("core:app:allow-version"));

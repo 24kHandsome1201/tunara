@@ -151,6 +151,24 @@ test("forward cancellation and late channel close never shut down the shared tra
   assert.match(connection, /async fn open_forward_channel[\s\S]*await_pending_forward_open\(/);
 });
 
+test("multiplexed shell setup consumes cancellation and closes only its late channel", async () => {
+  const connection = await readFile(new URL("src-tauri/src/modules/ssh/connection.rs", root), "utf8");
+  const ssh = await readFile(new URL("src-tauri/src/modules/ssh/mod.rs", root), "utf8");
+
+  assert.match(connection, /open_from_shared\([\s\S]*cancel: watch::Receiver<bool>/);
+  assert.match(connection, /await_pending_shell_open\([\s\S]*cancelled\.changed\(\)/);
+  assert.match(connection, /map\(ForwardChannel::new\)/);
+  assert.match(connection, /await_shell_setup_stage\(\s*"request PTY"/);
+  assert.match(connection, /await_shell_setup_stage\(\s*"request shell"/);
+  assert.match(connection, /bootstrap_cancelled\.store\(true, Ordering::Release\)/);
+  assert.doesNotMatch(connection.slice(
+    connection.indexOf("async fn await_pending_shell_open"),
+    connection.indexOf("async fn await_pending_exec_open"),
+  ), /transport_abort|Shutdown::Both|\.disconnect\(/);
+  assert.match(ssh, /if let Some\(shared\) = shared[\s\S]*open_from_shared\([\s\S]*cancel_receiver/);
+  assert.doesNotMatch(ssh, /let \(_cancel, guard\) = register_open_attempt/);
+});
+
 test("forward stop carries and atomically validates the complete SSH binding", async () => {
   const bridge = await readFile(new URL("src/modules/ssh/forwarding-bridge.ts", root), "utf8");
   const backend = await readFile(new URL("src-tauri/src/modules/ssh/forwarding.rs", root), "utf8");
@@ -173,4 +191,33 @@ test("forward stop carries and atomically validates the complete SSH binding", a
   assert.match(helper, /rule\.view\.binding\(\) != binding/);
   assert.match(helper, /Arc::ptr_eq\(&rule\.generation, &current\)/);
   assert.match(helper, /rule\.cancel\.send\(true\)/);
+});
+
+test("transfer resume IPC accepts only a durable recovery ownership token", async () => {
+  const bridge = await readFile(new URL("src/modules/ssh/transfer-bridge.ts", root), "utf8");
+  const backend = await readFile(new URL("src-tauri/src/modules/ssh/transfer/engine.rs", root), "utf8");
+  const journal = await readFile(new URL("src-tauri/src/modules/ssh/transfer_journal.rs", root), "utf8");
+  const sftp = await readFile(new URL("src-tauri/src/modules/ssh/sftp.rs", root), "utf8");
+
+  assert.match(bridge, /recoveryId\?: string/);
+  assert.doesNotMatch(bridge, /\bresume(?:From|Partial)\b/);
+  for (const command of ["ssh_transfer_download", "ssh_transfer_upload"]) {
+    const commandSource = functionSource(backend, command);
+    assert.match(commandSource, /recovery_id: Option<String>/);
+    assert.doesNotMatch(commandSource, /\bresume_(?:from|partial)\b/);
+    assert.match(commandSource, /validated_resume_record\(/);
+    assert.match(commandSource, /transfer_journal::reactivate\(/);
+  }
+  const downloadSource = functionSource(backend, "ssh_transfer_download");
+  assert.match(downloadSource, /Re-read the same open handle before publishing every download/);
+  assert.match(downloadSource, /remote download verification SHA-256 mismatch/);
+  assert.match(downloadSource, /download commit intent could not be persisted/);
+  assert.match(downloadSource, /Verify the final path before reporting Completed/);
+  assert.match(sftp, /Mandatory full SFTP readback proves the server-side partial bytes/);
+  assert.match(sftp, /remote upload readback SHA-256 mismatch/);
+  assert.match(sftp, /indeterminate published outcome, never a completed upload/);
+  assert.match(sftp, /sftp\.hardlink\(&partial_path, &remote_path\)/);
+  assert.match(sftp, /upload source contents changed during transfer/);
+  assert.match(journal, /records\[index\] != \*expected \|\| !records\[index\]\.paused/);
+  assert.match(journal, /transfer partial has multiple journal owners/);
 });

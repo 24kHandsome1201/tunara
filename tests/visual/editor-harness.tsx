@@ -34,6 +34,8 @@ if (scenario === "conflict") {
     fingerprint: original.fingerprint,
     saveState: "conflict",
     unknownOutcome: null,
+    unknownAttemptContent: null,
+    saveAttemptId: null,
   });
 }
 

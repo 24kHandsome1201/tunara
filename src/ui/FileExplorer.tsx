@@ -808,7 +808,7 @@ export function FileExplorer({
     return isRemote
       ? [
           { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => openFile(node.path) },
-          { id: "file:open-editor", label: t("preview.editor.external_remote"), icon: "editor", disabled: remoteDisconnected || remotePtyId === undefined, action: () => { if (remotePtyId !== undefined) void openRemoteInExternalEditor({ sessionId, remotePtyId, remotePath: node.path, editor: externalEditor }).catch(() => {}); } },
+          { id: "file:open-editor", label: t("preview.editor.external_remote"), icon: "editor", disabled: remoteDisconnected || !binding, action: () => { if (binding) void openRemoteInExternalEditor({ sessionId, binding, remotePath: node.path, editor: externalEditor }).catch(() => {}); } },
           { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
           { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
