@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
@@ -55,6 +55,18 @@ export function useTerminalRuntimeSync({
   allowTransparency,
 }: TerminalRuntimeSyncOptions) {
   const presentationMode = useUIStore((s) => s.presentationMode);
+  const [systemIsDark, setSystemIsDark] = useState(() =>
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
+  );
+
+  useEffect(() => {
+    if (theme !== "system" || !window.matchMedia) return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event: MediaQueryListEvent) => setSystemIsDark(event.matches);
+    setSystemIsDark(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, [theme]);
 
   useEffect(() => {
     if (!active) return;
@@ -91,7 +103,8 @@ export function useTerminalRuntimeSync({
     term.options.cursorStyle = cursorStyle;
     term.options.cursorBlink = cursorBlink;
     term.options.screenReaderMode = screenReaderMode;
-    const palette = getTerminalTheme(theme, terminalTheme, accent);
+    const resolvedTheme = theme === "system" ? (systemIsDark ? "dark" : "light") : theme;
+    const palette = getTerminalTheme(resolvedTheme, terminalTheme, accent);
     term.options.allowTransparency = allowTransparency;
     term.options.theme = allowTransparency
       ? { ...palette, background: TRANSPARENT_TERMINAL_BACKGROUND }
@@ -115,5 +128,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, allowTransparency, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, sessionId, termReady, termRef, terminalTheme, theme]);
+  }, [active, accent, allowTransparency, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, terminalTheme, theme]);
 }

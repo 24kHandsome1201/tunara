@@ -1637,7 +1637,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlockFilter, /export function formatTerminalBlockFilterText/);
   assert.match(terminalBlockFilter, /invalidRegex: true/);
   assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
-  assert.match(terminalRuntimeSync, /getTerminalTheme\(theme, terminalTheme, accent\)/);
+  assert.match(terminalRuntimeSync, /const resolvedTheme = theme === "system"/);
+  assert.match(terminalRuntimeSync, /getTerminalTheme\(resolvedTheme, terminalTheme, accent\)/);
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
   assert.match(terminalWebgl, /fitRef\?\.current\?\.fit\(\)/);
   assert.match(terminalWebgl, /ptyRef\?\.current\?\.resize\(term\.cols, term\.rows\)\?\.catch/);

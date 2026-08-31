@@ -9,8 +9,9 @@ import { DEFAULT_SETTINGS, loadUserConfig, useUIStore } from "@/state/ui";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { useTerminalRuntimeSync } from "@/ui/useTerminalRuntimeSync";
+import type { ThemeType } from "@/ui/types";
 
-function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light", allowTransparency = false }: { enabled: boolean; terminal: Terminal; theme?: "light" | "dark"; allowTransparency?: boolean }) {
+function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light", allowTransparency = false }: { enabled: boolean; terminal: Terminal; theme?: ThemeType; allowTransparency?: boolean }) {
   const termRef = useRef<Terminal | null>(terminal);
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef(null);
@@ -285,6 +286,49 @@ test("runtime theme swaps repaint the current terminal frame", async () => {
   expect(refresh).toHaveBeenCalledWith(0, terminal.rows - 1);
   unregisterRebuild();
   terminal.dispose();
+});
+
+test("live terminals follow system color-scheme changes without a settings update", async () => {
+  let matches = false;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const originalMatchMedia = window.matchMedia;
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: () => ({
+      matches,
+      media: "(prefers-color-scheme: dark)",
+      onchange: null,
+      addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  });
+
+  const terminal = createTerminalInstance({
+    fontSize: 14,
+    fontFamily: "JetBrains Mono",
+    nerdFontFallback: true,
+    scrollback: 2000,
+    theme: "system",
+    terminalTheme: "default",
+    accent: "#c2683c",
+    cursorBlink: true,
+    cursorStyle: "bar",
+    screenReaderMode: false,
+  });
+  render(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="system" />);
+  expect(terminal.options.theme?.background).toBe("#fffdfb");
+
+  await act(async () => {
+    matches = true;
+    for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
+  });
+  await waitFor(() => expect(terminal.options.theme?.background).toBe("#0f0b09"));
+
+  terminal.dispose();
+  Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
 });
 
 test("wallpaper transparency toggles restore the live terminal's opaque theme", async () => {
