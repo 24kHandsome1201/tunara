@@ -60,6 +60,7 @@ export function Sidebar({
   const dirCloseConfirmations = useSessionsStore((s) => s.dirCloseConfirmations);
   const collapsedDirs = useUIStore((s) => s.collapsedDirs);
   const toggleDirCollapsed = useUIStore((s) => s.toggleDirCollapsed);
+  const hasSessions = sessions.length > 0;
   const q = search.trim().toLowerCase();
   // Derived view of the session list. Memoized so an unrelated sessions-store
   // update (e.g. an agent heartbeat that rebuilds the sessions array) doesn't
@@ -210,14 +211,14 @@ export function Sidebar({
       aria-label={t("sidebar.aria_label")}
       role="navigation"
     >
-      {onNewTerminal && (
+      {hasSessions && onNewTerminal && (
         <SidebarNewTerminalControl
           onNewTerminal={onNewTerminal}
           onNewTerminalInDirectory={onNewTerminalInDirectory}
         />
       )}
-      <SidebarHosts sessions={sessions} activeSessionId={activeSessionId} onSelectSession={onSelectSession} />
-      <div style={{ padding: "6px 12px" }}>
+      {hasSessions && <SidebarHosts sessions={sessions} activeSessionId={activeSessionId} onSelectSession={onSelectSession} />}
+      {hasSessions && <div style={{ padding: "6px 12px" }}>
         <div
           className="sidebar-search"
           style={{
@@ -275,7 +276,7 @@ export function Sidebar({
           )}
         </div>
         {q && <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", padding: "2px 12px 0", lineHeight: 1.4 }}>{t("sidebar.search.no_drag")}</div>}
-      </div>
+      </div>}
 
       <GlobalAgentBar sessions={sessions} onSelectSession={onSelectSession} />
 
@@ -289,7 +290,7 @@ export function Sidebar({
         role="list"
         aria-label={t("sidebar.list.aria_label")}
       >
-        {filtered.length === 0 && (
+        {hasSessions && filtered.length === 0 && (
           <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
             <span>{q ? t("sidebar.empty.no_match") : t("sidebar.empty.none")}</span>
             {q ? (

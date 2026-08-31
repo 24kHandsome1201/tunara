@@ -610,7 +610,23 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);
-  const ranked = rankCommandPaletteItems(filtered, parsedQuery, usage);
+  const allRanked = rankCommandPaletteItems(filtered, parsedQuery, usage);
+  const contextualIds = activeSession
+    ? [
+        activeSession.remote ? "duplicate-ssh-host" : "new-terminal-current-dir",
+        "open-session-files",
+        "new-terminal",
+        "new-terminal-directory",
+        "new-ssh-session",
+      ]
+    : ["new-terminal", "new-terminal-directory", "new-ssh-session", "open-ssh-hosts", "settings"];
+  const defaultCommands = [
+    ...allRanked.filter((command) => command.id.startsWith("workflow-")).slice(0, 2),
+    ...contextualIds.flatMap((id) => allRanked.find((command) => command.id === id) ?? []),
+  ];
+  const ranked = presentationMode === "pure" || query.trim()
+    ? allRanked
+    : defaultCommands;
 
   useEffect(() => {
     setSelectedIndex(0);

@@ -56,6 +56,16 @@ function renderTitlebar(options?: {
 }
 
 describe("workspace file and terminal tabs", () => {
+  test("keeps local, folder, and SSH launch modes in one compact titlebar menu", () => {
+    renderTitlebar({ sidebarVisible: false });
+
+    expect(screen.queryByRole("button", { name: "New terminal in folder…" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New…" }));
+    expect(screen.getByRole("menuitem", { name: "New terminal" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "New terminal in folder…" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "New SSH connection" })).toBeTruthy();
+  });
+
   test("uses distinct tab types, switches surfaces, and shows file dirty state", () => {
     useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
     useUIStore.getState().openFileTab({

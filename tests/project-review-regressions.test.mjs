@@ -96,8 +96,8 @@ test("discovery flows keep empty-state recents and preview prompts", () => {
   const terminal = read("src/ui/TerminalView.tsx");
 
   assert.match(app, /WorkspaceEmptyState/);
-  assert.match(empty, /collectRecentTerminalDirs\(recentDirs, undefined, 5\)/);
-  assert.match(empty, /sidebar\.new_terminal_in_directory/);
+  assert.match(empty, /collectRecentTerminalDirs\(recentDirs, undefined, 3\)/);
+  assert.match(empty, /app\.empty\.choose_folder/);
   assert.match(init, /if \(result\.status === "empty"\) \{\s*workspaceHydrated = true;\s*useUIStore\.setState\(\{ ready: true \}\);/);
   assert.doesNotMatch(sessions, /createSession\("~"/);
   assert.match(terminal, /markShellIntegrationSeen\(sessionIdRef\.current\)/);

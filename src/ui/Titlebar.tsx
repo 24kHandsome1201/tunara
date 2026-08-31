@@ -61,22 +61,6 @@ function PanelLeftIcon({ active }: { active: boolean }) {
   );
 }
 
-function GearIcon() {
-  return (
-    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="4" y1="21" x2="4" y2="14" />
-      <line x1="4" y1="10" x2="4" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12" y2="3" />
-      <line x1="20" y1="21" x2="20" y2="16" />
-      <line x1="20" y1="12" x2="20" y2="3" />
-      <line x1="1" y1="14" x2="7" y2="14" />
-      <line x1="9" y1="8" x2="15" y2="8" />
-      <line x1="17" y1="16" x2="23" y2="16" />
-    </svg>
-  );
-}
-
 function PresentationModeIcon() {
   return (
     <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -788,7 +772,6 @@ function TitlebarImpl({
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
-  const openSettingsShortcut = useUIStore((s) => s.keybindings.openSettings);
   const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
   const presentationModeBinding = useUIStore((s) => s.keybindings.togglePresentationMode);
   const presentationModeShortcut = formatShortcut(presentationModeBinding);
@@ -805,12 +788,18 @@ function TitlebarImpl({
     items: MenuEntry[];
     position: { x: number; y: number };
   } | null>(null);
+  const [workspaceMenu, setWorkspaceMenu] = useState<{
+    items: MenuEntry[];
+    position: { x: number; y: number };
+  } | null>(null);
   const deviceBtnRef = useRef<HTMLButtonElement>(null);
+  const workspaceMenuBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (presentationMode === "pure") {
       setNewTerminalMenu(null);
       setDeviceMenu(null);
+      setWorkspaceMenu(null);
     }
   }, [presentationMode]);
 
@@ -901,6 +890,18 @@ function TitlebarImpl({
         ? { x: event.clientX, y: event.clientY }
         : { x: rect.left, y: rect.bottom },
       items,
+    });
+  };
+
+  const openWorkspaceMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setWorkspaceMenu({
+      position: { x: rect.right, y: rect.bottom },
+      items: [
+        { id: "toggle-panel", label: panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show"), action: onTogglePanel },
+        { id: "pure-mode", label: t("titlebar.pure_mode"), action: () => setPresentationMode("pure") },
+        { id: "settings", label: t("titlebar.settings"), action: onOpenSettings },
+      ],
     });
   };
 
@@ -1284,31 +1285,6 @@ function TitlebarImpl({
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
-          <button
-            type="button"
-            onClick={onNewTerminalInDirectory}
-            title={t("titlebar.new_terminal_in_directory")}
-            aria-label={t("titlebar.new_terminal_in_directory")}
-            className="hover-bg"
-            style={{
-              width: "var(--w-titlebar-control)",
-              height: "var(--h-titlebar-control)",
-              borderRadius: "var(--r-btn)",
-              border: "none",
-              background: "transparent",
-              color: "var(--c-text-4)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M3 6.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-              <path d="M3 9h18" />
-            </svg>
-          </button>
         </div>
       ) : (
         <div style={{ flex: 1 }} />
@@ -1325,16 +1301,14 @@ function TitlebarImpl({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
-        <PresentationModeButton
-          label={t("titlebar.pure_mode")}
-          shortcut={presentationModeShortcut}
-          onClick={() => setPresentationMode("pure")}
-        />
-
         <button
-          onClick={onOpenSettings}
-          title={`${t("titlebar.settings")} ${formatShortcut(openSettingsShortcut)}`}
-          aria-label={`${t("titlebar.settings")} ${formatShortcut(openSettingsShortcut)}`}
+          ref={workspaceMenuBtnRef}
+          type="button"
+          onClick={openWorkspaceMenu}
+          title={t("common.more_actions")}
+          aria-label={t("common.more_actions")}
+          aria-haspopup="menu"
+          aria-expanded={workspaceMenu !== null}
           style={{
             width: "var(--w-titlebar-control)",
             height: "var(--h-titlebar-control)",
@@ -1348,31 +1322,7 @@ function TitlebarImpl({
           }}
           className="hover-bg"
         >
-          <GearIcon />
-        </button>
-
-        <button
-          onClick={onTogglePanel}
-          title={panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show")}
-          aria-label={panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show")}
-          aria-pressed={panelVisible}
-          style={{
-            width: "var(--w-titlebar-control)",
-            height: "var(--h-titlebar-control)",
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          className="hover-bg"
-        >
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ color: panelVisible ? "var(--c-accent)" : undefined, transition: "color var(--duration-fast) ease" }}>
-            <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
-            <rect x="9" y="1.5" width="5.5" height="13" rx="2" fill={panelVisible ? "currentColor" : "none"} fillOpacity="0.3" stroke="currentColor" strokeWidth="1.2" />
-          </svg>
+          <span aria-hidden="true" style={{ fontSize: 14, letterSpacing: -1 }}>•••</span>
         </button>
 
         {!_isMac && <WindowControls />}
@@ -1390,6 +1340,14 @@ function TitlebarImpl({
           position={deviceMenu.position}
           onClose={() => setDeviceMenu(null)}
           returnFocusToken={deviceBtnRef}
+        />
+      )}
+      {workspaceMenu && (
+        <ContextMenu
+          items={workspaceMenu.items}
+          position={workspaceMenu.position}
+          onClose={() => setWorkspaceMenu(null)}
+          returnFocusToken={workspaceMenuBtnRef}
         />
       )}
     </div>

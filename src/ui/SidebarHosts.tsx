@@ -1,20 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
-import { loadSshProfilesPanel } from "@/modules/ssh/hosts-bridge";
 import { hostProfileButtonLabel, sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
 import type { SshProfilesPanelModelV1, SshProfileSourceV1 } from "@/modules/ssh/hosts-model";
 import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session/sidebar-groups";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import type { Session } from "./types";
-
-const EMPTY_PANEL: SshProfilesPanelModelV1 = {
-  schemaVersion: 1,
-  savedProfiles: [],
-  configProfiles: [],
-  configSkipped: 0,
-  configDiagnostics: [],
-};
+import { useSshProfilesPanel } from "./useSshProfilesPanel";
 
 interface SidebarHostsProps {
   sessions: Session[];
@@ -24,30 +16,9 @@ interface SidebarHostsProps {
 
 export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: SidebarHostsProps) {
   const t = useT();
-  const overlay = useUIStore((state) => state.overlay);
-  const sshProfilesEpoch = useUIStore((state) => state.sshProfilesEpoch);
   const mainSurface = useUIStore((state) => state.mainSurface);
-  const [panel, setPanel] = useState<SshProfilesPanelModelV1>(EMPTY_PANEL);
+  const { panel, loading } = useSshProfilesPanel();
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      setLoading(true);
-      void loadSshProfilesPanel()
-        .then((next) => { if (!cancelled) setPanel(next); })
-        .catch(() => { if (!cancelled) setPanel(EMPTY_PANEL); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    };
-    load();
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [overlay, sshProfilesEpoch]);
 
   const profiles: Array<{ profile: SshProfilesPanelModelV1["savedProfiles"][number]; source: SshProfileSourceV1 }> = [
     ...panel.savedProfiles.map((profile) => ({ profile, source: "saved" as const })),

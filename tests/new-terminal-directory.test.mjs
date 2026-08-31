@@ -99,7 +99,7 @@ test("all directory entry points share the guarded dialog helper", () => {
 
   assert.match(app, /openNewTerminalDirectoryDialog/);
   assert.equal((app.match(/onNewTerminalInDirectory=\{newTerminalInDirectory\}/g) ?? []).length, 3);
-  assert.match(sidebar, /onClick=\{onNewTerminalInDirectory\}/);
+  assert.match(sidebar, /id: "new-terminal-directory"[\s\S]*action: onNewTerminalInDirectory/);
   assert.match(titlebar, /onContextMenu=\{openNewTerminalMenu\}/);
   assert.match(palette, /void openNewTerminalDirectoryDialog\(\)/);
   assert.ok(capability.permissions.includes("dialog:allow-open"));

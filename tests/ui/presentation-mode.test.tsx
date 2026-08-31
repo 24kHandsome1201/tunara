@@ -177,12 +177,17 @@ test("opening SSH leaves Pure Mode while blocking SSH challenges remain availabl
   useUIStore.setState({ hostKeyPrompts: [], keyboardInteractivePrompts: [] });
 });
 
-test("the titlebar makes entering and leaving windowed pure mode equally discoverable", () => {
+test("workspace titlebar moves secondary controls into More actions", () => {
   useUIStore.setState({ configLoaded: false, presentationMode: "workspace", nativeFullscreen: false });
   renderTitlebar();
 
-  const enter = screen.getByRole("button", { name: /Pure Mode.+P/ });
-  expect(screen.getByText("Pure Mode")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Pure Mode/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Settings/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /review panel/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  expect(screen.getByRole("menuitem", { name: "Show review panel" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Settings" })).toBeTruthy();
+  const enter = screen.getByRole("menuitem", { name: "Pure Mode" });
   fireEvent.click(enter);
 
   expect(useUIStore.getState().presentationMode).toBe("pure");
@@ -191,7 +196,7 @@ test("the titlebar makes entering and leaving windowed pure mode equally discove
   fireEvent.click(exit);
 
   expect(useUIStore.getState().presentationMode).toBe("workspace");
-  expect(screen.getByRole("button", { name: /Pure Mode.+P/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "More actions" })).toBeTruthy();
 });
 
 test("native fullscreen teaches the exit shortcut, fades, and reveals again at the top edge", () => {
@@ -444,10 +449,16 @@ test("workspace command palette keeps mouse-free terminal recovery actions", () 
 
   render(<CommandPalette onClose={() => useUIStore.getState().setOverlay(null)} />);
 
-  expect(screen.getByText("Copy terminal selection")).toBeTruthy();
-  expect(screen.getByText("Safe Paste into terminal")).toBeTruthy();
-  expect(screen.getByText("Open terminal shortcut menu")).toBeTruthy();
   expect(screen.getByText("New terminal")).toBeTruthy();
+  expect(screen.queryByText("Copy terminal selection")).toBeNull();
+
+  const input = screen.getByRole("combobox");
+  fireEvent.change(input, { target: { value: "Copy terminal selection" } });
+  expect(screen.getByText("Copy terminal selection")).toBeTruthy();
+  fireEvent.change(input, { target: { value: "Safe Paste into terminal" } });
+  expect(screen.getByText("Safe Paste into terminal")).toBeTruthy();
+  fireEvent.change(input, { target: { value: "Open terminal shortcut menu" } });
+  expect(screen.getByText("Open terminal shortcut menu")).toBeTruthy();
 });
 
 test("command palette can launch an opted-in workflow in the active SSH terminal", () => {
@@ -471,6 +482,10 @@ test("command palette can launch an opted-in workflow in the active SSH terminal
   });
 
   render(<CommandPalette onClose={() => useUIStore.getState().setOverlay(null)} />);
+  const defaultOptions = screen.getAllByRole("option");
+  expect(defaultOptions.length).toBeGreaterThanOrEqual(5);
+  expect(defaultOptions.length).toBeLessThanOrEqual(7);
+  expect(defaultOptions[0].textContent).toContain("Herdr");
   fireEvent.click(screen.getByText("Herdr"));
 
   expect(useSessionsStore.getState().sessions[0]).toMatchObject({
@@ -491,6 +506,9 @@ test("command palette executes a repeated Enter intent only once", () => {
   render(<CommandPalette onClose={onClose} />);
 
   const input = screen.getByRole("combobox");
+  expect(screen.getByText("New terminal")).toBeTruthy();
+  expect(screen.getByText("New terminal in folder…")).toBeTruthy();
+  expect(screen.getByText("New SSH connection")).toBeTruthy();
   fireEvent.change(input, { target: { value: "New terminal" } });
   const dialog = screen.getByRole("dialog");
   fireEvent.keyDown(dialog, { key: "Enter" });

@@ -106,9 +106,10 @@ test("folder-based terminal creation stays visible in empty and compact shells",
   const empty = read("src/ui/WorkspaceEmptyState.tsx");
   const titlebar = read("src/ui/Titlebar.tsx");
   assert.match(app, /WorkspaceEmptyState/);
-  assert.match(empty, /onClick=\{onNewTerminalInDirectory\}[\s\S]*sidebar\.new_terminal_in_directory/);
-  assert.match(empty, /className="hover-primary"[\s\S]*sidebar\.new_terminal_in_directory/);
-  assert.match(titlebar, /onClick=\{onNewTerminalInDirectory\}[\s\S]*titlebar\.new_terminal_in_directory/);
+  assert.match(empty, /onClick=\{onNewTerminal\}[\s\S]*app\.empty\.local_terminal/);
+  assert.match(empty, /onClick=\{onNewTerminalInDirectory\}[\s\S]*app\.empty\.choose_folder/);
+  assert.match(empty, /onClick=\{onOpenSsh\}[\s\S]*app\.empty\.connect_ssh/);
+  assert.match(titlebar, /id: "new-terminal-directory"[\s\S]*label: t\("titlebar\.new_terminal_in_directory"\)[\s\S]*action: onNewTerminalInDirectory/);
 });
 
 test("session and activity rows do not nest action buttons inside button roles", () => {
