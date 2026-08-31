@@ -334,10 +334,11 @@ export default function App() {
 
   if (!ready) return <AppSplash />;
 
+  const hasSessions = sessions.length > 0;
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const workspaceMode = presentationMode === "workspace";
   const terminalSurface = !workspaceMode || mainSurface === "terminal";
-  const presentedSidebarVisible = workspaceMode && sidebarVisible;
+  const presentedSidebarVisible = workspaceMode && hasSessions && sidebarVisible;
   const pureFilesVisible = !workspaceMode && panelVisible && inspectorTab === "files";
   const presentedPanelVisible = (workspaceMode && terminalSurface && panelVisible) || pureFilesVisible;
   const {
@@ -377,7 +378,7 @@ export default function App() {
         sessions={sessions}
         activeSessionId={activeSessionId ?? ""}
         panelVisible={panelVisible}
-        sidebarVisible={sidebarVisible}
+        sidebarVisible={presentedSidebarVisible}
         onToggleSidebar={toggleSidebarWithoutStacking}
         onTogglePanel={togglePanelWithoutStacking}
         onSelectSession={selectSession}
@@ -417,10 +418,9 @@ export default function App() {
             bottom: sidebarOverlay ? 0 : undefined,
             zIndex: sidebarOverlay ? 80 : undefined,
             boxShadow: sidebarOverlay && presentedSidebarVisible ? "var(--shadow-overlay)" : undefined,
-            transition: workspaceMode ? "width var(--duration-expand) var(--ease-out-expo)" : "none",
           }}
         >
-          {workspaceMode && (
+          {workspaceMode && hasSessions && (
             <>
               <Sidebar
                 sessions={sessions}
@@ -430,7 +430,7 @@ export default function App() {
                 onNewTerminalInDirectory={newTerminalInDirectory}
                 onCloseSession={closeSessionById}
               />
-              {sidebarVisible && !sidebarOverlay && <SidebarResizeHandle />}
+              {presentedSidebarVisible && !sidebarOverlay && <SidebarResizeHandle />}
             </>
           )}
         </div>
@@ -439,7 +439,7 @@ export default function App() {
           <div aria-hidden="true" style={{ width: sidebarReservedWidth, flexShrink: 0 }} />
         )}
 
-        {sessions.length > 0 && (
+        {hasSessions && (
           <div style={{ flex: 1, display: terminalSurface ? "flex" : "none", minWidth: 0, minHeight: 0 }}>
             <MainArea
               key="terminal-main-area"
@@ -451,7 +451,7 @@ export default function App() {
 
         {workspaceMode && mainSurface === "ssh-hosts" && <SshHostsDashboard sessions={sessions} />}
 
-        {workspaceMode && terminalSurface && sessions.length === 0 && (
+        {workspaceMode && terminalSurface && !hasSessions && (
           <WorkspaceEmptyState
             onNewTerminal={newTerminal}
             onNewTerminalInDirectory={newTerminalInDirectory}
@@ -475,7 +475,6 @@ export default function App() {
               display: "flex",
               minHeight: 0,
               overflow: "hidden",
-              transition: workspaceMode ? "width var(--duration-expand) var(--ease-out-expo)" : "none",
             }}
           >
             {(workspaceMode || pureFilesVisible) && (

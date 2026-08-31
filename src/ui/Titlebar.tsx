@@ -768,7 +768,7 @@ function TitlebarImpl({
     [sessions, fileTabs, activeSessionId, sidebarVisible],
   );
   const visibleTabs = useMemo(() => visibleTitlebarItems(workingSet), [workingSet]);
-  const showTabs = presentationMode === "workspace" && (workingSet.showTerminals || workingSet.files.length > 0);
+  const showTabs = presentationMode === "workspace" && sessions.length > 0 && (workingSet.showTerminals || workingSet.files.length > 0);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
@@ -1046,7 +1046,7 @@ function TitlebarImpl({
     .filter(Boolean).join(" · ");
   const deviceIdentityStyle = {
     height: "var(--h-titlebar-control)",
-    maxWidth: 160,
+    maxWidth: "min(220px, 26vw)",
     padding: "0 8px",
     marginLeft: 2,
     borderRadius: "var(--r-btn)",
@@ -1126,26 +1126,28 @@ function TitlebarImpl({
         } as DragStyle}
       >
         {trafficLightWidth > 0 && <div style={{ width: trafficLightWidth, flexShrink: 0 }} />}
-        <button
-          onClick={onToggleSidebar}
-          title={t("titlebar.toggle_sidebar")}
-          aria-label={t("titlebar.toggle_sidebar")}
-          aria-pressed={sidebarVisible}
-          style={{
-            width: "var(--w-titlebar-control)",
-            height: "var(--h-titlebar-control)",
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          className="hover-bg"
-        >
-          <PanelLeftIcon active={sidebarVisible} />
-        </button>
+        {sessions.length > 0 && (
+          <button
+            onClick={onToggleSidebar}
+            title={t("titlebar.toggle_sidebar")}
+            aria-label={t("titlebar.toggle_sidebar")}
+            aria-pressed={sidebarVisible}
+            style={{
+              width: "var(--w-titlebar-control)",
+              height: "var(--h-titlebar-control)",
+              borderRadius: "var(--r-btn)",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            className="hover-bg"
+          >
+            <PanelLeftIcon active={sidebarVisible} />
+          </button>
+        )}
       </div>
 
       {workingSet.showDeviceIdentity && (

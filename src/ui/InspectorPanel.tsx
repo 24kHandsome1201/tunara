@@ -397,7 +397,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
-            animation: "contentIn var(--duration-normal) var(--ease-out-expo)",
           }}
         >
           <Suspense fallback={null}>

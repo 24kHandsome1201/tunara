@@ -120,6 +120,25 @@ test("the radio group supports roving keyboard selection and whole-window previe
   expect(useUIStore.getState()).toMatchObject({ theme: "light", terminalTheme: "solarized" });
 });
 
+test("segmented settings expose one tab stop and support arrow-key selection", () => {
+  render(<Settings onClose={() => {}} />);
+
+  const group = screen.getByRole("radiogroup", { name: "Language" });
+  const english = within(group).getByRole("radio", { name: "English" });
+  const chinese = within(group).getByRole("radio", { name: "简体中文" });
+  expect(english.tabIndex).toBe(0);
+  expect(chinese.tabIndex).toBe(-1);
+
+  english.focus();
+  fireEvent.keyDown(english, { key: "ArrowLeft" });
+
+  expect(document.activeElement).toBe(chinese);
+  expect(chinese.getAttribute("aria-checked")).toBe("true");
+  expect(chinese.tabIndex).toBe(0);
+  expect(english.tabIndex).toBe(-1);
+  expect(useUIStore.getState().language).toBe("zh-CN");
+});
+
 test("system media changes affect only the default System scheme", async () => {
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
   const media = {

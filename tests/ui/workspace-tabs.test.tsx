@@ -56,6 +56,14 @@ function renderTitlebar(options?: {
 }
 
 describe("workspace file and terminal tabs", () => {
+  test("removes the sidebar affordance when an empty workspace has no sidebar content", () => {
+    renderTitlebar({ sessions: [], activeSessionId: "", sidebarVisible: false });
+
+    expect(screen.queryByRole("button", { name: "Toggle sidebar" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New…" })).toBeNull();
+    expect(screen.getByRole("button", { name: "More actions" })).toBeTruthy();
+  });
+
   test("keeps local, folder, and SSH launch modes in one compact titlebar menu", () => {
     renderTitlebar({ sidebarVisible: false });
 

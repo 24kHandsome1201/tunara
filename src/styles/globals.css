@@ -1765,7 +1765,7 @@ textarea:focus-visible {
 }
 .ssh-host-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   align-items: start;
   gap: 14px;
 }
@@ -1782,9 +1782,10 @@ textarea:focus-visible {
   box-shadow: var(--shadow-card);
   text-align: left;
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+  transition: background var(--duration-fast) var(--ease-smooth), border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
 }
-.ssh-host-card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--c-accent) 40%, var(--c-border-2)); box-shadow: var(--shadow-overlay); }
+.ssh-host-card:hover { background: var(--c-bg-hover); border-color: color-mix(in srgb, var(--c-accent) 40%, var(--c-border-2)); box-shadow: var(--shadow-card); }
+.ssh-host-card:active { background: var(--c-bg-3); }
 .ssh-host-card[data-selected="true"] { border-color: var(--c-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-accent) 11%, transparent), var(--shadow-card); }
 .ssh-host-card-topline { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .ssh-host-card-icon,

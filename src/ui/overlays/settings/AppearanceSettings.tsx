@@ -6,6 +6,7 @@ import {
   ACCENT_COLORS,
   AccentRing,
   ColorSchemeCard,
+  handleRadioGroupKeyDown,
   SECTION_LABEL,
   Segmented,
   type ColorSchemeId,
@@ -55,24 +56,6 @@ export function AppearanceSettings() {
     setTerminalTheme(id);
   };
 
-  const handleColorSchemeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const target = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-color-scheme]");
-    const currentIndex = colorSchemeOptions.findIndex(({ id }) => id === target?.dataset.colorScheme);
-    if (currentIndex < 0) return;
-
-    let nextIndex: number | undefined;
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") nextIndex = (currentIndex + 1) % colorSchemeOptions.length;
-    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") nextIndex = (currentIndex - 1 + colorSchemeOptions.length) % colorSchemeOptions.length;
-    else if (e.key === "Home") nextIndex = 0;
-    else if (e.key === "End") nextIndex = colorSchemeOptions.length - 1;
-    if (nextIndex === undefined) return;
-
-    e.preventDefault();
-    const nextId = colorSchemeOptions[nextIndex].id;
-    selectColorScheme(nextId);
-    e.currentTarget.querySelector<HTMLButtonElement>(`[data-color-scheme="${nextId}"]`)?.focus();
-  };
-
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -84,7 +67,7 @@ export function AppearanceSettings() {
           role="radiogroup"
           aria-labelledby="color-scheme-label"
           aria-describedby="color-scheme-description"
-          onKeyDown={handleColorSchemeKeyDown}
+          onKeyDown={handleRadioGroupKeyDown}
           style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 8 }}
         >
           {colorSchemeOptions.map((entry) => (

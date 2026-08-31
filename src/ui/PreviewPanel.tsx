@@ -140,8 +140,8 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   };
 
   const row = (label: string, value: string) => (
-    <div style={{ display: "grid", gridTemplateColumns: "68px minmax(0, 1fr)", gap: 6, minWidth: 0 }}>
-      <span style={{ color: "var(--c-text-5)" }}>{label}</span>
+    <div style={{ display: "grid", gridTemplateColumns: "116px minmax(0, 1fr)", gap: 8, minWidth: 0 }}>
+      <span style={{ color: "var(--c-text-5)", whiteSpace: "nowrap" }}>{label}</span>
       <span title={value} style={{ fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
     </div>
   );

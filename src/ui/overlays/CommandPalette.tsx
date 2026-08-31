@@ -823,12 +823,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                       background: isSelected ? "var(--c-accent-bg-light)" : "transparent",
                       borderRadius: "var(--r-btn)",
                       margin: "0 6px",
-                      transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
-                      transform: isSelected ? "translateX(2px)" : "none",
+                      transition: "background var(--duration-fast) var(--ease-smooth)",
                     }}
                   >
                     {cmd.icon && (
-                      <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)", transform: isSelected ? "scale(1.1)" : "scale(1)" }}>
+                      <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--duration-fast) var(--ease-smooth)" }}>
                         {cmd.icon}
                       </span>
                     )}

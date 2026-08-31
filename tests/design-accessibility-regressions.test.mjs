@@ -106,6 +106,8 @@ test("folder-based terminal creation stays visible in empty and compact shells",
   const empty = read("src/ui/WorkspaceEmptyState.tsx");
   const titlebar = read("src/ui/Titlebar.tsx");
   assert.match(app, /WorkspaceEmptyState/);
+  assert.match(app, /const presentedSidebarVisible = workspaceMode && hasSessions && sidebarVisible/);
+  assert.match(app, /\{workspaceMode && hasSessions && \(/);
   assert.match(empty, /onClick=\{onNewTerminal\}[\s\S]*app\.empty\.local_terminal/);
   assert.match(empty, /onClick=\{onNewTerminalInDirectory\}[\s\S]*app\.empty\.choose_folder/);
   assert.match(empty, /onClick=\{onOpenSsh\}[\s\S]*app\.empty\.connect_ssh/);

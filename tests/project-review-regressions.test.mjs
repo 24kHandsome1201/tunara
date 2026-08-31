@@ -886,7 +886,7 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(app, /\{[\s\S]*sidebarOverlay,[\s\S]*panelOverlay,[\s\S]*sidebarEffectiveWidth,[\s\S]*panelEffectiveWidth,[\s\S]*\} = resolveAppShellLayout\(\{/);
   assert.match(app, /sidebarOverlay && sidebarReservedWidth > 0/);
   assert.match(app, /panelOverlay && panelReservedWidth > 0/);
-  assert.match(app, /sidebarVisible && !sidebarOverlay && <SidebarResizeHandle \/>/);
+  assert.match(app, /presentedSidebarVisible && !sidebarOverlay && <SidebarResizeHandle \/>/);
   assert.match(app, /presentedPanelVisible && !panelOverlay && <PanelResizeHandle \/>/);
   assert.doesNotMatch(app, /panelOverlay && panelVisible && \([\s\S]*onClick=\{togglePanel\}/);
   assert.match(app, /onClick=\{toggleSidebarWithoutStacking\}/);

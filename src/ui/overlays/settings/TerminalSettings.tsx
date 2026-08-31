@@ -16,6 +16,7 @@ import {
 import { wallpaperTextureUrl } from "@/modules/terminal/lib/terminal-wallpaper-textures";
 import { usePrefersReducedTransparency } from "@/ui/usePrefersReducedTransparency";
 import {
+  handleRadioGroupKeyDown,
   RangeRow,
   SECTION_HINT,
   SECTION_LABEL,
@@ -98,7 +99,7 @@ export function WallpaperSettings() {
       {enabled && (
         <div>
           <div style={SECTION_LABEL}>{t("settings.appearance.wallpaper.source")}</div>
-          <div role="radiogroup" aria-label={t("settings.appearance.wallpaper.source")} style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 16 }}>
+          <div role="radiogroup" aria-label={t("settings.appearance.wallpaper.source")} onKeyDown={handleRadioGroupKeyDown} style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 16 }}>
             {TERMINAL_WALLPAPER_SOURCES.map((id) => {
               const selected = source === id;
               return (
@@ -107,6 +108,7 @@ export function WallpaperSettings() {
                   type="button"
                   role="radio"
                   aria-checked={selected}
+                  tabIndex={selected ? 0 : -1}
                   onClick={() => { if (id === "custom") void chooseCustom(); else setSource(id); }}
                   style={{
                     height: 56,
