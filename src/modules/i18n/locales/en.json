@@ -993,6 +993,8 @@
   "app.empty.choose_folder": "Choose folder",
   "app.empty.connect_ssh": "Connect SSH",
   "app.empty.recent": "Recent folders",
+  "app.empty.nearby": "Nearby projects",
+  "app.empty.open_here": "New terminal here",
   "app.splash.restoring": "Restoring sessions…",
   "statusbar.sessions": "{{count}} sessions",
   "ssh.connecting": "Connecting…",

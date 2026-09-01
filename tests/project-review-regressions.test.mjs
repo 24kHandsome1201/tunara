@@ -96,8 +96,10 @@ test("discovery flows keep empty-state recents and preview prompts", () => {
   const terminal = read("src/ui/TerminalView.tsx");
 
   assert.match(app, /WorkspaceEmptyState/);
-  assert.match(empty, /collectRecentTerminalDirs\(recentDirs, undefined, 3\)/);
+  assert.match(empty, /emptyStateRecentDirs\(recentDirs, 3\)/);
+  assert.match(empty, /fsScanRecentRepos/);
   assert.match(empty, /app\.empty\.choose_folder/);
+  assert.match(empty, /app\.empty\.nearby/);
   assert.match(init, /if \(result\.status === "empty"\) \{\s*workspaceHydrated = true;\s*useUIStore\.setState\(\{ ready: true \}\);/);
   assert.doesNotMatch(sessions, /createSession\("~"/);
   assert.match(terminal, /markShellIntegrationSeen\(sessionIdRef\.current\)/);
@@ -577,7 +579,7 @@ test("session persistence keeps custom titles and rejects invalid stored payload
   assert.match(persistSnapshot, /collapsedDiffSections: Record<string, true>/);
   assert.match(persistSnapshot, /v === true && isSafeRecordKey\(k\)/);
   assert.match(persistSnapshot, /const collapsedDiffSections = sanitizeTrueRecord\(uiRaw\.collapsedDiffSections\)/);
-  assert.match(init, /import \{ toPersistedSession \} from "@\/state\/persist-snapshot"/);
+  assert.match(init, /import \{ fromPersistedSession, toPersistedSession \} from "@\/state\/persist-snapshot"/);
   assert.match(init, /sessions: st\.sessions\.map\(toPersistedSession\)/);
   assert.match(init, /collapsedDiffSections: ui\.collapsedDiffSections/);
   assert.match(init, /collapsedDiffSections: snapshot\.ui\.collapsedDiffSections/);
@@ -962,6 +964,8 @@ test("session store keeps active sessions visible in split mode and cleans per-s
   assert.match(source, /getNumberRecordValue\(get\(\)\.closeConfirmations, id\)/);
   assert.match(source, /sessions\[Math\.min\(Math\.max\(removedIndex, 0\), sessions\.length - 1\)\]/);
   assert.match(init, /const merged = current\.sessions\.length === 0/);
+  assert.match(init, /fromPersistedSession\(p\)/);
+  assert.match(init, /recentSessionIds: restoredRecentSessionIds/);
   assert.match(init, /sidebarVisible: snapshot\.ui\.sidebarVisible/);
   assert.match(init, /panelVisible: snapshot\.ui\.panelVisible/);
   assert.match(init, /const agentResume: WorkspaceSnapshotV1\["agentResume"\] = \{\}/);

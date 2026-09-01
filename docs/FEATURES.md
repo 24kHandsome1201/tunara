@@ -51,13 +51,13 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 分栏 | 在任意 pane 右/下继续拆，最多 4 pane | [`split-layout.ts`](../src/modules/session/split-layout.ts) |
 | 搜索 | ⌘F，匹配计数 | [`useTerminalSearch.ts`](../src/ui/useTerminalSearch.ts) |
 | 命令块 | 跟随 scrollback marker；块导航；右键菜单展示退出码/耗时，可复制命令/输出、导出输出、回填命令到输入行（不自动执行） | [`terminal-blocks.ts`](../src/modules/terminal/lib/terminal-blocks.ts) · [`useTerminalBlockMenu.ts`](../src/ui/useTerminalBlockMenu.ts) |
-| 命令完成提醒 | 非观察中会话的完成 toast 附带耗时；≥15s 的长命令在窗口后台完成时请求 Dock 提醒 | [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) |
+| 命令完成提醒 | 非观察中会话的完成 toast 附带耗时；≥15s 的长命令在窗口后台完成时请求一次 Dock 弹跳 | [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) · [`background-attention.ts`](../src/ui/lib/background-attention.ts) |
 | 拖放路径 | 本地会话把 Finder/文件管理器拖入的路径转义后写入输入行（不自动回车）；SSH 会话仍走 SFTP 上传 | [`shell-quote.ts`](../src/modules/terminal/lib/shell-quote.ts) · [`TerminalViewChrome.tsx`](../src/ui/TerminalViewChrome.tsx) |
 | 导出滚屏/块 | 显式另存为，最多 2000 行 / 256 KiB | [`terminal-export.ts`](../src/modules/terminal/lib/terminal-export.ts) · [`fs_export_text_file`](../src-tauri/src/modules/fs/file.rs) |
 | 安全粘贴 | 多行确认、bracketed paste、目标失效拒绝 | [`terminal-paste-protection.ts`](../src/modules/terminal/lib/terminal-paste-protection.ts) |
 | 右键与复制 | 智能右键：空闲时打开菜单，TUI 上报时把手势交给终端；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
 | 会话恢复 | serialize 快照 + 安全历史 | [`terminal-snapshot.ts`](../src/modules/terminal/lib/terminal-snapshot.ts) |
-| OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 9 / 99 / 777 通知、OSC 9;4 进度、OSC 52 剪贴板 | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
+| OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 9 / 99 / 777（解析后丢弃提醒，避免与 Agent 确认抢注意力）、OSC 9;4 进度、OSC 52 剪贴板 | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
 
 分栏默认快捷键：⌘D 水平、⌘⇧D 垂直；焦点按几何方向 ⌘[ / ⌘] / ⌘⇧[ / ⌘⇧]。
 
@@ -74,7 +74,8 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 统一动态（需处理 / 运行中 / 可恢复） | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) |
 | 跳到最近需要处理的会话 | ⌘⇧U / `Mod+Shift+U`，只聚焦，不自动跑命令。[`session-attention.ts`](../src/modules/session/session-attention.ts) · [`useKeybindings.ts`](../src/app/useKeybindings.ts) |
 | 选择目录新建 | [`new-terminal-directory.ts`](../src/modules/session/new-terminal-directory.ts) |
-| 空状态（选目录主 CTA、最近目录；关光会话不再偷偷建 `~`） | [`WorkspaceEmptyState.tsx`](../src/ui/WorkspaceEmptyState.tsx) |
+| 空状态（选目录主 CTA、最近目录；无历史时扫描附近 git 仓库一键开终端；关光会话不再偷偷建 `~`） | [`WorkspaceEmptyState.tsx`](../src/ui/WorkspaceEmptyState.tsx) · [`recent_repos.rs`](../src-tauri/src/modules/fs/recent_repos.rs) |
+| Agent 等待确认（窗口不在前台） | Dock 弹跳一次 + 角标；同一等待不重复。不发系统通知。[`background-attention.ts`](../src/ui/lib/background-attention.ts) · [`useDockBadge.ts`](../src/app/useDockBadge.ts) |
 | Agent 完成后看改动 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`ReviewChangesBar.tsx`](../src/ui/ReviewChangesBar.tsx) |
 
 工作区快照恢复会话列表、布局、终端 scrollback 和 Agent resume 意图，见 [STATE_AND_PERSISTENCE.md](./STATE_AND_PERSISTENCE.md)。

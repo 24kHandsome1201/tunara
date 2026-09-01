@@ -258,7 +258,6 @@ function TerminalViewImpl({
         if (payload.event === "exit") {
           resetAgentObservers();
           useSessionsStore.getState().handleAgentExited(sessionIdRef.current, payload.code ?? lastExitCode);
-          requestInformationalAttention();
           return true;
         }
         if (payload.agentSessionId) {
@@ -302,7 +301,6 @@ function TerminalViewImpl({
             blocks.finishBlock(exitCode, currentBufferRow());
             resetAgentObservers();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
-            requestInformationalAttention();
             osc133Active = true;
           } else if (marker === "D" && shellMarker) {
             const exitCode = parseInt(data.slice(2), 10) || 0;
@@ -310,7 +308,6 @@ function TerminalViewImpl({
             blocks.finishBlock(exitCode, currentBufferRow());
             resetAgentObservers();
             useSessionsStore.getState().handleAgentExited(sessionIdRef.current, exitCode);
-            requestInformationalAttention();
           }
           return true;
         }
@@ -358,8 +355,11 @@ function TerminalViewImpl({
         const restored = getCurrentSession()?.remote
           ? safeHistoryForTerminal(existingSnapshot.safeHistory ?? "", rl)
           : existingSnapshot.serialized + `\r\n\x1b[2m[${rl}]\x1b[0m\r\n`;
-        term.write(restored);
-        requestAnimationFrame(() => { if (existingSnapshot.viewportY !== undefined) term.scrollToLine(existingSnapshot.viewportY); });
+        term.write(restored, () => {
+          // serialize() capture is relative to the restored buffer; wait until
+          // the write lands or scrollToLine runs against an empty viewport.
+          if (existingSnapshot.viewportY !== undefined) term.scrollToLine(existingSnapshot.viewportY);
+        });
       }
       const snapshotScheduler = createTerminalSnapshotScheduler({
         term,
@@ -368,6 +368,8 @@ function TerminalViewImpl({
         isActive: () => activeRef.current,
         shouldCapture: () => useSessionsStore.getState().sessions.some((s) => s.id === sessionIdRef.current),
       });
+      const scrollSnapshotDisposable = term.onScroll(() => snapshotScheduler.schedule());
+      cleanups.push(() => scrollSnapshotDisposable.dispose());
       cleanups.push(snapshotScheduler.dispose);
       const cwd = dir === "~" ? undefined : dir;
       useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
@@ -552,7 +554,7 @@ function TerminalViewImpl({
       });
       cleanups.push(() => dataDisposable.dispose());
       const bellDisposable = term.onBell(() => {
-        requestInformationalAttention();
+        requestInformationalAttention(`bell:${sessionIdRef.current}`);
       });
       cleanups.push(() => bellDisposable.dispose());
       const el = containerRef.current!;

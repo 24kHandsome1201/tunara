@@ -17,7 +17,7 @@ import {
 import { platform } from "@tauri-apps/plugin-os";
 import { startHooksListener } from "@/modules/terminal/lib/hooks-listener";
 import { acquireGitWatch, releaseGitWatch, startGitWatcherListener } from "@/modules/git/git-watcher";
-import { toPersistedSession } from "@/state/persist-snapshot";
+import { fromPersistedSession, toPersistedSession } from "@/state/persist-snapshot";
 import {
   diffWatchedDirs,
   gitWatchDirProjection,
@@ -56,6 +56,7 @@ function buildWorkspaceProjection(): WorkspaceProjectionV1 {
     recentCommands: st.recentCommands,
     hostFilePrefs: st.hostFilePrefs,
     commandUsage: ui.commandUsage,
+    recentSessionIds: st.recentSessionIds,
   };
 }
 
@@ -106,12 +107,8 @@ export function useInit() {
       const snapshot = result.snapshot;
 
       const restored = snapshot.sessions.map((p) => ({
-        ...p,
-        title: p.title.trim() || t("session.default_title"),
-        customTitle: p.customTitle || undefined,
-        pinned: p.pinned || undefined,
+        ...fromPersistedSession(p),
         agentResume: snapshot.agentResume[p.id],
-        runState: "idle" as const,
       }));
 
       const merged = current.sessions.length === 0
@@ -136,6 +133,11 @@ export function useInit() {
         if (merged.some((s) => s.id === sessionId)) launchedSessionIds[sessionId] = true;
       }
 
+      const restoredRecentSessionIds = [
+        ...(activeSessionId ? [activeSessionId] : []),
+        ...(snapshot.recentSessionIds ?? []).filter((id) => id !== activeSessionId),
+      ].filter((id) => merged.some((session) => session.id === id));
+
       useSessionsStore.setState({
         sessions: merged,
         activeSessionId,
@@ -144,6 +146,7 @@ export function useInit() {
         recentDirs: snapshot.recentDirs,
         recentCommands: snapshot.recentCommands,
         hostFilePrefs: snapshot.hostFilePrefs ?? {},
+        recentSessionIds: restoredRecentSessionIds,
       });
 
       useUIStore.setState({
@@ -291,11 +294,16 @@ export function useInit() {
     window.addEventListener("focus", onWindowFocus);
 
     let previousPersistenceRevision = useSessionsStore.getState().workspacePersistenceRevision;
+    let previousRecentSessionIds = useSessionsStore.getState().recentSessionIds;
     const unsubWorkspacePersistence = useSessionsStore.subscribe((state) => {
+      const recentSessionIdsChanged = state.recentSessionIds !== previousRecentSessionIds;
+      previousRecentSessionIds = state.recentSessionIds;
       if (state.workspacePersistenceRevision !== previousPersistenceRevision) {
         previousPersistenceRevision = state.workspacePersistenceRevision;
         if (workspaceHydrated) scheduleSave();
+        return;
       }
+      if (recentSessionIdsChanged && workspaceHydrated) scheduleSave();
     });
 
     const unsubGitWatchProjection = useSessionsStore.subscribe((state) => {

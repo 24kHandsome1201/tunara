@@ -103,6 +103,7 @@ pub fn run() {
             fs::grep::fs_grep,
             fs::grep::fs_cancel_search,
             fs::grep::cancel_operation_v1,
+            fs::recent_repos::fs_scan_recent_repos,
             // Tunara 新增（§3.7.2 CLI 路径解析）
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,

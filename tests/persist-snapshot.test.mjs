@@ -15,6 +15,7 @@ import {
   dedupeById,
   fromPersistedSession,
   localSessionDirs,
+  sanitizeRecentSessionIds,
   sanitizeSnapshot,
   toPersistedSession,
 } from "../src/state/persist-snapshot.ts";
@@ -42,6 +43,16 @@ function terminalSnapshot(serialized = "buffer", extra = {}) {
     ...extra,
   };
 }
+
+test("sanitizeRecentSessionIds drops orphans, duplicates, and seeds the active id", () => {
+  const ids = new Set(["s-a", "s-b", "s-c"]);
+  assert.deepEqual(
+    sanitizeRecentSessionIds(["s-b", "missing", "s-b", "s-a", 12, "__proto__"], ids, "s-c"),
+    ["s-b", "s-a", "s-c"],
+  );
+  assert.deepEqual(sanitizeRecentSessionIds(undefined, ids, "s-a"), ["s-a"]);
+  assert.deepEqual(sanitizeRecentSessionIds(["s-a"], ids, "s-a"), ["s-a"]);
+});
 
 test("persisted session helpers keep only durable fields and restore idle runtime state", () => {
   const session = {
@@ -273,6 +284,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.deepEqual(Object.keys(snapshot.commandUsage).slice(0, 3), ["cmd-54", "cmd-53", "cmd-52"]);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.commandUsage, "__proto__"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot, "workflows"), false);
+    assert.deepEqual(snapshot.recentSessionIds, ["s-b"]);
     assert.equal(warnings.length, 1);
   } finally {
     console.warn = originalWarn;

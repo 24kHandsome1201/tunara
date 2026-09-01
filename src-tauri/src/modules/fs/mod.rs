@@ -13,6 +13,7 @@
 pub mod file;
 pub mod grep;
 pub mod head;
+pub mod recent_repos;
 pub mod search;
 pub mod tree;
 

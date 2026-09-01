@@ -23,6 +23,10 @@ import {
   terminalProgressUpdate,
 } from "@/modules/terminal/lib/session-lifecycle";
 import { requestInformationalAttention } from "@/ui/terminal-attention";
+import {
+  agentConfirmationAttentionKey,
+  forgetBackgroundAttention,
+} from "@/ui/lib/background-attention-state";
 import { useUIStore } from "./ui";
 import { pushRecentDir } from "./recent-dirs";
 import { setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
@@ -333,6 +337,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     removeTerminalSnapshot(id);
     clearSshCredentials(id);
     closeRemoteExternalEdits(id);
+    forgetBackgroundAttention(agentConfirmationAttentionKey(id));
     useUIStore.getState().closeFileTabsForSession(id);
     const wasActive = get().activeSessionId === id;
     const splitFocusSessionId = useUIStore.getState().removeSplitPane(id);
@@ -643,6 +648,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const isActive = isSessionObserved(get().activeSessionId, id);
     const completedTurn = session?.agentActivity === "running"
       || session?.agentActivity === "waiting_confirmation";
+    forgetBackgroundAttention(agentConfirmationAttentionKey(id));
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
     get().updateSession(id, update.patch);
@@ -664,11 +670,15 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     const isActive = isSessionObserved(get().activeSessionId, id);
     const update = agentWaitingConfirmationUpdate(session, isActive);
-    if (update) get().updateSession(id, update.patch);
+    if (!update) return;
+    get().updateSession(id, update.patch);
+    // One Dock bounce for this wait. Badge is driven by unread via useDockBadge.
+    if (!isActive) requestInformationalAttention(agentConfirmationAttentionKey(id));
   },
 
   handleAgentBusy: (id) => {
     const session = get().sessions.find((s) => s.id === id);
+    forgetBackgroundAttention(agentConfirmationAttentionKey(id));
     const update = agentBusyUpdate(session);
     if (update) {
       get().updateSession(id, update.patch);
@@ -678,6 +688,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleAgentExited: (id, exitCode) => {
     const session = get().sessions.find((s) => s.id === id);
     const isActive = isSessionObserved(get().activeSessionId, id);
+    forgetBackgroundAttention(agentConfirmationAttentionKey(id));
     const update = agentExitedUpdate(session, exitCode, isActive);
     if (!update) return;
     get().updateSession(id, update.patch);
@@ -740,7 +751,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       });
       // Long-running commands also bounce the Dock when the window is in the
       // background (no-op when focused; gated by the bell-notification setting).
-      if (notice.requestAttention) requestInformationalAttention();
+      if (notice.requestAttention) requestInformationalAttention(`command:${id}:${session.startedAt ?? 0}`);
     }
   },
 

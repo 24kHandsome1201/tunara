@@ -37,6 +37,17 @@ export function fsReadDir(path: string, includeHidden = false): Promise<DirEntry
   return invoke<DirEntry[]>("fs_read_dir", { path, includeHidden });
 }
 
+export interface NearbyGitRepo {
+  path: string;
+  name: string;
+  mtime: number;
+}
+
+/** Best-effort empty-state scan. Failures return [] so first-run never blocks. */
+export function fsScanRecentRepos(): Promise<NearbyGitRepo[]> {
+  return invoke<NearbyGitRepo[]>("fs_scan_recent_repos").catch(() => []);
+}
+
 export function fsReadFile(path: string): Promise<ReadResult> {
   return invoke<ReadResult>("fs_read_file", { path });
 }

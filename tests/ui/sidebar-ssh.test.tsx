@@ -80,6 +80,7 @@ test("empty workspace keeps one quiet launcher above recent folders and SSH host
       return [{ id: "saved-box", label: "lab box", host: "box.example", port: 22, user: "deploy", identity_file: "" }];
     }
     if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+    if (command === "fs_scan_recent_repos") return [];
     return undefined;
   });
   useSessionsStore.setState({ sessions: [], activeSessionId: null, recentDirs: ["/tmp/project"] });

@@ -33,14 +33,16 @@ closeConfirmations: Record<string, number>     // "press close again" timestamps
 dirCloseConfirmations: Record<string, number>  // same, for "close all in dir"
 recentDirs: string[]                      // hydrated from the snapshot on init
 recentCommands: string[]                  // hydrated from the snapshot on init
+recentSessionIds: string[]                // Mod+Tab recency; hydrated from the snapshot on init
 ```
 
 `Session` itself (defined in `src/ui/types.ts`) carries both persisted fields
-(`id`, `title`, `dir`, `branch`, `customTitle`, `remote`, `updatedAt`) and a
+(`id`, `title`, `dir`, `branch`, `customTitle`, `remote`, `updatedAt`, `pinned`) and a
 large set of live/ephemeral fields — `runState`, `agentActivity`,
 `agentResume`, `lastCommand`, `lastExitCode`, `shellTitle`, `terminalProgress`,
 `gitState`, `changes`, `ptyId`, `pendingInput*`, `unread`. See §2 for which are
-saved.
+saved. Restore goes through `fromPersistedSession`, which forces `runState: "idle"`
+and seeds a pending `connection` so SSH sessions do not look live until they reopen.
 
 **Agent lifecycle handlers.** Local Claude/Droid hooks arrive through the
 validated `agent-hook` Tauri event dispatched by `startHooksListener()` in
@@ -156,6 +158,7 @@ interface WorkspaceSnapshotV1 {
   recentCommands: string[];
   commandUsage: Record<string, number>;            // palette recency
   workflows: Workflow[];                            // user command templates
+  recentSessionIds?: string[];                     // Mod+Tab recency
 }
 ```
 
@@ -212,11 +215,15 @@ to the config file, independently of the snapshot — see §1.)
 `useInit` calls `loadWorkspaceSnapshot()` once on mount (guarded by a ref so it
 runs a single time). The loader returns an explicit `loaded` / `empty` / `error`
 result. On success it rebuilds `Session` objects from the persisted
-slice (re-attaching `agentResume`, forcing `runState: "idle"`), merges them with
+slice via `fromPersistedSession` (re-attaching `agentResume`, forcing
+`runState: "idle"` and a pending restore `connection`), merges them with
 any sessions already created this run, re-derives `activeSessionId`, restores
-the `split`/layout/`commandUsage` into the UI store, loads `workflows`, and
-restores terminal buffers via `restoreTerminalSnapshots`. When no snapshot
-exists it seeds a single `~` terminal. If the store exists but cannot be read or
+the `split`/layout/`commandUsage` into the UI store, loads `workflows`,
+restores `recentSessionIds` for Mod+Tab, and restores terminal buffers via
+`restoreTerminalSnapshots`. Viewport Y is applied after the serialized buffer
+write completes, and later user scrolls are captured by the snapshot scheduler.
+When no snapshot exists the empty state is shown (nearby git-repo cards may
+appear; failures stay silent). If the store exists but cannot be read or
 sanitized, Tunara opens an in-memory terminal, shows an error, and disables all
 workspace writes for that process so the original file cannot be overwritten.
 `ready` is flipped to `true` at the end.
@@ -257,6 +264,7 @@ returns a known-good shape (or drops the item) rather than trusting it.
 | `sanitizeCommandUsage(raw)` | `persist-snapshot.ts` | Drops non-finite values, keeps the 50 most-recent (mirrors the UI store's `recordCommandUse` cap) |
 | `sanitizeRecentDirs(raw)` | `recent-dirs.ts` | Strings only, trimmed, de-duped, capped at `RECENT_DIR_LIMIT` (20) |
 | `sanitizeRecentCommands(raw)` | `recent-commands.ts` | Strings only, trimmed, no newlines, de-duped, capped at `RECENT_COMMAND_LIMIT` (30) |
+| `sanitizeRecentSessionIds(raw)` | `persist-snapshot.ts` | Existing session ids only, de-duped, capped at 40; seeds the active id when missing |
 | Remote session sanitization | `persist-snapshot.ts` | White-lists host/port/user/identity path/shell-integration flag; drops any credential-like runtime fields before save or restore |
 | Workflow sanitization | `persist-snapshot.ts` | Array of `Workflow`, each run through `sanitizeWorkflow` (from `src/modules/workflows/template.ts`); invalid entries dropped |
 
