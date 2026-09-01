@@ -23,13 +23,11 @@ test("shortcut and terminal interaction controls opt into theme-aware styling", 
     configLoaded: false,
     settingsTab: "shortcuts",
     theme: "dark",
-    terminalSecondaryClick: "smart",
     terminalHostModifier: "shift",
     keybindings: defaultKeybindingsForPlatform("linux"),
   });
   render(<Settings onClose={() => {}} />);
 
-  expect(screen.getByLabelText("Open shortcut menu with secondary click").classList).toContain("settings-control");
   expect(screen.getByLabelText("Terminal host modifier").classList).toContain("settings-control");
   expect(screen.getByRole("button", { name: "Restore platform defaults" }).classList).toContain("settings-action-button");
   expect(screen.getByText("ESC").tagName).toBe("KBD");
@@ -46,25 +44,15 @@ test("shortcut and terminal interaction controls opt into theme-aware styling", 
   expect(screen.getByRole("button", { name: "Reset all" }).classList).toContain("settings-action-button");
 });
 
-test("terminal interaction presets warn before TUI override and keep recovery instructions", () => {
+test("terminal interaction recovery instructions stay visible without a secondary-click preset", () => {
   useUIStore.setState({
     configLoaded: false,
     settingsTab: "shortcuts",
-    terminalSecondaryClick: "smart",
     terminalHostModifier: "shift",
     keybindings: defaultKeybindingsForPlatform("linux"),
   });
   render(<Settings onClose={() => {}} />);
 
-  const secondaryClick = screen.getByLabelText("Open shortcut menu with secondary click");
-  fireEvent.change(secondaryClick, { target: { value: "menu" } });
-  expect(useUIStore.getState().terminalSecondaryClick).toBe("smart");
-  expect(screen.getByRole("alert").textContent).toContain("blocks terminal apps");
-
-  fireEvent.click(screen.getByRole("button", { name: "Use high-risk preset" }));
-  expect(useUIStore.getState().terminalSecondaryClick).toBe("menu");
-  fireEvent.change(secondaryClick, { target: { value: "disabled" } });
-  expect(useUIStore.getState().terminalSecondaryClick).toBe("disabled");
   expect(screen.getByText(/Shift\+F10.*Command Palette.*Titlebar.*Sidebar/)).toBeTruthy();
   expect(screen.getByText(/multiline, large, or control-character/)).toBeTruthy();
 });
@@ -73,7 +61,6 @@ test("advanced terminal bindings detect conflicts, require risky-key override, d
   useUIStore.setState({
     configLoaded: false,
     settingsTab: "shortcuts",
-    terminalSecondaryClick: "disabled",
     terminalHostModifier: "alt",
     keybindings: {
       ...defaultKeybindingsForPlatform("linux"),
@@ -108,7 +95,6 @@ test("advanced terminal bindings detect conflicts, require risky-key override, d
 
   fireEvent.click(screen.getByRole("button", { name: "Restore platform defaults" }));
   expect(useUIStore.getState()).toMatchObject({
-    terminalSecondaryClick: "smart",
     terminalHostModifier: "shift",
     keybindings: expect.objectContaining({
       terminalMenu: "",

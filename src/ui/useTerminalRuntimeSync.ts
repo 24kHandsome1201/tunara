@@ -3,9 +3,8 @@ import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { useUIStore, type CursorStyle } from "@/state/ui";
-import type { TerminalThemeName, ThemeType } from "./types";
+import type { ThemeType } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
-import { TRANSPARENT_TERMINAL_BACKGROUND } from "@/modules/terminal/lib/terminal-wallpaper";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
@@ -30,9 +29,7 @@ interface TerminalRuntimeSyncOptions {
   cursorBlink: boolean;
   screenReaderMode: boolean;
   theme: ThemeType;
-  terminalTheme: TerminalThemeName;
   accent: string;
-  allowTransparency: boolean;
 }
 
 export function useTerminalRuntimeSync({
@@ -50,9 +47,7 @@ export function useTerminalRuntimeSync({
   cursorBlink,
   screenReaderMode,
   theme,
-  terminalTheme,
   accent,
-  allowTransparency,
 }: TerminalRuntimeSyncOptions) {
   const presentationMode = useUIStore((s) => s.presentationMode);
   const [systemIsDark, setSystemIsDark] = useState(() =>
@@ -104,11 +99,7 @@ export function useTerminalRuntimeSync({
     term.options.cursorBlink = cursorBlink;
     term.options.screenReaderMode = screenReaderMode;
     const resolvedTheme = theme === "system" ? (systemIsDark ? "dark" : "light") : theme;
-    const palette = getTerminalTheme(resolvedTheme, terminalTheme, accent);
-    term.options.allowTransparency = allowTransparency;
-    term.options.theme = allowTransparency
-      ? { ...palette, background: TRANSPARENT_TERMINAL_BACKGROUND }
-      : palette;
+    term.options.theme = getTerminalTheme(resolvedTheme, accent);
     try {
       fit?.fit();
       if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows).catch(() => {});
@@ -128,5 +119,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, allowTransparency, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, terminalTheme, theme]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, theme]);
 }

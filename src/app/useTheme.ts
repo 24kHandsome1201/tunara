@@ -6,14 +6,13 @@ import { getTerminalTheme } from "@/styles/terminalTheme";
 export function useTheme() {
   const theme = useUIStore((s) => s.theme);
   const accent = useUIStore((s) => s.accent);
-  const terminalTheme = useUIStore((s) => s.terminalTheme);
 
   useEffect(() => {
     const root = document.documentElement;
 
     const apply = (systemDark: boolean) => {
-      applyBootShellTint(root, terminalTheme, theme, accent, systemDark);
-      root.style.setProperty("--terminal-canvas-bg", getTerminalTheme(theme, terminalTheme, accent).background);
+      applyBootShellTint(root, theme, accent, systemDark);
+      root.style.setProperty("--terminal-canvas-bg", getTerminalTheme(theme, accent).background);
     };
 
     if (theme === "system") {
@@ -24,5 +23,5 @@ export function useTheme() {
       return () => mq.removeEventListener("change", on);
     }
     apply(theme === "dark");
-  }, [theme, accent, terminalTheme]);
+  }, [theme, accent]);
 }

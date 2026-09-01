@@ -11,7 +11,7 @@ import { registerTerminalAtlasRebuilder } from "@/modules/terminal/lib/terminal-
 import { useTerminalRuntimeSync } from "@/ui/useTerminalRuntimeSync";
 import type { ThemeType } from "@/ui/types";
 
-function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light", allowTransparency = false }: { enabled: boolean; terminal: Terminal; theme?: ThemeType; allowTransparency?: boolean }) {
+function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light" }: { enabled: boolean; terminal: Terminal; theme?: ThemeType }) {
   const termRef = useRef<Terminal | null>(terminal);
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef(null);
@@ -25,14 +25,12 @@ function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light", allowT
     fontSize: 14,
     fontFamily: "JetBrains Mono",
     nerdFontFallback: true,
-    scrollback: 2000,
+    scrollback: 10_000,
     cursorStyle: "bar",
     cursorBlink: true,
     screenReaderMode: enabled,
     theme,
-    terminalTheme: "default",
     accent: "#c2683c",
-    allowTransparency,
   });
   return null;
 }
@@ -56,7 +54,6 @@ test("Pure Mode Files button defaults on and restores its persisted value", asyn
   expect(useUIStore.getState()).toMatchObject({
     configLoaded: true,
     showPureModeFilesButton: false,
-    terminalSecondaryClick: "smart",
   });
   useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
 });
@@ -78,69 +75,31 @@ test("changing the Pure Mode Files setting persists the snake-case config field"
   useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
 });
 
-test("terminal wallpaper is off by default, hydrates, and persists without replacing the solid theme until enabled", async () => {
-  expect(DEFAULT_SETTINGS.terminalWallpaperEnabled).toBe(false);
+test("removed named themes fall back to System and a fixed terracotta accent", async () => {
   mockIPC((command) => {
     if (command === "load_config") {
       return {
         path: "/tmp/tunara-config.toml",
-        config: { appearance: { theme: "dark" } },
+        config: { appearance: { theme: "dark", terminal_theme: "catppuccin", accent: "#4f6ef0", scrollback: 2000 } },
         error: null,
       };
     }
     throw new Error(`unexpected command: ${command}`);
   });
-  useUIStore.setState({ configLoaded: false, terminalWallpaperEnabled: true });
+  useUIStore.setState({ configLoaded: false, theme: "dark" });
 
   await loadUserConfig();
 
   expect(useUIStore.getState()).toMatchObject({
     configLoaded: true,
-    theme: "dark",
-    terminalWallpaperEnabled: false,
-    terminalWallpaperSource: "paper",
+    theme: "system",
+    accent: "#c2683c",
+    scrollback: 10_000,
   });
-  useUIStore.setState({ configLoaded: false, terminalWallpaperEnabled: false });
+  useUIStore.setState({ configLoaded: false, theme: "light" });
 });
 
-test("enabling terminal wallpaper persists snake-case appearance fields", async () => {
-  let saved: unknown;
-  mockIPC((command, payload) => {
-    if (command === "save_config") {
-      saved = (payload as { config: unknown }).config;
-      return undefined;
-    }
-    throw new Error(`unexpected command: ${command}`);
-  });
-  useUIStore.setState({
-    configLoaded: true,
-    terminalWallpaperEnabled: false,
-    terminalWallpaperSource: "paper",
-    terminalWallpaperBlur: 24,
-    terminalWallpaperVeil: 78,
-    configError: null,
-  });
-
-  useUIStore.getState().setTerminalWallpaperEnabled(true);
-  useUIStore.getState().setTerminalWallpaperSource("grain");
-  useUIStore.getState().setTerminalWallpaperBlur(30);
-
-  await waitFor(() => expect(saved).toMatchObject({
-    appearance: {
-      terminal_wallpaper: true,
-      terminal_wallpaper_source: "grain",
-      terminal_wallpaper_blur: 30,
-    },
-  }));
-  useUIStore.setState({
-    configLoaded: false,
-    terminalWallpaperEnabled: false,
-    terminalWallpaperSource: "paper",
-    terminalWallpaperBlur: 24,
-  });
-});
-
-test("terminal interaction preset and disabled bindings hydrate and persist without replacing legacy keybindings", async () => {
+test("host-modifier bindings hydrate and persist without replacing legacy keybindings", async () => {
   let saved: unknown;
   mockIPC((command, payload) => {
     if (command === "load_config") {
@@ -164,7 +123,6 @@ test("terminal interaction preset and disabled bindings hydrate and persist with
 
   await loadUserConfig();
   expect(useUIStore.getState()).toMatchObject({
-    terminalSecondaryClick: "disabled",
     terminalHostModifier: "alt",
     keybindings: expect.objectContaining({
       terminalMenu: "",
@@ -173,11 +131,10 @@ test("terminal interaction preset and disabled bindings hydrate and persist with
     }),
   });
 
-  useUIStore.getState().setTerminalSecondaryClick("menu");
   useUIStore.getState().setKeybinding("safePaste", "");
   await waitFor(() => expect(saved).toMatchObject({
     appearance: { terminal_host_modifier: "alt" },
-    terminal_interactions: { version: 1, secondary_click: "menu" },
+    terminal_interactions: { version: 1, secondary_click: "smart" },
     keybindings: {
       terminal_menu: "",
       copy_selection: "Ctrl+Shift+X",
@@ -185,29 +142,6 @@ test("terminal interaction preset and disabled bindings hydrate and persist with
       close_session: "Alt+Q",
     },
   }));
-  useUIStore.setState({ configLoaded: false, terminalSecondaryClick: "smart" });
-});
-
-test("unknown future terminal interaction values fail closed to smart at runtime", async () => {
-  mockIPC((command) => {
-    if (command === "load_config") {
-      return {
-        path: "/tmp/tunara-config.toml",
-        config: {
-          // Even a currently recognized value must not be interpreted under a
-          // future schema version whose semantics may have changed.
-          terminal_interactions: { version: 99, secondary_click: "menu" },
-        },
-        error: null,
-      };
-    }
-    throw new Error(`unexpected command: ${command}`);
-  });
-  useUIStore.setState({ configLoaded: false, terminalSecondaryClick: "menu" });
-
-  await loadUserConfig();
-
-  expect(useUIStore.getState().terminalSecondaryClick).toBe("smart");
   useUIStore.setState({ configLoaded: false });
 });
 
@@ -229,9 +163,8 @@ test("screen reader mode persists and applies to open and new terminals", async 
     fontSize: 14,
     fontFamily: "JetBrains Mono",
     nerdFontFallback: true,
-    scrollback: 2000,
+    scrollback: 10_000,
     theme: "light",
-    terminalTheme: "default",
     accent: "#c2683c",
     cursorBlink: true,
     cursorStyle: "bar",
@@ -245,9 +178,8 @@ test("screen reader mode persists and applies to open and new terminals", async 
     fontSize: 14,
     fontFamily: "JetBrains Mono",
     nerdFontFallback: true,
-    scrollback: 2000,
+    scrollback: 10_000,
     theme: "light",
-    terminalTheme: "default",
     accent: "#c2683c",
     cursorBlink: true,
     cursorStyle: "bar",
@@ -265,9 +197,8 @@ test("runtime theme swaps repaint the current terminal frame", async () => {
     fontSize: 14,
     fontFamily: "JetBrains Mono",
     nerdFontFallback: true,
-    scrollback: 2000,
+    scrollback: 10_000,
     theme: "light",
-    terminalTheme: "default",
     accent: "#c2683c",
     cursorBlink: true,
     cursorStyle: "bar",
@@ -310,9 +241,8 @@ test("live terminals follow system color-scheme changes without a settings updat
     fontSize: 14,
     fontFamily: "JetBrains Mono",
     nerdFontFallback: true,
-    scrollback: 2000,
+    scrollback: 10_000,
     theme: "system",
-    terminalTheme: "default",
     accent: "#c2683c",
     cursorBlink: true,
     cursorStyle: "bar",
@@ -329,65 +259,6 @@ test("live terminals follow system color-scheme changes without a settings updat
 
   terminal.dispose();
   Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
-});
-
-test("wallpaper transparency toggles restore the live terminal's opaque theme", async () => {
-  const terminal = createTerminalInstance({
-    fontSize: 14,
-    fontFamily: "JetBrains Mono",
-    nerdFontFallback: true,
-    scrollback: 2000,
-    theme: "light",
-    terminalTheme: "default",
-    accent: "#c2683c",
-    cursorBlink: true,
-    cursorStyle: "bar",
-    screenReaderMode: false,
-  });
-  const view = render(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} />);
-
-  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} allowTransparency />);
-  await waitFor(() => expect(terminal.options.allowTransparency).toBe(true));
-  expect(terminal.options.theme?.background).toBe("#00000000");
-
-  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} />);
-  await waitFor(() => expect(terminal.options.allowTransparency).toBe(false));
-  expect(terminal.options.theme?.background).toBe("#fffdfb");
-
-  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="dark" allowTransparency />);
-  await waitFor(() => expect(terminal.options.allowTransparency).toBe(true));
-  expect(terminal.options.theme?.background).toBe("#00000000");
-
-  view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="dark" />);
-  await waitFor(() => expect(terminal.options.allowTransparency).toBe(false));
-  expect(terminal.options.theme?.background).toBe("#0f0b09");
-
-  terminal.dispose();
-});
-
-test("wallpaper blur and veil sliders do not churn xterm or its shared WebGL atlas", () => {
-  const terminal = createTerminalInstance({
-    fontSize: 14,
-    fontFamily: "JetBrains Mono",
-    nerdFontFallback: true,
-    scrollback: 2000,
-    theme: "light",
-    terminalTheme: "default",
-    accent: "#c2683c",
-    cursorBlink: true,
-    cursorStyle: "bar",
-    screenReaderMode: false,
-  });
-  const rebuild = vi.fn();
-  const unregisterRebuild = registerTerminalAtlasRebuilder(rebuild);
-  render(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} allowTransparency />);
-  rebuild.mockClear();
-
-  act(() => useUIStore.setState({ terminalWallpaperBlur: 31, terminalWallpaperVeil: 84 }));
-
-  expect(rebuild).not.toHaveBeenCalled();
-  unregisterRebuild();
-  terminal.dispose();
 });
 
 test("a save failure still raises an app toast when config loading already reported an error", async () => {

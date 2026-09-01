@@ -52,10 +52,10 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 - 多会话 PTY；可在任意 pane 右侧或下方继续拆分，最多 4 个 pane
 - ⌘F 终端内搜索 + 匹配计数
 - 命令块输出筛选：文本 / 正则 / 大小写 / 反选 / 上下文行
-- 可点击 URL，可配置 scrollback（1k 到 20k 行）
+- 可点击 URL，固定 10000 行 scrollback
 - OSC 7 跟踪 cwd，OSC 133 接 shell integration
-- 可选行内图片（SIXEL / iTerm IIP）
-- 9 套同步作用于界面与终端的配色：跟随系统、浅色、深色、GitHub Light、Rose Pine Dawn、Catppuccin、Tokyo Night、One Dark、Solarized
+- 行内图片（SIXEL / iTerm IIP）
+- 同步作用于界面与终端的配色：跟随系统、浅色、深色
 
 ### 智能侧栏
 
@@ -121,12 +121,12 @@ Tunara 为四个一等公民 Agent CLI 提供生命周期与恢复集成。其�
 ### 桌面体验
 
 - ⌘K Command Palette，权重排序，覆盖所有动作和会话切换
-- 深浅色模式 + 跟随系统，8 色 accent
+- 深浅色模式 + 跟随系统，陶土强调色
 - 纯净模式（⌘⇧P）只收起壳层，不卸载 PTY
 - 实色纸面层级 + macOS 原生覆盖标题栏
 - Toast 通知：退出动画、hover 暂停、进度条
 - 低打扰的签名更新提醒：仅在确有新版本时出现
-- 设置页签：外观、终端、无障碍、快捷键、SSH、应用
+- 设置页签：通用、快捷键、SSH、高级
 - 右键菜单覆盖会话、目录组、文件
 - 响应式布局：终端可用宽度不足时，侧栏/检查器改为覆盖层
 - 窗口状态持久化（位置、尺寸）

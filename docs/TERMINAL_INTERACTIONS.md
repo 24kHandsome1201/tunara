@@ -7,11 +7,9 @@ Status: accepted, 2026-08-13.
 The first release uses a deliberately small model instead of a general
 multi-binding/conditional-trigger schema:
 
-- Secondary click has three presets: `smart` (default), `menu`, and `disabled`.
-  Smart opens the Tunara menu only when terminal mouse reporting is off; the
-  configured Host Modifier overrides reporting. `menu` always claims the
-  gesture and is explicitly high-risk. `disabled` never claims secondary click
-  for Tunara, but still forwards it when a TUI has enabled mouse reporting.
+- Secondary click is always `smart`. It opens the Tunara menu only when
+  terminal mouse reporting is off; the configured Host Modifier overrides
+  reporting. There is no Settings control for `menu` or `disabled`.
 - Gesture ownership is latched at secondary-button `mousedown` and retained for
   `mouseup` and `contextmenu`, including both WebKit event orders. A TUI-owned
   `contextmenu` is stopped in capture phase so xterm's
@@ -43,8 +41,8 @@ multi-binding/conditional-trigger schema:
 
 ## Persistence and compatibility
 
-`[terminal_interactions]` is versioned but initially stores only
-`secondary_click`. The existing `appearance.terminal_host_modifier` remains the
+`[terminal_interactions]` is versioned and still writes `secondary_click = "smart"`.
+The existing `appearance.terminal_host_modifier` remains the
 source of truth so old configurations need no field migration. Existing custom
 `[keybindings]` tables are preserved and missing new actions receive platform
 defaults in the frontend. Unknown TOML keys are retained by the backend merge;

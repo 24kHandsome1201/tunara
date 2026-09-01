@@ -1,6 +1,6 @@
 import { Terminal, type ILinkHandler } from "@xterm/xterm";
 import type { CursorStyle } from "@/state/ui";
-import type { TerminalThemeName, ThemeType } from "@/ui/types";
+import type { ThemeType } from "@/ui/types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { withAtlasIsolationFontFamily } from "./terminal-atlas-isolation.ts";
 import { buildTerminalFontFamily } from "./terminal-font.ts";
@@ -11,14 +11,12 @@ interface TerminalInstanceOptions {
   nerdFontFallback: boolean;
   scrollback: number;
   theme: ThemeType;
-  terminalTheme: TerminalThemeName;
   accent: string;
   cursorBlink: boolean;
   cursorStyle: CursorStyle;
   screenReaderMode: boolean;
   atlasIsolationKey?: string;
   linkHandler?: ILinkHandler | null;
-  allowTransparency?: boolean;
 }
 
 export function createTerminalInstance({
@@ -27,14 +25,12 @@ export function createTerminalInstance({
   nerdFontFallback,
   scrollback,
   theme,
-  terminalTheme,
   accent,
   cursorBlink,
   cursorStyle,
   screenReaderMode,
   atlasIsolationKey,
   linkHandler,
-  allowTransparency = false,
 }: TerminalInstanceOptions): Terminal {
   return new Terminal({
     fontFamily: withAtlasIsolationFontFamily(
@@ -43,7 +39,7 @@ export function createTerminalInstance({
     ),
     fontSize,
     lineHeight: 1.05,
-    theme: getTerminalTheme(theme, terminalTheme, accent),
+    theme: getTerminalTheme(theme, accent),
     cursorBlink,
     cursorStyle,
     cursorInactiveStyle: "outline",
@@ -54,7 +50,6 @@ export function createTerminalInstance({
     // when there's no existing selection, so the context-menu Copy targets it.
     rightClickSelectsWord: true,
     allowProposedApi: true,
-    allowTransparency,
     linkHandler,
   });
 }

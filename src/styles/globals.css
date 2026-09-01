@@ -95,14 +95,6 @@ html[data-chrome="borderless"] {
   outline: none !important;
 }
 
-/* Optional terminal wallpaper: glyphs stay opaque; only empty cells show the
-   fog behind. SIXEL / IIP canvases are not forced transparent. */
-[data-terminal-wallpaper="on"] .xterm,
-[data-terminal-wallpaper="on"] .xterm-viewport,
-[data-terminal-wallpaper="on"] .xterm-screen {
-  background-color: transparent !important;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;

@@ -28,51 +28,35 @@ test("right gesture latches its owner through up and contextmenu", () => {
   assert.equal(webkitOrder.route(input("mouse-up", { mouseTrackingMode: "none", button: 2, modifiers: { shift: true, meta: false, alt: false } })), "tui");
 });
 
-test("secondary-click presets map every reporting mode without ambiguous priority", () => {
+test("smart secondary click maps every reporting mode without ambiguous priority", () => {
   for (const mouseTrackingMode of ["none", "x10", "vt200", "drag", "any"]) {
     const reporting = mouseTrackingMode !== "none";
     assert.equal(routeTerminalInput(input("mouse-down", {
-      button: 2, mouseTrackingMode, secondaryClickMode: "smart",
+      button: 2, mouseTrackingMode,
     })), reporting ? "tui" : "tunara");
-    assert.equal(routeTerminalInput(input("mouse-down", {
-      button: 2, mouseTrackingMode, secondaryClickMode: "menu",
-    })), "tunara");
-    assert.equal(routeTerminalInput(input("mouse-down", {
-      button: 2, mouseTrackingMode, secondaryClickMode: "disabled",
-    })), "tui");
   }
 });
 
-test("smart mode latches the mousedown modifier and preset for the full gesture", () => {
+test("smart mode latches the mousedown modifier for the full gesture", () => {
   const router = new TerminalInputRouter();
   assert.equal(router.route(input("mouse-down", {
     button: 2,
     mouseTrackingMode: "any",
-    secondaryClickMode: "smart",
     modifiers: { shift: true, meta: false, alt: false },
   })), "tunara");
   assert.equal(router.route(input("mouse-up", {
     button: 2,
     mouseTrackingMode: "any",
-    secondaryClickMode: "disabled",
   })), "tunara");
   assert.equal(router.route(input("contextmenu", {
     mouseTrackingMode: "any",
-    secondaryClickMode: "disabled",
   })), "tunara");
 });
 
-test("disabled and Pure Mode never consume a hidden host-menu gesture", () => {
+test("Pure Mode never consumes a hidden host-menu gesture", () => {
   assert.equal(routeTerminalInput(input("mouse-down", {
     button: 2,
     mouseTrackingMode: "any",
-    secondaryClickMode: "disabled",
-    modifiers: { shift: true, meta: false, alt: false },
-  })), "tui", "host modifier does not silently re-enable a disabled trigger");
-  assert.equal(routeTerminalInput(input("mouse-down", {
-    button: 2,
-    mouseTrackingMode: "any",
-    secondaryClickMode: "menu",
     pure: true,
   })), "tui", "Pure Mode has no host menu to execute");
 });

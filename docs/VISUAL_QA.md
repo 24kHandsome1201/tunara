@@ -48,15 +48,15 @@ replace those interaction checks.
 
 ## Shell tint and paper surfaces
 
-- [ ] Appearance shows one “Terminal & interface color scheme” radio group with
-      nine mutually exclusive choices; no separate Theme or Terminal palette
-      selector remains.
+- [ ] General shows one “Terminal & interface color scheme” radio group with
+      three mutually exclusive choices (System / Light / Dark); no separate Theme
+      or Terminal palette selector remains, and accent/wallpaper controls are gone.
 - [ ] Every choice previews a miniature titlebar, sidebar, terminal, panel,
       borders, and text hierarchy rather than terminal lines alone.
-- [ ] Selecting Catppuccin recolors both xterm and the shell immediately;
+- [ ] Selecting Dark recolors both xterm and the shell immediately;
       selecting Light afterward restores the default light terminal and shell.
 - [ ] System follows the OS appearance only while the System choice is active.
-- [ ] Sidebar, review panel, and titlebar tints match the active theme preset.
+- [ ] Sidebar, review panel, and titlebar match the active System / Light / Dark theme.
 - [ ] Sidebar, terminal, and inspector have distinct solid surface levels.
 - [ ] Narrow the window: layout does not clip traffic lights or panel tabs.
 
@@ -73,9 +73,6 @@ replace those interaction checks.
 
 - [ ] With reduced transparency (macOS accessibility), all surfaces keep the
       same readable contrast because the shell does not depend on blur.
-- [ ] If Terminal background is enabled, Reduce Transparency still shows the
-      solid theme canvas; turning the setting off restores that canvas without
-      deleting a custom photo.
 - [ ] Terminal selection, diff highlights, and accent buttons stay legible.
 
 ## Regression guards

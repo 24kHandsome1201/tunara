@@ -21,8 +21,6 @@ beforeEach(() => {
     mainSurface: "terminal",
     fileTabs: [],
     activeFileTabId: null,
-    terminalWallpaperEnabled: false,
-    terminalWallpaperSource: "paper",
     inspectorLocked: false,
     inspectorLockSessionId: null,
     inspectorPreviewOpenedSessionIds: {},

@@ -3,28 +3,23 @@ import { useUIStore } from "@/state/ui";
 import { isDarkTheme } from "@/styles/terminalTheme";
 import { useT, LANGUAGES, type Language } from "@/modules/i18n";
 import {
-  ACCENT_COLORS,
-  AccentRing,
   ColorSchemeCard,
   handleRadioGroupKeyDown,
   SECTION_LABEL,
   Segmented,
   type ColorSchemeId,
 } from "./controls";
+import { AccessibilitySettings } from "./AccessibilitySettings";
+import { TerminalSettings } from "./TerminalSettings";
 
-/** Appearance tab: theme, accent, and language. */
+/** Combined General tab: color scheme, language, terminal, accessibility. */
 export function AppearanceSettings() {
   const t = useT();
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
-  const accent = useUIStore((s) => s.accent);
-  const setAccent = useUIStore((s) => s.setAccent);
-  const terminalTheme = useUIStore((s) => s.terminalTheme);
-  const setTerminalTheme = useUIStore((s) => s.setTerminalTheme);
   const language = useUIStore((s) => s.language);
   const setLanguage = useUIStore((s) => s.setLanguage);
 
-  // Track the OS scheme so "System" and named-scheme previews stay accurate.
   const [systemIsDark, setSystemIsDark] = useState(() => isDarkTheme("system"));
   useEffect(() => {
     const media = window.matchMedia?.("(prefers-color-scheme: dark)");
@@ -39,22 +34,7 @@ export function AppearanceSettings() {
     { id: "system", label: t("settings.appearance.theme.system") },
     { id: "light", label: t("settings.appearance.theme.light") },
     { id: "dark", label: t("settings.appearance.theme.dark") },
-    { id: "github-light", label: t("settings.appearance.theme.github_light") },
-    { id: "rose-pine-dawn", label: t("settings.appearance.theme.rose_pine_dawn") },
-    { id: "catppuccin", label: t("settings.appearance.theme.catppuccin") },
-    { id: "tokyo-night", label: t("settings.appearance.theme.tokyo_night") },
-    { id: "one-dark", label: t("settings.appearance.theme.one_dark") },
-    { id: "solarized", label: t("settings.appearance.theme.solarized") },
   ];
-  const selectedColorScheme: ColorSchemeId = terminalTheme === "default" ? theme : terminalTheme;
-  const selectColorScheme = (id: ColorSchemeId) => {
-    if (id === "light" || id === "dark" || id === "system") {
-      setTheme(id);
-      setTerminalTheme("default");
-      return;
-    }
-    setTerminalTheme(id);
-  };
 
   return (
     <div>
@@ -75,25 +55,14 @@ export function AppearanceSettings() {
               key={entry.id}
               id={entry.id}
               label={entry.label}
-              selected={selectedColorScheme === entry.id}
+              selected={theme === entry.id}
               systemIsDark={systemIsDark}
-              onClick={() => selectColorScheme(entry.id)}
+              onClick={() => setTheme(entry.id)}
             />
           ))}
         </div>
       </div>
       <div style={{ marginBottom: 24 }}>
-        <div style={SECTION_LABEL}>{t("settings.appearance.accent")}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {ACCENT_COLORS.map((ac) => (
-            <AccentRing key={ac.color} color={ac.color} label={t(ac.labelKey)} selected={accent === ac.color} onClick={() => setAccent(ac.color)} />
-          ))}
-          <span style={{ marginLeft: "auto", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
-            {(() => { const match = ACCENT_COLORS.find((ac) => ac.color === accent); return match ? t(match.labelKey) : accent; })()}
-          </span>
-        </div>
-      </div>
-      <div style={{ marginTop: 24 }}>
         <div style={SECTION_LABEL}>{t("settings.appearance.language")}</div>
         <Segmented
           ariaLabel={t("settings.appearance.language")}
@@ -105,6 +74,8 @@ export function AppearanceSettings() {
           onChange={setLanguage}
         />
       </div>
+      <TerminalSettings />
+      <AccessibilitySettings />
     </div>
   );
 }

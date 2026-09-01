@@ -206,12 +206,8 @@ export interface ChangedFile {
 /** 覆盖层类型 */
 export type OverlayType = null | "settings" | "command-palette" | "ssh";
 
-/** 主题 */
+/** 主题：浅色 / 深色 / 跟随系统。已删除的命名终端配色回退为 system。 */
 export type ThemeType = "light" | "dark" | "system";
-
-/** 终端配色主题 */
-export const TERMINAL_THEME_NAMES = ["default", "catppuccin", "tokyo-night", "one-dark", "solarized", "github-light", "rose-pine-dawn"] as const;
-export type TerminalThemeName = typeof TERMINAL_THEME_NAMES[number];
 
 function shortDir(dir: string): string {
   if (dir === "~") return "~";

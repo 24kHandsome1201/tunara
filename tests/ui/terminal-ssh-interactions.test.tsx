@@ -433,7 +433,7 @@ test.each([
   ["down → up → contextmenu", ["mousedown", "mouseup", "contextmenu"]],
   ["down → contextmenu → up", ["mousedown", "contextmenu", "mouseup"]],
 ] as const)("TerminalViewChrome suppresses the native menu without consuming a TUI-owned %s gesture", (_label, order) => {
-  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "smart", presentationMode: "workspace" });
+  useUIStore.setState({ terminalHostModifier: "shift", presentationMode: "workspace" });
   render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
   const surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
   const onMouseDown = vi.fn();
@@ -460,7 +460,7 @@ test.each([
 });
 
 test("TerminalViewChrome opens the Tunara menu when reporting is off or the host modifier is held", () => {
-  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "smart", presentationMode: "workspace" });
+  useUIStore.setState({ terminalHostModifier: "shift", presentationMode: "workspace" });
   const view = render(<TerminalViewChromeHarness mouseTrackingMode="none" />);
   let surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
 
@@ -478,47 +478,8 @@ test("TerminalViewChrome opens the Tunara menu when reporting is off or the host
   expect(screen.getByRole("menu")).toBeTruthy();
 });
 
-test("TerminalViewChrome preset ownership claims or forwards the complete gesture", () => {
-  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "menu", presentationMode: "workspace" });
-  const alwaysMenu = render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
-  let surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
-  const hostDown = vi.fn();
-  const hostUp = vi.fn();
-  const hostContext = vi.fn();
-  surface.addEventListener("mousedown", hostDown);
-  surface.addEventListener("mouseup", hostUp);
-  surface.addEventListener("contextmenu", hostContext);
-
-  expect(dispatchTerminalMouse(surface, "mousedown").defaultPrevented).toBe(true);
-  expect(dispatchTerminalMouse(surface, "mouseup").defaultPrevented).toBe(true);
-  dispatchTerminalMouse(surface, "contextmenu");
-  expect(hostDown).not.toHaveBeenCalled();
-  expect(hostUp).not.toHaveBeenCalled();
-  expect(hostContext).toHaveBeenCalledOnce();
-  expect(screen.getByRole("menu")).toBeTruthy();
-
-  alwaysMenu.unmount();
-  useUIStore.setState({ terminalSecondaryClick: "disabled" });
-  render(<TerminalViewChromeHarness mouseTrackingMode="none" />);
-  surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
-  const forwardedDown = vi.fn();
-  const forwardedUp = vi.fn();
-  const blockedContext = vi.fn();
-  surface.addEventListener("mousedown", forwardedDown);
-  surface.addEventListener("mouseup", forwardedUp);
-  surface.addEventListener("contextmenu", blockedContext);
-
-  dispatchTerminalMouse(surface, "mousedown", { shiftKey: true });
-  dispatchTerminalMouse(surface, "mouseup", { shiftKey: true });
-  expect(dispatchTerminalMouse(surface, "contextmenu", { shiftKey: true }).defaultPrevented).toBe(true);
-  expect(forwardedDown).toHaveBeenCalledOnce();
-  expect(forwardedUp).toHaveBeenCalledOnce();
-  expect(blockedContext).not.toHaveBeenCalled();
-  expect(screen.queryByRole("menu")).toBeNull();
-});
-
 test("TerminalViewChrome disables xterm word selection before a TUI-owned right mousedown", () => {
-  useUIStore.setState({ terminalHostModifier: "shift", terminalSecondaryClick: "smart", presentationMode: "workspace" });
+  useUIStore.setState({ terminalHostModifier: "shift", presentationMode: "workspace" });
   const terminal = {
     modes: { mouseTrackingMode: "any" },
     options: { rightClickSelectsWord: true },
@@ -539,7 +500,7 @@ test.each([
   ["Shift+F10", { key: "F10", shiftKey: true }],
   ["ContextMenu", { key: "ContextMenu" }],
 ] as const)("TerminalViewChrome keeps the fixed %s keyboard menu recovery path", (_label, key) => {
-  useUIStore.setState({ terminalSecondaryClick: "disabled", presentationMode: "workspace" });
+  useUIStore.setState({ presentationMode: "workspace" });
   render(<TerminalViewChromeHarness mouseTrackingMode="any" />);
   const surface = document.querySelector<HTMLElement>("[data-terminal-canvas]")!;
 
