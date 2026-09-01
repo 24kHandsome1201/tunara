@@ -10,6 +10,38 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { issueFocusReturnToken, returnTerminalFocus } from "@/modules/terminal/lib/binding-aware-async-action";
 
+function previewAddressForDisplay(source: PreviewSource, raw: string): string {
+  if (source.transport !== "ssh" || !source.sshHost) return raw;
+  try {
+    const address = new URL(raw);
+    const remote = new URL(source.sourceUrl);
+    address.protocol = remote.protocol;
+    address.hostname = source.sshHost.includes(":") && !source.sshHost.startsWith("[")
+      ? `[${source.sshHost}]`
+      : source.sshHost;
+    address.port = remote.port;
+    return address.href;
+  } catch {
+    return raw;
+  }
+}
+
+function previewAddressForRuntime(source: PreviewSource, runtimeSource: PreviewSource, raw: string): string {
+  if (source.transport !== "ssh") return raw;
+  try {
+    const address = new URL(raw);
+    const displayedOrigin = new URL(previewAddressForDisplay(source, source.sourceUrl)).origin;
+    if (address.origin !== displayedOrigin) return raw;
+    const runtime = new URL(runtimeSource.sourceUrl);
+    address.protocol = runtime.protocol;
+    address.hostname = runtime.hostname;
+    address.port = runtime.port;
+    return address.href;
+  } catch {
+    return raw;
+  }
+}
+
 function SourceCard({ source, session }: { source: PreviewSource; session: Session }) {
   const t = useT();
   const isRemote = source.transport === "ssh";
@@ -17,7 +49,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   const effectiveSource = tunnelState?.previewSource ?? source;
   const blocked = previewBlockReason(effectiveSource);
   const [runtimeState, setRuntimeState] = useState<PreviewRuntimeState | null>(null);
-  const [address, setAddress] = useState(source.sourceUrl);
+  const [address, setAddress] = useState(previewAddressForDisplay(source, source.sourceUrl));
   const addressEditingRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -37,7 +69,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         const status = tunnel?.status === "ready" || !isRemote ? await previewStatus(runtimeSource) : null;
         if (!cancelled && sequence === statusRequestRef.current) {
           setRuntimeState(status);
-          if (status && !addressEditingRef.current) setAddress(status.currentUrl);
+          if (status && !addressEditingRef.current) setAddress(previewAddressForDisplay(source, status.currentUrl));
         }
       } catch {
         // A transient status read must not replace an actionable open/refresh error.
@@ -78,7 +110,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
       const status = await previewStatus(effectiveSource);
       if (sequence === statusRequestRef.current) {
         setRuntimeState(status);
-        if (status) setAddress(status.currentUrl);
+        if (status) setAddress(previewAddressForDisplay(source, status.currentUrl));
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -121,7 +153,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
     await previewOpen(tunnel.previewSource);
     const status = await previewStatus(tunnel.previewSource);
     setRuntimeState(status);
-    if (status) setAddress(status.currentUrl);
+    if (status) setAddress(previewAddressForDisplay(source, status.currentUrl));
   };
 
   const closeTunnelAndPreview = async () => {
@@ -154,13 +186,13 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
           {t(`inspector.preview.status.${displayStatus}`)}
         </span>
       </div>
-      {isOpen && <form className="preview-toolbar" aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run(() => previewNavigate(effectiveSource, address), "loading"); }} style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+      {isOpen && <form className="preview-toolbar" aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run(() => previewNavigate(effectiveSource, previewAddressForRuntime(source, effectiveSource, address)), "loading"); }} style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
         <button className="preview-control" type="button" aria-label={t("inspector.preview.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoBack(effectiveSource), "loading")}>←</button>
         <button className="preview-control" type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoForward(effectiveSource), "loading")}>→</button>
         <input className="preview-control ui-native-control" aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: "1 1 180px", fontFamily: "var(--font-mono)" }} />
         <button className="preview-control" type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
       </form>}
-      {row(isRemote ? t("inspector.preview.remote_url") : t("inspector.preview.url"), previewDisplayUrl(source.sourceUrl))}
+      {row(isRemote ? t("inspector.preview.remote_url") : t("inspector.preview.url"), previewDisplayUrl(previewAddressForDisplay(source, source.sourceUrl)))}
       {isRemote && row(t("inspector.preview.local_endpoint"), tunnelState?.localEndpoint ?? t("inspector.preview.local_endpoint_missing"))}
       {isRemote && row(t("inspector.preview.connection"), tunnelState ? t(`inspector.preview.tunnel.${tunnelState.status}`) : t("inspector.preview.tunnel.closed"))}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

@@ -113,16 +113,26 @@ test("opens an SSH Preview only after an explicit source-bound tunnel action", a
     }
     if (command === "preview_open") return "preview-forwarded";
     if (command === "preview_status") return (payload as { source: PreviewSource }).source.permission === "forwarded" ? runtime({ currentUrl: forwarded.sourceUrl }) : null;
+    if (command === "preview_navigate") return undefined;
     throw new Error(`unexpected command: ${command}`);
   });
   render(<PreviewPanel session={session([remote])} />);
 
+  expect(screen.getByText("http://dev.example:41731/app")).toBeTruthy();
   const external = screen.getByRole("button", { name: "Open externally" }) as HTMLButtonElement;
   expect(external.disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Forward and open" }));
   await waitFor(() => expect(calls.some((call) => call.command === "preview_tunnel_open" && /^[0-9a-f]{64}$/.test((call.payload as { actionNonce: string }).actionNonce))).toBe(true));
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_open", payload: { source: forwarded } }));
   expect(await screen.findByText("http://127.0.0.1:53124/app")).toBeTruthy();
+  const address = screen.getByRole("textbox", { name: "Preview address" }) as HTMLInputElement;
+  expect(address.value).toBe("http://dev.example:41731/app");
+  fireEvent.change(address, { target: { value: "http://dev.example:41731/next?q=1#two" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Preview navigation" }));
+  await waitFor(() => expect(calls).toContainEqual({
+    command: "preview_navigate",
+    payload: { source: forwarded, address: "http://127.0.0.1:53124/next?q=1#two" },
+  }));
   expect(screen.getByText("Tunnel ready")).toBeTruthy();
   expect(calls.some((call) => call.command === "pty_write")).toBe(false);
 });
