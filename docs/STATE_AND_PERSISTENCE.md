@@ -116,10 +116,9 @@ are session-scoped open documents and are not part of `PersistedUILayoutV2`.
 **Two distinct persistence channels for the UI store:**
 
 1. **User config** (`loadUserConfig` / the appearance subscriber): the
-   `AppearanceSettings` half (theme, accent, fonts, scrollback, sidebar/panel
-   width, terminal theme, external editor, bell, clipboard/inline-image flags,
-   optional terminal wallpaper (off by default), terminal interaction triggers,
-   keybindings, language, and global shortcut) is loaded and written through
+   `AppearanceSettings` half (theme, fonts, scrollback, sidebar/panel
+   width, external editor, bell, clipboard flag,
+   terminal host modifier, keybindings, language, and global shortcut) is loaded and written through
    `src/modules/config/config-bridge.ts` to the backend config file. A
    `subscribeWithSelector` subscription over `PERSIST_KEYS` debounces saves at
    300 ms and is suppressed during hydration (the `configHydrating` flag) and

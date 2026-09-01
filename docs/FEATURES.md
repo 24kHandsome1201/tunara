@@ -41,7 +41,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 1. 终端
 
-**用户能做什么：** 多会话真实 PTY；最多 4 个递归分栏；搜索、命令块导航、可点击链接、行内图片（SIXEL / iTerm IIP）；跨重启恢复 scrollback。
+**用户能做什么：** 多会话真实 PTY；最多 4 个递归分栏；搜索、命令块导航、可点击链接、行内图片（SIXEL / iTerm IIP，始终启用）；跨重启恢复 10000 行 scrollback。
 
 | 能力 | 说明 | 代码 |
 |------|------|------|
@@ -55,10 +55,9 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 拖放路径 | 本地会话把 Finder/文件管理器拖入的路径转义后写入输入行（不自动回车）；SSH 会话仍走 SFTP 上传 | [`shell-quote.ts`](../src/modules/terminal/lib/shell-quote.ts) · [`TerminalViewChrome.tsx`](../src/ui/TerminalViewChrome.tsx) |
 | 导出滚屏/块 | 显式另存为，最多 2000 行 / 256 KiB | [`terminal-export.ts`](../src/modules/terminal/lib/terminal-export.ts) · [`fs_export_text_file`](../src-tauri/src/modules/fs/file.rs) |
 | 安全粘贴 | 多行确认、bracketed paste、目标失效拒绝 | [`terminal-paste-protection.ts`](../src/modules/terminal/lib/terminal-paste-protection.ts) |
-| 右键与复制 | 智能/菜单/禁用三档；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
+| 右键与复制 | 智能右键：空闲时打开菜单，TUI 上报时把手势交给终端；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
 | 会话恢复 | serialize 快照 + 安全历史 | [`terminal-snapshot.ts`](../src/modules/terminal/lib/terminal-snapshot.ts) |
 | OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 9 / 99 / 777 通知、OSC 9;4 进度、OSC 52 剪贴板 | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
-| 可选终端背景 | 默认关。终端列纹理/本机图片 + 可调模糊与遮罩；外壳仍是实色。关掉即恢复当前主题画布 | [`TERMINAL_WALLPAPER.md`](./TERMINAL_WALLPAPER.md) · [`terminal-wallpaper.ts`](../src/modules/terminal/lib/terminal-wallpaper.ts) |
 
 分栏默认快捷键：⌘D 水平、⌘⇧D 垂直；焦点按几何方向 ⌘[ / ⌘] / ⌘⇧[ / ⌘⇧]。
 
@@ -173,13 +172,11 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 ## 9. 设置、快捷键与工作流
 
-设置对话框分六个一级页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
+设置对话框分四个一级页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
 
 | 页签 | 内容 |
 |------|------|
-| Appearance | 统一界面+终端配色（9 套）、8 色 accent |
-| Terminal | 字体、光标、scrollback、行内图、可选终端背景、右键行为、外部编辑器 |
-| Accessibility | 读屏模式；macOS 可跳转系统隐私设置 |
+| General | 界面+终端配色（System / Light / Dark）、语言、字体、光标、读屏、外部编辑器 |
 | Shortcuts | 可配置快捷键；终端 Copy / Safe Paste / 菜单绑定带风险提示 |
 | SSH | known_hosts 列表与删除 |
 | Advanced | 应用更新、全局唤起、自定义工作流、Agent CLI 路径与预检，以及低频高级选项 |

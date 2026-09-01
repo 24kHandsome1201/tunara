@@ -5,7 +5,7 @@
 （`--c-bg-white`）与主墨色（`--c-text-primary`）的 sRGB 等效值，使 WebGL
 渲染的终端画布与侧栏、标题栏之间没有冷暖或明度接缝。
 
-命名主题（Catppuccin、Tokyo Night 等）保持各自官方调色板，不受本文件约束；
+已删除的命名主题不再提供官方调色板；旧配置回退到 System。
 本文件只约束 `default` 终端主题。
 
 ## 浅色「纸面」

@@ -52,12 +52,12 @@ The terminal is the product, not an accessory. Sessions run real `portable-pty`;
 - Multi-session PTYs; split any pane right or below, up to four panes
 - ⌘F in-terminal search with match counts
 - Command-block history follows live scrollback, with navigation and output filters for text / regex / case / invert / context lines
-- Clickable URLs, configurable scrollback (1k–20k lines)
+- Clickable URLs, 10,000-line scrollback
 - OSC 7 cwd tracking, OSC 133 shell integration, OSC 9 / 99 / 777 notifications
 - Drop files onto a local terminal to insert escaped paths (no auto-submit); SSH drops still upload over SFTP
 - Export scrollback or a command block to a file (capped at 2000 lines / 256 KiB)
-- Optional inline images (SIXEL / iTerm IIP)
-- 9 synchronized interface & terminal color schemes: System, Light, Dark, GitHub Light, Rose Pine Dawn, Catppuccin, Tokyo Night, One Dark, Solarized
+- Inline images (SIXEL / iTerm IIP)
+- Synchronized interface & terminal color schemes: System, Light, Dark
 
 ### Smart sidebar
 
@@ -124,12 +124,12 @@ The right pane is a read-only git diff for "one more look before commit" — the
 ### Desktop experience
 
 - ⌘K Command Palette with weighted ranking, covers every action and session switch
-- Light/dark mode + system follow, 8 accent colors
+- Light/dark mode + system follow, terracotta accent
 - Pure Mode (⌘⇧P) hides chrome without tearing down PTYs
 - Solid paper surfaces + native macOS overlay titlebar
 - Toast notifications: exit animation, hover pause, progress bar
 - Delayed signed-update reminders that stay silent until a release is actually available
-- Settings tabs: Appearance, Shortcuts, Workflows, CLI, App
+- Settings tabs: General, Shortcuts, SSH, Advanced
 - Right-click menus on sessions, directory groups, and files
 - Responsive layout: auxiliary panes overlay when the terminal would otherwise shrink below a usable width
 - Window-state persistence (position, size)
