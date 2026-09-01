@@ -187,7 +187,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
           confidence: "exact",
         },
         "s-active": {
-          agent: "PI",
+          agent: "OC",
           command: "npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
           cwd: "/active",
           resumeId: "pi-id",
@@ -272,9 +272,7 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.equal(Object.keys(snapshot.commandUsage).length, 50);
     assert.deepEqual(Object.keys(snapshot.commandUsage).slice(0, 3), ["cmd-54", "cmd-53", "cmd-52"]);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.commandUsage, "__proto__"), false);
-    assert.deepEqual(snapshot.workflows, [
-      { id: "wf-1", name: "Review", template: " pnpm test ", description: "Run tests", autoSubmit: true },
-    ]);
+    assert.equal(Object.prototype.hasOwnProperty.call(snapshot, "workflows"), false);
     assert.equal(warnings.length, 1);
   } finally {
     console.warn = originalWarn;

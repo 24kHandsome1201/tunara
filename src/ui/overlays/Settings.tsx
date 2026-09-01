@@ -11,7 +11,6 @@ import { AccessibilitySettings } from "./settings/AccessibilitySettings";
 import { ShortcutsSettings } from "./settings/ShortcutsSettings";
 import { CliSettings } from "./settings/CliSettings";
 import { AppSettings } from "./settings/AppSettings";
-import { WorkflowsSettings } from "./settings/WorkflowsSettings";
 import { SshSettings } from "./settings/SshSettings";
 import { useCliStatus } from "./settings/useCliStatus";
 import { Modal } from "./Modal";
@@ -102,9 +101,6 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === "app" && (
             <>
               <AppSettings {...appUpdate} />
-              <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--c-border-1)" }}>
-                <WorkflowsSettings />
-              </div>
               <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--c-border-1)" }}>
                 <CliSettings {...cliStatus} />
                 <button

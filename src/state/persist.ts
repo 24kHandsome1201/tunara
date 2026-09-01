@@ -148,7 +148,6 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshotLoadResu
       recentCommands: [],
       hostFilePrefs: {},
       commandUsage: {},
-      workflows: [],
     };
 
     await store.set(WORKSPACE_SNAPSHOT_KEY, migrated);

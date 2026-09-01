@@ -50,7 +50,7 @@ if set -q TUNARA_SESSION_ID
     end
   end
 
-  # Writes one private runtime containing a Droid settings file and a Claude
+  # Writes one private runtime containing a Claude
   # plugin so Claude hooks compose with any user --settings argument.
   # host-provided agent-hook.sh helper. That helper reads the hook's stdin JSON,
   # extracts the agent's real session_id, and relays it as agent_session_id — so
@@ -147,10 +147,6 @@ if set -q TUNARA_SESSION_ID
 
   function claude
     _tunara_agent_run claude CC $argv
-  end
-
-  function droid
-    _tunara_agent_run droid DR $argv
   end
 
   function codex

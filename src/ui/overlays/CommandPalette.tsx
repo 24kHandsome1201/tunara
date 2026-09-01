@@ -5,11 +5,8 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "../shared";
 import { formatShortcut } from "../formatShortcut";
-import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
-import { useWorkflowsStore } from "@/state/workflows";
-import { hasPromptableParams, resolveTemplate } from "@/modules/workflows/template";
 import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
@@ -59,7 +56,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
   const presentationMode = useUIStore((s) => s.presentationMode);
-  const workflows = useWorkflowsStore((s) => s.workflows);
 
   // Stable identity so the commands useMemo below can list it as a dependency
   // without invalidating on every render; it only reads store state at call
@@ -337,46 +333,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         }
       }
 
-      // Local workflows keep opening a fresh terminal. Remote workflows fill
-      // the current SSH PTY (and submit only when explicitly configured), so a
-      // remote cwd is never misused as a local launch directory.
-      for (const wf of workflows) {
-        cmds.push({
-          id: `workflow-${wf.id}`,
-          label: wf.name,
-          subtitle: wf.description || wf.template,
-          icon: <CmdIcon d="M13 2L3 14h7l-1 8 10-12h-7z" />,
-          section: t("palette.section.workflows"),
-          scopes: ["action", "terminal", "workflow"],
-          originalIndex: idx++,
-          action: () => {
-            uiStore.getState().recordCommandUse(`workflow-${wf.id}`);
-            if (hasPromptableParams(wf.template)) {
-              uiStore.getState().setPendingWorkflow({
-                workflowId: wf.id,
-                name: wf.name,
-                template: wf.template,
-                dir: activeSession.dir,
-                branch: activeSession.branch,
-                targetSessionId: activeSession.remote ? activeSession.id : undefined,
-                autoSubmit: wf.autoSubmit,
-              });
-            } else {
-              const command = resolveTemplate(wf.template, {}, { cwd: activeSession.dir, branch: activeSession.branch });
-              if (activeSession.remote) {
-                useSessionsStore.getState().updateSession(activeSession.id, {
-                  pendingInput: command,
-                  pendingInputSubmit: wf.autoSubmit === true,
-                });
-              } else {
-                useSessionsStore.getState().newTerminalWithInput(command, activeSession.dir, wf.autoSubmit);
-              }
-            }
-            onClose();
-          },
-        });
-      }
-
       // Remote sessions have no local Git working tree, so don't show the
       // current-session refresh command as a dead affordance.
       if (activeIsLocal) {
@@ -436,21 +392,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         action: () => {
           uiStore.getState().recordCommandUse(activeSession.pinned ? "unpin-current-session" : "pin-current-session");
           useSessionsStore.getState().togglePinnedSession(activeSession.id);
-          onClose();
-        },
-      });
-
-      cmds.push({
-        id: "quick-select-visible-output",
-        label: t("palette.cmd.quick_select"),
-        shortcut: formatShortcut(keybindings.quickSelect),
-        icon: <CmdIcon d="M9 11.5 12 14l7-8" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "terminal"],
-        originalIndex: idx++,
-        action: () => {
-          uiStore.getState().recordCommandUse("quick-select-visible-output");
-          window.dispatchEvent(new CustomEvent(TERMINAL_QUICK_SELECT_EVENT));
           onClose();
         },
       });
@@ -606,7 +547,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, workflows, setActive, onClose, uiStore, keybindings, presentationMode, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, presentationMode, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);
@@ -621,7 +562,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       ]
     : ["new-terminal", "new-terminal-directory", "new-ssh-session", "open-ssh-hosts", "settings"];
   const defaultCommands = [
-    ...allRanked.filter((command) => command.id.startsWith("workflow-")).slice(0, 2),
     ...contextualIds.flatMap((id) => allRanked.find((command) => command.id === id) ?? []),
   ];
   const ranked = presentationMode === "pure" || query.trim()

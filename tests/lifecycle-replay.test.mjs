@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   detectAgentCommand,
   detectCodexScreenState,
-  detectPiScreenState,
   detectPromptAgentScreenState,
   hasCompletedAgentTurn,
   isSessionBusy,
@@ -30,10 +29,7 @@ import {
   normalizeTerminalHyperlink,
 } from "../src/modules/terminal/lib/terminal-hyperlinks.ts";
 import {
-  collectTerminalQuickSelectItems,
-  findTerminalQuickSelectTextTokens,
   findTerminalUrlTokens,
-  quickSelectHint,
 } from "../src/modules/terminal/lib/terminal-quick-select.ts";
 import {
   filterCommandPaletteItems,
@@ -53,10 +49,6 @@ import {
   filterTerminalBlockOutput,
   formatTerminalBlockFilterText,
 } from "../src/modules/terminal/lib/terminal-block-filter.ts";
-import {
-  TERMINAL_QUICK_SELECT_SCOPE_LINES,
-  terminalQuickSelectRange,
-} from "../src/modules/terminal/lib/terminal-quick-select-scope.ts";
 import {
   TERMINAL_FONT_LOAD_TIMEOUT_MS,
   buildTerminalFontFamily,
@@ -374,11 +366,11 @@ test("remote Bash 3.2 prompt markers keep submitted-input command detection enab
 test("agent command detection maps conservative shell command heads and wrappers", () => {
   assert.equal(detectAgentCommand("claude --dangerously-skip-permissions"), "CC");
   assert.equal(detectAgentCommand("\x1b[32mcodex\x1b[0m exec"), "CX");
-  assert.equal(detectAgentCommand("ampcode"), "AM");
+  assert.equal(detectAgentCommand("ampcode"), null);
   assert.equal(detectAgentCommand("cursor-agent run task"), "CR");
-  assert.equal(detectAgentCommand("cd /tmp && uvx --from aider-chat aider --no-git"), "AD");
-  assert.equal(detectAgentCommand("npx -y @earendil-works/pi-coding-agent@0.79.4 --no-session"), "PI");
-  assert.equal(detectAgentCommand("cd /root && npx --yes @earendil-works/pi-coding-agent --no-session"), "PI");
+  assert.equal(detectAgentCommand("cd /tmp && uvx --from aider-chat aider --no-git"), null);
+  assert.equal(detectAgentCommand("npx -y @earendil-works/pi-coding-agent@0.79.4 --no-session"), null);
+  assert.equal(detectAgentCommand("cd /root && npx --yes @earendil-works/pi-coding-agent --no-session"), null);
   assert.equal(detectAgentCommand("cd '/tmp/a && b' && env TUNARA=1 codex --sandbox read-only"), "CX");
   assert.equal(detectAgentCommand("FOO=1 exec /usr/local/bin/opencode --pure"), "OC");
   assert.equal(detectAgentCommand("printf 'claude && aider'"), null);
@@ -386,7 +378,7 @@ test("agent command detection maps conservative shell command heads and wrappers
   assert.equal(detectAgentCommand("npx -y left-pad pi"), null);
   assert.equal(detectAgentCommand("agent run task"), null);
   assert.equal(detectAgentCommand("constructor"), null);
-  assert.equal(detectAgentCommand("copilot suggest"), "CP");
+  assert.equal(detectAgentCommand("copilot suggest"), null);
   assert.equal(detectAgentCommand("ls claude"), null);
   assert.equal(detectAgentCommand(""), null);
 });
@@ -467,142 +459,32 @@ test("agent resume preserves only allowlisted permission and sandbox posture", (
   );
 });
 
-test("Pi resume preserves an exact identity, safe launcher, session directory, and tighter capabilities", () => {
-  const direct = {
+test("removed agents are not resumable", () => {
+  assert.equal(parseResumeId("pi --session-id pi-123"), null);
+  assert.equal(isResumableAgentInvocation("PI", "pi --session-id pi-123"), false);
+  assert.equal(buildAgentResumeCommand({
     agent: "PI",
-    command: "pi --offline --no-tools --no-skills --session-dir '/tmp/pi sessions' --session-id pi-session-1",
+    command: "pi --session-id pi-session-1",
     cwd: "/repo",
     provenance: { transport: "local" },
     resumeId: "pi-session-1",
     lastSeenAt: 1,
     confidence: "exact",
-  };
-  assert.equal(
-    buildAgentResumeCommand(direct),
-    "pi --offline --no-skills --no-tools --session-dir '/tmp/pi sessions' --session pi-session-1",
-  );
-  assert.equal(
-    buildAgentResumeCommand({
-      ...direct,
-      command: "PI_CODING_AGENT_DIR=/tmp/pi-agent npx --yes @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --provider tunara-loopback --model probe --session=pi-session-2",
-      resumeId: "pi-session-2",
-    }),
-    "PI_CODING_AGENT_DIR=/tmp/pi-agent npx -y @earendil-works/pi-coding-agent@0.79.4 --no-extensions --no-context-files --provider tunara-loopback --model probe --session pi-session-2",
-  );
-  assert.equal(
-    buildAgentResumeCommand({
-      ...direct,
-      command: "PI_CODING_AGENT_DIR='bad dir' pi --session pi-session-1",
-    }),
-    "pi --session pi-session-1",
-  );
-});
-
-test("Pi only becomes resumable from an exact official session identity", () => {
-  assert.equal(parseResumeId("pi --session-id pi-123"), "pi-123");
-  assert.equal(parseResumeId("pi --session=pi-456"), "pi-456");
-  assert.equal(
-    parseResumeId("npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-789"),
-    "pi-789",
-  );
-  assert.equal(
-    parseResumeId("printf 'pi --session fake-id' && npx -y @earendil-works/pi-coding-agent@0.79.4 --session real-id"),
-    "real-id",
-  );
-  for (const command of [
-    "pi",
-    "pi --no-session",
-    "pi --print hello",
-    "pi --help",
-    "pi 'explain --session fake-id'",
-    "pi -- --session fake-id",
-    "pi explain --session fake-id",
-    "pi --session 'bad id'",
-    "pi --session 'bad;id'",
-    "npx -y @earendil-works/pi-coding-agent --session unpinned",
-    "npx -y @earendil-works/pi-coding-agent@latest --session floating",
-  ]) {
-    assert.equal(isResumableAgentInvocation("PI", command), false, command);
-  }
-  assert.equal(isResumableAgentInvocation("PI", "pi --session-id pi-123"), true);
-  assert.equal(
-    isResumableAgentInvocation("PI", "npx -y @earendil-works/pi-coding-agent@0.79.4 --session pinned"),
-    true,
-  );
-});
-
-test("Pi session directory parsing never consumes another option", () => {
-  const intent = {
-    agent: "PI",
-    command: "pi --session-dir --no-tools --session pi-id",
-    cwd: "/repo",
-    provenance: { transport: "local" },
-    resumeId: "pi-id",
-    lastSeenAt: 1,
-    confidence: "exact",
-  };
-  assert.equal(buildAgentResumeCommand(intent), "pi --no-tools --session pi-id");
-  assert.equal(parseResumeId("pi --session --no-tools"), null);
+  }), null);
+  assert.equal(buildAgentResumeIntent(makeSession({ dir: "/local/repo" }), "PI", "pi --session-id local-pi", 10), undefined);
 });
 
 test("both resume buttons share one auto-submit patch", () => {
-  assert.deepEqual(agentResumePendingInput("pi --session pi-id"), {
-    pendingInput: "pi --session pi-id",
+  assert.deepEqual(agentResumePendingInput("claude --resume session-1"), {
+    pendingInput: "claude --resume session-1",
     pendingInputSubmit: true,
   });
 });
 
-test("Pi exact intent captures local or SSH provenance and replaces an older generation", () => {
-  const local = makeSession({ dir: "/local/repo" });
-  assert.deepEqual(
-    buildAgentResumeIntent(local, "PI", "pi --session-id local-pi", 10),
-    {
-      agent: "PI",
-      command: "pi --session-id local-pi",
-      cwd: "/local/repo",
-      provenance: { transport: "local" },
-      resumeId: "local-pi",
-      lastSeenAt: 10,
-      confidence: "exact",
-    },
-  );
-
-  const remote = makeSession({
-    dir: "/root/repo",
-    remote: { host: "de-netcup", port: 22, user: "root" },
-    agentResume: {
-      agent: "PI",
-      command: "pi --session old-pi",
-      cwd: "/old",
-      provenance: { transport: "local" },
-      resumeId: "old-pi",
-      lastSeenAt: 1,
-      confidence: "exact",
-    },
-  });
-  assert.deepEqual(
-    buildAgentResumeIntent(
-      remote,
-      "PI",
-      "npx -y @earendil-works/pi-coding-agent@0.79.4 --session-id remote-pi",
-      20,
-    ),
-    {
-      agent: "PI",
-      command: "npx -y @earendil-works/pi-coding-agent@0.79.4 --session-id remote-pi",
-      cwd: "/root/repo",
-      provenance: { transport: "ssh", host: "de-netcup", port: 22, user: "root" },
-      resumeId: "remote-pi",
-      lastSeenAt: 20,
-      confidence: "exact",
-    },
-  );
-});
-
 test("resume launch fails closed when transport or SSH identity changes", () => {
   const intent = {
-    agent: "PI",
-    command: "npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
+    agent: "CC",
+    command: "claude --resume pi-id",
     cwd: "/root/repo",
     provenance: { transport: "ssh", host: "de-netcup", port: 22, user: "root" },
     resumeId: "pi-id",
@@ -635,7 +517,7 @@ test("resume launch fails closed when transport or SSH identity changes", () => 
       remote: { host: "de-netcup", port: 22, user: "root" },
       connection: { phase: "ready" },
     }),
-    "cd -- /root/repo && npx -y @earendil-works/pi-coding-agent@0.79.4 --session pi-id",
+    "cd -- /root/repo && claude --resume pi-id",
   );
   assert.equal(buildAgentResumeLaunchCommand({ ...intent, provenance: undefined }, {
     dir: "/root/repo",
@@ -701,14 +583,14 @@ test("agent resume captures a leading successful cd as the actual launch cwd", (
   assert.equal(
     buildAgentResumeIntent(
       session,
-      "PI",
-      "cd '/tmp/work tree' && PI_CODING_AGENT_DIR=/tmp/pi-agent ./pi --session-id pi-session-1",
+      "CX",
+      "cd '/tmp/work tree' && codex --sandbox read-only",
       1,
     )?.cwd,
     "/tmp/work tree",
   );
   assert.equal(
-    buildAgentResumeIntent(session, "PI", "cd /tmp || ./pi --session-id pi-session-1", 1)?.cwd,
+    buildAgentResumeIntent(session, "CX", "cd /tmp || codex --sandbox read-only", 1)?.cwd,
     "/root",
   );
 });
@@ -1487,78 +1369,9 @@ test("terminal paste protection guards multiline and large pastes", async () => 
   assert.deepEqual(pasted, ["echo one\necho two"]);
 });
 
-test("terminal quick select extracts visible URLs, file positions, and copy tokens", () => {
-  const items = collectTerminalQuickSelectItems([
-    "open https://example.com/docs.",
-    "error TS2322: src/ui/TerminalView.tsx:128:9 - type mismatch",
-    "commit 7ec8346468c6ec404df5e0e1ed16648bee660839 reached 192.168.1.12 with exit code 42",
-    "repeat https://example.com/docs",
-  ], "/Users/me/repo");
-
-  assert.equal(items.length, 5);
-  assert.equal(items[0].kind, "url");
-  assert.equal(items[0].target, "https://example.com/docs");
-  assert.equal(items[0].copyText, "https://example.com/docs");
-  assert.equal(items[0].detail, "example.com");
-  assert.equal(items[1].kind, "file");
-  assert.equal(items[1].label, "src/ui/TerminalView.tsx:128:9");
-  assert.equal(items[1].copyText, "src/ui/TerminalView.tsx:128:9");
-  assert.equal(items[1].target, "/Users/me/repo/src/ui/TerminalView.tsx");
-  assert.equal(items[1].line, 128);
-  assert.equal(items[1].column, 9);
-  assert.deepEqual(items.slice(2).map((item) => [item.kind, item.detail, item.copyText]), [
-    ["text", "Git hash", "7ec8346468c6ec404df5e0e1ed16648bee660839"],
-    ["text", "IP address", "192.168.1.12"],
-    ["text", "Number", "42"],
-  ]);
+test("terminal URL extraction trims trailing punctuation for Preview sources", () => {
   assert.deepEqual(findTerminalUrlTokens("see http://a.test/x, and https://b.test/y!"), ["http://a.test/x", "https://b.test/y"]);
-});
-
-test("terminal quick select text tokens skip URL and file-link ranges", () => {
-  const urlLine = "see https://example.com/192.168.1.12/7ec8346 and 7ec8346";
-  const fileLine = "at src/app.ts:42:7 then count 42";
-
-  const items = collectTerminalQuickSelectItems([urlLine, fileLine], "/repo");
-  assert.deepEqual(items.map((item) => [item.kind, item.copyText]), [
-    ["url", "https://example.com/192.168.1.12/7ec8346"],
-    ["text", "7ec8346"],
-    ["file", "src/app.ts:42:7"],
-    ["text", "42"],
-  ]);
-  assert.deepEqual(findTerminalQuickSelectTextTokens("abc1234 10.0.0.1 17").map((item) => item.detail), [
-    "Git hash",
-    "IP address",
-    "Number",
-  ]);
-});
-
-test("terminal quick select keeps a repeated token on different lines selectable", () => {
-  // Same git hash on two lines must yield two selectable items (dedup keys on
-  // line index), but a true duplicate on one line still collapses.
-  const items = collectTerminalQuickSelectItems([
-    "abc1234 here",
-    "abc1234 there abc1234",
-  ], "/repo");
-  assert.deepEqual(items.map((item) => [item.kind, item.copyText]), [
-    ["text", "abc1234"],
-    ["text", "abc1234"],
-  ]);
-  assert.notEqual(items[0].id, items[1].id);
-});
-
-test("terminal quick select range scans a bounded scrollback window around the viewport", () => {
-  assert.equal(TERMINAL_QUICK_SELECT_SCOPE_LINES, 1000);
-  assert.deepEqual(terminalQuickSelectRange(3000, 1500, 40), { start: 500, end: 2539 });
-  assert.deepEqual(terminalQuickSelectRange(80, 0, 24), { start: 0, end: 79 });
-  assert.deepEqual(terminalQuickSelectRange(120, 110, 40), { start: 0, end: 119 });
-  assert.deepEqual(terminalQuickSelectRange(0, 10, 24), { start: 0, end: -1 });
-});
-
-test("terminal quick select hints use one or two character prefixes", () => {
-  assert.equal(quickSelectHint(0), "a");
-  assert.equal(quickSelectHint(25), "m");
-  assert.equal(quickSelectHint(26), "aa");
-  assert.equal(quickSelectHint(27), "as");
+  assert.deepEqual(findTerminalUrlTokens("open https://example.com/docs."), ["https://example.com/docs"]);
 });
 
 test("terminal ligature joiner prefers the longest programming sequences", () => {
@@ -1749,7 +1562,7 @@ test("agent ready distinguishes startup idle from completed turns for sidebar st
 
 test("quiet ready fallback is startup-only and never completes an active agent turn", () => {
   assert.equal(shouldUseStartupQuietReadyFallback("CC", "starting"), true);
-  assert.equal(shouldUseStartupQuietReadyFallback("DR", "starting"), true);
+  assert.equal(shouldUseStartupQuietReadyFallback("OC", "starting"), false);
 
   assert.equal(shouldUseStartupQuietReadyFallback("CC", "running"), false);
   assert.equal(shouldUseStartupQuietReadyFallback("CC", "idle"), false);
@@ -2021,87 +1834,26 @@ test("prompt agent screen tracker marks Codex busy from one semantic output upda
   tracker.dispose();
 });
 
-test("Pi screen replay gives bash and LLM busy chrome precedence over its ready footer", () => {
-  const ready = [
-    "pi v0.79.4",
-    "~",
-    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
-  ].join("\n");
-  const bashBusy = [
-    "$ sleep 2",
-    "Running... (escape/ctrl+c to cancel)",
-    "~",
-    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
-  ].join("\n");
-  const llmBusy = [
-    "fix the detector",
-    "Working... (escape to interrupt)",
-    "~",
-    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
-  ].join("\n");
-  const remappedBusy = [
-    "Working... (q to interrupt)",
-    "~",
-    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
-  ].join("\n");
-  const truncatedBusy = [
-    "Working... (escape to interr",
-    "~",
-    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
-  ].join("\n");
-
-  assert.equal(detectPiScreenState(ready), "ready");
-  assert.equal(detectPiScreenState(bashBusy), "busy");
-  assert.equal(detectPiScreenState(llmBusy), "busy");
-  assert.equal(detectPiScreenState(remappedBusy), "busy");
-  assert.equal(detectPiScreenState(truncatedBusy), "busy");
-  assert.equal(detectPromptAgentScreenState("PI", ready), "ready");
-  assert.equal(detectPromptAgentScreenState("PI", llmBusy), "busy");
-});
-
 test("untracked agents keep identity without activity status", () => {
-  const amp = createHarness();
-  assert.equal(amp.apply(agentDetectedUpdate(amp.session, "AM", 10)), true);
-  assert.equal(amp.session.agent, "AM");
-  assert.equal(amp.session.agentActivity, undefined);
-  assert.equal(isSessionBusy(amp.session), false);
-  assert.equal(deriveTitle(amp.session).primary, "Amp");
-  assert.equal(detectPromptAgentScreenState("AM", [
+  const opencode = createHarness();
+  assert.equal(opencode.apply(agentDetectedUpdate(opencode.session, "OC", 10)), true);
+  assert.equal(opencode.session.agent, "OC");
+  assert.equal(opencode.session.agentActivity, undefined);
+  assert.equal(isSessionBusy(opencode.session), false);
+  assert.equal(deriveTitle(opencode.session).primary, "OpenCode");
+  assert.equal(detectPromptAgentScreenState("OC", [
     "OK",
     "╭──────────────────────────────────────────────────────── medium ─╮",
     "│                                                                │",
     "╰──────────────────────────────────────── ~/code/pi5x/rail (main) ─╯",
   ].join("\n")), null);
 
-  const gemini = createHarness();
-  assert.equal(gemini.apply(agentDetectedUpdate(gemini.session, "GM", 10)), true);
-  assert.equal(gemini.session.agent, "GM");
-  assert.equal(gemini.session.agentActivity, undefined);
-  assert.equal(isSessionBusy(gemini.session), false);
-  assert.equal(deriveTitle(gemini.session).primary, "Gemini");
-});
-
-test("Pi screen replay recognizes a ready footer clipped by a narrow split", () => {
-  const narrowSplit = [
-    "─────────────────────────────────",
-    "~/code/pi5x/rail (main)",
-    "$0.000 (sub) 0.0%/272k (auto)  gp",
-  ].join("\n");
-
-  assert.equal(detectPiScreenState(narrowSplit), "ready");
-});
-
-test("Pi screen replay recognizes the no-model ready footer without a cost segment", () => {
-  const noModel = [
-    "Warning: No models available. Use /login to log into a provider.",
-    "───────────────────────────────────────────────────────────",
-    "~",
-    "0.0%/0 (auto)                                       unknown",
-  ].join("\n");
-
-  assert.equal(detectPiScreenState(noModel), "ready");
-  assert.equal(detectPromptAgentScreenState("PI", noModel), "ready");
-  assert.equal(detectPiScreenState("download 0.0%/0 items (auto)"), null);
+  const cursor = createHarness();
+  assert.equal(cursor.apply(agentDetectedUpdate(cursor.session, "CR", 10)), true);
+  assert.equal(cursor.session.agent, "CR");
+  assert.equal(cursor.session.agentActivity, undefined);
+  assert.equal(isSessionBusy(cursor.session), false);
+  assert.equal(deriveTitle(cursor.session).primary, "Cursor");
 });
 
 test("terminal tail includes bounded TUI status rows below the input cursor", () => {
@@ -2117,63 +1869,6 @@ test("terminal tail includes bounded TUI status rows below the input cursor", ()
   const tail = getTerminalTailText(terminal, 12);
   assert.match(tail, /input cursor/);
   assert.match(tail, /\$0\.000 \(sub\) 0\.0%\/272k \(auto\)/);
-  assert.equal(detectPiScreenState(tail), "ready");
-});
-
-test("prompt agent screen tracker moves Pi from startup and running back to ready", async () => {
-  let session = makeSession({ agent: "PI", agentActivity: "starting" });
-  const lines = ["pi v0.79.4", "~", "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •"];
-  let busyCount = 0;
-  let readyCount = 0;
-  const tracker = createPromptAgentScreenStateTracker({
-    terminal: makeTailTerminal(lines),
-    getSessionId: () => "s-pi",
-    getCurrentSession: () => session,
-    onBusy: () => {
-      busyCount += 1;
-      session = { ...session, agentActivity: "running" };
-    },
-    onReady: () => {
-      readyCount += 1;
-      session = { ...session, agentActivity: "idle" };
-    },
-  });
-
-  tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
-  assert.equal(readyCount, 1);
-  assert.equal(session.agentActivity, "idle");
-
-  session = { ...session, agentActivity: "running" };
-  lines.splice(0, lines.length,
-    "$ sleep 2",
-    "Running... (escape/ctrl+c to cancel)",
-    "~",
-    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
-  );
-  tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
-  assert.equal(busyCount, 0, "submitted input already establishes the running transition");
-  assert.equal(session.agentActivity, "running");
-
-  lines.splice(0, lines.length, "~", "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •");
-  tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
-  assert.equal(readyCount, 2);
-  assert.equal(session.agentActivity, "idle");
-
-  lines.splice(0, lines.length,
-    "fix the detector",
-    "Working... (escape to interrupt)",
-    "~",
-    "$0.000 (sub) 0.0%/272k (auto)  gpt-5.5 •",
-  );
-  tracker.schedule();
-  await new Promise((resolve) => setTimeout(resolve, PROMPT_AGENT_STATE_CHECK_DELAY_MS + 20));
-  assert.equal(busyCount, 1);
-  assert.equal(session.agentActivity, "running");
-
-  tracker.dispose();
 });
 
 test("OSC 7 cwd replay updates sidebar directory and clears stale git context", () => {

@@ -34,10 +34,6 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 从 `~/.ssh/config` 把静态 Host 块导入成已保存的主机 profile，跳过通配和 Match 块，重复导入不会产生重复项。
 
-### 10. 用户自定义工作流
-
-用户可以保存带参数的命令模板，并从命令面板在本地或 SSH 会话中调用。产品不内置固定修复、回滚或 Git 写操作，也不再附带 starter 模板。
-
 ### 12. 应用内手动更新闭环
 
 设置页新增“应用”入口，可检查签名发布通道、展示新版本、下载进度、安装并重启。更新失败会保留可重试状态，不再只有后端插件而没有用户入口。
@@ -76,7 +72,7 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 21. 设置快捷键页与终端交互触发器
 
-设置拆成外观 / 快捷键 / 工作流 / CLI / 应用。右键三档（smart / menu / disabled），Copy Selection 与 Safe Paste 可配置；Shift+F10 与 ContextMenu 键保持不可改写的恢复路径。
+设置拆成外观 / 终端 / 无障碍 / 快捷键 / SSH / 应用。右键三档（smart / menu / disabled），Copy Selection 与 Safe Paste 可配置；Shift+F10 与 ContextMenu 键保持不可改写的恢复路径。
 
 ### 22. 统一界面与终端配色
 

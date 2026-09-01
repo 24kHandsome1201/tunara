@@ -155,7 +155,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 7. Agent 识别
 
-优先支持 Claude Code、Codex、Cursor、OpenCode；具体生命周期与 resume 能力因 CLI 而异。Amp、Gemini、Copilot、Droid、Pi、Auggie、Devin、Aider 保留基础命令识别。数据源是 [`registry-data.json`](../src/modules/agent/registry-data.json)。
+只识别四个一等公民：Claude Code、Codex、Cursor、OpenCode；具体生命周期与 resume 能力因 CLI 而异。数据源是 [`registry-data.json`](../src/modules/agent/registry-data.json)。
 
 Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、不保存持久 Agent 历史。详情与新增清单：[AGENT_DETECTION.md](./AGENT_DETECTION.md)。
 
@@ -171,7 +171,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 ---
 
-## 9. 设置、快捷键与工作流
+## 9. 设置与快捷键
 
 设置对话框分六个一级页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）：
 
@@ -182,7 +182,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | Accessibility | 读屏模式；macOS 可跳转系统隐私设置 |
 | Shortcuts | 可配置快捷键；终端 Copy / Safe Paste / 菜单绑定带风险提示 |
 | SSH | known_hosts 列表与删除 |
-| Advanced | 应用更新、全局唤起、自定义工作流、Agent CLI 路径与预检，以及低频高级选项 |
+| Advanced | 应用更新、全局唤起、Agent CLI 路径与预检，以及低频高级选项 |
 
 配置文件：`~/.config/tunara/config.toml`，经 [`config-bridge.ts`](../src/modules/config/config-bridge.ts) 读写。
 
@@ -223,8 +223,8 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | `modules/ssh/` | 主机、SFTP、传输、转发、诊断、远端变更 |
 | `modules/fs/` · `git/` · `agent/` · `editor/` · `preview/` | 各域 IPC 桥与纯逻辑 |
 | `modules/session/` | 分栏、注意力、选目录新建 |
-| `modules/workflows/` · `config/` · `i18n/` · `resources/` | 工作流、配置、文案、资源引用 |
-| `state/` | Zustand：`sessions` · `ui` · `workflows`；`persist` 只做快照 I/O |
+| `modules/config/` · `i18n/` · `resources/` | 配置、文案、资源引用 |
+| `state/` | Zustand：`sessions` · `ui`；`persist` 只做快照 I/O |
 | `ui/` | 壳层组件与 overlays |
 | `styles/` | design tokens 与终端/外壳配色 |
 

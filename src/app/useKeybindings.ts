@@ -4,7 +4,6 @@ import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 import { KEYBINDING_ACTIONS, hasPlatformModKey, isFixedTerminalMenuEvent, isTerminalKeybindingAction, matchesKeybinding, type KeybindingAction } from "@/modules/config/keybindings";
 import { nextAttentionSessionId } from "@/modules/session/session-attention";
 import { t } from "@/modules/i18n";
-import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { isMac } from "@/ui/lib/platform";
 import {
   canSplitLayout,
@@ -100,11 +99,6 @@ export function useKeybindings() {
           break;
         case "togglePresentationMode":
           ui.togglePresentationMode();
-          break;
-        case "quickSelect":
-          if (ui.presentationMode === "workspace") {
-            window.dispatchEvent(new CustomEvent(TERMINAL_QUICK_SELECT_EVENT));
-          }
           break;
         case "fontSizeUp":
           ui.setFontSize(ui.fontSize + 1);

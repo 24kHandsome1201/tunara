@@ -82,7 +82,7 @@ if [[ -n "$TUNARA_SESSION_ID" ]]; then
     fi
   }
 
-  # Writes one private runtime containing both a Droid settings file and a
+  # Writes one private runtime containing a
   # Claude plugin. Plugin hooks compose with Claude's user --settings instead
   # of competing for the CLI's single effective settings argument.
   # host-provided agent-hook.sh helper. That helper reads the hook's stdin JSON,
@@ -189,17 +189,14 @@ TUNARA_EOF
     esac
   }
   __tunara_claude_alias_tail="$(_tunara_agent_alias_tail claude)"
-  __tunara_droid_alias_tail="$(_tunara_agent_alias_tail droid)"
   __tunara_codex_alias_tail="$(_tunara_agent_alias_tail codex)"
   # Aliases win command lookup over functions in zsh too. Rebuild ordinary
   # aliases through the wrapper so their default flags remain intact.
-  unalias claude droid codex 2>/dev/null
+  unalias claude codex 2>/dev/null
   function claude { _tunara_agent_run claude CC "$@"; }
-  function droid { _tunara_agent_run droid DR "$@"; }
   function codex { _tunara_agent_plain_run codex CX "$@"; }
   [[ -n "$__tunara_claude_alias_tail" ]] && alias claude="_tunara_agent_run claude CC$__tunara_claude_alias_tail"
-  [[ -n "$__tunara_droid_alias_tail" ]] && alias droid="_tunara_agent_run droid DR$__tunara_droid_alias_tail"
   [[ -n "$__tunara_codex_alias_tail" ]] && alias codex="_tunara_agent_plain_run codex CX$__tunara_codex_alias_tail"
-  unset __tunara_claude_alias_tail __tunara_droid_alias_tail __tunara_codex_alias_tail
+  unset __tunara_claude_alias_tail __tunara_codex_alias_tail
 fi
 :

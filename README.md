@@ -102,10 +102,9 @@ The right rail is a contextual Inspector, not only a diff. Local and SSH files c
 
 ### AI agent detection
 
-Tunara's deepest lifecycle and resume integrations prioritize Claude Code, Codex, Cursor, and OpenCode. It also recognizes additional agent CLIs and shows their brand badge when their command is detected.
+Tunara's lifecycle and resume integrations cover four first-class agent CLIs. Other coding agents are treated as ordinary terminal processes.
 
 - First-class support: Claude Code, Codex, Cursor, and OpenCode; lifecycle and resume availability varies by CLI
-- Basic command recognition: Amp, Gemini, Copilot, Droid, Pi, Auggie, Devin, and Aider
 - Compact contextual strip shows detected agent and available runtime state
 - File-change counts plus an entry point to review those changes when supported
 
@@ -129,7 +128,7 @@ The right pane is a read-only git diff for "one more look before commit" — the
 - Solid paper surfaces + native macOS overlay titlebar
 - Toast notifications: exit animation, hover pause, progress bar
 - Delayed signed-update reminders that stay silent until a release is actually available
-- Settings tabs: Appearance, Shortcuts, Workflows, CLI, App
+- Settings tabs: Appearance, Terminal, Accessibility, Shortcuts, SSH, App
 - Right-click menus on sessions, directory groups, and files
 - Responsive layout: auxiliary panes overlay when the terminal would otherwise shrink below a usable width
 - Window-state persistence (position, size)
@@ -198,7 +197,6 @@ Defaults below are macOS. Windows / Linux experimental builds remap several chor
 | Focus adjacent pane | ⌘[ ⌘] ⌘⇧[ ⌘⇧] |
 | Command Palette | ⌘K |
 | Find in terminal | ⌘F |
-| Quick select | ⌘⇧Space |
 | Pure Mode | ⌘⇧P |
 | Switch to session 1–8 / last | ⌘1 – ⌘8 / ⌘9 |
 | Cycle recent sessions | ⌘Tab |
@@ -226,7 +224,7 @@ Final installer is around 30 MB, against Warp's ~150 MB.
 src/                    # React frontend
 ├── app/                # entry, init, keybindings, theme, shell layout
 ├── modules/            # terminal, ssh, fs, git, agent, editor, preview, …
-├── state/              # Zustand (sessions + ui + workflows); persist I/O
+├── state/              # Zustand (sessions + ui); persist I/O
 ├── styles/             # CSS tokens + terminal / shell themes
 └── ui/                 # Sidebar, MainArea, Inspector, overlays
 
@@ -248,13 +246,13 @@ The full map, including Inspector tabs and IPC entry points, is in [docs/FEATURE
 
 ## Roadmap
 
-1.0 shipped; mainline features were fully wrapped in 1.5.0 (terminal-block navigation / quick select / OSC 8 / Aider agent and more):
+1.0 shipped; mainline features were fully wrapped in 1.5.0 (terminal-block navigation / OSC 8 and more):
 
 | Milestone | Status | Contents |
 |-----------|--------|----------|
 | M0 Store | done | Zustand stores + Tauri Store persistence |
 | M1 Multi-session | done | Multi-PTY, sidebar grouping, tab navigation |
-| M2 Agent | done | 12 agent CLIs auto-detected |
+| M2 Agent | done | 4 first-class agent CLIs auto-detected |
 | M3 Git Diff | done | git2 + read-only review rail |
 | P0 Split Pane | done | Horizontal / vertical split + draggable divider |
 | P0 Session lifecycle | done | runState state machine + semantic state markers |

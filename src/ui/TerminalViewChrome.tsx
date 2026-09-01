@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { ReactNode } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
@@ -28,7 +27,6 @@ interface TerminalViewChromeProps {
   /** Returns the live xterm instance for copy/paste actions, or null before init. */
   getTerminal: () => Terminal | null;
   search: ReturnType<typeof useTerminalSearch>;
-  quickSelectOverlay?: ReactNode;
   /** Contextual command-block entries for the menu anchor position, if any. */
   getBlockMenuEntries?: (clientX: number, clientY: number) => MenuEntry[];
 }
@@ -38,7 +36,6 @@ export function TerminalViewChrome({
   containerRef,
   getTerminal,
   search,
-  quickSelectOverlay,
   getBlockMenuEntries,
 }: TerminalViewChromeProps) {
   const t = useT();
@@ -262,7 +259,7 @@ export function TerminalViewChrome({
       onMouseUpCapture={captureRightGesture("mouse-up")}
       onKeyDown={handleMenuKeyDown}
     >
-      {/* Search and quick select stay anchored to the terminal surface. */}
+      {/* Search stays anchored to the terminal surface. */}
       <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
         {search.searchOpen && (
           <TerminalSearchBar
@@ -280,7 +277,6 @@ export function TerminalViewChrome({
           />
         )}
         <div data-terminal-canvas ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
-        {!pure && quickSelectOverlay}
       </div>
       {!pure && menu && (
         <ContextMenu

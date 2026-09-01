@@ -205,7 +205,6 @@ fn old_default_keybindings() -> BTreeMap<String, String> {
         ("focus_split_down", "Mod+Shift+]"),
         ("command_palette", "Mod+K"),
         ("toggle_presentation_mode", "Mod+Shift+P"),
-        ("quick_select", "Mod+Shift+Space"),
         ("font_size_up", "Mod+="),
         ("font_size_down", "Mod+-"),
         ("font_size_reset", "Mod+0"),

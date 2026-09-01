@@ -3,8 +3,8 @@ import { AGENT_CODES, AGENT_COMMANDS, AGENT_NAMES, AGENT_SHELL_TITLE_FRAGMENTS, 
 import { cleanTerminalLines, cleanTerminalText } from "./terminal-utils.ts";
 import { shellCommandName, splitShellCommandSegments, tokenizeShellWords } from "./shell-command.ts";
 
-export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC", "DR"]);
-export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
+export const HOOK_READY_AGENTS = new Set<AgentCode>(["CC"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
 
 export type AgentLifecycleEventName = "start" | "busy" | "wait" | "idle" | "stop" | "exit";
 
@@ -25,9 +25,7 @@ export interface AgentHookEvent {
 }
 
 const AGENT_LIFECYCLE_OSC_PREFIXES = new Set(["tunara-agent", "conduit-agent"]);
-const NPX_AGENT_PACKAGES = new Map<string, AgentCode>([
-  ["@earendil-works/pi-coding-agent", "PI"],
-]);
+const NPX_AGENT_PACKAGES = new Map<string, AgentCode>();
 
 const AGENT_SHELL_TITLE_ALIASES = new Set(
   [
@@ -113,8 +111,8 @@ export function tracksAgentActivity(agent: AgentCode): boolean {
 
 export function initialAgentActivity(agent: AgentCode): AgentActivity | undefined {
   if (tracksAgentActivity(agent)) return "starting";
-  // Identified only. Amp, Gemini, OpenCode, and the rest have no reliable
-  // turn signal, so the sidebar keeps the name without 启动中/工作中.
+  // Identified only. Cursor, OpenCode, and any leftover unknown agent have no
+  // reliable turn signal, so the sidebar keeps the name without 启动中/工作中.
   return undefined;
 }
 
@@ -220,34 +218,8 @@ export function detectCodexScreenState(text: string): AgentScreenState {
   return null;
 }
 
-// LLM turns paint `Working... (escape to interrupt)`; `!!` bash still paints
-// `Running... (escape/ctrl+c to cancel)`. The ready footer stays on screen in
-// both cases, so this chrome must win. Remapped cancel keys still include
-// interrupt/cancel; narrow panes may clip to `interr…`.
-const PI_BUSY_PATTERN = /(?:Working|Running)\.\.\.\s+\([^)\n]*(?:interr|cancel)/i;
-// Pi's status bar is clipped at the viewport edge instead of being preserved as
-// one logical line. In a narrow split the model name and trailing bullet may be
-// absent from xterm's readable tail, while the context/mode segment remains.
-// Treat that stable segment as ready; the explicit busy marker below still wins.
-// When Pi has no configured model, it omits the cost/subscription segment and
-// renders only `0.0%/0 (auto) unknown`. Keep that safe-degradation prompt in
-// the ready state too, while retaining the anchored context + mode shape so an
-// arbitrary percentage in scrollback cannot be mistaken for the live footer.
-const PI_READY_STATUS_PATTERN = /^(?:\$\d+(?:\.\d+)?\s+\([^)]*\)\s+)?\d+(?:\.\d+)?%\/\S+\s+\([^)]*\)(?:\s|$)/m;
-
-export function detectPiScreenState(text: string): AgentScreenState {
-  const recent = cleanTerminalLines(text)
-    .split("\n")
-    .slice(-PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT)
-    .join("\n");
-  if (PI_BUSY_PATTERN.test(recent)) return "busy";
-  if (PI_READY_STATUS_PATTERN.test(recent)) return "ready";
-  return null;
-}
-
 export function detectPromptAgentScreenState(agent: AgentCode, text: string): AgentScreenState {
   if (agent === "CX") return detectCodexScreenState(text);
-  if (agent === "PI") return detectPiScreenState(text);
   return null;
 }
 

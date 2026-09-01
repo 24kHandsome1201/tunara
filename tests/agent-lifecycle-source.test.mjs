@@ -46,8 +46,8 @@ test("shell wrappers emit explicit lifecycle events and only inject settings whe
     assert.match(script, /command "\$real_bin" --settings "\$settings" "\$\{forwarded\[@\]\}"/);
     assert.match(script, /else[\s\S]*command "\$real_bin" "\$@"/);
     assert.match(script, /function claude \{ _tunara_agent_run claude CC/);
-    assert.match(script, /unalias claude droid codex 2>\/dev\/null/);
-    assert.match(script, /function droid \{ _tunara_agent_run droid DR/);
+    assert.match(script, /unalias claude codex 2>\/dev\/null/);
+    assert.doesNotMatch(script, /function droid \{ _tunara_agent_run droid DR/);
     assert.match(script, /function codex \{ _tunara_agent_plain_run codex CX/);
     assert.doesNotMatch(script, /\bfunction codex \{ _tunara_agent_run codex/);
     assert.doesNotMatch(script, /\bdevin\(\) \{ _tunara_agent_run devin/);
@@ -160,7 +160,7 @@ test("agent-hook helper preserves user settings and appends Tunara hooks", () =>
   }
 });
 
-test("bash wrapper composes Claude plugins and Droid user settings", () => {
+test("bash wrapper composes Claude plugins and preserves user settings", () => {
   const dir = mkdtempSync(join(tmpdir(), "tunara-wrapper-"));
   try {
     const configDir = join(dir, "runtime");
@@ -191,10 +191,8 @@ while [ "$#" -gt 0 ]; do
 done
 printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
 `;
-    for (const bin of ["claude", "droid"]) {
-      writeFileSync(join(binDir, bin), fakeAgent, { mode: 0o700 });
-      chmodSync(join(binDir, bin), 0o700);
-    }
+    writeFileSync(join(binDir, "claude"), fakeAgent, { mode: 0o700 });
+    chmodSync(join(binDir, "claude"), 0o700);
     const user = join(dir, "user.json");
     writeFileSync(user, JSON.stringify({ model: "opus", hooks: { SessionStart: [] } }));
     const output = execFileSync(
@@ -203,7 +201,7 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
         "--noprofile",
         "--norc",
         "-c",
-        'source src-tauri/src/modules/pty/scripts/bashrc.bash; PATH="$2:$PATH"; hash -r; nc() { return 1; }; claude --settings "$1" hello; droid --settings "$1" hello',
+        'source src-tauri/src/modules/pty/scripts/bashrc.bash; PATH="$2:$PATH"; hash -r; nc() { return 1; }; claude --settings "$1" hello',
         "bash",
         user,
         binDir,
@@ -220,16 +218,11 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
         },
       },
     );
-    const claude = output.slice(output.indexOf("CALL:claude"), output.indexOf("CALL:droid"));
-    const droid = output.slice(output.indexOf("CALL:droid"));
-    assert.match(claude, /PLUGIN:ok/);
-    assert.match(claude, /SETTINGS:.*"model":"opus"/);
-    assert.match(claude, /SETTINGS_COUNT:1/);
-    assert.match(droid, /SETTINGS:.*"model":"opus".*"SessionStart"/);
-    assert.match(droid, /"UserPromptSubmit"/);
-    assert.doesNotMatch(droid, /"PermissionRequest"|"PostToolUse"|"PostToolUseFailure"/);
-    assert.match(droid, /SETTINGS_COUNT:1/);
-    assert.match(droid, /ARG:hello/);
+    assert.match(output, /CALL:claude/);
+    assert.match(output, /PLUGIN:ok/);
+    assert.match(output, /SETTINGS:.*"model":"opus"/);
+    assert.match(output, /SETTINGS_COUNT:1/);
+    assert.match(output, /ARG:hello/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -299,7 +292,7 @@ test("remote SSH integration emits per-turn lifecycle hooks without a host socke
   assert.doesNotMatch(remote, /function codex \{ _tunara_r_agent_run codex CX/);
 });
 
-test("rendered remote SSH wrapper preserves Claude and Droid user settings", () => {
+test("rendered remote SSH wrapper preserves Claude user settings", () => {
   const dir = mkdtempSync(join(tmpdir(), "tunara-remote-wrapper-"));
   try {
     const script = join(dir, "remote-integration.sh");
@@ -331,10 +324,8 @@ while [ "$#" -gt 0 ]; do
 done
 printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
 `;
-    for (const bin of ["claude", "droid"]) {
-      writeFileSync(join(binDir, bin), fakeAgent, { mode: 0o700 });
-      chmodSync(join(binDir, bin), 0o700);
-    }
+    writeFileSync(join(binDir, "claude"), fakeAgent, { mode: 0o700 });
+    chmodSync(join(binDir, "claude"), 0o700);
     const user = join(dir, "user.json");
     writeFileSync(user, JSON.stringify({ model: "opus", hooks: { SessionStart: [] } }));
     const output = execFileSync(
@@ -343,7 +334,7 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
         "--noprofile",
         "--norc",
         "-c",
-        'claude --settings "$1" hello; droid --settings "$1" hello',
+        'claude --settings "$1" hello',
         "bash",
         user,
       ],
@@ -356,15 +347,10 @@ printf 'SETTINGS_COUNT:%s\\n' "$settings_count"
         },
       },
     );
-    const claude = output.slice(output.indexOf("CALL:claude"), output.indexOf("CALL:droid"));
-    const droid = output.slice(output.indexOf("CALL:droid"));
-    assert.match(claude, /PLUGIN:ok/);
-    assert.match(claude, /SETTINGS_COUNT:1/);
-    assert.match(droid, /SETTINGS:.*"model":"opus".*"SessionStart"/);
-    assert.match(droid, /"UserPromptSubmit"/);
-    assert.doesNotMatch(droid, /"PermissionRequest"|"PostToolUse"|"PostToolUseFailure"/);
-    assert.match(droid, /SETTINGS_COUNT:1/);
-    assert.match(droid, /ARG:hello/);
+    assert.match(output, /CALL:claude/);
+    assert.match(output, /PLUGIN:ok/);
+    assert.match(output, /SETTINGS_COUNT:1/);
+    assert.match(output, /ARG:hello/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -424,13 +410,13 @@ test("agent hook runtime files avoid predictable shared tmp paths", () => {
   assert.match(ssh, /open_with_cancellation\([\s\S]*params,[\s\S]*jump_params,[\s\S]*on_event,[\s\S]*state\.insert_ssh\([\s\S]*wrapper::cleanup_hooks_settings\(logical_id, hooks_state\.agent_config_dir\(\)\)/);
 });
 
-test("agent lifecycle policy preserves prompt state for Codex and Pi", () => {
+test("agent lifecycle policy preserves prompt state for Codex", () => {
   const policy = read("src/modules/terminal/lib/agent-lifecycle.ts");
   const tracker = read("src/modules/terminal/lib/terminal-prompt-agent-state.ts");
   const utils = read("src/modules/terminal/lib/terminal-utils.ts");
 
-  assert.match(policy, /export const HOOK_READY_AGENTS = new Set<AgentCode>\(\["CC", "DR"\]\);/);
-  assert.match(policy, /export const PROMPT_READY_AGENTS = new Set<AgentCode>\(\["CX", "PI"\]\);/);
+  assert.match(policy, /export const HOOK_READY_AGENTS = new Set<AgentCode>\(\["CC"\]\);/);
+  assert.match(policy, /export const PROMPT_READY_AGENTS = new Set<AgentCode>\(\["CX"\]\);/);
   assert.match(policy, /export function detectAgentCommand\(commandLine: string\): AgentCode \| null/);
   assert.match(policy, /export function isAgentShellTitle\(title: string\): boolean/);
   assert.match(policy, /export function tracksAgentActivity\(agent: AgentCode\): boolean/);
@@ -461,15 +447,12 @@ test("agent lifecycle policy preserves prompt state for Codex and Pi", () => {
   assert.match(policy, /if \(recent\.some\(isCodexPromptLine\)\) return "ready";/);
   assert.match(policy, /new Set\(\["tunara-agent", "conduit-agent"\]\)/);
   assert.match(policy, /export function parseAgentLifecycleOsc\(data: string\): AgentLifecycleEvent \| null/);
-  assert.match(policy, /export function detectPiScreenState\(text: string\): AgentScreenState/);
-  assert.match(policy, /Working\|Running/);
-  assert.match(policy, /interr\|cancel/);
-  assert.match(policy, /PI_BUSY_PATTERN\.test\(recent\)[\s\S]*return "busy"/);
-  assert.match(policy, /PI_READY_STATUS_PATTERN\.test\(recent\)[\s\S]*return "ready"/);
+  assert.doesNotMatch(policy, /detectPiScreenState/);
+  assert.doesNotMatch(policy, /PI_BUSY_PATTERN/);
   assert.doesNotMatch(policy, /detectAmpScreenState/);
   assert.doesNotMatch(policy, /AMP_COMPOSER/);
   assert.match(policy, /export function detectPromptAgentScreenState\(agent: AgentCode, text: string\)/);
-  assert.match(policy, /if \(agent === "CX"\) return detectCodexScreenState\(text\);[\s\S]*if \(agent === "PI"\) return detectPiScreenState\(text\);[\s\S]*return null;/);
+  assert.match(policy, /if \(agent === "CX"\) return detectCodexScreenState\(text\);[\s\S]*return null;/);
   assert.match(tracker, /export const PROMPT_AGENT_STATE_CHECK_DELAY_MS = 500;/);
   assert.match(tracker, /if \(stateTimer\) return;/);
   assert.match(tracker, /getTerminalTailText\(terminal, PROMPT_AGENT_SCREEN_STATE_RECENT_LINE_LIMIT\)/);

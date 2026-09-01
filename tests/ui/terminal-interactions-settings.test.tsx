@@ -2,9 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { defaultKeybindingsForPlatform } from "@/modules/config/keybindings";
 import { useUIStore } from "@/state/ui";
-import { useWorkflowsStore } from "@/state/workflows";
 import { Settings } from "@/ui/overlays/Settings";
-import { WorkflowsSettings } from "@/ui/overlays/settings/WorkflowsSettings";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
@@ -135,17 +133,4 @@ test("app bindings cannot take the fixed terminal menu recovery keys", () => {
   expect(useUIStore.getState().keybindings.newTerminal).toBe("Mod+T");
 });
 
-test("workflow settings persist explicit immediate execution", () => {
-  useWorkflowsStore.setState({ workflows: [] });
-  render(<WorkflowsSettings />);
 
-  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Herdr" } });
-  fireEvent.change(screen.getByLabelText("Command template"), { target: { value: "herdr" } });
-  fireEvent.click(screen.getByRole("checkbox", { name: /Run immediately/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Add" }));
-
-  expect(useWorkflowsStore.getState().workflows).toEqual([
-    expect.objectContaining({ name: "Herdr", template: "herdr", autoSubmit: true }),
-  ]);
-  useWorkflowsStore.setState({ workflows: [] });
-});

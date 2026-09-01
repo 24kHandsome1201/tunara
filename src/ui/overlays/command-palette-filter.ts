@@ -1,6 +1,6 @@
 import { getNumberRecordValue } from "../../state/record-keys.ts";
 
-export type CommandPaletteScope = "action" | "app" | "batch" | "recent" | "session" | "terminal" | "workflow";
+export type CommandPaletteScope = "action" | "app" | "batch" | "recent" | "session" | "terminal";
 
 export interface CommandPaletteFilterItem {
   label: string;
@@ -35,10 +35,6 @@ const SCOPE_ALIASES: Record<string, CommandPaletteScope> = {
   t: "terminal",
   term: "terminal",
   terminal: "terminal",
-  w: "workflow",
-  wf: "workflow",
-  workflow: "workflow",
-  workflows: "workflow",
 };
 
 function scopeForAlias(alias: string): CommandPaletteScope | undefined {

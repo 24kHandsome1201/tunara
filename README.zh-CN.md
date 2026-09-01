@@ -100,10 +100,9 @@ Tunara 让重点会话保持醒目，同时不把终端变成项目管理工具�
 
 ### AI Agent 识别
 
-Tunara 优先为 Claude Code、Codex、Cursor、OpenCode 提供更完整的生命周期与恢复集成；其他命令行 agent 在命令被识别时也会显示品牌角标。
+Tunara 为四个一等公民 Agent CLI 提供生命周期与恢复集成。其他 coding agent 按普通终端进程处理。
 
 - 优先支持 Claude Code、Codex、Cursor、OpenCode；生命周期与 resume 能力因 CLI 而异
-- 基础命令识别覆盖 Amp、Gemini、Copilot、Droid、Pi、Auggie、Devin、Aider
 - 紧凑上下文条显示识别到的 agent 与可用运行状态
 - 支持时显示 Agent 改动文件计数与 Changes 入口
 
@@ -127,7 +126,7 @@ Tunara 优先为 Claude Code、Codex、Cursor、OpenCode 提供更完整的生�
 - 实色纸面层级 + macOS 原生覆盖标题栏
 - Toast 通知：退出动画、hover 暂停、进度条
 - 低打扰的签名更新提醒：仅在确有新版本时出现
-- 设置页签：外观、快捷键、工作流、CLI、应用
+- 设置页签：外观、终端、无障碍、快捷键、SSH、应用
 - 右键菜单覆盖会话、目录组、文件
 - 响应式布局：终端可用宽度不足时，侧栏/检查器改为覆盖层
 - 窗口状态持久化（位置、尺寸）
@@ -195,7 +194,6 @@ pnpm test             # 全部测试（Node + UI + Rust）
 | 切换相邻 pane | ⌘[ ⌘] ⌘⇧[ ⌘⇧] |
 | Command Palette | ⌘K |
 | 终端内搜索 | ⌘F |
-| 快速选择 | ⌘⇧Space |
 | 纯净模式 | ⌘⇧P |
 | 切到会话 1–8 / 最后一个 | ⌘1 – ⌘8 / ⌘9 |
 | 最近会话循环 | ⌘Tab |
@@ -222,7 +220,7 @@ pnpm test             # 全部测试（Node + UI + Rust）
 src/                    # React 前端
 ├── app/                # 入口、初始化、快捷键、主题、壳层布局
 ├── modules/            # terminal、ssh、fs、git、agent、editor、preview 等
-├── state/              # Zustand（sessions + ui + workflows）；persist 只做快照 I/O
+├── state/              # Zustand（sessions + ui）；persist 只做快照 I/O
 ├── styles/             # CSS tokens + 终端 / 外壳配色
 └── ui/                 # Sidebar、MainArea、Inspector、overlays
 
@@ -244,13 +242,13 @@ src-tauri/src/          # Rust 后端
 
 ## 路线图
 
-1.0 已发布，主线功能在 1.5.0 全面收口（终端块导航 / quick select / OSC 8 / Aider agent 等）：
+1.0 已发布，主线功能在 1.5.0 全面收口（终端块导航 / OSC 8 等）：
 
 | 里程碑 | 状态 | 内容 |
 |--------|------|------|
 | M0 Store | done | Zustand stores + Tauri Store 持久化 |
 | M1 多会话 | done | 多 PTY、侧栏分组、tab 导航 |
-| M2 Agent | done | 12 种 agent CLI 自动检测 |
+| M2 Agent | done | 4 个一等公民 agent CLI 自动检测 |
 | M3 Git Diff | done | git2 + 只读 review 面板 |
 | P0 Split Pane | done | 水平 / 垂直分栏 + 拖拽分割线 |
 | P0 Session 生命周期 | done | runState 状态机 + 语义状态标记 |

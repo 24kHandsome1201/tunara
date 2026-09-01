@@ -16,7 +16,7 @@ import {
 // these invariants guard the contract both sides depend on.
 
 test("AGENT_REGISTRY has the expected number of agents and unique codes", () => {
-  assert.equal(AGENT_REGISTRY.length, 12);
+  assert.equal(AGENT_REGISTRY.length, 4);
   const codes = AGENT_REGISTRY.map((a) => a.code);
   assert.equal(new Set(codes).size, codes.length, "agent codes must be unique");
 });
@@ -39,7 +39,9 @@ test("AGENT_NAMES maps every code to its display name", () => {
 test("AGENT_COMMANDS flat-maps every command to a known code", () => {
   assert.equal(AGENT_COMMANDS.claude, "CC");
   assert.equal(AGENT_COMMANDS.codex, "CX");
-  assert.equal(AGENT_COMMANDS.ampcode, "AM");
+  assert.equal(AGENT_COMMANDS["cursor-agent"], "CR");
+  assert.equal(AGENT_COMMANDS.opencode, "OC");
+  assert.equal(AGENT_COMMANDS.ampcode, undefined);
   for (const code of Object.values(AGENT_COMMANDS)) {
     assert.ok(AGENT_CODES.has(code), `${code} must be a known agent code`);
   }

@@ -296,23 +296,6 @@ export interface KeyboardInteractivePrompt {
   prompts: Array<{ prompt: string; echo: boolean }>;
 }
 
-/** A workflow chosen from the palette whose template has {{params}} still to
- * fill. An app-level prompt collects the values, then runs it. */
-export interface PendingWorkflow {
-  workflowId: string;
-  name: string;
-  template: string;
-  /** Directory to launch the resulting command in. */
-  dir: string;
-  /** Branch from the session that launched the workflow, for dynamic vars. */
-  branch?: string;
-  /** Remote workflows fill the existing SSH terminal instead of spawning a
-   * local terminal with a remote path. */
-  targetSessionId?: string;
-  /** Submit after resolving parameters instead of leaving the command editable. */
-  autoSubmit?: boolean;
-}
-
 export interface WorkspaceFileTab {
   id: string;
   sessionId: string;
@@ -358,7 +341,6 @@ interface UIState extends AppearanceSettings {
    *  renders the head; answering it shifts to the next. */
   hostKeyPrompts: HostKeyPrompt[];
   keyboardInteractivePrompts: KeyboardInteractivePrompt[];
-  pendingWorkflow: PendingWorkflow | null;
   collapsedDirs: Record<string, true>;
   collapsedDiffSections: Record<string, true>;
   commandUsage: Record<string, number>;
@@ -420,7 +402,6 @@ interface UIState extends AppearanceSettings {
   dismissHostKeyPrompt: (promptId: string) => void;
   enqueueKeyboardInteractivePrompt: (prompt: KeyboardInteractivePrompt) => void;
   dismissKeyboardInteractivePrompt: (promptId: string) => void;
-  setPendingWorkflow: (workflow: PendingWorkflow | null) => void;
   bumpSshProfilesEpoch: () => void;
   toggleDirCollapsed: (dir: string) => void;
   toggleDiffSectionCollapsed: (section: string) => void;
@@ -469,7 +450,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     terminalWallpaperRevision: 0,
     hostKeyPrompts: [],
     keyboardInteractivePrompts: [],
-    pendingWorkflow: null,
     collapsedDirs: {},
     collapsedDiffSections: {},
     sshProfilesEpoch: 0,
@@ -487,7 +467,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
           mainSurface: "terminal",
           overlay: null,
           sshPrefill: null,
-          pendingWorkflow: null,
         }
       : { presentationMode, mainSurface: "terminal", overlay: null, sshPrefill: null }),
     togglePresentationMode: () => set((state) => state.presentationMode === "workspace"
@@ -496,7 +475,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
           mainSurface: "terminal",
           overlay: null,
           sshPrefill: null,
-          pendingWorkflow: null,
         }
       : { presentationMode: "workspace", mainSurface: "terminal", overlay: null, sshPrefill: null }),
     showTerminal: () => set({ mainSurface: "terminal" }),
@@ -638,7 +616,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((s) => ({
         keyboardInteractivePrompts: s.keyboardInteractivePrompts.filter((p) => p.promptId !== promptId),
       })),
-    setPendingWorkflow: (pendingWorkflow) => set({ pendingWorkflow }),
     bumpSshProfilesEpoch: () => set((s) => ({ sshProfilesEpoch: s.sshProfilesEpoch + 1 })),
     toggleDirCollapsed: (dir) =>
       set((s) => ({ collapsedDirs: toggleTrueRecordKey(s.collapsedDirs, dir) })),

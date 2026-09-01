@@ -7,7 +7,6 @@ import {
   type WorkspaceProjectionV1,
   type WorkspaceSnapshotV1,
 } from "@/state/persist";
-import { useWorkflowsStore } from "@/state/workflows";
 import { t } from "@/modules/i18n/core.ts";
 import {
   consumeTerminalSnapshotDirty,
@@ -57,7 +56,6 @@ function buildWorkspaceProjection(): WorkspaceProjectionV1 {
     recentCommands: st.recentCommands,
     hostFilePrefs: st.hostFilePrefs,
     commandUsage: ui.commandUsage,
-    workflows: useWorkflowsStore.getState().workflows,
   };
 }
 
@@ -158,10 +156,6 @@ export function useInit() {
         commandUsage: snapshot.commandUsage ?? {},
         explorerFollowCwd: snapshot.ui.explorerFollowCwd !== false,
       });
-
-      if (snapshot.workflows?.length) {
-        useWorkflowsStore.getState().setWorkflows(snapshot.workflows);
-      }
 
       if (snapshot.terminals && Object.keys(snapshot.terminals).length > 0) {
         restoreTerminalSnapshots(snapshot.terminals);
@@ -319,14 +313,6 @@ export function useInit() {
       { equalityFn: (a, b) => a.every((v, i) => v === b[i]) },
     );
 
-    let prevWorkflows = useWorkflowsStore.getState().workflows;
-    const unsubWorkflows = useWorkflowsStore.subscribe((state) => {
-      if (state.workflows !== prevWorkflows) {
-        prevWorkflows = state.workflows;
-        if (workspaceHydrated) scheduleSave();
-      }
-    });
-
     // Backstop flush for terminal scrollback, which lives in the snapshot Map
     // rather than a store, so the scheduleSave subscriptions above never see it.
     // Gate on the snapshot dirty flag so an idle or hidden app with no new
@@ -341,7 +327,6 @@ export function useInit() {
       unsubWorkspacePersistence();
       unsubGitWatchProjection();
       unsubUI();
-      unsubWorkflows();
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;

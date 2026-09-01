@@ -392,9 +392,9 @@ mod tests {
         const BASHRC: &str = include_str!("../pty/scripts/bashrc.bash");
 
         for script in [ZSHRC, BASHRC] {
-            assert!(script.contains("unalias claude droid codex 2>/dev/null"));
+            assert!(script.contains("unalias claude codex 2>/dev/null"));
             assert!(script.contains("function claude { _tunara_agent_run claude"));
-            assert!(script.contains("function droid { _tunara_agent_run droid"));
+            assert!(!script.contains("function droid { _tunara_agent_run droid"));
             assert!(script.contains("function codex { _tunara_agent_plain_run codex"));
             assert!(!script.contains("function codex { _tunara_agent_run codex"));
             assert!(!script.contains("function devin { _tunara_agent_run devin"));

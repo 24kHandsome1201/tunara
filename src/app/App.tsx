@@ -7,7 +7,6 @@ import { CommandPalette } from "@/ui/overlays/CommandPalette";
 import { SshConnect } from "@/ui/overlays/SshConnect";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
-import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
 import { ToastContainer } from "@/ui/Toast";
 import { WorkspaceEmptyState } from "@/ui/WorkspaceEmptyState";
 import { SshHostsDashboard } from "@/ui/SshHostsDashboard";
@@ -496,7 +495,6 @@ export default function App() {
       {workspaceMode && overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
       <HostKeyPromptDialog />
       <KeyboardInteractivePromptDialog />
-      {workspaceMode && <WorkflowParamPrompt />}
       <ToastContainer />
     </div>
   );

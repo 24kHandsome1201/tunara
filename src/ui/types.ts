@@ -10,7 +10,7 @@ import type { ForwardReconnectIntent } from "../modules/terminal/lib/pty-bridge.
 export { AGENT_NAMES };
 
 /** Agent 类型代码（用于侧栏品牌识别） */
-export type AgentCode = "CC" | "CX" | "AM" | "GM" | "CP" | "CR" | "DR" | "OC" | "PI" | "AG" | "DV" | "AD";
+export type AgentCode = "CC" | "CX" | "CR" | "OC";
 
 /** 会话运行状态 */
 export type RunState = "idle" | "running" | "done" | "failed";

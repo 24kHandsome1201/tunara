@@ -15,7 +15,6 @@ const readSettingsSources = () => [
   "src/ui/overlays/settings/ShortcutsSettings.tsx",
   "src/ui/overlays/settings/CliSettings.tsx",
   "src/ui/overlays/settings/AppSettings.tsx",
-  "src/ui/overlays/settings/WorkflowsSettings.tsx",
   "src/ui/overlays/settings/useCliStatus.ts",
   "src/ui/overlays/settings/controls.tsx",
 ].map(read).join("\n");

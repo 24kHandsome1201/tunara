@@ -17,16 +17,12 @@ import { useUIStore } from "@/state/ui";
 import { ContextMenu, isMenuItem, type MenuItem } from "@/ui/ContextMenu";
 import { SplitHandle } from "@/ui/SplitHandle";
 import { PtyErrorBanner, TerminalExitBanner } from "@/ui/TerminalExitBanner";
-import { TerminalQuickSelect } from "@/ui/TerminalQuickSelect";
 import { TerminalViewChrome } from "@/ui/TerminalViewChrome";
 import { ToastContainer } from "@/ui/Toast";
 import { SessionCard } from "@/ui/SessionCard";
 import { buildSessionMenuItems } from "@/ui/sidebar-session-menu";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
-import { WorkflowParamPrompt } from "@/ui/overlays/WorkflowParamPrompt";
-import { useTerminalQuickSelect } from "@/ui/useTerminalQuickSelect";
-import { TERMINAL_QUICK_SELECT_EVENT } from "@/modules/terminal/lib/terminal-quick-select";
 import { useTerminalSearch } from "@/ui/useTerminalSearch";
 import {
   allocateTerminalInstanceEpoch,
@@ -787,151 +783,6 @@ test("toast countdown stays paused while hover and keyboard focus overlap", () =
   expect(progress?.style.animationPlayState).toBe("running");
 });
 
-test("Quick Select exposes listbox selection and target-specific action names", () => {
-  const onCopy = vi.fn();
-  const onOpen = vi.fn();
-  render(<TerminalQuickSelect
-    items={[
-      { id: "url:docs example", kind: "url", label: "docs.example", detail: "https://docs.example", copyText: "https://docs.example", target: "https://docs.example" },
-      { id: "file-two", kind: "file", label: "src/app.ts:12", detail: "/repo/src/app.ts", copyText: "/repo/src/app.ts:12", target: "/repo/src/app.ts", line: 12 },
-    ]}
-    onClose={() => {}}
-    onCopy={onCopy}
-    onOpen={onOpen}
-  />);
-
-  const listbox = screen.getByRole("listbox", { name: "Quick select" });
-  expect(document.activeElement).toBe(listbox);
-  expect(listbox.getAttribute("aria-activedescendant")).toBe("quick-select-option-0");
-  const options = screen.getAllByRole("option");
-  expect(options[0].getAttribute("aria-selected")).toBe("true");
-  expect(options[1].getAttribute("aria-selected")).toBe("false");
-  expect(screen.getByRole("button", { name: "Copy docs.example" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Open src/app.ts:12" })).toBeNull();
-  expect(options[0].querySelector("button")).toBeNull();
-
-  fireEvent.keyDown(listbox, { key: "ArrowDown" });
-  expect(listbox.getAttribute("aria-activedescendant")).toBe("quick-select-option-1");
-  expect(options[1].getAttribute("aria-selected")).toBe("true");
-  expect(screen.getByRole("button", { name: "Copy src/app.ts:12" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Open src/app.ts:12" })).toBeTruthy();
-});
-
-test("Quick Select restores terminal focus after an asynchronous copy", async () => {
-  const focus = vi.fn();
-  const term = {
-    rows: 24,
-    focus,
-    buffer: {
-      active: {
-        length: 1,
-        viewportY: 0,
-        getLine: () => ({ translateToString: () => "https://docs.example" }),
-      },
-    },
-  } as unknown as Terminal;
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: vi.fn().mockResolvedValue(undefined) },
-  });
-  const dispose = registerTerminalBinding({
-    logicalSessionId: "quick-select-session",
-    paneId: "quick-select-session",
-    physicalPtyId: 21,
-    transportGeneration: "quick-select-generation",
-    terminalInstanceEpoch: allocateTerminalInstanceEpoch(),
-  }, focus);
-  recordTerminalFocusIntent("quick-select-session");
-
-  function Harness() {
-    const termRef = useRef<Terminal | null>(term);
-    return useTerminalQuickSelect(termRef, {
-      active: true,
-      cwd: "/repo",
-      sessionId: "quick-select-session",
-    }).quickSelectOverlay;
-  }
-
-  render(<Harness />);
-  window.dispatchEvent(new Event(TERMINAL_QUICK_SELECT_EVENT));
-  fireEvent.click(await screen.findByRole("button", { name: "Copy https://docs.example" }));
-  await waitFor(() => expect(focus).toHaveBeenCalledOnce());
-  expect(screen.queryByRole("listbox", { name: "Quick select" })).toBeNull();
-  dispose();
-});
-
-test("Quick Select ignores a deferred copy completion after switching sessions", async () => {
-  let resolveCopy!: () => void;
-  const focus = vi.fn();
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: vi.fn(() => new Promise<void>((resolve) => { resolveCopy = resolve; })) },
-  });
-  const term = {
-    rows: 24,
-    focus,
-    buffer: { active: { length: 1, viewportY: 0, getLine: () => ({ translateToString: () => "https://docs.example" }) } },
-  } as unknown as Terminal;
-  const dispose = registerTerminalBinding({
-    logicalSessionId: "quick-select-stale",
-    paneId: "quick-select-stale",
-    physicalPtyId: 22,
-    transportGeneration: "quick-select-stale-generation",
-    terminalInstanceEpoch: allocateTerminalInstanceEpoch(),
-  }, focus);
-  recordTerminalFocusIntent("quick-select-stale");
-
-  function Harness() {
-    const termRef = useRef<Terminal | null>(term);
-    return useTerminalQuickSelect(termRef, { active: true, cwd: "/repo", sessionId: "quick-select-stale" }).quickSelectOverlay;
-  }
-
-  render(<Harness />);
-  window.dispatchEvent(new Event(TERMINAL_QUICK_SELECT_EVENT));
-  fireEvent.click(await screen.findByRole("button", { name: "Copy https://docs.example" }));
-  recordTerminalFocusIntent("another-session");
-  await act(async () => { resolveCopy(); });
-  expect(focus).not.toHaveBeenCalled();
-  expect(screen.getByRole("listbox", { name: "Quick select" })).toBeTruthy();
-  dispose();
-});
-
-test("Quick Select opens an SSH file in its owning session instead of the local editor", async () => {
-  const owner: Session = {
-    id: "quick-select-ssh", title: "SSH", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,
-    remote: { host: "target.internal", port: 22, user: "deploy" },
-    ptyId: 77,
-    transportGeneration: "quick-select-generation",
-  };
-  useSessionsStore.setState({ sessions: [owner, { ...owner, id: "other-session", remote: undefined }], activeSessionId: "other-session" });
-  useUIStore.setState({ fileTabs: [], activeFileTabId: null });
-  const openedCommands: string[] = [];
-  mockIPC((command) => { openedCommands.push(command); return undefined; });
-  const term = {
-    rows: 24,
-    focus: vi.fn(),
-    buffer: {
-      active: {
-        length: 1,
-        viewportY: 0,
-        getLine: () => ({ translateToString: () => "src/app.ts:12" }),
-      },
-    },
-  } as unknown as Terminal;
-
-  function Harness() {
-    const termRef = useRef<Terminal | null>(term);
-    return useTerminalQuickSelect(termRef, { active: true, cwd: "/srv/app", sessionId: owner.id }).quickSelectOverlay;
-  }
-
-  render(<Harness />);
-  window.dispatchEvent(new Event(TERMINAL_QUICK_SELECT_EVENT));
-  fireEvent.click(await screen.findByRole("button", { name: "Open src/app.ts:12" }));
-  await waitFor(() => expect(useSessionsStore.getState().activeSessionId).toBe(owner.id));
-  expect(useUIStore.getState().fileTabs[0]).toMatchObject({ sessionId: owner.id, filePath: "/srv/app/src/app.ts", line: 12 });
-  expect(openedCommands).not.toContain("open_in_editor");
-});
-
 test("session cards announce lifecycle, unread, and transport state", () => {
   render(<SessionCard
     session={{
@@ -977,59 +828,6 @@ test("session menu exposes bounded keyboard reorder actions", () => {
 
   expect(useSessionsStore.getState().sessions.map((session) => session.id)).toEqual(["two", "one", "other"]);
   expect(moved).toEqual([2]);
-});
-
-test("workflow parameters keep a scrollable body and reachable footer", () => {
-  useUIStore.setState({
-    pendingWorkflow: {
-      workflowId: "many-params",
-      name: "Deploy workflow",
-      template: "deploy {{one}} {{two}} {{three}} {{four}} {{five}}",
-      dir: "/repo",
-    },
-  });
-  render(<WorkflowParamPrompt />);
-
-  const dialog = screen.getByRole("dialog", { name: "Deploy workflow" });
-  expect(dialog.style.maxHeight).toBe("calc(100vh - 32px)");
-  const scrollBody = screen.getByLabelText("one").parentElement?.parentElement as HTMLElement;
-  expect(scrollBody.style.overflowY).toBe("auto");
-  expect(screen.getByRole("button", { name: "Fill command" }).parentElement?.style.borderTop).toContain("var(--c-border-2)");
-  useUIStore.setState({ pendingWorkflow: null });
-});
-
-test("an opted-in parameterized workflow submits to its SSH terminal", () => {
-  const session: Session = {
-    id: "workflow-ssh",
-    title: "Pi",
-    dir: "/srv",
-    branch: "main",
-    runState: "idle",
-    updatedAt: 1,
-    remote: { host: "pi", port: 22, user: "tuna" },
-  };
-  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
-  useUIStore.setState({
-    pendingWorkflow: {
-      workflowId: "herdr-task",
-      name: "Herdr task",
-      template: "herdr --task {{task}}",
-      dir: session.dir,
-      branch: session.branch,
-      targetSessionId: session.id,
-      autoSubmit: true,
-    },
-  });
-  render(<WorkflowParamPrompt />);
-
-  fireEvent.change(screen.getByLabelText("task"), { target: { value: "review" } });
-  fireEvent.click(screen.getByRole("button", { name: "Run" }));
-
-  expect(useSessionsStore.getState().sessions[0]).toMatchObject({
-    pendingInput: "herdr --task review",
-    pendingInputSubmit: true,
-  });
-  expect(useUIStore.getState().pendingWorkflow).toBeNull();
 });
 
 test("host key prompt constrains height and safely focuses Reject", () => {

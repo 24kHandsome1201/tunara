@@ -105,14 +105,15 @@ test("discovery flows keep empty-state recents and preview prompts", () => {
   assert.match(palette, /openInspectorTab\("preview", "open-session-preview"\)/);
 });
 
-test("fixed runbooks stay removed while user-configurable workflows remain", () => {
+test("fixed runbooks and user-configurable workflows stay removed", () => {
   const palette = read("src/ui/overlays/CommandPalette.tsx");
   const paletteFilter = read("src/ui/overlays/command-palette-filter.ts");
 
   assert.equal(existsSync(resolve(root, "src/modules/runbook/blueprints.ts")), false);
   assert.doesNotMatch(`${palette}\n${paletteFilter}`, /runbook|git restore --staged/iu);
-  assert.match(palette, /useWorkflowsStore/);
-  assert.equal(existsSync(resolve(root, "src/modules/workflows/starters.ts")), false);
+  assert.doesNotMatch(palette, /useWorkflowsStore/);
+  assert.equal(existsSync(resolve(root, "src/modules/workflows")), false);
+  assert.equal(existsSync(resolve(root, "src/state/workflows.ts")), false);
 });
 
 test("node test script can import TypeScript sources on Node 24", () => {
@@ -392,7 +393,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(security, /OSC 52 clipboard writes are disabled by default/);
   assert.match(security, /terminal_clipboard_write = true/);
   assert.match(security, /does not implement clipboard read responses/);
-  assert.match(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
+  assert.doesNotMatch(configRs, /\("quick_select", "Mod\+Shift\+Space"\)/);
   const defaultKeybindingBody = configRs.slice(
     configRs.indexOf("fn old_default_keybindings"),
     configRs.indexOf("fn old_backend_default_keybindings"),
@@ -405,7 +406,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(bridge, /terminal_clipboard_write: boolean/);
   assert.match(keybindings, /export const DEFAULT_KEYBINDINGS/);
   assert.match(keybindings, /newTerminalAlt: "Mod\+N"/);
-  assert.match(keybindings, /quickSelect: "Mod\+Shift\+Space"/);
+  assert.doesNotMatch(keybindings, /quickSelect: "Mod\+Shift\+Space"/);
   assert.match(keybindings, /function configActionForKey\(key: string\): KeybindingAction \| undefined/);
   assert.match(keybindings, /hasOwnProperty\.call\(CONFIG_KEY_TO_ACTION, key\)/);
   assert.match(keybindings, /export function hasPlatformModKey/);
@@ -425,7 +426,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(keys, /hasPlatformModKey\(e, isMac\)/);
   assert.doesNotMatch(keys, /isEditableTarget\(e\.target\) && !e\.metaKey/);
   assert.match(keys, /matchesKeybinding\(e, bindings\[action\], isMac\)/);
-  assert.match(keys, /TERMINAL_QUICK_SELECT_EVENT/);
+  assert.doesNotMatch(keys, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(terminalFont, /buildTerminalFontFamily/);
   // The canvas fallback chain keeps CJK glyphs on a monospace face and covers
   // Windows/Linux system mono layers between JetBrains Mono and the generic.
@@ -1236,9 +1237,10 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.doesNotMatch(lifecycle, /return AGENT_COMMANDS\[cmd\] \?\? null/);
   assert.match(registry, /cliBin: string/);
   const registryData = read("src/modules/agent/registry-data.json");
-  assert.match(registryData, /"cliBin": "gh"/);
+  assert.doesNotMatch(registryData, /"cliBin": "gh"/);
   assert.match(registryData, /"commands": \["cursor-agent"\]/);
   assert.match(registryData, /"cliBin": "cursor-agent"/);
+  assert.match(registryData, /"cliBin": "opencode"/);
   assert.doesNotMatch(registryData, /"commands": \["agent"\]/);
   assert.match(lifecycle, /from "\.\.\/\.\.\/agent\/registry\.ts"/);
   assert.doesNotMatch(lifecycle, /const AGENT_COMMANDS: Record/);
@@ -1460,9 +1462,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalRuntimeSync = read("src/ui/useTerminalRuntimeSync.ts");
   const terminalWebgl = read("src/ui/useTerminalWebgl.ts");
   const terminalQuickSelect = read("src/modules/terminal/lib/terminal-quick-select.ts");
-  const terminalQuickSelectScope = read("src/modules/terminal/lib/terminal-quick-select-scope.ts");
-  const terminalQuickSelectHook = read("src/ui/useTerminalQuickSelect.tsx");
-  const terminalQuickSelectOverlay = read("src/ui/TerminalQuickSelect.tsx");
   const terminalAttention = read("src/ui/terminal-attention.ts");
   const terminalBlocks = read("src/ui/useTerminalBlocks.ts");
   const terminalBlocksPure = read("src/modules/terminal/lib/terminal-blocks.ts");
@@ -1522,7 +1521,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminal, /requestUserAttention\(2\)/);
   assert.doesNotMatch(terminalAttention, /requestUserAttention\(2\)/);
   assert.match(terminal, /import \{ useTerminalSearch \} from "\.\/useTerminalSearch"/);
-  assert.match(terminal, /import \{ useTerminalQuickSelect \} from "\.\/useTerminalQuickSelect"/);
+  assert.doesNotMatch(terminal, /useTerminalQuickSelect/);
   assert.match(terminal, /import \{ useTerminalRuntimeSync \} from "\.\/useTerminalRuntimeSync"/);
   assert.match(terminal, /import \{ extractCommandFromBuffer, resolveTerminalCommandText \} from "@\/modules\/terminal\/lib\/terminal-buffer-read"/);
   assert.match(terminal, /pendingSubmittedShellCommand = trimmed/);
@@ -1552,8 +1551,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /recordTerminalBenchmarkOverflow/);
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
-  assert.match(terminal, /useTerminalQuickSelect\(termRef, \{ active, cwd: dir, sessionId \}\)/);
-  assert.match(terminal, /quickSelectOverlay=\{quickSelect\.quickSelectOverlay\}/);
+  assert.doesNotMatch(terminal, /quickSelectOverlay/);
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
   assert.match(terminal, /isFixedTerminalMenuEvent\(e\)/);
@@ -1566,51 +1564,21 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalChrome, /import \{ TerminalSearchBar \} from "\.\/TerminalSearchBar"/);
   assert.doesNotMatch(terminalChrome, /TerminalBlockFilterPanel/);
   assert.doesNotMatch(terminalChrome, /TerminalBlocksBar/);
-  assert.match(terminalChrome, /quickSelectOverlay\?: ReactNode/);
-  assert.match(terminalChrome, /\{!pure && quickSelectOverlay\}/);
+  assert.doesNotMatch(terminalChrome, /quickSelectOverlay/);
   assert.match(terminalChrome, /onContextMenu=\{handleContextMenu\}/);
   assert.match(terminalChrome, /onContextMenuCapture=\{handleContextMenuCapture\}/);
   assert.match(terminalChrome, /safePasteActiveTerminal\(sessionId\)/);
-  assert.match(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);
-  assert.match(terminalQuickSelect, /export type TerminalQuickSelectKind = "url" \| "file" \| "text"/);
-  assert.match(terminalQuickSelect, /export function collectTerminalQuickSelectItems/);
-  assert.match(terminalQuickSelect, /export function findTerminalQuickSelectTextTokens/);
-  assert.match(terminalQuickSelect, /GIT_HASH_RE/);
-  assert.match(terminalQuickSelect, /IPV4_RE/);
-  assert.match(terminalQuickSelect, /NUMBER_RE/);
-  assert.match(terminalQuickSelect, /copyText: match\.text/);
-  assert.match(terminalQuickSelect, /findTerminalFileLinkMatches/);
-  assert.match(terminalQuickSelect, /resolveTerminalFileLinkPath/);
-  assert.match(terminalQuickSelect, /export function quickSelectHint/);
-  assert.match(terminalQuickSelectScope, /TERMINAL_QUICK_SELECT_SCOPE_LINES = 1000/);
-  assert.match(terminalQuickSelectScope, /export function terminalQuickSelectRange/);
-  assert.match(terminalQuickSelectHook, /readQuickSelectTerminalLines/);
-  assert.match(terminalQuickSelectHook, /terminalQuickSelectRange\(buffer\.length, buffer\.viewportY, term\.rows\)/);
-  assert.match(terminalQuickSelectHook, /collectTerminalQuickSelectItems\(readQuickSelectTerminalLines\(term\), cwd\)/);
-  assert.doesNotMatch(terminalQuickSelectHook, /quick_select\.empty[\s\S]*?"error"/);
-  assert.match(terminalQuickSelectHook, /window\.addEventListener\(TERMINAL_QUICK_SELECT_EVENT/);
-  assert.match(terminalQuickSelectHook, /copyText\(item\.copyText\)/);
-  assert.match(terminalQuickSelectHook, /if \(item\.kind === "text"\) \{[\s\S]*copyItem\(item\);[\s\S]*return;/);
-  assert.match(terminalQuickSelectHook, /openResource\(resourceRefForSession\(owner, item\.target, item\.line, item\.column\)\)/);
-  assert.match(terminalQuickSelectOverlay, /export function TerminalQuickSelect/);
-  assert.match(terminalQuickSelectOverlay, /item\.kind !== "text"/);
-  assert.match(terminalQuickSelectOverlay, /quickSelectHint\(index\)/);
-  assert.match(terminalQuickSelectOverlay, /onCopy\(hintedItems\[exact\]\.item\)/);
-  // Arrow keys step within the typed-hint subset and must not reset the prefix.
-  assert.match(terminalQuickSelectOverlay, /function stepSelection\(direction: 1 \| -1\)/);
-  assert.match(terminalQuickSelectOverlay, /hint\.startsWith\(typedHint\)/);
-  assert.doesNotMatch(terminalQuickSelectOverlay, /ArrowDown[\s\S]*setTypedHint\(""\)/);
-  assert.match(terminalQuickSelectOverlay, /const dialogRef = useRef<HTMLDivElement>\(null\)/);
-  assert.match(terminalQuickSelectOverlay, /useEffect\(\(\) => \{[\s\S]*listRef\.current\?\.focus\(\);[\s\S]*\}, \[\]\)/);
-  assert.match(terminalQuickSelectOverlay, /ref=\{dialogRef\}[\s\S]*role="dialog"/);
-  assert.match(terminalQuickSelectOverlay, /role="listbox"[\s\S]*aria-activedescendant/);
-  assert.match(terminalQuickSelectOverlay, /id=\{`quick-select-option-\$\{index\}`\}/);
-  assert.doesNotMatch(terminalQuickSelectOverlay, /\sautoFocus(?:\s|=)/);
+  assert.match(terminalQuickSelect, /export function findTerminalUrlTokens/);
+  assert.doesNotMatch(terminalQuickSelect, /TERMINAL_QUICK_SELECT_EVENT/);
+  assert.doesNotMatch(terminalQuickSelect, /collectTerminalQuickSelectItems/);
+  assert.equal(existsSync(resolve(root, "src/ui/TerminalQuickSelect.tsx")), false);
+  assert.equal(existsSync(resolve(root, "src/ui/useTerminalQuickSelect.tsx")), false);
+  assert.equal(existsSync(resolve(root, "src/modules/terminal/lib/terminal-quick-select-scope.ts")), false);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
-  assert.match(commandPalette, /id: "quick-select-visible-output"/);
-  assert.match(commandPalette, /label: t\("palette\.cmd\.quick_select"\)/);
-  assert.match(zhDict, /"palette\.cmd\.quick_select": "快速选择附近输出"/);
-  assert.match(commandPalette, /window\.dispatchEvent\(new CustomEvent\(TERMINAL_QUICK_SELECT_EVENT\)\)/);
+  assert.doesNotMatch(commandPalette, /id: "quick-select-visible-output"/);
+  assert.doesNotMatch(commandPalette, /palette\.cmd\.quick_select/);
+  assert.doesNotMatch(zhDict, /"palette\.cmd\.quick_select"/);
+  assert.doesNotMatch(commandPalette, /TERMINAL_QUICK_SELECT_EVENT/);
   assert.match(commandPalette, /id: "focus-latest-attention"/);
   assert.match(commandPalette, /nextAttentionSessionId\(/);
   assert.match(commandPalette, /id: "export-scrollback"/);
@@ -1624,8 +1592,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.doesNotMatch(terminalChrome, /invoke</);
   assert.match(keybindings, /focusLatestAttention: "Mod\+Shift\+U"/);
   assert.match(appKeybindings, /case "focusLatestAttention"/);
-  assert.match(keybindings, /"quickSelect"/);
-  assert.match(appKeybindings, /case "quickSelect"/);
+  assert.doesNotMatch(keybindings, /"quickSelect"/);
+  assert.doesNotMatch(appKeybindings, /case "quickSelect"/);
   assert.match(appKeybindings, /hasPlatformModKey\(e, isMac\)/);
   assert.doesNotMatch(appKeybindings, /isEditableTarget\(e\.target\) && !e\.metaKey/);
   assert.match(terminalSearch, /export function TerminalSearchBar/);
