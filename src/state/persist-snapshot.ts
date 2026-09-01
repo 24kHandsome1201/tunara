@@ -1,6 +1,4 @@
 import type { Session } from "../ui/types.ts";
-import type { Workflow } from "../modules/workflows/template.ts";
-import { sanitizeWorkflow } from "../modules/workflows/template.ts";
 import {
   MAX_TERMINAL_SNAPSHOTS,
   MAX_TERMINAL_SNAPSHOT_SAFE_HISTORY_SIZE,
@@ -117,7 +115,7 @@ export interface PersistedTerminalSnapshot {
 }
 
 export interface PersistedAgentResumeIntent {
-  agent: "CC" | "CX" | "AM" | string;
+  agent: "CC" | "CX" | "CR" | "OC" | string;
   command: string;
   cwd: string;
   provenance:
@@ -157,8 +155,6 @@ export interface WorkspaceSnapshotV1 {
   hostFilePrefs: Record<string, HostFilePrefsV1>;
   /** Command-palette usage timestamps, keyed by command id, for recency ranking. */
   commandUsage: Record<string, number>;
-  /** User-defined command-template workflows. */
-  workflows: Workflow[];
 }
 
 /** Stable persisted content; savedAt is materialized only for an actual write. */
@@ -292,16 +288,6 @@ function sanitizeTrueRecord(raw: unknown): Record<string, true> {
   if (!raw || typeof raw !== "object") return out;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (v === true && isSafeRecordKey(k)) out[k] = true;
-  }
-  return out;
-}
-
-function sanitizeWorkflows(raw: unknown): Workflow[] {
-  if (!Array.isArray(raw)) return [];
-  const out: Workflow[] = [];
-  for (const item of raw) {
-    const workflow = sanitizeWorkflow(item);
-    if (workflow) out.push(workflow);
   }
   return out;
 }
@@ -481,7 +467,6 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
   const fallbackRecentDirs = sanitizeRecentDirs(localSessionDirs(sessions));
   const recentCommands = sanitizeRecentCommands(obj.recentCommands);
   const commandUsage = sanitizeCommandUsage(obj.commandUsage);
-  const workflows = sanitizeWorkflows(obj.workflows);
 
   return {
     version: 1,
@@ -495,6 +480,5 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     recentCommands,
     hostFilePrefs: sanitizeHostFilePrefsMap(obj.hostFilePrefs),
     commandUsage,
-    workflows,
   };
 }

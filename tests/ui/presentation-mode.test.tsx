@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
-import { useWorkflowsStore } from "@/state/workflows";
 import { usePresentationModeContextMenuGuard } from "@/app/usePresentationModeContextMenuGuard";
 import { Titlebar } from "@/ui/Titlebar";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
@@ -459,40 +458,6 @@ test("workspace command palette keeps mouse-free terminal recovery actions", () 
   expect(screen.getByText("Safe Paste into terminal")).toBeTruthy();
   fireEvent.change(input, { target: { value: "Open terminal shortcut menu" } });
   expect(screen.getByText("Open terminal shortcut menu")).toBeTruthy();
-});
-
-test("command palette can launch an opted-in workflow in the active SSH terminal", () => {
-  const session: Session = {
-    id: "herdr-terminal",
-    title: "Pi",
-    dir: "/srv",
-    branch: "",
-    runState: "idle",
-    updatedAt: 1,
-    remote: { host: "pi", port: 22, user: "tuna" },
-  };
-  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
-  useWorkflowsStore.setState({
-    workflows: [{ id: "herdr", name: "Herdr", template: "herdr", autoSubmit: true }],
-  });
-  useUIStore.setState({
-    configLoaded: false,
-    presentationMode: "workspace",
-    overlay: "command-palette",
-  });
-
-  render(<CommandPalette onClose={() => useUIStore.getState().setOverlay(null)} />);
-  const defaultOptions = screen.getAllByRole("option");
-  expect(defaultOptions.length).toBeGreaterThanOrEqual(5);
-  expect(defaultOptions.length).toBeLessThanOrEqual(7);
-  expect(defaultOptions[0].textContent).toContain("Herdr");
-  fireEvent.click(screen.getByText("Herdr"));
-
-  expect(useSessionsStore.getState().sessions[0]).toMatchObject({
-    pendingInput: "herdr",
-    pendingInputSubmit: true,
-  });
-  useWorkflowsStore.setState({ workflows: [] });
 });
 
 test("command palette executes a repeated Enter intent only once", () => {

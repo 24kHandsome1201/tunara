@@ -101,7 +101,6 @@ pub async fn agent_preflight(
     let login_args: &[&str] = match bin.as_str() {
         "claude" => &["auth", "status"],
         "codex" => &["login", "status"],
-        "gh" => &["auth", "status"],
         _ => {
             let value = Preflight {
                 installed: true,
@@ -156,10 +155,12 @@ mod tests {
     #[test]
     fn preflight_uses_shared_agent_registry_data() {
         let entries = agent_registry_entries();
-        assert_eq!(entries.len(), 12);
+        assert_eq!(entries.len(), 4);
         assert_eq!(agent_bin("CC").as_deref(), Some("claude"));
         assert_eq!(agent_bin("codex").as_deref(), Some("codex"));
         assert_eq!(agent_bin("cursor-agent").as_deref(), Some("cursor-agent"));
+        assert_eq!(agent_bin("opencode").as_deref(), Some("opencode"));
+        assert_eq!(agent_bin("amp"), None);
         assert_eq!(agent_bin("agent"), None);
         assert_eq!(agent_bin("cline"), None);
     }

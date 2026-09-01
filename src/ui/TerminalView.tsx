@@ -42,7 +42,7 @@ import { createTerminalLinkInputOwnership, type TerminalMouseTrackingMode } from
 import { captureTerminalActionTarget, handleTerminalInteractionKeyEvent, registerTerminalActions } from "@/modules/terminal/lib/terminal-action-registry";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
-import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalQuickSelect } from "./useTerminalQuickSelect"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
+import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { usePrefersReducedTransparency } from "./usePrefersReducedTransparency";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
@@ -86,7 +86,6 @@ function TerminalViewImpl({
   const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId));
   const search = useTerminalSearch(sessionId);
   const blocks = useTerminalBlocks(termRef);
-  const quickSelect = useTerminalQuickSelect(termRef, { active, cwd: dir, sessionId });
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const getBlockMenuEntries = useTerminalBlockMenu(blocks, sessionIdRef);
@@ -613,7 +612,6 @@ function TerminalViewImpl({
         containerRef={containerRef}
         getTerminal={() => termRef.current}
         search={search}
-        quickSelectOverlay={quickSelect.quickSelectOverlay}
         getBlockMenuEntries={getBlockMenuEntries}
       />
       {!ptyReady && !openError && !exitCode && <ConnectingOverlay phase={session?.connection?.phase} onCancel={() => {

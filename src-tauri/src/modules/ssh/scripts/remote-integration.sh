@@ -3,7 +3,7 @@
 # Injected as the first input to a remote interactive shell. Installs OSC 7
 # (cwd) + OSC 133 A/B/C/D (prompt/command boundaries) hooks for bash or zsh so
 # the host gets remote cwd + command detection. On top of that it WRAPS the
-# agents so process start/exit emit OSC 777. Claude/Droid also receive native
+# agents so process start/exit emit OSC 777. Claude also receives native
 # lifecycle hooks that emit explicit busy/idle/stop events around each turn.
 # Those events are the reliable signal that survives the user's own
 # prompt framework, since unlike the precmd hook it does not depend on the
@@ -111,16 +111,13 @@ TUNARA_REMOTE_SETTINGS
       _tunara_r_agent_plain_run() { local bin="$1" agent="$2"; shift 2; _tunara_r_agent_emit start "$agent"; command "$bin" "$@"; local ret=$?; _tunara_r_agent_emit exit "$agent" "$ret"; return $ret; }
       _tunara_r_alias_tail() { local bin="$1" line value; line="$(alias "$bin" 2>/dev/null)" || return 0; value="${line#*=}"; eval "value=$value" 2>/dev/null || return 0; case "$value" in "$bin ") ;; "$bin "*) printf '%s' "${value#"$bin"}";; esac; }
       __tunara_claude_alias_tail="$(_tunara_r_alias_tail claude)"
-      __tunara_droid_alias_tail="$(_tunara_r_alias_tail droid)"
       __tunara_codex_alias_tail="$(_tunara_r_alias_tail codex)"
-      unalias claude droid codex 2>/dev/null
+      unalias claude codex 2>/dev/null
       function claude { _tunara_r_agent_run claude CC "$@"; }
-      function droid { _tunara_r_agent_run droid DR "$@"; }
       function codex { _tunara_r_agent_plain_run codex CX "$@"; }
       [[ -n "$__tunara_claude_alias_tail" ]] && alias claude="_tunara_r_agent_run claude CC$__tunara_claude_alias_tail"
-      [[ -n "$__tunara_droid_alias_tail" ]] && alias droid="_tunara_r_agent_run droid DR$__tunara_droid_alias_tail"
       [[ -n "$__tunara_codex_alias_tail" ]] && alias codex="_tunara_r_agent_plain_run codex CX$__tunara_codex_alias_tail"
-      unset __tunara_claude_alias_tail __tunara_droid_alias_tail __tunara_codex_alias_tail
+      unset __tunara_claude_alias_tail __tunara_codex_alias_tail
     fi
   fi
 elif [ -n "$BASH_VERSION" ]; then
@@ -210,16 +207,13 @@ TUNARA_REMOTE_SETTINGS
       _tunara_r_agent_plain_run() { local bin="$1" agent="$2"; shift 2; _tunara_r_agent_emit start "$agent"; command "$bin" "$@"; local ret=$?; _tunara_r_agent_emit exit "$agent" "$ret"; return $ret; }
       _tunara_r_alias_tail() { local bin="$1" line value; line="$(alias "$bin" 2>/dev/null)" || return 0; value="${line#*=}"; eval "value=$value" 2>/dev/null || return 0; case "$value" in "$bin ") ;; "$bin "*) printf '%s' "${value#"$bin"}";; esac; }
       __tunara_claude_alias_tail="$(_tunara_r_alias_tail claude)"
-      __tunara_droid_alias_tail="$(_tunara_r_alias_tail droid)"
       __tunara_codex_alias_tail="$(_tunara_r_alias_tail codex)"
-      unalias claude droid codex 2>/dev/null
+      unalias claude codex 2>/dev/null
       function claude { _tunara_r_agent_run claude CC "$@"; }
-      function droid { _tunara_r_agent_run droid DR "$@"; }
       function codex { _tunara_r_agent_plain_run codex CX "$@"; }
       [ -n "$__tunara_claude_alias_tail" ] && alias claude="_tunara_r_agent_run claude CC$__tunara_claude_alias_tail"
-      [ -n "$__tunara_droid_alias_tail" ] && alias droid="_tunara_r_agent_run droid DR$__tunara_droid_alias_tail"
       [ -n "$__tunara_codex_alias_tail" ] && alias codex="_tunara_r_agent_plain_run codex CX$__tunara_codex_alias_tail"
-      unset __tunara_claude_alias_tail __tunara_droid_alias_tail __tunara_codex_alias_tail
+      unset __tunara_claude_alias_tail __tunara_codex_alias_tail
     fi
   fi
 fi

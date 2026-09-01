@@ -36,8 +36,8 @@ function apply(session, update) {
 }
 
 test("untracked agents are identified without activity status", () => {
-  const s = apply(baseSession(), agentDetectedUpdate(baseSession(), "AM", NOW));
-  assert.equal(s.agent, "AM");
+  const s = apply(baseSession(), agentDetectedUpdate(baseSession(), "OC", NOW));
+  assert.equal(s.agent, "OC");
   assert.equal(s.agentActivity, undefined);
   assert.equal(s.runState, "idle");
   assert.equal(agentBusyUpdate(s, NOW + 1), null);

@@ -28,7 +28,7 @@ It is a flat array of entries; each entry has exactly these fields:
 | `name`                | `string`   | Sidebar display name (`AGENT_NAMES[code]`). |
 | `commands`            | `string[]` | First-token command match in the typed/submitted command line. |
 | `shellTitleFragments` | `string[]` | Substring match against the terminal's OSC title (lowercased). |
-| `cliBin`              | `string`   | The binary the backend resolves (`gh` for Copilot, etc.) — not always equal to `commands[0]`. |
+| `cliBin`              | `string`   | The binary the backend resolves — not always equal to `commands[0]`. |
 
 That same JSON file is consumed two ways:
 
@@ -128,10 +128,7 @@ functions that shadow the agent binaries. There are two wrapper flavors:
   semantic events, capture the agent's real session id, and emit over OSC 777
   plus the optional local socket. Claude loads the runtime as a transient plugin
   with `--plugin-dir`, so a user-supplied `--settings` remains independent.
-  Droid has only one effective settings input: the wrapper removes duplicate
-  `--settings` flags, preserves the last user value, appends Tunara's hooks to
-  the user's hook arrays, and passes one merged `--settings` file. It always
-  emits `exit` with the process exit code. Native hooks only require the private
+  Native hooks only require the private
   config directory and helper; the socket is a redundant transport, not a
   prerequisite. Remote SSH creates the same plugin/settings runtime on the
   remote host and uses OSC 777 because the local Unix socket is unreachable.
@@ -143,7 +140,6 @@ Currently wired (identical across all three shells):
 
 ```sh
 function claude { _tunara_agent_run claude CC "$@"; }   # full hooks
-function droid  { _tunara_agent_run droid DR "$@"; }     # full hooks
 function codex  { _tunara_agent_plain_run codex CX "$@"; } # start/exit only
 ```
 
@@ -156,10 +152,6 @@ functions are not introspected or evaluated.
 The temp runtime directory is cleaned up by the wrapper on exit, and orphans are
 swept by `cleanup_hooks_settings` in
 [`wrapper.rs`](../src-tauri/src/modules/agent/wrapper.rs) when the PTY closes.
-The Droid merge helper prefers `python3`, then `node`, then `jq`. If none exists
-or the user settings cannot be parsed, the wrapper deliberately passes the
-original user settings unchanged; only exact per-turn state degrades to the
-wrapper's `start`/`exit` signals instead of silently discarding user policy.
 
 ### The state machine
 
@@ -175,8 +167,8 @@ Two `Set`s in [`agent-lifecycle.ts`](../src/modules/terminal/lib/agent-lifecycle
 classify how confidently an agent reports readiness:
 
 ```ts
-export const HOOK_READY_AGENTS  = new Set<AgentCode>(["CC", "DR"]);
-export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX", "PI"]);
+export const HOOK_READY_AGENTS  = new Set<AgentCode>(["CC"]);
+export const PROMPT_READY_AGENTS = new Set<AgentCode>(["CX"]);
 ```
 
 `tracksAgentActivity(agent)` is true for those sets. `initialAgentActivity(agent)`
@@ -184,8 +176,8 @@ picks the starting state on detection:
 
 | Membership                       | Initial `agentActivity` | Why |
 | -------------------------------- | ----------------------- | --- |
-| `HOOK_READY_AGENTS` (CC, DR)     | `"starting"`            | Hooks will report `idle` once the agent is ready; show a startup state until then. |
-| `PROMPT_READY_AGENTS` (CX, PI)   | `"starting"`            | Readiness is inferred from on-screen chrome; show startup until the tracker sees a prompt or busy row. |
+| `HOOK_READY_AGENTS` (CC)         | `"starting"`            | Hooks will report `idle` once the agent is ready; show a startup state until then. |
+| `PROMPT_READY_AGENTS` (CX)       | `"starting"`            | Readiness is inferred from on-screen chrome; show startup until the tracker sees a prompt or busy row. |
 | anything else                    | `undefined`             | No reliable turn signal — identify the agent, but do not show 启动中/工作中. |
 
 Transitions (via the store handlers and the
@@ -196,7 +188,7 @@ Transitions (via the store handlers and the
   Also builds an `AgentResumeIntent` (see below).
 - **Busy** (`handleAgentBusy`) → `agentActivity = "running"`. Fired by the
   native `UserPromptSubmit` hook, by typed-input fallback (tracked agents only),
-  or when the Codex/Pi screen-state tracker sees busy indicators.
+  or when the Codex screen-state tracker sees busy indicators.
 - **Ready** (`handleAgentReady`) → `agentActivity = "idle"`; if the previous
   state was `"running"` it counts as a completed turn (`completedAt`, `unread`
   when inactive, toast). Fired by hook `idle`/`stop`, by the OSC `idle`/`stop`
@@ -268,8 +260,9 @@ command ([`preflight.rs`](../src-tauri/src/modules/agent/preflight.rs)):
    [`src/modules/agent/registry-data.json`](../src/modules/agent/registry-data.json):
    pick a unique 2-letter `code`, set `name`, `commands` (no command may be
    claimed by two agents), `shellTitleFragments`, and `cliBin` (the binary the
-   resolver should look up — e.g. Copilot uses `gh`). This one edit flows to the
-   Rust resolver/preflight and the frontend registry automatically.
+   resolver should look up). This one edit flows to the
+   Rust resolver/preflight and the frontend registry automatically. Product
+   first-class agents are Claude Code, Codex, Cursor, and OpenCode.
 
 2. **Extend the `AgentCode` union.** Add the new `code` to the union in
    [`src/ui/types.ts`](../src/ui/types.ts) (around line 7). The frontend lookup
