@@ -25,12 +25,12 @@ export function useTerminalSearch(sessionId: string) {
   // Decorations resolve lazily per lookup so the highlight palette follows the
   // live terminal theme (light vs dark) without re-wiring the addon on switch.
   const getSearchOptions = useCallback(() => {
-    const { theme, terminalTheme } = useUIStore.getState();
+    const { theme } = useUIStore.getState();
     return {
       regex: optionsRef.current.useRegex,
       caseSensitive: optionsRef.current.caseSensitive,
       wholeWord: false,
-      decorations: getSearchDecorations(theme, terminalTheme),
+      decorations: getSearchDecorations(theme),
     };
   }, []);
 

@@ -1,5 +1,5 @@
-import type { ThemeType, TerminalThemeName } from "../../types";
-import { getShellTint, getTerminalTheme } from "@/styles/terminalTheme";
+import type { ThemeType } from "../../types";
+import { getTerminalTheme } from "@/styles/terminalTheme";
 import { platform } from "@tauri-apps/plugin-os";
 
 /** Shared section / row styles for all settings tabs. */
@@ -92,7 +92,7 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
   );
 }
 
-/** −/value/+ numeric stepper (font size, scrollback). */
+/** −/value/+ numeric stepper (font size). */
 export function Stepper({ display, valueMinWidth, onDecrement, onIncrement, decrementLabel, incrementLabel }: { display: string; valueMinWidth: number; onDecrement: () => void; onIncrement: () => void; decrementLabel: string; incrementLabel: string }) {
   const btn: React.CSSProperties = { width: 32, height: 30, border: "none", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-title)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   return (
@@ -104,64 +104,26 @@ export function Stepper({ display, valueMinWidth, onDecrement, onIncrement, decr
   );
 }
 
-/** Labeled range control (wallpaper blur / veil). */
-export function RangeRow({ label, value, min, max, display, onChange, ariaLabel }: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  display: string;
-  onChange: (value: number) => void;
-  ariaLabel: string;
-}) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ ...TOGGLE_ROW, height: 28, marginBottom: 6 }}>
-        <span style={SECTION_LABEL_INLINE}>{label}</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", minWidth: 40, textAlign: "right" }}>{display}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        aria-label={ariaLabel}
-        aria-valuemin={min}
-        aria-valuemax={max}
-        aria-valuenow={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        style={{ width: "100%", accentColor: "var(--c-accent)" }}
-      />
-    </div>
-  );
-}
-
-/** One entry in the unified interface + terminal color scheme picker: either a
- * base app theme (with the Tunara default terminal palette) or a named scheme
- * applied to both the interface and the terminal. */
-export type ColorSchemeId = ThemeType | Exclude<TerminalThemeName, "default">;
+/** One entry in the System / Light / Dark color scheme picker. */
+export type ColorSchemeId = ThemeType;
 
 export function terminalThemePreviewColors(
   id: ColorSchemeId,
   systemIsDark: boolean,
 ) {
-  const usesDefaultPalette = id === "light" || id === "dark" || id === "system";
-  const appTheme = usesDefaultPalette ? id : (systemIsDark ? "dark" : "light");
-  const terminalTheme = usesDefaultPalette ? "default" : id;
   const dark = id === "dark" || (id === "system" && systemIsDark);
-  const tint = getShellTint(terminalTheme);
-  const terminalPalette = getTerminalTheme(appTheme, terminalTheme);
+  const terminalPalette = getTerminalTheme(id);
 
   // Fallbacks mirror the sRGB equivalents of the default tokens.css OKLCH
   // surfaces so the default-scheme preview matches the real window chrome.
   return {
-    deepest: tint?.["--c-bg-white"] ?? (dark ? "#0f0b09" : "#fffdfb"),
-    sidebar: tint?.["--c-bg-2"] ?? (dark ? "#1c1714" : "#f2ece9"),
-    raised: tint?.["--c-bg-3"] ?? (dark ? "#25211e" : "#e9e2de"),
+    deepest: dark ? "#0f0b09" : "#fffdfb",
+    sidebar: dark ? "#1c1714" : "#f2ece9",
+    raised: dark ? "#25211e" : "#e9e2de",
     terminal: terminalPalette.background,
     text: terminalPalette.foreground,
-    secondaryText: tint?.["--c-text-4"] ?? (dark ? "#9f9a97" : "#5c5552"),
-    border: tint?.["--c-border-2"] ?? (dark ? "#342f2c" : "#d4ceca"),
+    secondaryText: dark ? "#9f9a97" : "#5c5552",
+    border: dark ? "#342f2c" : "#d4ceca",
   };
 }
 
@@ -208,22 +170,3 @@ export function ColorSchemeCard({ id, label, selected, systemIsDark, onClick }: 
     </button>
   );
 }
-
-export function AccentRing({ color, label, selected, onClick }: { color: string; label: string; selected: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} title={label} aria-label={label} aria-pressed={selected} style={{ width: 26, height: 26, borderRadius: "50%", border: selected ? `2px solid ${color}` : "2px solid transparent", padding: 3, background: "transparent", cursor: "pointer", flexShrink: 0, boxShadow: "none", transition: "border-color var(--duration-fast) var(--ease-smooth)" }}>
-      <div aria-hidden="true" style={{ width: "100%", height: "100%", borderRadius: "50%", background: color }} />
-    </button>
-  );
-}
-
-export const ACCENT_COLORS = [
-  { color: "#c2683c", labelKey: "settings.appearance.accent.terracotta" },
-  { color: "#2f9e7a", labelKey: "settings.appearance.accent.sage" },
-  { color: "#4f6ef0", labelKey: "settings.appearance.accent.indigo" },
-  { color: "#e0556b", labelKey: "settings.appearance.accent.rose" },
-  { color: "#c4a060", labelKey: "settings.appearance.accent.sand" },
-  { color: "#0f7a6a", labelKey: "settings.appearance.accent.teal" },
-  { color: "#8534F3", labelKey: "settings.appearance.accent.violet" },
-  { color: "#a4660a", labelKey: "settings.appearance.accent.amber" },
-];

@@ -8,8 +8,7 @@ use toml_edit::{value, DocumentMut, Item, Table};
 
 const MIN_FONT_SIZE: u16 = 10;
 const MAX_FONT_SIZE: u16 = 22;
-const MIN_SCROLLBACK: u32 = 1000;
-const MAX_SCROLLBACK: u32 = 20_000;
+const DEFAULT_SCROLLBACK: u32 = 10_000;
 const MIN_SIDEBAR_WIDTH: u16 = 200;
 const MAX_SIDEBAR_WIDTH: u16 = 400;
 const MIN_PANEL_WIDTH: u16 = 240;
@@ -41,10 +40,6 @@ pub struct AppearanceConfig {
     pub terminal_host_modifier: String,
     pub language: String,
     pub global_shortcut: String,
-    pub terminal_wallpaper: bool,
-    pub terminal_wallpaper_source: String,
-    pub terminal_wallpaper_blur: u8,
-    pub terminal_wallpaper_veil: u8,
 }
 
 impl Default for AppearanceConfig {
@@ -58,7 +53,7 @@ impl Default for AppearanceConfig {
             font_family: "JetBrains Mono".into(),
             font_ligatures: false,
             nerd_font_fallback: true,
-            scrollback: 2000,
+            scrollback: 10_000,
             sidebar_width: 272,
             panel_width: 320,
             terminal_theme: "default".into(),
@@ -76,10 +71,6 @@ impl Default for AppearanceConfig {
             .into(),
             language: "system".into(),
             global_shortcut: "CmdOrCtrl+Shift+T".into(),
-            terminal_wallpaper: false,
-            terminal_wallpaper_source: "paper".into(),
-            terminal_wallpaper_blur: 24,
-            terminal_wallpaper_veil: 78,
         }
     }
 }
@@ -98,21 +89,29 @@ impl AppearanceConfig {
             .into();
         }
         self.font_size = self.font_size.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE);
-        self.scrollback = self.scrollback.clamp(MIN_SCROLLBACK, MAX_SCROLLBACK);
+        self.scrollback = DEFAULT_SCROLLBACK;
         self.sidebar_width = self
             .sidebar_width
             .clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
         // The upper bound is viewport-dependent in src/state/ui.ts; the backend must preserve
         // wider-screen values that the frontend already accepted.
         self.panel_width = self.panel_width.max(MIN_PANEL_WIDTH);
-        if !matches!(
-            self.terminal_wallpaper_source.as_str(),
-            "paper" | "grain" | "fiber" | "custom"
+        if matches!(
+            self.terminal_theme.as_str(),
+            "catppuccin"
+                | "tokyo-night"
+                | "one-dark"
+                | "solarized"
+                | "github-light"
+                | "rose-pine-dawn"
         ) {
-            self.terminal_wallpaper_source = "paper".into();
+            self.theme = "system".into();
+            self.terminal_theme = "default".into();
+        } else if self.terminal_theme != "default" {
+            self.terminal_theme = "default".into();
         }
-        self.terminal_wallpaper_blur = self.terminal_wallpaper_blur.clamp(0, 40);
-        self.terminal_wallpaper_veil = self.terminal_wallpaper_veil.clamp(50, 95);
+        self.accent = "#c2683c".into();
+        self.terminal_inline_images = true;
     }
 }
 
@@ -278,13 +277,6 @@ fn config_path() -> Result<PathBuf, String> {
     config_path_for_dir(CONFIG_DIR)
 }
 
-pub(crate) fn config_dir() -> Result<PathBuf, String> {
-    config_path()?
-        .parent()
-        .map(Path::to_path_buf)
-        .ok_or_else(|| "config path has no parent".to_string())
-}
-
 fn legacy_config_path() -> Result<PathBuf, String> {
     config_path_for_dir(LEGACY_CONFIG_DIR)
 }
@@ -296,7 +288,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 25] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 21] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -334,19 +326,6 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 2
         ),
         ("language", value(config.language.clone())),
         ("global_shortcut", value(config.global_shortcut.clone())),
-        ("terminal_wallpaper", value(config.terminal_wallpaper)),
-        (
-            "terminal_wallpaper_source",
-            value(config.terminal_wallpaper_source.clone()),
-        ),
-        (
-            "terminal_wallpaper_blur",
-            value(i64::from(config.terminal_wallpaper_blur)),
-        ),
-        (
-            "terminal_wallpaper_veil",
-            value(i64::from(config.terminal_wallpaper_veil)),
-        ),
     ]
 }
 
@@ -636,7 +615,7 @@ future_action = "Mod+F"
         );
 
         let mut config = TunaraConfig::default();
-        config.appearance.accent = "#abcdef".into();
+        config.appearance.accent = "#c2683c".into();
         config.appearance.scrollback = 99999999;
         config.appearance.font_size = 999;
         config.appearance.sidebar_width = 1;
@@ -652,13 +631,13 @@ future_action = "Mod+F"
         assert!(saved.contains("# keep this with appearance"));
         assert!(saved.contains("future_flag = true"));
         assert!(saved.contains("future_action = \"Mod+F\""));
-        assert!(saved.contains("scrollback = 20000"));
+        assert!(saved.contains("scrollback = 10000"));
         assert!(saved.contains("font_size = 22"));
         assert!(saved.contains("sidebar_width = 200"));
         assert!(saved.contains("panel_width = 810"));
 
         let loaded = load_config_from_path(&path).expect("load merged config");
-        assert_eq!(loaded.config.appearance.scrollback, MAX_SCROLLBACK);
+        assert_eq!(loaded.config.appearance.scrollback, DEFAULT_SCROLLBACK);
         assert_eq!(loaded.config.appearance.font_size, MAX_FONT_SIZE);
         assert_eq!(loaded.config.appearance.sidebar_width, MIN_SIDEBAR_WIDTH);
         assert_eq!(loaded.config.appearance.panel_width, 810);
@@ -716,11 +695,11 @@ font_size = 15
         write_config(&path, &config).expect("replace malformed config");
         let saved = fs::read_to_string(&path).expect("read saved config");
         assert!(saved.contains("[appearance]"));
-        assert!(saved.contains("scrollback = 20000"));
+        assert!(saved.contains("scrollback = 10000"));
         assert!(saved.contains("panel_width = 810"));
         let loaded = load_config_from_path(&path).expect("load repaired config");
         assert_eq!(loaded.error, None);
-        assert_eq!(loaded.config.appearance.scrollback, MAX_SCROLLBACK);
+        assert_eq!(loaded.config.appearance.scrollback, DEFAULT_SCROLLBACK);
         assert_eq!(loaded.config.appearance.panel_width, 810);
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
@@ -730,16 +709,13 @@ font_size = 15
     fn missing_config_file_writes_default_template() {
         let path = temp_config_path("missing");
         let loaded = load_config_from_path(&path).expect("write default config");
-        assert_eq!(loaded.config.appearance.scrollback, 2000);
+        assert_eq!(loaded.config.appearance.scrollback, DEFAULT_SCROLLBACK);
         let saved = fs::read_to_string(&path).expect("read default config");
         assert!(saved.contains("[appearance]"));
         assert!(saved.contains("[keybindings]"));
-        assert!(saved.contains("scrollback = 2000"));
+        assert!(saved.contains("scrollback = 10000"));
         assert!(saved.contains("show_pure_mode_files_button = true"));
         assert!(saved.contains("terminal_screen_reader_mode = false"));
-        assert!(saved.contains("terminal_wallpaper = false"));
-        assert!(saved.contains("terminal_wallpaper_source = \"paper\""));
-        assert!(!loaded.config.appearance.terminal_wallpaper);
         assert!(saved.contains("[terminal_interactions]"));
         assert!(saved.contains("secondary_click = \"smart\""));
 
@@ -762,8 +738,6 @@ accent = "#abcdef"
         let loaded = load_config_from_path(&path).expect("load pre-i18n config");
         assert_eq!(loaded.config.appearance.language, "system");
         assert_eq!(loaded.config.appearance.theme, "dark");
-        assert!(!loaded.config.appearance.terminal_wallpaper);
-        assert_eq!(loaded.config.appearance.terminal_wallpaper_source, "paper");
         assert_eq!(loaded.error, None);
 
         let mut config = loaded.config.clone();
@@ -771,7 +745,7 @@ accent = "#abcdef"
         write_config(&path, &config).expect("save with language");
         let saved = fs::read_to_string(&path).expect("read saved config");
         assert!(saved.contains("language = \"en\""));
-        assert!(saved.contains("accent = \"#abcdef\""));
+        assert!(saved.contains("accent = \"#c2683c\""));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
@@ -819,6 +793,40 @@ future_field = true
         assert!(future_saved.contains("secondary_click = \"future-gesture\""));
         assert!(future_saved.contains("future_field = true"));
         assert!(future_saved.contains("theme = \"light\""));
+
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
+
+    #[test]
+    fn removed_named_themes_fall_back_to_system_and_fixed_defaults() {
+        let path = temp_config_path("legacy-theme");
+        ensure_parent(&path).expect("create temp config dir");
+        fs::write(
+            &path,
+            r##"[appearance]
+theme = "dark"
+terminal_theme = "catppuccin"
+accent = "#4f6ef0"
+scrollback = 2000
+terminal_inline_images = false
+"##,
+        )
+        .expect("write legacy theme config");
+
+        let loaded = load_config_from_path(&path).expect("load legacy theme");
+        assert_eq!(loaded.config.appearance.theme, "system");
+        assert_eq!(loaded.config.appearance.terminal_theme, "default");
+        assert_eq!(loaded.config.appearance.accent, "#c2683c");
+        assert_eq!(loaded.config.appearance.scrollback, DEFAULT_SCROLLBACK);
+        assert!(loaded.config.appearance.terminal_inline_images);
+
+        write_config(&path, &loaded.config).expect("rewrite clamped config");
+        let saved = fs::read_to_string(&path).expect("read rewritten config");
+        assert!(saved.contains("theme = \"system\""));
+        assert!(saved.contains("terminal_theme = \"default\""));
+        assert!(saved.contains("accent = \"#c2683c\""));
+        assert!(saved.contains("scrollback = 10000"));
+        assert!(saved.contains("terminal_inline_images = true"));
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }

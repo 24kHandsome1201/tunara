@@ -42,9 +42,8 @@ beforeEach(() => {
   });
   useUIStore.setState({
     configLoaded: false,
-    settingsTab: "appearance",
+    settingsTab: "general",
     theme: "dark",
-    terminalTheme: "default",
     language: "en",
   });
 });
@@ -54,7 +53,7 @@ afterEach(() => {
   document.documentElement.removeAttribute("style");
 });
 
-test("named and Tunara default schemes are one mutually exclusive synchronized choice", async () => {
+test("System, Light, and Dark are one mutually exclusive synchronized choice", async () => {
   render(
     <>
       <ThemeRuntime />
@@ -64,39 +63,30 @@ test("named and Tunara default schemes are one mutually exclusive synchronized c
 
   const group = screen.getByRole("radiogroup", { name: "Terminal & interface color scheme" });
   const dark = within(group).getByRole("radio", { name: "Dark" });
-  const catppuccin = within(group).getByRole("radio", { name: "Catppuccin" });
-  expect(dark.getAttribute("aria-checked")).toBe("true");
-  expect(catppuccin.getAttribute("aria-checked")).toBe("false");
-
-  fireEvent.click(catppuccin);
-  expect(useUIStore.getState()).toMatchObject({ theme: "dark", terminalTheme: "catppuccin" });
-  await waitFor(() => {
-    expect(document.documentElement.style.getPropertyValue("--c-bg-1")).toBe("#1e1e2e");
-    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#1e1e2e");
-  });
-  expect(catppuccin.getAttribute("aria-checked")).toBe("true");
-  expect(dark.getAttribute("aria-checked")).toBe("false");
-
   const light = within(group).getByRole("radio", { name: "Light" });
+  expect(dark.getAttribute("aria-checked")).toBe("true");
+  expect(light.getAttribute("aria-checked")).toBe("false");
+  expect(within(group).getAllByRole("radio")).toHaveLength(3);
+
   fireEvent.click(light);
-  expect(useUIStore.getState()).toMatchObject({ theme: "light", terminalTheme: "default" });
+  expect(useUIStore.getState()).toMatchObject({ theme: "light" });
   await waitFor(() => {
-    expect(document.documentElement.style.getPropertyValue("--c-bg-1")).toBe("");
     expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb");
   });
   expect(light.getAttribute("aria-checked")).toBe("true");
+  expect(dark.getAttribute("aria-checked")).toBe("false");
 
   fireEvent.click(within(group).getByRole("radio", { name: "System" }));
-  expect(useUIStore.getState()).toMatchObject({ theme: "system", terminalTheme: "default" });
+  expect(useUIStore.getState()).toMatchObject({ theme: "system" });
 });
 
 test("the radio group supports roving keyboard selection and whole-window previews", () => {
-  useUIStore.setState({ theme: "system", terminalTheme: "default" });
+  useUIStore.setState({ theme: "system" });
   render(<Settings onClose={() => {}} />);
 
   const group = screen.getByRole("radiogroup", { name: "Terminal & interface color scheme" });
   const radios = within(group).getAllByRole("radio");
-  expect(radios).toHaveLength(9);
+  expect(radios).toHaveLength(3);
   for (const radio of radios) {
     const preview = radio.querySelector('[data-color-scheme-preview="window"]');
     expect(preview).not.toBeNull();
@@ -111,13 +101,13 @@ test("the radio group supports roving keyboard selection and whole-window previe
   const light = within(group).getByRole("radio", { name: "Light" });
   expect(document.activeElement).toBe(light);
   expect(light.getAttribute("aria-checked")).toBe("true");
-  expect(useUIStore.getState()).toMatchObject({ theme: "light", terminalTheme: "default" });
+  expect(useUIStore.getState()).toMatchObject({ theme: "light" });
 
   fireEvent.keyDown(light, { key: "End" });
-  const solarized = within(group).getByRole("radio", { name: "Solarized" });
-  expect(document.activeElement).toBe(solarized);
-  expect(solarized.getAttribute("aria-checked")).toBe("true");
-  expect(useUIStore.getState()).toMatchObject({ theme: "light", terminalTheme: "solarized" });
+  const dark = within(group).getByRole("radio", { name: "Dark" });
+  expect(document.activeElement).toBe(dark);
+  expect(dark.getAttribute("aria-checked")).toBe("true");
+  expect(useUIStore.getState()).toMatchObject({ theme: "dark" });
 });
 
 test("segmented settings expose one tab stop and support arrow-key selection", () => {
@@ -139,7 +129,7 @@ test("segmented settings expose one tab stop and support arrow-key selection", (
   expect(useUIStore.getState().language).toBe("zh-CN");
 });
 
-test("system media changes affect only the default System scheme", async () => {
+test("system media changes affect only the System scheme", async () => {
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
   const media = {
     matches: false,
@@ -152,7 +142,7 @@ test("system media changes affect only the default System scheme", async () => {
     dispatchEvent: vi.fn(),
   };
   Object.defineProperty(window, "matchMedia", { configurable: true, value: () => media });
-  useUIStore.setState({ theme: "system", terminalTheme: "default" });
+  useUIStore.setState({ theme: "system" });
   render(
     <>
       <ThemeRuntime />
@@ -168,20 +158,17 @@ test("system media changes affect only the default System scheme", async () => {
   expect(document.documentElement.classList.contains("dark")).toBe(true);
   expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#0f0b09");
 
-  fireEvent.click(screen.getByRole("radio", { name: "Catppuccin" }));
-  await waitFor(() => expect(document.documentElement.style.getPropertyValue("--c-bg-1")).toBe("#1e1e2e"));
+  fireEvent.click(screen.getByRole("radio", { name: "Light" }));
+  await waitFor(() => expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb"));
   await act(async () => {
-    media.matches = false;
-    for (const listener of listeners) listener({ matches: false } as MediaQueryListEvent);
+    media.matches = true;
+    for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
   });
-  expect(document.documentElement.classList.contains("dark")).toBe(true);
-  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#1e1e2e");
+  expect(document.documentElement.classList.contains("dark")).toBe(false);
+  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb");
 });
 
 test("default scheme previews mirror the token-derived chrome and palette", () => {
-  // The fallback swatches are the sRGB equivalents of the default tokens.css
-  // OKLCH surfaces; if the tokens or the fallbacks drift, the preview stops
-  // telling the truth about the real window chrome.
   expect(terminalThemePreviewColors("light", false)).toMatchObject({
     deepest: "#fffdfb",
     sidebar: "#f2ece9",
@@ -207,8 +194,9 @@ test("recommended Chinese title and description remain readable as a single sect
   render(<Settings onClose={() => {}} />);
 
   const group = screen.getByRole("radiogroup", { name: "界面与终端配色" });
-  expect(screen.getByText("命名配色会同时应用到终端和应用界面。浅色、深色和跟随系统使用 Tunara 默认配色。")).toBeTruthy();
+  expect(screen.getByText("浅色、深色和跟随系统使用 Tunara 默认配色。")).toBeTruthy();
   expect(within(group).getByRole("radio", { name: "跟随系统" })).toBeTruthy();
-  expect(within(group).getByRole("radio", { name: "Rose Pine Dawn" })).toBeTruthy();
+  expect(within(group).getByRole("radio", { name: "浅色" })).toBeTruthy();
+  expect(within(group).getByRole("radio", { name: "深色" })).toBeTruthy();
   expect(group.style.gridTemplateColumns).toContain("auto-fit");
 });

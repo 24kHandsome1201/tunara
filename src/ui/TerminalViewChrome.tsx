@@ -45,7 +45,6 @@ export function TerminalViewChrome({
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean; blockEntries: MenuEntry[]; focusToken: TerminalFocusReturnToken | null } | null>(null);
   const pure = useUIStore((s) => s.presentationMode === "pure");
   const hostModifier = useUIStore((s) => s.terminalHostModifier);
-  const secondaryClickMode = useUIStore((s) => s.terminalSecondaryClick);
   const inputRouter = useRef(new TerminalInputRouter());
   const contextMenuOwners = useRef(new WeakMap<Event, TerminalInputOwner>());
 
@@ -60,7 +59,7 @@ export function TerminalViewChrome({
       kind, mouseTrackingMode: mode as TerminalMouseTrackingMode,
       selection: !!term?.hasSelection(), pure,
       platform: /Mac/.test(navigator.platform) ? "macos" : /Win/.test(navigator.platform) ? "windows" : "linux",
-      hostModifier, secondaryClickMode,
+      hostModifier,
       modifiers: { shift: event.shiftKey, meta: event.metaKey, alt: event.altKey, ctrl: event.ctrlKey },
       button: "button" in event ? event.button : undefined,
     });

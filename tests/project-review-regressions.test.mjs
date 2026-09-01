@@ -380,7 +380,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(configRs, /CONFIG_WRITE_SEQUENCE\.fetch_add/);
   assert.match(configRs, /use toml_edit::\{value, DocumentMut, Item, Table\}/);
   assert.match(configRs, /merge_known_config/);
-  assert.match(configRs, /MAX_SCROLLBACK: u32 = 20_000/);
+  assert.match(configRs, /DEFAULT_SCROLLBACK: u32 = 10_000/);
   assert.doesNotMatch(configRs, /MAX_PANEL_WIDTH/);
   assert.match(configRs, /upper bound is viewport-dependent in src\/state\/ui\.ts/);
   assert.match(configRs, /Err\(_\) => serialize_new_config\(&config\)\?/);
@@ -1065,8 +1065,8 @@ test("appearance settings are sanitized and command palette exposes useful actio
   const useTheme = read("src/app/useTheme.ts");
 
   assert.match(ui, /function clampNumber\(value: unknown/);
-  assert.match(ui, /function sanitizeAccent\(value: unknown\)/);
-  assert.match(ui, /setAccent: \(accent\) => set\(\{ accent: sanitizeAccent\(accent\) \}\)/);
+  assert.match(ui, /function sanitizeAccent\(_value: unknown\)/);
+  assert.match(ui, /return DEFAULT_SETTINGS\.accent/);
   assert.match(ui, /setSidebarVisible: \(sidebarVisible\) => set\(\{ sidebarVisible \}\)/);
   assert.match(ui, /setPanelVisible: \(panelVisible\) => set\(\{ panelVisible \}\)/);
   assert.match(ui, /setExternalEditor: \(externalEditor\) => set\(\{ externalEditor: isExternalEditor\(externalEditor\)/);
@@ -1086,16 +1086,11 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.doesNotMatch(paletteFilter, /const scope = SCOPE_ALIASES\[prefixMatch\[1\]\.toLowerCase\(\)\]/);
   assert.match(paletteFilter, /labelMatchIndex/);
   assert.match(paletteFilter, /getNumberRecordValue\(usage, a\.id\)/);
-  assert.match(terminalTheme, /function getOwnTheme<T>\(themes: Record<string, T>, name: string\): T \| undefined/);
-  assert.match(terminalTheme, /hasOwnProperty\.call\(themes, name\)/);
-  assert.match(terminalTheme, /export function getShellTint\(terminalTheme: string\): Record<string, string> \| undefined/);
-  assert.match(terminalTheme, /return getOwnTheme\(SHELL_TINTS, terminalTheme\)/);
-  assert.match(terminalTheme, /getOwnTheme\(NAMED_DARK_THEMES, terminalTheme\) !== undefined/);
-  assert.match(terminalTheme, /const darkTheme = terminalTheme !== "default" \? getOwnTheme\(NAMED_DARK_THEMES, terminalTheme\) : undefined/);
-  assert.doesNotMatch(terminalTheme, /!!NAMED_DARK_THEMES\[terminalTheme\]/);
+  assert.match(terminalTheme, /export const SHELL_TINT_KEYS: readonly string\[\] = Object\.freeze\(/);
+  assert.doesNotMatch(terminalTheme, /CATPPUCCIN_THEME|TOKYO_NIGHT_THEME|GITHUB_LIGHT_THEME/);
   assert.match(useTheme, /import \{ applyBootShellTint \} from "@\/styles\/shell-tint-boot"/);
-  assert.match(useTheme, /applyBootShellTint\(root, terminalTheme, theme, accent/);
-  assert.doesNotMatch(useTheme, /SHELL_TINTS\[terminalTheme\]/);
+  assert.match(useTheme, /applyBootShellTint\(root, theme, accent/);
+  assert.doesNotMatch(useTheme, /SHELL_TINTS\[/);
   assert.match(palette, /ranked\.length === 0 \? 0 : Math\.min\(index, ranked\.length - 1\)/);
   assert.match(palette, /for \(const \[globalIdx, cmd\] of ranked\.entries\(\)\)/);
   assert.doesNotMatch(palette, /ranked\.indexOf/);
@@ -1200,7 +1195,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /t\("settings\.cli\.found", \{ count: installedCliCount, total: CLI_LIST\.length \}\)/);
   assert.match(settings, /t\("settings\.cli\.not_on_path"\)/);
   assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
-  assert.match(settings, /activeTab === "appearance"/);
+  assert.match(settings, /activeTab === "general"/);
   assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
   assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
   assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language \}\)\)/);
@@ -1249,10 +1244,10 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(preflight, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/src\/modules\/agent\/registry-data\.json"\)/);
   assert.match(preflight, /fn preflight_uses_shared_agent_registry_data/);
   assert.doesNotMatch(preflight, /"cline" => Some/);
-  assert.match(types, /export const TERMINAL_THEME_NAMES = \[/);
+  assert.match(types, /export type ThemeType = "light" \| "dark" \| "system"/);
   assert.match(types, /totalAdded: number; totalRemoved: number/);
   assert.match(types, /for \(const file of s\.changes\.files\)/);
-  assert.match(ui, /TERMINAL_THEME_NAMES as readonly string\[\]/);
+  assert.match(ui, /REMOVED_TERMINAL_THEMES/);
   assert.doesNotMatch(ui, /externalEditor: ExternalEditor;\n\n  setSidebarVisible/);
   assert.match(keys, /setFontSize\(DEFAULT_SETTINGS\.fontSize\)/);
 
@@ -1377,7 +1372,6 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(main, /aria-label=\{t\("split\.horizontal"\)\}/);
   assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
   assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(132px, 1fr\)\)"/);
-  assert.match(settings, /getShellTint/);
   assert.match(settings, /getTerminalTheme/);
   assert.match(settings, /terminalThemePreviewColors/);
   assert.match(settings, /role="radiogroup"/);
@@ -1540,7 +1534,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
   assert.match(terminal, /atlasIsolationKey: sessionId/);
-  assert.match(terminal, /useTerminalWebgl\(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef, wallpaperActive\)/);
+  assert.match(terminal, /useTerminalWebgl\(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef\)/);
   assert.match(terminalInstance, /withAtlasIsolationFontFamily/);
   assert.match(terminalRuntimeSync, /withAtlasIsolationFontFamily/);
   assert.match(terminal, /linkHandler: createTerminalHyperlinkHandler\(openUrl, linkInputRef\.current\.shouldActivate\)/);
@@ -1638,7 +1632,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlockFilter, /invalidRegex: true/);
   assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
   assert.match(terminalRuntimeSync, /const resolvedTheme = theme === "system"/);
-  assert.match(terminalRuntimeSync, /getTerminalTheme\(resolvedTheme, terminalTheme, accent\)/);
+  assert.match(terminalRuntimeSync, /getTerminalTheme\(resolvedTheme, accent\)/);
   assert.match(terminalWebgl, /export function useTerminalWebgl/);
   assert.match(terminalWebgl, /fitRef\?\.current\?\.fit\(\)/);
   assert.match(terminalWebgl, /ptyRef\?\.current\?\.resize\(term\.cols, term\.rows\)\?\.catch/);
@@ -1735,8 +1729,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // restore. 580→625 covers input ownership plus binding-aware terminal
   // actions; their state machines remain extracted into terminal lib modules.
   // 625→630 covers the OSC 133 seen-marker used by command-block metadata.
-  // 630→640 covers optional terminal wallpaper (allowTransparency + reduced-
-  // transparency gate); the layer itself lives in TerminalWallpaper.tsx.
+  // 630→640 covers inline-image always-on wiring after wallpaper removal.
   assert.ok(terminal.split("\n").length < 640);
   // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
   assert.ok(sidebar.split("\n").length < 430);

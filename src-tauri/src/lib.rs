@@ -123,9 +123,6 @@ pub fn run() {
             // Text config: ~/.config/tunara/config.toml
             modules::config::load_config,
             modules::config::save_config,
-            modules::wallpaper::terminal_wallpaper_import,
-            modules::wallpaper::terminal_wallpaper_load,
-            modules::wallpaper::terminal_wallpaper_clear,
             modules::workspace_store::workspace_store_file_state,
             modules::preview::preview_open,
             modules::preview::preview_refresh,

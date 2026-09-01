@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { TERMINAL_THEME_NAMES, type OverlayType, type ThemeType, type TerminalThemeName, type SshConnectPrefill } from "@/ui/types";
+import { type OverlayType, type ThemeType, type SshConnectPrefill } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, TERMINAL_KEYBINDING_ACTIONS, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/modules/i18n";
@@ -16,14 +16,17 @@ import {
   type SplitPath,
   type SplitState,
 } from "@/modules/session/split-layout";
-import type { TerminalHostModifier, TerminalSecondaryClickMode } from "@/modules/terminal/lib/terminal-input-router";
-import {
-  clampWallpaperBlur,
-  clampWallpaperVeil,
-  DEFAULT_TERMINAL_WALLPAPER,
-  isTerminalWallpaperSource,
-  type TerminalWallpaperSource,
-} from "@/modules/terminal/lib/terminal-wallpaper";
+import { DEFAULT_ACCENT } from "@/styles/shell-tint-boot";
+import type { TerminalHostModifier } from "@/modules/terminal/lib/terminal-input-router";
+
+const REMOVED_TERMINAL_THEMES = [
+  "catppuccin",
+  "tokyo-night",
+  "one-dark",
+  "solarized",
+  "github-light",
+  "rose-pine-dawn",
+] as const;
 
 export type CursorStyle = "bar" | "block" | "underline";
 export type PresentationMode = "workspace" | "pure";
@@ -42,28 +45,20 @@ export interface AppearanceSettings {
   scrollback: number;
   sidebarWidth: number;
   panelWidth: number;
-  terminalTheme: TerminalThemeName;
   externalEditor: ExternalEditor;
   bellNotification: boolean;
   terminalClipboardWrite: boolean;
-  terminalInlineImages: boolean;
   terminalScreenReaderMode: boolean;
   showPureModeFilesButton: boolean;
   terminalHostModifier: TerminalHostModifier;
-  terminalSecondaryClick: TerminalSecondaryClickMode;
   keybindings: KeybindingConfig;
   language: Language;
   globalShortcut: string;
-  terminalWallpaperEnabled: boolean;
-  terminalWallpaperSource: TerminalWallpaperSource;
-  terminalWallpaperBlur: number;
-  terminalWallpaperVeil: number;
 }
 
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 22;
-const MIN_SCROLLBACK = 1000;
-const MAX_SCROLLBACK = 20000;
+const DEFAULT_SCROLLBACK = 10_000;
 const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 400;
 const MIN_PANEL_WIDTH = 240;
@@ -71,34 +66,27 @@ const MAX_PANEL_WIDTH_RATIO = 0.45;
 
 export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   theme: "light",
-  accent: "#c2683c",
+  accent: DEFAULT_ACCENT,
   cursorStyle: "bar",
   cursorBlink: true,
   fontSize: 14,
   fontFamily: "JetBrains Mono",
   fontLigatures: false,
   nerdFontFallback: true,
-  scrollback: 2000,
+  scrollback: DEFAULT_SCROLLBACK,
   sidebarWidth: 272,
   panelWidth: 320,
-  terminalTheme: "default",
   externalEditor: "vscode",
   bellNotification: true,
   terminalClipboardWrite: false,
-  terminalInlineImages: true,
   terminalScreenReaderMode: false,
   showPureModeFilesButton: true,
   // Cmd on macOS still needs real-hardware/WKWebView verification; Option is
   // available as an alternative. Shift is the conservative Win/Linux choice.
   terminalHostModifier: typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "meta" : "shift",
-  terminalSecondaryClick: "smart",
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
-  terminalWallpaperEnabled: DEFAULT_TERMINAL_WALLPAPER.enabled,
-  terminalWallpaperSource: DEFAULT_TERMINAL_WALLPAPER.source,
-  terminalWallpaperBlur: DEFAULT_TERMINAL_WALLPAPER.blur,
-  terminalWallpaperVeil: DEFAULT_TERMINAL_WALLPAPER.veil,
 };
 
 function isExternalEditor(v: unknown): v is ExternalEditor {
@@ -124,14 +112,15 @@ function isCursorStyle(value: unknown): value is CursorStyle {
   return value === "bar" || value === "block" || value === "underline";
 }
 
-function isTerminalTheme(value: unknown): value is TerminalThemeName {
-  return typeof value === "string" && (TERMINAL_THEME_NAMES as readonly string[]).includes(value);
+function sanitizeTheme(theme: unknown, terminalTheme: unknown): ThemeType {
+  if (typeof terminalTheme === "string" && (REMOVED_TERMINAL_THEMES as readonly string[]).includes(terminalTheme)) {
+    return "system";
+  }
+  return isTheme(theme) ? theme : DEFAULT_SETTINGS.theme;
 }
 
-function sanitizeAccent(value: unknown): string {
-  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
-    ? value
-    : DEFAULT_SETTINGS.accent;
+function sanitizeAccent(_value: unknown): string {
+  return DEFAULT_SETTINGS.accent;
 }
 
 function sanitizeFontFamily(value: unknown): string {
@@ -145,7 +134,7 @@ function sanitizeFontFamily(value: unknown): string {
 function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): AppearanceSettings {
   return {
     ...DEFAULT_SETTINGS,
-    theme: isTheme(raw?.theme) ? raw.theme : DEFAULT_SETTINGS.theme,
+    theme: sanitizeTheme(raw?.theme, raw?.terminal_theme),
     accent: sanitizeAccent(raw?.accent),
     cursorStyle: isCursorStyle(raw?.cursor_style) ? raw.cursor_style : DEFAULT_SETTINGS.cursorStyle,
     cursorBlink: typeof raw?.cursor_blink === "boolean" ? raw.cursor_blink : DEFAULT_SETTINGS.cursorBlink,
@@ -153,43 +142,25 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     fontFamily: sanitizeFontFamily(raw?.font_family),
     fontLigatures: typeof raw?.font_ligatures === "boolean" ? raw.font_ligatures : DEFAULT_SETTINGS.fontLigatures,
     nerdFontFallback: typeof raw?.nerd_font_fallback === "boolean" ? raw.nerd_font_fallback : DEFAULT_SETTINGS.nerdFontFallback,
-    scrollback: clampNumber(raw?.scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback),
+    scrollback: DEFAULT_SCROLLBACK,
     sidebarWidth: clampNumber(raw?.sidebar_width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
     panelWidth: clampNumber(raw?.panel_width, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
-    terminalTheme: isTerminalTheme(raw?.terminal_theme) ? raw.terminal_theme : DEFAULT_SETTINGS.terminalTheme,
     externalEditor: isExternalEditor(raw?.external_editor) ? raw.external_editor : DEFAULT_SETTINGS.externalEditor,
     bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
-    terminalInlineImages: typeof raw?.terminal_inline_images === "boolean" ? raw.terminal_inline_images : DEFAULT_SETTINGS.terminalInlineImages,
     terminalScreenReaderMode: typeof raw?.terminal_screen_reader_mode === "boolean" ? raw.terminal_screen_reader_mode : DEFAULT_SETTINGS.terminalScreenReaderMode,
     showPureModeFilesButton: typeof raw?.show_pure_mode_files_button === "boolean" ? raw.show_pure_mode_files_button : DEFAULT_SETTINGS.showPureModeFilesButton,
     terminalHostModifier: raw?.terminal_host_modifier === "meta" || raw?.terminal_host_modifier === "alt" || raw?.terminal_host_modifier === "shift" ? raw.terminal_host_modifier : DEFAULT_SETTINGS.terminalHostModifier,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
     globalShortcut: typeof raw?.global_shortcut === "string" ? raw.global_shortcut : DEFAULT_SETTINGS.globalShortcut,
-    terminalWallpaperEnabled: raw?.terminal_wallpaper === true,
-    terminalWallpaperSource: isTerminalWallpaperSource(raw?.terminal_wallpaper_source)
-      ? raw.terminal_wallpaper_source
-      : DEFAULT_SETTINGS.terminalWallpaperSource,
-    terminalWallpaperBlur: clampWallpaperBlur(raw?.terminal_wallpaper_blur, DEFAULT_SETTINGS.terminalWallpaperBlur),
-    terminalWallpaperVeil: clampWallpaperVeil(raw?.terminal_wallpaper_veil, DEFAULT_SETTINGS.terminalWallpaperVeil),
   };
 }
 
 function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
   const appearance = sanitizeRawAppearance(config?.appearance);
-  const terminalInteractions = config?.terminal_interactions;
-  // Do not interpret a future schema with this version's semantics. The Rust
-  // merge path preserves the future table, while this client falls back to the
-  // conservative smart policy until it understands that version.
-  const secondaryClick = terminalInteractions?.version === undefined || terminalInteractions.version === 1
-    ? terminalInteractions?.secondary_click
-    : undefined;
   return {
     ...appearance,
-    terminalSecondaryClick: secondaryClick === "menu" || secondaryClick === "disabled" || secondaryClick === "smart"
-      ? secondaryClick
-      : DEFAULT_SETTINGS.terminalSecondaryClick,
     keybindings: sanitizeKeybindings(config?.keybindings),
   };
 }
@@ -208,32 +179,41 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       scrollback: s.scrollback,
       sidebar_width: s.sidebarWidth,
       panel_width: s.panelWidth,
-      terminal_theme: s.terminalTheme,
+      terminal_theme: "default",
       external_editor: s.externalEditor,
       bell_notification: s.bellNotification,
       terminal_clipboard_write: s.terminalClipboardWrite,
-      terminal_inline_images: s.terminalInlineImages,
+      terminal_inline_images: true,
       terminal_screen_reader_mode: s.terminalScreenReaderMode,
       show_pure_mode_files_button: s.showPureModeFilesButton,
       terminal_host_modifier: s.terminalHostModifier,
       language: s.language,
       global_shortcut: s.globalShortcut,
-      terminal_wallpaper: s.terminalWallpaperEnabled,
-      terminal_wallpaper_source: s.terminalWallpaperSource,
-      terminal_wallpaper_blur: s.terminalWallpaperBlur,
-      terminal_wallpaper_veil: s.terminalWallpaperVeil,
     },
     keybindings: keybindingsToConfigKeys(s.keybindings),
     terminal_interactions: {
       version: 1,
-      secondary_click: s.terminalSecondaryClick,
+      secondary_click: "smart",
     },
   };
 }
 
 export type InspectorTab = "changes" | "files" | "transfers" | "forwarding" | "preview";
 
-export type SettingsTab = "appearance" | "terminal" | "accessibility" | "shortcuts" | "ssh" | "app";
+export type SettingsTab = "general" | "shortcuts" | "ssh" | "app";
+
+const SETTINGS_TABS: readonly SettingsTab[] = ["general", "shortcuts", "ssh", "app"];
+const REMOVED_SETTINGS_TABS = ["appearance", "terminal", "accessibility"] as const;
+
+function sanitizeSettingsTab(tab: unknown): SettingsTab {
+  if (typeof tab === "string" && (SETTINGS_TABS as readonly string[]).includes(tab)) {
+    return tab as SettingsTab;
+  }
+  if (typeof tab === "string" && (REMOVED_SETTINGS_TABS as readonly string[]).includes(tab)) {
+    return "general";
+  }
+  return "general";
+}
 
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
 
@@ -348,9 +328,6 @@ interface UIState extends AppearanceSettings {
   fileTabs: WorkspaceFileTab[];
   activeFileTabId: string | null;
   toasts: Toast[];
-  /** Bumped when the custom wallpaper file is imported or cleared so the
-   *  canvas layer reloads without remounting terminals. Not persisted. */
-  terminalWallpaperRevision: number;
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
    *  so two SSH connections that both hit an unknown/unverifiable host key
    *  before the first is answered don't clobber each other — each parked
@@ -392,16 +369,13 @@ interface UIState extends AppearanceSettings {
   setFileTabDirty: (id: string, dirty: boolean) => void;
   openSettings: (tab?: SettingsTab) => void;
   setTheme: (t: ThemeType) => void;
-  setAccent: (c: string) => void;
   setCursorStyle: (c: CursorStyle) => void;
   setCursorBlink: (b: boolean) => void;
   setFontSize: (n: number) => void;
   setFontFamily: (name: string) => void;
   setFontLigatures: (enabled: boolean) => void;
   setNerdFontFallback: (enabled: boolean) => void;
-  setScrollback: (n: number) => void;
   setTerminalScreenReaderMode: (enabled: boolean) => void;
-  setTerminalTheme: (t: TerminalThemeName) => void;
   setSidebarWidth: (w: number) => void;
   setPanelWidth: (w: number) => void;
   setTrafficLightWidth: (w: number) => void;
@@ -428,15 +402,8 @@ interface UIState extends AppearanceSettings {
   setExternalEditor: (e: ExternalEditor) => void;
   setBellNotification: (b: boolean) => void;
   setTerminalClipboardWrite: (enabled: boolean) => void;
-  setTerminalInlineImages: (enabled: boolean) => void;
   setShowPureModeFilesButton: (enabled: boolean) => void;
-  setTerminalWallpaperEnabled: (enabled: boolean) => void;
-  setTerminalWallpaperSource: (source: TerminalWallpaperSource) => void;
-  setTerminalWallpaperBlur: (blur: number) => void;
-  setTerminalWallpaperVeil: (veil: number) => void;
-  bumpTerminalWallpaperRevision: () => void;
   setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
-  setTerminalSecondaryClick: (mode: TerminalSecondaryClickMode) => void;
   resetTerminalInteractions: () => void;
   setGlobalShortcut: (shortcut: string) => void;
   setKeybinding: (action: KeybindingAction, binding: string) => void;
@@ -462,11 +429,10 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: emptySplitState(),
     inspectorTab: "changes" as InspectorTab,
-    settingsTab: "appearance" as SettingsTab,
+    settingsTab: "general" as SettingsTab,
     fileTabs: [],
     activeFileTabId: null,
     toasts: [],
-    terminalWallpaperRevision: 0,
     hostKeyPrompts: [],
     keyboardInteractivePrompts: [],
     pendingWorkflow: null,
@@ -526,7 +492,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       sshPrefill: prefill ?? null,
     }),
     setInspectorTab: (inspectorTab) => set({ inspectorTab }),
-    setSettingsTab: (settingsTab) => set({ settingsTab }),
+    setSettingsTab: (settingsTab) => set({ settingsTab: sanitizeSettingsTab(settingsTab) }),
     openFileTab: (tab) => set((state) => {
       const id = workspaceFileTabId(tab.sessionId, tab.filePath);
       if (state.fileTabs.some((candidate) => candidate.id === id)) {
@@ -564,20 +530,17 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     }),
     openSettings: (settingsTab) => set((state) => ({
       overlay: "settings",
-      settingsTab: settingsTab ?? state.settingsTab,
+      settingsTab: settingsTab === undefined ? sanitizeSettingsTab(state.settingsTab) : sanitizeSettingsTab(settingsTab),
       sshPrefill: null,
     })),
     setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
-    setAccent: (accent) => set({ accent: sanitizeAccent(accent) }),
     setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
     setCursorBlink: (cursorBlink) => set({ cursorBlink: typeof cursorBlink === "boolean" ? cursorBlink : DEFAULT_SETTINGS.cursorBlink }),
     setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
     setFontFamily: (fontFamily) => set({ fontFamily: sanitizeFontFamily(fontFamily) }),
     setFontLigatures: (fontLigatures) => set({ fontLigatures: typeof fontLigatures === "boolean" ? fontLigatures : DEFAULT_SETTINGS.fontLigatures }),
     setNerdFontFallback: (nerdFontFallback) => set({ nerdFontFallback: typeof nerdFontFallback === "boolean" ? nerdFontFallback : DEFAULT_SETTINGS.nerdFontFallback }),
-    setScrollback: (scrollback) => set({ scrollback: clampNumber(scrollback, MIN_SCROLLBACK, MAX_SCROLLBACK, DEFAULT_SETTINGS.scrollback) }),
     setTerminalScreenReaderMode: (terminalScreenReaderMode) => set({ terminalScreenReaderMode: typeof terminalScreenReaderMode === "boolean" ? terminalScreenReaderMode : DEFAULT_SETTINGS.terminalScreenReaderMode }),
-    setTerminalTheme: (terminalTheme) => set({ terminalTheme: isTerminalTheme(terminalTheme) ? terminalTheme : DEFAULT_SETTINGS.terminalTheme }),
     setSidebarWidth: (sidebarWidth) => {
       set({ sidebarWidth: clampNumber(sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth) });
     },
@@ -653,30 +616,12 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
-    setTerminalInlineImages: (terminalInlineImages) => set({ terminalInlineImages: typeof terminalInlineImages === "boolean" ? terminalInlineImages : DEFAULT_SETTINGS.terminalInlineImages }),
     setShowPureModeFilesButton: (showPureModeFilesButton) => set({ showPureModeFilesButton: typeof showPureModeFilesButton === "boolean" ? showPureModeFilesButton : DEFAULT_SETTINGS.showPureModeFilesButton }),
-    setTerminalWallpaperEnabled: (terminalWallpaperEnabled) => set({
-      terminalWallpaperEnabled: terminalWallpaperEnabled === true,
-    }),
-    setTerminalWallpaperSource: (terminalWallpaperSource) => set({
-      terminalWallpaperSource: isTerminalWallpaperSource(terminalWallpaperSource)
-        ? terminalWallpaperSource
-        : DEFAULT_SETTINGS.terminalWallpaperSource,
-    }),
-    setTerminalWallpaperBlur: (terminalWallpaperBlur) => set({
-      terminalWallpaperBlur: clampWallpaperBlur(terminalWallpaperBlur, DEFAULT_SETTINGS.terminalWallpaperBlur),
-    }),
-    setTerminalWallpaperVeil: (terminalWallpaperVeil) => set({
-      terminalWallpaperVeil: clampWallpaperVeil(terminalWallpaperVeil, DEFAULT_SETTINGS.terminalWallpaperVeil),
-    }),
-    bumpTerminalWallpaperRevision: () => set((s) => ({ terminalWallpaperRevision: s.terminalWallpaperRevision + 1 })),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
-    setTerminalSecondaryClick: (terminalSecondaryClick) => set({ terminalSecondaryClick }),
     resetTerminalInteractions: () => set((state) => {
       const keybindings = { ...state.keybindings };
       for (const action of TERMINAL_KEYBINDING_ACTIONS) keybindings[action] = DEFAULT_KEYBINDINGS[action];
       return {
-        terminalSecondaryClick: DEFAULT_SETTINGS.terminalSecondaryClick,
         terminalHostModifier: DEFAULT_SETTINGS.terminalHostModifier,
         keybindings,
       };
@@ -710,7 +655,6 @@ export async function loadUserConfig(): Promise<void> {
     });
     persistBootAppearance({
       theme: sanitized.theme,
-      terminalTheme: sanitized.terminalTheme,
       accent: sanitized.accent,
     });
     configHydrating = false;
@@ -725,16 +669,16 @@ export async function loadUserConfig(): Promise<void> {
 }
 
 useUIStore.subscribe(
-  (s) => [s.theme, s.terminalTheme, s.accent] as const,
-  ([theme, terminalTheme, accent]) => {
+  (s) => [s.theme, s.accent] as const,
+  ([theme, accent]) => {
     const state = useUIStore.getState();
     if (!state.configLoaded || configHydrating) return;
-    persistBootAppearance({ theme, terminalTheme, accent });
+    persistBootAppearance({ theme, accent });
   },
-  { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] },
+  { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "terminalTheme", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalInlineImages", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "terminalSecondaryClick", "keybindings", "language", "globalShortcut", "terminalWallpaperEnabled", "terminalWallpaperSource", "terminalWallpaperBlur", "terminalWallpaperVeil"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

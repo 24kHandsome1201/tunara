@@ -46,7 +46,7 @@ test("settings shortcuts and terminal interaction controls define every visual s
   assert.match(styles, /\.settings-action-button:disabled/);
   assert.match(styles, /\.dark \.settings-control \{ color-scheme: dark; \}/);
   assert.match(styles, /border: 1px solid var\(--c-control-border\)/);
-  assert.equal((palettes.match(/"--c-control-border"/g) ?? []).length, 6);
+  assert.equal((palettes.match(/"--c-control-border"/g) ?? []).length, 1);
 });
 
 test("non-settings native controls opt into the shared theme contract", () => {

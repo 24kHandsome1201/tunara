@@ -4,8 +4,6 @@ export type TerminalInputEventKind =
 export type TerminalMouseTrackingMode = "none" | "x10" | "vt200" | "drag" | "any" | (string & {});
 export type TerminalHostModifier = "shift" | "meta" | "alt";
 export type TerminalPlatform = "macos" | "windows" | "linux" | "unknown";
-export type TerminalSecondaryClickMode = "smart" | "menu" | "disabled";
-
 export interface TerminalInputModifiers { shift: boolean; meta: boolean; alt: boolean; ctrl?: boolean }
 export interface TerminalInputRoute {
   kind: TerminalInputEventKind;
@@ -14,7 +12,6 @@ export interface TerminalInputRoute {
   pure: boolean;
   platform: TerminalPlatform;
   hostModifier: TerminalHostModifier;
-  secondaryClickMode?: TerminalSecondaryClickMode;
   modifiers: TerminalInputModifiers;
   button?: number;
   explicitHostAction?: boolean;
@@ -30,16 +27,10 @@ function hostRequested(input: TerminalInputRoute): boolean {
 
 function secondaryClickOwner(input: TerminalInputRoute, reporting: boolean): TerminalInputOwner {
   // Pure Mode has no context menu. Never consume a PTY gesture for hidden host
-  // UI, even when the persisted workspace preset normally claims right-click.
+  // UI. Smart is the only remaining policy: host modifier or idle tracking
+  // claims the click for Tunara; a reporting TUI keeps it.
   if (input.pure) return "tui";
-  switch (input.secondaryClickMode ?? "smart") {
-    case "menu":
-      return "tunara";
-    case "disabled":
-      return "tui";
-    case "smart":
-      return hostRequested(input) || !reporting ? "tunara" : "tui";
-  }
+  return hostRequested(input) || !reporting ? "tunara" : "tui";
 }
 
 /** Process-independent ownership policy with a latch for the complete right-click gesture. */

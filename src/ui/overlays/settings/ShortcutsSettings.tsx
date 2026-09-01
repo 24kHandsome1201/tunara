@@ -100,15 +100,12 @@ function KeybindingRow({ editor, scope, action, allowDisable }: { editor: Keybin
 export function ShortcutsSettings() {
   const t = useT();
   const editor = useKeybindingEditor();
-  const terminalSecondaryClick = useUIStore((s) => s.terminalSecondaryClick);
-  const setTerminalSecondaryClick = useUIStore((s) => s.setTerminalSecondaryClick);
   const terminalHostModifier = useUIStore((s) => s.terminalHostModifier);
   const setTerminalHostModifier = useUIStore((s) => s.setTerminalHostModifier);
   const resetTerminalInteractions = useUIStore((s) => s.resetTerminalInteractions);
   const resetKeybindings = useUIStore((s) => s.resetKeybindings);
   const globalShortcut = useUIStore((s) => s.globalShortcut);
   const setGlobalShortcut = useUIStore((s) => s.setGlobalShortcut);
-  const [pendingRightClickRisk, setPendingRightClickRisk] = useState(false);
   const [shortcutDraft, setShortcutDraft] = useState(globalShortcut);
   useEffect(() => setShortcutDraft(globalShortcut), [globalShortcut]);
 
@@ -117,42 +114,11 @@ export function ShortcutsSettings() {
       <div className="settings-terminal-interactions" style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div style={SECTION_LABEL}>{t("settings.terminal_interactions.title")}</div>
-          <button className="settings-action-button" onClick={() => { resetTerminalInteractions(); setPendingRightClickRisk(false); editor.clear(); }}>
+          <button className="settings-action-button" onClick={() => { resetTerminalInteractions(); editor.clear(); }}>
             {t("settings.terminal_interactions.reset")}
           </button>
         </div>
         <div style={{ ...SECTION_HINT, marginBottom: 10 }}>{t("settings.terminal_interactions.hint")}</div>
-        <label htmlFor="terminal-secondary-click" className="settings-interaction-row" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, fontSize: "var(--fs-secondary)" }}>
-          <span>{t("settings.terminal_interactions.secondary_click")}</span>
-          <select
-            id="terminal-secondary-click"
-            className="settings-control"
-            value={terminalSecondaryClick}
-            onChange={(event) => {
-              const mode = event.target.value as "smart" | "menu" | "disabled";
-              if (mode === "menu" && terminalSecondaryClick !== "menu") {
-                setPendingRightClickRisk(true);
-                return;
-              }
-              setPendingRightClickRisk(false);
-              setTerminalSecondaryClick(mode);
-            }}
-          >
-            <option value="smart">{t("settings.terminal_interactions.secondary_click.smart")}</option>
-            <option value="menu">{t("settings.terminal_interactions.secondary_click.menu")}</option>
-            <option value="disabled">{t("settings.terminal_interactions.secondary_click.disabled")}</option>
-          </select>
-        </label>
-        {(pendingRightClickRisk || terminalSecondaryClick === "menu") && (
-          <div role="alert" style={{ ...SECTION_HINT, color: "var(--c-warning)", marginTop: 8 }}>
-            {t("settings.terminal_interactions.mouse_risk")}
-            {pendingRightClickRisk && (
-              <button className="settings-action-button" style={{ marginLeft: 8 }} onClick={() => { setTerminalSecondaryClick("menu"); setPendingRightClickRisk(false); }}>
-                {t("settings.terminal_interactions.mouse_risk_confirm")}
-              </button>
-            )}
-          </div>
-        )}
         <label htmlFor="terminal-host-modifier" className="settings-interaction-row" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, marginTop: 10, fontSize: "var(--fs-secondary)" }}>
           <span>{t("settings.appearance.host_modifier")}</span>
           <select id="terminal-host-modifier" className="settings-control" value={terminalHostModifier} onChange={(event) => setTerminalHostModifier(event.target.value as "shift" | "meta" | "alt")}>

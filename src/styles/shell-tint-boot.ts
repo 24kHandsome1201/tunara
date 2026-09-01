@@ -1,20 +1,24 @@
-import type { ThemeType, TerminalThemeName } from "../ui/types.ts";
-import { SHELL_TINTS, SHELL_TINT_KEYS, getShellTint, isTerminalThemeDark, NAMED_DARK_TERMINAL_THEME_KEYS } from "./terminalTheme.ts";
+import type { ThemeType } from "../ui/types.ts";
+import { SHELL_TINT_KEYS } from "./terminalTheme.ts";
 
 /** localStorage key read by the synchronous index.html boot script. */
 export const BOOT_APPEARANCE_STORAGE_KEY = "tunara.boot.appearance";
 
-/** Minimal tint map for boot — same data as `SHELL_TINTS` in terminalTheme.ts. */
-export const SHELL_TINTS_BOOT: Readonly<Record<string, Readonly<Record<string, string>>>> = SHELL_TINTS;
+/** Deleted named terminal palettes. Old boot caches that still store these
+ *  must fall back to System without applying a missing tint map. */
+export const REMOVED_TERMINAL_THEMES: readonly string[] = Object.freeze([
+  "catppuccin",
+  "tokyo-night",
+  "one-dark",
+  "solarized",
+  "github-light",
+  "rose-pine-dawn",
+]);
 
-/** Terminal presets that force the `.dark` class when selected.
- *  Re-exported from terminalTheme.ts so the boot script and runtime share
- *  one source of truth — adding a dark preset in one place updates both. */
-export const NAMED_DARK_TERMINAL_THEMES: readonly string[] = NAMED_DARK_TERMINAL_THEME_KEYS;
+export const DEFAULT_ACCENT = "#c2683c";
 
 export interface BootAppearance {
   theme: ThemeType;
-  terminalTheme: TerminalThemeName;
   accent: string;
 }
 
@@ -46,35 +50,44 @@ function deriveAccentVars(accent: string, dark: boolean): Record<string, string>
   };
 }
 
-function resolveDark(theme: ThemeType, terminalTheme: TerminalThemeName, systemDark: boolean): boolean {
-  if (terminalTheme !== "default") return isTerminalThemeDark(terminalTheme, theme);
+function resolveDark(theme: ThemeType, systemDark: boolean): boolean {
   if (theme === "dark") return true;
   if (theme === "light") return false;
   return systemDark;
 }
 
-/** Apply shell tint + accent vars to `root` (documentElement at boot or runtime). */
+function isTheme(value: unknown): value is ThemeType {
+  return value === "light" || value === "dark" || value === "system";
+}
+
+function sanitizeBootTheme(theme: unknown, terminalTheme: unknown): ThemeType {
+  if (typeof terminalTheme === "string" && (REMOVED_TERMINAL_THEMES as readonly string[]).includes(terminalTheme)) {
+    return "system";
+  }
+  return isTheme(theme) ? theme : "system";
+}
+
+function sanitizeBootAccent(_accent: unknown): string {
+  return DEFAULT_ACCENT;
+}
+
+/** Apply dark class + accent vars to `root`. Named-theme shell tints are gone;
+ *  leftover inline tokens from a previous version are stripped. */
 export function applyBootShellTint(
   root: HTMLElement,
-  terminalTheme: TerminalThemeName,
   theme: ThemeType,
   accent: string,
   systemDark = typeof window !== "undefined" && (window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false),
 ): void {
-  const tint = terminalTheme !== "default" ? getShellTint(terminalTheme) : undefined;
   const style = root.style;
-
   for (const key of SHELL_TINT_KEYS) style.removeProperty(key);
 
-  const dark = resolveDark(theme, terminalTheme, systemDark);
+  const dark = resolveDark(theme, systemDark);
   root.classList.toggle("dark", dark);
 
-  if (tint) {
-    for (const [k, v] of Object.entries(tint)) style.setProperty(k, v);
-  }
-
-  style.setProperty("--c-accent", accent);
-  for (const [k, v] of Object.entries(deriveAccentVars(accent, dark))) style.setProperty(k, v);
+  const nextAccent = sanitizeBootAccent(accent);
+  style.setProperty("--c-accent", nextAccent);
+  for (const [k, v] of Object.entries(deriveAccentVars(nextAccent, dark))) style.setProperty(k, v);
 }
 
 export function persistBootAppearance(appearance: BootAppearance): void {
@@ -91,18 +104,13 @@ export function readBootAppearance(): BootAppearance | null {
   try {
     const raw = localStorage.getItem(BOOT_APPEARANCE_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<BootAppearance>;
-    if (
-      typeof parsed.theme !== "string" ||
-      typeof parsed.terminalTheme !== "string" ||
-      typeof parsed.accent !== "string"
-    ) {
+    const parsed = JSON.parse(raw) as Partial<BootAppearance> & { terminalTheme?: string };
+    if (typeof parsed.theme !== "string" && typeof parsed.terminalTheme !== "string") {
       return null;
     }
     return {
-      theme: parsed.theme as ThemeType,
-      terminalTheme: parsed.terminalTheme as TerminalThemeName,
-      accent: parsed.accent,
+      theme: sanitizeBootTheme(parsed.theme, parsed.terminalTheme),
+      accent: sanitizeBootAccent(parsed.accent),
     };
   } catch {
     return null;
@@ -111,7 +119,6 @@ export function readBootAppearance(): BootAppearance | null {
 
 /** Inline script body injected into index.html by the Vite plugin (no module graph). */
 export function renderBootInlineScript(): string {
-  const defaultAccent = "#c2683c";
   return `
           var systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           var stored = null;
@@ -119,25 +126,18 @@ export function renderBootInlineScript(): string {
             var raw = localStorage.getItem(${JSON.stringify(BOOT_APPEARANCE_STORAGE_KEY)});
             if (raw) stored = JSON.parse(raw);
           } catch (e) {}
+          var REMOVED = ${JSON.stringify(REMOVED_TERMINAL_THEMES)};
           var theme = stored && stored.theme ? stored.theme : "system";
           var terminalTheme = stored && stored.terminalTheme ? stored.terminalTheme : "default";
-          var accent = stored && stored.accent ? stored.accent : ${JSON.stringify(defaultAccent)};
-          var SHELL_TINTS = ${JSON.stringify(SHELL_TINTS_BOOT)};
+          if (REMOVED.indexOf(terminalTheme) !== -1) theme = "system";
+          if (theme !== "light" && theme !== "dark" && theme !== "system") theme = "system";
+          var accent = ${JSON.stringify(DEFAULT_ACCENT)};
           var SHELL_TINT_KEYS = ${JSON.stringify(SHELL_TINT_KEYS)};
-          var NAMED_DARK = ${JSON.stringify(NAMED_DARK_TERMINAL_THEMES)};
           var root = document.documentElement;
           var style = root.style;
           for (var i = 0; i < SHELL_TINT_KEYS.length; i++) style.removeProperty(SHELL_TINT_KEYS[i]);
-          var dark = terminalTheme !== "default"
-            ? NAMED_DARK.indexOf(terminalTheme) !== -1
-            : theme === "dark" ? true : theme === "light" ? false : systemDark;
+          var dark = theme === "dark" ? true : theme === "light" ? false : systemDark;
           root.classList.toggle("dark", dark);
-          if (terminalTheme !== "default" && SHELL_TINTS[terminalTheme]) {
-            var tint = SHELL_TINTS[terminalTheme];
-            for (var k in tint) {
-              if (Object.prototype.hasOwnProperty.call(tint, k)) style.setProperty(k, tint[k]);
-            }
-          }
           style.setProperty("--c-accent", accent);
           var hex = parseInt(accent.slice(1), 16);
           var ar = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
@@ -152,3 +152,4 @@ export function renderBootInlineScript(): string {
           style.setProperty("--c-accent-selection", accent + (dark ? "66" : "44"));
         `.trim();
 }
+
