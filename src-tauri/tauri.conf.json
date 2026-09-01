@@ -59,7 +59,7 @@
     },
     "category": "DeveloperTool",
     "shortDescription": "Terminal with an intelligent session sidebar",
-    "longDescription": "Tunara is a real Tauri/xterm terminal with an intelligent session sidebar and a read-only review rail for terminal workflows."
+    "longDescription": "Tunara is a real Tauri/xterm terminal with an intelligent session sidebar and a contextual Inspector for terminal workflows."
   },
   "plugins": {
     "updater": {

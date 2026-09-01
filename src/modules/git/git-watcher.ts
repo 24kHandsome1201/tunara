@@ -56,7 +56,7 @@ const refCount = createWatchRefCount({
       })
       .catch(() => {
         // Watcher startup can fail on permission or platform limits. Keep the
-        // review rail eventually fresh without turning the healthy path into polling.
+        // Inspector Changes view eventually fresh without turning the healthy path into polling.
         startFallbackPoller(repoPath);
       });
   },

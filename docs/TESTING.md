@@ -164,8 +164,8 @@ Then confirm:
 
 1. **Titlebar** — traffic lights and custom controls share one row; no extra
    blank space under the overlay titlebar.
-2. **Shell tint** — sidebar, review panel, and titlebar match the active theme.
-3. **Narrow viewport** — hide the sidebar; inspector tabs and overlays remain
+2. **Shell tint** — sidebar, Inspector, and titlebar match the active theme.
+3. **Narrow viewport** — hide the sidebar; Inspector switcher and overlays remain
    usable around 960px width.
 4. **Glass fallback** — with reduced transparency, opaque tokens still read
    clearly over the terminal.

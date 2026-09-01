@@ -89,8 +89,9 @@ configLoaded / configPath / configError  // user-config load status
 sidebarVisible / panelVisible
 overlay: OverlayType                 // null | "settings" | "command-palette" | "ssh"
 split: SplitState                    // recursive pane tree, max 4 leaves ({ root })
-inspectorTab: InspectorTab           // changes | files | preview
+inspectorTab: InspectorTab           // last selected view: changes | files | preview
                                      // SSH: + transfers | forwarding
+                                     // Auto/Locked and Preview-opened are runtime-only
 presentationMode: "workspace" | "pure"
 fileTabs: WorkspaceFileTab[]         // files opened beside the terminal
 toasts: Toast[]                      // capped, last 3

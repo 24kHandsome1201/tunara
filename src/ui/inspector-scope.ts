@@ -25,6 +25,7 @@ export interface InspectorScopedPanelProps {
 }
 
 export const INSPECTOR_TAB_DESCRIPTORS: Record<InspectorTab, InspectorTabDescriptor> = {
+  /** Changes is the Inspector Git-diff view; the rail itself is always Inspector. */
   changes: { id: "changes", scope: "profile", titleKey: "diff.title", descriptionKey: "inspector.scope.description.profile" },
   files: { id: "files", scope: "transport-binding", titleKey: "inspector.tab.files", descriptionKey: "inspector.scope.description.transport_binding" },
   transfers: { id: "transfers", scope: "logical-session", titleKey: "inspector.tab.transfers", descriptionKey: "inspector.scope.description.logical_session" },

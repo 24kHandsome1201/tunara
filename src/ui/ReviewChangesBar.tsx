@@ -24,7 +24,7 @@ export function ReviewChangesBar({ session }: ReviewChangesBarProps) {
       onAction={() => {
         dismiss();
         useSessionsStore.getState().setActive(session.id);
-        openInspectorTab("changes");
+        openInspectorTab("changes", session.id);
       }}
       dismissLabel={t("review.suggest.dismiss")}
       onDismiss={dismiss}

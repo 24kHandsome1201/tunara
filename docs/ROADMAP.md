@@ -16,7 +16,7 @@ Tunara 已经有终端、会话、Git 审查、远程 SSH、文件浏览/轻编�
 
 ### 4. 纯净模式入口
 
-标题栏与命令面板都提供纯净模式入口，可以一键收起标题栏、侧栏和审查栏；快捷键或退出入口可恢复原布局。该模式只投影 UI，不卸载终端或改写 workspace 快照。
+标题栏与命令面板都提供纯净模式入口，可以一键收起标题栏、侧栏和检查器；快捷键或退出入口可恢复原布局。该模式只投影 UI，不卸载终端或改写 workspace 快照。
 
 ### 6. 远程 Git 审查（1.8.0）
 
@@ -68,7 +68,7 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 20. SSH 传输与远端变更（1.17.1 及之后）
 
-文件面板支持覆盖确认的上传、批量上传/下载、真实进度、取消和 journal 恢复。远端 mkdir / rename / delete 走带前置条件的 `ssh_fs_mutate_v1`。检查器为 SSH 会话提供 Transfers、Metadata、Forwarding、Diagnostics、Known hosts 页签。
+文件面板支持覆盖确认的上传、批量上传/下载、真实进度、取消和 journal 恢复。远端 mkdir / rename / delete 走带前置条件的 `ssh_fs_mutate_v1`。检查器为 SSH 会话提供 Transfers 与 Forwarding 视图。
 
 ### 21. 设置快捷键页与终端交互触发器
 

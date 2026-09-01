@@ -16,7 +16,17 @@ beforeEach(() => {
   resetTerminalBindingsForTests();
   resetAppLifecycleForTests();
   useSessionsStore.setState({ activeSessionId: "ui-test-session" });
-  useUIStore.setState({ presentationMode: "workspace", mainSurface: "terminal", fileTabs: [], activeFileTabId: null, terminalWallpaperEnabled: false, terminalWallpaperSource: "paper" });
+  useUIStore.setState({
+    presentationMode: "workspace",
+    mainSurface: "terminal",
+    fileTabs: [],
+    activeFileTabId: null,
+    terminalWallpaperEnabled: false,
+    terminalWallpaperSource: "paper",
+    inspectorLocked: false,
+    inspectorLockSessionId: null,
+    inspectorPreviewOpenedSessionIds: {},
+  });
 });
 
 afterEach(() => {

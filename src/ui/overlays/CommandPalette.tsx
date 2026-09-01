@@ -2,7 +2,7 @@ import type React from "react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
-import { useUIStore } from "@/state/ui";
+import { useUIStore, type InspectorTab } from "@/state/ui";
 import { SearchIcon } from "../shared";
 import { formatShortcut } from "../formatShortcut";
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
@@ -56,6 +56,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
   const presentationMode = useUIStore((s) => s.presentationMode);
+  const inspectorLocked = useUIStore((s) => s.inspectorLocked);
 
   // Stable identity so the commands useMemo below can list it as a dependency
   // without invalidating on every render; it only reads store state at call
@@ -87,7 +88,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         label: t("pure.files.open"),
         icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
         section: t("palette.section.action"), scopes: ["action", "app"], originalIndex: idx++,
-        action: () => { const ui = uiStore.getState(); ui.setInspectorTab("files"); ui.setPanelVisible(true); onClose(); },
+        action: () => { const ui = uiStore.getState(); ui.setInspectorTab("files", { sessionId: activeSessionId }); ui.setPanelVisible(true); onClose(); },
       },
       presentationCommand,
     ];
@@ -270,10 +271,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         },
       });
 
-      const openInspectorTab = (tab: "changes" | "files" | "preview", usageId: string) => {
+      const openInspectorTab = (tab: InspectorTab, usageId: string) => {
         uiStore.getState().recordCommandUse(usageId);
         uiStore.getState().setPanelVisible(true);
-        uiStore.getState().setInspectorTab(tab);
+        uiStore.getState().setInspectorTab(tab, { sessionId: activeSession.id });
+        if (tab === "preview") uiStore.getState().markInspectorPreviewOpened(activeSession.id);
         onClose();
       };
       const activeIsLocal = !activeSession.remote;
@@ -380,6 +382,43 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         scopes: ["action", "app"],
         originalIndex: idx++,
         action: () => openInspectorTab("preview", "open-session-preview"),
+      });
+
+      if (activeSession.remote) {
+        cmds.push({
+          id: "open-session-transfers",
+          label: t("palette.cmd.open_session_transfers"),
+          icon: <CmdIcon d="M7 7h11M15 4l3 3-3 3M17 17H6M9 14l-3 3 3 3" />,
+          section: t("palette.section.action"),
+          scopes: ["action", "app"],
+          originalIndex: idx++,
+          action: () => openInspectorTab("transfers", "open-session-transfers"),
+        });
+        cmds.push({
+          id: "open-session-forwarding",
+          label: t("palette.cmd.open_session_forwarding"),
+          icon: <CmdIcon d="M6 12a2.4 2.4 0 1 0 0.01 0M18 7a2.4 2.4 0 1 0 0.01 0M18 17a2.4 2.4 0 1 0 0.01 0M8.2 11.2 15.8 8.1M8.2 12.8 15.8 15.9" />,
+          section: t("palette.section.action"),
+          scopes: ["action", "app"],
+          originalIndex: idx++,
+          action: () => openInspectorTab("forwarding", "open-session-forwarding"),
+        });
+      }
+
+      cmds.push({
+        id: inspectorLocked ? "inspector-follow-auto" : "inspector-lock-view",
+        label: inspectorLocked ? t("palette.cmd.inspector_follow_auto") : t("palette.cmd.inspector_lock_view"),
+        icon: <CmdIcon d="M12 3v18M5 8h14" />,
+        section: t("palette.section.action"),
+        scopes: ["action", "app"],
+        originalIndex: idx++,
+        action: () => {
+          const ui = uiStore.getState();
+          ui.recordCommandUse(inspectorLocked ? "inspector-follow-auto" : "inspector-lock-view");
+          if (inspectorLocked) ui.unlockInspectorView();
+          else ui.lockInspectorView(activeSession.id);
+          onClose();
+        },
       });
 
       cmds.push({
@@ -547,7 +586,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, presentationMode, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, presentationMode, inspectorLocked, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

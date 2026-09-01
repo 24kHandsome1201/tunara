@@ -119,7 +119,7 @@ function ActivityRow({ session, variant, attentionKind, resumeCommand, onSelect 
     e.stopPropagation();
     useSessionsStore.getState().updateSession(session.id, { reviewChangesHint: false });
     onSelect(session.id);
-    openInspectorTab("changes");
+    openInspectorTab("changes", session.id);
   };
   const showReview = fileCount > 0 && (attentionKind === "agent-ready" || variant === "resumable");
 

@@ -1,6 +1,6 @@
 {
   "name": "tunara",
-  "description": "A real Tauri/xterm terminal with an intelligent session sidebar and read-only review rail.",
+  "description": "A real Tauri/xterm terminal with an intelligent session sidebar and contextual Inspector.",
   "license": "Apache-2.0",
   "author": "Tunara contributors",
   "repository": {

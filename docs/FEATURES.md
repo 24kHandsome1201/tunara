@@ -31,7 +31,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 标题栏 | [`src/ui/Titlebar.tsx`](../src/ui/Titlebar.tsx) | 当前设备的文件标签；侧栏收起时再加上该设备的终端，多设备时用压缩菜单切换 |
 | 侧栏 | [`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx) | 本地按目录、SSH 按主机分组的会话、统一动态、搜索 |
 | 主区 | [`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) | xterm 分栏，或与终端并列的文件标签 |
-| 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | Changes / Files / Preview，以及 SSH 专用 Transfers / Forwarding |
+| 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | 按会话状态自动选择 Changes / Files / Preview，以及 SSH 专用 Transfers / Forwarding；手动切换会锁定 |
 
 窄窗口时侧栏和检查器改为覆盖层，优先保证终端可用宽度。布局不再使用固定 720/900px 断点，而是按终端列宽预算决定是否停靠，见 [`src/app/lib/app-shell-layout.ts`](../src/app/lib/app-shell-layout.ts)。
 
@@ -84,17 +84,17 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 3. 检查器（右栏）
 
-页签由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 裁剪。一次只挂载当前页签。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
+检查器默认跟随当前会话：有未审阅 Git 改动时显示 Changes；用户已打开 Preview 时显示 Preview；SSH 传输进行中显示 Transfers；其余显示 Files。手动选择会锁定，直到切换会话或回到自动。可用视图由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 裁剪；自动选择与锁定见 [`inspector-context.ts`](../src/ui/inspector-context.ts)。一次只挂载当前视图。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
 
-| 页签 | 范围 | 内容 | 入口 |
+| 视图 | 范围 | 内容 | 入口 |
 |------|------|------|------|
 | Changes | 仓库 profile | 只读 staged / unstaged / untracked | [`DiffPanel.tsx`](../src/ui/DiffPanel.tsx) |
 | Files | 传输绑定 | 目录树、搜索、预览、SSH 传输 | [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx) · [`FilePreview.tsx`](../src/ui/FilePreview.tsx) |
-| Preview | 会话 | workspace-bound WebView；有来源时提升为主 tab | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) · [`PreviewSuggestionBar.tsx`](../src/ui/PreviewSuggestionBar.tsx) |
+| Preview | 会话 | workspace-bound WebView；用户打开后才自动跟随 | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) · [`PreviewSuggestionBar.tsx`](../src/ui/PreviewSuggestionBar.tsx) |
 | Transfers | SSH | 上传/下载进度、取消、恢复 | [`TransferCenter.tsx`](../src/ui/TransferCenter.tsx) |
 | Forwarding | SSH 绑定 | 本地/动态/反向端口转发 | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
 
-远端文件属性在 Files 右键弹窗中展示（[`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx)）。连接诊断保留独立故障处理路径，known_hosts 在设置 → SSH。页签取舍见 [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md)。
+远端文件属性在 Files 右键弹窗中展示（[`RemoteMetadataPanel.tsx`](../src/modules/ssh/remote-fs/RemoteMetadataPanel.tsx)）。连接诊断保留独立故障处理路径，known_hosts 在设置 → SSH。交互模型见 [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md)。⌘K 可直达全部视图。
 
 纯净模式可只打开 Files（`filesOnly`），不展开整栏检查器。
 
@@ -165,7 +165,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 检查器 Preview 页控制独立的 loopback WebView：来源绑定到 repository / worktree / session / terminal generation；支持导航、安全重启准备和显式 SSH tunnel。不自动扫端口，不自动启动服务，独立 Preview 窗口没有 app command 权限。合同见 [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。
 
-检测到 localhost URL 时，终端上方给出一次性「打开 Preview」（仍只打开检查器页，不自动起 WebView）；有活跃来源时 Preview 从「更多」提升到主 tab。
+检测到 localhost URL 时，终端上方给出一次性「打开 Preview」（仍只打开检查器 Preview 视图，不自动起 WebView）。用户打开过 Preview 后，自动跟随才会选中该视图。
 
 代码：[`src-tauri/src/modules/preview.rs`](../src-tauri/src/modules/preview.rs) · [`preview-window.ts`](../src/modules/preview/preview-window.ts) · [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) · [`PreviewSuggestionBar.tsx`](../src/ui/PreviewSuggestionBar.tsx)。
 
