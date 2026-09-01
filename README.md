@@ -25,7 +25,7 @@
 
 Warp keeps adding features it doesn't need. It boots slowly, eats memory, and drifts further from being a terminal you reach for every day. cmux and Wave have the right instincts, but their styling is the kind you don't want sitting in your Dock. macOS Terminal and iTerm2 never grew a sidebar, so juggling several projects means a forest of tabs you switch through by muscle memory.
 
-Tunara is built for that gap. A local terminal — **real PTY, xterm.js, WebGL** — no cloud, no account, no telemetry. A sidebar on the left groups local sessions by working directory and SSH sessions by host so a glance tells you which project or machine is running and which AI agent is in it. A read-only review rail on the right lets you eyeball your diff before you commit. The installer is about 30 MB and the app opens nearly instantly.
+Tunara is built for that gap. A local terminal — **real PTY, xterm.js, WebGL** — no cloud, no account, no telemetry. A sidebar on the left groups local sessions by working directory and SSH sessions by host so a glance tells you which project or machine is running and which AI agent is in it. The Inspector on the right follows the current task — unreviewed Git changes, files, Preview, or SSH transfers — without becoming a second IDE. The installer is about 30 MB and the app opens nearly instantly.
 
 It is not a Warp replacement. It is for people who **switched back to iTerm and still feel something is missing**.
 
@@ -36,12 +36,12 @@ It is not a Warp replacement. It is for people who **switched back to iTerm and 
 </p>
 
 <p align="center">
-  <em>A real terminal workspace with a smart session sidebar, agent detection, split panes, and a read-only review rail.</em>
+  <em>A real terminal workspace with a smart session sidebar, agent detection, split panes, and a contextual Inspector.</em>
 </p>
 
-| Focused terminal | Session sidebar | Review rail |
+| Focused terminal | Session sidebar | Inspector |
 |------------------|-----------------|-------------|
-| <img src="assets/screenshots/tunara-codex-terminal.jpg" width="300" alt="Tunara focused Codex terminal session"> | <img src="assets/screenshots/tunara-sidebar-sessions.jpg" width="300" alt="Tunara sidebar grouping Claude Code and Codex sessions by directory"> | <img src="assets/screenshots/tunara-claude-review-rail.jpg" width="300" alt="Tunara Claude Code session with the right review rail open"> |
+| <img src="assets/screenshots/tunara-codex-terminal.jpg" width="300" alt="Tunara focused Codex terminal session"> | <img src="assets/screenshots/tunara-sidebar-sessions.jpg" width="300" alt="Tunara sidebar grouping Claude Code and Codex sessions by directory"> | <img src="assets/screenshots/tunara-claude-review-rail.jpg" width="300" alt="Tunara Claude Code session with the Inspector Changes view open"> |
 
 ## Core capabilities
 
@@ -92,9 +92,9 @@ Remote sessions use a long-lived russh connection, not a wrapper around `/usr/bi
 
 ### Files and Inspector
 
-The right rail is a contextual Inspector, not only a diff. Local and SSH files can open as workspace tabs beside the terminal.
+The right rail is a contextual Inspector, not only a diff. It follows the current session and demotes chrome to a compact switcher plus ⌘K. Local and SSH files can open as workspace tabs beside the terminal.
 
-- Tabs: Changes, Files, Preview; SSH adds Transfers and Forwarding
+- Views: Changes, Files, Preview; SSH adds Transfers and Forwarding. Auto-follow unless you lock a view.
 - Markdown/MDX reading and bounded single-file edits (UTF-8, ≤256 KiB, fingerprint-checked)
 - Read-only Jupyter notebook preview (no code execution, no HTML/script/rich output)
 - Safe image previews and bounded “view beginning” for oversized text/logs
@@ -111,9 +111,9 @@ Tunara's deepest lifecycle and resume integrations prioritize Claude Code, Codex
 
 What it explicitly does **not** do: bundled AI chat, model integration, MCP orchestration, agent launcher, or structured parsing of agent stdout. Tunara recognizes who is running. It does not run the agent for you.
 
-### Review rail
+### Changes
 
-The right pane is a read-only git diff for "one more look before commit" — the Inspector **Changes** tab. Reads go through git2 (zero-process overhead); writes always go through the system `git` CLI — meaning, **Tunara will never commit or push on your behalf**.
+The Inspector **Changes** view is a read-only git diff for "one more look before commit". Reads go through git2 (zero-process overhead); writes always go through the system `git` CLI — meaning, **Tunara will never commit or push on your behalf**.
 
 - Staged / Unstaged / Untracked, three-section layout
 - Per-file diff preview with syntax highlighting; Markdown files can be read in Files
@@ -244,7 +244,7 @@ src-tauri/src/          # Rust backend
 └── lib.rs              # Tauri command registration
 ```
 
-The full map, including Inspector tabs and IPC entry points, is in [docs/FEATURES.md](docs/FEATURES.md).
+The full map, including Inspector views and IPC entry points, is in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Roadmap
 
@@ -255,7 +255,7 @@ The full map, including Inspector tabs and IPC entry points, is in [docs/FEATURE
 | M0 Store | done | Zustand stores + Tauri Store persistence |
 | M1 Multi-session | done | Multi-PTY, sidebar grouping, tab navigation |
 | M2 Agent | done | 12 agent CLIs auto-detected |
-| M3 Git Diff | done | git2 + read-only review rail |
+| M3 Git Diff | done | git2 + read-only Inspector Changes view |
 | P0 Split Pane | done | Horizontal / vertical split + draggable divider |
 | P0 Session lifecycle | done | runState state machine + semantic state markers |
 | P1 Persistence | done | Sessions + UI layout across restarts |

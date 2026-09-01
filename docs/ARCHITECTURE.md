@@ -31,12 +31,12 @@ fixed three-pane layout under a custom titlebar:
   [`TerminalView`](../src/ui/TerminalView.tsx)): the actual terminals. xterm.js +
   WebGL, one per session, optionally split into two panes.
 - **Right: `InspectorPanel`** ([`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx)):
-  read-only git diff ([`DiffPanel`](../src/ui/DiffPanel.tsx)),
-  file tree ([`FileExplorer`](../src/ui/FileExplorer.tsx)), bounded text/Markdown
-  reading and safe editing ([`FilePreview`](../src/ui/FilePreview.tsx)), Preview
-  controls, and SSH-only tabs (transfers and forwarding). Tab availability is computed in
-  [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Only the
-  active Inspector tab is mounted.
+  contextual Inspector (Chinese UI: 检查器). It auto-selects Changes, Files,
+  Preview, or SSH Transfers, with Forwarding available from the compact
+  switcher. Auto-follow and lock live in
+  [`inspector-context.ts`](../src/ui/inspector-context.ts). View availability is
+  computed in [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts).
+  Only the active Inspector view is mounted.
 
 Auxiliary panes switch to floating overlays when docking them would shrink the
 terminal workspace below a usable width (280px per split column, 480px for a

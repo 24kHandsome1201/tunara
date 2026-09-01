@@ -559,7 +559,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     setRemote(null);
     if (notGit || (!isRemote && !repoPath)) return () => { cancelled = true; };
     // I3: remote (SSH) sessions now also resolve ahead/behind over the exec
-    // channel, so the bottom indicator matches the local review rail instead
+    // channel, so the bottom indicator matches the local Inspector Changes view instead
     // of always showing a bare "Git" label.
     if (isRemote) {
       setRemote(session.gitRemoteState ?? null);

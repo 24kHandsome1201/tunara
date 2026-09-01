@@ -314,7 +314,7 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
     { id: "search", label: t("pure.action.search"), run: () => searchActiveTerminal(activeSessionId) },
     { id: "files", label: t("pure.files.button"), run: () => {
       const ui = useUIStore.getState();
-      ui.setInspectorTab("files");
+      ui.setInspectorTab("files", { sessionId: activeSessionId });
       ui.setPanelVisible(true);
     } },
     { id: "palette", label: t("pure.action.command_palette"), run: () => useUIStore.getState().setOverlay("command-palette") },

@@ -28,7 +28,7 @@
 | [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md) | Preview 来源绑定与安全边界 |
 | [THEME_SHELL_TINTING.md](./THEME_SHELL_TINTING.md) | 界面与终端统一配色 |
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | 视觉与交互约定 |
-| [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 右侧栏现状与收敛提案（非产品合同） |
+| [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 检查器交互模型：自动选择、锁定与视图清单 |
 | [SIDEBAR_SSH.md](./SIDEBAR_SSH.md) | 左侧栏 SSH 按主机分组：已落地合同、落地前根因与后续体验项 |
 | [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md) | 标题栏按当前设备收口工作面：已落地合同与示意图 |
 | [TERMINAL_WALLPAPER.md](./TERMINAL_WALLPAPER.md) | 可选终端列背景：默认关，外壳仍实色 |

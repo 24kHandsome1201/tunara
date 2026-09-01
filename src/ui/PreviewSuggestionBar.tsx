@@ -26,7 +26,7 @@ export function PreviewSuggestionBar({ session }: PreviewSuggestionBarProps) {
       onAction={() => {
         acknowledge();
         useSessionsStore.getState().setActive(session.id);
-        openInspectorTab("preview");
+        openInspectorTab("preview", session.id);
       }}
       dismissLabel={t("preview.suggest.dismiss")}
       onDismiss={acknowledge}

@@ -1275,7 +1275,7 @@ export function FileExplorer({
           activeTransferNotice={activeTransferNotice}
           onOpenTransfers={() => {
             useUIStore.getState().setPanelVisible(true);
-            useUIStore.getState().setInspectorTab("transfers");
+            useUIStore.getState().setInspectorTab("transfers", { sessionId });
           }}
         />
       )}

@@ -25,7 +25,7 @@
 
 Warp 想做的事太多，启动慢、内存占用高，离一个"每天打开就用"的终端越来越远。cmux、Wave 这类新工具方向是对的，但样式做得让人不太想留它在 Dock。系统自带的 Terminal 和 iTerm2 一直没有侧栏，多个项目同时跑就只能开十几个 tab，靠肌肉记忆切换。
 
-Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xterm.js、WebGL**，没有云、没有账号、没有埋点。左边一条侧栏把本地会话按工作目录、SSH 会话按主机分好组，看一眼就知道哪个项目或哪台机器在跑、跑的是哪个 AI agent。右边一条只读 review 面板，让你在 commit 之前快速过一遍 diff。安装包大约 30 MB，启动几乎瞬开。
+Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xterm.js、WebGL**，没有云、没有账号、没有埋点。左边一条侧栏把本地会话按工作目录、SSH 会话按主机分好组，看一眼就知道哪个项目或哪台机器在跑、跑的是哪个 AI agent。右边的检查器跟随当前任务——未审阅的 Git 改动、文件、Preview 或 SSH 传输——而不是再做一个 IDE。安装包大约 30 MB，启动几乎瞬开。
 
 它不是 Warp 的替代品。它是给那些**装回 iTerm 又总觉得缺点什么**的人准备的。
 
@@ -36,12 +36,12 @@ Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xter
 </p>
 
 <p align="center">
-  <em>真实终端工作区，带智能会话侧栏、agent 识别、分栏和只读 review 面板。</em>
+  <em>真实终端工作区，带智能会话侧栏、agent 识别、分栏和按上下文工作的检查器。</em>
 </p>
 
-| 聚焦终端 | 会话侧栏 | Review 面板 |
+| 聚焦终端 | 会话侧栏 | 检查器 |
 |----------|----------|-------------|
-| <img src="assets/screenshots/tunara-codex-terminal.jpg" width="300" alt="Tunara 聚焦的 Codex 终端会话"> | <img src="assets/screenshots/tunara-sidebar-sessions.jpg" width="300" alt="Tunara 侧栏按目录分组 Claude Code 和 Codex 会话"> | <img src="assets/screenshots/tunara-claude-review-rail.jpg" width="300" alt="Tunara 打开右侧 review 面板的 Claude Code 会话"> |
+| <img src="assets/screenshots/tunara-codex-terminal.jpg" width="300" alt="Tunara 聚焦的 Codex 终端会话"> | <img src="assets/screenshots/tunara-sidebar-sessions.jpg" width="300" alt="Tunara 侧栏按目录分组 Claude Code 和 Codex 会话"> | <img src="assets/screenshots/tunara-claude-review-rail.jpg" width="300" alt="Tunara 打开检查器 Changes 视图的 Claude Code 会话"> |
 
 ## 核心能力
 
@@ -90,9 +90,9 @@ Tunara 让重点会话保持醒目，同时不把终端变成项目管理工具�
 
 ### 文件与检查器
 
-右栏是按上下文裁剪的检查器，不只是 diff。本地与 SSH 文件可以和工作区终端标签并列打开。
+右栏是按上下文裁剪的检查器，不只是 diff。它跟随当前会话，常驻页签收敛成紧凑切换器和 ⌘K。本地与 SSH 文件可以和工作区终端标签并列打开。
 
-- 页签：Changes、Files、Preview；SSH 另有 Transfers 与 Forwarding
+- 视图：Changes、Files、Preview；SSH 另有 Transfers 与 Forwarding。默认自动跟随，手动选择会锁定。
 - Markdown/MDX 阅读与有边界的单文件编辑（UTF-8、≤256 KiB、fingerprint 校验）
 - 只读 Jupyter notebook 预览（不执行代码，不渲染 HTML/脚本/富输出）
 - 安全图片预览，以及超大文本/日志的受限“查看开头”
@@ -109,12 +109,12 @@ Tunara 优先为 Claude Code、Codex、Cursor、OpenCode 提供更完整的生�
 
 明确不做：内置 AI 聊天、模型接入、MCP 编排、agent 启动器、agent stdout 结构化解析。Tunara 只是认出谁在跑，不替你管 agent。
 
-### Review 面板
+### Changes
 
-右栏 Changes 页签是只读的 Git diff，给你"在 commit 之前再看一眼"用。读 git 走 git2（零进程开销），写永远走系统 `git` CLI，也就是说，**Tunara 自己永远不会替你 commit 或 push**。
+检查器的 **Changes** 视图是只读的 Git diff，给你"在 commit 之前再看一眼"用。读 git 走 git2（零进程开销），写永远走系统 `git` CLI，也就是说，**Tunara 自己永远不会替你 commit 或 push**。
 
 - Staged / Unstaged / Untracked 三段式分区
-- 按文件展开的 diff 预览与语法高亮；Markdown 阅读在 Files 页签
+- 按文件展开的 diff 预览与语法高亮；Markdown 阅读在 Files 视图
 - 一键跳转外部编辑器：VS Code / Cursor / Zed / Sublime
 - 二进制 / 超大文件友好降级
 - Ahead/Behind 远程状态展示
@@ -240,7 +240,7 @@ src-tauri/src/          # Rust 后端
 └── lib.rs              # Tauri 命令注册
 ```
 
-完整对照（含检查器页签与 IPC 入口）见 [docs/FEATURES.md](docs/FEATURES.md)。
+完整对照（含检查器视图与 IPC 入口）见 [docs/FEATURES.md](docs/FEATURES.md)。
 
 ## 路线图
 

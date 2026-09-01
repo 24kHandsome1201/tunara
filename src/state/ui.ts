@@ -344,6 +344,11 @@ interface UIState extends AppearanceSettings {
   viewportWidth: number;
   split: SplitState;
   inspectorTab: InspectorTab;
+  /** Manual Inspector view lock. Session switch or explicit Auto restores follow. */
+  inspectorLocked: boolean;
+  inspectorLockSessionId: string | null;
+  /** Sessions where the user has opened Preview; drives auto-select, not persisted. */
+  inspectorPreviewOpenedSessionIds: Record<string, true>;
   settingsTab: SettingsTab;
   fileTabs: WorkspaceFileTab[];
   activeFileTabId: string | null;
@@ -382,7 +387,12 @@ interface UIState extends AppearanceSettings {
   togglePanel: () => void;
   setOverlay: (o: OverlayType) => void;
   openSshConnect: (prefill?: SshConnectPrefill | null) => void;
-  setInspectorTab: (t: InspectorTab) => void;
+  setInspectorTab: (t: InspectorTab, options?: { lock?: boolean; sessionId?: string | null }) => void;
+  lockInspectorView: (sessionId?: string | null) => void;
+  unlockInspectorView: () => void;
+  syncInspectorLockForSession: (sessionId: string | null) => void;
+  markInspectorPreviewOpened: (sessionId: string) => void;
+  clearInspectorPreviewOpened: (sessionId: string) => void;
   setSettingsTab: (t: SettingsTab) => void;
   openFileTab: (tab: Omit<WorkspaceFileTab, "id" | "dirty">) => void;
   setActiveFileTab: (id: string) => void;
@@ -462,6 +472,9 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: emptySplitState(),
     inspectorTab: "changes" as InspectorTab,
+    inspectorLocked: false,
+    inspectorLockSessionId: null,
+    inspectorPreviewOpenedSessionIds: {},
     settingsTab: "appearance" as SettingsTab,
     fileTabs: [],
     activeFileTabId: null,
@@ -525,7 +538,37 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       overlay: "ssh",
       sshPrefill: prefill ?? null,
     }),
-    setInspectorTab: (inspectorTab) => set({ inspectorTab }),
+    setInspectorTab: (inspectorTab, options) => set((state) => {
+      const lock = options?.lock !== false;
+      const sessionId = options?.sessionId === undefined ? state.inspectorLockSessionId : options.sessionId;
+      return {
+        inspectorTab,
+        inspectorLocked: lock,
+        inspectorLockSessionId: lock ? sessionId : null,
+      };
+    }),
+    lockInspectorView: (sessionId) => set((state) => ({
+      inspectorLocked: true,
+      inspectorLockSessionId: sessionId === undefined ? state.inspectorLockSessionId : sessionId,
+    })),
+    unlockInspectorView: () => set({ inspectorLocked: false, inspectorLockSessionId: null }),
+    syncInspectorLockForSession: (sessionId) => set((state) => {
+      if (!state.inspectorLocked) return {};
+      if (state.inspectorLockSessionId == null) return { inspectorLockSessionId: sessionId };
+      if (state.inspectorLockSessionId === sessionId) return {};
+      return { inspectorLocked: false, inspectorLockSessionId: null };
+    }),
+    markInspectorPreviewOpened: (sessionId) => set((state) => (
+      state.inspectorPreviewOpenedSessionIds[sessionId]
+        ? {}
+        : { inspectorPreviewOpenedSessionIds: { ...state.inspectorPreviewOpenedSessionIds, [sessionId]: true } }
+    )),
+    clearInspectorPreviewOpened: (sessionId) => set((state) => {
+      if (!state.inspectorPreviewOpenedSessionIds[sessionId]) return {};
+      const inspectorPreviewOpenedSessionIds = { ...state.inspectorPreviewOpenedSessionIds };
+      delete inspectorPreviewOpenedSessionIds[sessionId];
+      return { inspectorPreviewOpenedSessionIds };
+    }),
     setSettingsTab: (settingsTab) => set({ settingsTab }),
     openFileTab: (tab) => set((state) => {
       const id = workspaceFileTabId(tab.sessionId, tab.filePath);

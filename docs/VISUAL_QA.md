@@ -34,7 +34,7 @@ TUIs draw their own chrome, so their ASCII boxes and prompts are not Tunara UI.
 | Compact shell | 640px minimum | light | sidebar overlay, terminal width, close/toggle hit targets |
 
 For every capture, also verify keyboard focus for the sidebar session list,
-Inspector tabs, overflow menu, and close controls. A visual match does not
+Inspector switcher, Auto/Locked indicator, and close controls. A visual match does not
 replace those interaction checks.
 
 ## Titlebar and traffic lights
@@ -65,7 +65,7 @@ replace those interaction checks.
 - [ ] Resize the native window to its 640px minimum and verify the sidebar is
       an overlay rather than consuming the terminal canvas.
 - [ ] Sidebar can hide without leaving a dead resize gutter.
-- [ ] Inspector tabs (Changes / Files / Preview) stay reachable at ~960px
+- [ ] Inspector views (Changes / Files / Preview) stay reachable at ~960px
       width.
 - [ ] Command palette and overlays remain centered and scrollable.
 
