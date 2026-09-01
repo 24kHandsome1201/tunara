@@ -18,6 +18,7 @@ commands.allow = [
   "fs_grep",
   "fs_cancel_search",
   "cancel_operation_v1",
+  "fs_scan_recent_repos",
   "resolve_all_bins",
   "set_bin_override",
   "clear_bin_overrides",

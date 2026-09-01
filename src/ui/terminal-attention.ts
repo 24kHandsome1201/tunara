@@ -5,23 +5,26 @@ import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { t } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "./lib/current-window";
+import { rememberBackgroundAttention } from "./lib/background-attention-state";
 
-export function requestInformationalAttention() {
+/**
+ * Dock bounce for a background event. Same `eventKey` never bounces twice.
+ * OSC 9/99/777 no longer bounce or toast — Agent confirmation is the product
+ * attention path; long commands and BEL still share this one bounce helper.
+ */
+export function requestInformationalAttention(eventKey = "bell") {
   if (document.hasFocus() || !useUIStore.getState().bellNotification) return;
+  if (!rememberBackgroundAttention(eventKey)) return;
   tryGetCurrentWindow()
     ?.requestUserAttention(UserAttentionType.Informational)
     .catch(() => {});
 }
 
-export function emitTerminalNotification(sessionId: string, notification: TerminalNotification) {
-  if (!useUIStore.getState().bellNotification) return;
-  useUIStore.getState().addToast({
-    sessionId,
-    title: notification.title,
-    subtitle: notification.body ?? t("terminal.notification.default"),
-    variant: "success",
-  });
-  requestInformationalAttention();
+export function emitTerminalNotification(_sessionId: string, _notification: TerminalNotification) {
+  // OSC notify sequences used to toast + bounce independently of Agent
+  // confirmation, which stacked with the "waiting for you" cue. Parse them
+  // so the PTY still consumes the sequence, but do not surface a second
+  // reminder path.
 }
 
 /**

@@ -1026,6 +1026,8 @@
   "app.empty.choose_folder": "选择文件夹",
   "app.empty.connect_ssh": "连接 SSH",
   "app.empty.recent": "最近目录",
+  "app.empty.nearby": "附近的项目",
+  "app.empty.open_here": "在此目录新建终端",
   "app.splash.restoring": "正在恢复会话…",
   "statusbar.sessions": "{{count}} 个会话",
   "ssh.connecting": "连接中…",

@@ -159,6 +159,8 @@ export interface WorkspaceSnapshotV1 {
   commandUsage: Record<string, number>;
   /** User-defined command-template workflows. */
   workflows: Workflow[];
+  /** Most-recently-active session ids for Mod+Tab, restored across restarts. */
+  recentSessionIds?: string[];
 }
 
 /** Stable persisted content; savedAt is materialized only for an actual write. */
@@ -316,6 +318,29 @@ function sanitizeCommandUsage(raw: unknown): Record<string, number> {
   }
   entries.sort((a, b) => b[1] - a[1]);
   return Object.fromEntries(entries.slice(0, 50));
+}
+
+const MAX_RECENT_SESSION_IDS = 40;
+
+export function sanitizeRecentSessionIds(
+  raw: unknown,
+  sessionIds: ReadonlySet<string>,
+  fallbackActiveId: string | null = null,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item !== "string" || !sessionIds.has(item) || seen.has(item)) continue;
+      seen.add(item);
+      out.push(item);
+      if (out.length >= MAX_RECENT_SESSION_IDS) break;
+    }
+  }
+  if (fallbackActiveId && sessionIds.has(fallbackActiveId) && !seen.has(fallbackActiveId)) {
+    out.push(fallbackActiveId);
+  }
+  return out;
 }
 
 function finiteNumber(raw: unknown): number | null {
@@ -482,6 +507,7 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
   const recentCommands = sanitizeRecentCommands(obj.recentCommands);
   const commandUsage = sanitizeCommandUsage(obj.commandUsage);
   const workflows = sanitizeWorkflows(obj.workflows);
+  const recentSessionIds = sanitizeRecentSessionIds(obj.recentSessionIds, sessionIds, activeSessionId);
 
   return {
     version: 1,
@@ -496,5 +522,6 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     hostFilePrefs: sanitizeHostFilePrefsMap(obj.hostFilePrefs),
     commandUsage,
     workflows,
+    recentSessionIds,
   };
 }

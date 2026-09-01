@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { setDockBadge } from "@/ui/dock-badge";
+import { resetBackgroundAttention } from "@/ui/lib/background-attention-state";
 import { countUnread } from "./lib/unread-count";
 
 export function useDockBadge() {
@@ -10,6 +11,7 @@ export function useDockBadge() {
       // the unread state will clear naturally via markRead and the badge follows.
       if (document.hasFocus()) {
         setDockBadge(0);
+        resetBackgroundAttention();
         return;
       }
       const sessions = useSessionsStore.getState().sessions;
