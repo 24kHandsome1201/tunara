@@ -1456,7 +1456,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   const terminalChrome = read("src/ui/TerminalViewChrome.tsx");
   const terminalSearch = read("src/ui/TerminalSearchBar.tsx");
   const terminalSearchHook = read("src/ui/useTerminalSearch.ts");
-  const terminalBlockFilter = read("src/modules/terminal/lib/terminal-block-filter.ts");
   const terminalRuntimeSync = read("src/ui/useTerminalRuntimeSync.ts");
   const terminalWebgl = read("src/ui/useTerminalWebgl.ts");
   const terminalQuickSelect = read("src/modules/terminal/lib/terminal-quick-select.ts");
@@ -1599,9 +1598,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalSearchHook, /registerSearchAddon/);
   assert.match(terminalSearchHook, /setSearchCount\(\{ current: 0, total: 0 \}\)/);
   assert.match(terminalSearchHook, /handleCustomKeyEvent/);
-  assert.match(terminalBlockFilter, /export function filterTerminalBlockOutput/);
-  assert.match(terminalBlockFilter, /export function formatTerminalBlockFilterText/);
-  assert.match(terminalBlockFilter, /invalidRegex: true/);
+  assert.equal(existsSync(resolve(root, "src/modules/terminal/lib/terminal-block-filter.ts")), false);
   assert.match(terminalRuntimeSync, /export function useTerminalRuntimeSync/);
   assert.match(terminalRuntimeSync, /const resolvedTheme = theme === "system"/);
   assert.match(terminalRuntimeSync, /getTerminalTheme\(resolvedTheme, accent\)/);

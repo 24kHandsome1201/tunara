@@ -21,115 +21,11 @@
 
 ---
 
-## 为什么有这个项目
-
-Warp 想做的事太多，启动慢、内存占用高，离一个"每天打开就用"的终端越来越远。cmux、Wave 这类新工具方向是对的，但样式做得让人不太想留它在 Dock。系统自带的 Terminal 和 iTerm2 一直没有侧栏，多个项目同时跑就只能开十几个 tab，靠肌肉记忆切换。
-
-Tunara 就是冲着这个空当来的。一个本地终端，**真实 PTY、xterm.js、WebGL**，没有云、没有账号、没有埋点。左边一条侧栏把本地会话按工作目录、SSH 会话按主机分好组，看一眼就知道哪个项目或哪台机器在跑、跑的是哪个 AI agent。右边的检查器跟随当前任务——未审阅的 Git 改动、文件、Preview 或 SSH 传输——而不是再做一个 IDE。安装包大约 30 MB，启动几乎瞬开。
-
-它不是 Warp 的替代品。它是给那些**装回 iTerm 又总觉得缺点什么**的人准备的。
-
-## 截图
-
 <p align="center">
   <img src="assets/screenshots/tunara-split-agents.jpg" width="960" alt="Tunara 在分栏终端工作区里同时运行 Claude Code 和 Codex">
 </p>
 
-<p align="center">
-  <em>真实终端工作区，带智能会话侧栏、agent 识别、分栏和按上下文工作的检查器。</em>
-</p>
-
-| 聚焦终端 | 会话侧栏 | 检查器 |
-|----------|----------|-------------|
-| <img src="assets/screenshots/tunara-codex-terminal.jpg" width="300" alt="Tunara 聚焦的 Codex 终端会话"> | <img src="assets/screenshots/tunara-sidebar-sessions.jpg" width="300" alt="Tunara 侧栏按目录分组 Claude Code 和 Codex 会话"> | <img src="assets/screenshots/tunara-claude-review-rail.jpg" width="300" alt="Tunara 打开检查器 Changes 视图的 Claude Code 会话"> |
-
-## 核心能力
-
-### 终端
-
-终端是主角，不是配件。跑的是真实 `portable-pty`，前端用 xterm.js 6 加 WebGL renderer，滚动和大批量输出都不掉帧。输出经过 RAF 合批和双层背压（PTY 1MiB / 前端 2MiB），即使 `cat` 一个大日志也不会卡住界面。
-
-- 多会话 PTY；可在任意 pane 右侧或下方继续拆分，最多 4 个 pane
-- ⌘F 终端内搜索 + 匹配计数
-- 命令块输出筛选：文本 / 正则 / 大小写 / 反选 / 上下文行
-- 可点击 URL，固定 10000 行 scrollback
-- OSC 7 跟踪 cwd，OSC 133 接 shell integration
-- 行内图片（SIXEL / iTerm IIP）
-- 同步作用于界面与终端的配色：跟随系统、浅色、深色
-
-### 智能侧栏
-
-侧栏是 Tunara 跟其他终端最直观的区别。本地会话按工作目录分组，SSH 会话按主机分组；同一项目或同一主机上的多个会话会折叠到一起；分组可以折叠、批量关闭、整组拖动；会话本身可以重命名、搜索、模糊匹配。
-
-- 目录组折叠 / 展开 / 批量关闭
-- 拖拽排序，搜索过滤（fuzzy），就地重命名
-- Unread 指示器 + 明确的运行状态标记
-- 关闭确认：running 状态需要双击，避免误关跑到一半的任务
-- 跨重启恢复会话列表和 UI 布局
-
-### 会话管理
-
-Tunara 让重点会话保持醒目，同时不把终端变成项目管理工具。
-
-- 置顶会话会显示星标，并在命令面板的会话结果里排得更靠前
-
-后续方向、功能记录和取舍见 [docs/ROADMAP.md](docs/ROADMAP.md)、[docs/FEATURES.md](docs/FEATURES.md)、[docs/PRODUCT_REVIEW.md](docs/PRODUCT_REVIEW.md)。
-
-### SSH
-
-远程会话走 russh 长连接，不是包一层 `/usr/bin/ssh`。主机 profile 只保存地址和认证*偏好*，密码和口令只在单次连接的内存里使用。
-
-- 显式认证：SSH Agent、单个私钥、密码或 keyboard-interactive
-- TOFU 主机密钥（`unknown` 可写入 known_hosts；`unverifiable` 仅本次）
-- 可选远程 bash/zsh 集成，用于目录、命令边界和 agent 状态
-- SFTP 浏览、搜索、grep、冲突检测文本保存、mkdir/rename/delete
-- 批量上传/下载：进度、取消、journal 恢复
-- 只读远程 Git review（一次性 exec channel）
-- 本地/动态端口转发、重连快照、连接诊断
-- 可搜索并按在线/离线筛选的已保存主机与 SSH config 主机列表
-
-### 文件与检查器
-
-右栏是按上下文裁剪的检查器，不只是 diff。它跟随当前会话，常驻页签收敛成紧凑切换器和 ⌘K。本地与 SSH 文件可以和工作区终端标签并列打开。
-
-- 视图：Changes、Files、Preview；SSH 另有 Transfers 与 Forwarding。默认自动跟随，手动选择会锁定。
-- Markdown/MDX 阅读与有边界的单文件编辑（UTF-8、≤256 KiB、fingerprint 校验）
-- 只读 Jupyter notebook 预览（不执行代码，不渲染 HTML/脚本/富输出）
-- 安全图片预览，以及超大文本/日志的受限“查看开头”
-- 绑定工作区的 Preview 窗口（loopback；SSH tunnel 必须显式建立，不扫端口）
-
-### AI Agent 识别
-
-Tunara 为四个一等公民 Agent CLI 提供生命周期与恢复集成。其他 coding agent 按普通终端进程处理。
-
-- 优先支持 Claude Code、Codex、Cursor、OpenCode；生命周期与 resume 能力因 CLI 而异
-- 紧凑上下文条显示识别到的 agent 与可用运行状态
-- 支持时显示 Agent 改动文件计数与 Changes 入口
-
-明确不做：内置 AI 聊天、模型接入、MCP 编排、agent 启动器、agent stdout 结构化解析。Tunara 只是认出谁在跑，不替你管 agent。
-
-### Changes
-
-检查器的 **Changes** 视图是只读的 Git diff，给你"在 commit 之前再看一眼"用。读 git 走 git2（零进程开销），写永远走系统 `git` CLI，也就是说，**Tunara 自己永远不会替你 commit 或 push**。
-
-- Staged / Unstaged / Untracked 三段式分区
-- 按文件展开的 diff 预览与语法高亮；Markdown 阅读在 Files 视图
-- 一键跳转外部编辑器：VS Code / Cursor / Zed / Sublime
-- 二进制 / 超大文件友好降级
-- Ahead/Behind 远程状态展示
-
-### 桌面体验
-
-- ⌘K Command Palette，权重排序，覆盖所有动作和会话切换
-- 深浅色模式 + 跟随系统，陶土强调色
-- 纯净模式（⌘⇧P）只收起壳层，不卸载 PTY
-- 实色纸面层级 + macOS 原生覆盖标题栏
-- Toast 通知：退出动画、hover 暂停、进度条
-- 低打扰的签名更新提醒：仅在确有新版本时出现
-- 设置页签：通用、快捷键、SSH、高级
-- 右键菜单覆盖会话、目录组、文件
-- 响应式布局：终端可用宽度不足时，侧栏/检查器改为覆盖层
-- 窗口状态持久化（位置、尺寸）
+Tunara 是一个终端。左边侧栏按项目和机器分组你的会话，agent 需要你时你会知道。右边随手看一眼它改了什么。
 
 ## 安装
 
@@ -146,146 +42,19 @@ brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
 brew install --cask tunara
 ```
 
-可在“设置 > 高级”中检查、安装更新并重启；Homebrew 用户也可运行 `brew upgrade --cask tunara`。
+可在设置中检查、安装更新并重启；Homebrew 用户也可运行 `brew upgrade --cask tunara`。
 
-### 从源码构建
+## 它不是什么
 
-```bash
-pnpm install
-pnpm tauri build
-```
+不是 Warp 替代品。没有内置 AI 聊天。不会替你 commit 或 push。没有账号，没有遥测。
 
-前置：Rust stable、Node 24+、pnpm 9+，加上平台对应的 [Tauri 依赖](https://tauri.app/start/prerequisites/)。
-
-**平台支持：**macOS Apple Silicon 是正式发布与支持目标。Linux 和
-Windows 仅作为实验性源码构建目标，不提供官方安装包，也不承诺完整的
-原生 Preview 能力。Linux CI 会检查共享编译与测试面，但不代表正式发布支持。
-
-## 开发
-
-```bash
-pnpm install          # 装依赖
-pnpm tauri dev        # 开发模式
-pnpm build            # 前端构建
-pnpm typecheck        # 类型检查
-pnpm test:node        # 纯前端逻辑与源码合同测试
-pnpm test:ui          # happy-dom 组件测试
-pnpm test             # 全部测试（Node + UI + Rust）
-```
-
-更深入的开发者文档在 [`docs/`](docs/)，先看 [文档索引](docs/README.md)。
-
-- [功能与代码地图](docs/FEATURES.md) —— 用户可见能力对应到前端/后端入口。
-- [架构 Architecture](docs/ARCHITECTURE.md) —— 前后端 IPC：Tauri 命令、三种传输（`invoke` / `Channel<PtyEvent>` / `git-changed` 与 `agent-hook` 事件）、以及被托管的 state。
-- [测试 Testing](docs/TESTING.md) —— `.mjs` 直接 import `.ts` 的纯逻辑约定、UI 组件门、Node/UI/Cargo 分工，以及如何加测试。
-- [Agent 识别](docs/AGENT_DETECTION.md) —— agent 识别与生命周期原理，以及新增一个 agent 的分步清单。
-- [状态与持久化 State & persistence](docs/STATE_AND_PERSISTENCE.md) —— 三个 Zustand store、持久化的 workspace 快照，以及恢复重启相关的注意点。
-- [大文件受限查看](docs/LIMITED_LARGE_FILE_VIEWING.md) —— 本地与 SSH 文本/日志的前 N 行受限查看、IPC 限额与安全行为。
-
-## 快捷键
-
-下表是 macOS 默认。Windows / Linux 实验性构建会改掉若干组合，避免抢走普通 Ctrl 序列（例如命令面板是 Ctrl+Shift+K）。全部可在“设置 > 快捷键”修改。
-
-| 操作 | macOS 默认 |
-|------|-------------|
-| 新建终端 | ⌘T（备选 ⌘N） |
-| 关闭会话 | ⌘W |
-| 水平 / 垂直分栏 | ⌘D / ⌘⇧D |
-| 切换相邻 pane | ⌘[ ⌘] ⌘⇧[ ⌘⇧] |
-| Command Palette | ⌘K |
-| 终端内搜索 | ⌘F |
-| 纯净模式 | ⌘⇧P |
-| 切到会话 1–8 / 最后一个 | ⌘1 – ⌘8 / ⌘9 |
-| 最近会话循环 | ⌘Tab |
-| 命令块上一条 / 下一条 | ⌘⇧↑ / ⌘⇧↓ |
-| 字号 +/- / 重置 | ⌘+ / ⌘- / ⌘0 |
-| 切换侧栏 / 检查器 | ⌘\ / ⌘⇧\ |
-| 设置 | ⌘, |
-| 全局唤起 / 隐藏 | ⌘⇧T |
-
-## 技术栈
-
-| 层 | 选型 |
-|----|------|
-| 前端 | React 19、Zustand 5、xterm.js 6 + WebGL、Vite 7、TypeScript 6 |
-| 后端 | Tauri 2、Rust、portable-pty、russh、git2、tokio、which |
-| 字体 | JetBrains Mono（UI / 终端 / 代码）、PingFang SC 中文回退 |
-| 构建 | pnpm 9 |
-
-最终安装包大约 30 MB，对比 Warp 的 150 MB 量级。
-
-## 目录结构
-
-```
-src/                    # React 前端
-├── app/                # 入口、初始化、快捷键、主题、壳层布局
-├── modules/            # terminal、ssh、fs、git、agent、editor、preview 等
-├── state/              # Zustand（sessions + ui）；persist 只做快照 I/O
-├── styles/             # CSS tokens + 终端 / 外壳配色
-└── ui/                 # Sidebar、MainArea、Inspector、overlays
-
-src-tauri/src/          # Rust 后端
-├── modules/
-│   ├── pty/            # portable-pty 会话管理
-│   ├── ssh/            # russh、SFTP、传输、转发、远程 Git
-│   ├── git/            # git2 只读操作
-│   ├── fs/             # 目录树、搜索、grep、受限 head
-│   ├── agent/          # CLI 预检 + hooks 监听
-│   ├── preview/        # Preview WebView 与 tunnel
-│   ├── editor/         # 外部编辑器跳转
-│   ├── resolver/       # 二进制路径解析
-│   └── process/        # 子进程管理
-└── lib.rs              # Tauri 命令注册
-```
-
-完整对照（含检查器视图与 IPC 入口）见 [docs/FEATURES.md](docs/FEATURES.md)。
-
-## 路线图
-
-1.0 已发布，主线功能在 1.5.0 全面收口（终端块导航 / OSC 8 等）：
-
-| 里程碑 | 状态 | 内容 |
-|--------|------|------|
-| M0 Store | done | Zustand stores + Tauri Store 持久化 |
-| M1 多会话 | done | 多 PTY、侧栏分组、tab 导航 |
-| M2 Agent | done | 4 个一等公民 agent CLI 自动检测 |
-| M3 Git Diff | done | git2 + 只读 review 面板 |
-| P0 Split Pane | done | 水平 / 垂直分栏 + 拖拽分割线 |
-| P0 Session 生命周期 | done | runState 状态机 + 语义状态标记 |
-| P1 持久化 | done | 会话 + UI 布局跨重启 |
-| P1 侧栏标题 | done | OSC 133 命令 / agent 推导 |
-| P2 Command Palette | done | ⌘K、模糊匹配、权重排序 |
-| P3 Agent 状态条 | done | 上下文条 + 改动计数 |
-| Session Recovery | done (1.2) | xterm buffer 快照 + 滚动恢复 |
-| SSH Client | done (1.7+) | russh 长连接、SFTP、传输、主机 profile、转发、诊断 |
-| 文件 / Preview | done (1.15–2.0) | 工作区文件标签、Markdown 安全编辑、notebook 预览、Preview 窗口 |
-
-详见 [CHANGELOG](CHANGELOG.md) 与 [docs/FEATURES.md](docs/FEATURES.md)。
-
-## 明确不做
-
-跟"做什么"同样重要。下面这些功能在路线图之外，PR 也不会被合并：
-
-- 内置 AI 聊天 / 模型接入 / MCP 编排
-- Agent catalog、agent 启动器、批量启动入口
-- Agent stdout 结构化解析、持久 Agent 事件历史/搜索或富 Agent 时间线
-- DiffPanel 里的 stage、commit、push 等写操作
-- 插件系统、自研渲染、无上限递归 tile 分栏（硬上限 4 pane）
-- 遥测、analytics、任何回传数据
-
-判断标准很简单：让终端继续是终端，而不是变成下一个 IDE 或下一个 agent 控制台。
+完整能力清单见 [docs/FEATURES.md](docs/FEATURES.md)。
 
 ## 贡献
 
 欢迎 Bug 修复、新 agent 识别、新终端配色。非小改动请先开 Issue 讨论。详见 [CONTRIBUTING](CONTRIBUTING.md) 和 [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)。
 
 安全问题请走 [SECURITY](SECURITY.md) 里说的私有渠道，不要直接开 Issue。
-
-## 致谢
-
-- 项目最早从 [terax-ai-tauri-terminal](https://github.com/emee-dev/terax-ai-tauri-terminal) 的 Tauri + xterm 脚手架起步，后续完全重写。原始版权与许可见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
-- 终端核心来自 [xterm.js](https://xtermjs.org/)、[portable-pty](https://github.com/wez/wezterm/tree/main/pty)、[git2-rs](https://github.com/rust-lang/git2-rs)。
-- 桌面壳来自 [Tauri](https://tauri.app/)。
 
 ## 许可证
 
