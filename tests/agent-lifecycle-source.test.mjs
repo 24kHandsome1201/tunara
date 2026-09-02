@@ -493,7 +493,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(source, /provenance: session\.remote/);
   assert.match(source, /agentReadyUpdate\(session, isActive\)/);
   assert.match(source, /agentWaitingConfirmationUpdate\(session, isActive\)/);
-  assert.match(source, /requestInformationalAttention\(agentConfirmationAttentionKey\(id\)\)/);
+  assert.doesNotMatch(source, /requestInformationalAttention\(agentConfirmationAttentionKey\(id\)\)/);
   assert.match(source, /agentBusyUpdate\(session\)/);
   assert.match(source, /agentExitedUpdate\(session, exitCode, isActive\)/);
   assert.match(source, /commandDetectedUpdate\(session, command\)/);

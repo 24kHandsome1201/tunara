@@ -201,6 +201,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     || Boolean(prefill?.authMethod && prefill.authMethod !== "auto"),
   );
   const [highlight, setHighlight] = useState(-1);
+  const [formError, setFormError] = useState("");
 
   useFocusTrap(containerRef);
 
@@ -255,18 +256,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
       if (generation !== configGeneration.current) return;
       setPanelModel((current) => toProfilesPanelModel(current.savedProfiles, result));
       useUIStore.getState().bumpSshProfilesEpoch();
-      if (announce) {
-        useUIStore.getState().addToast({
-          title: t("ssh.config.loaded"),
-          subtitle: t("ssh.config.loaded_detail", { available: result.imported.length, skipped: result.skipped }),
-          variant: "success",
-        });
-      }
+      if (announce) setFormError("");
     } catch {
       if (generation !== configGeneration.current) return;
-      if (announce) {
-        useUIStore.getState().addToast({ title: t("ssh.config.load_failed"), subtitle: "", variant: "error" });
-      }
+      if (announce) setFormError(t("ssh.config.load_failed"));
     } finally {
       if (generation === configGeneration.current) setLoadingConfig(false);
     }
@@ -280,7 +273,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     }).catch(() => {
       if (generation === configGeneration.current) {
         setPanelModel(EMPTY_PANEL_MODEL);
-        useUIStore.getState().addToast({ title: t("ssh.profile.load_failed"), subtitle: "", variant: "error" });
+        setFormError(t("ssh.profile.load_failed"));
       }
     }).finally(() => {
       if (generation === configGeneration.current) setLoadingConfig(false);
@@ -322,7 +315,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           useUIStore.getState().bumpSshProfilesEpoch();
           if (selectedProfile?.source === "saved" && selectedProfile.id === id) resetConnectionForm();
         })
-        .catch(() => useUIStore.getState().addToast({ title: t("ssh.profile.remove_failed"), subtitle: "", variant: "error" }));
+        .catch(() => setFormError(t("ssh.profile.remove_failed")));
     });
   };
 
@@ -351,7 +344,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       const selected = await open({ directory: false, multiple: false, title, defaultPath: current.trim() || undefined });
       if (typeof selected === "string") onPicked(selected);
     } catch {
-      useUIStore.getState().addToast({ title: t("ssh.identity_picker.failed"), subtitle: "", variant: "error" });
+      setFormError(t("ssh.identity_picker.failed"));
     }
   };
 
@@ -594,7 +587,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         setPanelModel((current) => ({ ...current, savedProfiles }));
         useUIStore.getState().bumpSshProfilesEpoch();
       } catch {
-        useUIStore.getState().addToast({ title: t("ssh.profile.save_failed"), subtitle: "", variant: "error" });
+        setFormError(t("ssh.profile.save_failed"));
       }
     },
     onRemove: deleteProfile,
@@ -713,6 +706,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               {t("ssh.port_invalid")}
             </span>
           )}
+          {formError && <p role="alert" style={{ color: "var(--c-error)", margin: 0, fontSize: "var(--fs-meta)" }}>{formError}</p>}
           {routeError && <p role="alert" style={{ color: "var(--c-warning-text)", margin: 0 }}>{routeError}</p>}
 
           <div id="ssh-connect-suggestions" role="listbox" aria-label={t("ssh.source.saved")} style={{ display: "flex", flexDirection: "column", gap: 2 }}>

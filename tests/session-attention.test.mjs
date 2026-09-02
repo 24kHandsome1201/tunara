@@ -26,6 +26,12 @@ test("sessionCue is one slot: needs-you outranks unread, running is not a cue", 
   assert.equal(sessionCue(session("unread", { unread: true, agent: "CC", agentActivity: "idle" })), "unread");
   assert.equal(sessionCue(session("running", { agent: "CC", agentActivity: "running" })), null);
   assert.equal(sessionCue(session("quiet")), null);
+  assert.equal(sessionCue(session("failed-seen", { runState: "failed" })), null);
+  assert.equal(sessionCue(session("failed-unread", { runState: "failed", unread: true })), "needs-you");
+  assert.equal(sessionCue(session("ssh-fail", {
+    remote: { host: "box", port: 22, user: "me" },
+    connection: { transport: "ssh", phase: "failed", source: "backend", updatedAt: 1 },
+  })), "needs-you");
 });
 
 test("groupCue rolls the same one-slot priority up to a directory header", () => {
@@ -47,8 +53,9 @@ test("attention row shows needs-you over running, and hides when neither exists"
     deriveAttentionRow([
       session("wait", { agent: "CC", agentActivity: "waiting_confirmation" }),
       session("run", { agent: "CX", agentActivity: "running" }),
+      session("cmd-fail", { runState: "failed", unread: true }),
     ]),
-    { kind: "needs-you", count: 1 },
+    { kind: "needs-you", count: 2 },
   );
   assert.deepEqual(
     deriveAttentionRow([

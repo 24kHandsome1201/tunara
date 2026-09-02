@@ -7,8 +7,6 @@ import {
 } from "./transfer-bridge";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { currentReadySessionBinding } from "@/state/sessions";
-import { useUIStore } from "@/state/ui";
-import { t } from "@/modules/i18n";
 import { pushRateSample, type TransferRateSample } from "./transfer-rate";
 import { canResumeRecovery } from "./transfer-resume";
 import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
@@ -194,20 +192,6 @@ export function createTransferStore(run: Runner = defaultRunner) {
             .then(({ outcome }) => {
               const status = outcome.status === "completed" ? "completed" : outcome.status === "cancelled" ? "cancelled" : outcome.status === "outcomeUnknown" ? "needsReconcile" : "failed";
               patchItem(item.transferId, item.attempt, (x) => x.status === "running" ? { ...x, outcome, status } : undefined);
-              if (outcome.status === "completed" && item.direction === "upload" && !item.batchId) {
-                useUIStore.getState().addToast({
-                  sessionId: item.binding.logicalSessionId,
-                  title: t("explorer.upload.complete"),
-                  subtitle: item.destination,
-                  variant: "success",
-                  action: {
-                    kind: "open-remote-preview",
-                    sessionId: item.binding.logicalSessionId,
-                    path: item.destination,
-                    label: t("explorer.upload.preview"),
-                  },
-                });
-              }
               if (item.recoveryId || outcome.status === "outcomeUnknown" || ("residuePath" in outcome && outcome.residuePath)) void get().loadJournal();
             })
             .catch((error: unknown) => {

@@ -3,6 +3,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { setDockBadge } from "@/ui/dock-badge";
 import { resetBackgroundAttention } from "@/ui/lib/background-attention-state";
 import { dockBadgeCount } from "@/modules/session/session-attention";
+import { requestInformationalAttention } from "@/ui/terminal-attention";
 
 export function useDockBadge() {
   useEffect(() => {
@@ -15,7 +16,9 @@ export function useDockBadge() {
         return;
       }
       const sessions = useSessionsStore.getState().sessions;
-      setDockBadge(dockBadgeCount(sessions));
+      const count = dockBadgeCount(sessions);
+      setDockBadge(count);
+      if (count > 0) requestInformationalAttention("needs-you");
     };
 
     sync();

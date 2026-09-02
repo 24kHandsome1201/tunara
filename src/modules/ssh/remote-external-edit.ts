@@ -154,10 +154,4 @@ export async function openRemoteInExternalEditor(options: {
     });
   }
   watchers.set(key, { timer, localPath, remotePath });
-  useUIStore.getState().addToast({
-    sessionId,
-    title: t("preview.editor.external_remote"),
-    subtitle: t("preview.editor.external_remote_hint"),
-    variant: "success",
-  });
 }

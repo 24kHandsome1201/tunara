@@ -3,7 +3,6 @@ import {
   Suspense,
   useEffect,
   useRef,
-  useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -33,7 +32,6 @@ import {
   resolveInspectorAutoView,
   sessionHasInProgressTransfer,
 } from "./inspector-context";
-import { AccentActionButton } from "./lib/ui-primitives";
 
 const DiffPanel = lazy(() => import("./DiffPanel").then((module) => ({ default: module.DiffPanel })));
 const TransferCenter = lazy(() => import("./TransferCenter").then((module) => ({ default: module.TransferCenter })));
@@ -131,7 +129,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     : null;
   const forwardingBinding = session.connection?.phase === "ready" ? binding : null;
   const tabListRef = useRef<HTMLDivElement>(null);
-  const [dismissedSuggestion, setDismissedSuggestion] = useState<InspectorTab | null>(null);
 
   const navigation = resolveInspectorNavigation({
     filesOnly,
@@ -173,15 +170,10 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
         recommended,
         viewingFiles,
       });
-  const showSuggestion = autoSwitch.defer && dismissedSuggestion !== recommended;
 
   useEffect(() => {
     useUIStore.getState().syncInspectorLockForSession(session.id);
   }, [session.id]);
-
-  useEffect(() => {
-    setDismissedSuggestion(null);
-  }, [session.id, recommended]);
 
   useEffect(() => {
     if (filesOnly || !autoSwitch.apply) return;
@@ -241,14 +233,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     selectTab(nextId as InspectorTab);
     focusTabById(event.currentTarget as HTMLElement, nextId);
   };
-
-  const suggestionKey = autoSwitch.recommended === "changes"
-    ? "inspector.suggest.changes"
-    : autoSwitch.recommended === "preview"
-      ? "inspector.suggest.preview"
-      : autoSwitch.recommended === "transfers"
-        ? "inspector.suggest.transfers"
-        : "inspector.suggest.files";
 
   return (
     <div
@@ -342,45 +326,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
           </PanelIconButton>
         )}
       </div>
-
-      {showSuggestion && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            minHeight: 28,
-            padding: "3px 8px 3px 10px",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            borderBottom: "1px solid var(--c-border-1)",
-            background: "var(--c-bg-1)",
-            flexShrink: 0,
-          }}
-        >
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-2)", minWidth: 0, flex: 1 }}>
-            {t(suggestionKey)}
-          </span>
-          <AccentActionButton
-            onClick={() => selectTab(autoSwitch.recommended)}
-            title={t("inspector.suggest.show")}
-            ariaLabel={t("inspector.suggest.show")}
-            style={{ flexShrink: 0 }}
-          >
-            {t("inspector.suggest.show")}
-          </AccentActionButton>
-          <PanelIconButton
-            onClick={() => {
-              setDismissedSuggestion(recommended);
-              useUIStore.getState().lockInspectorView(session.id);
-            }}
-            title={t("inspector.suggest.dismiss")}
-            aria-label={t("inspector.suggest.dismiss")}
-          >
-            <CloseIcon size={12} strokeWidth={2.2} />
-          </PanelIconButton>
-        </div>
-      )}
 
       {showContextBar && (
         <div

@@ -436,12 +436,10 @@ function TerminalViewImpl({
         const safeError = cur?.remote ? safeSshFailure(e).message : String(e);
         if (handleSshReconnectFailure(sessionIdRef.current, e, (cleanup) => cleanups.push(cleanup))) {
           if (useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionIdRef.current)?.connection?.phase === "needsUserAction") {
-            term.write(`\r\n\x1b[31m${t("pty.error.inline", { error: safeError })}\x1b[0m\r\n`);
             setOpenError(safeError);
           }
           return;
         }
-        term.write(`\r\n\x1b[31m${t("pty.error.inline", { error: safeError })}\x1b[0m\r\n`);
         setOpenError(safeError);
         reportSshOpenFailure(sessionIdRef.current, cur?.remote, e);
         if (!cur?.remote) {
@@ -451,7 +449,6 @@ function TerminalViewImpl({
             reason: "pty",
             detail: String(e),
           });
-          useUIStore.getState().addToast({ sessionId: sessionIdRef.current, title: t("pty.error.title"), subtitle: t("pty.error.subtitle"), variant: "error" });
         }
         return;
       }

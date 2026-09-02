@@ -22,7 +22,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import { openInEditorWithToast } from "./lib/open-in-editor";
-import { useT, t as staticT } from "@/modules/i18n";
+import { useT } from "@/modules/i18n";
 import { ExplorerNav, ExplorerRemoteTools, ExplorerSearchRow } from "./file-explorer/chrome";
 import { copyText } from "./lib/clipboard";
 import { knownRemoteExplorerRoot, remoteExplorerListingRoot, remoteExplorerSearchRoot } from "./lib/file-explorer-root";
@@ -183,12 +183,6 @@ export function FileExplorer({
         conflict: "rename",
       });
       useTransferStore.getState().enqueueBatch(plan.requests);
-      useUIStore.getState().addToast({
-        sessionId,
-        title: t("explorer.download.batch_queued"),
-        subtitle: t("explorer.download.batch_queued_hint", { count: plan.requests.length }),
-        variant: "success",
-      });
     } catch (error) {
       useUIStore.getState().addToast({
         sessionId,
@@ -255,7 +249,8 @@ export function FileExplorer({
   const [dropActive, setDropActive] = useState(false);
   const [dropHighlightPath, setDropHighlightPath] = useState<string | null>(null);
   const [dropMessage, setDropMessage] = useState("");
-  const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string } | null>(null);
+  const [mutationPrepareError, setMutationPrepareError] = useState("");
+  const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string; error?: string } | null>(null);
   const [propertiesPath, setPropertiesPath] = useState<string | null>(null);
   const [mutationRequest, setMutationRequest] = useState<MutationRequestV1 | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
@@ -487,14 +482,6 @@ export function FileExplorer({
           if (!cancelled) {
             setHomeDir(null);
             setCurrentPath((current) => current || listingRoot);
-            if (!knownStart) {
-              useUIStore.getState().addToast({
-                sessionId,
-                title: staticT("explorer.remote_home_failed"),
-                subtitle: "",
-                variant: "warning",
-              });
-            }
           }
         });
       return () => { cancelled = true; };
@@ -731,7 +718,7 @@ export function FileExplorer({
       });
     } catch (error) {
       if (treeRequestContextRef.current !== requestContext) return;
-      useUIStore.getState().addToast({ sessionId, title: t("explorer.mutation.prepare_failed"), subtitle: String(error), variant: "error" });
+      setMutationPrepareError(`${t("explorer.mutation.prepare_failed")}: ${String(error)}`);
     } finally {
       setMutationBusy(false);
     }
@@ -781,7 +768,9 @@ export function FileExplorer({
       setMutationComposer(null);
     } catch (error) {
       if (treeRequestContextRef.current !== requestContext) return;
-      useUIStore.getState().addToast({ sessionId, title: t("explorer.mutation.prepare_failed"), subtitle: String(error), variant: "error" });
+      setMutationComposer((current) => current
+        ? { ...current, error: `${t("explorer.mutation.prepare_failed")}: ${String(error)}` }
+        : current);
     } finally {
       setMutationBusy(false);
     }
@@ -792,10 +781,10 @@ export function FileExplorer({
     if (isDir) {
       return isRemote
         ? [
-            { id: "dir:mkdir", label: t("explorer.mutation.mkdir"), icon: "folder", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "mkdir", node, value: "", bindingKey: treeRequestContext }); } },
+            { id: "dir:mkdir", label: t("explorer.mutation.mkdir"), icon: "folder", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "mkdir", node, value: "", bindingKey: treeRequestContext, error: undefined }); } },
             { id: "dir:new-file", label: t("explorer.capability.new_file_unavailable"), icon: "editor", disabled: true, action: () => {} },
             { id: "dir:download", label: t("explorer.download_folder"), icon: "download", disabled: remoteDisconnected || !binding, action: () => { void downloadRemoteFolder(node.path, node.entry.name); } },
-            { id: "dir:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
+            { id: "dir:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext, error: undefined }); } },
             { id: "dir:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
             { id: "dir:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
             { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
@@ -820,7 +809,7 @@ export function FileExplorer({
               });
             });
           } },
-          { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext }); } },
+          { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext, error: undefined }); } },
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
           { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
           { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
@@ -914,12 +903,6 @@ export function FileExplorer({
       useTransferStore.getState().enqueueBatch(requests);
       setSelectedDownloads(new Map());
       selectionAnchorRef.current = null;
-      useUIStore.getState().addToast({
-        sessionId,
-        title: t("explorer.download.batch_queued"),
-        subtitle: t("explorer.download.batch_queued_hint", { count: requests.length }),
-        variant: "success",
-      });
     } catch {
       if (treeRequestContextRef.current === requestContext) {
         useUIStore.getState().addToast({
@@ -1201,6 +1184,11 @@ export function FileExplorer({
         </div>
       )}
       {dropMessage && <div role="status" aria-live="polite" className="sr-only">{dropMessage}</div>}
+      {mutationPrepareError && (
+        <div role="alert" style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
+          {mutationPrepareError}
+        </div>
+      )}
       {remoteDisconnected && (
         <div style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <span role="status" aria-live="polite">{t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")}</span>
@@ -1520,10 +1508,15 @@ export function FileExplorer({
                 className="ui-control"
                 autoFocus
                 value={mutationComposer.value}
-                onChange={(event) => setMutationComposer((current) => current ? { ...current, value: event.target.value } : current)}
+                onChange={(event) => setMutationComposer((current) => current ? { ...current, value: event.target.value, error: undefined } : current)}
                 onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void prepareNamedMutation(); } }}
               />
             </label>
+            {mutationComposer.error && (
+              <p role="alert" style={{ margin: 0, color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
+                {mutationComposer.error}
+              </p>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button type="button" className="ui-button" onClick={() => { setMutationComposer(null); restoreMenuFocus(); }} disabled={mutationBusy}>{t("common.cancel")}</button>
               <button type="button" className="ui-button ui-button--primary" onClick={() => { void prepareNamedMutation(); }} disabled={mutationBusy || !mutationComposer.value.trim()}>{t("common.continue")}</button>

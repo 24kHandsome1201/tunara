@@ -14,7 +14,6 @@ import {
   agentExitedUpdate,
   agentReadyUpdate,
   agentWaitingConfirmationUpdate,
-  commandCompletionNotice,
   commandDetectedUpdate,
   commandFinishedUpdate,
   cwdChangedUpdate,
@@ -22,7 +21,6 @@ import {
   terminalExitedUpdate,
   terminalProgressUpdate,
 } from "@/modules/terminal/lib/session-lifecycle";
-import { requestInformationalAttention } from "@/ui/terminal-attention";
 import {
   agentConfirmationAttentionKey,
   forgetBackgroundAttention,
@@ -674,24 +672,11 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   handleAgentReady: (id) => {
     const session = get().sessions.find((s) => s.id === id);
     const isActive = isSessionObserved(get().activeSessionId, id);
-    const completedTurn = session?.agentActivity === "running"
-      || session?.agentActivity === "waiting_confirmation";
     forgetBackgroundAttention(agentConfirmationAttentionKey(id));
     const update = agentReadyUpdate(session, isActive);
     if (!update) return;
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
-    if (!isActive && completedTurn && session?.agent) {
-      const fileCount = session.changes?.files?.length ?? 0;
-      const name = AGENT_NAMES[session.agent] ?? session.agent;
-      useUIStore.getState().addToast({
-        sessionId: id,
-        title: name,
-        subtitle: fileCount > 0 ? t("agent.toast.done_files", { count: fileCount }) : t("agent.toast.done"),
-        variant: "success",
-        agentCode: session.agent,
-      });
-    }
   },
 
   handleAgentWaitingConfirmation: (id) => {
@@ -700,8 +685,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     const update = agentWaitingConfirmationUpdate(session, isActive);
     if (!update) return;
     get().updateSession(id, update.patch);
-    // One Dock bounce for this wait. Badge is driven by unread via useDockBadge.
-    if (!isActive) requestInformationalAttention(agentConfirmationAttentionKey(id));
   },
 
   handleAgentBusy: (id) => {
@@ -721,19 +704,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (!update) return;
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
-    if (!isActive && session?.agent) {
-      const fileCount = session.changes?.files?.length ?? 0;
-      const name = AGENT_NAMES[session.agent] ?? session.agent;
-      useUIStore.getState().addToast({
-        sessionId: id,
-        title: name,
-        subtitle: exitCode === 0
-          ? (fileCount > 0 ? t("agent.toast.done_files", { count: fileCount }) : t("agent.toast.done"))
-          : t("agent.toast.exited", { code: exitCode }),
-        variant: exitCode === 0 ? "success" : "error",
-        agentCode: session.agent,
-      });
-    }
   },
 
   handlePreviewCommandDetected: (id, command) => {
@@ -769,18 +739,6 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
     get().updateSession(id, update.patch);
     if (update.refreshGit) get().refreshGit(id);
-    if (!isActive && session?.lastCommand) {
-      const notice = commandCompletionNotice(session.lastCommand, exitCode, session.startedAt);
-      useUIStore.getState().addToast({
-        sessionId: id,
-        title: notice.title,
-        subtitle: notice.subtitle,
-        variant: notice.variant,
-      });
-      // Long-running commands also bounce the Dock when the window is in the
-      // background (no-op when focused; gated by the bell-notification setting).
-      if (notice.requestAttention) requestInformationalAttention(`command:${id}:${session.startedAt ?? 0}`);
-    }
   },
 
   handleTerminalExited: (id, exitCode) => {
@@ -1001,14 +959,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   duplicateOnHost: (sourceSessionId) => {
     const source = get().sessions.find((s) => s.id === (sourceSessionId ?? get().activeSessionId));
-    if (!source?.remote || !duplicateRemoteSessionFields(source)) {
-      useUIStore.getState().addToast({
-        title: t("session.duplicate.ssh_only"),
-        subtitle: "",
-        variant: "error",
-      });
-      return;
-    }
+    if (!source?.remote || !duplicateRemoteSessionFields(source)) return;
     const newSess = createSession(source.dir, {
       title: t("session.default_title"),
       remote: { ...source.remote },

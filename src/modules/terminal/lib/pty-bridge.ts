@@ -43,12 +43,13 @@ export type PtyEvent =
 function notifyHostKeyPersistence(
   event: Extract<PtyEvent, { type: "hostKeyPersistence" }>,
 ): void {
+  if (event.status === "saved") return;
   const host = event.port === 22 ? event.host : `${event.host}:${event.port}`;
   useUIStore.getState().addToast({
     title: t(`ssh.hostKey.persistence.${event.status}`),
     subtitle: host,
-    variant: event.status === "saved" ? "success" : "warning",
-    durationMs: event.status === "saved" ? 3500 : 8000,
+    variant: "warning",
+    durationMs: 8000,
   });
 }
 
@@ -132,9 +133,9 @@ export function sshOpenDiagnostic(error: unknown): SshDiagnosticV1 | undefined {
 }
 
 /**
- * Surface a failed SSH connection consistently: mark the session failed and
- * raise an error Toast (matching the rest of the app's error handling). No-op
- * for local sessions, which already show the inline red error line.
+ * Surface a failed SSH connection consistently: mark the session failed.
+ * The dead pane banner and sidebar "needs you" row are the remaining signals.
+ * No-op for local sessions, which already show the pane error banner.
  */
 export function reportSshOpenFailure(
   sessionId: string,
@@ -163,21 +164,6 @@ export function reportSshOpenFailure(
     transport: "ssh",
     reason,
     detail: reason,
-  });
-  notifySshOpenFailure(sessionId, remote, error);
-}
-
-/** Show a failed replacement attempt without marking a still-live PTY failed. */
-export function notifySshOpenFailure(
-  sessionId: string,
-  _remote: RemoteInfo,
-  error: unknown,
-): void {
-  useUIStore.getState().addToast({
-    sessionId,
-    title: t("ssh.error.title"),
-    subtitle: safeSshFailure(error).message,
-    variant: "error",
   });
 }
 

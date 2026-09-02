@@ -8,8 +8,15 @@ export type AttentionRowModel =
   | { kind: "running"; count: number }
   | { kind: null; count: 0 };
 
+function connectionNeedsYou(session: Session): boolean {
+  const phase = session.connection?.phase;
+  return phase === "needsUserAction" || phase === "failed" || phase === "disconnected";
+}
+
 function isWaitingForYou(session: Session): boolean {
-  return Boolean(session.agent && session.agentActivity === "waiting_confirmation");
+  if (session.agent && session.agentActivity === "waiting_confirmation") return true;
+  if (connectionNeedsYou(session)) return true;
+  return session.runState === "failed" && Boolean(session.unread);
 }
 
 function isAgentRunning(session: Session): boolean {

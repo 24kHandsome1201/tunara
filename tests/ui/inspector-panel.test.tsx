@@ -209,12 +209,8 @@ test("defers auto-switch with a quiet hint while a workspace file tab is open", 
   }} filesOnly={false} />);
 
   expect(screen.getByTestId("files-panel")).toBeTruthy();
-  expect(screen.getByText("Unreviewed changes are ready.")).toBeTruthy();
+  expect(screen.queryByText("Unreviewed changes are ready.")).toBeNull();
   expect(useUIStore.getState().inspectorTab).toBe("files");
-
-  fireEvent.click(screen.getByRole("button", { name: "Keep this view" }));
-  expect(screen.getByTestId("files-panel")).toBeTruthy();
-  expect(useUIStore.getState()).toMatchObject({ inspectorTab: "files", inspectorLocked: true });
 });
 
 test("auto-selects Preview only after the user has opened it for the session", async () => {

@@ -32,8 +32,10 @@ test("update reminders route directly to the About settings section", () => {
   assert.match(appUpdate, /if \(checkStartedRef\.current\) return/);
   assert.match(appUpdate, /void checkForUpdates\(\)/);
   assert.doesNotMatch(toast, /borderLeft: `3px solid/);
-  assert.match(toast, /animationPlayState: paused \? "paused" : "running"/);
-  assert.doesNotMatch(toast, /animation: paused \? "none"/);
+  assert.match(toast, /data-paused=\{paused \? "true" : "false"\}/);
+  assert.doesNotMatch(toast, /animationPlayState: paused \? "paused" : "running"/);
+  assert.doesNotMatch(toast, /toastProgress/);
+  assert.doesNotMatch(toast, /toastOut/);
 });
 
 test("installed updates guard drafts and flush both durable stores before relaunch", () => {

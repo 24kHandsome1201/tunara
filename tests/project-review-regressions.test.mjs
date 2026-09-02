@@ -1100,7 +1100,8 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.doesNotMatch(palette, /ranked\.indexOf/);
   assert.match(sidebar, /const canReorder = q\.length === 0/);
   assert.match(sidebarGroup, /if \(!canReorder\) return;/);
-  assert.match(toast, /exitTimerRef/);
+  assert.doesNotMatch(toast, /exitTimerRef/);
+  assert.doesNotMatch(toast, /toastOut/);
   assert.match(toast, /minWidth: 260/);
   assert.match(toast, /maxWidth: "min\(340px, calc\(100vw - 24px\)\)"/);
   assert.doesNotMatch(toast, /borderLeft: `3px solid \$\{accentColor\}`/);
@@ -1294,7 +1295,8 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(palette, /newTerminalWithInput\(entry\.command, activeSession\.dir\)/);
   assert.match(sessions, /recordRecentCommand: \(command\)/);
   assert.match(sessions, /pendingInputSubmit: false/);
-  assert.match(toast, /exitingRef/);
+  assert.doesNotMatch(toast, /exitingRef/);
+  assert.match(toast, /dismissedRef/);
 });
 
 test("follow-up review fixes polish dense UI surfaces", () => {

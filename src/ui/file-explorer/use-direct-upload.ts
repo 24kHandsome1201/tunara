@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { confirm as confirmDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { sshCancelUpload, sshUpload } from "@/modules/ssh/remote-fs-bridge";
 import { useUIStore } from "@/state/ui";
-import { formatSize } from "@/ui/types";
 import { joinPath } from "./helpers";
 import { parseUploadFailure, uploadFailureKey } from "./transfer-failures";
 
@@ -154,9 +153,8 @@ export function useDirectUpload({ sessionId, remotePtyId, t, onUploaded }: Direc
         };
 
         try {
-          let bytes: number;
           try {
-            bytes = await run(false);
+            await run(false);
           } catch (error) {
             if (!String(error).includes("SSH_TRANSFER_DESTINATION_EXISTS")) throw error;
             throwIfCancelled();
@@ -166,22 +164,10 @@ export function useDirectUpload({ sessionId, remotePtyId, t, onUploaded }: Direc
             });
             if (!overwrite) continue;
             throwIfCancelled();
-            bytes = await run(true);
+            await run(true);
           }
           if (!transfer.disposed) {
             setTransferAnnouncement("");
-            useUIStore.getState().addToast({
-              sessionId,
-              title: t("explorer.upload.complete"),
-              subtitle: `${fileName} · ${formatSize(bytes)}`,
-              variant: "success",
-              action: {
-                kind: "open-remote-preview",
-                sessionId,
-                path: remotePath,
-                label: t("explorer.upload.preview"),
-              },
-            });
             onUploaded();
           }
         } catch (error) {

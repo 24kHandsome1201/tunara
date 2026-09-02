@@ -488,8 +488,7 @@ describe("FileExplorer workspace files", () => {
       && (payload as { localPath: string; remotePath: string; overwrite: boolean }).remotePath === "/srv/app/report.txt"
       && !(payload as { localPath: string; remotePath: string; overwrite: boolean }).overwrite)).toBe(true));
     await waitFor(() => expect(reads).toBe(2));
-    const toasts = useUIStore.getState().toasts;
-    expect(toasts[toasts.length - 1]).toMatchObject({ sessionId: "remote", title: "Upload complete", variant: "success" });
+    expect(useUIStore.getState().toasts.filter((toast) => toast.title === "Upload complete")).toEqual([]);
   });
 
   test("uploads every file selected by a legacy SSH session and continues after one fails", async () => {
@@ -522,11 +521,9 @@ describe("FileExplorer workspace files", () => {
       ["/tmp/b.txt", "/srv/app/b.txt", false],
       ["/tmp/c.txt", "/srv/app/c.txt", false],
     ]);
-    await waitFor(() => expect(useUIStore.getState().toasts).toHaveLength(3));
+    await waitFor(() => expect(useUIStore.getState().toasts).toHaveLength(1));
     expect(useUIStore.getState().toasts.map(({ title, variant }) => [title, variant])).toEqual([
-      ["Upload complete", "success"],
       ["Upload failed", "error"],
-      ["Upload complete", "success"],
     ]);
   });
 

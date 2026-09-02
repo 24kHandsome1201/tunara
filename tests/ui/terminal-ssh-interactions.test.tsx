@@ -732,16 +732,14 @@ test("toast countdown stays paused while hover and keyboard focus overlap", () =
   render(<ToastContainer />);
   const toast = screen.getByRole("status");
   const close = screen.getByRole("button", { name: "Close" });
-  const progress = [...toast.querySelectorAll<HTMLElement>("div")]
-    .find((element) => element.style.animation.includes("toastProgress"));
 
   fireEvent.mouseEnter(toast);
   close.focus();
   fireEvent.mouseLeave(toast);
-  expect(progress?.style.animationPlayState).toBe("paused");
+  expect(toast.getAttribute("data-paused")).toBe("true");
 
   fireEvent.blur(close);
-  expect(progress?.style.animationPlayState).toBe("running");
+  expect(toast.getAttribute("data-paused")).toBe("false");
 });
 
 test("session cards announce lifecycle, unread, and transport state", () => {

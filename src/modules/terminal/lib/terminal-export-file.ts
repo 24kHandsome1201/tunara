@@ -32,15 +32,15 @@ export async function exportTerminalTextToFile(
       filters: [{ name: "Text", extensions: ["txt", "log"] }],
     });
     if (!destination) return "cancelled";
-    const bytes = await fsExportTextFile(destination, clipped.text);
-    useUIStore.getState().addToast({
-      sessionId,
-      title: t("term.export.saved"),
-      subtitle: clipped.truncated
-        ? t("term.export.truncated", { lines: clipped.lineCount })
-        : t("term.export.size", { size: bytes }),
-      variant: "success",
-    });
+    await fsExportTextFile(destination, clipped.text);
+    if (clipped.truncated) {
+      useUIStore.getState().addToast({
+        sessionId,
+        title: t("term.export.truncated", { lines: clipped.lineCount }),
+        subtitle: "",
+        variant: "warning",
+      });
+    }
     return "saved";
   } catch {
     useUIStore.getState().addToast({

@@ -305,3 +305,91 @@ Toast `addToast` 生产调用：73。
 非 toast 行 39：已在处理 4、并入「需要你」12、改内联 13、删除 3、保留模态 6、需要设计 2（退出横幅、BEL）。
 
 合计 112 行。建议列加总：删除 32 + 保留 toast 28 + 并入「需要你」16 + 内联 22 + 模态 6 + 已在处理 4 + 需要设计 4 = 112。
+
+---
+
+## Status
+
+Executed on `redesign/notification-cuts` (from `origin/redesign/integration`).
+
+### Done
+
+**Delete (toast / duplicate outlets)**
+
+- Agent-done toast (`sessions.ts` `handleAgentReady`)
+- Duplicate-on-host toast; local menus already omit the action
+- `attention.none` toasts (keybinding + command palette)
+- Local PTY-open toast (pane banner remains)
+- SSH config refresh success toast
+- Host-key `saved` toast; non-`saved` persistence toasts kept
+- Terminal export success toast; truncated export still warns
+- Folder / multi-select download queued toasts
+- Remote-home fallback toast (listing already shows `/`)
+- Direct-upload complete toast
+- Transfer-store upload-complete + preview toast
+- Terminal drop queued toast
+- External-editor-opened toast
+- Inspector suggestion bar
+- Duplicate PTY red inline write (banner remains)
+- Toast exit animation + progress bar; hover/focus pause kept
+- Toast stack cap 3 (was 6)
+
+**Fold into existing `sessionCue` / `groupCue` / AttentionRow (no new outlet)**
+
+- Agent waiting confirmation (already `needs-you`)
+- Unread `runState === "failed"` (agent/command/PTY failure in background)
+- SSH `needsUserAction` / `failed` / `disconnected`
+- Dock badge N = `dockBadgeCount` (same needs-you count)
+- Dock bounce once while unfocused iff that count > 0 (`useDockBadge` → `requestInformationalAttention("needs-you")`)
+- Per-event Dock bounce on agent-wait / long command removed
+- SSH open failure toast removed; failed connection evidence + pane banner + needs-you remain
+- Explorer remote disconnect stays a pane reconnect strip; disconnect phase also feeds needs-you
+
+**Inline (cheap)**
+
+- `SshConnect` load/save/remove/picker failures → dialog `role="alert"`
+- Explorer named-mutation prepare failure → dialog `role="alert"`
+- Explorer delete prepare failure → visible explorer alert
+
+**Toast chrome**
+
+- No `toastOut` / progress bar
+- Hover and focus still pause the timer
+- Max 3 toasts; older drop
+
+### Kept (intentionally)
+
+- Close-running-session confirm toasts (`sessions.ts` close / close-all) — still “needs design”
+- Clipboard / diagnostics / hunk copy toasts
+- Single-file download complete/fail
+- Directory picker, paste-denied, export empty/fail
+- Host-key / keyboard-interactive stale and submit failures
+- Forward snapshot / rebuild / ephemeral-port toasts
+- Update reminder, config error, workspace restore/save, global shortcut conflict
+- Terminal drop not-ready / no-cwd / prepare fail
+- Remote external-edit conflict/sync/unsupported
+- `remediation.stale` when the pane action is stale
+- BEL Dock bounce (not needs-you; still gated by settings)
+
+### Skipped / leftover
+
+| Item | Why |
+| --- | --- |
+| Connecting overlay / exit banner restyle | Needs design; pane still needs Restart/Reconnect |
+| BEL product decision | Needs design |
+| Update reminder → needs-you | Needs a non-session attention slot |
+| Close-running-session confirm | Toast-as-confirm is weak; not replaced here |
+| PtyErrorBanner / ConnectingOverlay “make lighter” | Not a cheap inline |
+| SessionRemediationNotice copy | Pane keeps the action button; global count is now needs-you |
+| Transfer sr-only announcements / residue | Already inline; left as-is |
+| FilePreview / PreviewPanel / ForwardingPanel inline status | Already inline; not toasted |
+| Titlebar / Pure Mode | Untouched except no notification lines lived there |
+
+### Call-site counts (production `src/`, excluding store definition)
+
+| Outlet | Before (audit) | After |
+| --- | --- | --- |
+| `addToast` | 73 | 49 |
+| `sessionCue` / `groupCue` | confirmation only | confirmation + unread failed + SSH failed/disconnected/needsUserAction |
+
+`rg -c "addToast" src` includes `src/state/ui.ts` (`addToast` type + impl). Production call sites excluding those two definition lines: **49**.

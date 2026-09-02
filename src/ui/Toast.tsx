@@ -9,32 +9,25 @@ import { openResource, resourceRefForSession } from "@/modules/resources/resourc
 
 const DEFAULT_TOAST_DURATION = 4000;
 const ERROR_TOAST_DURATION = 12000;
-const EXIT_DURATION = 250;
 
 function ToastItem({ toast }: { toast: Toast }) {
   const t = useT();
   const removeToast = useUIStore((s) => s.removeToast);
   const setActive = useSessionsStore((s) => s.setActive);
-  const [exiting, setExiting] = useState<boolean>(false);
   const [paused, setPaused] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const exitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const duration = toast.durationMs ?? (toast.variant === "error" ? ERROR_TOAST_DURATION : DEFAULT_TOAST_DURATION);
   const remainRef = useRef(duration);
   const startRef = useRef(Date.now());
-  const exitingRef = useRef(false);
+  const dismissedRef = useRef(false);
 
   const dismiss = () => {
-    if (exitingRef.current) return;
-    exitingRef.current = true;
-    setExiting(true);
-    exitTimerRef.current = setTimeout(() => removeToast(toast.id), EXIT_DURATION);
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
+    removeToast(toast.id);
   };
-  // The mount effect below runs once by design; holding dismiss in a ref keeps
-  // its dependency list honestly empty while the timer still calls the latest
-  // closure (same pattern as sessionIdRef in TerminalView).
   const dismissRef = useRef(dismiss);
   dismissRef.current = dismiss;
 
@@ -43,7 +36,6 @@ function ToastItem({ toast }: { toast: Toast }) {
     timerRef.current = setTimeout(() => dismissRef.current(), duration);
     return () => {
       clearTimeout(timerRef.current);
-      clearTimeout(exitTimerRef.current);
       clearTimeout(copiedTimerRef.current);
     };
   }, [duration]);
@@ -56,7 +48,6 @@ function ToastItem({ toast }: { toast: Toast }) {
     copiedTimerRef.current = setTimeout(() => setCopied(false), 1200);
   };
 
-  // 暂停/恢复只各生效一次：hover 与焦点可能同时停留，避免 remain 被重复扣减
   const pausedRef = useRef(false);
   const hoveredRef = useRef(false);
   const focusWithinRef = useRef(false);
@@ -104,11 +95,11 @@ function ToastItem({ toast }: { toast: Toast }) {
     <div
       className="toast-item"
       data-variant={toast.variant}
+      data-paused={paused ? "true" : "false"}
       role={toast.variant === "error" ? "alert" : "status"}
       aria-live={toast.variant === "error" ? "assertive" : "polite"}
       onMouseEnter={() => { hoveredRef.current = true; pauseCountdown(); }}
       onMouseLeave={() => { hoveredRef.current = false; resumeWhenUnengaged(); }}
-      // WCAG 2.2.1：键盘聚焦（含内部按钮）同样暂停倒计时
       onFocus={() => { focusWithinRef.current = true; pauseCountdown(); }}
       onBlur={(event) => {
         if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
@@ -128,9 +119,7 @@ function ToastItem({ toast }: { toast: Toast }) {
         alignItems: "center",
         gap: 9,
         cursor: "default",
-        animation: exiting
-          ? `toastOut ${EXIT_DURATION}ms var(--ease-smooth) forwards`
-          : "toastIn var(--duration-slow) var(--ease-out-back)",
+        animation: "toastIn var(--duration-slow) var(--ease-out-back)",
         overflow: "hidden",
         position: "relative",
       }}
@@ -268,26 +257,6 @@ function ToastItem({ toast }: { toast: Toast }) {
       >
         <CloseIcon size={10} strokeWidth={2.5} />
       </button>
-
-      {/* Progress bar */}
-      <div style={{
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 2,
-        background: "var(--c-border-1)",
-        overflow: "hidden",
-      }}>
-        <div style={{
-          height: "100%",
-          background: accentColor,
-          opacity: 0.5,
-          transformOrigin: "left",
-          animation: `toastProgress ${duration}ms linear forwards`,
-          animationPlayState: paused ? "paused" : "running",
-        }} />
-      </div>
     </div>
   );
 }

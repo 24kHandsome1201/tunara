@@ -663,11 +663,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       set((state) => ({ split: setSplitRatioAt(state.split, path, ratio) })),
     addToast: (toast) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      // I8: keep the last 6 toasts (was 3). Batch operations like "close all
-      // sessions" can fan out several notifications; capping at 3 dropped
-      // signal. 6 still fits the bottom-right stack without overflow on a
-      // typical viewport, and the auto-dismiss timer keeps the queue short.
-      set((s) => ({ toasts: [...s.toasts.slice(-5), { ...toast, id }] }));
+      set((s) => ({ toasts: [...s.toasts.slice(-2), { ...toast, id }] }));
     },
     removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
     enqueueHostKeyPrompt: (prompt) =>

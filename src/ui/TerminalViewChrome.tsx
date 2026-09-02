@@ -175,12 +175,6 @@ export function TerminalViewChrome({
         }
         if (requests.length === 0) return;
         useTransferStore.getState().enqueueBatch(requests);
-        useUIStore.getState().addToast({
-          sessionId,
-          title: t("term.drop.upload"),
-          subtitle: t("explorer.download.batch_queued_hint", { count: requests.length }),
-          variant: "success",
-        });
       })().catch(() => {
         const hasCwd = terminalUploadDestination(cwd, "file") !== null;
         useUIStore.getState().addToast({

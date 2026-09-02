@@ -200,7 +200,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         const target = nextAttentionSessionId(sessionsState.sessions, sessionsState.activeSessionId);
         uiStore.getState().recordCommandUse("focus-latest-attention");
         if (!target) {
-          uiStore.getState().addToast({ title: t("attention.none"), subtitle: t("attention.none_hint"), variant: "warning" });
           onClose();
           return;
         }
