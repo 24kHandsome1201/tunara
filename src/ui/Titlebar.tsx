@@ -1,6 +1,5 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { deriveTitle, type Session } from "./types";
-import { useSessionsStore } from "@/state/sessions";
+import { memo, useMemo, useRef, useState } from "react";
+import { type Session } from "./types";
 import { useUIStore } from "@/state/ui";
 import { formatShortcut } from "./formatShortcut";
 import { platform } from "@tauri-apps/plugin-os";
@@ -13,9 +12,6 @@ import {
   sidebarGroupKey,
   titlebarDeviceCaption,
 } from "@/modules/session/sidebar-groups";
-import { splitToolbarOverflow } from "./lib/toolbar-overflow";
-import { copyActiveTerminal, safePasteActiveTerminal, searchActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
-import { TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, type TerminalContextAnnouncement } from "@/modules/terminal/lib/terminal-context-announcement";
 import type { ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 
 let _isMac = true;
@@ -27,7 +23,6 @@ type DragStyle = React.CSSProperties & { WebkitAppRegion?: string };
 
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
 const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1;
-const FULLSCREEN_EXIT_HINT_DURATION_MS = 1200;
 
 interface TitlebarProps {
   sessions: Session[];
@@ -49,447 +44,6 @@ function PanelLeftIcon({ active }: { active: boolean }) {
       <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
       <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill={active ? "var(--c-accent)" : "currentColor"} fillOpacity={active ? 0.3 : 0.1} />
     </svg>
-  );
-}
-
-function PresentationModeIcon() {
-  return (
-    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5.5 2.5h-3v3" />
-      <path d="M10.5 2.5h3v3" />
-      <path d="M13.5 10.5v3h-3" />
-      <path d="M5.5 13.5h-3v-3" />
-    </svg>
-  );
-}
-
-interface PresentationModeButtonProps {
-  label: string;
-  shortcut: string;
-  onClick: () => void;
-  showShortcut?: boolean;
-  surface?: boolean;
-  floating?: boolean;
-  draggable?: boolean;
-  visible?: boolean;
-  onKeepVisible?: () => void;
-  onReleaseVisible?: () => void;
-}
-
-function PresentationModeButton({
-  label,
-  shortcut,
-  onClick,
-  showShortcut = false,
-  surface = false,
-  floating = false,
-  draggable = false,
-  visible = true,
-  onKeepVisible,
-  onReleaseVisible,
-}: PresentationModeButtonProps) {
-  const accessibleLabel = `${label} ${shortcut}`;
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [dragOffset, setDragOffset] = useState(0);
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; offset: number; moved: boolean } | null>(null);
-  const suppressClickRef = useRef(false);
-
-  const clampDragOffset = useCallback((offset: number) => {
-    const button = buttonRef.current;
-    if (!button) return offset;
-    const rect = button.getBoundingClientRect();
-    const baseLeft = rect.left - dragOffset;
-    const edge = 8;
-    return Math.min(
-      window.innerWidth - edge - rect.width - baseLeft,
-      Math.max(edge - baseLeft, offset),
-    );
-  }, [dragOffset]);
-
-  useEffect(() => {
-    const keepInViewport = () => setDragOffset((offset) => clampDragOffset(offset));
-    window.addEventListener("resize", keepInViewport);
-    return () => window.removeEventListener("resize", keepInViewport);
-  }, [clampDragOffset]);
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!draggable || event.button !== 0) return;
-    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, offset: dragOffset, moved: false };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    onKeepVisible?.();
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const delta = event.clientX - drag.startX;
-    const verticalDelta = event.clientY - drag.startY;
-    if (!drag.moved && Math.max(Math.abs(delta), Math.abs(verticalDelta)) < 4) return;
-    drag.moved = true;
-    setDragOffset(clampDragOffset(drag.offset + delta));
-  };
-
-  const finishDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    suppressClickRef.current = drag.moved;
-    dragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    onReleaseVisible?.();
-  };
-
-  const cancelDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    suppressClickRef.current = false;
-    setDragOffset(clampDragOffset(drag.offset));
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    onReleaseVisible?.();
-  };
-
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      data-presentation-action={floating ? "exit-fullscreen-pure" : undefined}
-      data-visible={floating ? String(visible) : undefined}
-      onClick={(event) => {
-        if (suppressClickRef.current) {
-          suppressClickRef.current = false;
-          event.preventDefault();
-          return;
-        }
-        onClick();
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={finishDrag}
-      onPointerCancel={cancelDrag}
-      onLostPointerCapture={cancelDrag}
-      onPointerEnter={onKeepVisible}
-      onPointerLeave={onReleaseVisible}
-      onFocus={onKeepVisible}
-      onBlur={onReleaseVisible}
-      title={accessibleLabel}
-      aria-label={accessibleLabel}
-      className={floating || surface ? "presentation-mode-exit-hint" : "hover-bg"}
-      style={{
-        height: floating ? 30 : "var(--h-titlebar-control)",
-        padding: floating ? "0 10px" : "0 8px",
-        borderRadius: "var(--r-btn)",
-        border: floating || surface ? "1px solid var(--c-border-1)" : "none",
-        background: floating || surface ? undefined : "transparent",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-        whiteSpace: "nowrap",
-        touchAction: draggable ? "none" : undefined,
-        userSelect: draggable ? "none" : undefined,
-        translate: draggable ? `${dragOffset}px 0` : undefined,
-        ...(floating ? {
-          position: "fixed",
-          top: visible ? 8 : -26,
-          left: "50%",
-          zIndex: 900,
-          opacity: visible ? 1 : 0.01,
-          transform: "translateX(-50%)",
-          pointerEvents: "auto",
-          transition: "opacity var(--duration-normal) var(--ease-smooth), transform var(--duration-normal) var(--ease-out-expo)",
-          boxShadow: "var(--shadow-menu)",
-        } : {}),
-      }}
-    >
-      <PresentationModeIcon />
-      <span style={{ fontSize: "var(--fs-secondary)", fontWeight: 500 }}>{label}</span>
-      {showShortcut && (
-        <kbd style={{
-          padding: "1px 4px",
-          borderRadius: "var(--r-badge-sm)",
-          background: "var(--c-bg-2)",
-          color: "var(--c-text-4)",
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--fs-meta-sm)",
-          lineHeight: 1.4,
-        }}>
-          {shortcut}
-        </kbd>
-      )}
-    </button>
-  );
-}
-
-function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false, includeExit = true }: { activeSessionId: string; exitShortcut: string; fullscreen?: boolean; includeExit?: boolean }) {
-  const t = useT();
-  const activeSession = useSessionsStore((state) => state.sessions.find((session) => session.id === activeSessionId));
-  const showFilesButton = useUIStore((state) => state.showPureModeFilesButton);
-  const [visible, setVisible] = useState(true);
-  const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
-  const [coarsePointer, setCoarsePointer] = useState(false);
-  const [overflowMenu, setOverflowMenu] = useState<{
-    items: MenuEntry[];
-    position: { x: number; y: number };
-  } | null>(null);
-  const [contextAnnouncement, setContextAnnouncement] = useState<TerminalContextAnnouncement | null>(null);
-  const hideTimer = useRef<number | null>(null);
-  const overflowMenuRef = useRef(overflowMenu);
-  overflowMenuRef.current = overflowMenu;
-  const labelRef = useRef<HTMLSpanElement>(null);
-  const overflowBtnRef = useRef<HTMLButtonElement>(null);
-  const itemWidthCache = useRef(new Map<string, number>());
-
-  const keepVisible = useCallback(() => {
-    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
-    hideTimer.current = null;
-    setVisible(true);
-  }, []);
-  const releaseVisible = useCallback(() => {
-    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
-    hideTimer.current = window.setTimeout(() => {
-      hideTimer.current = null;
-      if (overflowMenuRef.current) return;
-      setVisible(false);
-    }, 1400);
-  }, []);
-
-  useEffect(() => {
-    releaseVisible();
-    const revealAtEdge = (event: PointerEvent) => {
-      if (event.clientY <= 12 || event.pointerType === "touch") keepVisible();
-    };
-    window.addEventListener("pointermove", revealAtEdge, { passive: true });
-    window.addEventListener("pointerdown", revealAtEdge, { passive: true });
-    return () => {
-      window.removeEventListener("pointermove", revealAtEdge);
-      window.removeEventListener("pointerdown", revealAtEdge);
-      if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
-    };
-  }, [keepVisible, releaseVisible]);
-
-  useEffect(() => {
-    const updateContext = (event: Event) => {
-      setContextAnnouncement((event as CustomEvent<TerminalContextAnnouncement>).detail);
-    };
-    window.addEventListener(TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, updateContext);
-    return () => window.removeEventListener(TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, updateContext);
-  }, []);
-
-  useEffect(() => {
-    setContextAnnouncement((current) => current?.logicalSessionId === activeSessionId ? current : null);
-  }, [activeSessionId]);
-
-  useEffect(() => {
-    if (!contextAnnouncement) return;
-    const timeout = window.setTimeout(() => setContextAnnouncement(null), 4000);
-    return () => window.clearTimeout(timeout);
-  }, [contextAnnouncement]);
-
-  useEffect(() => {
-    const mq = window.matchMedia?.("(pointer: coarse)");
-    if (!mq) return;
-    const update = () => setCoarsePointer(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  const actions = useMemo(() => [
-    { id: "paste", label: t("pure.action.safe_paste"), run: () => void safePasteActiveTerminal(activeSessionId) },
-    { id: "copy", label: t("term.copy"), run: () => void copyActiveTerminal(activeSessionId) },
-    { id: "search", label: t("pure.action.search"), run: () => searchActiveTerminal(activeSessionId) },
-    { id: "files", label: t("pure.files.button"), run: () => {
-      const ui = useUIStore.getState();
-      ui.setInspectorTab("files", { sessionId: activeSessionId });
-      ui.setPanelVisible(true);
-    } },
-    { id: "palette", label: t("pure.action.command_palette"), run: () => useUIStore.getState().setOverlay("command-palette") },
-    ...(includeExit ? [{ id: "exit", label: t("palette.cmd.exit_pure"), run: () => useUIStore.getState().setPresentationMode("workspace") }] : []),
-  ], [activeSessionId, includeExit, t]);
-  const inlineCandidates = useMemo(
-    () => actions.filter((action) => action.id !== "files" || showFilesButton),
-    [actions, showFilesButton],
-  );
-  const extraOverflow = useMemo(
-    () => actions.filter((action) => action.id === "files" && !showFilesButton),
-    [actions, showFilesButton],
-  );
-  const overflowActions = [
-    ...inlineCandidates.filter((action) => collapsedIds.includes(action.id)),
-    ...extraOverflow,
-  ];
-  const announcedSession = useSessionsStore((state) => contextAnnouncement
-    ? state.sessions.find((session) => session.id === contextAnnouncement.logicalSessionId)
-    : undefined);
-  const contextSession = contextAnnouncement ? announcedSession : activeSession;
-  const cue = contextSession?.agentActivity === "waiting_confirmation"
-    ? t("pure.cue.waiting")
-    : contextSession?.unread
-      ? t("pure.cue.unread")
-      : "";
-  const sessionLabel = contextSession
-    ? deriveTitle(contextSession).primary
-    : contextAnnouncement?.title || t("pure.cue.no_session");
-  const contextPosition = contextAnnouncement?.index !== undefined && contextAnnouncement.total !== undefined
-    ? `${contextAnnouncement.index}/${contextAnnouncement.total}`
-    : "";
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      for (const action of inlineCandidates) {
-        const el = labelRef.current?.parentElement?.querySelector<HTMLElement>(`[data-pure-action="${CSS.escape(action.id)}"]`);
-        const width = el?.offsetWidth ?? 0;
-        if (width > 0) itemWidthCache.current.set(action.id, width);
-      }
-      const widths = inlineCandidates.map((action) => itemWidthCache.current.get(action.id) ?? 0);
-      const overflowWidth = overflowBtnRef.current?.offsetWidth || 36;
-      const labelWidth = labelRef.current?.offsetWidth ?? 0;
-      const inset = fullscreen ? 20 : 24;
-      const available = coarsePointer
-        ? 0
-        : Math.max(0, window.innerWidth - inset - 8 - labelWidth - 2);
-      const split = splitToolbarOverflow(
-        inlineCandidates,
-        widths,
-        available,
-        overflowWidth,
-        2,
-        extraOverflow.length > 0 || coarsePointer,
-      );
-      const nextIds = split.overflow.map((action) => action.id);
-      setCollapsedIds((current) => (
-        current.length === nextIds.length && current.every((id, index) => id === nextIds[index])
-          ? current
-          : nextIds
-      ));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(document.documentElement);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [coarsePointer, extraOverflow.length, fullscreen, inlineCandidates, sessionLabel]);
-
-  useEffect(() => {
-    setOverflowMenu(null);
-  }, [showFilesButton, includeExit]);
-
-  const toggleOverflowMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (overflowMenu) {
-      setOverflowMenu(null);
-      return;
-    }
-    const rect = event.currentTarget.getBoundingClientRect();
-    setOverflowMenu({
-      items: overflowActions.map((action) => ({
-        id: `pure:${action.id}`,
-        label: action.label,
-        action: action.run,
-      })),
-      position: { x: Math.max(8, rect.right - 180), y: rect.bottom + 4 },
-    });
-    keepVisible();
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    minHeight: 30,
-    padding: "0 9px",
-    border: "none",
-    borderRadius: "var(--r-btn)",
-    background: "transparent",
-    color: "var(--c-text-2)",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    flexShrink: 0,
-  };
-
-  return (
-    <div
-      role="toolbar"
-      aria-label={t("pure.action_strip")}
-      data-pure-action-strip
-      data-visible={String(visible)}
-      inert={!visible || undefined}
-      aria-hidden={!visible}
-      onPointerEnter={keepVisible}
-      onPointerLeave={releaseVisible}
-      onFocusCapture={keepVisible}
-      onBlurCapture={releaseVisible}
-      style={{
-        position: "fixed",
-        top: visible ? (fullscreen ? 44 : 7) : -28,
-        left: fullscreen ? 10 : "50%",
-        zIndex: 890,
-        transform: fullscreen ? undefined : "translateX(-50%)",
-        display: "flex",
-        alignItems: "center",
-        gap: 2,
-        padding: "2px 4px",
-        border: "1px solid var(--c-border-1)",
-        borderRadius: "var(--r-card)",
-        background: "var(--c-bg-white)",
-        boxShadow: "var(--shadow-menu)",
-        opacity: visible ? 1 : 0.02,
-        maxWidth: fullscreen ? "calc(100vw - 20px)" : "calc(100vw - 24px)",
-        transition: "top var(--duration-normal) var(--ease-smooth), opacity var(--duration-normal) var(--ease-smooth)",
-        WebkitAppRegion: "no-drag",
-      } as DragStyle}
-    >
-      <span ref={labelRef} role="status" aria-live="polite" title={sessionLabel} style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 7px", fontSize: "var(--fs-meta)", color: cue ? "var(--c-accent)" : "var(--c-text-4)" }}>
-        {sessionLabel}{contextPosition ? ` · ${contextPosition}` : ""}{cue ? ` · ${cue}` : ""}
-      </span>
-      {inlineCandidates.map((action) => (
-        <button
-          key={action.id}
-          type="button"
-          data-pure-action={action.id}
-          aria-label={action.id === "files" ? t("pure.files.open") : action.id === "exit" ? `${action.label} ${exitShortcut}` : action.label}
-          style={{
-            ...buttonStyle,
-            display: collapsedIds.includes(action.id) ? "none" : undefined,
-          }}
-          className="hover-bg"
-          onClick={action.run}
-        >
-          {action.label}
-        </button>
-      ))}
-      <button
-        ref={overflowBtnRef}
-        type="button"
-        data-touch-overflow
-        aria-label={t("common.more_actions")}
-        title={t("common.more_actions")}
-        aria-haspopup="menu"
-        aria-expanded={overflowMenu !== null}
-        hidden={overflowActions.length === 0}
-        style={{ ...buttonStyle, display: overflowActions.length === 0 ? "none" : "flex", alignItems: "center" }}
-        className="hover-bg"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={toggleOverflowMenu}
-      >
-        •••
-      </button>
-      {overflowMenu && (
-        <ContextMenu
-          items={overflowMenu.items}
-          position={overflowMenu.position}
-          onClose={() => {
-            setOverflowMenu(null);
-            releaseVisible();
-          }}
-          returnFocusToken={overflowBtnRef}
-        />
-      )}
-    </div>
   );
 }
 
@@ -607,8 +161,6 @@ function TitlebarImpl({
   onOpenSettings,
 }: TitlebarProps) {
   const t = useT();
-  const presentationMode = useUIStore((s) => s.presentationMode);
-  const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
   const deviceCaption = useMemo(() => {
     const groups = groupSessionsForSidebar(sessions);
     const active = sessions.find((session) => session.id === activeSessionId) ?? sessions[0];
@@ -628,11 +180,6 @@ function TitlebarImpl({
   }, [sessions, activeSessionId]);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
-  const presentationModeBinding = useUIStore((s) => s.keybindings.togglePresentationMode);
-  const presentationModeShortcut = formatShortcut(presentationModeBinding);
-  const setPresentationMode = useUIStore((s) => s.setPresentationMode);
-  const fullscreenHintTimerRef = useRef<number | null>(null);
-  const [fullscreenExitHintVisible, setFullscreenExitHintVisible] = useState(false);
   const [newTerminalMenu, setNewTerminalMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -642,52 +189,6 @@ function TitlebarImpl({
     position: { x: number; y: number };
   } | null>(null);
   const workspaceMenuBtnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (presentationMode === "pure") {
-      setNewTerminalMenu(null);
-      setWorkspaceMenu(null);
-    }
-  }, [presentationMode]);
-
-  const clearFullscreenHintTimer = useCallback(() => {
-    if (fullscreenHintTimerRef.current !== null) {
-      window.clearTimeout(fullscreenHintTimerRef.current);
-      fullscreenHintTimerRef.current = null;
-    }
-  }, []);
-
-  const keepFullscreenExitHintVisible = useCallback(() => {
-    clearFullscreenHintTimer();
-    setFullscreenExitHintVisible(true);
-  }, [clearFullscreenHintTimer]);
-
-  const revealFullscreenExitHint = useCallback(() => {
-    keepFullscreenExitHintVisible();
-    fullscreenHintTimerRef.current = window.setTimeout(() => {
-      fullscreenHintTimerRef.current = null;
-      setFullscreenExitHintVisible(false);
-    }, FULLSCREEN_EXIT_HINT_DURATION_MS);
-  }, [keepFullscreenExitHintVisible]);
-
-  useEffect(() => {
-    if (presentationMode === "pure" && nativeFullscreen) {
-      revealFullscreenExitHint();
-    } else {
-      clearFullscreenHintTimer();
-      setFullscreenExitHintVisible(false);
-    }
-    return clearFullscreenHintTimer;
-  }, [clearFullscreenHintTimer, nativeFullscreen, presentationMode, revealFullscreenExitHint]);
-
-  useEffect(() => {
-    if (presentationMode !== "pure" || !nativeFullscreen) return;
-    const revealAtTopEdge = (event: PointerEvent) => {
-      if (event.clientY <= 10) revealFullscreenExitHint();
-    };
-    window.addEventListener("pointermove", revealAtTopEdge, { passive: true });
-    return () => window.removeEventListener("pointermove", revealAtTopEdge);
-  }, [nativeFullscreen, presentationMode, revealFullscreenExitHint]);
 
   const openNewTerminalMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -711,7 +212,6 @@ function TitlebarImpl({
       position: { x: rect.right, y: rect.bottom },
       items: [
         { id: "toggle-panel", label: panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show"), action: onTogglePanel },
-        { id: "pure-mode", label: t("titlebar.pure_mode"), action: () => setPresentationMode("pure") },
         { id: "settings", label: t("titlebar.settings"), action: onOpenSettings },
       ],
     });
@@ -748,49 +248,9 @@ function TitlebarImpl({
     transform: titlebarControlTransform,
   } satisfies React.CSSProperties;
 
-  if (presentationMode === "pure") {
-    if (nativeFullscreen) {
-      return (
-        <>
-          <PureModeActionStrip activeSessionId={activeSessionId} exitShortcut={presentationModeShortcut} fullscreen includeExit={false} />
-          <PresentationModeButton
-            label={t("palette.cmd.exit_pure")}
-            shortcut={presentationModeShortcut}
-            onClick={() => setPresentationMode("workspace")}
-            showShortcut
-            floating
-            draggable
-            visible={fullscreenExitHintVisible}
-            onKeepVisible={keepFullscreenExitHintVisible}
-            onReleaseVisible={revealFullscreenExitHint}
-          />
-        </>
-      );
-    }
-    return (
-      <div
-        data-presentation-chrome="windowed"
-        data-tauri-drag-region
-        style={{
-          height: "var(--h-titlebar)",
-          background: "var(--terminal-canvas-bg, var(--c-bg-white))",
-          display: "flex",
-          alignItems: "center",
-          flexShrink: 0,
-          WebkitAppRegion: "drag",
-        } as DragStyle}
-      >
-        <PureModeActionStrip activeSessionId={activeSessionId} exitShortcut={presentationModeShortcut} />
-        <div data-tauri-drag-region style={{ flex: 1 }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 4, paddingRight: _isMac ? 12 : 4, WebkitAppRegion: "no-drag" } as DragStyle}>
-          {!_isMac && <WindowControls />}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
+      className="tunara-titlebar"
       style={{
         height: "var(--h-titlebar)",
         background: "var(--c-bg-1)",

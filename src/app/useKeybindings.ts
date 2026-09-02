@@ -14,7 +14,6 @@ import {
   type SplitFocusDirection,
 } from "@/modules/session/split-layout";
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
-import { announceTerminalContext } from "@/modules/terminal/lib/terminal-context-announcement";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
 import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
 
@@ -34,12 +33,6 @@ export function useKeybindings() {
     const runAction = (action: KeybindingAction) => {
       const ui = useUIStore.getState();
       const st = useSessionsStore.getState();
-      const announcePureNavigation = (previousSessionId: string | null) => {
-        const current = useSessionsStore.getState();
-        if (ui.presentationMode !== "pure" || !current.activeSessionId || current.activeSessionId === previousSessionId) return;
-        const index = current.sessions.findIndex((session) => session.id === current.activeSessionId);
-        announceTerminalContext({ reason: "keyboard-navigation", logicalSessionId: current.activeSessionId, index: index + 1, total: current.sessions.length });
-      };
       switch (action) {
         case "newTerminal":
           ui.showTerminal();
@@ -60,10 +53,9 @@ export function useKeybindings() {
           break;
         }
         case "openSettings":
-          if (ui.presentationMode === "workspace") ui.openSettings();
+          ui.openSettings();
           break;
         case "toggleSidebar":
-          if (ui.presentationMode === "pure") break;
           if (!ui.sidebarVisible && auxiliarySurfaceToCloseOnOpen({
             viewportWidth: ui.viewportWidth, sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible,
             sidebarWidth: ui.sidebarWidth, panelWidth: ui.panelWidth, terminalColumnCount: splitHorizontalPaneCount(ui.split),
@@ -71,7 +63,6 @@ export function useKeybindings() {
           ui.toggleSidebar();
           break;
         case "togglePanel":
-          if (ui.presentationMode === "pure") break;
           ui.showTerminal();
           if (!ui.panelVisible && auxiliarySurfaceToCloseOnOpen({
             viewportWidth: ui.viewportWidth, sidebarVisible: ui.sidebarVisible, panelVisible: ui.panelVisible,
@@ -95,20 +86,15 @@ export function useKeybindings() {
           const origin = ui.focusedPaneId ?? st.activeSessionId;
           const target = splitFocusTarget(ui.split, origin, direction);
           if (target) {
-            const previous = st.activeSessionId;
             const sessionId = sessionIdFromPaneId(target);
             st.setActive(sessionId);
             ui.setFocusedPaneId(target);
             ui.showTerminal();
-            announcePureNavigation(previous);
           }
           break;
         }
         case "commandPalette":
           ui.setOverlay("command-palette");
-          break;
-        case "togglePresentationMode":
-          ui.togglePresentationMode();
           break;
         case "fontSizeUp":
           ui.setFontSize(ui.fontSize + 1);
@@ -120,7 +106,7 @@ export function useKeybindings() {
           ui.setFontSize(DEFAULT_SETTINGS.fontSize);
           break;
         case "selectLastTab":
-          if (st.sessions.length > 0) { const previous = st.activeSessionId; st.setActive(st.sessions[st.sessions.length - 1].id); ui.showTerminal(); announcePureNavigation(previous); }
+          if (st.sessions.length > 0) { st.setActive(st.sessions[st.sessions.length - 1].id); ui.showTerminal(); }
           break;
         case "focusLatestAttention": {
           const target = nextAttentionSessionId(st.sessions, st.activeSessionId);
@@ -128,14 +114,13 @@ export function useKeybindings() {
           const previous = st.activeSessionId;
           st.setActive(target);
           ui.showTerminal();
-          announcePureNavigation(previous);
           break;
         }
         default: {
           const tabMatch = action.match(/^selectTab([1-8])$/);
           if (!tabMatch) break;
           const idx = Number(tabMatch[1]) - 1;
-          if (idx < st.sessions.length) { const previous = st.activeSessionId; st.setActive(st.sessions[idx].id); ui.showTerminal(); announcePureNavigation(previous); }
+          if (idx < st.sessions.length) { st.setActive(st.sessions[idx].id); ui.showTerminal(); }
         }
       }
     };

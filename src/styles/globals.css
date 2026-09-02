@@ -18,6 +18,31 @@ html, body, #root {
 html { color-scheme: light; }
 html.dark { color-scheme: dark; }
 
+/* Chrome fade: terminal focus dims sidebar/titlebar/inspector without
+   collapsing layout (no column-width reflow). Hovering chrome restores it. */
+.chrome-faded .tunara-titlebar,
+.chrome-faded .tunara-sidebar,
+.chrome-faded .tunara-panel {
+  opacity: 0.6;
+  transition: opacity 160ms var(--ease-smooth);
+}
+.tunara-titlebar,
+.tunara-sidebar,
+.tunara-panel {
+  opacity: 1;
+  transition: opacity 120ms var(--ease-smooth);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chrome-faded .tunara-titlebar,
+  .chrome-faded .tunara-sidebar,
+  .chrome-faded .tunara-panel,
+  .tunara-titlebar,
+  .tunara-sidebar,
+  .tunara-panel {
+    transition: none;
+  }
+}
+
 /* Custom window chrome (Linux/Windows) */
 html[data-chrome="borderless"],
 html[data-chrome="borderless"] body {

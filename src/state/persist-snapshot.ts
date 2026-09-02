@@ -304,10 +304,16 @@ function sanitizeTrueRecord(raw: unknown): Record<string, true> {
 
 /** Keep at most the 50 most-recent command-usage entries (matches the cap in
  * the UI store's recordCommandUse) and drop any non-finite values. */
+const REMOVED_COMMAND_USAGE_IDS = new Set([
+  "toggle-presentation-mode",
+  "open-files-pure",
+]);
+
 function sanitizeCommandUsage(raw: unknown): Record<string, number> {
   if (!raw || typeof raw !== "object") return {};
   const entries: [string, number][] = [];
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (REMOVED_COMMAND_USAGE_IDS.has(k)) continue;
     if (isSafeRecordKey(k) && typeof v === "number" && Number.isFinite(v)) entries.push([k, v]);
   }
   entries.sort((a, b) => b[1] - a[1]);

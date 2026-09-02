@@ -2,7 +2,7 @@ import { useEffect, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
-import { useUIStore, type CursorStyle } from "@/state/ui";
+import type { CursorStyle } from "@/state/ui";
 import type { ThemeType } from "./types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
@@ -49,7 +49,6 @@ export function useTerminalRuntimeSync({
   theme,
   accent,
 }: TerminalRuntimeSyncOptions) {
-  const presentationMode = useUIStore((s) => s.presentationMode);
   const [systemIsDark, setSystemIsDark] = useState(() =>
     window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
   );
@@ -82,7 +81,7 @@ export function useTerminalRuntimeSync({
       }
     }, 30);
     return () => clearTimeout(timer);
-  }, [active, fitRef, presentationMode, ptyRef, sessionId, termRef]);
+  }, [active, fitRef, ptyRef, sessionId, termRef]);
 
   useEffect(() => {
     const term = termRef.current;

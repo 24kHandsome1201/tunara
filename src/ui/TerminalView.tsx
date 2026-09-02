@@ -67,7 +67,6 @@ function TerminalViewImpl({
   const linkInputRef = useRef(createTerminalLinkInputOwnership({
     getMouseTrackingMode: () => (termRef.current?.modes.mouseTrackingMode ?? "none") as TerminalMouseTrackingMode,
     hasSelection: () => !!termRef.current?.hasSelection(),
-    isPure: () => useUIStore.getState().presentationMode === "pure",
     getPlatform: () => /Mac/.test(navigator.platform) ? "macos" : /Win/.test(navigator.platform) ? "windows" : "linux",
     getHostModifier: () => useUIStore.getState().terminalHostModifier,
   }));
@@ -194,7 +193,7 @@ function TerminalViewImpl({
       cleanups.push(blocks.registerScrollTracking(term));
       // Terminal-scoped actions and workspace context-menu keys return false
       // before search/blocks so xterm neither consumes nor forwards them.
-      term.attachCustomKeyEventHandler((e) => !((e.type === "keydown" && isFixedTerminalMenuEvent(e)) && useUIStore.getState().presentationMode !== "pure") && handleTerminalInteractionKeyEvent(sessionIdRef.current, term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
+      term.attachCustomKeyEventHandler((e) => !(e.type === "keydown" && isFixedTerminalMenuEvent(e)) && handleTerminalInteractionKeyEvent(sessionIdRef.current, term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
       let osc133Active = false;
       let osc133InputFallback = false;
       let pendingSubmittedShellCommand: string | null = null;

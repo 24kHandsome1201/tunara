@@ -36,7 +36,6 @@ pub struct AppearanceConfig {
     pub terminal_clipboard_write: bool,
     pub terminal_inline_images: bool,
     pub terminal_screen_reader_mode: bool,
-    pub show_pure_mode_files_button: bool,
     pub terminal_host_modifier: String,
     pub language: String,
     pub global_shortcut: String,
@@ -62,7 +61,6 @@ impl Default for AppearanceConfig {
             terminal_clipboard_write: false,
             terminal_inline_images: true,
             terminal_screen_reader_mode: false,
-            show_pure_mode_files_button: true,
             terminal_host_modifier: if cfg!(target_os = "macos") {
                 "meta"
             } else {
@@ -214,7 +212,6 @@ fn old_default_keybindings() -> BTreeMap<String, String> {
         ("focus_split_up", "Mod+Shift+["),
         ("focus_split_down", "Mod+Shift+]"),
         ("command_palette", "Mod+K"),
-        ("toggle_presentation_mode", "Mod+Shift+P"),
         ("font_size_up", "Mod+="),
         ("font_size_down", "Mod+-"),
         ("font_size_reset", "Mod+0"),
@@ -298,7 +295,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 21] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 20] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -325,10 +322,6 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 2
         (
             "terminal_screen_reader_mode",
             value(config.terminal_screen_reader_mode),
-        ),
-        (
-            "show_pure_mode_files_button",
-            value(config.show_pure_mode_files_button),
         ),
         (
             "terminal_host_modifier",
@@ -369,6 +362,7 @@ fn merge_known_config(raw: &str, config: &TunaraConfig) -> Result<String, String
         for (key, item) in known_appearance_items(&config.appearance) {
             set_table_item(appearance, key, item);
         }
+        appearance.remove("show_pure_mode_files_button");
     }
 
     {
@@ -376,6 +370,7 @@ fn merge_known_config(raw: &str, config: &TunaraConfig) -> Result<String, String
         for (key, binding) in &config.keybindings {
             set_table_item(keybindings, key, value(binding.clone()));
         }
+        keybindings.remove("toggle_presentation_mode");
     }
 
     // A newer Tunara may own fields and semantics this binary does not know.
@@ -630,7 +625,6 @@ future_action = "Mod+F"
         config.appearance.font_size = 999;
         config.appearance.sidebar_width = 1;
         config.appearance.panel_width = 810;
-        config.appearance.show_pure_mode_files_button = false;
         config
             .keybindings
             .insert("new_terminal".into(), "Mod+Shift+T".into());
@@ -651,7 +645,6 @@ future_action = "Mod+F"
         assert_eq!(loaded.config.appearance.font_size, MAX_FONT_SIZE);
         assert_eq!(loaded.config.appearance.sidebar_width, MIN_SIDEBAR_WIDTH);
         assert_eq!(loaded.config.appearance.panel_width, 810);
-        assert!(!loaded.config.appearance.show_pure_mode_files_button);
 
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
@@ -724,7 +717,6 @@ font_size = 15
         assert!(saved.contains("[appearance]"));
         assert!(saved.contains("[keybindings]"));
         assert!(saved.contains("scrollback = 10000"));
-        assert!(saved.contains("show_pure_mode_files_button = true"));
         assert!(saved.contains("terminal_screen_reader_mode = false"));
         assert!(saved.contains("[terminal_interactions]"));
         assert!(saved.contains("secondary_click = \"smart\""));

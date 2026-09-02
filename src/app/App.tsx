@@ -25,6 +25,7 @@ import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { useAppServices } from "./useAppServices";
+import { useChromeFade } from "./useChromeFade";
 
 const Settings = lazy(() => import("@/ui/overlays/Settings").then((module) => ({ default: module.Settings })));
 const SshConnect = lazy(() => import("@/ui/overlays/SshConnect").then((module) => ({ default: module.SshConnect })));
@@ -300,9 +301,7 @@ export default function App() {
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const panelVisible = useUIStore((s) => s.panelVisible);
-  const presentationMode = useUIStore((s) => s.presentationMode);
   const mainSurface = useUIStore((s) => s.mainSurface);
-  const inspectorTab = useUIStore((s) => s.inspectorTab);
   const overlay = useUIStore((s) => s.overlay);
   const setOverlay = useUIStore((s) => s.setOverlay);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
@@ -311,7 +310,8 @@ export default function App() {
   const terminalColumnCount = useUIStore((s) => splitHorizontalPaneCount(s.split));
   const setViewportWidth = useUIStore((s) => s.setViewportWidth);
 
-  useAppServices(ready, presentationMode === "pure");
+  useAppServices(ready);
+  const chromeFaded = useChromeFade();
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);
@@ -321,7 +321,6 @@ export default function App() {
   }, [setViewportWidth]);
 
   useLayoutEffect(() => {
-    if (presentationMode !== "workspace") return;
     const surface = auxiliarySurfaceToCloseOnCompactResize({
       viewportWidth,
       sidebarVisible,
@@ -331,17 +330,15 @@ export default function App() {
       terminalColumnCount,
     });
     if (surface === "panel") useUIStore.getState().setPanelVisible(false);
-  }, [panelVisible, panelWidth, presentationMode, sidebarVisible, sidebarWidth, terminalColumnCount, viewportWidth]);
+  }, [panelVisible, panelWidth, sidebarVisible, sidebarWidth, terminalColumnCount, viewportWidth]);
 
   if (!ready) return <AppSplash />;
 
   const hasSessions = sessions.length > 0;
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
-  const workspaceMode = presentationMode === "workspace";
-  const terminalSurface = !workspaceMode || mainSurface === "terminal";
-  const presentedSidebarVisible = workspaceMode && hasSessions && sidebarVisible;
-  const pureFilesVisible = !workspaceMode && panelVisible && inspectorTab === "files";
-  const presentedPanelVisible = (workspaceMode && terminalSurface && panelVisible) || pureFilesVisible;
+  const terminalSurface = mainSurface === "terminal";
+  const presentedSidebarVisible = hasSessions && sidebarVisible;
+  const presentedPanelVisible = terminalSurface && panelVisible;
   const {
     sidebarOverlay,
     panelOverlay,
@@ -360,7 +357,8 @@ export default function App() {
 
   return (
     <div
-      data-presentation-mode={presentationMode}
+      className={chromeFaded ? "chrome-faded" : undefined}
+      data-chrome-faded={chromeFaded ? "true" : undefined}
       onPointerDownCapture={(event) => {
         const target = event.target instanceof HTMLElement ? event.target : null;
         if (!target?.closest('[role="menu"], [role="listbox"]')) advanceTerminalFocusEpoch();
@@ -371,7 +369,7 @@ export default function App() {
         height: "100vh",
         overflow: "hidden",
         fontFamily: "var(--font-ui)",
-        background: workspaceMode ? "var(--c-bg-white)" : "var(--terminal-canvas-bg, var(--c-bg-white))",
+        background: "var(--c-bg-white)",
       }}
     >
       <WindowResizeHandles />
@@ -421,7 +419,7 @@ export default function App() {
             boxShadow: sidebarOverlay && presentedSidebarVisible ? "var(--shadow-overlay)" : undefined,
           }}
         >
-          {workspaceMode && hasSessions && (
+          {hasSessions && (
             <>
               <Sidebar
                 sessions={sessions}
@@ -450,9 +448,9 @@ export default function App() {
           </div>
         )}
 
-        {workspaceMode && mainSurface === "ssh-hosts" && <SshHostsDashboard sessions={sessions} />}
+        {mainSurface === "ssh-hosts" && <SshHostsDashboard sessions={sessions} />}
 
-        {workspaceMode && terminalSurface && !hasSessions && (
+        {terminalSurface && !hasSessions && (
           <WorkspaceEmptyState
             onNewTerminal={newTerminal}
             onNewTerminalInDirectory={newTerminalInDirectory}
@@ -478,12 +476,10 @@ export default function App() {
               overflow: "hidden",
             }}
           >
-            {(workspaceMode || pureFilesVisible) && (
-              <>
-                {presentedPanelVisible && !panelOverlay && <PanelResizeHandle />}
-                <InspectorPanel session={activeSession} filesOnly={!workspaceMode} onClose={() => useUIStore.getState().setPanelVisible(false)} />
-              </>
-            )}
+            <>
+              {presentedPanelVisible && !panelOverlay && <PanelResizeHandle />}
+              <InspectorPanel session={activeSession} onClose={() => useUIStore.getState().setPanelVisible(false)} />
+            </>
           </div>
         )}
 
@@ -492,13 +488,13 @@ export default function App() {
         )}
       </div>
 
-      {workspaceMode && overlay === "settings" && (
+      {overlay === "settings" && (
         <Suspense fallback={<PanelLoadingState label={staticT("diff.mini.loading")} />}>
           <Settings onClose={() => setOverlay(null)} />
         </Suspense>
       )}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
-      {workspaceMode && overlay === "ssh" && (
+      {overlay === "ssh" && (
         <Suspense fallback={<PanelLoadingState label={staticT("diff.mini.loading")} />}>
           <SshConnect onClose={() => setOverlay(null)} />
         </Suspense>

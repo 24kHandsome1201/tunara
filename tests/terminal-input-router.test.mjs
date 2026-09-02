@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { TerminalInputRouter, createTerminalLinkInputOwnership, defaultTerminalHostModifier, routeTerminalInput } from "../src/modules/terminal/lib/terminal-input-router.ts";
 
 const input = (kind, overrides = {}) => ({
-  kind, mouseTrackingMode: "none", selection: false, pure: false, platform: "linux",
+  kind, mouseTrackingMode: "none", selection: false, platform: "linux",
   hostModifier: "shift", modifiers: { shift: false, meta: false, alt: false }, ...overrides,
 });
 
@@ -53,14 +53,6 @@ test("smart mode latches the mousedown modifier for the full gesture", () => {
   })), "tunara");
 });
 
-test("Pure Mode never consumes a hidden host-menu gesture", () => {
-  assert.equal(routeTerminalInput(input("mouse-down", {
-    button: 2,
-    mouseTrackingMode: "any",
-    pure: true,
-  })), "tui", "Pure Mode has no host menu to execute");
-});
-
 test("platform defaults are Cmd/Meta on macOS and Shift elsewhere", () => {
   assert.equal(defaultTerminalHostModifier("macos"), "meta");
   assert.equal(defaultTerminalHostModifier("windows"), "shift");
@@ -85,7 +77,6 @@ test("link ownership is latched from down through activation and up", () => {
   const links = createTerminalLinkInputOwnership({
     getMouseTrackingMode: () => mode,
     hasSelection: () => false,
-    isPure: () => false,
     getPlatform: () => "linux",
     getHostModifier: () => "shift",
   });

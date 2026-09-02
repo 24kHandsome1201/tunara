@@ -348,7 +348,7 @@ test("context-menu paste delegates to the binding-aware safe-paste registry", ()
   const registry = readFileSync(join(import.meta.dirname, "..", "src/modules/terminal/lib/terminal-action-registry.ts"), "utf8");
   const clipboard = readFileSync(join(import.meta.dirname, "..", "src/ui/lib/clipboard.ts"), "utf8");
   assert.match(chrome, /safePasteActiveTerminal\(sessionId\)/);
-  assert.match(titlebar, /safePasteActiveTerminal\(activeSessionId\)/);
+  assert.doesNotMatch(titlebar, /safePasteActiveTerminal/);
   assert.match(palette, /safePasteActiveTerminal\(activeSession\.id\)/);
   assert.match(chrome, /id: "paste"[\s\S]*?icon: "paste"/);
   for (const surface of [chrome, titlebar, palette]) {

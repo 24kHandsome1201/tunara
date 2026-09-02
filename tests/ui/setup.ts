@@ -17,7 +17,7 @@ beforeEach(() => {
   resetAppLifecycleForTests();
   useSessionsStore.setState({ activeSessionId: "ui-test-session" });
   useUIStore.setState({
-    presentationMode: "workspace",
+    overlay: null,
     mainSurface: "terminal",
     readers: {},
     focusedPaneId: null,

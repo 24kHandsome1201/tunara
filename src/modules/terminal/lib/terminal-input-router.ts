@@ -9,7 +9,6 @@ export interface TerminalInputRoute {
   kind: TerminalInputEventKind;
   mouseTrackingMode: TerminalMouseTrackingMode;
   selection: boolean;
-  pure: boolean;
   platform: TerminalPlatform;
   hostModifier: TerminalHostModifier;
   modifiers: TerminalInputModifiers;
@@ -26,10 +25,8 @@ function hostRequested(input: TerminalInputRoute): boolean {
 }
 
 function secondaryClickOwner(input: TerminalInputRoute, reporting: boolean): TerminalInputOwner {
-  // Pure Mode has no context menu. Never consume a PTY gesture for hidden host
-  // UI. Smart is the only remaining policy: host modifier or idle tracking
+  // Smart is the only remaining policy: host modifier or idle tracking
   // claims the click for Tunara; a reporting TUI keeps it.
-  if (input.pure) return "tui";
   return hostRequested(input) || !reporting ? "tunara" : "tui";
 }
 
@@ -65,7 +62,6 @@ export function routeTerminalInput(input: TerminalInputRoute): TerminalInputOwne
 interface TerminalLinkInputOwnershipOptions {
   getMouseTrackingMode: () => TerminalMouseTrackingMode;
   hasSelection: () => boolean;
-  isPure: () => boolean;
   getPlatform: () => TerminalPlatform;
   getHostModifier: () => TerminalHostModifier;
 }
@@ -77,7 +73,6 @@ export function createTerminalLinkInputOwnership(options: TerminalLinkInputOwner
     kind: "link",
     mouseTrackingMode: options.getMouseTrackingMode(),
     selection: options.hasSelection(),
-    pure: options.isPure(),
     platform: options.getPlatform(),
     hostModifier: options.getHostModifier(),
     modifiers: { shift: event.shiftKey, meta: event.metaKey, alt: event.altKey, ctrl: event.ctrlKey },

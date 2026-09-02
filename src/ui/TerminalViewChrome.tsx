@@ -40,7 +40,6 @@ export function TerminalViewChrome({
 }: TerminalViewChromeProps) {
   const t = useT();
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean; blockEntries: MenuEntry[]; focusToken: TerminalFocusReturnToken | null } | null>(null);
-  const pure = useUIStore((s) => s.presentationMode === "pure");
   const hostModifier = useUIStore((s) => s.terminalHostModifier);
   const inputRouter = useRef(new TerminalInputRouter());
   const contextMenuOwners = useRef(new WeakMap<Event, TerminalInputOwner>());
@@ -54,7 +53,7 @@ export function TerminalViewChrome({
     const mode = (term?.modes as (Terminal["modes"] & { mouseTrackingMode?: string }) | undefined)?.mouseTrackingMode ?? "none";
     return inputRouter.current.route({
       kind, mouseTrackingMode: mode as TerminalMouseTrackingMode,
-      selection: !!term?.hasSelection(), pure,
+      selection: !!term?.hasSelection(),
       platform: /Mac/.test(navigator.platform) ? "macos" : /Win/.test(navigator.platform) ? "windows" : "linux",
       hostModifier,
       modifiers: { shift: event.shiftKey, meta: event.metaKey, alt: event.altKey, ctrl: event.ctrlKey },
@@ -78,13 +77,7 @@ export function TerminalViewChrome({
     event.stopPropagation();
   };
 
-  useEffect(() => {
-    if (!pure) return;
-    setMenu(null);
-  }, [pure]);
-
   const openMenu = useCallback((x: number, y: number) => {
-    if (useUIStore.getState().presentationMode === "pure") return;
     const term = getTerminal();
     if (!term) return;
     setMenu({
@@ -218,11 +211,6 @@ export function TerminalViewChrome({
       e.preventDefault();
       return;
     }
-    if (pure) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
     const term = getTerminal();
     if (!term) return; // before init: let the browser's default menu through (dev only)
     e.preventDefault();
@@ -237,7 +225,6 @@ export function TerminalViewChrome({
   // Shift+F10 / ContextMenu 键：右键菜单的键盘入口（WCAG 键盘可操作性）。
   // 菜单锚定在终端区左上内侧，和鼠标右键走同一套菜单状态。
   const handleMenuKeyDown = (e: React.KeyboardEvent) => {
-    if (pure) return;
     if (!isFixedTerminalMenuEvent(e)) return;
     e.preventDefault();
     openKeyboardMenu();
@@ -271,7 +258,7 @@ export function TerminalViewChrome({
         )}
         <div data-terminal-canvas ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
       </div>
-      {!pure && menu && (
+      {menu && (
         <ContextMenu
           position={{ x: menu.x, y: menu.y }}
           terminalFocusReturnToken={menu.focusToken}
@@ -279,7 +266,7 @@ export function TerminalViewChrome({
           items={[
             ...(menu.blockEntries.length > 0 ? [...menu.blockEntries, null] : []),
             { id: "copy", label: t("term.copy"), icon: "copy", disabled: !menu.hasSelection, action: () => { copyActiveTerminal(sessionId); } },
-            { id: "paste", label: t("pure.action.safe_paste"), icon: "paste", action: () => { void safePasteActiveTerminal(sessionId); } },
+            { id: "paste", label: t("term.safe_paste"), icon: "paste", action: () => { void safePasteActiveTerminal(sessionId); } },
             { id: "export-scrollback", label: t("term.export.scrollback"), icon: "download", action: () => { void exportTerminalBufferToFile(getTerminal()?.buffer.active, "tunara-scrollback.txt", sessionId); } },
             null,
             {

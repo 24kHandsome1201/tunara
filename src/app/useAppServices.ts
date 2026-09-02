@@ -4,7 +4,7 @@ import { useDockBadge } from "./useDockBadge";
 import { useGlobalShortcut } from "./useGlobalShortcut";
 import { useInit } from "./useInit";
 import { useKeybindings } from "./useKeybindings";
-import { usePresentationModeContextMenuGuard } from "./usePresentationModeContextMenuGuard";
+import { useNativeContextMenuGuard } from "./useNativeContextMenuGuard";
 import { useTheme } from "./useTheme";
 import { useUpdateReminder } from "./useUpdateReminder";
 
@@ -15,7 +15,7 @@ const useBenchmarks = import.meta.env.VITE_TUNARA_BENCHMARK
   : useNoopBenchmarks;
 
 /** Mounts app-wide lifecycle services once, outside the shell layout markup. */
-export function useAppServices(ready: boolean, purePresentation: boolean): void {
+export function useAppServices(ready: boolean): void {
   useInit();
   useTheme();
   useKeybindings();
@@ -23,7 +23,7 @@ export function useAppServices(ready: boolean, purePresentation: boolean): void 
   useGlobalShortcut();
   useUpdateReminder(ready);
   useBenchmarks(ready);
-  usePresentationModeContextMenuGuard(purePresentation);
+  useNativeContextMenuGuard();
 
   useEffect(() => {
     void useTransferStore.getState().loadJournal();

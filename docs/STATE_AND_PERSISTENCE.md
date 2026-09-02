@@ -94,7 +94,6 @@ split: SplitState                    // recursive pane tree, max 4 leaves ({ roo
 inspectorTab: InspectorTab           // last selected view: changes | files | preview
                                      // SSH: + transfers | forwarding
                                      // Auto/Locked and Preview-opened are runtime-only
-presentationMode: "workspace" | "pure"
 readers: Record<sessionId, SessionReaderState>  // per-session file reader
 focusedPaneId: string | null         // terminal session id or reader:<sessionId>
 toasts: Toast[]                      // capped, last 3
@@ -113,10 +112,12 @@ parks on an unknown or unverifiable host key; the overlay in
 `src/ui/overlays/HostKeyPrompt.tsx` resolves it. Keyboard-interactive prompts
 use the same park/unpark path via `KeyboardInteractivePrompt.tsx`.
 
-`presentationMode` is runtime UI. Pure Mode is not written into the workspace
-snapshot; leaving it restores the last docked layout. Reader history is
-persisted on `PersistedUILayoutV2.readers`. Legacy snapshots with `fileTabs`
-migrate the active tab per session into `current` and the rest into `history`.
+Chrome fade is runtime UI derived from terminal focus and overlay state; it is
+not written into the workspace snapshot. Reader history is persisted on
+`PersistedUILayoutV2.readers`. Legacy snapshots with `fileTabs` migrate the
+active tab per session into `current` and the rest into `history`. Old
+`commandUsage` ids `toggle-presentation-mode` and `open-files-pure` are dropped
+on load.
 
 **Two distinct persistence channels for the UI store:**
 

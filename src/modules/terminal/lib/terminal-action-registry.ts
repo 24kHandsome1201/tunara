@@ -32,7 +32,6 @@ export function registerTerminalMenuAction(sessionId: string, openMenu: () => vo
 }
 
 export function openTerminalMenu(sessionId: string): boolean {
-  if (useUIStore.getState().presentationMode === "pure") return false;
   const openMenu = menuActions.get(sessionId);
   if (!openMenu || useSessionsStore.getState().activeSessionId !== sessionId) return false;
   openMenu();

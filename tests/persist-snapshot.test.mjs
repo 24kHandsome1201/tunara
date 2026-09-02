@@ -150,6 +150,8 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     const commandUsageEntries = Array.from({ length: 55 }, (_v, i) => [`cmd-${i}`, i]);
     commandUsageEntries.push(["bad", Number.NaN]);
     commandUsageEntries.push(["__proto__", 999]);
+    commandUsageEntries.push(["toggle-presentation-mode", 123]);
+    commandUsageEntries.push(["open-files-pure", 456]);
 
     const snapshot = sanitizeSnapshot({
       version: 1,
@@ -284,6 +286,8 @@ test("snapshot sanitizer clamps layout, drops orphan runtime state, and sanitize
     assert.equal(Object.keys(snapshot.commandUsage).length, 50);
     assert.deepEqual(Object.keys(snapshot.commandUsage).slice(0, 3), ["cmd-54", "cmd-53", "cmd-52"]);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot.commandUsage, "__proto__"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(snapshot.commandUsage, "toggle-presentation-mode"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(snapshot.commandUsage, "open-files-pure"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(snapshot, "workflows"), false);
     assert.deepEqual(snapshot.recentSessionIds, ["s-b"]);
     assert.equal(warnings.length, 1);

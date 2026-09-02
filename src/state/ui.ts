@@ -43,7 +43,6 @@ const REMOVED_TERMINAL_THEMES = [
 ] as const;
 
 export type CursorStyle = "bar" | "block" | "underline";
-export type PresentationMode = "workspace" | "pure";
 export type MainSurface = "terminal" | "ssh-hosts";
 export type { SplitState } from "@/modules/session/split-layout";
 
@@ -63,7 +62,6 @@ export interface AppearanceSettings {
   bellNotification: boolean;
   terminalClipboardWrite: boolean;
   terminalScreenReaderMode: boolean;
-  showPureModeFilesButton: boolean;
   terminalHostModifier: TerminalHostModifier;
   keybindings: KeybindingConfig;
   language: Language;
@@ -94,7 +92,6 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   bellNotification: true,
   terminalClipboardWrite: false,
   terminalScreenReaderMode: false,
-  showPureModeFilesButton: true,
   // Cmd on macOS still needs real-hardware/WKWebView verification; Option is
   // available as an alternative. Shift is the conservative Win/Linux choice.
   terminalHostModifier: typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "meta" : "shift",
@@ -163,7 +160,6 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     bellNotification: typeof raw?.bell_notification === "boolean" ? raw.bell_notification : DEFAULT_SETTINGS.bellNotification,
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
     terminalScreenReaderMode: typeof raw?.terminal_screen_reader_mode === "boolean" ? raw.terminal_screen_reader_mode : DEFAULT_SETTINGS.terminalScreenReaderMode,
-    showPureModeFilesButton: typeof raw?.show_pure_mode_files_button === "boolean" ? raw.show_pure_mode_files_button : DEFAULT_SETTINGS.showPureModeFilesButton,
     terminalHostModifier: raw?.terminal_host_modifier === "meta" || raw?.terminal_host_modifier === "alt" || raw?.terminal_host_modifier === "shift" ? raw.terminal_host_modifier : DEFAULT_SETTINGS.terminalHostModifier,
     keybindings: { ...DEFAULT_KEYBINDINGS },
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
@@ -199,7 +195,6 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       terminal_clipboard_write: s.terminalClipboardWrite,
       terminal_inline_images: true,
       terminal_screen_reader_mode: s.terminalScreenReaderMode,
-      show_pure_mode_files_button: s.showPureModeFilesButton,
       terminal_host_modifier: s.terminalHostModifier,
       language: s.language,
       global_shortcut: s.globalShortcut,
@@ -282,7 +277,6 @@ interface UIState extends AppearanceSettings {
   configLoaded: boolean;
   configPath: string;
   configError: string | null;
-  presentationMode: PresentationMode;
   mainSurface: MainSurface;
   nativeFullscreen: boolean;
   sidebarVisible: boolean;
@@ -320,8 +314,6 @@ interface UIState extends AppearanceSettings {
   downloadMaxFileBytes: number;
   downloadMaxTotalBytes: number;
 
-  setPresentationMode: (mode: PresentationMode) => void;
-  togglePresentationMode: () => void;
   showTerminal: () => void;
   openSshHosts: () => void;
   setNativeFullscreen: (fullscreen: boolean) => void;
@@ -382,7 +374,6 @@ interface UIState extends AppearanceSettings {
   setExternalEditor: (e: ExternalEditor) => void;
   setBellNotification: (b: boolean) => void;
   setTerminalClipboardWrite: (enabled: boolean) => void;
-  setShowPureModeFilesButton: (enabled: boolean) => void;
   setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
   resetTerminalInteractions: () => void;
   setGlobalShortcut: (shortcut: string) => void;
@@ -421,7 +412,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     configLoaded: false,
     configPath: "",
     configError: null,
-    presentationMode: "workspace",
     mainSurface: "terminal",
     nativeFullscreen: false,
     sidebarVisible: true,
@@ -451,25 +441,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     downloadMaxTotalBytes: 1024 ** 3,
     ...DEFAULT_SETTINGS,
 
-    setPresentationMode: (presentationMode) => set(presentationMode === "pure"
-      ? {
-          presentationMode,
-          mainSurface: "terminal",
-          overlay: null,
-          sshPrefill: null,
-        }
-      : { presentationMode, mainSurface: "terminal", overlay: null, sshPrefill: null }),
-    togglePresentationMode: () => set((state) => state.presentationMode === "workspace"
-      ? {
-          presentationMode: "pure",
-          mainSurface: "terminal",
-          overlay: null,
-          sshPrefill: null,
-        }
-      : { presentationMode: "workspace", mainSurface: "terminal", overlay: null, sshPrefill: null }),
     showTerminal: () => set({ mainSurface: "terminal" }),
     openSshHosts: () => set({
-      presentationMode: "workspace",
       mainSurface: "ssh-hosts",
       overlay: null,
       sshPrefill: null,
@@ -486,10 +459,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
     togglePanel: () => set((s) => ({ panelVisible: !s.panelVisible })),
     setOverlay: (overlay) => set(overlay === "ssh" ? { overlay } : { overlay, sshPrefill: null }),
-    // Profile/config management stays out of Pure Mode. A user-triggered
-    // connect/reconnect first restores the workspace, then opens the sheet.
     openSshConnect: (prefill) => set({
-      presentationMode: "workspace",
       overlay: "ssh",
       sshPrefill: prefill ?? null,
     }),
@@ -698,7 +668,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setExternalEditor: (externalEditor) => set({ externalEditor: isExternalEditor(externalEditor) ? externalEditor : DEFAULT_SETTINGS.externalEditor }),
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
-    setShowPureModeFilesButton: (showPureModeFilesButton) => set({ showPureModeFilesButton: typeof showPureModeFilesButton === "boolean" ? showPureModeFilesButton : DEFAULT_SETTINGS.showPureModeFilesButton }),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
     resetTerminalInteractions: () => set((state) => {
       const keybindings = { ...state.keybindings };
@@ -760,7 +729,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "showPureModeFilesButton", "terminalHostModifier", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

@@ -103,7 +103,7 @@ The scanner finds:
 
 - Direct calls: `t("a.b.c")`, `t('a.b.c')`, `t(\`a.b.c\`)`, including `t as staticT` aliases and `const t = useT()`.
 - Indirect key literals such as `titleKey: "diff.title"` (counted as used if they match a locale key).
-- Dynamic templates such as `` t(`pure.cue.${kind}`) `` or `` t(`workspace.${kind}_error.title`) ``. Matching locale keys are classified as **dynamic** (not dead) and listed for human review.
+- Dynamic templates such as `` t(`workspace.${kind}_error.title`) ``. Matching locale keys are classified as **dynamic** (not dead) and listed for human review.
 
 ```bash
 pnpm i18n:audit                 # human-readable report
@@ -233,7 +233,7 @@ the main themes by filename prefix.
   `git-watch-refcount`, `sync-watches`, `workflow-*`, `ui-types`,
   `clipboard`, `elapsed`, `update-reminder`, `workspace-*`,
   `session-*`, `app-shell-layout`, `split-layout`,
-  `presentation-mode`, `record-keys`, `destructive-confirm`,
+  `chrome-fade`, `record-keys`, `destructive-confirm`,
   `new-terminal-directory`, `grep-group`, `i18n-core`): small pure-logic suites
   keyed to a single module.
 

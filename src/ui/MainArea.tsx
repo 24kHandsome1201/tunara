@@ -94,7 +94,6 @@ function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) 
 function paneRectStyle(
   pane: { x: number; y: number; width: number; height: number; parentDirection: "horizontal" | "vertical" },
   active: boolean,
-  pure: boolean,
 ): CSSProperties {
   const leftInset = pane.x > 0 ? 2.5 : 0;
   const topInset = pane.y > 0 ? 2.5 : 0;
@@ -114,10 +113,10 @@ function paneRectStyle(
     minWidth: 0,
     minHeight: 0,
     overflow: "hidden",
-    borderRadius: pure ? 0 : "var(--r-btn)",
+    borderRadius: "var(--r-btn)",
     zIndex: 1,
-    boxShadow: !pure && active ? activeMarker : "none",
-    transition: pure ? "none" : "box-shadow var(--duration-normal) var(--ease-smooth)",
+    boxShadow: active ? activeMarker : "none",
+    transition: "box-shadow var(--duration-normal) var(--ease-smooth)",
   };
 }
 
@@ -132,7 +131,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const split = useUIStore((s) => s.split);
   const focusedPaneId = useUIStore((s) => s.focusedPaneId);
   const readers = useUIStore((s) => s.readers);
-  const pure = useUIStore((s) => s.presentationMode === "pure");
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
   const activeId = active?.id;
@@ -180,7 +178,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   function terminalWrapperStyle(s: Session): CSSProperties {
     const pane = splitGeometry.panes[s.id];
     if (isSplit && pane) {
-      return paneRectStyle(pane, effectiveFocusedPaneId === s.id, pure);
+      return paneRectStyle(pane, effectiveFocusedPaneId === s.id);
     }
     if (!isSplit && s.id === activeSessionId) {
       return {
@@ -199,15 +197,15 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   function readerWrapperStyle(sessionId: string): CSSProperties {
     const pane = splitGeometry.panes[readerPaneId(sessionId)];
     if (isSplit && pane) {
-      return paneRectStyle(pane, effectiveFocusedPaneId === readerPaneId(sessionId), pure);
+      return paneRectStyle(pane, effectiveFocusedPaneId === readerPaneId(sessionId));
     }
     return { display: "none" };
   }
 
   return (
     <div
-      data-terminal-canvas={pure ? "pure" : "workspace"}
-      style={{ flex: 1, display: "flex", flexDirection: "column", background: pure ? "var(--terminal-canvas-bg, var(--c-bg-white))" : "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}
+      data-terminal-canvas="workspace"
+      style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}
     >
       <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {mountedSessions.map((s) => (
@@ -240,7 +238,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             }}
             style={readerWrapperStyle(s.id)}
           >
-            <ReaderPane session={s} active={!pure && effectiveFocusedPaneId === readerPaneId(s.id)} />
+            <ReaderPane session={s} active={effectiveFocusedPaneId === readerPaneId(s.id)} />
           </div>
         ))}
         {splitGeometry.handles.map((handle) => (
@@ -255,7 +253,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         ))}
       </div>
 
-      {!pure && <div
+      <div
         style={{
           height: "var(--h-statusbar)",
           background: "var(--c-bg-1)",
@@ -359,7 +357,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             </>
           )}
         </div>
-      </div>}
+      </div>
     </div>
   );
 }

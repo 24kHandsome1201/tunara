@@ -146,7 +146,7 @@ test("keeps the active tab visible and preserves APG roving focus navigation", a
   }
 });
 
-test("projects only Files controls in Pure Mode", () => {
+test("projects only Files controls when filesOnly is set", () => {
   useUIStore.setState({ inspectorTab: "changes" });
   render(<InspectorPanel session={session} filesOnly />);
 

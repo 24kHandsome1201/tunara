@@ -80,7 +80,7 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.match(attentionRow, /deriveAttentionRow\(sessions\)/);
   assert.match(chrome, /\{search\.searchOpen &&/);
   assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
-  assert.match(chrome, /!pure && menu &&/);
+  assert.match(chrome, /\{menu && \(/);
   assert.match(chrome, /formatDroppedTerminalPaths\(paths\)/);
   assert.match(chrome, /insertTerminalText\(sessionId, inserted\)/);
   assert.doesNotMatch(attentionRow, /gbar\.action\.review|agentResumePendingInput/);
@@ -1552,7 +1552,6 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
   assert.match(terminal, /isFixedTerminalMenuEvent\(e\)/);
-  assert.match(terminal, /useUIStore\.getState\(\)\.presentationMode !== "pure"/);
   assert.match(terminal, /handleTerminalInteractionKeyEvent\(sessionIdRef\.current, term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
   assert.match(terminal, /handleTerminalInteractionKeyEvent, registerTerminalActions/);
   assert.match(terminal, /const search = useTerminalSearch\(sessionId\)/);

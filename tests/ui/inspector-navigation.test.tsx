@@ -32,7 +32,7 @@ describe("inspector navigation", () => {
     expect(INSPECTOR_OVERFLOW_SECTION.forwarding).toBe("ssh");
   });
 
-  test("preserves the dedicated files-only projection", () => {
+  test("preserves a dedicated files-only projection for callers that request it", () => {
     expect(resolveInspectorNavigation({
       filesOnly: true,
       isRemote: true,

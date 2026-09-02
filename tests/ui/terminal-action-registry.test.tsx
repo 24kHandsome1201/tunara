@@ -43,7 +43,6 @@ beforeEach(() => {
   resetTerminalBindingsForTests();
   useSessionsStore.setState({ activeSessionId: "pane-a" });
   useUIStore.setState({
-    presentationMode: "workspace",
     keybindings: defaultKeybindingsForPlatform("linux"),
   });
   vi.mocked(copyText).mockReset();
@@ -235,7 +234,7 @@ test("clipboard permission denial never reaches the PTY and shows a content-free
   dispose();
 });
 
-test("menu binding is scoped to the active workspace terminal and disabled in Pure Mode", () => {
+test("menu binding is scoped to the active workspace terminal", () => {
   const terminal = fakeTerminal();
   const disposeTarget = registerTarget(terminal);
   const open = vi.fn();
@@ -248,11 +247,6 @@ test("menu binding is scoped to the active workspace terminal and disabled in Pu
   expect(handleTerminalInteractionKeyEvent("pane-a", terminal, event)).toBe(false);
   expect(open).toHaveBeenCalledOnce();
   expect(openTerminalMenu("pane-a")).toBe(true);
-  expect(open).toHaveBeenCalledTimes(2);
-
-  useUIStore.setState({ presentationMode: "pure" });
-  expect(handleTerminalInteractionKeyEvent("pane-a", terminal, event)).toBe(true);
-  expect(openTerminalMenu("pane-a")).toBe(false);
   expect(open).toHaveBeenCalledTimes(2);
   disposeMenu();
   disposeTarget();

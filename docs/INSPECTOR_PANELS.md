@@ -2,7 +2,7 @@
 
 The Inspector is Tunara's contextual right rail. It keeps review, files, Preview, transfers, and forwarding close to the terminal without becoming a second dashboard or an IDE. Chinese UI copy uses **检查器**.
 
-The container is [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx). Available views are defined by [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Auto-follow and lock live in [`inspector-context.ts`](../src/ui/inspector-context.ts). Scope labels come from [`inspector-scope.ts`](../src/ui/inspector-scope.ts). Only the active view is mounted. On narrow windows the rail becomes an overlay; Pure Mode can project Files alone without changing the stored Inspector selection.
+The container is [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx). Available views are defined by [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Auto-follow and lock live in [`inspector-context.ts`](../src/ui/inspector-context.ts). Scope labels come from [`inspector-scope.ts`](../src/ui/inspector-scope.ts). Only the active view is mounted. On narrow windows the rail becomes an overlay. Chrome fade dims the Inspector while the terminal is focused; ⌘⇧\\ still hides it.
 
 ## Interaction model
 

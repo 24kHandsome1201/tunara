@@ -18,12 +18,6 @@ function runAudit(args, env = {}) {
 }
 
 test("dynamic template prefixes keep a leading segment and optional suffix", () => {
-  assert.deepEqual(parseDynamicPattern("pure.cue.${kind}"), {
-    kind: "dynamic",
-    leading: "pure.cue.",
-    trailing: "",
-    raw: "pure.cue.${kind}",
-  });
   assert.deepEqual(parseDynamicPattern("workspace.${kind}_error.title"), {
     kind: "dynamic",
     leading: "workspace.",

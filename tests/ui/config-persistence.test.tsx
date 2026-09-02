@@ -35,44 +35,30 @@ function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light" }: { en
   return null;
 }
 
-test("Pure Mode Files button defaults on and restores its persisted value", async () => {
-  expect(DEFAULT_SETTINGS.showPureModeFilesButton).toBe(true);
+test("legacy Pure Mode config fields load without becoming settings", async () => {
+  expect("showPureModeFilesButton" in DEFAULT_SETTINGS).toBe(false);
   mockIPC((command) => {
     if (command === "load_config") {
       return {
         path: "/tmp/tunara-config.toml",
-        config: { appearance: { show_pure_mode_files_button: false } },
+        config: {
+          appearance: { show_pure_mode_files_button: false },
+          keybindings: { toggle_presentation_mode: "Mod+Shift+P" },
+        },
         error: null,
       };
     }
     throw new Error(`unexpected command: ${command}`);
   });
-  useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
+  useUIStore.setState({ configLoaded: false });
 
   await loadUserConfig();
 
-  expect(useUIStore.getState()).toMatchObject({
-    configLoaded: true,
-    showPureModeFilesButton: false,
-  });
-  useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
-});
-
-test("changing the Pure Mode Files setting persists the snake-case config field", async () => {
-  let saved: unknown;
-  mockIPC((command, payload) => {
-    if (command === "save_config") {
-      saved = (payload as { config: unknown }).config;
-      return undefined;
-    }
-    throw new Error(`unexpected command: ${command}`);
-  });
-  useUIStore.setState({ configLoaded: true, showPureModeFilesButton: true, configError: null });
-
-  useUIStore.getState().setShowPureModeFilesButton(false);
-
-  await waitFor(() => expect(saved).toMatchObject({ appearance: { show_pure_mode_files_button: false } }));
-  useUIStore.setState({ configLoaded: false, showPureModeFilesButton: true });
+  expect(useUIStore.getState().configLoaded).toBe(true);
+  expect(useUIStore.getState()).not.toHaveProperty("showPureModeFilesButton");
+  expect(useUIStore.getState()).not.toHaveProperty("presentationMode");
+  expect(useUIStore.getState().keybindings).not.toHaveProperty("togglePresentationMode");
+  useUIStore.setState({ configLoaded: false });
 });
 
 test("removed named themes fall back to System and a fixed terracotta accent", async () => {

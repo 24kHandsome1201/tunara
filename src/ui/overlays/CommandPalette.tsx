@@ -73,7 +73,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const uiStore = useUIStore;
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
-  const presentationMode = useUIStore((s) => s.presentationMode);
 
   // Stable identity so the commands useMemo below can list it as a dependency
   // without invalidating on every render; it only reads store state at call
@@ -90,34 +89,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       app: t("palette.section.app"),
       session: t("palette.section.session"),
     };
-    const presentationCommand: Command = {
-      id: "toggle-presentation-mode",
-      label: presentationMode === "pure" ? t("palette.cmd.exit_pure") : t("palette.cmd.enter_pure"),
-      shortcut: formatShortcut(keybindings.togglePresentationMode),
-      icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
-      section: section.app,
-      scopes: ["action", "app"],
-      originalIndex: idx++,
-      action: () => {
-        const ui = uiStore.getState();
-        ui.recordCommandUse("toggle-presentation-mode");
-        ui.togglePresentationMode();
-        onClose();
-      },
-    };
-
-    // In pure mode the palette is a deliberate escape hatch, not a second
-    // business surface layered over the terminal canvas.
-    if (presentationMode === "pure") return [
-      {
-        id: "open-files-pure",
-        label: t("pure.files.open"),
-        icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-        section: section.files, scopes: ["action", "files"], originalIndex: idx++,
-        action: () => { const ui = uiStore.getState(); ui.setInspectorTab("files", { sessionId: activeSessionId }); ui.setPanelVisible(true); onClose(); },
-      },
-      presentationCommand,
-    ];
 
     [...sessions]
       .filter((s: Session) => s.id !== activeSessionId)
@@ -496,8 +467,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       action: () => { uiStore.getState().recordCommandUse("toggle-panel"); uiStore.getState().togglePanel(); onClose(); },
     });
 
-    cmds.push(presentationCommand);
-
     cmds.push({
       id: "split-horizontal",
       label: t("palette.cmd.split_horizontal"),
@@ -696,13 +665,13 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, presentationMode, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);
   const allRanked = rankCommandPaletteItems(filtered, parsedQuery, usage);
   const sectionOrder = PALETTE_SECTION_KEYS.map((key) => t(`palette.section.${key}`));
-  const ranked = presentationMode === "pure"
+  const ranked = query.trim()
     ? allRanked
     : orderPaletteCommands(allRanked, sectionOrder);
 
