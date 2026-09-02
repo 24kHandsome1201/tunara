@@ -2,9 +2,7 @@ import { Titlebar } from "@/ui/Titlebar";
 import { Sidebar } from "@/ui/Sidebar";
 import { MainArea } from "@/ui/MainArea";
 import { InspectorPanel } from "@/ui/InspectorPanel";
-import { Settings } from "@/ui/overlays/Settings";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
-import { SshConnect } from "@/ui/overlays/SshConnect";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
 import { ToastContainer } from "@/ui/Toast";
@@ -14,7 +12,8 @@ import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { PanelLoadingState } from "@/ui/shared";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import {
   auxiliarySurfaceToCloseOnCompactResize,
@@ -26,6 +25,9 @@ import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { useAppServices } from "./useAppServices";
+
+const Settings = lazy(() => import("@/ui/overlays/Settings").then((module) => ({ default: module.Settings })));
+const SshConnect = lazy(() => import("@/ui/overlays/SshConnect").then((module) => ({ default: module.SshConnect })));
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
 // hoisting them keeps their identity constant across App re-renders — which
@@ -490,9 +492,17 @@ export default function App() {
         )}
       </div>
 
-      {workspaceMode && overlay === "settings" && <Settings onClose={() => setOverlay(null)} />}
+      {workspaceMode && overlay === "settings" && (
+        <Suspense fallback={<PanelLoadingState label={staticT("diff.mini.loading")} />}>
+          <Settings onClose={() => setOverlay(null)} />
+        </Suspense>
+      )}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
-      {workspaceMode && overlay === "ssh" && <SshConnect onClose={() => setOverlay(null)} />}
+      {workspaceMode && overlay === "ssh" && (
+        <Suspense fallback={<PanelLoadingState label={staticT("diff.mini.loading")} />}>
+          <SshConnect onClose={() => setOverlay(null)} />
+        </Suspense>
+      )}
       <HostKeyPromptDialog />
       <KeyboardInteractivePromptDialog />
       <ToastContainer />

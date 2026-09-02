@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { type Session } from "./types";
-import { DiffPanel } from "./DiffPanel";
 import { FileExplorer } from "./FileExplorer";
 import { PreviewPanel } from "./PreviewPanel";
 import { useUIStore } from "@/state/ui";
@@ -17,6 +16,7 @@ import { useT } from "@/modules/i18n";
 import {
   CloseIcon,
   PanelIconButton,
+  PanelLoadingState,
 } from "./shared";
 import { WorkspaceSourceChip } from "./WorkspaceSource";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
@@ -35,6 +35,7 @@ import {
 } from "./inspector-context";
 import { AccentActionButton } from "./lib/ui-primitives";
 
+const DiffPanel = lazy(() => import("./DiffPanel").then((module) => ({ default: module.DiffPanel })));
 const TransferCenter = lazy(() => import("./TransferCenter").then((module) => ({ default: module.TransferCenter })));
 const ForwardingPanel = lazy(() => import("@/modules/ssh/ForwardingPanel").then((module) => ({ default: module.ForwardingPanel })));
 
@@ -469,7 +470,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
             minHeight: 0,
           }}
         >
-          <Suspense fallback={null}>
+          <Suspense fallback={<PanelLoadingState label={t("diff.mini.loading")} />}>
             {activePanel}
           </Suspense>
         </div>

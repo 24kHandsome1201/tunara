@@ -35,6 +35,14 @@ export default defineConfig(async ({ mode }) => ({
   build: {
     target: "esnext",
     chunkSizeWarningLimit: 1500,
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        return deps.filter((dep) => {
+          const name = dep.split("/").pop() ?? dep;
+          return name.startsWith("react-") || name.startsWith("xterm-");
+        });
+      },
+    },
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, "index.html"),

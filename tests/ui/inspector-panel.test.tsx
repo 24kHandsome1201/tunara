@@ -97,7 +97,7 @@ test("mounts only the active Inspector panel and keeps every view in the compact
 
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   expect(screen.queryByTestId("files-panel")).toBeNull();
-  expect(screen.getByTestId("changes-panel")).toBeTruthy();
+  expect(await screen.findByTestId("changes-panel")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Return Inspector to automatic follow" })).toBeNull();
   expect(useUIStore.getState().inspectorLocked).toBe(true);
 
@@ -178,7 +178,7 @@ test("auto-follows unreviewed changes unless the view is locked", async () => {
   };
   const view = render(<InspectorPanel session={dirty} filesOnly={false} />);
   await waitFor(() => expect(useUIStore.getState().inspectorTab).toBe("changes"));
-  expect(screen.getByTestId("changes-panel")).toBeTruthy();
+  expect(await screen.findByTestId("changes-panel")).toBeTruthy();
   expect(useUIStore.getState().inspectorLocked).toBe(false);
 
   fireEvent.click(screen.getByRole("tab", { name: "Files" }));
