@@ -611,6 +611,79 @@ test("terminal snapshot dirty flag can be restored after a failed persist attemp
   }
 });
 
+test("legacy fileTabs migrate into per-session readers", () => {
+  const snapshot = sanitizeSnapshot({
+    version: 1,
+    savedAt: 1,
+    activeSessionId: "s-a",
+    sessions: [
+      persistedSession("s-a", "/repo-a"),
+      persistedSession("s-b", "/repo-b"),
+    ],
+    ui: {
+      sidebarVisible: true,
+      panelVisible: true,
+      collapsedDirs: {},
+      collapsedDiffSections: {},
+      split: { root: null },
+      inspectorTab: "files",
+      fileTabs: [
+        { id: "s-a\0/repo-a/a.txt", sessionId: "s-a", filePath: "/repo-a/a.txt", fileName: "a.txt" },
+        { id: "s-a\0/repo-a/b.txt", sessionId: "s-a", filePath: "/repo-a/b.txt", fileName: "b.txt" },
+        { id: "s-b\0/repo-b/c.txt", sessionId: "s-b", filePath: "/repo-b/c.txt", fileName: "c.txt" },
+      ],
+      activeFileTabId: "s-a\0/repo-a/a.txt",
+    },
+    terminals: {},
+    agentResume: {},
+    recentDirs: [],
+    recentCommands: [],
+  });
+  assert.ok(snapshot);
+  assert.equal(snapshot.ui.readers["s-a"].current.filePath, "/repo-a/a.txt");
+  assert.deepEqual(snapshot.ui.readers["s-a"].history.map((entry) => entry.fileName), ["b.txt", "a.txt"]);
+  assert.equal(snapshot.ui.readers["s-b"].current.fileName, "c.txt");
+});
+
+test("reader nodes in split snapshots survive sanitization", () => {
+  const snapshot = sanitizeSnapshot({
+    version: 1,
+    savedAt: 1,
+    activeSessionId: "s-a",
+    sessions: [persistedSession("s-a", "/repo-a")],
+    ui: {
+      sidebarVisible: true,
+      panelVisible: true,
+      collapsedDirs: {},
+      collapsedDiffSections: {},
+      split: {
+        root: {
+          type: "split",
+          direction: "horizontal",
+          ratio: 0.4,
+          first: { type: "pane", sessionId: "s-a" },
+          second: { type: "reader", sessionId: "s-a" },
+        },
+      },
+      inspectorTab: "files",
+      readers: {
+        "s-a": {
+          current: { filePath: "/repo-a/notes.txt", fileName: "notes.txt" },
+          history: [{ filePath: "/repo-a/notes.txt", fileName: "notes.txt" }],
+          historyIndex: 0,
+        },
+      },
+    },
+    terminals: {},
+    agentResume: {},
+    recentDirs: [],
+    recentCommands: [],
+  });
+  assert.ok(snapshot);
+  assert.equal(snapshot.ui.split.root.second.type, "reader");
+  assert.equal(snapshot.ui.readers["s-a"].current.fileName, "notes.txt");
+});
+
 test("dedupeById keeps first-seen order while retaining the newest record", () => {
   assert.deepEqual(dedupeById([
     { id: "b", updatedAt: 1, value: "old-b" },

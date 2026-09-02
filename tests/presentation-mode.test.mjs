@@ -28,8 +28,8 @@ test("presentation mode stays runtime-only and preserves terminal mounts", () =>
   assert.doesNotMatch(snapshotBuilder, /presentationMode/);
   assert.match(app, /key="terminal-main-area"/);
   assert.match(main, /key=\{`\$\{session\.id\}:\$\{session\.terminalMountNonce \?\? session\.reconnectNonce \?\? 0\}`\}/);
-  assert.match(main, /<TerminalPane session=\{s\} isActive=\{!fileSurfaceActive && s\.id === activeSessionId\} \/>/);
-  assert.match(main, /const fileSurfaceActive = !pure && activeFileTabId !== null/);
+  assert.match(main, /<TerminalPane session=\{s\} isActive=\{effectiveFocusedPaneId === s\.id\} \/>/);
+  assert.match(main, /<ReaderPane session=\{s\} active=\{!pure && effectiveFocusedPaneId === readerPaneId\(s\.id\)\} \/>/);
 });
 
 test("pure mode keeps window controls discoverable and fullscreen chrome transient", () => {

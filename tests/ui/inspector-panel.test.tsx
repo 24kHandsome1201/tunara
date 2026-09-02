@@ -69,8 +69,8 @@ beforeEach(() => {
     inspectorLocked: false,
     inspectorLockSessionId: null,
     inspectorPreviewOpenedSessionIds: {},
-    fileTabs: [],
-    activeFileTabId: null,
+    readers: {},
+    focusedPaneId: null,
   });
   useSessionsStore.setState({
     activeSessionId: session.id,
@@ -192,14 +192,15 @@ test("auto-follows unreviewed changes unless the view is locked", async () => {
 test("defers auto-switch with a quiet hint while a workspace file tab is open", async () => {
   useUIStore.setState({
     inspectorTab: "files",
-    fileTabs: [{
-      id: `${session.id}\0/tmp/project/src/a.ts`,
-      sessionId: session.id,
-      filePath: "/tmp/project/src/a.ts",
-      fileName: "a.ts",
-      dirty: false,
-    }],
-    activeFileTabId: `${session.id}\0/tmp/project/src/a.ts`,
+    readers: {
+      [session.id]: {
+        current: { filePath: "/tmp/project/src/a.ts", fileName: "a.ts" },
+        history: [{ filePath: "/tmp/project/src/a.ts", fileName: "a.ts" }],
+        historyIndex: 0,
+        dirty: false,
+      },
+    },
+    focusedPaneId: `reader:${session.id}`,
   });
   render(<InspectorPanel session={{
     ...session,

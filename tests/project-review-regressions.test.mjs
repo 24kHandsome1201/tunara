@@ -74,9 +74,9 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.match(terminal, /<ConnectingOverlay/);
   assert.match(terminal, /<TerminalExitBanner/);
   assert.match(terminal, /<PtyErrorBanner/);
-  assert.match(main, /!pure && <SshSuggestionBar session=\{session\} \/>/);
-  assert.match(main, /!pure && <PreviewSuggestionBar session=\{session\} \/>/);
-  assert.match(main, /!pure && <ReviewChangesBar session=\{session\} \/>/);
+  assert.doesNotMatch(main, /SshSuggestionBar/);
+  assert.doesNotMatch(main, /PreviewSuggestionBar/);
+  assert.doesNotMatch(main, /ReviewChangesBar/);
   assert.match(attentionRow, /deriveAttentionRow\(sessions\)/);
   assert.match(chrome, /\{search\.searchOpen &&/);
   assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
@@ -899,8 +899,8 @@ test("responsive shells close cleanly and avoid stale remote git badges", () => 
   assert.match(keys, /ui\.setSidebarVisible\(false\)/);
   assert.match(keys, /ui\.setPanelVisible\(false\)/);
   assert.match(keys, /compactLayout\.panelOverlay[\s\S]*ui\.setPanelVisible\(false\)[\s\S]*compactLayout\.sidebarOverlay[\s\S]*ui\.setSidebarVisible\(false\)/);
-  assert.match(keys, /splitFocusTarget\(ui\.split, st\.activeSessionId, direction\)/);
-  assert.match(keys, /if \(target\) \{[^}]*st\.setActive\(target\)/);
+  assert.match(keys, /splitFocusTarget\(ui\.split, origin, direction\)/);
+  assert.match(keys, /st\.setActive\(sessionId\)/);
   assert.match(gitContext, /const repoPath = activeIsRemote \? undefined : normalizeLocalRepoPath\(activeDir\);/);
   assert.match(gitContext, /if \(!activeIsRemote && !repoPath\) \{[\s\S]*?setRemoteState\(null\);[\s\S]*?gitState: "notGit"[\s\S]*?return;/);
   assert.match(gitContext, /gitAheadBehind\(repoPath!\)/);
@@ -988,10 +988,10 @@ test("terminal panes keep stable keyed mounts across single/split so the agent P
 
   // Single stable-keyed mount list (no dual single/split render branches that
   // would unmount the active session's TerminalView and kill its PTY).
-  assert.match(main, /function paneWrapperStyle\(s: Session\): React\.CSSProperties/);
+  assert.match(main, /function terminalWrapperStyle\(s: Session\): CSSProperties/);
   // Single stable-keyed mount list rendering a memoized TerminalPane (extracted
   // so MainArea re-renders on agent heartbeats don't re-render every terminal).
-  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{!fileSurfaceActive && s\.id === activeSessionId\} \/>/);
+  assert.match(main, /mountedSessions\.map\(\(s\) => \([\s\S]*?key=\{s\.id\}[\s\S]*?<TerminalPane session=\{s\} isActive=\{effectiveFocusedPaneId === s\.id\} \/>/);
   assert.match(main, /const TerminalPane = memo\(function TerminalPane/);
   assert.match(main, /const pane = splitGeometry\.panes\[s\.id\]/);
   assert.match(main, /position: "absolute"[\s\S]*left: `calc\(\$\{pane\.x \* 100\}%[\s\S]*width: `calc\(\$\{pane\.width \* 100\}%/);
@@ -1334,7 +1334,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(titlebar, /const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1/);
   assert.match(titlebar, /const titlebarControlTransform = _isMac \? `translateY\(\$\{MAC_TITLEBAR_CONTROL_Y_OFFSET\}px\)` : undefined/);
   assert.equal(titlebar.match(/transform: titlebarControlTransform/g)?.length, 4);
-  assert.match(titlebar, /paddingLeft: 8/);
+  assert.match(titlebar, /paddingLeft: 4/);
   assert.match(tokens, /--h-titlebar: 36px/);
   assert.match(sidebarNewTerminal, /padding: "8px 12px 6px"/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);

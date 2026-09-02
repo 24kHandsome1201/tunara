@@ -837,7 +837,7 @@ describe("FilePreview editor behavior", () => {
         updatedAt: 1,
       }],
     });
-    useUIStore.getState().openFileTab({ sessionId: "local-preview", filePath: "/tmp/b.txt", fileName: "b.txt" });
+    useUIStore.getState().openReader({ sessionId: "local-preview", filePath: "/tmp/b.txt", fileName: "b.txt" });
     mockIPC((command) => {
       if (command === "fs_read_dir") {
         return [
@@ -854,10 +854,10 @@ describe("FilePreview editor behavior", () => {
 
     render(<FilePreview sessionId="local-preview" filePath="/tmp/b.txt" fileName="b.txt" fill onClose={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: "Next file in this folder" }));
-    await waitFor(() => expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/c.txt")).toBe(true));
-    expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/b.txt")).toBe(false);
+    await waitFor(() => expect(useUIStore.getState().readers["local-preview"]?.current?.filePath).toBe("/tmp/c.txt"));
+    expect(useUIStore.getState().readers["local-preview"]?.history.some((entry) => entry.filePath === "/tmp/b.txt")).toBe(true);
 
     fireEvent.keyDown(window, { key: "ArrowLeft" });
-    await waitFor(() => expect(useUIStore.getState().fileTabs.some((tab) => tab.filePath === "/tmp/a.txt")).toBe(true));
+    await waitFor(() => expect(useUIStore.getState().readers["local-preview"]?.current?.filePath).toBe("/tmp/a.txt"));
   });
 });

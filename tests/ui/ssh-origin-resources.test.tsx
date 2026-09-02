@@ -22,7 +22,7 @@ test("local and SSH resources with the same path stay origin-scoped", async () =
   const calls: Array<{ command: string; payload: unknown }> = [];
   mockIPC((command, payload) => { calls.push({ command, payload }); return undefined; });
   useSessionsStore.setState({ sessions: [local, remote], activeSessionId: local.id });
-  useUIStore.setState({ fileTabs: [], activeFileTabId: null });
+  useUIStore.setState({ readers: {}, focusedPaneId: null });
 
   await openResource(resourceRefForSession(local, "/same/app.ts", 7, 3));
   expect(calls).toHaveLength(1);
@@ -34,12 +34,11 @@ test("local and SSH resources with the same path stay origin-scoped", async () =
   await openResource(resourceRefForSession(remote, "/same/app.ts", 11, 5));
   expect(calls).toHaveLength(1);
   expect(useSessionsStore.getState().activeSessionId).toBe(remote.id);
-  expect(useUIStore.getState().fileTabs).toMatchObject([{
-    sessionId: remote.id,
+  expect(useUIStore.getState().readers[remote.id]?.current).toMatchObject({
     filePath: "/same/app.ts",
     line: 11,
     column: 5,
-  }]);
+  });
 });
 
 test("a stale SSH resource binding fails closed without a local editor fallback", async () => {

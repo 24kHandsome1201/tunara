@@ -12,7 +12,7 @@ const binding = {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  useUIStore.setState({ toasts: [], fileTabs: [], activeFileTabId: null });
+  useUIStore.setState({ toasts: [], readers: {}, focusedPaneId: null });
   useSessionsStore.setState({
     sessions: [{
       id: "remote-edit",

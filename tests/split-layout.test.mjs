@@ -4,7 +4,10 @@ import test from "node:test";
 import {
   canSplitLayout,
   emptySplitState,
+  insertReaderPane,
   insertSplitPane,
+  readerPaneId,
+  removeReaderPane,
   removeSplitPane,
   replaceSplitPane,
   sanitizeSplitLayout,
@@ -12,6 +15,8 @@ import {
   splitFocusTarget,
   splitHorizontalPaneCount,
   splitLayoutGeometry,
+  splitLayoutHasReader,
+  splitLayoutLeafIds,
   splitLayoutSessionIds,
 } from "../src/modules/session/split-layout.ts";
 
@@ -102,4 +107,44 @@ test("sanitization prunes invalid and duplicate panes without discarding the val
   const split = sanitizeSplitLayout(raw, new Set(["a", "b"]));
   assert.deepEqual(splitLayoutSessionIds(split), ["a", "b"]);
   assert.equal(split.root.ratio, 0.8);
+});
+
+test("inserting a reader pane sits to the right of its terminal at 40/60", () => {
+  const split = insertReaderPane(emptySplitState(), "sess");
+  assert.ok(split);
+  assert.equal(split.root.direction, "horizontal");
+  assert.equal(split.root.ratio, 0.4);
+  assert.deepEqual(splitLayoutLeafIds(split), ["sess", "reader:sess"]);
+  assert.equal(splitLayoutHasReader(split, "sess"), true);
+  assert.equal(canSplitLayout(split), true);
+
+  const panes = splitLayoutGeometry(split).panes;
+  assert.equal(panes.sess.width, 0.4);
+  assert.equal(panes[readerPaneId("sess")].x, 0.4);
+  assert.equal(panes[readerPaneId("sess")].width, 0.6);
+  assert.equal(splitFocusTarget(split, "sess", "right"), "reader:sess");
+  assert.equal(splitFocusTarget(split, "reader:sess", "left"), "sess");
+});
+
+test("a reader pane counts toward the four-pane cap and closes independently", () => {
+  let split = insert(emptySplitState(), "a", "b", "horizontal");
+  split = insert(split, "a", "c", "vertical");
+  split = insertReaderPane(split, "b");
+  assert.equal(canSplitLayout(split), false);
+  assert.equal(insertReaderPane(split, "a"), null);
+  assert.equal(insertSplitPane(split, "a", "d", "horizontal"), null);
+
+  const closed = removeReaderPane(split, "b");
+  assert.equal(closed.removed, true);
+  assert.equal(splitLayoutHasReader(closed.split, "b"), false);
+  assert.deepEqual(splitLayoutSessionIds(closed.split), ["a", "c", "b"]);
+});
+
+test("removing a session also drops its reader leaf", () => {
+  let split = insertReaderPane(emptySplitState(), "sess");
+  split = insertSplitPane(split, "sess", "other", "vertical");
+  const removed = removeSplitPane(split, "sess");
+  assert.equal(removed.removed, true);
+  assert.equal(splitLayoutHasReader(removed.split, "sess"), false);
+  assert.equal(removed.split.root, null);
 });

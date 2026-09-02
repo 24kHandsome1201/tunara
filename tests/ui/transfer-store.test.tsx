@@ -449,10 +449,9 @@ describe("Transfer Center announcements", () => {
     useTransferStore.getState().replaceItemsForTest([item]);
     render(<TransferCenter />);
     fireEvent.click(screen.getByRole("button", { name: "Preview /srv/app/notes.json" }));
-    expect(useUIStore.getState().fileTabs).toEqual([expect.objectContaining({
-      sessionId: "session-1",
+    expect(useUIStore.getState().readers["session-1"]?.current).toEqual(expect.objectContaining({
       filePath: "/srv/app/notes.json",
       fileName: "notes.json",
-    })]);
+    }));
   });
 });

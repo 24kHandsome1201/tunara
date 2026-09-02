@@ -113,11 +113,11 @@ test("a save completion crosses an editor remount but never resurrects an explic
 });
 
 test("draft registry stays out of workspace persistence and the editor remains lazy", async () => {
-  const [persist, main] = await Promise.all([
+  const [persist, reader] = await Promise.all([
     readFile(new URL("../src/state/persist.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/ui/MainArea.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/ui/ReaderPane.tsx", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(persist, /editor-draft-registry|EditorDraftSnapshot/);
-  assert.match(main, /lazy\(\(\) => import\("\.\/FilePreview"\)/);
-  assert.doesNotMatch(main, /import \{ FilePreview \} from "\.\/FilePreview"/);
+  assert.match(reader, /lazy\(\(\) => import\("\.\/FilePreview"\)/);
+  assert.doesNotMatch(reader, /import \{ FilePreview \} from "\.\/FilePreview"/);
 });

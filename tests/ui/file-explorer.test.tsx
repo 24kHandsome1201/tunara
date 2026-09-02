@@ -714,13 +714,9 @@ describe("FileExplorer workspace files", () => {
     const file = await screen.findByRole("treeitem", { name: /^fixture\.md/ });
     fireEvent.click(file);
 
-    expect(useUIStore.getState()).toMatchObject({
-      activeFileTabId: "remote\0/tmp/repo/fixture.md",
-      fileTabs: [{
-        sessionId: "remote",
-        filePath: "/tmp/repo/fixture.md",
-        fileName: "fixture.md",
-      }],
+    expect(useUIStore.getState().readers.remote?.current).toMatchObject({
+      filePath: "/tmp/repo/fixture.md",
+      fileName: "fixture.md",
     });
 
     fireEvent.contextMenu(file, { clientX: 20, clientY: 20 });

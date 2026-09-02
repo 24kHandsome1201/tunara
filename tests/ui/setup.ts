@@ -19,8 +19,9 @@ beforeEach(() => {
   useUIStore.setState({
     presentationMode: "workspace",
     mainSurface: "terminal",
-    fileTabs: [],
-    activeFileTabId: null,
+    readers: {},
+    focusedPaneId: null,
+    split: { root: null },
     inspectorLocked: false,
     inspectorLockSessionId: null,
     inspectorPreviewOpenedSessionIds: {},
