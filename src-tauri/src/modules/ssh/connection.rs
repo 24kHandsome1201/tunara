@@ -216,7 +216,7 @@ impl ClientHandler {
                 remember: false,
             }; // frontend channel gone
         }
-        // A lost frontend event must not park ssh_open forever. Cancellation
+        // A lost frontend event must not park ssh_open_v2 forever. Cancellation
         // is selected here because russh performs KEX in a detached task: just
         // dropping connect_stream's caller is not enough to stop this waiter.
         await_host_key_decision_or_cancel(rx, HOST_KEY_PROMPT_TIMEOUT, self.cancel.clone()).await
@@ -405,7 +405,7 @@ pub struct ConnectParams {
     pub initial_cwd: Option<String>,
     /// Inject remote shell integration so the remote shell emits OSC 7 / OSC
     /// 133 (cwd + command boundaries) and wraps agents to emit OSC 777
-    /// lifecycle events. Default-on (see ssh_open) — degrades silently on
+    /// lifecycle events. Default-on (see ssh_open_v2) — degrades silently on
     /// unsupported shells.
     pub inject_shell_integration: bool,
     /// Logical session id, substituted into the remote integration script so
@@ -1077,6 +1077,8 @@ impl SshSession {
         let transport_lost = shared.transport_lost.clone();
         let pump_transport_lost = transport_lost.clone();
         let pump_handle = handle.clone();
+        // Frontend listens for this `connectionStatus` / `ready` event and
+        // persists the SSH host profile only after the shell is live.
         send_connection_status(&on_event, "ready");
 
         // Pump: remote output is coalesced behind a strict byte/time bound;

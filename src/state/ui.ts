@@ -246,7 +246,7 @@ export interface Toast {
   durationMs?: number;
 }
 
-/** A pending SSH host-key confirmation (TOFU). The backend ssh_open call is
+/** A pending SSH host-key confirmation (TOFU). The backend ssh_open_v2 call is
  * blocked until the user accepts/rejects the fingerprint. */
 export interface HostKeyPrompt {
   hopRole: "direct" | "jump" | "target";
@@ -306,7 +306,7 @@ interface UIState extends AppearanceSettings {
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
    *  so two SSH connections that both hit an unknown/unverifiable host key
    *  before the first is answered don't clobber each other — each parked
-   *  ssh_open needs its own prompt answered or it stays blocked. The dialog
+   *  ssh_open_v2 needs its own prompt answered or it stays blocked. The dialog
    *  renders the head; answering it shifts to the next. */
   hostKeyPrompts: HostKeyPrompt[];
   keyboardInteractivePrompts: KeyboardInteractivePrompt[];

@@ -7,7 +7,6 @@ const lib = await readFile(new URL("src-tauri/src/lib.rs", root), "utf8");
 
 const mapped = {
   "mod.rs": {
-    ssh_open: "OpenLegacy",
     ssh_host_key_decision: "HostDecision",
     ssh_keyboard_interactive_response: "KeyboardInteractive",
   },

@@ -1,6 +1,6 @@
 //! SSH client: a russh-backed remote shell that lives inside [`PtyState`].
 //!
-//! [`ssh_open`] connects + authenticates (async, on the Tokio runtime), then
+//! [`ssh_open_v2`] connects + authenticates (async, on the Tokio runtime), then
 //! inserts a `Session::Ssh` into [`crate::modules::pty::PtyState`] under a fresh
 //! id — so the local `pty_write` / `pty_resize` / `pty_close` commands drive a
 //! remote session transparently, output bridged through the same `PtyEvent`
@@ -13,9 +13,9 @@
 //!   method, and an optional identity-file path, never passwords or passphrases.
 //! - [`sftp`]: read-only remote browse + home-confined download.
 //!
-//! An unverifiable host key parks `ssh_open` and emits `PtyEvent::HostKeyPrompt`;
+//! An unverifiable host key parks `ssh_open_v2` and emits `PtyEvent::HostKeyPrompt`;
 //! the user's answer arrives via [`ssh_host_key_decision`]. Commands:
-//! [`ssh_open`], [`ssh_host_key_decision`], `ssh_hosts_load`/`save`/`remove`,
+//! [`ssh_open_v2`], [`ssh_host_key_decision`], `ssh_hosts_load`/`save`/`remove`,
 //! `ssh_fs_read_dir`/`read_file`/`download`/`home`.
 //
 // SSH client module (§ssh-client).
@@ -39,7 +39,7 @@ pub(crate) mod m2_safe_write_benchmark;
 pub mod remote_fs;
 pub mod remote_git;
 pub mod reverse_forward;
-#[cfg(test)]
+#[cfg(all(test, feature = "benchmark"))]
 mod rtt_benchmark;
 mod safe_write;
 pub mod sftp;
@@ -50,7 +50,6 @@ pub mod transfer_journal;
 /// Stable, non-sensitive error classes exposed across the IPC boundary.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum SshIpcErrorKind {
-    OpenLegacy,
     HostDecision,
     KeyboardInteractive,
     Hosts,
@@ -133,7 +132,6 @@ pub(crate) fn safe_ipc_error_with_policy(
         return "SSH_REMOTE_FS_NOT_FOUND".into();
     }
     match kind {
-        SshIpcErrorKind::OpenLegacy => "SSH_OPEN_FAILED",
         SshIpcErrorKind::HostDecision => "SSH_HOST_DECISION_FAILED",
         SshIpcErrorKind::KeyboardInteractive => "SSH_KEYBOARD_INTERACTIVE_FAILED",
         SshIpcErrorKind::Hosts => "SSH_HOSTS_FAILED",
@@ -218,7 +216,6 @@ mod safe_ipc_error_tests {
         let canary =
             format!("key={PRIVATE_KEY_PATH}; agent={AGENT_SOCKET}; {SECRET}; sftp={SFTP_STATUS}");
         let cases = [
-            (SshIpcErrorKind::OpenLegacy, "SSH_OPEN_FAILED"),
             (SshIpcErrorKind::HostDecision, "SSH_HOST_DECISION_FAILED"),
             (
                 SshIpcErrorKind::KeyboardInteractive,
@@ -652,8 +649,6 @@ fn validate_open_input(
 /// Open an SSH session and register it in `PtyState` under a fresh id, exactly
 /// like `pty_open` does for local shells. The frontend then drives it through
 /// the same pty_write/resize/close commands.
-// Flat args map 1:1 to the JS `invoke("ssh_open", {...})` payload — a Tauri
-// command can't take a struct here without changing the frontend contract.
 #[allow(clippy::too_many_arguments)]
 async fn ssh_open_impl(
     app: tauri::AppHandle,
@@ -866,60 +861,6 @@ async fn ssh_open_impl(
         warnings: Vec::new(),
         binding,
     })
-}
-
-/// Legacy flat IPC adapter. Its command name, argument wire shape and `u32`
-/// return are intentionally unchanged.
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-pub async fn ssh_open(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, PtyState>,
-    preview_state: tauri::State<'_, crate::modules::preview::PreviewWindowState>,
-    hooks_state: tauri::State<'_, HookListenerState>,
-    logical_session_id: Option<String>,
-    open_attempt_id: String,
-    host: String,
-    port: Option<u16>,
-    user: String,
-    cwd: Option<String>,
-    identity_file: Option<String>,
-    key_passphrase: Option<String>,
-    password: Option<String>,
-    auth_method: Option<AuthMethod>,
-    accept_unknown_host_key: Option<bool>,
-    inject_shell_integration: Option<bool>,
-    cols: u16,
-    rows: u16,
-    on_event: Channel<PtyEvent>,
-) -> Result<u32, String> {
-    ssh_open_impl(
-        app,
-        state,
-        preview_state,
-        hooks_state,
-        logical_session_id,
-        open_attempt_id,
-        host,
-        port,
-        user,
-        cwd,
-        identity_file,
-        None,
-        key_passphrase,
-        password,
-        auth_method,
-        accept_unknown_host_key,
-        None,
-        inject_shell_integration,
-        cols,
-        rows,
-        None,
-        on_event,
-    )
-    .await
-    .map(|result| result.physical_pty_id)
-    .map_err(|error| safe_ipc_error(SshIpcErrorKind::OpenLegacy, error))
 }
 
 /// Versioned request/response adapter. The transport generation is allocated
@@ -1152,7 +1093,7 @@ pub fn ssh_cancel_open(open_attempt_id: String) -> bool {
 }
 
 /// Answer a pending host-key prompt (emitted as `PtyEvent::HostKeyPrompt`). The
-/// in-flight `ssh_open` call is parked inside `check_server_key` waiting on this.
+/// in-flight `ssh_open_v2` call is parked inside `check_server_key` waiting on this.
 #[tauri::command]
 pub fn ssh_host_key_decision(
     prompt_id: String,

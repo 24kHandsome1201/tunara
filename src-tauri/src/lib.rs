@@ -141,7 +141,6 @@ pub fn run() {
             modules::preview::preview_restart_prepare,
             modules::preview::preview_close,
             // §ssh-client SSH 会话(复用 pty_write/resize/close 驱动)
-            modules::ssh::ssh_open,
             modules::ssh::ssh_open_v2,
             modules::ssh::ssh_cancel_open,
             modules::ssh::diagnostics::ssh_diagnostic_run_v1,

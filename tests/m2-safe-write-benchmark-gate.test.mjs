@@ -14,6 +14,7 @@ test("M2 safe-write fault control is a non-default, feature-only plugin", () => 
 
   const features = cargo.match(/\[features\]([\s\S]*?)\n\[/)?.[1] ?? "";
   assert.match(features, /^default = \[\]$/m);
+  assert.match(features, /^benchmark = \["m2-safe-write-benchmark"\]$/m);
   assert.match(features, /^m2-safe-write-benchmark = \[\]$/m);
   assert.match(ssh, /#\[cfg\(feature = "m2-safe-write-benchmark"\)\]\s+pub\(crate\) mod m2_safe_write_benchmark/);
   assert.match(app, /#\[cfg\(feature = "m2-safe-write-benchmark"\)\]\s+let builder = builder\.plugin\(modules::ssh::m2_safe_write_benchmark::init\(\)\)/);

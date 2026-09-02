@@ -5,7 +5,7 @@
 //! path, and a monotonic `next_id` (starts at 1; ids are never reused). The
 //! [`Session`] enum (`Local` portable-pty | `Ssh` russh) lets `pty_write` /
 //! `pty_resize` / `pty_close` dispatch on the variant, so the SSH path
-//! (`ssh_open` inserting a `Session::Ssh`) reuses the same commands.
+//! (`ssh_open_v2` inserting a `Session::Ssh`) reuses the same commands.
 //!
 //! Output flows to xterm.js as [`PtyEvent`] over a Tauri `Channel`: a reader
 //! thread fills a pending buffer, a flusher thread base64-encodes and sends it
@@ -99,7 +99,7 @@ impl PtyState {
     }
 
     /// Remove (and kill) any session bound to a logical id. Used by both
-    /// pty_open and ssh_open on the reopen/replace path.
+    /// pty_open and ssh_open_v2 on the reopen/replace path.
     pub fn remove_logical(&self, logical_id: &str) {
         let _mutation = self.binding_mutation.lock();
         let old_id = self.logical_sessions.read().get(logical_id).copied();
@@ -256,7 +256,7 @@ impl PtyState {
 
     /// Register an already-built session under a fresh id, optionally bound to a
     /// logical id, replacing (and killing) any session already bound to that
-    /// logical id. Returns the physical id. Used by both pty_open and ssh_open.
+    /// logical id. Returns the physical id. Used by both pty_open and ssh_open_v2.
     ///
     /// Both maps are locked together for the whole replace so it is atomic with
     /// respect to a concurrent open of the SAME logical id. Tauri dispatches

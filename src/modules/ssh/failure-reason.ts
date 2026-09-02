@@ -1,5 +1,5 @@
 /**
- * Map a raw ssh_open error into a stable reason code. Pure logic — no i18n
+ * Map a raw ssh_open_v2 error into a stable reason code. Pure logic — no i18n
  * dependency — so it can be unit-tested in Node without the Tauri/React
  * runtime. `pty-bridge.ts` maps these codes to localized strings via `t()`.
  *

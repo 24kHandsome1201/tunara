@@ -130,6 +130,10 @@ describe("SSH connection sheet", () => {
     expect(JSON.stringify(session)).not.toContain(secret);
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
     expect(takeSshCredentials(session.id)).toBeUndefined();
+    expect(saves).toHaveLength(0);
+    act(() => {
+      useSessionsStore.getState().handleConnectionEvent(session.id, { type: "ready", transport: "ssh", source: "backend" });
+    });
     await waitFor(() => expect(saves).toHaveLength(1));
     expect(saves[0]).not.toHaveProperty("password");
   });
@@ -224,6 +228,11 @@ describe("SSH connection sheet", () => {
     await waitFor(() => expect(connect.disabled).toBe(false));
     fireEvent.click(connect);
 
+    const [session] = useSessionsStore.getState().sessions;
+    expect(saves).toHaveLength(0);
+    act(() => {
+      useSessionsStore.getState().handleConnectionEvent(session.id, { type: "ready", transport: "ssh", source: "backend" });
+    });
     await waitFor(() => expect(saves).toHaveLength(1));
     expect(saves[0]).toMatchObject({
       host: "prod.example",
@@ -236,7 +245,6 @@ describe("SSH connection sheet", () => {
     expect(saves[0]).not.toHaveProperty("password");
     expect(saves[0]).not.toHaveProperty("key_passphrase");
     expect(JSON.stringify(saves[0])).not.toContain(secret);
-    const [session] = useSessionsStore.getState().sessions;
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
   });
 
@@ -260,8 +268,13 @@ describe("SSH connection sheet", () => {
     await waitFor(() => expect(connect.disabled).toBe(false));
     fireEvent.click(connect);
 
-    await waitFor(() => expect(saves).toHaveLength(1));
+    const [session] = useSessionsStore.getState().sessions;
     expect(useUIStore.getState().mainSurface).toBe("terminal");
+    expect(saves).toHaveLength(0);
+    act(() => {
+      useSessionsStore.getState().handleConnectionEvent(session.id, { type: "ready", transport: "ssh", source: "backend" });
+    });
+    await waitFor(() => expect(saves).toHaveLength(1));
     expect(saves[0]).toMatchObject({
       label: "admin@database.internal",
       host: "database.internal",
@@ -269,6 +282,37 @@ describe("SSH connection sheet", () => {
       user: "admin",
       auth_method: "auto",
     });
+  });
+
+  test("does not save a host when the SSH session fails to become ready", async () => {
+    const saves: Array<Record<string, unknown>> = [];
+    mockIPC((command, payload) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+      if (command === "ssh_hosts_save") {
+        saves.push((payload as { profile: Record<string, unknown> }).profile);
+        return [(payload as { profile: Record<string, unknown> }).profile];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    fireEvent.change(hostInput(), { target: { value: "admin@fail.example" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+
+    const [session] = useSessionsStore.getState().sessions;
+    expect(session.pendingSavedHost?.host).toBe("fail.example");
+    act(() => {
+      useSessionsStore.getState().handleConnectionEvent(session.id, {
+        type: "failed",
+        transport: "ssh",
+        reason: "auth",
+      });
+    });
+    expect(saves).toHaveLength(0);
+    expect(useSessionsStore.getState().sessions[0].pendingSavedHost).toBeUndefined();
   });
 
   test("reconnecting publishes no stale PTY and remounts a fresh terminal parser", async () => {
@@ -544,6 +588,11 @@ describe("SSH connection sheet", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Config direct/i }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
+    const [session] = useSessionsStore.getState().sessions;
+    expect(saves).toHaveLength(0);
+    act(() => {
+      useSessionsStore.getState().handleConnectionEvent(session.id, { type: "ready", transport: "ssh", source: "backend" });
+    });
     await waitFor(() => expect(saves).toHaveLength(1));
     expect(saves[0].id).not.toBe("saved-routed");
     expect(saves[0].proxy_jump_profile_id).toBe("");
@@ -573,6 +622,11 @@ describe("SSH connection sheet", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Config routed/i }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
+    const [session] = useSessionsStore.getState().sessions;
+    expect(saves).toHaveLength(0);
+    act(() => {
+      useSessionsStore.getState().handleConnectionEvent(session.id, { type: "ready", transport: "ssh", source: "backend" });
+    });
     await waitFor(() => expect(saves).toHaveLength(1));
     expect(saves[0].id).not.toBe("saved-direct");
     expect(saves[0].proxy_jump_profile_id).toBe("jump");

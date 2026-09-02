@@ -50,7 +50,6 @@ commands.allow = [
   "preview_tunnel_close",
   "preview_restart_prepare",
   "preview_close",
-  "ssh_open",
   "ssh_open_v2",
   "ssh_cancel_open",
   "ssh_diagnostic_run_v1",

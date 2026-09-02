@@ -7,7 +7,6 @@ import { useT } from "@/modules/i18n";
 import {
   saveHost,
   removeHost,
-  makeHostId,
   normalizeSshPort,
   parseSshPort,
   importSshConfig,
@@ -23,6 +22,7 @@ import {
   type SshProfilesPanelActionsV1,
   type SshProfilesPanelModelV1,
 } from "@/modules/ssh/hosts-bridge";
+import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
 import { exactSshProfileMatch, filterSshProfiles, formatSshTarget, parseSshTarget, sshTargetHasInvalidPort } from "@/modules/ssh/connect-target";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
@@ -416,37 +416,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
     && (portText.length === 0 || parseSshPort(portText) !== null)
     && methodReady && jumpReady && !routeError && !loadingConfig && !connecting;
 
-  const persistSuccessfulHost = async (remote: RemoteInfo, label: string) => {
-    const selectedSaved = selectedProfile?.source === "saved"
-      ? hosts.find((candidate) => candidate.id === selectedProfile.id)
-      : undefined;
-    const jumpId = remote.route?.profileId ?? "";
-    const existing = selectedSaved ?? hosts.find((candidate) =>
-      candidate.host === remote.host
-      && candidate.port === remote.port
-      && candidate.user === remote.user
-      && (candidate.proxyJumpProfileId ?? "") === jumpId
-    );
-    const identity = remote.authMethod === "key" || remote.authMethod === "auto" ? remote.identityFile ?? "" : "";
-    try {
-      const savedProfiles = await saveHost({
-        id: existing?.id ?? makeHostId(),
-        label: existing?.label || label,
-        host: remote.host,
-        port: remote.port,
-        user: remote.user,
-        authMethod: remote.authMethod ?? "auto",
-        identityFile: identity,
-        certificateFile: remote.authMethod === "key" || remote.authMethod === "auto" ? remote.certificateFile ?? "" : "",
-        ...(remote.route?.profileId ? { proxyJumpProfileId: remote.route.profileId } : {}),
-      });
-      setPanelModel((current) => ({ ...current, savedProfiles }));
-      useUIStore.getState().bumpSshProfilesEpoch();
-    } catch {
-      useUIStore.getState().addToast({ title: t("ssh.profile.save_failed"), subtitle: "", variant: "error" });
-    }
-  };
-
   const connect = async (fromSuggestion?: { id: string; source: SshProfileSourceV1 }) => {
     if (connectInFlightRef.current || loadingConfig) return;
     if (fromSuggestion) fillFrom(fromSuggestion.id, fromSuggestion.source);
@@ -572,7 +541,15 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setKeyPassphrase("");
     setJumpPassword("");
     setJumpKeyPassphrase("");
-    void persistSuccessfulHost(remote, match?.label || `${nextUser}@${nextHost}`);
+    const selectedSaved = selectedProfile?.source === "saved"
+      ? hosts.find((candidate) => candidate.id === selectedProfile.id)
+      : undefined;
+    const pendingSavedHost = sshHostProfileFromSuccessfulConnect(
+      remote,
+      match?.label || `${nextUser}@${nextHost}`,
+      hosts,
+      selectedSaved,
+    );
 
     if (existingSession?.remote && sameEndpoint) {
       const reconnectNonce = (existingSession.reconnectNonce ?? 0) + 1;
@@ -587,6 +564,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         sshReconnectLifecycle: reconnectLifecycle,
         sshReconnectNeedsCredential: false,
         sshReconnectForwards: reconnectForwards,
+        pendingSavedHost,
         runState: "idle",
         startedAt: undefined,
         completedAt: undefined,
@@ -600,7 +578,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       useSessionsStore.getState().handleConnectionEvent(existingSession.id, { type: "reconnectRequested" });
       useSessionsStore.getState().setActive(existingSession.id);
     } else {
-      addSession(session);
+      addSession({ ...session, pendingSavedHost });
     }
     useUIStore.getState().unlockInspectorView();
     useUIStore.getState().showTerminal();

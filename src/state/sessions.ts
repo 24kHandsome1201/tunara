@@ -48,6 +48,7 @@ import {
   scheduleGitRefresh,
 } from "./sessions-git";
 import { clearSshCredentials } from "@/modules/ssh/pending-credentials";
+import { persistSuccessfulSshHost } from "@/modules/ssh/save-successful-host";
 import { closeRemoteExternalEdits, interruptRemoteExternalEdit } from "@/modules/ssh/remote-external-edit";
 import {
   sessionIdFromPaneId,
@@ -502,7 +503,26 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (connection.transport === "ssh" && previousPhase === "ready" && connection.phase !== "ready") {
       interruptRemoteExternalEdit(id);
     }
-    get().updateSession(id, { connection });
+    const becameReady = connection.transport === "ssh"
+      && previousPhase !== "ready"
+      && connection.phase === "ready";
+    const abandonedPending = Boolean(session.pendingSavedHost)
+      && (connection.phase === "failed"
+        || connection.phase === "disconnected"
+        || connection.phase === "exited"
+        || connection.phase === "needsUserAction");
+    const pendingSavedHost = becameReady
+      ? session.pendingSavedHost
+      : undefined;
+    get().updateSession(id, {
+      connection,
+      ...((becameReady || abandonedPending) && session.pendingSavedHost
+        ? { pendingSavedHost: undefined }
+        : {}),
+    });
+    if (pendingSavedHost) {
+      void persistSuccessfulSshHost(pendingSavedHost);
+    }
   },
 
   closeSessions: (ids, opts) => {

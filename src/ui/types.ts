@@ -5,7 +5,7 @@ import type { ConnectionEvidence } from "../modules/terminal/lib/connection-stat
 import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
 import type { RemoteGitErrorV1, RemoteState } from "../modules/git/git-bridge.ts";
 import type { PreviewCommandProvenance, PreviewSource } from "../modules/preview/preview-source.ts";
-import type { SshAuthMethod } from "../modules/ssh/hosts-model.ts";
+import type { SshAuthMethod, SshHostProfile } from "../modules/ssh/hosts-model.ts";
 import type { ForwardReconnectIntent } from "../modules/terminal/lib/pty-bridge.ts";
 export { AGENT_NAMES };
 
@@ -84,6 +84,8 @@ export interface Session {
   sshReconnectLifecycle?: number;
   sshReconnectNeedsCredential?: boolean;
   sshReconnectForwards?: ForwardReconnectIntent[];
+  /** Runtime-only: persist this host after the SSH session reports ready. */
+  pendingSavedHost?: SshHostProfile;
 
   // ── SSH 远程会话（§ssh-client）。存在即为远程会话，否则为本地。 ──
   remote?: RemoteInfo;

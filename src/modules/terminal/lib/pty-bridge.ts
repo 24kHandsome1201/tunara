@@ -55,7 +55,7 @@ function notifyHostKeyPersistence(
 /** Backend sentinel for an SSH transport that ended without ExitStatus. */
 export const SSH_DISCONNECTED_EXIT_CODE = -2;
 
-/** Reply to a pending SSH host-key prompt (backend ssh_open is parked on it). */
+/** Reply to a pending SSH host-key prompt (backend ssh_open_v2 is parked on it). */
 export async function answerHostKeyPrompt(promptId: string, accept: boolean, remember = true): Promise<void> {
   await invoke("ssh_host_key_decision", { promptId, accept, remember });
 }
@@ -69,7 +69,7 @@ export async function answerKeyboardInteractivePrompt(
 
 const sshOpenAttempts = new Map<string, string>();
 const cancelledSshOpenAttempts = new Set<string>();
-// Unlike sshOpenAttempts (which exists only while invoke("ssh_open") is
+// Unlike sshOpenAttempts (which exists only while invoke("ssh_open_v2") is
 // pending), this map stays alive for the physical connection's lifetime. It
 // prevents a superseded Channel from delivering late phases, prompts, output,
 // or exit events into a newer render generation of the same logical session.
@@ -97,7 +97,7 @@ export async function cancelSshOpen(logicalSessionId: string): Promise<void> {
   }
 }
 
-/** Map a raw ssh_open error into a short, localized failure reason. */
+/** Map a raw ssh_open_v2 error into a short, localized failure reason. */
 export function sshFailureReason(error: string): string {
   return t(`ssh.fail.${classifySshFailure(error)}`);
 }
@@ -759,9 +759,9 @@ export async function openSshPty(
         handlers.onPendingConnectionStatus?.("verifyingHostKey");
         // Queue the confirmation in the UI store; an app-level dialog renders
         // the head and calls answerHostKeyPrompt with the user's decision. The
-        // backend ssh_open call is blocked inside check_server_key until then.
+        // backend ssh_open_v2 call is blocked inside check_server_key until then.
         // Enqueue (not overwrite) so a second concurrent connection's prompt
-        // doesn't evict an unanswered first one — each parked ssh_open needs its
+        // doesn't evict an unanswered first one — each parked ssh_open_v2 needs its
         // own answer or it stays blocked until the session is closed.
         pendingPromptIds.add(event.promptId);
         useUIStore.getState().enqueueHostKeyPrompt({

@@ -112,8 +112,9 @@ test("persisted session helpers keep only durable fields and restore idle runtim
 // Regression: shell-integration injection is default-ON in the backend, so a
 // user opting OUT (injectShellIntegration:false) must survive a persist/reopen
 // round-trip. An earlier version only persisted `=== true`, which silently
-// dropped `false` and re-enabled injection on reopen. See ssh_open's
-// unwrap_or(true) — a missing value defaults to inject, so `false` is load-bearing.
+// dropped `false` and re-enabled injection on reopen. See ssh_open_v2 /
+// ssh_open_impl's unwrap_or(true) — a missing value defaults to inject, so
+// `false` is load-bearing.
 test("persisted remote keeps an explicit injectShellIntegration:false (opt-out survives reopen)", () => {
   const optOut = toPersistedSession({
     id: "s-2",

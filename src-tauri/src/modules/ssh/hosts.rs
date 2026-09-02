@@ -37,8 +37,6 @@ pub struct SshHostProfile {
     /// Optional OpenSSH user certificate paired with `identity_file`.
     pub certificate_file: String,
     /// Optional profile id for a statically resolved, single-hop jump host.
-    /// The legacy direct `ssh_open` adapter intentionally ignores this until
-    /// the stream-based connector lands in B2.
     pub proxy_jump_profile_id: String,
 }
 
@@ -161,7 +159,9 @@ fn validate_profile_auth_paths(profile: &mut SshHostProfile) -> Result<(), Strin
             Some(AuthMethod::Key) | Some(AuthMethod::Auto) | None
         ) || profile.identity_file.is_empty())
     {
-        return Err("CertificateFile requires key or automatic authentication and IdentityFile".into());
+        return Err(
+            "CertificateFile requires key or automatic authentication and IdentityFile".into(),
+        );
     }
     Ok(())
 }

@@ -6,7 +6,7 @@ import { useModalBehavior } from "./Modal";
 
 /**
  * App-level dialog shown when an SSH connection meets an unknown / unverifiable
- * host key (TOFU). The backend `ssh_open` call is blocked inside
+ * host key (TOFU). The backend `ssh_open_v2` call is blocked inside
  * `check_server_key` until the user accepts or rejects the fingerprint.
  */
 export function HostKeyPromptDialog() {
