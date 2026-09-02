@@ -449,15 +449,12 @@ test("workspace command palette keeps mouse-free terminal recovery actions", () 
   render(<CommandPalette onClose={() => useUIStore.getState().setOverlay(null)} />);
 
   expect(screen.getByText("New terminal")).toBeTruthy();
-  expect(screen.queryByText("Copy terminal selection")).toBeNull();
-
-  const input = screen.getByRole("combobox");
-  fireEvent.change(input, { target: { value: "Copy terminal selection" } });
   expect(screen.getByText("Copy terminal selection")).toBeTruthy();
-  fireEvent.change(input, { target: { value: "Safe Paste into terminal" } });
   expect(screen.getByText("Safe Paste into terminal")).toBeTruthy();
-  fireEvent.change(input, { target: { value: "Open terminal shortcut menu" } });
   expect(screen.getByText("Open terminal shortcut menu")).toBeTruthy();
+  expect(screen.getByText("Terminal")).toBeTruthy();
+  expect(screen.getByText("Layout")).toBeTruthy();
+  expect(screen.getByText("App")).toBeTruthy();
 });
 
 test("command palette executes a repeated Enter intent only once", () => {

@@ -1,6 +1,5 @@
 export const KEYBINDING_ACTIONS = [
   "newTerminal",
-  "newTerminalAlt",
   "terminalMenu",
   "copySelection",
   "safePaste",
@@ -28,10 +27,6 @@ export const KEYBINDING_ACTIONS = [
   "selectTab7",
   "selectTab8",
   "selectLastTab",
-  "cycleNextSession",
-  "cyclePrevSession",
-  "navigatePrevBlock",
-  "navigateNextBlock",
   "focusLatestAttention",
 ] as const;
 
@@ -52,9 +47,11 @@ export function isTerminalKeybindingAction(action: KeybindingAction): action is 
 
 export type KeybindingPlatform = "macos" | "windows" | "linux";
 
+/** Previous default for jump-to-attention; rewritten to Mod+Enter on load. */
+export const LEGACY_FOCUS_LATEST_ATTENTION = "Mod+Shift+U";
+
 const COMMON_DEFAULT_KEYBINDINGS: KeybindingConfig = {
   newTerminal: "Mod+T",
-  newTerminalAlt: "Mod+N",
   // Shift+F10 and the ContextMenu key remain fixed recovery paths. This is an
   // optional additional menu binding, so no extra chord is claimed by default.
   terminalMenu: "",
@@ -84,10 +81,6 @@ const COMMON_DEFAULT_KEYBINDINGS: KeybindingConfig = {
   selectTab7: "Mod+7",
   selectTab8: "Mod+8",
   selectLastTab: "Mod+9",
-  cycleNextSession: "Mod+Tab",
-  cyclePrevSession: "Mod+Shift+Tab",
-  navigatePrevBlock: "Mod+Shift+ArrowUp",
-  navigateNextBlock: "Mod+Shift+ArrowDown",
   focusLatestAttention: "Mod+Enter",
 };
 
@@ -95,7 +88,6 @@ const COMMON_DEFAULT_KEYBINDINGS: KeybindingConfig = {
 export function defaultKeybindingsForPlatform(platform: KeybindingPlatform): KeybindingConfig {
   const defaults = { ...COMMON_DEFAULT_KEYBINDINGS };
   if (platform !== "macos") {
-    defaults.newTerminalAlt = "Ctrl+Shift+N";
     defaults.copySelection = "Ctrl+Shift+C";
     defaults.safePaste = "Ctrl+Shift+V";
     defaults.closeSession = "Ctrl+Shift+W";
@@ -116,7 +108,6 @@ export const DEFAULT_KEYBINDINGS: Readonly<KeybindingConfig> = defaultKeybinding
 
 export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
   newTerminal: "new_terminal",
-  newTerminalAlt: "new_terminal_alt",
   terminalMenu: "terminal_menu",
   copySelection: "copy_selection",
   safePaste: "safe_paste",
@@ -144,10 +135,6 @@ export const KEYBINDING_CONFIG_KEYS: Record<KeybindingAction, string> = {
   selectTab7: "select_tab_7",
   selectTab8: "select_tab_8",
   selectLastTab: "select_last_tab",
-  cycleNextSession: "cycle_next_session",
-  cyclePrevSession: "cycle_prev_session",
-  navigatePrevBlock: "navigate_prev_block",
-  navigateNextBlock: "navigate_next_block",
   focusLatestAttention: "focus_latest_attention",
 };
 
@@ -294,6 +281,10 @@ export function isValidKeybinding(def: unknown): def is string {
   return typeof def === "string" && !!parseKeybinding(def);
 }
 
+function isLegacyFocusLatestAttention(value: unknown): boolean {
+  return typeof value === "string" && value.trim().toLowerCase() === LEGACY_FOCUS_LATEST_ATTENTION.toLowerCase();
+}
+
 export function sanitizeKeybindings(raw: unknown): KeybindingConfig {
   const next: KeybindingConfig = { ...DEFAULT_KEYBINDINGS };
   if (!raw || typeof raw !== "object") return next;
@@ -302,6 +293,10 @@ export function sanitizeKeybindings(raw: unknown): KeybindingConfig {
     if (action && (isValidKeybinding(value) || (isTerminalKeybindingAction(action) && value === ""))) {
       next[action] = value;
     }
+  }
+  // Pre-redesign custom chord; Mod+Enter is the one remaining attention jump.
+  if (isLegacyFocusLatestAttention(next.focusLatestAttention)) {
+    next.focusLatestAttention = DEFAULT_KEYBINDINGS.focusLatestAttention;
   }
   return next;
 }

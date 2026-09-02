@@ -33,7 +33,7 @@ closeConfirmations: Record<string, number>     // "press close again" timestamps
 dirCloseConfirmations: Record<string, number>  // same, for "close all in dir"
 recentDirs: string[]                      // hydrated from the snapshot on init
 recentCommands: string[]                  // hydrated from the snapshot on init
-recentSessionIds: string[]                // Mod+Tab recency; hydrated from the snapshot on init
+recentSessionIds: string[]                // session recency; hydrated from the snapshot on init
 ```
 
 `Session` itself (defined in `src/ui/types.ts`) carries both persisted fields
@@ -160,7 +160,7 @@ interface WorkspaceSnapshotV1 {
   recentCommands: string[];
   commandUsage: Record<string, number>;            // palette recency
   workflows: Workflow[];                            // user command templates
-  recentSessionIds?: string[];                     // Mod+Tab recency
+  recentSessionIds?: string[];                     // session recency
 }
 ```
 
@@ -221,7 +221,7 @@ slice via `fromPersistedSession` (re-attaching `agentResume`, forcing
 `runState: "idle"` and a pending restore `connection`), merges them with
 any sessions already created this run, re-derives `activeSessionId`, restores
 the `split`/layout/`commandUsage` into the UI store, loads `workflows`,
-restores `recentSessionIds` for Mod+Tab, and restores terminal buffers via
+restores `recentSessionIds` for session recency, and restores terminal buffers via
 `restoreTerminalSnapshots`. Viewport Y is applied after the serialized buffer
 write completes, and later user scrolls are captured by the snapshot scheduler.
 When no snapshot exists the empty state is shown (nearby git-repo cards may

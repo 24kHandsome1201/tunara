@@ -19,8 +19,8 @@ describe("flow 2 keybindings", () => {
   it("uses mac conventions and terminal-safe Windows/Linux alternatives", () => {
     const mac = defaultKeybindingsForPlatform("macos");
     expect([mac.terminalMenu, mac.copySelection, mac.safePaste]).toEqual(["", "Mod+C", "Mod+V"]);
-    expect([mac.newTerminalAlt, mac.closeSession, mac.splitHorizontal, mac.commandPalette])
-      .toEqual(["Mod+N", "Mod+W", "Mod+D", "Mod+K"]);
+    expect([mac.closeSession, mac.splitHorizontal, mac.commandPalette])
+      .toEqual(["Mod+W", "Mod+D", "Mod+K"]);
     expect(mac.focusLatestAttention).toBe("Mod+Enter");
     expect(isFixedTerminalMenuEvent({ key: "Enter", shiftKey: false, ctrlKey: false, metaKey: true, altKey: false })).toBe(false);
     expect(matchesKeybinding(
@@ -38,8 +38,8 @@ describe("flow 2 keybindings", () => {
       const defaults = defaultKeybindingsForPlatform(platform);
       expect([defaults.terminalMenu, defaults.copySelection, defaults.safePaste])
         .toEqual(["", "Ctrl+Shift+C", "Ctrl+Shift+V"]);
-      expect([defaults.newTerminalAlt, defaults.closeSession, defaults.splitHorizontal, defaults.commandPalette])
-        .toEqual(["Ctrl+Shift+N", "Ctrl+Shift+W", "Alt+Shift+D", "Ctrl+Shift+K"]);
+      expect([defaults.closeSession, defaults.splitHorizontal, defaults.commandPalette])
+        .toEqual(["Ctrl+Shift+W", "Alt+Shift+D", "Ctrl+Shift+K"]);
       expect(new Set(Object.values(defaults)).size).toBe(Object.values(defaults).length);
     }
   });

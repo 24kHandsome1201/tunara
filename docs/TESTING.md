@@ -217,7 +217,7 @@ the main themes by filename prefix.
   serialization, write reconciliation, command detection, file loop, and M2
   safe-write gating.
 - **Sidebar grouping** (`sidebar-groups`, `session-attention`): local-vs-SSH
-  group keys, OSC 7 cwd stability, and ⌘⇧U attention jump.
+  group keys, OSC 7 cwd stability, and ⌘↩ attention jump.
 - **Preview** (`preview-*`): source modeling, navigation, lifecycle, restart,
   tunnel, and ACL contracts.
 - **Persistence** (`persist-*`, `lifecycle-*`, `session-lifecycle`): snapshot

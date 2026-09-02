@@ -163,7 +163,7 @@ export interface WorkspaceSnapshotV1 {
   hostFilePrefs: Record<string, HostFilePrefsV1>;
   /** Command-palette usage timestamps, keyed by command id, for recency ranking. */
   commandUsage: Record<string, number>;
-  /** Most-recently-active session ids for Mod+Tab, restored across restarts. */
+  /** Most-recently-active session ids, restored across restarts. */
   recentSessionIds?: string[];
 }
 

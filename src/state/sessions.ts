@@ -101,7 +101,7 @@ interface SessionsState {
   recentDirs: string[];
   recentCommands: string[];
   hostFilePrefs: Record<string, HostFilePrefsV1>;
-  // Session ids in most-recently-active-first order, used by Mod+Tab cycling.
+  // Session ids in most-recently-active-first order.
   recentSessionIds: string[];
 
   addSession: (s: Session) => void;
@@ -407,7 +407,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     }
   },
 
-  // Cycle to the next/prev session by most-recent-active order (Mod+Tab). "next"
+  // Cycle to the next/prev session by most-recent-active order. "next"
   // walks toward older sessions; "prev" walks back toward the most recent. Falls
   // back to session list order for any sessions never activated this run.
   cycleSession: (direction) => {

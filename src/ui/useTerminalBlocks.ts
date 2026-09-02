@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { matchesKeybinding } from "../modules/config/keybindings.ts";
-import { useUIStore } from "@/state/ui";
 import { hasTrueRecordKey, toggleTrueRecordKey } from "@/state/record-keys";
 import { copyText } from "./lib/clipboard";
 
@@ -229,12 +228,11 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
 
   const handleCustomKeyEvent = useCallback((e: KeyboardEvent) => {
     if (e.type !== "keydown") return true;
-    const bindings = useUIStore.getState().keybindings;
-    if (matchesKeybinding(e, bindings.navigatePrevBlock, isMac)) {
+    if (matchesKeybinding(e, "Mod+Shift+ArrowUp", isMac)) {
       navigateBlock("previous");
       return false;
     }
-    if (matchesKeybinding(e, bindings.navigateNextBlock, isMac)) {
+    if (matchesKeybinding(e, "Mod+Shift+ArrowDown", isMac)) {
       navigateBlock("next");
       return false;
     }

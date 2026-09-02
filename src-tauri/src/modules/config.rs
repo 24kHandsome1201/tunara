@@ -170,7 +170,19 @@ fn default_keybindings() -> BTreeMap<String, String> {
 
 fn default_keybindings_for(is_macos: bool) -> BTreeMap<String, String> {
     let mut bindings: BTreeMap<String, String> = old_default_keybindings();
+    // Drop retired chords from the live default set. old_default_keybindings()
+    // stays intact so complete historical tables still migrate in one shot.
+    for key in [
+        "new_terminal_alt",
+        "cycle_next_session",
+        "cycle_prev_session",
+        "navigate_prev_block",
+        "navigate_next_block",
+    ] {
+        bindings.remove(key);
+    }
     bindings.insert("terminal_menu".into(), "".into());
+    bindings.insert("focus_latest_attention".into(), "Mod+Enter".into());
     bindings.insert(
         "copy_selection".into(),
         if is_macos { "Mod+C" } else { "Ctrl+Shift+C" }.into(),
@@ -180,7 +192,6 @@ fn default_keybindings_for(is_macos: bool) -> BTreeMap<String, String> {
         if is_macos { "Mod+V" } else { "Ctrl+Shift+V" }.into(),
     );
     if !is_macos {
-        bindings.insert("new_terminal_alt".into(), "Ctrl+Shift+N".into());
         bindings.insert("close_session".into(), "Ctrl+Shift+W".into());
         bindings.insert("split_horizontal".into(), "Alt+Shift+D".into());
         bindings.insert("command_palette".into(), "Ctrl+Shift+K".into());
@@ -563,17 +574,17 @@ mod tests {
         for (key, expected) in [
             ("copy_selection", "Mod+C"),
             ("safe_paste", "Mod+V"),
-            ("new_terminal_alt", "Mod+N"),
             ("close_session", "Mod+W"),
             ("split_horizontal", "Mod+D"),
             ("command_palette", "Mod+K"),
+            ("focus_latest_attention", "Mod+Enter"),
         ] {
             assert_eq!(macos.get(key).map(String::as_str), Some(expected));
         }
+        assert_eq!(macos.get("new_terminal_alt"), None);
         for (key, expected) in [
             ("copy_selection", "Ctrl+Shift+C"),
             ("safe_paste", "Ctrl+Shift+V"),
-            ("new_terminal_alt", "Ctrl+Shift+N"),
             ("close_session", "Ctrl+Shift+W"),
             ("split_horizontal", "Alt+Shift+D"),
             ("command_palette", "Ctrl+Shift+K"),

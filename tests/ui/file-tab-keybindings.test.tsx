@@ -75,8 +75,6 @@ function bindReaderKeys() {
       selectTab2: "Ctrl+2",
       selectTab3: "Ctrl+3",
       selectLastTab: "Ctrl+9",
-      cycleNextSession: "Ctrl+Tab",
-      cyclePrevSession: "Ctrl+Shift+Tab",
     },
   });
 }

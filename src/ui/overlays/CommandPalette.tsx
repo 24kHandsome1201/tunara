@@ -2,7 +2,7 @@ import type React from "react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { deriveTitle, type Session } from "../types";
 import { useSessionsStore } from "@/state/sessions";
-import { useUIStore, type InspectorTab } from "@/state/ui";
+import { DEFAULT_SETTINGS, useUIStore, type InspectorTab } from "@/state/ui";
 import { SearchIcon } from "../shared";
 import { formatShortcut } from "../formatShortcut";
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
@@ -10,7 +10,7 @@ import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./comm
 import { useT } from "@/modules/i18n";
 import { useFocusTrap } from "./useFocusTrap";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
-import { canSplitLayout } from "@/modules/session/split-layout";
+import { canSplitLayout, sessionIdFromPaneId, splitFocusTarget, type SplitFocusDirection } from "@/modules/session/split-layout";
 import { copyActiveTerminal, openTerminalMenu, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import { nextAttentionSessionId } from "@/modules/session/session-attention";
 import { requestTerminalScrollbackExport } from "@/modules/terminal/lib/terminal-export-file";
@@ -33,6 +33,24 @@ function CmdIcon({ d, size = 14 }: { d: string; size?: number }) {
       <path d={d} />
     </svg>
   );
+}
+
+const PALETTE_SECTION_KEYS = ["recent", "session", "terminal", "layout", "files", "ssh", "app"] as const;
+
+function orderPaletteCommands(items: Command[], sectionOrder: readonly string[]): Command[] {
+  const bySection = new Map<string, Command[]>();
+  for (const item of items) {
+    const list = bySection.get(item.section) ?? [];
+    list.push(item);
+    bySection.set(item.section, list);
+  }
+  const ordered: Command[] = [];
+  for (const section of sectionOrder) {
+    ordered.push(...(bySection.get(section) ?? []));
+    bySection.delete(section);
+  }
+  for (const leftover of bySection.values()) ordered.push(...leftover);
+  return ordered;
 }
 
 export function CommandPalette({ onClose }: { onClose: () => void }) {
@@ -63,12 +81,21 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const commands = useMemo((): Command[] => {
     const cmds: Command[] = [];
     let idx = 0;
+    const section = {
+      recent: t("palette.section.recent"),
+      terminal: t("palette.section.terminal"),
+      layout: t("palette.section.layout"),
+      files: t("palette.section.files"),
+      ssh: t("palette.section.ssh"),
+      app: t("palette.section.app"),
+      session: t("palette.section.session"),
+    };
     const presentationCommand: Command = {
       id: "toggle-presentation-mode",
       label: presentationMode === "pure" ? t("palette.cmd.exit_pure") : t("palette.cmd.enter_pure"),
       shortcut: formatShortcut(keybindings.togglePresentationMode),
       icon: <CmdIcon d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
-      section: t("palette.section.action"),
+      section: section.app,
       scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => {
@@ -86,7 +113,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "open-files-pure",
         label: t("pure.files.open"),
         icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-        section: t("palette.section.action"), scopes: ["action", "app"], originalIndex: idx++,
+        section: section.files, scopes: ["action", "files"], originalIndex: idx++,
         action: () => { const ui = uiStore.getState(); ui.setInspectorTab("files", { sessionId: activeSessionId }); ui.setPanelVisible(true); onClose(); },
       },
       presentationCommand,
@@ -102,7 +129,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           label: primary,
           subtitle,
           icon: s.pinned ? <CmdIcon d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" /> : <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
-          section: s.pinned ? t("palette.section.pinned_sessions") : t("palette.section.session"),
+          section: section.session,
           scopes: ["session"],
           originalIndex: idx++,
           action: () => {
@@ -119,7 +146,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       label: t("palette.cmd.new_terminal"),
       shortcut: formatShortcut(keybindings.newTerminal),
       icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
-      section: t("palette.section.action"),
+      section: section.terminal,
       scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
@@ -134,7 +161,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       id: "new-terminal-directory",
       label: t("palette.cmd.new_terminal_in_directory"),
       icon: <CmdIcon d="M3 6.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM3 9h18" />,
-      section: t("palette.section.action"),
+      section: section.terminal,
       scopes: ["action", "terminal"],
       originalIndex: idx++,
       action: () => {
@@ -148,8 +175,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       id: "open-ssh-hosts",
       label: t("palette.cmd.open_ssh_hosts"),
       icon: <CmdIcon d="M3 4h18v7H3zM3 13h18v7H3zM7 7.5h.01M7 16.5h.01" />,
-      section: t("palette.section.action"),
-      scopes: ["action", "app"],
+      section: section.ssh,
+      scopes: ["action", "ssh"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("open-ssh-hosts");
@@ -162,8 +189,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       id: "new-ssh-session",
       label: t("palette.cmd.new_ssh_session"),
       icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m6 9 3 3-3 3" /><line x1="12" y1="15" x2="16" y2="15" /></svg>,
-      section: t("palette.section.action"),
-      scopes: ["action", "terminal"],
+      section: section.ssh,
+      scopes: ["action", "ssh"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("new-ssh-session");
@@ -176,8 +203,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "duplicate-ssh-host",
         label: t("palette.cmd.duplicate_ssh_host"),
         icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m6 9 3 3-3 3" /><line x1="12" y1="15" x2="16" y2="15" /></svg>,
-        section: t("palette.section.action"),
-        scopes: ["action", "terminal"],
+        section: section.ssh,
+        scopes: ["action", "ssh"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("duplicate-ssh-host");
@@ -192,7 +219,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       label: t("palette.cmd.focus_latest_attention"),
       shortcut: formatShortcut(keybindings.focusLatestAttention),
       icon: <CmdIcon d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />,
-      section: t("palette.section.action"),
+      section: section.session,
       scopes: ["action", "session"],
       originalIndex: idx++,
       action: () => {
@@ -215,7 +242,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         label: t("palette.cmd.copy_selection"),
         shortcut: formatShortcut(keybindings.copySelection),
         icon: <CmdIcon d="M8 8h11v11H8zM5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />,
-        section: t("palette.section.action"),
+        section: section.terminal,
         scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
@@ -230,7 +257,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         label: t("palette.cmd.safe_paste"),
         shortcut: formatShortcut(keybindings.safePaste),
         icon: <CmdIcon d="M9 5h6M9 3h6v4H9zM7 5H5v16h14V5h-2M9 12h6M9 16h6" />,
-        section: t("palette.section.action"),
+        section: section.terminal,
         scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
@@ -245,7 +272,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         label: t("palette.cmd.open_terminal_menu"),
         shortcut: formatShortcut(keybindings.terminalMenu || "Shift+F10"),
         icon: <CmdIcon d="M4 6h16M4 12h16M4 18h16" />,
-        section: t("palette.section.action"),
+        section: section.terminal,
         scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
@@ -259,7 +286,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "export-scrollback",
         label: t("palette.cmd.export_scrollback"),
         icon: <CmdIcon d="M12 3v12M8 11l4 4 4-4M4 19h16" />,
-        section: t("palette.section.action"),
+        section: section.terminal,
         scopes: ["action", "terminal"],
         originalIndex: idx++,
         action: () => {
@@ -284,7 +311,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           label: t("palette.cmd.new_terminal_current_dir"),
           subtitle: activeSession.dir,
           icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 5v14M5 12h14" /><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>,
-          section: t("palette.section.action"),
+          section: section.terminal,
           scopes: ["action", "terminal"],
           originalIndex: idx++,
           action: () => {
@@ -302,7 +329,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           label: t("palette.cmd.new_terminal_in_dir", { label: entry.label }),
           subtitle: entry.dir,
           icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-          section: t("palette.section.recent_dirs"),
+          section: section.recent,
           scopes: ["action", "terminal", "recent"],
           originalIndex: idx++,
           action: () => {
@@ -321,7 +348,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             label: t("palette.cmd.fill_recent_command", { label: entry.label }),
             subtitle: activeSession.dir,
             icon: <CmdIcon d="M4 17l6-6-6-6M12 19h8" />,
-            section: t("palette.section.recent_commands"),
+            section: section.recent,
             scopes: ["action", "terminal", "recent"],
             originalIndex: idx++,
             action: () => {
@@ -341,8 +368,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           label: t("palette.cmd.refresh_git_current"),
           subtitle: activeSession.dir,
           icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
-          section: t("palette.section.action"),
-          scopes: ["action"],
+          section: section.files,
+          scopes: ["action", "files"],
           originalIndex: idx++,
           action: () => {
             uiStore.getState().recordCommandUse("refresh-git-current");
@@ -356,8 +383,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "open-session-changes",
         label: t("palette.cmd.open_session_changes"),
         icon: <CmdIcon d="M4 5h16M4 12h16M8 19h8" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "app"],
+        section: section.files,
+        scopes: ["action", "files"],
         originalIndex: idx++,
         action: () => openInspectorTab("changes", "open-session-changes"),
       });
@@ -366,8 +393,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "open-session-files",
         label: t("palette.cmd.open_session_files"),
         icon: <CmdIcon d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "app"],
+        section: section.files,
+        scopes: ["action", "files"],
         originalIndex: idx++,
         action: () => openInspectorTab("files", "open-session-files"),
       });
@@ -376,8 +403,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "open-session-preview",
         label: t("palette.cmd.open_session_preview"),
         icon: <CmdIcon d="M4 6h16v12H4zM8 10h8" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "app"],
+        section: section.files,
+        scopes: ["action", "files"],
         originalIndex: idx++,
         action: () => openInspectorTab("preview", "open-session-preview"),
       });
@@ -387,8 +414,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           id: "open-session-transfers",
           label: t("palette.cmd.open_session_transfers"),
           icon: <CmdIcon d="M7 7h11M15 4l3 3-3 3M17 17H6M9 14l-3 3 3 3" />,
-          section: t("palette.section.action"),
-          scopes: ["action", "app"],
+          section: section.ssh,
+          scopes: ["action", "ssh"],
           originalIndex: idx++,
           action: () => openInspectorTab("transfers", "open-session-transfers"),
         });
@@ -396,8 +423,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           id: "open-session-forwarding",
           label: t("palette.cmd.open_session_forwarding"),
           icon: <CmdIcon d="M6 12a2.4 2.4 0 1 0 0.01 0M18 7a2.4 2.4 0 1 0 0.01 0M18 17a2.4 2.4 0 1 0 0.01 0M8.2 11.2 15.8 8.1M8.2 12.8 15.8 15.9" />,
-          section: t("palette.section.action"),
-          scopes: ["action", "app"],
+          section: section.ssh,
+          scopes: ["action", "ssh"],
           originalIndex: idx++,
           action: () => openInspectorTab("forwarding", "open-session-forwarding"),
         });
@@ -407,7 +434,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: activeSession.pinned ? "unpin-current-session" : "pin-current-session",
         label: activeSession.pinned ? t("palette.cmd.unpin_current_session") : t("palette.cmd.pin_current_session"),
         icon: <CmdIcon d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" />,
-        section: t("palette.section.action"),
+        section: section.session,
         scopes: ["action", "session"],
         originalIndex: idx++,
         action: () => {
@@ -421,8 +448,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "rename-current-session",
         label: t("palette.cmd.rename_current_session"),
         icon: <CmdIcon d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />,
-        section: t("palette.section.action"),
-        scopes: ["action"],
+        section: section.session,
+        scopes: ["action", "session"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("rename-current-session");
@@ -436,8 +463,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         label: t("palette.cmd.close_current_session"),
         shortcut: formatShortcut(keybindings.closeSession),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
-        section: t("palette.section.action"),
-        scopes: ["action"],
+        section: section.session,
+        scopes: ["action", "session"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-current-session");
@@ -452,8 +479,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       label: t("palette.cmd.toggle_sidebar"),
       shortcut: formatShortcut(keybindings.toggleSidebar),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
-      section: t("palette.section.action"),
-      scopes: ["action", "app"],
+      section: section.layout,
+      scopes: ["action", "layout"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("toggle-sidebar"); uiStore.getState().toggleSidebar(); onClose(); },
     });
@@ -463,8 +490,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       label: t("palette.cmd.toggle_panel"),
       shortcut: formatShortcut(keybindings.togglePanel),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" /><rect x="9" y="1.5" width="5.5" height="13" rx="2" fill="currentColor" fillOpacity={0.15} /></svg>,
-      section: t("palette.section.action"),
-      scopes: ["action", "app"],
+      section: section.layout,
+      scopes: ["action", "layout"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("toggle-panel"); uiStore.getState().togglePanel(); onClose(); },
     });
@@ -476,8 +503,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       label: t("palette.cmd.split_horizontal"),
       shortcut: formatShortcut(keybindings.splitHorizontal),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="8" y1="1.5" x2="8" y2="14.5" /></svg>,
-      section: t("palette.section.action"),
-      scopes: ["action", "terminal"],
+      section: section.layout,
+      scopes: ["action", "layout"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-horizontal");
@@ -492,8 +519,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       label: t("palette.cmd.split_vertical"),
       shortcut: formatShortcut(keybindings.splitVertical),
       icon: <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ flexShrink: 0 }}><rect x="1.5" y="1.5" width="13" height="13" rx="2" /><line x1="1.5" y1="8" x2="14.5" y2="8" /></svg>,
-      section: t("palette.section.action"),
-      scopes: ["action", "terminal"],
+      section: section.layout,
+      scopes: ["action", "layout"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("split-vertical");
@@ -503,12 +530,113 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       },
     });
 
+    const focusPane = (direction: SplitFocusDirection, usageId: string) => {
+      const ui = uiStore.getState();
+      const st = useSessionsStore.getState();
+      ui.recordCommandUse(usageId);
+      const origin = ui.focusedPaneId ?? st.activeSessionId;
+      const target = splitFocusTarget(ui.split, origin, direction);
+      if (target) {
+        st.setActive(sessionIdFromPaneId(target));
+        ui.setFocusedPaneId(target);
+        ui.showTerminal();
+      }
+      onClose();
+    };
+
+    cmds.push({
+      id: "focus-pane-left",
+      label: t("palette.cmd.focus_pane_left"),
+      shortcut: formatShortcut(keybindings.focusSplitLeft),
+      icon: <CmdIcon d="M19 12H5M11 18l-6-6 6-6" />,
+      section: section.layout,
+      scopes: ["action", "layout"],
+      originalIndex: idx++,
+      action: () => focusPane("left", "focus-pane-left"),
+    });
+    cmds.push({
+      id: "focus-pane-right",
+      label: t("palette.cmd.focus_pane_right"),
+      shortcut: formatShortcut(keybindings.focusSplitRight),
+      icon: <CmdIcon d="M5 12h14M13 6l6 6-6 6" />,
+      section: section.layout,
+      scopes: ["action", "layout"],
+      originalIndex: idx++,
+      action: () => focusPane("right", "focus-pane-right"),
+    });
+    cmds.push({
+      id: "focus-pane-up",
+      label: t("palette.cmd.focus_pane_up"),
+      shortcut: formatShortcut(keybindings.focusSplitUp),
+      icon: <CmdIcon d="M12 19V5M6 11l6-6 6 6" />,
+      section: section.layout,
+      scopes: ["action", "layout"],
+      originalIndex: idx++,
+      action: () => focusPane("up", "focus-pane-up"),
+    });
+    cmds.push({
+      id: "focus-pane-down",
+      label: t("palette.cmd.focus_pane_down"),
+      shortcut: formatShortcut(keybindings.focusSplitDown),
+      icon: <CmdIcon d="M12 5v14M18 13l-6 6-6-6" />,
+      section: section.layout,
+      scopes: ["action", "layout"],
+      originalIndex: idx++,
+      action: () => focusPane("down", "focus-pane-down"),
+    });
+
+    cmds.push({
+      id: "font-size-up",
+      label: t("palette.cmd.font_size_up"),
+      shortcut: formatShortcut(keybindings.fontSizeUp),
+      icon: <CmdIcon d="M4 20V8h4l4 12M6 16h4M14 20v-8h6" />,
+      section: section.app,
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        const ui = uiStore.getState();
+        ui.recordCommandUse("font-size-up");
+        ui.setFontSize(ui.fontSize + 1);
+        onClose();
+      },
+    });
+    cmds.push({
+      id: "font-size-down",
+      label: t("palette.cmd.font_size_down"),
+      shortcut: formatShortcut(keybindings.fontSizeDown),
+      icon: <CmdIcon d="M4 20V8h4l4 12M6 16h4" />,
+      section: section.app,
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        const ui = uiStore.getState();
+        ui.recordCommandUse("font-size-down");
+        ui.setFontSize(ui.fontSize - 1);
+        onClose();
+      },
+    });
+    cmds.push({
+      id: "font-size-reset",
+      label: t("palette.cmd.font_size_reset"),
+      shortcut: formatShortcut(keybindings.fontSizeReset),
+      icon: <CmdIcon d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" />,
+      section: section.app,
+      scopes: ["action", "app"],
+      originalIndex: idx++,
+      action: () => {
+        const ui = uiStore.getState();
+        ui.recordCommandUse("font-size-reset");
+        ui.setFontSize(DEFAULT_SETTINGS.fontSize);
+        onClose();
+      },
+    });
+
     cmds.push({
       id: "settings",
       label: t("palette.cmd.settings"),
       shortcut: formatShortcut(keybindings.openSettings),
       icon: <CmdIcon d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />,
-      section: t("palette.section.action"),
+      section: section.app,
       scopes: ["action", "app"],
       originalIndex: idx++,
       action: () => { uiStore.getState().recordCommandUse("settings"); uiStore.getState().openSettings(); },
@@ -518,8 +646,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       id: "refresh-all-git",
       label: t("palette.cmd.refresh_all_git"),
       icon: <CmdIcon d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />,
-      section: t("palette.section.batch"),
-      scopes: ["action", "batch"],
+      section: section.files,
+      scopes: ["action", "files"],
       originalIndex: idx++,
       action: () => {
         uiStore.getState().recordCommandUse("refresh-all-git");
@@ -536,8 +664,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "close-all-sessions",
         label: t("palette.cmd.close_all_sessions"),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
-        section: t("palette.section.batch"),
-        scopes: ["action", "batch"],
+        section: section.session,
+        scopes: ["action", "session"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-all-sessions");
@@ -553,8 +681,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id: "close-other-sessions",
         label: t("palette.cmd.close_other_sessions"),
         icon: <CmdIcon d="M18 6 6 18M6 6l12 12" />,
-        section: t("palette.section.batch"),
-        scopes: ["action", "batch"],
+        section: section.session,
+        scopes: ["action", "session"],
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-other-sessions");
@@ -573,21 +701,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);
   const allRanked = rankCommandPaletteItems(filtered, parsedQuery, usage);
-  const contextualIds = activeSession
-    ? [
-        activeSession.remote ? "duplicate-ssh-host" : "new-terminal-current-dir",
-        "open-session-files",
-        "new-terminal",
-        "new-terminal-directory",
-        "new-ssh-session",
-      ]
-    : ["new-terminal", "new-terminal-directory", "new-ssh-session", "open-ssh-hosts", "settings"];
-  const defaultCommands = [
-    ...contextualIds.flatMap((id) => allRanked.find((command) => command.id === id) ?? []),
-  ];
-  const ranked = presentationMode === "pure" || query.trim()
+  const sectionOrder = PALETTE_SECTION_KEYS.map((key) => t(`palette.section.${key}`));
+  const ranked = presentationMode === "pure"
     ? allRanked
-    : defaultCommands;
+    : orderPaletteCommands(allRanked, sectionOrder);
 
   useEffect(() => {
     setSelectedIndex(0);

@@ -406,7 +406,7 @@ test("text config drives appearance, keybindings, and terminal font settings", (
   assert.match(bridge, /font_ligatures: boolean/);
   assert.match(bridge, /terminal_clipboard_write: boolean/);
   assert.match(keybindings, /export const DEFAULT_KEYBINDINGS/);
-  assert.match(keybindings, /newTerminalAlt: "Mod\+N"/);
+  assert.doesNotMatch(keybindings, /newTerminalAlt/);
   assert.doesNotMatch(keybindings, /quickSelect: "Mod\+Shift\+Space"/);
   assert.match(keybindings, /function configActionForKey\(key: string\): KeybindingAction \| undefined/);
   assert.match(keybindings, /hasOwnProperty\.call\(CONFIG_KEY_TO_ACTION, key\)/);
@@ -1624,11 +1624,11 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocksPure, /export function collectTerminalBlockOutputText/);
   assert.match(terminalBlocksPure, /export function formatTerminalBlockCommandAndOutput/);
   assert.match(terminalBlocks, /import \{ matchesKeybinding \} from "\.\.\/modules\/config\/keybindings\.ts"/);
-  assert.match(terminalBlocks, /import \{ useUIStore \} from "@\/state\/ui"/);
+  assert.doesNotMatch(terminalBlocks, /import \{ useUIStore \} from "@\/state\/ui"/);
   assert.match(terminalBlocks, /import \{ hasTrueRecordKey, toggleTrueRecordKey \} from "@\/state\/record-keys"/);
   assert.match(terminalBlocks, /function detectMacPlatform\(\): boolean/);
-  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigatePrevBlock, isMac\)/);
-  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigateNextBlock, isMac\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowUp", isMac\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowDown", isMac\)/);
   assert.doesNotMatch(terminalBlocks, /@tauri-apps\/plugin-os/);
   assert.doesNotMatch(terminalBlocks, /slice\(0, 77\) \+ "\.\.\."/);
   assert.match(terminalBlocksPure, /rows\.startRow \+ 1/);
@@ -1648,8 +1648,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /formatTerminalBlockCommandAndOutput\(block\.command, output\)/);
   assert.match(terminalBlocks, /return copyText\(block\.command\)/);
   assert.match(terminalBlocks, /term\.onScroll/);
-  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigatePrevBlock, isMac\)[\s\S]*navigateBlock\("previous"\)/);
-  assert.match(terminalBlocks, /matchesKeybinding\(e, bindings\.navigateNextBlock, isMac\)[\s\S]*navigateBlock\("next"\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowUp", isMac\)[\s\S]*navigateBlock\("previous"\)/);
+  assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowDown", isMac\)[\s\S]*navigateBlock\("next"\)/);
   assert.match(terminalBlocks, /hasTrueRecordKey\(current, id\)/);
   assert.match(terminalBlocks, /toggleTrueRecordKey\(current, id\)/);
   assert.doesNotMatch(terminalBlocks, /current\[id\]/);

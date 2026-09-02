@@ -42,7 +42,6 @@ export function useKeybindings() {
       };
       switch (action) {
         case "newTerminal":
-        case "newTerminalAlt":
           ui.showTerminal();
           st.newTerminal();
           break;
@@ -123,20 +122,6 @@ export function useKeybindings() {
         case "selectLastTab":
           if (st.sessions.length > 0) { const previous = st.activeSessionId; st.setActive(st.sessions[st.sessions.length - 1].id); ui.showTerminal(); announcePureNavigation(previous); }
           break;
-        case "cycleNextSession": {
-          const previous = st.activeSessionId;
-          st.cycleSession("next");
-          ui.showTerminal();
-          announcePureNavigation(previous);
-          break;
-        }
-        case "cyclePrevSession": {
-          const previous = st.activeSessionId;
-          st.cycleSession("prev");
-          ui.showTerminal();
-          announcePureNavigation(previous);
-          break;
-        }
         case "focusLatestAttention": {
           const target = nextAttentionSessionId(st.sessions, st.activeSessionId);
           if (!target) break;
@@ -206,9 +191,6 @@ export function useKeybindings() {
         // Terminal-scoped Copy/Safe Paste/Menu actions are resolved by the
         // registered xterm instance, which owns selection and paste identity.
         if (isTerminalKeybindingAction(action)) continue;
-        // Block navigation is handled per-terminal via xterm's custom key handler
-        // because it needs the active terminal instance. Leave the event alone here.
-        if (action === "navigatePrevBlock" || action === "navigateNextBlock") continue;
         if (!matchesKeybinding(e, bindings[action], isMac)) continue;
         e.preventDefault();
         advanceTerminalFocusEpoch();

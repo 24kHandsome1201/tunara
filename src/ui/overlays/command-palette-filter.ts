@@ -1,6 +1,6 @@
 import { getNumberRecordValue } from "../../state/record-keys.ts";
 
-export type CommandPaletteScope = "action" | "app" | "batch" | "recent" | "session" | "terminal";
+export type CommandPaletteScope = "action" | "app" | "batch" | "files" | "layout" | "recent" | "session" | "ssh" | "terminal";
 
 export interface CommandPaletteFilterItem {
   label: string;
@@ -27,11 +27,15 @@ const SCOPE_ALIASES: Record<string, CommandPaletteScope> = {
   app: "app",
   apps: "app",
   batch: "batch",
+  files: "files",
+  file: "files",
+  layout: "layout",
   recent: "recent",
   r: "recent",
   s: "session",
   session: "session",
   sessions: "session",
+  ssh: "ssh",
   t: "terminal",
   term: "terminal",
   terminal: "terminal",
