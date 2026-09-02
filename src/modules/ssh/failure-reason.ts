@@ -12,6 +12,7 @@ export type SshFailureReason =
   | "key"
   | "agent"
   | "keyboardInteractive"
+  | "auto"
   | "auth"
   | "hostKey"
   | "connect"
@@ -19,6 +20,7 @@ export type SshFailureReason =
 
 export function classifySshFailure(error: string): SshFailureReason {
   const e = error.toLowerCase();
+  if (e.includes("automatic authentication")) return "auto";
   if (e.includes("password authentication")) return "password";
   if (e.includes("keyboard-interactive authentication")) return "keyboardInteractive";
   if (e.includes("key authentication")) return "key";

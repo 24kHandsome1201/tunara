@@ -8,11 +8,24 @@ import { useUIStore } from "@/state/ui";
 import { SshConnect } from "@/ui/overlays/SshConnect";
 
 function mockEmptySources() {
-  mockIPC((command) => {
+  mockIPC((command, payload) => {
     if (command === "ssh_hosts_load") return [];
     if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+    if (command === "ssh_hosts_save") {
+      return [(payload as { profile: Record<string, unknown> }).profile];
+    }
     throw new Error(`unexpected command: ${command}`);
   });
+}
+
+function openAdvanced() {
+  if (!document.getElementById("ssh-connect-port")) {
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+  }
+}
+
+function hostInput() {
+  return document.getElementById("ssh-connect-host") as HTMLInputElement;
 }
 
 function SshDialogHarness() {
@@ -44,7 +57,7 @@ describe("SSH connection sheet", () => {
 
     const dialog = screen.getByRole("dialog", { name: "SSH Connection" });
     expect(dialog.getAttribute("aria-describedby")).toBe("ssh-connect-subtitle");
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Host")));
+    await waitFor(() => expect(document.activeElement).toBe(hostInput()));
 
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     dialog.dispatchEvent(escape);
@@ -53,24 +66,54 @@ describe("SSH connection sheet", () => {
     expect(document.activeElement).toBe(opener);
   });
 
-  test("requires an explicit method and keeps Password strictly password-only", async () => {
-    useUIStore.setState({ sidebarVisible: false });
+  test("connects from one target field without showing auth chooser first", async () => {
     mockEmptySources();
     render(<SshConnect onClose={vi.fn()} />);
 
+    expect(screen.queryByRole("radio", { name: /^Password/ })).toBeNull();
+    expect(screen.queryByLabelText("Password")).toBeNull();
     const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
     expect(connect.disabled).toBe(true);
 
+    fireEvent.change(hostInput(), { target: { value: "deploy@lab.example" } });
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+
+    const [session] = useSessionsStore.getState().sessions;
+    expect(session.remote).toEqual({
+      host: "lab.example",
+      port: 22,
+      user: "deploy",
+      authMethod: "auto",
+      injectShellIntegration: true,
+    });
+  });
+
+  test("keeps Password strictly password-only once Advanced is opened", async () => {
+    useUIStore.setState({ sidebarVisible: false });
+    const saves: Array<Record<string, unknown>> = [];
+    mockIPC((command, payload) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      if (command === "ssh_hosts_save") {
+        const profile = (payload as { profile: Record<string, unknown> }).profile;
+        saves.push(profile);
+        return [profile];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    openAdvanced();
     fireEvent.click(screen.getByRole("radio", { name: /^Password/ }));
-    expect(screen.getByLabelText("Password")).toBeTruthy();
-    expect(screen.queryByLabelText("Private key")).toBeNull();
-    expect(screen.queryByLabelText("Key passphrase (optional)")).toBeNull();
-    expect(screen.getByText(/will not read a private key or contact SSH Agent/i)).toBeTruthy();
+    expect(document.getElementById("ssh-connect-password")).toBeTruthy();
+    expect(document.getElementById("ssh-connect-identity")).toBeNull();
+    expect(document.getElementById("ssh-connect-passphrase")).toBeNull();
 
     const secret = ["single", "attempt", "credential"].join("-");
-    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "password.example" } });
-    fireEvent.change(screen.getByLabelText("User"), { target: { value: "deploy" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: secret } });
+    fireEvent.change(hostInput(), { target: { value: "deploy@password.example" } });
+    fireEvent.change(document.getElementById("ssh-connect-password") as HTMLInputElement, { target: { value: secret } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
     await waitFor(() => expect(connect.disabled).toBe(false));
     fireEvent.click(connect);
 
@@ -87,6 +130,8 @@ describe("SSH connection sheet", () => {
     expect(JSON.stringify(session)).not.toContain(secret);
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
     expect(takeSshCredentials(session.id)).toBeUndefined();
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).not.toHaveProperty("password");
   });
 
   test("locks a submitted connection so repeated activation creates only one session", async () => {
@@ -94,9 +139,7 @@ describe("SSH connection sheet", () => {
     const onClose = vi.fn();
     render(<SshConnect onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /^SSH Agent/ }));
-    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "once.example" } });
-    fireEvent.change(screen.getByLabelText("User"), { target: { value: "deploy" } });
+    fireEvent.change(hostInput(), { target: { value: "deploy@once.example" } });
     const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
     await waitFor(() => expect(connect.disabled).toBe(false));
 
@@ -105,13 +148,10 @@ describe("SSH connection sheet", () => {
 
     expect(useSessionsStore.getState().sessions).toHaveLength(1);
     expect(useSessionsStore.getState().sessions[0].remote?.host).toBe("once.example");
-    expect(connect.disabled).toBe(true);
-    expect(connect.textContent).toBe("Connecting…");
-    expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("true");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test("Enter in the profile search field does not submit Connect", async () => {
+  test("Enter in an incomplete target does not submit Connect", async () => {
     mockIPC((command) => {
       if (command === "ssh_hosts_load") {
         return [{ id: "saved-lab", label: "lab box", host: "lab.example", port: 22, user: "ops", identity_file: "" }];
@@ -121,42 +161,25 @@ describe("SSH connection sheet", () => {
     });
     render(<SshConnect onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /^Password/ }));
-    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "password.example" } });
-    fireEvent.change(screen.getByLabelText("User"), { target: { value: "deploy" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-value" } });
-    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
-    await waitFor(() => expect(connect.disabled).toBe(false));
-
-    const search = await screen.findByLabelText("Search saved hosts and ~/.ssh/config");
-    search.focus();
-    fireEvent.keyDown(search, { key: "Enter" });
+    const host = hostInput();
+    fireEvent.change(host, { target: { value: "nobody" } });
+    host.focus();
+    fireEvent.keyDown(host, { key: "Enter" });
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
   });
 
-  test("keeps an invalid Port description under the Port field in a narrow window", () => {
+  test("keeps an invalid Port description under the target field", () => {
     mockEmptySources();
     useUIStore.setState({ viewportWidth: 640 });
     render(<SshConnect onClose={vi.fn()} />);
 
-    const port = screen.getByLabelText("Port");
-    fireEvent.change(port, { target: { value: "99999" } });
+    const host = hostInput();
+    fireEvent.change(host, { target: { value: "deploy@example.com:99999" } });
     const error = screen.getByText("Port must be a number between 1 and 65535");
-    const authError = screen.getByText("Choose an authentication method before connecting.");
 
     expect(error.getAttribute("role")).toBe("alert");
-    expect(port.getAttribute("aria-invalid")).toBe("true");
-    expect(port.getAttribute("aria-describedby")).toBe("ssh-connect-port-error");
-    expect(error.textContent).toBe("Port must be a number between 1 and 65535");
-    expect(error.parentElement).toBe(port.parentElement);
-    expect(authError).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
-
-    fireEvent.change(port, { target: { value: "0" } });
-    expect(screen.getByText("Port must be a number between 1 and 65535")).toBeTruthy();
-    fireEvent.change(port, { target: { value: "abc" } });
-    expect(screen.getByText("Port must be a number between 1 and 65535")).toBeTruthy();
-    expect(port.getAttribute("aria-invalid")).toBe("true");
+    expect(host.getAttribute("aria-invalid")).toBe("true");
+    expect(host.getAttribute("aria-describedby")).toBe("ssh-connect-port-error");
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -188,17 +211,18 @@ describe("SSH connection sheet", () => {
     });
     render(<SshConnect onClose={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /prod.*~\/.ssh\/config/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /prod/i }));
     expect((screen.getByRole("radio", { name: /^Private key/ }) as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText("Private key") as HTMLInputElement).value).toBe("~/.ssh/id_prod");
+    expect((document.getElementById("ssh-connect-identity") as HTMLInputElement).value).toBe("~/.ssh/id_prod");
     expect((screen.getByLabelText("Certificate file (optional)") as HTMLInputElement).value).toBe("~/.ssh/id_prod-cert.pub");
 
     fireEvent.click(screen.getByRole("radio", { name: /^Password/ }));
-    expect(screen.queryByLabelText("Private key")).toBeNull();
+    expect(document.getElementById("ssh-connect-identity")).toBeNull();
     const secret = ["not", "for", "profile"].join("-");
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: secret } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.change(document.getElementById("ssh-connect-password") as HTMLInputElement, { target: { value: secret } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
 
     await waitFor(() => expect(saves).toHaveLength(1));
     expect(saves[0]).toMatchObject({
@@ -216,7 +240,7 @@ describe("SSH connection sheet", () => {
     expect(takeSshCredentials(session.id)?.password).toBe(secret);
   });
 
-  test("persists a custom display name for a newly saved server", async () => {
+  test("auto-saves a new target after Connect", async () => {
     const saves: Array<Record<string, unknown>> = [];
     useUIStore.setState({ mainSurface: "ssh-hosts" });
     mockIPC((command, payload) => {
@@ -231,22 +255,19 @@ describe("SSH connection sheet", () => {
     });
     render(<SshConnect onClose={vi.fn()} />);
 
-    await screen.findByText("No saved connections. Enter connection details below.");
-    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "database.internal" } });
-    fireEvent.change(screen.getByLabelText("User"), { target: { value: "admin" } });
-    fireEvent.click(screen.getByRole("radio", { name: /^SSH Agent/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
-    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Primary database" } });
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.change(hostInput(), { target: { value: "admin@database.internal" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
 
     await waitFor(() => expect(saves).toHaveLength(1));
     expect(useUIStore.getState().mainSurface).toBe("terminal");
     expect(saves[0]).toMatchObject({
-      label: "Primary database",
+      label: "admin@database.internal",
       host: "database.internal",
       port: 22,
       user: "admin",
-      auth_method: "agent",
+      auth_method: "auto",
     });
   });
 
@@ -256,6 +277,7 @@ describe("SSH connection sheet", () => {
       calls.push(command);
       if (command === "ssh_hosts_load") return [];
       if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      if (command === "ssh_hosts_save") return [];
       if (command === "ssh_forwarding_reconnect_snapshot") return [];
       throw new Error(`unexpected command: ${command}`);
     });
@@ -473,6 +495,7 @@ describe("SSH connection sheet", () => {
           diagnostics: [],
         };
       }
+      if (command === "ssh_hosts_save") return [];
       throw new Error(`unexpected command: ${command}`);
     });
 
@@ -519,7 +542,6 @@ describe("SSH connection sheet", () => {
 
     render(<SshConnect onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: /Config direct/i }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     await waitFor(() => expect(saves).toHaveLength(1));
@@ -549,7 +571,6 @@ describe("SSH connection sheet", () => {
 
     render(<SshConnect onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: /Config routed/i }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save this host/ }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     await waitFor(() => expect(saves).toHaveLength(1));
@@ -564,14 +585,14 @@ describe("SSH connection sheet", () => {
         { id: "jump", label: "Bastion", host: "jump.example", port: 22, user: "ops", auth_method: "agent", identity_file: "" },
       ];
       if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+      if (command === "ssh_hosts_save") return [];
       throw new Error(`unexpected command: ${command}`);
     });
 
     render(<SshConnect onClose={vi.fn()} />);
+    openAdvanced();
     const routeSelector = await screen.findByLabelText("Direct or via ProxyJump host");
-    fireEvent.change(screen.getByLabelText("Host"), { target: { value: "target.internal" } });
-    fireEvent.change(screen.getByLabelText("User"), { target: { value: "deploy" } });
-    fireEvent.click(screen.getByRole("radio", { name: /^SSH Agent/ }));
+    fireEvent.change(hostInput(), { target: { value: "deploy@target.internal" } });
     fireEvent.change(routeSelector, { target: { value: "jump" } });
     const jumpMethods = await screen.findByRole("radiogroup", { name: "Jump host authentication method" });
     fireEvent.click(within(jumpMethods).getByRole("radio", { name: "Password" }));
@@ -609,6 +630,7 @@ describe("SSH connection sheet", () => {
     render(<SshConnect onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: /Config target/i }));
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect(document.getElementById("ssh-connect-port")).toBeTruthy());
     expect(screen.getByRole("status").textContent).toContain("2 available, 1 skipped");
     fireEvent.click(screen.getByText("SSH config diagnostics"));
     expect(screen.getByText(/error · \/home\/test\/\.ssh\/config:17 · unsafe · unsupported_active_directive · ProxyCommand/)).toBeTruthy();

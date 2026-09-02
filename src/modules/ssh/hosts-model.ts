@@ -2,7 +2,7 @@
  * 已保存的 SSH 主机 profile（与后端 SshHostProfile 对齐）。
  * 不含任何凭证字段，密码/口令绝不落盘。
  */
-export const SSH_AUTH_METHODS = ["agent", "key", "password", "keyboard-interactive"] as const;
+export const SSH_AUTH_METHODS = ["auto", "agent", "key", "password", "keyboard-interactive"] as const;
 export type SshAuthMethod = typeof SSH_AUTH_METHODS[number];
 
 export function isSshAuthMethod(value: unknown): value is SshAuthMethod {
@@ -15,9 +15,9 @@ export interface SshHostProfile {
   host: string;
   port: number;
   user: string;
-  /** Missing only for profiles created before explicit authentication. */
+  /** Missing only for profiles created before explicit authentication. `auto` is the default connect strategy. */
   authMethod?: SshAuthMethod;
-  /** Private-key path. Ignored unless authMethod is `key`. */
+  /** Private-key path. Used by `key`, and as a preferred IdentityFile hint for `auto`. */
   identityFile: string;
   /** Optional OpenSSH user certificate paired with identityFile. */
   certificateFile?: string;

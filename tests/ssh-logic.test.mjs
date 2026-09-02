@@ -31,6 +31,12 @@ import {
   takeSshCredentials,
   clearSshCredentials,
 } from "../src/modules/ssh/pending-credentials.ts";
+import {
+  exactSshProfileMatch,
+  formatSshTarget,
+  parseSshTarget,
+  sshTargetHasInvalidPort,
+} from "../src/modules/ssh/connect-target.ts";
 
 // ── failure-reason ───────────────────────────────────────────────────────
 
@@ -47,6 +53,10 @@ test("classifySshFailure preserves the selected authentication method", () => {
   assert.equal(
     classifySshFailure("keyboard-interactive authentication failed: rejected"),
     "keyboardInteractive",
+  );
+  assert.equal(
+    classifySshFailure("automatic authentication failed: SSH agent: no offered key accepted"),
+    "auto",
   );
 });
 
@@ -73,6 +83,31 @@ test("classifySshFailure does not treat unrelated auth substrings as credentials
 test("classifySshFailure falls back to generic for unknown errors", () => {
   assert.equal(classifySshFailure("something unexpected happened"), "generic");
   assert.equal(classifySshFailure(""), "generic");
+});
+
+test("parseSshTarget accepts user@host[:port], aliases, and IPv6", () => {
+  assert.deepEqual(parseSshTarget("alice@prod"), { user: "alice", host: "prod" });
+  assert.deepEqual(parseSshTarget("alice@prod.example:2222"), { user: "alice", host: "prod.example", port: 2222 });
+  assert.deepEqual(parseSshTarget("prod"), { user: "", host: "prod" });
+  assert.deepEqual(parseSshTarget("[2001:db8::1]:2200"), { user: "", host: "2001:db8::1", port: 2200 });
+  assert.equal(parseSshTarget("alice@prod:99999"), null);
+  assert.equal(sshTargetHasInvalidPort("alice@prod:99999"), true);
+  assert.equal(formatSshTarget("alice", "prod", 22), "alice@prod");
+  assert.equal(formatSshTarget("alice", "prod", 2222), "alice@prod:2222");
+});
+
+test("exactSshProfileMatch matches aliases and user@host", () => {
+  const profiles = [{
+    id: "p1",
+    label: "prod",
+    host: "prod.example",
+    port: 22,
+    user: "alice",
+    identityFile: "",
+  }];
+  assert.equal(exactSshProfileMatch(profiles, "prod")?.id, "p1");
+  assert.equal(exactSshProfileMatch(profiles, "alice@prod.example")?.id, "p1");
+  assert.equal(exactSshProfileMatch(profiles, "other"), undefined);
 });
 
 test("classifySshFailure is case-insensitive", () => {

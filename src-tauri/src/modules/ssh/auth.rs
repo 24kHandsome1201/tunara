@@ -1,21 +1,25 @@
-// SSH authentication: a shared "none" probe followed by exactly one
-// user-selected method. There is deliberately no cross-method fallback.
+// SSH authentication: a shared "none" probe, then either one explicit method
+// or the `auto` chain (agent → config/default keys → password/k-i).
 //
-// Tunara stores NO credentials. Auth is delegated to the system: the
-// ssh-agent (if reachable), an on-disk private key, or a password the user
-// types for this connection only (never persisted).
+// Explicit methods never fall across types. `auto` stays on one TCP session
+// and stops publickey attempts once the server drops that method, so a typical
+// OpenSSH MaxAuthTries budget is not exhausted by missing files.
+//
+// Tunara stores NO credentials. Secrets are one-shot in memory. Encrypted
+// private keys and server password/k-i prompts reuse the keyboard-interactive
+// channel so the first-run UI does not need a password field.
 //
 // macOS gotcha: GUI apps inherit a different environment than the login shell,
 // so `SSH_AUTH_SOCK` is often unset. We try the process environment, macOS
 // launchd, then well-known 1Password/Secretive sockets, with a short timeout
-// per candidate. Agent failures stay agent failures and never trigger an
-// implicit key/password attempt.
+// per candidate.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use russh::client::{AuthResult, Handle, KeyboardInteractiveAuthResponse};
+use russh::{MethodKind, MethodSet};
 #[cfg(unix)]
 use russh::keys::agent::client::AgentClient;
 #[cfg(unix)]
@@ -36,6 +40,8 @@ const KEYBOARD_INTERACTIVE_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AuthMethod {
+    #[serde(rename = "auto")]
+    Auto,
     #[serde(rename = "agent")]
     Agent,
     #[serde(rename = "key")]
@@ -46,12 +52,14 @@ pub enum AuthMethod {
     KeyboardInteractive,
 }
 
-/// How the caller wants to authenticate. Built from the explicit UI selection
-/// plus any one-shot secret the selected method needs.
+/// How the caller wants to authenticate. Built from the UI selection plus any
+/// one-shot secret the selected method needs. `Auto` may also use IdentityFile
+/// as a preferred key hint.
 pub struct AuthOptions {
     pub user: String,
     pub method: AuthMethod,
-    /// Path to a private key file (e.g. ~/.ssh/id_ed25519). Used only by Key.
+    /// Path to a private key file (e.g. ~/.ssh/id_ed25519). Used by Key, and as
+    /// a preferred IdentityFile hint for Auto.
     pub identity_file: Option<String>,
     /// Optional OpenSSH user certificate paired with `identity_file`.
     pub certificate_file: Option<String>,
@@ -63,6 +71,7 @@ pub struct AuthOptions {
 
 #[derive(Debug, PartialEq, Eq)]
 enum SelectedAuth<'a> {
+    Auto,
     Agent,
     Key {
         path: &'a str,
@@ -75,6 +84,7 @@ enum SelectedAuth<'a> {
 
 fn selected_auth(opts: &AuthOptions) -> Result<SelectedAuth<'_>, String> {
     match opts.method {
+        AuthMethod::Auto => Ok(SelectedAuth::Auto),
         AuthMethod::Agent => Ok(SelectedAuth::Agent),
         AuthMethod::Key => Ok(SelectedAuth::Key {
             path: opts
@@ -93,7 +103,7 @@ fn selected_auth(opts: &AuthOptions) -> Result<SelectedAuth<'_>, String> {
     }
 }
 
-/// Run only the selected auth method against an already-connected handle.
+/// Run the selected auth method against an already-connected handle.
 /// `none` is probed first solely to support credential-free accounts.
 pub async fn authenticate(
     handle: &mut Handle<ClientHandler>,
@@ -104,13 +114,20 @@ pub async fn authenticate(
     // OpenSSH starts with the "none" method both to discover allowed methods
     // and to support intentionally credential-free accounts. A rejection is
     // the normal case and should not pollute the final diagnostic.
-    match handle.authenticate_none(&opts.user).await {
+    let remaining = match handle.authenticate_none(&opts.user).await {
         Ok(result) if result.success() => return Ok(()),
-        Ok(_) => {}
-        Err(_) => log::debug!("SSH none authentication probe failed"),
-    }
+        Ok(AuthResult::Failure {
+            remaining_methods, ..
+        }) => remaining_methods,
+        Ok(_) => MethodSet::empty(),
+        Err(_) => {
+            log::debug!("SSH none authentication probe failed");
+            MethodSet::empty()
+        }
+    };
 
     match selected_auth(opts)? {
+        SelectedAuth::Auto => authenticate_auto(handle, opts, remaining, on_event, origin).await,
         SelectedAuth::Agent => match try_agent(handle, &opts.user).await {
             Ok(true) => Ok(()),
             Ok(false) => Err("agent authentication failed: no offered key accepted".into()),
@@ -120,11 +137,22 @@ pub async fn authenticate(
             path,
             certificate,
             passphrase,
-        } => match try_key_file(handle, &opts.user, path, certificate, passphrase).await {
-            Ok(true) => Ok(()),
-            Ok(false) => Err("key authentication failed: rejected".into()),
-            Err(error) => Err(format!("key authentication failed: {error}")),
-        },
+        } => {
+            match try_key_file(
+                handle,
+                &opts.user,
+                path,
+                certificate,
+                passphrase,
+                Some((&on_event, &origin)),
+            )
+            .await
+            {
+                Ok(true) => Ok(()),
+                Ok(false) => Err("key authentication failed: rejected".into()),
+                Err(error) => Err(format!("key authentication failed: {error}")),
+            }
+        }
         SelectedAuth::Password(password) => {
             let result = handle
                 .authenticate_password(&opts.user, password)
@@ -255,6 +283,226 @@ async fn authenticate_keyboard_interactive(
             }
         }
     }
+}
+
+const DEFAULT_IDENTITY_FILES: &[&str] = &[
+    "~/.ssh/id_ed25519",
+    "~/.ssh/id_ecdsa",
+    "~/.ssh/id_rsa",
+];
+const MAX_AUTO_AUTH_ATTEMPTS: usize = 5;
+
+fn remaining_allows(remaining: &MethodSet, kind: MethodKind) -> bool {
+    remaining.is_empty() || remaining.contains(&kind)
+}
+
+fn update_remaining(remaining: &mut MethodSet, result: AuthResult) -> bool {
+    match result {
+        AuthResult::Success => true,
+        AuthResult::Failure {
+            remaining_methods, ..
+        } => {
+            *remaining = remaining_methods;
+            false
+        }
+    }
+}
+
+fn identity_candidates(opts: &AuthOptions) -> Vec<(String, Option<String>)> {
+    let mut out = Vec::new();
+    let push = |out: &mut Vec<(String, Option<String>)>, path: &str, certificate: Option<&str>| {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if out.iter().any(|(existing, _)| existing == trimmed) {
+            return;
+        }
+        out.push((
+            trimmed.to_string(),
+            certificate
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        ));
+    };
+    if let Some(path) = opts.identity_file.as_deref() {
+        push(&mut out, path, opts.certificate_file.as_deref());
+    }
+    for path in DEFAULT_IDENTITY_FILES {
+        push(&mut out, path, None);
+    }
+    out
+}
+
+fn summarize_auto_attempts(attempts: &[String]) -> String {
+    if attempts.is_empty() {
+        "automatic authentication failed: no methods were attempted".into()
+    } else {
+        format!(
+            "automatic authentication failed: {}",
+            attempts.join("; ")
+        )
+    }
+}
+
+async fn authenticate_auto(
+    handle: &mut Handle<ClientHandler>,
+    opts: &AuthOptions,
+    mut remaining: MethodSet,
+    on_event: Channel<PtyEvent>,
+    origin: KeyboardInteractiveOrigin,
+) -> Result<(), String> {
+    let mut attempts = Vec::new();
+    let mut spent = 0usize;
+    let spend = |spent: &mut usize, attempts: &mut Vec<String>, label: String| -> bool {
+        *spent += 1;
+        attempts.push(label);
+        *spent >= MAX_AUTO_AUTH_ATTEMPTS
+    };
+
+    if remaining_allows(&remaining, MethodKind::PublicKey) {
+        match try_agent(handle, &opts.user).await {
+            Ok(true) => return Ok(()),
+            Ok(false) => {
+                if spend(
+                    &mut spent,
+                    &mut attempts,
+                    "SSH agent: no offered key accepted".into(),
+                ) {
+                    return Err(summarize_auto_attempts(&attempts));
+                }
+            }
+            Err(error) => {
+                attempts.push(format!("SSH agent: {error}"));
+            }
+        }
+        for (path, certificate) in identity_candidates(opts) {
+            if !remaining_allows(&remaining, MethodKind::PublicKey) {
+                attempts.push("public-key authentication is no longer offered".into());
+                break;
+            }
+            match try_key_file(
+                handle,
+                &opts.user,
+                &path,
+                certificate.as_deref(),
+                opts.key_passphrase.as_deref(),
+                Some((&on_event, &origin)),
+            )
+            .await
+            {
+                Ok(true) => return Ok(()),
+                Ok(false) => {
+                    if spend(
+                        &mut spent,
+                        &mut attempts,
+                        format!("key {path}: rejected"),
+                    ) {
+                        return Err(summarize_auto_attempts(&attempts));
+                    }
+                }
+                Err(error) => {
+                    attempts.push(format!("key {path}: {error}"));
+                }
+            }
+        }
+    } else {
+        attempts.push("server did not offer public-key authentication".into());
+    }
+
+    if remaining_allows(&remaining, MethodKind::Password) {
+        let prompted = if opts.password.as_deref().is_some_and(|value| !value.is_empty()) {
+            None
+        } else {
+            match prompt_password(&on_event, &origin, &opts.user).await {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    attempts.push(format!("password: {error}"));
+                    None
+                }
+            }
+        };
+        if let Some(password) = prompted
+            .as_deref()
+            .or(opts.password.as_deref().filter(|value| !value.is_empty()))
+        {
+            let result = handle
+                .authenticate_password(&opts.user, password)
+                .await
+                .map_err(|error| format!("automatic authentication failed: password: {error}"))?;
+            if update_remaining(&mut remaining, result) {
+                return Ok(());
+            }
+            if spend(&mut spent, &mut attempts, "password: rejected".into()) {
+                return Err(summarize_auto_attempts(&attempts));
+            }
+        }
+    }
+
+    if remaining_allows(&remaining, MethodKind::KeyboardInteractive) {
+        match authenticate_keyboard_interactive(handle, &opts.user, on_event, origin).await {
+            Ok(()) => return Ok(()),
+            Err(error) => attempts.push(error),
+        }
+    } else if !remaining_allows(&remaining, MethodKind::Password) {
+        attempts.push("server did not offer password or keyboard-interactive login".into());
+    }
+
+    Err(summarize_auto_attempts(&attempts))
+}
+
+fn looks_like_encrypted_key_error(error: &str) -> bool {
+    let lowered = error.to_ascii_lowercase();
+    lowered.contains("passphrase")
+        || lowered.contains("encrypted")
+        || lowered.contains("password")
+}
+
+async fn prompt_password(
+    on_event: &Channel<PtyEvent>,
+    origin: &KeyboardInteractiveOrigin,
+    user: &str,
+) -> Result<String, String> {
+    let responses = request_keyboard_responses(
+        on_event,
+        "Password".into(),
+        format!("Password for {user}. It is used once and never saved."),
+        vec![russh::client::Prompt {
+            prompt: "Password: ".into(),
+            echo: false,
+        }],
+        origin.clone(),
+    )
+    .await?;
+    responses
+        .into_iter()
+        .next()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "password prompt canceled".into())
+}
+
+async fn prompt_key_passphrase(
+    on_event: &Channel<PtyEvent>,
+    origin: &KeyboardInteractiveOrigin,
+    path: &str,
+) -> Result<String, String> {
+    let responses = request_keyboard_responses(
+        on_event,
+        "Private key passphrase".into(),
+        format!("Enter the passphrase for {path}. It is used once and never saved."),
+        vec![russh::client::Prompt {
+            prompt: "Passphrase: ".into(),
+            echo: false,
+        }],
+        origin.clone(),
+    )
+    .await?;
+    responses
+        .into_iter()
+        .next()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "key passphrase prompt canceled".into())
 }
 
 async fn try_agent(handle: &mut Handle<ClientHandler>, user: &str) -> Result<bool, String> {
@@ -389,9 +637,22 @@ async fn try_key_file(
     path: &str,
     certificate_path: Option<&str>,
     passphrase: Option<&str>,
+    prompt: Option<(&Channel<PtyEvent>, &KeyboardInteractiveOrigin)>,
 ) -> Result<bool, String> {
     let expanded = expand_tilde(path);
-    let key = load_identity_file(expanded, passphrase.map(str::to_owned)).await?;
+    let key = match load_identity_file(expanded.clone(), passphrase.map(str::to_owned)).await {
+        Ok(key) => key,
+        Err(error)
+            if passphrase.is_none()
+                && prompt.is_some()
+                && looks_like_encrypted_key_error(&error) =>
+        {
+            let (on_event, origin) = prompt.expect("prompt present");
+            let unlocked = prompt_key_passphrase(on_event, origin, path).await?;
+            load_identity_file(expanded, Some(unlocked)).await?
+        }
+        Err(error) => return Err(error),
+    };
     if let Some(certificate_path) = certificate_path {
         let certificate = load_certificate_file(expand_tilde(certificate_path)).await?;
         if key.public_key().key_data() != certificate.public_key() {
@@ -514,6 +775,7 @@ mod tests {
     #[test]
     fn auth_method_wire_values_are_explicit() {
         let cases = [
+            (AuthMethod::Auto, "\"auto\""),
             (AuthMethod::Agent, "\"agent\""),
             (AuthMethod::Key, "\"key\""),
             (AuthMethod::Password, "\"password\""),
@@ -553,6 +815,10 @@ mod tests {
         };
         assert_eq!(selected_auth(&base()).unwrap(), SelectedAuth::Agent);
 
+        let mut automatic = base();
+        automatic.method = AuthMethod::Auto;
+        assert_eq!(selected_auth(&automatic).unwrap(), SelectedAuth::Auto);
+
         let mut key = base();
         key.method = AuthMethod::Key;
         assert!(selected_auth(&key).unwrap_err().contains("identity file"));
@@ -569,6 +835,52 @@ mod tests {
             selected_auth(&interactive).unwrap(),
             SelectedAuth::KeyboardInteractive
         );
+    }
+
+    #[test]
+    fn auto_identity_candidates_prefer_config_then_defaults() {
+        let opts = AuthOptions {
+            user: "alice".into(),
+            method: AuthMethod::Auto,
+            identity_file: Some(" ~/.ssh/id_prod ".into()),
+            certificate_file: Some(" ~/.ssh/id_prod-cert.pub ".into()),
+            key_passphrase: None,
+            password: None,
+        };
+        assert_eq!(
+            identity_candidates(&opts),
+            vec![
+                (
+                    "~/.ssh/id_prod".into(),
+                    Some("~/.ssh/id_prod-cert.pub".into())
+                ),
+                ("~/.ssh/id_ed25519".into(), None),
+                ("~/.ssh/id_ecdsa".into(), None),
+                ("~/.ssh/id_rsa".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn auto_failure_lists_each_attempt() {
+        let message = summarize_auto_attempts(&[
+            "SSH agent: no offered key accepted".into(),
+            "key ~/.ssh/id_ed25519: rejected".into(),
+            "server did not offer password or keyboard-interactive login".into(),
+        ]);
+        assert!(message.starts_with("automatic authentication failed:"));
+        assert!(message.contains("SSH agent"));
+        assert!(message.contains("id_ed25519"));
+        assert!(message.contains("password or keyboard-interactive"));
+    }
+
+    #[test]
+    fn remaining_allows_unknown_probe_as_unrestricted() {
+        assert!(remaining_allows(&MethodSet::empty(), MethodKind::PublicKey));
+        let methods = [MethodKind::Password];
+        let password_only = MethodSet::from(methods.as_slice());
+        assert!(remaining_allows(&password_only, MethodKind::Password));
+        assert!(!remaining_allows(&password_only, MethodKind::PublicKey));
     }
 
     #[test]

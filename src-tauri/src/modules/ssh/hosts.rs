@@ -31,8 +31,8 @@ pub struct SshHostProfile {
     pub port: u16,
     pub user: String,
     pub auth_method: Option<AuthMethod>,
-    /// Path to a private key (e.g. ~/.ssh/id_ed25519). Ignored unless
-    /// `auth_method` is explicitly `Key`.
+    /// Path to a private key (e.g. ~/.ssh/id_ed25519). Used by `Key`, and as
+    /// a preferred IdentityFile hint for `Auto`.
     pub identity_file: String,
     /// Optional OpenSSH user certificate paired with `identity_file`.
     pub certificate_file: String,
@@ -134,7 +134,10 @@ pub fn ssh_hosts_save(mut profile: SshHostProfile) -> Result<Vec<SshHostProfile>
 }
 
 fn validate_profile_auth_paths(profile: &mut SshHostProfile) -> Result<(), String> {
-    if profile.auth_method.is_some() && profile.auth_method != Some(AuthMethod::Key) {
+    if profile.auth_method.is_some()
+        && profile.auth_method != Some(AuthMethod::Key)
+        && profile.auth_method != Some(AuthMethod::Auto)
+    {
         profile.identity_file.clear();
         profile.certificate_file.clear();
         return Ok(());
@@ -153,9 +156,12 @@ fn validate_profile_auth_paths(profile: &mut SshHostProfile) -> Result<(), Strin
         }
     }
     if !profile.certificate_file.is_empty()
-        && (profile.auth_method != Some(AuthMethod::Key) || profile.identity_file.is_empty())
+        && (!matches!(
+            profile.auth_method,
+            Some(AuthMethod::Key) | Some(AuthMethod::Auto) | None
+        ) || profile.identity_file.is_empty())
     {
-        return Err("CertificateFile requires key authentication and IdentityFile".into());
+        return Err("CertificateFile requires key or automatic authentication and IdentityFile".into());
     }
     Ok(())
 }
@@ -2055,8 +2061,10 @@ fn resolve_config_with_lookup(
             && profile.certificate_file.len() <= 4_096
             && !profile.certificate_file.chars().any(char::is_control)
             && (profile.certificate_file.is_empty()
-                || (profile.auth_method == Some(AuthMethod::Key)
-                    && !profile.identity_file.is_empty()))
+                || (matches!(
+                    profile.auth_method,
+                    Some(AuthMethod::Key) | Some(AuthMethod::Auto) | None
+                ) && !profile.identity_file.is_empty()))
     };
     let saved_jump_has_unique_id = |profile: &SshHostProfile| {
         saved_profiles
