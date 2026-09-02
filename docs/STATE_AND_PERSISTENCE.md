@@ -95,7 +95,8 @@ inspectorTab: InspectorTab           // last selected view: changes | files | pr
                                      // SSH: + transfers | forwarding
                                      // Auto/Locked and Preview-opened are runtime-only
 presentationMode: "workspace" | "pure"
-fileTabs: WorkspaceFileTab[]         // files opened beside the terminal
+readers: Record<sessionId, SessionReaderState>  // per-session file reader
+focusedPaneId: string | null         // terminal session id or reader:<sessionId>
 toasts: Toast[]                      // capped, last 3
 hostKeyPrompt: HostKeyPrompt | null  // pending SSH TOFU confirmation
 keyboardInteractivePrompts: KeyboardInteractivePrompt[]  // parked SSH keyboard-interactive questions
@@ -112,9 +113,10 @@ parks on an unknown or unverifiable host key; the overlay in
 `src/ui/overlays/HostKeyPrompt.tsx` resolves it. Keyboard-interactive prompts
 use the same park/unpark path via `KeyboardInteractivePrompt.tsx`.
 
-`presentationMode` and `fileTabs` are runtime UI. Pure Mode is not written into
-the workspace snapshot; leaving it restores the last docked layout. File tabs
-are session-scoped open documents and are not part of `PersistedUILayoutV2`.
+`presentationMode` is runtime UI. Pure Mode is not written into the workspace
+snapshot; leaving it restores the last docked layout. Reader history is
+persisted on `PersistedUILayoutV2.readers`. Legacy snapshots with `fileTabs`
+migrate the active tab per session into `current` and the rest into `history`.
 
 **Two distinct persistence channels for the UI store:**
 

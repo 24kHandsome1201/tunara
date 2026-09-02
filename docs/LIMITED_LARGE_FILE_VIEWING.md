@@ -10,6 +10,7 @@ Tunara keeps the existing complete preview/editor path for small UTF-8 files. Wh
 - The user can cancel an active request. A changed file, stale SSH session, binary input, permission failure, and generic read failure have separate UI states.
 - The result is a snapshot of one revision. If size or modification time changes while reading, Tunara rejects the result and asks the user to retry.
 - While the preview stays in the foreground and the draft is clean, Tunara refreshes the same bounded window about every 2.5 seconds and skips a DOM update when the revision is unchanged.
+- **Follow end** keeps the tail window pinned to the bottom on that cadence. Scrolling up turns the switch off.
 
 ## IPC and limits
 

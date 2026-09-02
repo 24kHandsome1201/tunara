@@ -351,6 +351,7 @@ tauri::RunEvent::Exit => {
    scrollback snapshots, agent-resume data, recent dirs/commands, workflows.
    Split layout is a recursive tree capped at four panes
    ([`split-layout.ts`](../src/modules/session/split-layout.ts)).
+   A session may also own a `reader` leaf (file preview beside the terminal).
    If no snapshot exists, seed a single `~` terminal. Sets `ui.ready = true`,
    which flips `App` from the splash screen to the shell.
 3. **Window wiring** — read `platform()`, size the macOS traffic-light inset,

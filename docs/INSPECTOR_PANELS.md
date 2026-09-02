@@ -17,7 +17,13 @@ The Inspector follows the active session by default. Manual switching remains av
 | SSH file transfer queued or running | **Transfers** |
 | Otherwise | **Files** |
 
-Priority is that ordered list. Detecting a localhost URL is not enough for Preview: the user must open Preview once (hint bar, switcher, or command palette). Jupyter notebook preview and Excel/table preview remain Files capabilities; they are not separate Inspector views.
+Priority is that ordered list. Detecting a localhost URL is not enough for Preview: the user must open Preview once (switcher or command palette). Jupyter notebook preview and Excel/table preview remain Files capabilities; they are not separate Inspector views.
+
+## Reader pane
+
+Opening a file from Files, Changes, a terminal path, or a completed transfer inserts a `reader` leaf to the right of that session’s terminal (40% terminal / 60% reader). One reader per session; history lives on `‹ ›` and the filename menu. The terminal stays visible. Closing the reader (✕ or ⌘W while focused) restores the terminal to full width. The pane counts toward the four-split cap; a full layout toasts “Split is full” instead of opening.
+
+When the extra column would make the terminal unusable, the Inspector docks as an overlay (`⌘⇧\\` still recalls it). Session switch keeps each reader’s layout and drafts mounted. SSH reconnect re-fetches the same path on the new binding.
 
 Auto-switch is restrained:
 
