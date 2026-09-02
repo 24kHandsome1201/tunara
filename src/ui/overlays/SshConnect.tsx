@@ -613,7 +613,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   return (
     <>
-      <div aria-hidden="true" onClick={cancelConnect} style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }} />
+      <div aria-hidden="true" onClick={cancelConnect} className="overlay-backdrop" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200 }} />
       <div
         ref={containerRef}
         role="dialog"
@@ -621,7 +621,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         aria-labelledby="ssh-connect-title"
         aria-describedby="ssh-connect-subtitle"
         aria-busy={connecting}
-        className="ssh-connect-dialog"
+        className="ssh-connect-dialog overlay-sheet"
         tabIndex={0}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
@@ -666,7 +666,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
           zIndex: 201,
-          animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",

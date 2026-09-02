@@ -44,7 +44,7 @@ function SessionIcon({ session }: { session: Session }) {
             </span>
           )}
         </div>
-        <SessionCueDot cue={cue} overlay />
+        <SessionCueDot cue={cue} overlay runState={sessionDisplayRunState(session)} />
       </div>
     );
   }
@@ -65,7 +65,7 @@ function SessionIcon({ session }: { session: Session }) {
       >
         <Icon icon={Terminal} size={12} weight="bold" />
       </div>
-      <SessionCueDot cue={cue} overlay />
+      <SessionCueDot cue={cue} overlay runState={sessionDisplayRunState(session)} />
     </div>
   );
 }
@@ -83,7 +83,6 @@ function BusyProgress() {
         overflow: "hidden",
         borderRadius: 1,
         background: "color-mix(in srgb, var(--c-accent) 14%, transparent)",
-        animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
       }}
     >
       <span
@@ -93,7 +92,6 @@ function BusyProgress() {
           height: "100%",
           borderRadius: 1,
           background: "var(--c-accent)",
-          animation: "agentBusyProgress 1.6s var(--ease-in-out) infinite",
         }}
       />
     </div>
@@ -129,7 +127,6 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
         overflow: "hidden",
         borderRadius: 999,
         background: "color-mix(in srgb, var(--c-text-primary) 8%, transparent)",
-        animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
       }}
     >
       <span
@@ -140,7 +137,6 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
           height: "100%",
           borderRadius: 999,
           background: color,
-          animation: indeterminate ? "indeterminate 1.2s var(--ease-in-out) infinite" : undefined,
         }}
       />
     </div>
@@ -224,7 +220,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const isRenaming = renamingSessionId === session.id;
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
-  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLButtonElement>(null);
   const touchMenu = useContextMenuTrigger<HTMLButtonElement>({
@@ -321,25 +316,9 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         userSelect: "none",
         background: "transparent",
         border: "1px solid transparent",
-        outline: focused ? "2px solid color-mix(in srgb, var(--c-accent) 70%, transparent)" : "none",
-        outlineOffset: focused ? "-1px" : 0,
-        transition: "background var(--duration-fast) ease, border-color var(--duration-fast) ease, outline-color var(--duration-fast) var(--ease-smooth)",
       }}
     >
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          top: "50%",
-          transform: "translateY(-50%)",
-          width: 1,
-          height: 24,
-          background: "var(--c-accent)",
-          borderRadius: "0 1px 1px 0",
-          opacity: active ? 1 : 0,
-          transition: "opacity var(--duration-fast) ease",
-        }}
-      />
+      <div className="session-card-rail" aria-hidden="true" />
 
       {!editing && (
         <button
@@ -358,8 +337,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           // dblclick never fires — rename must be triggered from here.
           onDoubleClick={onRename ? () => startRename() : undefined}
           onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
           className="session-card-select"
           // cursor 继承外层 wrapper（grab / grabbing / pointer），不再固定 pointer 盖掉拖拽光标
           style={{ position: "absolute", inset: 0, zIndex: 1, padding: 0, border: "none", borderRadius: "var(--r-card)", background: "transparent", cursor: "inherit" }}
@@ -589,7 +566,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                   height: "100%",
                   borderRadius: 999,
                   background: "var(--c-error)",
-                  transition: "width 100ms linear",
+                  transition: "width var(--dur-fast) var(--ease-out)",
                 }}
               />
             </div>

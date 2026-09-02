@@ -47,7 +47,7 @@ export function AccentActionButton({
         display: "flex",
         alignItems: "center",
         gap: 4,
-        transition: "background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)",
+        transition: "background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out)",
         ...style,
       }}
     >

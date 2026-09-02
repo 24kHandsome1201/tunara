@@ -19,28 +19,25 @@ html { color-scheme: light; }
 html.dark { color-scheme: dark; }
 
 /* Chrome fade: terminal focus dims sidebar/titlebar/inspector without
-   collapsing layout (no column-width reflow). Hovering chrome restores it. */
-.chrome-faded .tunara-titlebar,
-.chrome-faded .tunara-sidebar,
-.chrome-faded .tunara-panel {
-  opacity: 0.6;
-  transition: opacity 160ms var(--ease-smooth);
-}
+   collapsing layout (no column-width reflow). Hovering chrome restores it.
+   Docked sidebar/inspector width stays instant so the terminal does not
+   reflow; overlay drawers may translate. */
 .tunara-titlebar,
 .tunara-sidebar,
 .tunara-panel {
   opacity: 1;
-  transition: opacity 120ms var(--ease-smooth);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-out);
 }
-@media (prefers-reduced-motion: reduce) {
-  .chrome-faded .tunara-titlebar,
-  .chrome-faded .tunara-sidebar,
-  .chrome-faded .tunara-panel,
-  .tunara-titlebar,
-  .tunara-sidebar,
-  .tunara-panel {
-    transition: none;
-  }
+.chrome-faded .tunara-titlebar,
+.chrome-faded .tunara-sidebar,
+.chrome-faded .tunara-panel {
+  opacity: 0.6;
+}
+.tunara-sidebar[data-overlay="true"] {
+  animation: sidebarDrawerIn var(--dur-base) var(--ease-out);
+}
+.tunara-panel[data-overlay="true"] {
+  animation: panelDrawerIn var(--dur-base) var(--ease-out);
 }
 
 /* Custom window chrome (Linux/Windows) */
@@ -155,35 +152,31 @@ html[data-chrome="borderless"] {
   --scroll-fade-bg: var(--c-bg-2-glass);
 }
 
-/* Tunara animations */
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+/* Tunara animations — response-only. No idle loops except attentionBreathe. */
 @keyframes loadPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.38; } }
 @keyframes toastIn {
-  from { opacity: 0; transform: translateY(-16px) scale(0.94); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-@keyframes sheetIn {
-  from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+@keyframes overlayIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
+@keyframes sheetIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes paletteIn {
+  from { opacity: 0; transform: translateX(-50%) scale(0.98); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes tabsIn {
-  from { opacity: 0; transform: translateX(-6px) scale(0.98); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
-}
-@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
-@keyframes agentBusyProgress {
-  0% { transform: translateX(-110%); opacity: 0.6; }
-  40% { opacity: 1; }
-  60% { opacity: 1; }
-  100% { transform: translateX(250%); opacity: 0.6; }
-}
 @keyframes contentIn {
-  from { opacity: 0; transform: translateY(6px) scale(0.99); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 @keyframes ctxMenuIn {
-  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes slideInRight {
@@ -194,31 +187,26 @@ html[data-chrome="borderless"] {
   from { opacity: 0; transform: translateX(-12px); }
   to { opacity: 1; transform: translateX(0); }
 }
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.92); }
+  from { opacity: 0; transform: scale(0.98); }
   to { opacity: 1; transform: scale(1); }
-}
-@keyframes activeIndicatorIn {
-  from { opacity: 0; transform: translateY(-50%) scaleY(0.5); }
-  to { opacity: 1; transform: translateY(-50%) scaleY(1); }
 }
 @keyframes statusBarSlideIn {
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes statusBarSlideOut {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(-4px) scale(0.98); }
+@keyframes attentionBreathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
-@keyframes sheetOut {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(-6px) scale(0.97); }
+@keyframes sidebarDrawerIn {
+  from { transform: translateX(-12px); }
+  to { transform: translateX(0); }
 }
-@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes panelDrawerIn {
+  from { transform: translateX(12px); }
+  to { transform: translateX(0); }
+}
 
 /* Native controls must consume shell tokens explicitly. WebKitGTK's defaults
    otherwise stay white when the app or a terminal palette is dark. The
@@ -235,11 +223,11 @@ html[data-chrome="borderless"] {
   color: var(--c-text-2);
   font: 500 var(--fs-secondary) var(--font-ui);
   transition:
-    background var(--duration-fast) var(--ease-smooth),
-    border-color var(--duration-fast) var(--ease-smooth),
-    color var(--duration-fast) var(--ease-smooth),
-    transform var(--duration-fast) var(--ease-out-expo),
-    box-shadow var(--duration-fast) var(--ease-smooth);
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 .ui-control { min-height: 30px; }
 .ui-control,
@@ -282,18 +270,23 @@ select.ui-control {
 .ui-button:active:not(:disabled),
 .settings-action-button:active:not(:disabled) {
   background: var(--c-bg-3);
-  transform: scale(var(--scale-press));
-  transition-duration: 60ms;
+  transform: scale(var(--scale-press-soft));
+  transition-duration: var(--dur-fast);
+}
+.hover-bg:active,
+.ui-button:active:not(:disabled),
+.settings-action-button:active:not(:disabled) {
+  transform: scale(var(--scale-press-soft));
 }
 .ui-control:focus-visible,
 .ui-button:focus-visible,
 .ui-choice:focus-visible,
 .settings-control:focus-visible,
 .settings-action-button:focus-visible {
-  outline: 2px solid var(--c-text-primary);
+  outline: 2px solid var(--c-accent);
   outline-offset: 2px;
   border-color: var(--c-control-border) !important;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 18%, transparent);
+  box-shadow: none;
 }
 .ui-control:disabled,
 .ui-button:disabled,
@@ -366,9 +359,9 @@ select.ui-control {
   place-content: center;
   color-scheme: light;
   transition:
-    background var(--duration-fast) var(--ease-smooth),
-    border-color var(--duration-fast) var(--ease-smooth),
-    box-shadow var(--duration-fast) var(--ease-smooth);
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 .dark .ui-choice { color-scheme: dark; }
 .ui-choice[type="radio"] { border-radius: 999px; }
@@ -378,7 +371,7 @@ select.ui-control {
   height: 8px;
   background: currentColor;
   transform: scale(0);
-  transition: transform 100ms var(--ease-smooth);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .ui-choice[type="radio"]::before { border-radius: 999px; }
 .ui-choice[type="checkbox"]::before {
@@ -620,7 +613,7 @@ select.ui-control {
 }
 .ssh-profile-item {
   border: 1px solid transparent;
-  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
 .ssh-profile-item[data-selected="true"] {
   border-color: var(--c-accent-border);
@@ -807,7 +800,7 @@ select.ui-control {
   gap: 7px;
   padding: 5px var(--sp-2);
   border: 1px solid var(--c-control-border);
-  transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .explorer-search input {
   flex: 1;
@@ -1003,7 +996,7 @@ button.explorer-listing-action {
   flex-shrink: 0;
   color: var(--c-text-5);
   transform: rotate(0deg);
-  transition: transform var(--duration-normal) var(--ease-out-back);
+  transition: transform var(--dur-base) var(--ease-out);
 }
 .explorer-tree-chevron[data-expanded="true"] { transform: rotate(90deg); }
 .explorer-transfer-status {
@@ -1071,7 +1064,7 @@ button.explorer-listing-action {
   background: var(--c-border-2);
   border-radius: 1px;
   opacity: 0;
-  transition: opacity var(--duration-fast) var(--ease-smooth), background var(--duration-fast) var(--ease-smooth), width var(--duration-fast) var(--ease-out-expo);
+  transition: opacity var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), width var(--dur-fast) var(--ease-out);
 }
 .panel-resize-handle:hover::after,
 .panel-resize-handle:focus-visible::after,
@@ -1080,22 +1073,22 @@ button.explorer-listing-action {
 
 /* Dir group header: + / × buttons fade on hover */
 .dir-group-header .dir-group-add,
-.dir-group-header .dir-group-close { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); transform: scale(0.8); }
+.dir-group-header .dir-group-close { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); transform: scale(0.8); }
 .dir-group-header:hover .dir-group-add,
 .dir-group-header:hover .dir-group-close,
 .dir-group-header .dir-group-add:focus-visible,
 .dir-group-header .dir-group-close:focus-visible { opacity: 1; transform: scale(1); }
 /* Dir group header: 容器整行 hover 底色；折叠切换是内部真实 button */
-.dir-group-header { transition: background var(--duration-fast) var(--ease-smooth); border-radius: var(--r-btn); }
+.dir-group-header { transition: background var(--dur-fast) var(--ease-out); border-radius: var(--r-btn); }
 .dir-group-header:hover { background: var(--c-bg-hover); }
 .dir-group-toggle:active { transform: scale(0.99); }
-.dir-group-toggle { transition: transform var(--duration-fast) var(--ease-out-expo); border-radius: var(--r-btn); }
+.dir-group-toggle { transition: transform var(--dur-fast) var(--ease-out); border-radius: var(--r-btn); }
 
 /* DiffPanel: external-editor button reveals on row hover / keyboard focus */
-.diff-file-row .diff-file-open { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); transform: translateX(4px); }
+.diff-file-row .diff-file-open { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); transform: translateX(4px); }
 .diff-file-row:hover .diff-file-open,
 .diff-file-row:focus-within .diff-file-open { opacity: 1; transform: translateX(0); }
-.diff-file-row { transition: background var(--duration-fast) var(--ease-smooth); }
+.diff-file-row { transition: background var(--dur-fast) var(--ease-out); }
 .diff-file-row:hover { background: var(--c-bg-hover) !important; }
 
 /* A quiet paper surface shared by local and SSH file workspace tabs. */
@@ -1176,7 +1169,7 @@ button.explorer-listing-action {
   border: 0;
   font: inherit;
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease-smooth), background-color var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth), opacity var(--duration-fast) var(--ease-smooth);
+  transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
   touch-action: manipulation;
 }
 .file-editor-mode button:active,
@@ -1184,7 +1177,7 @@ button.explorer-listing-action {
 .file-editor-find button:active,
 .file-editor-alert button:active,
 .file-editor-close-confirm button:active,
-.file-editor-footer button:active { transform: scale(.96); }
+.file-editor-footer button:active { transform: scale(var(--scale-press-soft)); }
 .file-editor-mode button {
   min-height: 28px;
   padding: 0 9px;
@@ -1529,33 +1522,35 @@ button.explorer-listing-action {
   .file-editor-footer button { padding-inline: 8px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .file-editor-surface * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
-}
-
 /* DiffPanel: hunk copy button reveals on hunk row hover / keyboard focus.
    The button stays display:flex in the component so it remains in tab order;
    only opacity gates visibility. */
-.diff-hunk-row .diff-hunk-copy { opacity: 0; transition: opacity var(--duration-fast) var(--ease-smooth); }
+.diff-hunk-row .diff-hunk-copy { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 .diff-hunk-row:hover .diff-hunk-copy,
 .diff-hunk-row:focus-within .diff-hunk-copy { opacity: 1; }
 
-/* Focus-visible: uniform keyboard focus ring */
+/* Keyboard focus only: 2px accent outline, 2px offset. Mouse focus is silent. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--c-accent) 70%, transparent);
-  outline-offset: -2px;
-  transition: outline-color var(--duration-fast) var(--ease-smooth);
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
 }
 button:focus-visible,
-[role="button"]:focus-visible {
+[role="button"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="option"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="listitem"] :focus-visible {
+  outline: 2px solid var(--c-accent);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 12%, transparent);
 }
 input:focus-visible,
-textarea:focus-visible {
-  outline: none;
-  border-color: color-mix(in srgb, var(--c-accent) 70%, var(--c-border-2)) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 12%, transparent);
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
 }
 
 /* Preview controls deliberately inherit the same compact surface treatment as
@@ -1582,7 +1577,7 @@ textarea:focus-visible {
   border-right: 1.5px solid var(--c-text-5);
   border-bottom: 1.5px solid var(--c-text-5);
   transform: rotate(-45deg);
-  transition: transform var(--duration-fast) var(--ease-out-expo);
+  transition: transform var(--dur-fast) var(--ease-out);
   flex-shrink: 0;
 }
 .preview-disclosure[open] > summary::before { transform: rotate(45deg); }
@@ -1600,16 +1595,16 @@ textarea:focus-visible {
 .preview-source-card button {
   padding: 0 8px;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-smooth),
-              border-color var(--duration-fast) var(--ease-smooth),
-              color var(--duration-fast) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo);
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
 .preview-source-card button:hover:not(:disabled) {
   background: var(--c-bg-hover);
   color: var(--c-text-primary);
 }
-.preview-source-card button:active:not(:disabled) { transform: scale(var(--scale-press)); }
+.preview-source-card button:active:not(:disabled) { transform: scale(var(--scale-press-soft)); }
 .preview-source-card button:disabled {
   cursor: default;
   opacity: .45;
@@ -1758,7 +1753,7 @@ textarea:focus-visible {
   box-shadow: var(--shadow-card);
   text-align: left;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-smooth), border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .ssh-host-card:hover { background: var(--c-bg-hover); border-color: color-mix(in srgb, var(--c-accent) 40%, var(--c-border-2)); box-shadow: var(--shadow-card); }
 .ssh-host-card:active { background: var(--c-bg-3); }
@@ -1882,13 +1877,96 @@ textarea:focus-visible {
   .ssh-host-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Chrome micro-interactions (response-only, ≤ --dur-base). */
+.session-card {
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.session-card-rail {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 24px;
+  background: var(--c-accent);
+  border-radius: 0 1px 1px 0;
+  transform: translateY(-50%) translateX(-4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+.session-card:has(.session-card-select[aria-current="page"]) .session-card-rail {
+  transform: translateY(-50%) translateX(0);
+  opacity: 1;
+}
+.session-state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.session-state-dot[data-tone="ok"] { background: var(--c-state-ok); }
+.session-state-dot[data-tone="warn"] { background: var(--c-state-warn); }
+.session-state-dot[data-tone="err"] { background: var(--c-state-err); }
+.session-state-dot[data-tone="unread"] { background: var(--c-text-5); }
+.session-state-dot[data-tone="attention"] {
+  background: var(--c-accent);
+  animation: attentionBreathe 2.4s var(--ease-in-out) infinite;
+}
+.attention-row-button[data-kind="needs-you"] {
+  color: var(--c-accent);
+  animation: attentionBreathe 2.4s var(--ease-in-out) infinite;
+}
+.workspace-empty-actions {
+  position: relative;
+  isolation: isolate;
+}
+.workspace-empty-actions::before {
+  content: "";
+  position: absolute;
+  inset: -56px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, var(--c-accent-bg-soft) 0%, transparent 68%);
+}
+.settings-section-title {
+  border-left: 3px solid var(--c-section-rule);
+  padding-left: 10px;
+}
+.pane-focus-ring {
+  transition: box-shadow var(--dur-base) var(--ease-out);
+}
+.overlay-backdrop {
+  animation: fadeIn var(--dur-fast) var(--ease-out);
+}
+.overlay-sheet {
+  animation: overlayIn var(--dur-base) var(--ease-out) both;
+}
+.overlay-palette {
+  animation: paletteIn var(--dur-base) var(--ease-out) both;
+}
+.toast-item {
+  animation: toastIn var(--dur-base) var(--ease-out) both;
+}
+
+html.reduce-motion,
+html.reduce-motion.dark {
+  --dur-fast: 0ms;
+  --dur-base: 0ms;
+  --dur-slow: 0ms;
+}
 @media (prefers-reduced-motion: reduce) {
+  :root,
+  .dark {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
   *,
   *::before,
   *::after {
-    animation-duration: 1ms !important;
+    animation-duration: 0ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
-    transition-duration: 1ms !important;
+    transition-duration: 0ms !important;
   }
 }

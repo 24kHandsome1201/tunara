@@ -11,12 +11,12 @@ export const TOGGLE_ROW: React.CSSProperties = { display: "flex", alignItems: "c
 const TOGGLE_BUTTON: React.CSSProperties = {
   width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
   display: "flex", alignItems: "center", flexShrink: 0,
-  transition: "background var(--duration-normal) var(--ease-smooth)",
+  transition: "background var(--dur-base) var(--ease-out)",
 };
 const TOGGLE_KNOB: React.CSSProperties = {
   width: 16, height: 16, borderRadius: "50%", background: "var(--c-bg-white)",
   boxShadow: "var(--shadow-card)",
-  transition: "transform var(--duration-normal) var(--ease-out-back)",
+  transition: "transform var(--dur-base) var(--ease-out)",
 };
 
 function detectIsMac(): boolean {
@@ -83,7 +83,7 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
           tabIndex={opt.id === value ? 0 : -1}
           data-active={opt.id === value ? "true" : "false"}
           className="settings-segment"
-          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: "var(--r-btn)", background: "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", transition: "background var(--duration-normal) var(--ease-smooth), color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth)" }}
+          style={{ flex: 1, padding: "5px 12px", border: "none", borderRadius: "var(--r-btn)", background: "transparent", color: opt.id === value ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-body)", fontWeight: opt.id === value ? 600 : 400, cursor: "pointer", transition: "background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out)" }}
         >
           {opt.label}
         </button>

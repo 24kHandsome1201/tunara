@@ -247,7 +247,7 @@ function AppSplash() {
         justifyContent: "center",
         fontFamily: "var(--font-ui)",
         background: "var(--c-bg-white)",
-        animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
+        animation: "fadeIn var(--dur-base) var(--ease-out)",
         gap: 14,
       }}
     >
@@ -389,18 +389,19 @@ export default function App() {
         {sidebarOverlay && presentedSidebarVisible && (
           <div
             onClick={toggleSidebarWithoutStacking}
+            className="overlay-backdrop"
             style={{
               position: "absolute",
               inset: 0,
               zIndex: 75,
               background: "var(--backdrop-color)",
-              animation: "fadeIn var(--duration-fast) var(--ease-smooth)",
             }}
           />
         )}
 
         <div
           className="tunara-sidebar"
+          data-overlay={sidebarOverlay ? "true" : undefined}
           aria-hidden={presentedSidebarVisible ? undefined : true}
           inert={presentedSidebarVisible ? undefined : true}
           style={{
@@ -459,6 +460,7 @@ export default function App() {
         {activeSession && terminalSurface && (
           <div
             className="tunara-panel"
+            data-overlay={panelOverlay ? "true" : undefined}
             aria-hidden={presentedPanelVisible ? undefined : true}
             inert={presentedPanelVisible ? undefined : true}
             style={{

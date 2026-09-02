@@ -86,7 +86,6 @@ function paneRectStyle(
     borderRadius: "var(--r-btn)",
     zIndex: 1,
     boxShadow: active ? activeMarker : "none",
-    transition: "box-shadow var(--duration-normal) var(--ease-smooth)",
   };
 }
 
@@ -190,6 +189,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               useUIStore.getState().setFocusedPaneId(s.id);
               if (s.id !== activeSessionId) useSessionsStore.getState().setActive(s.id);
             }}
+            className={isSplit ? "pane-focus-ring" : undefined}
             style={terminalWrapperStyle(s)}
           >
             <TerminalPane session={s} isActive={effectiveFocusedPaneId === s.id} />
@@ -206,6 +206,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
               useUIStore.getState().setFocusedPaneId(readerPaneId(s.id));
               if (s.id !== activeSessionId) useSessionsStore.getState().setActive(s.id);
             }}
+            className="pane-focus-ring"
             style={readerWrapperStyle(s.id)}
           >
             <ReaderPane session={s} active={effectiveFocusedPaneId === readerPaneId(s.id)} />

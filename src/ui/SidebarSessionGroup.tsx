@@ -120,7 +120,7 @@ export function SidebarSessionGroup({
         }}
       />
       {!collapsed && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, animation: "contentIn var(--duration-normal) var(--ease-out-expo)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, animation: "contentIn var(--dur-base) var(--ease-out)" }}>
           {groupSessions.map((s, idx) => {
             const isDragging = drag?.draggingId === s.id;
             const showIndicator = drag?.sourceGroupKey === key && drag.overIndex === idx && drag.draggingId !== s.id;
@@ -138,7 +138,7 @@ export function SidebarSessionGroup({
                   }}
                   style={{
                     opacity: isDragging ? 0.3 : 1,
-                    transition: "opacity 120ms ease",
+                    transition: "opacity var(--dur-fast) var(--ease-out)",
                     touchAction: "pan-y",
                     cursor: !canReorder ? "pointer" : isDragging ? "grabbing" : "grab",
                   }}

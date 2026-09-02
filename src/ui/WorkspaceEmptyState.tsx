@@ -80,7 +80,7 @@ export function WorkspaceEmptyState({
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0, overflowY: "auto", padding: 24 }}>
       <div style={{ width: "min(560px, 100%)", display: "flex", flexDirection: "column", gap: 20 }}>
-        <div role="group" aria-label={t("app.empty.actions")} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+        <div role="group" aria-label={t("app.empty.actions")} className="workspace-empty-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
           <button type="button" onClick={onNewTerminal} className="hover-bg" style={launchButtonStyle}>
             {t("app.empty.local_terminal")}
           </button>

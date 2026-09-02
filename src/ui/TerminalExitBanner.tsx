@@ -125,7 +125,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
         paddingTop: 6,
         paddingBottom: 6,
         boxShadow: "var(--shadow-card)",
-        animation: "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)",
+        animation: "statusBarSlideIn var(--dur-base) var(--ease-out)",
         zIndex: 5,
       }}
     >
@@ -225,7 +225,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
         padding: "0 10px",
         gap: 8,
         boxShadow: "var(--shadow-card)",
-        animation: "statusBarSlideIn var(--duration-normal) var(--ease-out-expo)",
+        animation: "statusBarSlideIn var(--dur-base) var(--ease-out)",
         zIndex: 5,
       }}
     >
@@ -300,12 +300,12 @@ export function ConnectingOverlay({
         pointerEvents: onCancel ? "auto" : "none",
         // 半透明：让快照恢复中的终端内容透出来，连接过程不再是一块死白
         background: "color-mix(in srgb, var(--terminal-canvas-bg, var(--c-bg-white)) 78%, transparent)",
-        animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
+        animation: "fadeIn var(--dur-base) var(--ease-out)",
         zIndex: 4,
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)", animation: "loadPulse 1.5s var(--ease-in-out) infinite" }} />
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)" }} />
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
           {label}
         </span>

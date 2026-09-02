@@ -61,12 +61,12 @@ export function HostKeyPromptDialog() {
       <div
         aria-hidden="true"
         onClick={() => { void decide(false); }}
+        className="overlay-backdrop"
         style={{
           position: "fixed",
           inset: 0,
           background: "var(--backdrop-color)",
           zIndex: 300,
-          animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}
       />
       <div
@@ -76,6 +76,7 @@ export function HostKeyPromptDialog() {
         aria-labelledby="ssh-host-key-title"
         aria-describedby="ssh-host-key-hop ssh-host-key-body ssh-host-key-hint"
         tabIndex={0}
+        className="overlay-sheet"
         style={{
           position: "fixed",
           top: "50%",
@@ -89,7 +90,6 @@ export function HostKeyPromptDialog() {
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
           zIndex: 301,
-          animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",

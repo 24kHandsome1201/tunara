@@ -22,7 +22,7 @@ interface SettingsProps {
 function SettingsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section id={`settings-section-${id}`} style={{ marginBottom: 32 }}>
-      <h2 style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--c-text-primary)", margin: "0 0 14px" }}>
+      <h2 className="settings-section-title" style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--c-text-primary)", margin: "0 0 14px" }}>
         {title}
       </h2>
       {children}
@@ -61,7 +61,7 @@ export function Settings({ onClose }: SettingsProps) {
       backdropZIndex={200}
       zIndex={201}
       className="settings-dialog"
-      style={{ width: 620, maxWidth: "calc(100vw - 32px)", overflow: "hidden", display: "flex", flexDirection: "column", height: "min(82dvh, 760px)", maxHeight: "min(82dvh, 760px)", animation: "sheetIn var(--duration-normal) var(--ease-out-back)" }}
+      style={{ width: 620, maxWidth: "calc(100vw - 32px)", overflow: "hidden", display: "flex", flexDirection: "column", height: "min(82dvh, 760px)", maxHeight: "min(82dvh, 760px)" }}
     >
         <div className="settings-dialog-header">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -139,7 +139,7 @@ export function Settings({ onClose }: SettingsProps) {
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <kbd className="settings-key-hint" style={{ padding: "2px 6px" }}>{t("common.escape")}</kbd>
-            <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo)" }}>
+            <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out)" }}>
               {t("common.done")}
             </button>
           </div>

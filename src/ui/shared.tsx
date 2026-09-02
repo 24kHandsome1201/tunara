@@ -88,7 +88,7 @@ export function PanelState({ state, icon, compact = false }: { state: PanelAsync
     >
       <div className="panel-state-icon">
         {state.kind === "loading"
-          ? <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", animation: "loadPulse 1.5s var(--ease-in-out) infinite" }} />
+          ? <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
           : icon ?? defaultIcon}
       </div>
       <div className="panel-state-copy">

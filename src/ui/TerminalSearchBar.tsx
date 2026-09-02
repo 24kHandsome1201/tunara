@@ -77,7 +77,7 @@ export function TerminalSearchBar({
         gap: 3,
         flexWrap: "wrap",
         boxShadow: "var(--shadow-menu)",
-        animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
+        animation: "fadeIn var(--dur-fast) var(--ease-out)",
       }}
     >
       <SearchIcon size={13} color={hasResults ? "var(--c-accent)" : noMatch ? "var(--c-error)" : "var(--c-text-5)"} />

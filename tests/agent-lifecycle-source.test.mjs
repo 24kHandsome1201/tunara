@@ -577,7 +577,7 @@ test("UI renders sidebar progress only when an agent is busy", () => {
   assert.match(card, /function TerminalProgressBar/);
   assert.match(card, /session\.terminalProgress && <TerminalProgressBar/);
   assert.match(card, /showBusyProgress && <BusyProgress \/>/);
-  assert.match(card, /animation: "agentBusyProgress/);
+  assert.doesNotMatch(card, /agentBusyProgress/);
   assert.doesNotMatch(card, /const showBusyProgress = session\.runState === "running";/);
   assert.match(attentionRow, /deriveAttentionRow\(sessions\)/);
   assert.doesNotMatch(attentionRow, /agentResumePendingInput|gbar\.action\.review/);

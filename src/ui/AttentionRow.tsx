@@ -32,6 +32,8 @@ export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
           if (target) onSelectSession(target);
         }}
         aria-label={label}
+        className="attention-row-button"
+        data-kind={row.kind}
         style={{
           width: "100%",
           height: 30,

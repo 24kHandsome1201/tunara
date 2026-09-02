@@ -776,10 +776,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     <>
       <div
         onClick={onClose}
+        className="overlay-backdrop"
         style={{
           position: "fixed", inset: 0, zIndex: 999,
           background: "var(--backdrop-color)",
-          animation: "fadeIn var(--duration-normal) var(--ease-smooth)",
         }}
       />
       <div
@@ -804,8 +804,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
         }}
+        className="overlay-palette"
       >
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
           <SearchIcon size={14} />
@@ -898,11 +898,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                       background: isSelected ? "var(--c-accent-bg-light)" : "transparent",
                       borderRadius: "var(--r-btn)",
                       margin: "0 6px",
-                      transition: "background var(--duration-fast) var(--ease-smooth)",
+                      transition: "background var(--dur-fast) var(--ease-out)",
                     }}
                   >
                     {cmd.icon && (
-                      <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--duration-fast) var(--ease-smooth)" }}>
+                      <span style={{ color: isSelected ? "var(--c-accent)" : "var(--c-text-5)", flexShrink: 0, display: "flex", transition: "color var(--dur-fast) var(--ease-out)" }}>
                         {cmd.icon}
                       </span>
                     )}

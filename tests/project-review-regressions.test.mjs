@@ -1361,13 +1361,13 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(iconUsers, /<CloseIcon/);
   assert.match(terminalSearch, /<SearchIcon size=\{13\} color=\{hasResults \? "var\(--c-accent\)" : noMatch \? "var\(--c-error\)" : "var\(--c-text-5\)"\} \/>/);
   assert.match(palette, /<SearchIcon size=\{14\} \/>/);
-  assert.match(sessionCard, /transition: "opacity var\(--duration-fast\) ease"/);
+  assert.match(globals, /\.session-card-rail/);
   assert.match(sessionCard, /paddingLeft: 6/);
   assert.match(sessionCard, /data-session-card-id=\{session\.id\}/);
   assert.match(sessionCard, /tabIndex=\{tabIndex \?\? 0\}/);
   assert.match(sessionCard, /aria-current=\{active \? "page" : undefined\}/);
-  // focus ring may be implemented via boxShadow (inset) or outline (external) — both convey focused visual state
-  assert.match(sessionCard, /(?:boxShadow|outline): focused \?/);
+  // Keyboard focus ring is :focus-visible (global 2px accent), not mouse-driven outline.
+  assert.match(globals, /:focus-visible \{[\s\S]*outline: 2px solid var\(--c-accent\)/);
   assert.match(sessionCard, /function TerminalProgressBar/);
   assert.match(sessionCard, /session\.terminalProgress && <TerminalProgressBar/);
   assert.match(main, /inset 0 2px 0 var\(--c-accent\)/);
@@ -1445,7 +1445,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(globals, /background-repeat: no-repeat/);
   assert.match(globals, /\.scroll-fade-sidebar/);
   assert.match(globals, /@keyframes ctxMenuIn/);
-  assert.match(contextMenu, /ctxMenuIn var\(--duration-fast\) ease/);
+  assert.match(contextMenu, /ctxMenuIn var\(--dur-fast\) var\(--ease-out\)/);
   assert.doesNotMatch(contextMenu, /key=\{`\$\{item\.label\}-\$\{i\}`\}/);
   assert.doesNotMatch(contextMenu, /key=\{`sep-\$\{i\}`\}/);
   assert.match(markdownReader, /class UniqueValueBuilder/);

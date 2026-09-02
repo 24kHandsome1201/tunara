@@ -54,7 +54,8 @@ export function KeyboardInteractivePromptDialog() {
       <div
         aria-hidden="true"
         onClick={() => { void decide(null); }}
-        style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 320, animation: "fadeIn var(--duration-normal) var(--ease-smooth)" }}
+        className="overlay-backdrop"
+        style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 320 }}
       />
       <div
         ref={dialogRef}
@@ -63,6 +64,7 @@ export function KeyboardInteractivePromptDialog() {
         aria-labelledby="ssh-keyboard-interactive-title"
         aria-describedby={prompt.instructions.trim() ? "ssh-keyboard-interactive-hop ssh-keyboard-interactive-instructions" : "ssh-keyboard-interactive-hop"}
         tabIndex={0}
+        className="overlay-sheet"
         onKeyDown={(event) => {
           if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
             event.preventDefault();
@@ -81,7 +83,6 @@ export function KeyboardInteractivePromptDialog() {
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
           zIndex: 321,
-          animation: "sheetIn var(--duration-normal) var(--ease-out-back)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",

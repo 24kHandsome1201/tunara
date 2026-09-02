@@ -224,7 +224,7 @@ export function ContextMenu({
         overflowX: "hidden",
         overscrollBehavior: "contain",
         outline: "none",
-        animation: "ctxMenuIn var(--duration-fast) ease",
+        animation: "ctxMenuIn var(--dur-fast) var(--ease-out)",
       }}
     >
       {items.map((entry, i) => {

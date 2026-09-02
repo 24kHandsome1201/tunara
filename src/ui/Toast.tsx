@@ -120,7 +120,6 @@ function ToastItem({ toast }: { toast: Toast }) {
         alignItems: "center",
         gap: 9,
         cursor: "default",
-        animation: "toastIn var(--duration-slow) var(--ease-out-back)",
         overflow: "hidden",
         position: "relative",
       }}

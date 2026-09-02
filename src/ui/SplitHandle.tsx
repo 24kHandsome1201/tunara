@@ -152,7 +152,7 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
             ? { width: 1, height: "100%" }
             : { height: 1, width: "100%" }),
           background: "var(--c-border-1)",
-          transition: `background var(--duration-fast) ease, ${isHorizontal ? "width" : "height"} var(--duration-fast) ease`,
+          transition: `background var(--dur-fast) var(--ease-out), ${isHorizontal ? "width" : "height"} var(--dur-fast) var(--ease-out)`,
         }}
       />
     </div>

@@ -76,7 +76,8 @@ export function DirGroupHeader({
           color="var(--c-text-5)"
           style={{
             transform: collapsed ? "none" : "rotate(90deg)",
-            transition: "transform var(--duration-normal) var(--ease-out-back)",
+            transition: "transform var(--dur-base) var(--ease-out)",
+            flexShrink: 0,
           }}
         />
       )}

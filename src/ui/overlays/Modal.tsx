@@ -177,6 +177,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(function Modal({
       <div
         aria-hidden="true"
         onClick={closeOnBackdrop ? () => onRequestClose("backdrop") : undefined}
+        className="overlay-backdrop"
         style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: backdropZIndex }}
       />
       <div
@@ -190,7 +191,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(function Modal({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         tabIndex={-1}
-        className={className}
+        className={["overlay-sheet", className].filter(Boolean).join(" ")}
         style={{
           position: "fixed",
           top: "50%",

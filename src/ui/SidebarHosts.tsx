@@ -62,7 +62,8 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
           weight="bold"
           style={{
             transform: expanded ? "rotate(90deg)" : "none",
-            transition: "transform var(--duration-normal) var(--ease-out-back)",
+            transition: "transform var(--dur-base) var(--ease-out)",
+            flexShrink: 0,
           }}
         />
       </button>

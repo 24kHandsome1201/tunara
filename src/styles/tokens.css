@@ -150,17 +150,26 @@
   --h-control-md: 30px;
   --h-panel-header: 38px;
 
-  /* ── 动画时长 ── */
-  --duration-fast: 120ms;
-  --duration-normal: 200ms;
-  --duration-slow: 350ms;
-  --duration-expand: 280ms;
-
-  /* ── 缓动曲线 ── */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out-back: var(--ease-out-expo);
-  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+  /* ── Motion (response-only) ── */
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 220ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Aliases so existing surfaces keep resolving through the motion system. */
+  --duration-fast: var(--dur-fast);
+  --duration-normal: var(--dur-base);
+  --duration-slow: var(--dur-slow);
+  --duration-expand: var(--dur-slow);
+  --ease-out-expo: var(--ease-out);
+  --ease-out-back: var(--ease-out);
+  --ease-smooth: var(--ease-out);
+
+  /* ── Session state (low chroma; chrome otherwise stays neutral) ── */
+  --c-state-ok: oklch(52% 0.042 155);
+  --c-state-warn: oklch(58% 0.055 75);
+  --c-state-err: oklch(54% 0.072 25);
+  --c-section-rule: oklch(84% 0.014 55);
 
   /* ── 按压缩放（语义二分 + 强烈） ── */
   --scale-press: 0.96;
@@ -293,6 +302,11 @@
   --c-diff-add-bg: #1a2e22;
   --c-diff-add-text: #4ade80;
 
+  --c-state-ok: oklch(68% 0.038 155);
+  --c-state-warn: oklch(72% 0.048 75);
+  --c-state-err: oklch(70% 0.065 25);
+  --c-section-rule: oklch(30% 0.012 55);
+
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.3);
   --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 0, 0, 0.35);
   --shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.5), 0 8px 20px rgba(0, 0, 0, 0.25);
@@ -303,37 +317,37 @@
 
 .hover-bg {
   background: transparent; color: var(--c-text-4);
-  transition: background var(--duration-fast) var(--ease-smooth),
-              color var(--duration-fast) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo),
-              box-shadow var(--duration-fast) var(--ease-smooth);
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
 }
 .hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-bg:active { transform: scale(var(--scale-press)); transition-duration: 60ms; }
+.hover-bg:active { transform: scale(var(--scale-press-soft)); transition-duration: var(--dur-fast); }
 .hover-close {
   background: transparent; color: var(--c-text-5);
-  transition: background var(--duration-fast) var(--ease-smooth),
-              color var(--duration-fast) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo);
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
 .hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-close:active { transform: scale(var(--scale-press-strong)); transition-duration: 60ms; }
+.hover-close:active { transform: scale(var(--scale-press-strong)); transition-duration: var(--dur-fast); }
 .hover-accent-bg {
   background: transparent;
-  transition: background var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-smooth);
+  transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .hover-accent-bg:hover { background: var(--c-accent-bg-light); box-shadow: 0 1px 4px color-mix(in srgb, var(--c-accent) 12%, transparent); }
 .hover-accent-bg:active { transform: scale(var(--scale-press-soft)); box-shadow: none; }
 .hover-text-3:hover { color: var(--c-text-3); }
-.hover-primary:active { transform: scale(var(--scale-press)); transition: transform 60ms var(--ease-out-expo); }
+.hover-primary:active { transform: scale(var(--scale-press-soft)); transition: transform var(--dur-fast) var(--ease-out); }
 .hover-primary:hover { opacity: 0.88; }
 
-.tab-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
+.tab-close { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
 .tab-btn[data-active="false"]:hover { background: var(--c-bg-3) !important; }
 .tab-btn[data-active="true"]:hover { background: var(--c-accent-bg-light) !important; }
 .tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
 .tab-close:focus-visible { opacity: 1; pointer-events: auto; }
-.tab-select:active { transform: scale(var(--scale-press)); transition: transform 60ms var(--ease-out-expo); }
+.tab-select:active { transform: scale(var(--scale-press-soft)); transition: transform var(--dur-fast) var(--ease-out); }
 .workspace-tab-dirty {
   width: 5px;
   height: 5px;
@@ -342,11 +356,11 @@
   flex-shrink: 0;
 }
 
-.cmd-chip-more { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), color var(--duration-fast) var(--ease-smooth); }
+.cmd-chip-more { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 .cmd-chip:hover .cmd-chip-more,
 .cmd-chip-more:focus-visible { opacity: 1; pointer-events: auto; }
 .cmd-chip-more:hover { color: var(--c-text-2); }
-.tab-btn { transition: background var(--duration-fast) var(--ease-smooth); }
+.tab-btn { transition: background var(--dur-fast) var(--ease-out); }
 
 .explorer-sort-button {
   width: 100%;
@@ -363,12 +377,12 @@
   font: 500 var(--fs-meta) var(--font-ui);
   text-align: left;
 }
-.explorer-sort-button:active { transform: scale(var(--scale-press)); }
+.explorer-sort-button:active { transform: scale(var(--scale-press-soft)); }
 .explorer-sort-direction {
   color: var(--c-text-4);
   opacity: 0;
   transform: scale(.9);
-  transition: opacity 120ms var(--ease-smooth), transform 120ms var(--ease-smooth);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 .explorer-sort-direction[data-visible="true"] { opacity: 1; transform: scale(1); }
 
@@ -382,29 +396,29 @@
 .split-handle-h:focus-visible .split-handle-line { width: 3px !important; }
 .split-handle-v:hover .split-handle-line,
 .split-handle-v:focus-visible .split-handle-line { height: 3px !important; }
-.split-handle-line { transition: background var(--duration-fast) var(--ease-smooth), width var(--duration-fast) var(--ease-out-expo), height var(--duration-fast) var(--ease-out-expo); }
+.split-handle-line { transition: background var(--dur-fast) var(--ease-out), width var(--dur-fast) var(--ease-out), height var(--dur-fast) var(--ease-out); }
 
 .session-card {
-  transition: background var(--duration-fast) var(--ease-smooth),
-              box-shadow var(--duration-normal) var(--ease-smooth);
+  transition: background var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out);
   cursor: inherit;
 }
 .session-card:hover { background: var(--c-bg-hover); }
-.session-card:has(.session-card-select[aria-current="page"]) { background: var(--c-accent-bg-soft); }
-.session-card:has(.session-card-select[aria-current="page"]):hover { background: var(--c-accent-bg-light); }
-.session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-smooth), transform var(--duration-fast) var(--ease-out-expo); }
+.session-card:has(.session-card-select[aria-current="page"]) { background: var(--c-bg-3); }
+.session-card:has(.session-card-select[aria-current="page"]):hover { background: var(--c-bg-hover); }
+.session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
 .session-card:hover .session-card-close,
 .session-card:has(.session-card-close[data-confirm="true"]) .session-card-close,
 .session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
-.session-card-close:active { transform: scale(var(--scale-press)); }
+.session-card-close:active { transform: scale(var(--scale-press-soft)); }
 
 /* Context menu items */
 .ctx-item {
   background: transparent; color: var(--c-text-2);
   padding: 0 12px 0 10px;
-  transition: background var(--duration-fast) var(--ease-smooth),
-              color var(--duration-fast) var(--ease-smooth),
-              transform var(--duration-fast) var(--ease-out-expo);
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
 .ctx-item:hover, .ctx-item[data-active='true'] { background: var(--c-bg-hover); color: var(--c-text-primary); }
 .ctx-item:active { opacity: 0.7; transform: scale(var(--scale-press-soft)); }
