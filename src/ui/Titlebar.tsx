@@ -1,28 +1,19 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { deriveTitle, type Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
-import { getNumberRecordValue } from "@/state/record-keys";
 import { useUIStore } from "@/state/ui";
 import { formatShortcut } from "./formatShortcut";
 import { platform } from "@tauri-apps/plugin-os";
-import { CloseIcon } from "./shared";
 import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import type { WorkspaceFileTab } from "@/state/ui";
-import { sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import {
-  titlebarItemId,
-  titlebarWorkingSet,
-  visibleTitlebarItems,
-} from "@/modules/session/titlebar-working-set";
-import {
-  activateWorkspaceFileTab,
-  focusTitlebarDevice,
-  requestCloseWorkspaceFileTab,
-} from "./lib/workspace-tab-actions";
+  groupSessionsForSidebar,
+  representativeSession,
+  sidebarGroupKey,
+  titlebarDeviceCaption,
+} from "@/modules/session/sidebar-groups";
 import { splitToolbarOverflow } from "./lib/toolbar-overflow";
-import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
 import { copyActiveTerminal, safePasteActiveTerminal, searchActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
 import { TERMINAL_CONTEXT_ANNOUNCEMENT_EVENT, type TerminalContextAnnouncement } from "@/modules/terminal/lib/terminal-context-announcement";
 import type { ConnectionPhase } from "@/modules/terminal/lib/connection-state";
@@ -502,42 +493,6 @@ function PureModeActionStrip({ activeSessionId, exitShortcut, fullscreen = false
   );
 }
 
-interface TabButtonProps {
-  isActive: boolean;
-  label: string;
-  kind: "terminal" | "file";
-  origin?: "local" | "ssh";
-  showOriginGlyph?: boolean;
-  accessibleName: string;
-  tooltip?: string;
-  dirty?: boolean;
-  dirtyLabel: string;
-  closeLabel: string;
-  confirmCloseLabel: string;
-  confirmClose?: boolean;
-  /** Roving tabindex：仅当前 tab 为 0，其余 -1（APG tabs 模式） */
-  tabIndex?: number;
-  onSelect: () => void;
-  onClose: () => void;
-}
-
-function WorkspaceTabIcon({ kind }: { kind: "terminal" | "file" }) {
-  if (kind === "terminal") {
-    return (
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-        <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="2" />
-        <path d="m4.25 5 2 2-2 2M8 10h3.5" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <path d="M4 1.75h5l3 3v9.5H4z" />
-      <path d="M9 1.75v3h3" />
-    </svg>
-  );
-}
-
 function deviceConnectionColor(phase: ConnectionPhase | null): string {
   if (phase === "ready") return "var(--c-success)";
   if (phase === "failed" || phase === "disconnected" || phase === "exited") return "var(--c-error)";
@@ -549,12 +504,10 @@ function DeviceIdentityContent({
   label,
   kind,
   connectionPhase,
-  foreignDirtyCount,
 }: {
   label: string;
   kind: "local" | "ssh" | null;
   connectionPhase: ConnectionPhase | null;
-  foreignDirtyCount: number;
 }) {
   return (
     <>
@@ -582,107 +535,7 @@ function DeviceIdentityContent({
       }}>
         {label}
       </span>
-      {foreignDirtyCount > 0 && (
-        <span className="workspace-tab-dirty" aria-hidden="true" />
-      )}
     </>
-  );
-}
-
-function TabButton({
-  isActive,
-  label,
-  kind,
-  origin = "local",
-  showOriginGlyph = false,
-  accessibleName,
-  tooltip,
-  dirty,
-  dirtyLabel,
-  closeLabel,
-  confirmCloseLabel,
-  confirmClose,
-  tabIndex,
-  onSelect,
-  onClose,
-}: TabButtonProps) {
-  return (
-    <div
-      className="tab-btn"
-      data-workspace-tab-kind={kind}
-      data-workspace-tab-origin={origin}
-      data-active={isActive ? "true" : "false"}
-      style={{
-        height: 28,
-        borderRadius: "var(--r-pill)",
-        background: isActive ? "var(--c-accent-bg-soft)" : "transparent",
-        display: "flex",
-        alignItems: "center",
-        flexShrink: 0,
-        transition: "background var(--duration-fast) ease",
-      }}
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={isActive}
-        aria-label={accessibleName}
-        title={tooltip ?? accessibleName}
-        tabIndex={tabIndex ?? 0}
-        onClick={onSelect}
-        className="tab-select"
-        style={{
-          height: "100%",
-          padding: "0 5px 0 10px",
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          color: "inherit",
-          borderRadius: "var(--r-pill) 0 0 var(--r-pill)",
-        }}
-      >
-        <WorkspaceTabIcon kind={kind} />
-        {showOriginGlyph && (
-          <span
-            aria-hidden="true"
-            data-workspace-tab-origin-glyph=""
-            style={{ flexShrink: 0, color: "var(--c-accent)", fontSize: "var(--fs-meta)", lineHeight: 1 }}
-          >
-            ⇄
-          </span>
-        )}
-        <span style={{
-          fontSize: "var(--fs-secondary)",
-          fontWeight: isActive ? 600 : 400,
-          color: isActive ? "var(--c-text-primary)" : "var(--c-text-4)",
-          fontFamily: "var(--font-ui)",
-          transition: "color var(--duration-fast) var(--ease-smooth), font-weight var(--duration-fast) var(--ease-smooth)",
-        }}>
-          {label}
-        </span>
-        {dirty && <span className="workspace-tab-dirty" aria-label={dirtyLabel} />}
-      </button>
-      <button
-        type="button"
-        tabIndex={tabIndex ?? 0}
-        title={confirmClose ? confirmCloseLabel : closeLabel}
-        aria-label={confirmClose ? confirmCloseLabel : closeLabel}
-        onClick={(e) => { e.stopPropagation(); onClose(); }}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
-        className="tab-close hover-close"
-        style={{
-          width: 20, height: 20, borderRadius: 5, border: "none", background: "transparent",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          cursor: "pointer", padding: 0, marginRight: 4,
-          color: confirmClose ? "var(--c-error)" : undefined,
-        }}
-      >
-        <CloseIcon size={10} strokeWidth={2.2} />
-      </button>
-    </div>
   );
 }
 
@@ -747,8 +600,8 @@ function TitlebarImpl({
   sidebarVisible,
   onToggleSidebar,
   onTogglePanel,
-  onSelectSession,
-  onCloseSession,
+  onSelectSession: _onSelectSession,
+  onCloseSession: _onCloseSession,
   onNewTerminal,
   onNewTerminalInDirectory,
   onOpenSettings,
@@ -756,35 +609,31 @@ function TitlebarImpl({
   const t = useT();
   const presentationMode = useUIStore((s) => s.presentationMode);
   const nativeFullscreen = useUIStore((s) => s.nativeFullscreen);
-  const fileTabs = useUIStore((s) => s.fileTabs);
-  const activeFileTabId = useUIStore((s) => s.activeFileTabId);
-  const workingSet = useMemo(
-    () => titlebarWorkingSet({
-      sessions,
-      fileTabs,
-      activeSessionId,
-      sidebarVisible,
-    }),
-    [sessions, fileTabs, activeSessionId, sidebarVisible],
-  );
-  const visibleTabs = useMemo(() => visibleTitlebarItems(workingSet), [workingSet]);
-  const showTabs = presentationMode === "workspace" && sessions.length > 0 && (workingSet.showTerminals || workingSet.files.length > 0);
+  const deviceCaption = useMemo(() => {
+    const groups = groupSessionsForSidebar(sessions);
+    const active = sessions.find((session) => session.id === activeSessionId) ?? sessions[0];
+    const group = active
+      ? groups.find((candidate) => candidate.key === sidebarGroupKey(active)) ?? null
+      : null;
+    if (!group) return null;
+    const { label, detail } = titlebarDeviceCaption(group);
+    const currentSession = representativeSession(group.sessions, activeSessionId);
+    return {
+      key: group.key,
+      kind: group.kind,
+      label,
+      detail,
+      connectionPhase: group.kind === "ssh" ? currentSession?.connection?.phase ?? null : null,
+    };
+  }, [sessions, activeSessionId]);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
-  const closeConfirmations = useSessionsStore((s) => s.closeConfirmations);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
-  const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
   const presentationModeBinding = useUIStore((s) => s.keybindings.togglePresentationMode);
   const presentationModeShortcut = formatShortcut(presentationModeBinding);
   const setPresentationMode = useUIStore((s) => s.setPresentationMode);
-  const tabsRef = useRef<HTMLDivElement>(null);
   const fullscreenHintTimerRef = useRef<number | null>(null);
   const [fullscreenExitHintVisible, setFullscreenExitHintVisible] = useState(false);
-  const [overflowEdge, setOverflowEdge] = useState<"none" | "left" | "right" | "both">("none");
   const [newTerminalMenu, setNewTerminalMenu] = useState<{
-    items: MenuEntry[];
-    position: { x: number; y: number };
-  } | null>(null);
-  const [deviceMenu, setDeviceMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
   } | null>(null);
@@ -792,13 +641,11 @@ function TitlebarImpl({
     items: MenuEntry[];
     position: { x: number; y: number };
   } | null>(null);
-  const deviceBtnRef = useRef<HTMLButtonElement>(null);
   const workspaceMenuBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (presentationMode === "pure") {
       setNewTerminalMenu(null);
-      setDeviceMenu(null);
       setWorkspaceMenu(null);
     }
   }, [presentationMode]);
@@ -858,41 +705,6 @@ function TitlebarImpl({
     });
   };
 
-  const openDeviceMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const items: MenuEntry[] = workingSet.devices.map((device) => ({
-      id: device.key,
-      label: device.key === workingSet.deviceKey
-        ? t("titlebar.device.current", { label: device.label })
-        : device.dirtyFiles.length > 0
-          ? `${device.label} · ${t("titlebar.device.unsaved_count", { count: device.dirtyFiles.length })}`
-          : device.label,
-      icon: device.kind === "ssh" ? "ssh" : "folder",
-      action: () => focusTitlebarDevice(device.key),
-    }));
-    if (workingSet.foreignDirtyFiles.length > 0) {
-      items.push(null);
-      items.push({ type: "heading", label: t("titlebar.device.unsaved_heading") });
-      for (const { device, tab } of workingSet.foreignDirtyFiles) {
-        items.push({
-          id: `dirty:${tab.id}`,
-          label: t("titlebar.device.unsaved_file", { file: tab.fileName, device: device.label }),
-          action: () => {
-            const storeTab = useUIStore.getState().fileTabs.find((candidate) => candidate.id === tab.id);
-            if (storeTab) activateWorkspaceFileTab(storeTab);
-          },
-        });
-      }
-    }
-    setDeviceMenu({
-      position: event.type === "contextmenu"
-        ? { x: event.clientX, y: event.clientY }
-        : { x: rect.left, y: rect.bottom },
-      items,
-    });
-  };
-
   const openWorkspaceMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setWorkspaceMenu({
@@ -905,148 +717,24 @@ function TitlebarImpl({
     });
   };
 
-  useEffect(() => {
-    if (!workingSet.showDeviceMenu) setDeviceMenu(null);
-  }, [workingSet.showDeviceMenu]);
-
-  function tabLabel(s: Session): string {
-    const { primary } = deriveTitle(s);
-    return primary.length > 24 ? primary.slice(0, 24) + "…" : primary;
-  }
-
-  function fileTabLabel(tab: WorkspaceFileTab): string {
-    return tab.fileName.length > 28 ? tab.fileName.slice(0, 28) + "…" : tab.fileName;
-  }
-
-  function terminalAccessibleName(s: Session): string {
-    const label = tabLabel(s);
-    if (!s.remote) return label;
-    return t("titlebar.tab.remote_terminal", { label, host: sshEndpointLabel(s.remote) });
-  }
-
-  function fileAccessibleName(tab: WorkspaceFileTab, owner: Session | undefined): string {
-    if (owner?.remote) {
-      return t("titlebar.tab.remote_file", {
-        file: tab.fileName,
-        host: sshEndpointLabel(owner.remote),
-        path: tab.filePath,
-      });
-    }
-    return t("titlebar.tab.local_file", { file: tab.fileName, path: tab.filePath });
-  }
-
-  function fileTooltip(tab: WorkspaceFileTab, owner: Session | undefined): string {
-    if (owner?.remote) return `${sshEndpointLabel(owner.remote)}  ${tab.filePath}`;
-    return tab.filePath;
-  }
-
-  // 监听 tabs 容器滚动，决定哪边显示渐隐提示
-  useEffect(() => {
-    const el = tabsRef.current;
-    if (!el || !showTabs) return;
-    const update = () => {
-      const canLeft = el.scrollLeft > 1;
-      const canRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-      setOverflowEdge(canLeft && canRight ? "both" : canLeft ? "left" : canRight ? "right" : "none");
-    };
-    update();
-    el.addEventListener("scroll", update, { passive: true });
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", update);
-      ro.disconnect();
-    };
-  }, [showTabs, workingSet.terminals.length, workingSet.files.length]);
-
-  // 鼠标滚轮 → 横向滚动（trackpad 横滑天生工作，无需介入）
-  useEffect(() => {
-    const el = tabsRef.current;
-    if (!el || !showTabs) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaX !== 0) return; // trackpad 横滑，浏览器已经处理
-      if (e.deltaY === 0) return;
-      const maxScroll = el.scrollWidth - el.clientWidth;
-      if (maxScroll <= 0) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [showTabs]);
-
-  // active tab 自动滚入视野
-  useEffect(() => {
-    const el = tabsRef.current;
-    if (!el || !showTabs) return;
-    const active = el.querySelector<HTMLElement>('[data-active-tab="true"]');
-    if (!active) return;
-    // offsetLeft 是相对 offsetParent 的坐标，和 scrollLeft 的容器坐标系未必
-    // 一致（wrapper 有 transform 时会错位）；统一换算到容器坐标系再比较。
-    const elRect = el.getBoundingClientRect();
-    const activeRect = active.getBoundingClientRect();
-    const left = activeRect.left - elRect.left + el.scrollLeft;
-    const right = left + activeRect.width;
-    if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 16);
-    else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 16;
-  }, [activeFileTabId, activeSessionId, showTabs, workingSet.terminals.length, workingSet.files.length]);
-
-  // APG tabs 键盘漫游：方向键/Home/End 在 terminal 与 file tab 间循环（自动激活）
-  const orderedTabIds = useMemo(
-    () => visibleTabs.map((item) => titlebarItemId(item)),
-    [visibleTabs],
-  );
-  const activeTabId = activeFileTabId !== null && workingSet.files.some((tab) => tab.id === activeFileTabId)
-    ? `file:${activeFileTabId}`
-    : workingSet.terminals.some((s) => s.id === activeSessionId) && activeFileTabId === null
-      ? `terminal:${activeSessionId}`
-      : orderedTabIds[0];
-  const selectTabById = useCallback((tabId: string) => {
-    if (tabId.startsWith("terminal:")) {
-      onSelectSession(tabId.slice("terminal:".length));
-      return;
-    }
-    const fileId = tabId.slice("file:".length);
-    const tab = useUIStore.getState().fileTabs.find((candidate) => candidate.id === fileId);
-    if (!tab) return;
-    activateWorkspaceFileTab(tab);
-  }, [onSelectSession]);
-  const handleTabListKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const currentId = tabIdFromEventTarget(e.target);
-    if (!currentId) return;
-    const nextId = resolveRovingTabId(orderedTabIds, currentId, e.key);
-    if (!nextId || nextId === currentId) return;
-    e.preventDefault();
-    selectTabById(nextId);
-    focusTabById(tabsRef.current, nextId);
-  }, [orderedTabIds, selectTabById]);
-
-  const tabsMask =
-    overflowEdge === "both"
-      ? "linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%)"
-      : overflowEdge === "left"
-        ? "linear-gradient(to right, transparent 0, #000 24px)"
-        : overflowEdge === "right"
-          ? "linear-gradient(to right, #000 calc(100% - 24px), transparent 100%)"
-          : undefined;
   const titlebarControlTransform = _isMac ? `translateY(${MAC_TITLEBAR_CONTROL_Y_OFFSET}px)` : undefined;
-  const deviceConnectionLabel = workingSet.deviceConnectionPhase
-    ? t(`connection.phase.${workingSet.deviceConnectionPhase}`)
+  const deviceConnectionLabel = deviceCaption?.connectionPhase
+    ? t(`connection.phase.${deviceCaption.connectionPhase}`)
     : "";
-  const deviceAccessibleName = [
-    workingSet.deviceKind === "ssh"
-      ? `${workingSet.deviceLabel}, ${t("workspace.ssh")}`
-      : workingSet.deviceLabel,
-    deviceConnectionLabel,
-    workingSet.foreignDirtyCount > 0
-      ? t("titlebar.device.unsaved_other", { count: workingSet.foreignDirtyCount })
-      : "",
-  ].filter(Boolean).join(", ");
-  const deviceTitle = [workingSet.deviceDetail || workingSet.deviceLabel, deviceConnectionLabel]
-    .filter(Boolean).join(" · ");
+  const deviceAccessibleName = deviceCaption
+    ? [
+        deviceCaption.kind === "ssh"
+          ? `${deviceCaption.label}, ${t("workspace.ssh")}`
+          : deviceCaption.label,
+        deviceConnectionLabel,
+      ].filter(Boolean).join(", ")
+    : "";
+  const deviceTitle = deviceCaption
+    ? [deviceCaption.detail || deviceCaption.label, deviceConnectionLabel].filter(Boolean).join(" · ")
+    : "";
   const deviceIdentityStyle = {
     height: "var(--h-titlebar-control)",
-    maxWidth: "min(220px, 26vw)",
+    maxWidth: "min(280px, 36vw)",
     padding: "0 8px",
     marginLeft: 2,
     borderRadius: "var(--r-btn)",
@@ -1055,7 +743,8 @@ function TitlebarImpl({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     transform: titlebarControlTransform,
   } satisfies React.CSSProperties;
 
@@ -1150,147 +839,51 @@ function TitlebarImpl({
         )}
       </div>
 
-      {workingSet.showDeviceIdentity && (
-        workingSet.showDeviceMenu ? (
-          <button
-            ref={deviceBtnRef}
-            type="button"
-            data-titlebar-device={workingSet.deviceKey ?? ""}
-            data-titlebar-device-kind={workingSet.deviceKind ?? "local"}
-            title={deviceTitle}
-            aria-label={deviceAccessibleName}
-            aria-haspopup="menu"
-            aria-expanded={deviceMenu !== null}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={openDeviceMenu}
-            onContextMenu={openDeviceMenu}
-            className="hover-bg"
-            style={{ ...deviceIdentityStyle, cursor: "pointer", WebkitAppRegion: "no-drag" } as DragStyle}
-          >
-            <DeviceIdentityContent
-              label={workingSet.deviceLabel}
-              kind={workingSet.deviceKind}
-              connectionPhase={workingSet.deviceConnectionPhase}
-              foreignDirtyCount={workingSet.foreignDirtyCount}
-            />
-          </button>
-        ) : (
-          <div
-            role="status"
-            data-titlebar-device={workingSet.deviceKey ?? ""}
-            data-titlebar-device-kind={workingSet.deviceKind ?? "local"}
-            title={deviceTitle}
-            aria-label={deviceAccessibleName}
-            style={{ ...deviceIdentityStyle, WebkitAppRegion: "drag" } as DragStyle}
-          >
-            <DeviceIdentityContent
-              label={workingSet.deviceLabel}
-              kind={workingSet.deviceKind}
-              connectionPhase={workingSet.deviceConnectionPhase}
-              foreignDirtyCount={workingSet.foreignDirtyCount}
-            />
-          </div>
-        )
+      {deviceCaption && (
+        <div
+          role="status"
+          data-titlebar-device={deviceCaption.key}
+          data-titlebar-device-kind={deviceCaption.kind}
+          title={deviceTitle}
+          aria-label={deviceAccessibleName}
+          style={{ ...deviceIdentityStyle, WebkitAppRegion: "drag" } as DragStyle}
+        >
+          <DeviceIdentityContent
+            label={deviceCaption.label}
+            kind={deviceCaption.kind}
+            connectionPhase={deviceCaption.connectionPhase}
+          />
+        </div>
       )}
 
-      {showTabs ? (
-        <div
-          ref={tabsRef}
-          role="tablist"
-          aria-label={t("titlebar.tabs")}
-          onKeyDown={handleTabListKeyDown}
-          className="no-scrollbar"
+      <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 4, transform: titlebarControlTransform, WebkitAppRegion: "no-drag" } as DragStyle}>
+        <button
+          onClick={openNewTerminalMenu}
+          onContextMenu={openNewTerminalMenu}
+          title={`${t("titlebar.new_menu")} · ${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
+          aria-label={t("titlebar.new_menu")}
+          aria-haspopup="menu"
+          aria-expanded={Boolean(newTerminalMenu)}
           style={{
+            width: "var(--w-titlebar-control)",
+            height: "var(--h-titlebar-control)",
+            borderRadius: "var(--r-btn)",
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            height: "100%",
-            gap: 6,
-            paddingLeft: 8,
-            flex: 1,
-            overflowX: "auto",
-            overflowY: "hidden",
-            animation: "tabsIn var(--duration-normal) var(--ease-out-expo)",
-            transform: titlebarControlTransform,
-            WebkitAppRegion: "no-drag",
-            maskImage: tabsMask,
-            WebkitMaskImage: tabsMask,
-          } as DragStyle}
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+          className="hover-bg"
         >
-          {workingSet.showTerminals && workingSet.terminals.map((s) => (
-            <div key={`terminal:${s.id}`} data-tab-id={`terminal:${s.id}`} data-active-tab={activeFileTabId === null && s.id === activeSessionId ? "true" : undefined} style={{ flexShrink: 0 }}>
-              <TabButton
-                isActive={activeFileTabId === null && s.id === activeSessionId}
-                label={tabLabel(s)}
-                kind="terminal"
-                origin={s.remote ? "ssh" : "local"}
-                showOriginGlyph={Boolean(s.remote) && workingSet.showOriginGlyph}
-                accessibleName={terminalAccessibleName(s)}
-                tooltip={s.remote ? sshEndpointLabel(s.remote) : undefined}
-                dirtyLabel={t("preview.editor.unsaved")}
-                closeLabel={`${t("titlebar.tab.close")} ${formatShortcut(closeSessionShortcut)}`}
-                confirmCloseLabel={t("destructive.confirm_again.close")}
-                confirmClose={getNumberRecordValue(closeConfirmations, s.id) > 0}
-                tabIndex={`terminal:${s.id}` === activeTabId ? 0 : -1}
-                onSelect={() => onSelectSession(s.id)}
-                onClose={() => onCloseSession(s.id)}
-              />
-            </div>
-          ))}
-          {workingSet.files.map((tab) => {
-            const owner = sessions.find((session) => session.id === tab.sessionId);
-            const storeTab = fileTabs.find((candidate) => candidate.id === tab.id);
-            if (!storeTab) return null;
-            return (
-              <div key={`file:${tab.id}`} data-tab-id={`file:${tab.id}`} data-active-tab={tab.id === activeFileTabId ? "true" : undefined} style={{ flexShrink: 0 }}>
-                <TabButton
-                  isActive={tab.id === activeFileTabId}
-                  label={fileTabLabel(storeTab)}
-                  kind="file"
-                  origin={owner?.remote ? "ssh" : "local"}
-                  showOriginGlyph={Boolean(owner?.remote) && workingSet.showOriginGlyph}
-                  accessibleName={fileAccessibleName(storeTab, owner)}
-                  tooltip={fileTooltip(storeTab, owner)}
-                  dirty={storeTab.dirty}
-                  dirtyLabel={t("preview.editor.unsaved")}
-                  closeLabel={t("titlebar.file_tab.close", { file: storeTab.fileName })}
-                  confirmCloseLabel={t("preview.editor.close_warning")}
-                  tabIndex={`file:${tab.id}` === activeTabId ? 0 : -1}
-                  onSelect={() => activateWorkspaceFileTab(storeTab)}
-                  onClose={() => requestCloseWorkspaceFileTab(storeTab)}
-                />
-              </div>
-            );
-          })}
-          <button
-            onClick={openNewTerminalMenu}
-            onContextMenu={openNewTerminalMenu}
-            title={`${t("titlebar.new_menu")} · ${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
-            aria-label={t("titlebar.new_menu")}
-            aria-haspopup="menu"
-            aria-expanded={Boolean(newTerminalMenu)}
-            style={{
-              width: "var(--w-titlebar-control)",
-              height: "var(--h-titlebar-control)",
-              borderRadius: "var(--r-btn)",
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-            className="hover-bg"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
-        </div>
-      ) : (
-        <div style={{ flex: 1 }} />
-      )}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+      </div>
 
       <div
         style={{
@@ -1334,14 +927,6 @@ function TitlebarImpl({
           items={newTerminalMenu.items}
           position={newTerminalMenu.position}
           onClose={() => setNewTerminalMenu(null)}
-        />
-      )}
-      {deviceMenu && (
-        <ContextMenu
-          items={deviceMenu.items}
-          position={deviceMenu.position}
-          onClose={() => setDeviceMenu(null)}
-          returnFocusToken={deviceBtnRef}
         />
       )}
       {workspaceMenu && (

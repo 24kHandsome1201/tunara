@@ -110,6 +110,10 @@ interface FilePreviewProps {
   onNeedsAttention?: () => void;
   /** Fill the inspector content area instead of rendering as an inline card. */
   fill?: boolean;
+  /** Reader pane already owns chrome; hide the duplicate filename/close bar. */
+  embedded?: boolean;
+  /** Bumped by the reader pane to open in-file search. */
+  findRequest?: number;
   /** 远程 SSH 会话的 PTY id；存在则经 SFTP 读取。 */
   remotePtyId?: number;
   /** Stable transport identity; remains true while an SSH PTY is disconnected. */
@@ -309,9 +313,32 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
   }
 }
 
-function TextPreview({ content, fill = false }: { content: string; fill?: boolean }) {
+function TextPreview({
+  content,
+  fill = false,
+  followTail = false,
+  onUserScrollAway,
+}: {
+  content: string;
+  fill?: boolean;
+  followTail?: boolean;
+  onUserScrollAway?: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!followTail) return;
+    const root = rootRef.current;
+    if (root) root.scrollTop = root.scrollHeight;
+  }, [content, followTail]);
   return (
     <div
+      ref={rootRef}
+      onScroll={(event) => {
+        if (!followTail || !onUserScrollAway) return;
+        const target = event.currentTarget;
+        const distance = target.scrollHeight - target.scrollTop - target.clientHeight;
+        if (distance > 24) onUserScrollAway();
+      }}
       style={{ padding: "12px 14px 24px", overflow: "auto", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
       className="no-scrollbar scroll-fade-y"
     >
@@ -499,19 +526,23 @@ function LargeFileHeadControls({
   window,
   loading,
   error,
+  followTail,
   onLineLimitChange,
   onWindowChange,
   onView,
   onCancel,
+  onFollowTailChange,
 }: {
   lineLimit: number;
   window: FileViewWindow;
   loading: boolean;
   error: FileViewErrorV1 | null;
+  followTail: boolean;
   onLineLimitChange: (lineLimit: number) => void;
   onWindowChange: (window: FileViewWindow) => void;
   onView: () => void;
   onCancel: () => void;
+  onFollowTailChange: (follow: boolean) => void;
 }) {
   const t = useT();
   const errorText = error?.code === "FILE_CHANGED"
@@ -558,6 +589,17 @@ function LargeFileHeadControls({
       {loading
         ? <button className="ui-button" onClick={onCancel}>{t("preview.head.cancel")}</button>
         : <button className="ui-button ui-button--primary" onClick={onView}>{window === "tail" ? t("preview.head.view_end") : t("preview.head.view")}</button>}
+      {window === "tail" ? (
+        <label className="large-file-line-limit" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            className="ui-choice"
+            checked={followTail}
+            onChange={(event) => onFollowTailChange(event.target.checked)}
+          />
+          {t("preview.head.follow")}
+        </label>
+      ) : null}
       {errorText ? <span role="alert" className="large-file-error">{errorText}</span> : null}
     </div>
   );
@@ -620,23 +662,92 @@ function openSiblingFile(sessionId: string | undefined, currentPath: string, nex
   const go = () => {
     const owner = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
     if (!owner) return;
-    const currentId = `${sessionId}\0${currentPath}`;
-    void openResource(resourceRefForSession(owner, nextPath), "preview").then(() => {
-      useUIStore.getState().closeFileTab(currentId);
-    });
+    void openResource(resourceRefForSession(owner, nextPath), "preview");
   };
   if (requestDirtyDraftFileAction(sessionId, currentPath, go)) go();
 }
 
-function InertTextOrTable({ fileName, content, fill = false }: { fileName: string; content: string; fill?: boolean }) {
+function InertTextOrTable({
+  fileName,
+  content,
+  fill = false,
+  followTail = false,
+  onUserScrollAway,
+}: {
+  fileName: string;
+  content: string;
+  fill?: boolean;
+  followTail?: boolean;
+  onUserScrollAway?: () => void;
+}) {
   const table = parseTabularPreview(fileName, content);
   if (table) return <TabularTable table={table} />;
-  return <TextPreview content={content} fill={fill} />;
+  return <TextPreview content={content} fill={fill} followTail={followTail} onUserScrollAway={onUserScrollAway} />;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement
     && Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
+}
+
+function collectMatchOffsets(content: string, query: string): number[] {
+  if (!query) return [];
+  const haystack = content.toLocaleLowerCase();
+  const needle = query.toLocaleLowerCase();
+  const offsets: number[] = [];
+  let from = 0;
+  while (from <= haystack.length - needle.length) {
+    const index = haystack.indexOf(needle, from);
+    if (index < 0) break;
+    offsets.push(index);
+    from = index + Math.max(needle.length, 1);
+  }
+  return offsets;
+}
+
+function InertFindBar({
+  query,
+  content,
+  index,
+  onQueryChange,
+  onIndexChange,
+  onClose,
+}: {
+  query: string;
+  content: string;
+  index: number;
+  onQueryChange: (value: string) => void;
+  onIndexChange: (index: number) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const matches = collectMatchOffsets(content, query);
+  const total = matches.length;
+  const current = total === 0 ? 0 : Math.min(Math.max(index, 0), total - 1);
+  const go = (direction: 1 | -1) => {
+    if (total === 0) return;
+    onIndexChange((current + direction + total) % total);
+  };
+  return (
+    <div className="file-editor-find" style={{ position: "relative", top: 0, right: 0, left: 0, maxWidth: "none", borderRadius: 0, borderLeft: "none", borderRight: "none" }}>
+      <input
+        className="ui-native-control"
+        autoFocus
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") { event.preventDefault(); go(event.shiftKey ? -1 : 1); }
+          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
+        }}
+        placeholder={t("preview.editor.find_placeholder")}
+        aria-label={t("preview.editor.find_placeholder")}
+      />
+      <span aria-live="polite" aria-atomic="true">{total === 0 ? "0/0" : `${current + 1}/${total}`}</span>
+      <button type="button" onClick={() => go(-1)} aria-label={t("preview.editor.previous_match")}>↑</button>
+      <button type="button" onClick={() => go(1)} aria-label={t("preview.editor.next_match")}>↓</button>
+      <button type="button" onClick={onClose} aria-label={t("common.close")}><CloseIcon size={10} /></button>
+    </div>
+  );
 }
 
 function SiblingNav({ sessionId, filePath, previous, next }: { sessionId?: string; filePath: string; previous: string | null; next: string | null }) {
@@ -685,6 +796,8 @@ function EditorSurface({
   active,
   resource,
   connectionReady,
+  findRequest = 0,
+  embedded = false,
 }: {
   sessionId: string | null;
   filePath: string;
@@ -701,6 +814,8 @@ function EditorSurface({
   active: boolean;
   resource: ResourceRef;
   connectionReady: boolean;
+  findRequest?: number;
+  embedded?: boolean;
 }) {
   const t = useT();
   const isRemote = remote || remotePtyId !== undefined;
@@ -742,6 +857,9 @@ function EditorSurface({
   );
   const [saveAttemptId, setSaveAttemptId] = useState<string | null>(restoredDraft?.saveAttemptId ?? null);
   const [findOpen, setFindOpen] = useState(false);
+  useEffect(() => {
+    if (findRequest > 0) setFindOpen(true);
+  }, [findRequest]);
   const [findQuery, setFindQuery] = useState("");
   const [findIndex, setFindIndex] = useState(-1);
   const [previewMatchCount, setPreviewMatchCount] = useState(0);
@@ -1125,11 +1243,13 @@ function EditorSurface({
       }
     }}>
       <div className="file-editor-header">
+        {!embedded && (
         <div className="file-editor-identity">
           <span className="file-editor-kicker">{isRemote ? t("preview.editor.ssh") : t("preview.editor.local")}</span>
           <span className="file-editor-name" title={filePath}>{fileName}</span>
           {guardedDraft && <span className="file-editor-dirty" aria-label={t("preview.editor.unsaved")} />}
         </div>
+        )}
         <div className="file-editor-actions">
           {isNotebook ? (
             <span className="file-editor-kicker">{t("preview.notebook.read_only")}</span>
@@ -1140,9 +1260,11 @@ function EditorSurface({
             </div>
           )}
           <SiblingNav sessionId={sessionId ?? undefined} filePath={filePath} previous={siblings.previous} next={siblings.next} />
+          {!embedded && (
           <button className="file-editor-icon-button" onClick={requestClose} title={t("common.close")} aria-label={t("common.close")}>
             <CloseIcon size={11} strokeWidth={2.5} />
           </button>
+          )}
         </div>
       </div>
 
@@ -1303,7 +1425,7 @@ function EditorSurface({
   );
 }
 
-export function FilePreview({ active = true, sessionId, filePath, fileName, resource, onClose, onDirtyChange, onNeedsAttention, fill = false, remotePtyId, remote = remotePtyId !== undefined }: FilePreviewProps) {
+export function FilePreview({ active = true, sessionId, filePath, fileName, resource, onClose, onDirtyChange, onNeedsAttention, fill = false, embedded = false, findRequest = 0, remotePtyId, remote = remotePtyId !== undefined }: FilePreviewProps) {
   const t = useT();
   const [result, setResult] = useState<ReadResult | null>(null);
   const [readError, setReadError] = useState<{ kind: FileOperationErrorKind; detail: string } | null>(null);
@@ -1313,6 +1435,10 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
   const [headResult, setHeadResult] = useState<FileHeadResultV1 | null>(null);
   const [headError, setHeadError] = useState<FileViewErrorV1 | null>(null);
   const [headLoading, setHeadLoading] = useState(false);
+  const [followTail, setFollowTail] = useState(false);
+  const [inertFindOpen, setInertFindOpen] = useState(false);
+  const [inertFindQuery, setInertFindQuery] = useState("");
+  const [inertFindIndex, setInertFindIndex] = useState(0);
   const activeHeadRequestRef = useRef<string | null>(null);
   const viewedWindowRef = useRef<FileViewWindow>("head");
   const readingRef = useRef(false);
@@ -1390,9 +1516,14 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
     bindingLogicalId, bindingPtyId, bindingGeneration]);
 
   useEffect(() => {
+    if (findRequest > 0) setInertFindOpen(true);
+  }, [findRequest]);
+
+  useEffect(() => {
     setHeadResult(null);
     setHeadError(null);
     setHeadLoading(false);
+    setFollowTail(false);
     const requestId = activeHeadRequestRef.current;
     activeHeadRequestRef.current = null;
     if (requestId) void cancelFileHeadViewV1(requestId).catch(() => {});
@@ -1414,6 +1545,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
       return;
     }
     const window = silent ? viewedWindowRef.current : headWindow;
+    if (!silent && window !== "tail") setFollowTail(false);
     const requestId = createFileViewRequestId();
     activeHeadRequestRef.current = requestId;
     if (!silent) {
@@ -1453,7 +1585,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
     const refreshKey = previewRefreshKey(resource, viewedWindowRef.current, headLineLimit);
     return previewRefreshScheduler.subscribe({
       key: refreshKey,
-      eligible: () => active && remoteBindingReady && Boolean(headResult),
+      eligible: () => active && remoteBindingReady && Boolean(headResult) && (followTail || viewedWindowRef.current === "head" || viewedWindowRef.current === "tail"),
       read: ({ force }): Promise<FileHeadResultV1 | null> => {
         const requestId = createFileViewRequestId();
         if (resource.transport === "ssh" && resource.binding) {
@@ -1471,7 +1603,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         if (active && remoteBindingReady && next) setHeadResult((current) => sameFileHeadResult(current, next) ? current : next);
       },
     });
-  }, [active, remoteBindingReady, filePath, headLineLimit, headResult, resource?.transport,
+  }, [active, remoteBindingReady, filePath, headLineLimit, headResult, followTail, resource?.transport,
     resource?.logicalSessionId, resource?.path, bindingLogicalId, bindingPtyId, bindingGeneration]);
 
   useEffect(() => {
@@ -1504,13 +1636,36 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
     useUIStore.getState().openSshConnect(reconnectPrefillFromSession(remoteSession));
   };
 
+  const disconnectedInline = Boolean(embedded && remote && readError?.kind === "disconnected");
   const readErrorBody = readError?.kind === "permission"
     ? t("preview.read_failed_permission")
     : readError?.kind === "disconnected"
-      ? t("preview.read_failed_disconnected")
+      ? (embedded ? t("reader.disconnected") : t("preview.read_failed_disconnected"))
       : readError?.kind === "unsupported"
         ? t("preview.read_failed_unsupported")
         : t("preview.read_failed_body");
+  const largeFileControls = {
+    lineLimit: headLineLimit,
+    window: headWindow,
+    loading: headLoading,
+    error: headError,
+    followTail,
+    onLineLimitChange: setHeadLineLimit,
+    onWindowChange: (next: FileViewWindow) => {
+      setHeadWindow(next);
+      if (next !== "tail") setFollowTail(false);
+    },
+    onView: () => startHeadView(),
+    onCancel: cancelHeadView,
+    onFollowTailChange: (next: boolean) => {
+      setFollowTail(next);
+      if (next) {
+        setHeadWindow("tail");
+        viewedWindowRef.current = "tail";
+        startHeadView();
+      }
+    },
+  } as const;
 
   const isMarkdown = /\.mdx?$/i.test(fileName);
   const isNotebook = /\.ipynb$/i.test(fileName);
@@ -1543,6 +1698,8 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         active={active}
         resource={previewResource}
         connectionReady={remoteConnectionReady}
+        findRequest={findRequest}
+        embedded={embedded}
       />
     );
   }
@@ -1561,6 +1718,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         flexDirection: fill ? "column" : undefined,
       }}
     >
+      {!embedded && (
       <div style={{ height: fill ? 40 : 34, borderBottom: "1px solid var(--c-border-1)", background: fill ? "var(--c-bg-1)" : "transparent", display: "flex", alignItems: "center", gap: 8, padding: fill ? "0 12px" : "0 10px", flexShrink: 0 }}>
         {fill && (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -1580,8 +1738,29 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
           <CloseIcon size={11} strokeWidth={2.5} />
         </button>
       </div>
+      )}
 
-      {readError ? (
+      {disconnectedInline ? (
+        <div role="status" style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <span style={{ flex: 1 }}>{t("reader.disconnected")}</span>
+          {remoteSession?.remote ? (
+            <button type="button" className="ui-button" onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {inertFindOpen && (headResult?.kind === "text" || result?.kind === "text") ? (
+        <InertFindBar
+          query={inertFindQuery}
+          content={headResult?.kind === "text" ? headResult.content : textContent}
+          index={inertFindIndex}
+          onQueryChange={(value) => { setInertFindQuery(value); setInertFindIndex(0); }}
+          onIndexChange={setInertFindIndex}
+          onClose={() => setInertFindOpen(false)}
+        />
+      ) : null}
+
+      {readError && !disconnectedInline ? (
         <div role="alert" style={{ padding: 12, display: "flex", minHeight: 0, flex: fill ? 1 : undefined, flexDirection: "column", alignItems: "flex-start", justifyContent: fill ? "center" : undefined, gap: 7 }}>
           <strong style={{ color: "var(--c-text-2)", fontSize: "var(--fs-secondary)" }}>{t("preview.read_failed")}</strong>
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
@@ -1602,12 +1781,12 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(headResult.size) })} />
       ) : headResult?.kind === "text" ? (
         <>
-          <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} />
+          <LargeFileHeadControls {...largeFileControls} />
           <div style={{ padding: "7px 14px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>
             {t("preview.head.result", { count: headResult.lineCount, limit: headResult.lineLimit })}
             {headResult.truncated ? ` · ${t("preview.head.bounded", { size: formatSize(headResult.byteLimit) })}` : ""}
           </div>
-          <InertTextOrTable fileName={fileName} content={headResult.content} fill={fill} />
+          <InertTextOrTable fileName={fileName} content={headResult.content} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} />
         </>
       ) : result.kind === "binary" ? (
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
@@ -1616,16 +1795,16 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
       ) : result.kind === "toolarge" ? (
         <>
           <PreviewMessage icon="⊘" text={t("preview.too_large", { size: formatSize(result.size) })} />
-          <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} />
+          <LargeFileHeadControls {...largeFileControls} />
         </>
       ) : result.kind === "image" ? (
         <ImagePreview result={result} fileName={fileName} fill={fill} />
       ) : isNotebook ? (
-        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} /> : null}<NotebookPreview content={textContent} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}<NotebookPreview content={textContent} /></>
       ) : isMarkdown ? (
-        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} /> : null}<MarkdownPreview content={textContent} fill={fill} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}<MarkdownPreview content={textContent} fill={fill} /></>
       ) : (
-        <>{canViewHead ? <LargeFileHeadControls lineLimit={headLineLimit} window={headWindow} loading={headLoading} error={headError} onLineLimitChange={setHeadLineLimit} onWindowChange={setHeadWindow} onView={() => startHeadView()} onCancel={cancelHeadView} /> : null}<InertTextOrTable fileName={fileName} content={textContent} fill={fill} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}<InertTextOrTable fileName={fileName} content={textContent} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} /></>
       )}
     </div>
   );

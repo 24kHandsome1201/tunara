@@ -122,8 +122,8 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   const inspectorLocked = useUIStore((s) => s.inspectorLocked);
   const previewOpened = useUIStore((s) => Boolean(s.inspectorPreviewOpenedSessionIds[session.id]));
   const markInspectorPreviewOpened = useUIStore((s) => s.markInspectorPreviewOpened);
-  const activeFileTabId = useUIStore((s) => s.activeFileTabId);
-  const fileTabs = useUIStore((s) => s.fileTabs);
+  const focusedPaneId = useUIStore((s) => s.focusedPaneId);
+  const readerOpen = useUIStore((s) => Boolean(s.readers[session.id]?.current));
   const isRemote = !!session.remote;
   const binding: SessionBindingV1 | null = isRemote && session.ptyId !== undefined && session.transportGeneration
     ? { logicalSessionId: session.id, physicalPtyId: session.ptyId, transportGeneration: session.transportGeneration }
@@ -162,7 +162,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   });
   const viewingFiles = isViewingInspectorFiles({
     currentTab: tab,
-    hasActiveFileTab: Boolean(activeFileTabId && fileTabs.some((fileTab) => fileTab.id === activeFileTabId && fileTab.sessionId === session.id)),
+    hasActiveFileTab: readerOpen && focusedPaneId === `reader:${session.id}`,
   });
   const autoSwitch = filesOnly
     ? { recommended, apply: false, defer: false }

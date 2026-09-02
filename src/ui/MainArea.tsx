@@ -1,34 +1,29 @@
-import { lazy, memo, Suspense, useRef } from "react";
+import { memo, useRef, type CSSProperties } from "react";
 import { TerminalView } from "./TerminalView";
 import type { Session } from "./types";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SplitHandle } from "./SplitHandle";
-import { SshSuggestionBar } from "./SshSuggestionBar";
-import { PreviewSuggestionBar } from "./PreviewSuggestionBar";
-import { ReviewChangesBar } from "./ReviewChangesBar";
 import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { getNumberRecordValue } from "@/state/record-keys";
 import { useSessionGitContext } from "./useSessionGitContext";
 import { useWorkspaceHydration } from "./useWorkspaceHydration";
-import { splitLayoutGeometry, splitLayoutSessionIds } from "@/modules/session/split-layout";
-import { PanelLoadingState } from "./shared";
+import {
+  isReaderPaneId,
+  readerPaneId,
+  sessionIdFromPaneId,
+  splitLayoutGeometry,
+  splitLayoutLeafIds,
+  splitLayoutSessionIds,
+} from "@/modules/session/split-layout";
 import { recordTerminalFocusIntent } from "@/modules/terminal/lib/binding-aware-async-action";
-import { resourceRefForSession } from "@/modules/resources/resource-ref";
+import { ReaderPane } from "./ReaderPane";
 
-const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
-
-// Stable, module-level callback: clearing pendingInput only needs the session
-// id, so it never needs to close over render scope. Passing a fresh arrow per
-// render would defeat TerminalView's memo.
 function clearPendingInput(id: string) {
   useSessionsStore.getState().updateSession(id, { pendingInput: undefined, pendingInputSubmit: undefined });
 }
 
-// One mounted terminal pane. Memoized and given only primitive props so it
-// re-renders solely when its own session's pendingInput/active state changes —
-// not on every agent heartbeat that re-renders MainArea.
 const TerminalPane = memo(function TerminalPane({
   session,
   isActive,
@@ -36,12 +31,8 @@ const TerminalPane = memo(function TerminalPane({
   session: Session;
   isActive: boolean;
 }) {
-  const pure = useUIStore((s) => s.presentationMode === "pure");
   return (
     <div data-terminal-session-id={session.id} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {!pure && <SshSuggestionBar session={session} />}
-      {!pure && <PreviewSuggestionBar session={session} />}
-      {!pure && <ReviewChangesBar session={session} />}
       <TerminalView
         key={`${session.id}:${session.terminalMountNonce ?? session.reconnectNonce ?? 0}`}
         sessionId={session.id}
@@ -100,6 +91,36 @@ function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) 
   );
 }
 
+function paneRectStyle(
+  pane: { x: number; y: number; width: number; height: number; parentDirection: "horizontal" | "vertical" },
+  active: boolean,
+  pure: boolean,
+): CSSProperties {
+  const leftInset = pane.x > 0 ? 2.5 : 0;
+  const topInset = pane.y > 0 ? 2.5 : 0;
+  const rightInset = pane.x + pane.width < 1 ? 2.5 : 0;
+  const bottomInset = pane.y + pane.height < 1 ? 2.5 : 0;
+  const activeMarker = pane.parentDirection === "horizontal"
+    ? "inset 2px 0 0 var(--c-accent)"
+    : "inset 0 2px 0 var(--c-accent)";
+  return {
+    position: "absolute",
+    left: `calc(${pane.x * 100}% + ${leftInset}px)`,
+    top: `calc(${pane.y * 100}% + ${topInset}px)`,
+    width: `calc(${pane.width * 100}% - ${leftInset + rightInset}px)`,
+    height: `calc(${pane.height * 100}% - ${topInset + bottomInset}px)`,
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    minHeight: 0,
+    overflow: "hidden",
+    borderRadius: pure ? 0 : "var(--r-btn)",
+    zIndex: 1,
+    boxShadow: !pure && active ? activeMarker : "none",
+    transition: pure ? "none" : "box-shadow var(--duration-normal) var(--ease-smooth)",
+  };
+}
+
 export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const t = useT();
   const splitHorizontalShortcut = useUIStore((s) => s.keybindings.splitHorizontal);
@@ -109,16 +130,11 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   const nonce = useSessionsStore((s) => active ? getNumberRecordValue(s.gitNonce, active.id) : 0);
   const launchedSessionIds = useSessionsStore((s) => s.launchedSessionIds);
   const split = useUIStore((s) => s.split);
+  const focusedPaneId = useUIStore((s) => s.focusedPaneId);
+  const readers = useUIStore((s) => s.readers);
   const pure = useUIStore((s) => s.presentationMode === "pure");
-  const fileTabs = useUIStore((s) => s.fileTabs);
-  const activeFileTabId = useUIStore((s) => s.activeFileTabId);
   const splitContainerRef = useRef<HTMLDivElement>(null);
-  const fileSurfaceActive = !pure && activeFileTabId !== null;
 
-  // Captured as primitives so the git effect depends on exactly the fields it
-  // reads. Depending on the whole `active` object would re-run the effect on
-  // every session mutation (updatedAt bumps on each patch) — and since the
-  // effect itself calls updateSession, that would loop.
   const activeId = active?.id;
   const activeDir = active?.dir;
   const activePtyId = active?.ptyId;
@@ -139,7 +155,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
   function compactPath(path: string): string {
     if (path.length <= 48) return path;
-    // Home 缩写跨平台：macOS /Users/x、Linux /home/x、Windows C:\Users\x
     const normalized = path
       .replace(/^\/(Users|home)\/[^/]+/, "~")
       .replace(/^[A-Za-z]:\\Users\\[^\\]+/, "~");
@@ -150,44 +165,23 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
   const isSplit = split.root !== null;
   const splitGeometry = splitLayoutGeometry(split);
+  const leafIds = splitLayoutLeafIds(split);
+  const effectiveFocusedPaneId = focusedPaneId && leafIds.includes(focusedPaneId)
+    ? focusedPaneId
+    : (isSplit ? (leafIds.includes(activeSessionId) ? activeSessionId : leafIds[leafIds.length - 1] ?? activeSessionId) : activeSessionId);
 
   const mountedIdsForRender = new Set(Object.keys(launchedSessionIds));
   const mountedSessions = sessions.filter((s) => mountedIdsForRender.has(s.id));
+  const readerSessionIds = new Set([
+    ...Object.keys(readers),
+    ...leafIds.filter(isReaderPaneId).map(sessionIdFromPaneId),
+  ]);
 
-  // Every mounted session keeps a stable, keyed wrapper across single<->split
-  // transitions so React never unmounts its TerminalView (which would close the
-  // PTY and kill any running agent). The BSP tree only provides normalized
-  // rectangles; every terminal remains a stable root-level sibling.
-  function paneWrapperStyle(s: Session): React.CSSProperties {
-    if (fileSurfaceActive) return { display: "none" };
+  function terminalWrapperStyle(s: Session): CSSProperties {
     const pane = splitGeometry.panes[s.id];
-
     if (isSplit && pane) {
-      const leftInset = pane.x > 0 ? 2.5 : 0;
-      const topInset = pane.y > 0 ? 2.5 : 0;
-      const rightInset = pane.x + pane.width < 1 ? 2.5 : 0;
-      const bottomInset = pane.y + pane.height < 1 ? 2.5 : 0;
-      const activeMarker = pane.parentDirection === "horizontal"
-        ? "inset 2px 0 0 var(--c-accent)"
-        : "inset 0 2px 0 var(--c-accent)";
-      return {
-        position: "absolute",
-        left: `calc(${pane.x * 100}% + ${leftInset}px)`,
-        top: `calc(${pane.y * 100}% + ${topInset}px)`,
-        width: `calc(${pane.width * 100}% - ${leftInset + rightInset}px)`,
-        height: `calc(${pane.height * 100}% - ${topInset + bottomInset}px)`,
-        display: "flex",
-        flexDirection: "column",
-        minWidth: 0,
-        minHeight: 0,
-        overflow: "hidden",
-        borderRadius: pure ? 0 : "var(--r-btn)",
-        zIndex: 1,
-        boxShadow: !pure && s.id === activeSessionId ? activeMarker : "none",
-        transition: pure ? "none" : "box-shadow var(--duration-normal) var(--ease-smooth)",
-      };
+      return paneRectStyle(pane, effectiveFocusedPaneId === s.id, pure);
     }
-
     if (!isSplit && s.id === activeSessionId) {
       return {
         position: "absolute",
@@ -199,7 +193,14 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         zIndex: 1,
       };
     }
+    return { display: "none" };
+  }
 
+  function readerWrapperStyle(sessionId: string): CSSProperties {
+    const pane = splitGeometry.panes[readerPaneId(sessionId)];
+    if (isSplit && pane) {
+      return paneRectStyle(pane, effectiveFocusedPaneId === readerPaneId(sessionId), pure);
+    }
     return { display: "none" };
   }
 
@@ -214,50 +215,35 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             key={s.id}
             onPointerDownCapture={() => {
               recordTerminalFocusIntent(s.id);
+              useUIStore.getState().setFocusedPaneId(s.id);
               if (s.id !== useSessionsStore.getState().activeSessionId) useSessionsStore.getState().setActive(s.id);
             }}
             onClick={() => {
+              useUIStore.getState().setFocusedPaneId(s.id);
               if (s.id !== activeSessionId) useSessionsStore.getState().setActive(s.id);
             }}
-            style={paneWrapperStyle(s)}
+            style={terminalWrapperStyle(s)}
           >
-            <TerminalPane session={s} isActive={!fileSurfaceActive && s.id === activeSessionId} />
+            <TerminalPane session={s} isActive={effectiveFocusedPaneId === s.id} />
           </div>
         ))}
-        {fileTabs.map((tab) => {
-          const owner = sessions.find((session) => session.id === tab.sessionId);
-          if (!owner) return null;
-          const active = !pure && tab.id === activeFileTabId;
-          return (
-            <div
-              key={`file:${tab.id}`}
-              data-workspace-file-tab={tab.id}
-              aria-hidden={active ? undefined : true}
-              inert={active ? undefined : true}
-              style={{ position: "absolute", inset: 0, display: active ? "flex" : "none", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--c-bg-white)", zIndex: 2 }}
-            >
-              <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
-                <FilePreview
-                  active={active}
-                  sessionId={tab.sessionId}
-                  filePath={tab.filePath}
-                  fileName={tab.fileName}
-                  resource={resourceRefForSession(owner, tab.filePath, tab.line, tab.column)}
-                  remotePtyId={owner.remote ? owner.ptyId : undefined}
-                  remote={Boolean(owner.remote)}
-                  onClose={() => useUIStore.getState().closeFileTab(tab.id)}
-                  onDirtyChange={(dirty) => useUIStore.getState().setFileTabDirty(tab.id, dirty)}
-                  onNeedsAttention={() => {
-                    useSessionsStore.getState().setActive(tab.sessionId);
-                    useUIStore.getState().setActiveFileTab(tab.id);
-                  }}
-                  fill
-                />
-              </Suspense>
-            </div>
-          );
-        })}
-        {!fileSurfaceActive && splitGeometry.handles.map((handle) => (
+        {mountedSessions.filter((s) => readerSessionIds.has(s.id)).map((s) => (
+          <div
+            key={readerPaneId(s.id)}
+            onPointerDownCapture={() => {
+              useUIStore.getState().setFocusedPaneId(readerPaneId(s.id));
+              if (s.id !== useSessionsStore.getState().activeSessionId) useSessionsStore.getState().setActive(s.id);
+            }}
+            onClick={() => {
+              useUIStore.getState().setFocusedPaneId(readerPaneId(s.id));
+              if (s.id !== activeSessionId) useSessionsStore.getState().setActive(s.id);
+            }}
+            style={readerWrapperStyle(s.id)}
+          >
+            <ReaderPane session={s} active={!pure && effectiveFocusedPaneId === readerPaneId(s.id)} />
+          </div>
+        ))}
+        {splitGeometry.handles.map((handle) => (
           <SplitHandle
             key={handle.path}
             direction={handle.direction}
@@ -269,7 +255,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         ))}
       </div>
 
-      {!pure && !fileSurfaceActive && <div
+      {!pure && <div
         style={{
           height: "var(--h-statusbar)",
           background: "var(--c-bg-1)",
@@ -281,20 +267,16 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           flexShrink: 0,
         }}
       >
-        {/* 路径区 */}
         <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
           {compactPath(active?.dir ?? "")}
         </span>
 
-        {/* 路径与分支分隔线 */}
         <span aria-hidden="true" style={{ width: 1, height: 12, background: "var(--c-border-2)", flexShrink: 0 }} />
 
-        {/* Git 分支 */}
         <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
           ⎇ {active?.branch || "-"}
         </span>
 
-        {/* Remote ahead/behind */}
         {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
           <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", fontWeight: 500, fontFamily: "var(--font-mono)", flexShrink: 0, display: "inline-flex", gap: 3 }}>
             {remote.ahead > 0 && (
@@ -308,7 +290,6 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
 
         <span style={{ flex: 1 }} />
 
-        {/* 分栏控制 */}
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           {isSplit ? (
             <button

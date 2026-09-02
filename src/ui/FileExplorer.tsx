@@ -244,7 +244,7 @@ export function FileExplorer({
     [downloadMaxFiles, downloadMaxFileBytes, downloadMaxTotalBytes],
   );
   const activeFilePath = useUIStore((s) =>
-    s.fileTabs.find((tab) => tab.id === s.activeFileTabId && tab.sessionId === sessionId)?.filePath,
+    s.readers[sessionId]?.current?.filePath,
   );
   const resultsListRef = useRef<HTMLDivElement>(null);
   const [listScroll, setListScroll] = useState({ top: 0, height: 0 });

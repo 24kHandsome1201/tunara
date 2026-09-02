@@ -5,7 +5,7 @@ import type React from "react";
  *
  * These consolidate the repeated "22px accent-bordered action button" and
  * "30px inline bar container" patterns that were copy-pasted across
- * SshSuggestionBar, TerminalExitBanner, and PtyErrorBanner.
+ * TerminalExitBanner and PtyErrorBanner.
  * Extracting them keeps spacing, radius, and color decisions in one place so
  * future token changes propagate automatically.
  */

@@ -126,6 +126,21 @@ export function localDirFromGroup(group: Pick<SidebarGroup, "kind" | "sessions">
   return group.sessions[0]?.dir ?? null;
 }
 
+/** Compact titlebar caption: `alice@prod` or `alice@prod · /etc/nginx`. */
+export function titlebarDeviceCaption(group: SidebarGroup): { label: string; detail: string } {
+  if (group.kind === "ssh") {
+    const remote = sshRemoteFromGroup(group);
+    const endpoint = remote ? sshEndpointLabel(remote) : group.key;
+    const cwd = group.sessions.map((session) => knownRemoteCwd(session.dir)).find(Boolean) ?? null;
+    return { label: cwd ? `${endpoint} · ${cwd}` : endpoint, detail: cwd ? `${endpoint} · ${cwd}` : endpoint };
+  }
+  const dir = localDirFromGroup(group) ?? group.key.replace(/^local:/, "");
+  const repo = group.sessions.find((session) => session.workspace)?.workspace?.repository.name;
+  const parts = dir.split("/").filter(Boolean);
+  const basename = parts[parts.length - 1] || dir;
+  return { label: repo || basename, detail: dir };
+}
+
 export function sshRemoteFromGroup(group: Pick<SidebarGroup, "kind" | "sessions">): RemoteInfo | null {
   if (group.kind !== "ssh") return null;
   return group.sessions.find((session) => session.remote)?.remote ?? null;

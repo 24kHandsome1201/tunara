@@ -7,6 +7,8 @@ import { t } from "@/modules/i18n";
 import { isMac } from "@/ui/lib/platform";
 import {
   canSplitLayout,
+  isReaderPaneId,
+  sessionIdFromPaneId,
   splitFocusTarget,
   splitHorizontalPaneCount,
   splitLayoutSessionIds,
@@ -15,12 +17,7 @@ import {
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 import { announceTerminalContext } from "@/modules/terminal/lib/terminal-context-announcement";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
-import {
-  handleFileSurfaceClose,
-  handleFileSurfaceCycle,
-  handleFileSurfaceSelectIndex,
-  handleFileSurfaceSelectLast,
-} from "@/ui/lib/workspace-tab-actions";
+import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -51,7 +48,14 @@ export function useKeybindings() {
           st.newTerminal();
           break;
         case "closeSession": {
-          if (handleFileSurfaceClose()) break;
+          const focused = ui.focusedPaneId;
+          if (focused && isReaderPaneId(focused)) {
+            const sessionId = sessionIdFromPaneId(focused);
+            const current = ui.readers[sessionId]?.current;
+            const run = () => useUIStore.getState().closeReaderPane(sessionId);
+            if (!current || requestDirtyDraftFileAction(sessionId, current.filePath, run)) run();
+            break;
+          }
           const splitSessionIds = splitLayoutSessionIds(ui.split);
           const targetId = st.activeSessionId ?? splitSessionIds[splitSessionIds.length - 1] ?? null;
           if (targetId) st.closeSession(targetId);
@@ -90,8 +94,16 @@ export function useKeybindings() {
         case "focusSplitUp":
         case "focusSplitDown": {
           const direction = action.replace("focusSplit", "").toLowerCase() as SplitFocusDirection;
-          const target = splitFocusTarget(ui.split, st.activeSessionId, direction);
-          if (target) { const previous = st.activeSessionId; st.setActive(target); ui.showTerminal(); announcePureNavigation(previous); }
+          const origin = ui.focusedPaneId ?? st.activeSessionId;
+          const target = splitFocusTarget(ui.split, origin, direction);
+          if (target) {
+            const previous = st.activeSessionId;
+            const sessionId = sessionIdFromPaneId(target);
+            st.setActive(sessionId);
+            ui.setFocusedPaneId(target);
+            ui.showTerminal();
+            announcePureNavigation(previous);
+          }
           break;
         }
         case "commandPalette":
@@ -110,11 +122,9 @@ export function useKeybindings() {
           ui.setFontSize(DEFAULT_SETTINGS.fontSize);
           break;
         case "selectLastTab":
-          if (handleFileSurfaceSelectLast()) break;
           if (st.sessions.length > 0) { const previous = st.activeSessionId; st.setActive(st.sessions[st.sessions.length - 1].id); ui.showTerminal(); announcePureNavigation(previous); }
           break;
         case "cycleNextSession": {
-          if (handleFileSurfaceCycle("next")) break;
           const previous = st.activeSessionId;
           st.cycleSession("next");
           ui.showTerminal();
@@ -122,7 +132,6 @@ export function useKeybindings() {
           break;
         }
         case "cyclePrevSession": {
-          if (handleFileSurfaceCycle("prev")) break;
           const previous = st.activeSessionId;
           st.cycleSession("prev");
           ui.showTerminal();
@@ -145,7 +154,6 @@ export function useKeybindings() {
           const tabMatch = action.match(/^selectTab([1-8])$/);
           if (!tabMatch) break;
           const idx = Number(tabMatch[1]) - 1;
-          if (handleFileSurfaceSelectIndex(idx)) break;
           if (idx < st.sessions.length) { const previous = st.activeSessionId; st.setActive(st.sessions[idx].id); ui.showTerminal(); announcePureNavigation(previous); }
         }
       }
@@ -177,6 +185,20 @@ export function useKeybindings() {
           ui.setSidebarVisible(false);
           return;
         }
+      }
+      const ui = useUIStore.getState();
+      if (
+        ui.focusedPaneId
+        && isReaderPaneId(ui.focusedPaneId)
+        && hasPlatformModKey(e, isMac)
+        && !e.altKey
+        && !e.shiftKey
+        && e.key.toLocaleLowerCase() === "f"
+      ) {
+        e.preventDefault();
+        advanceTerminalFocusEpoch();
+        window.dispatchEvent(new CustomEvent("tunara:reader-find", { detail: { sessionId: sessionIdFromPaneId(ui.focusedPaneId) } }));
+        return;
       }
       if (isEditableTarget(e.target) && !hasPlatformModKey(e, isMac)) return;
       // These exact chords are fixed terminal-menu recovery paths. Do not let
