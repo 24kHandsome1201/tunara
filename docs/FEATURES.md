@@ -77,7 +77,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 |------|------|
 | 会话列表与分组 | [`Sidebar.tsx`](../src/ui/Sidebar.tsx) · [`sidebar-groups.ts`](../src/modules/session/sidebar-groups.ts) · [`SessionCard.tsx`](../src/ui/SessionCard.tsx) |
 | 会话状态机 | [`src/state/sessions.ts`](../src/state/sessions.ts) · [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) |
-| 「需要你 · N」 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) |
+| 「需要你 · N」 | [`AttentionRow.tsx`](../src/ui/AttentionRow.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) |
 | 跳到需要你的会话 | ⌘↩，只聚焦，不自动跑命令。[`session-attention.ts`](../src/modules/session/session-attention.ts) · [`useKeybindings.ts`](../src/app/useKeybindings.ts) |
 | 选择目录新建 | [`new-terminal-directory.ts`](../src/modules/session/new-terminal-directory.ts) |
 | 空状态（选目录主 CTA、最近目录；无历史时扫描附近 git 仓库一键开终端；关光会话不再偷偷建 `~`） | [`WorkspaceEmptyState.tsx`](../src/ui/WorkspaceEmptyState.tsx) · [`recent_repos.rs`](../src-tauri/src/modules/fs/recent_repos.rs) |
@@ -142,9 +142,9 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 能力 | 边界 | 代码 |
 |------|------|------|
 | 目录浏览 | 本地锁在工作区；SSH 从远端 `/` 浏览，主目录/cwd 是快捷位置 | [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx) |
-| 文本预览/编辑 | UTF-8、≤256 KiB、fingerprint 原子写 | [M2_MARKDOWN_SAFE_EDITING.md](./M2_MARKDOWN_SAFE_EDITING.md) |
+| 文本预览/编辑 | UTF-8、≤256 KiB、fingerprint 原子写 | [M2_MARKDOWN_SAFE_EDITING.md](./archive/M2_MARKDOWN_SAFE_EDITING.md) |
 | Markdown / MDX | 惰性阅读；MDX 当静态源码，不执行 | [`FilePreview.tsx`](../src/ui/FilePreview.tsx) |
-| Notebook / Excel | 只读 `.ipynb`（不执行、不渲染 HTML/脚本/富输出）与只读表格预览 | [`notebook.ts`](../src/modules/editor/notebook.ts) · [`tabular-preview.ts`](../src/modules/editor/tabular-preview.ts) |
+| Notebook / 表格 | 只读 `.ipynb`（不执行、不渲染 HTML/脚本/富输出）与只读 CSV/TSV 表格预览 | [`notebook.ts`](../src/modules/editor/notebook.ts) · [`tabular-preview.ts`](../src/modules/editor/tabular-preview.ts) |
 | 图片预览 | 安全解码常见图片；超大像素拒绝 | `ReadResult.kind = "image"` · [`fs/file.rs`](../src-tauri/src/modules/fs/file.rs) |
 | 大文本 | 显式查看；最多 2000 行 / 256 KiB；阅读面板可跟随末尾 | [LIMITED_LARGE_FILE_VIEWING.md](./LIMITED_LARGE_FILE_VIEWING.md) |
 | 外部编辑器 | 本地路径跳 VS Code / Cursor / Zed / Sublime | [`open.ts`](../src/modules/editor/open.ts) |
@@ -183,7 +183,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 ## 8. Preview
 
-检查器 Preview 页控制独立的 loopback WebView：来源绑定到 repository / worktree / session / terminal generation；支持导航、安全重启准备和显式 SSH tunnel。不自动扫端口，不自动启动服务，独立 Preview 窗口没有 app command 权限。合同见 [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./PHASE3_PREVIEW_SOURCE_CONTRACT.md)。
+检查器 Preview 页控制独立的 loopback WebView：来源绑定到 repository / worktree / session / terminal generation；支持导航、安全重启准备和显式 SSH tunnel。不自动扫端口，不自动启动服务，独立 Preview 窗口没有 app command 权限。合同见 [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./archive/PHASE3_PREVIEW_SOURCE_CONTRACT.md)。
 
 终端上方没有「打开 Preview」提示条。Preview 从检查器或 ⌘K 打开。用户打开过 Preview 后，自动跟随才会选中该视图。
 

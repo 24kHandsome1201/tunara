@@ -198,6 +198,9 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   // suffix (· 运行中 / · Working), and this card is memoized.
   const t = useT();
   const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
+  // Unsaved reader draft is user intent (like pinned), not agent state — it
+  // sits beside the title, never in the single status-dot slot.
+  const readerDirty = useUIStore((s) => s.readers[session.id]?.dirty === true);
   const closeLabel = `${t("session.close.title")} ${formatShortcut(closeSessionShortcut)}`;
   const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
@@ -211,6 +214,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
     lifecycleLabel,
     connectionPhase ? t(`connection.phase.${connectionPhase}`) : "",
     session.unread ? t("sidebar.session.unread") : "",
+    readerDirty ? t("sidebar.session.unsaved") : "",
     session.remote ? `${t("sidebar.session.remote")}, ${sshEndpointLabel(session.remote)}` : t("sidebar.session.local"),
   ].filter(Boolean).join(", ");
   const busy = isSessionBusy(session);
@@ -459,6 +463,15 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 }}
               >
                 {primary}
+              </span>
+            )}
+            {readerDirty && (
+              <span
+                title={t("sidebar.session.unsaved")}
+                aria-label={t("sidebar.session.unsaved")}
+                style={{ color: "var(--c-text-6)", fontSize: "var(--fs-meta)", flexShrink: 0, opacity: 0.85, fontFamily: "var(--font-mono)" }}
+              >
+                ●
               </span>
             )}
             {connectionPhase && connectionTone && (

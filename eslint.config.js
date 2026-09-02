@@ -54,4 +54,15 @@ export default tseslint.config(
       "no-useless-assignment": "off",
     },
   },
+  {
+    files: ["scripts/**/*.{js,mjs}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { process: "readonly", console: "readonly", URL: "readonly" },
+    },
+    // Node scripts; terminal-output-fixture.mjs still carries a legacy
+    // `/* global process */` comment that would otherwise trip no-redeclare.
+    rules: { "no-redeclare": ["error", { builtinGlobals: false }] },
+  },
 );

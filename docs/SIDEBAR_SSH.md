@@ -47,7 +47,7 @@
 | 新建 | [`SidebarNewTerminalControl.tsx`](../src/ui/SidebarNewTerminalControl.tsx) | 主按钮仍是本地终端；溢出菜单第三项打开 `SshConnect` |
 | 已保存主机 | [`SidebarHosts.tsx`](../src/ui/SidebarHosts.tsx) | 有会话时默认折叠；该主机已有活会话则聚焦该组，否则打开连接对话框 |
 | 搜索 | `Sidebar.tsx` 内 `filtered` | 匹配标题、`dir`，以及 `remote.user` / `remote.host` / `user@host[:port]` |
-| 统一动态 | [`GlobalAgentBar.tsx`](../src/ui/GlobalAgentBar.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) | SSH `failed` / `disconnected` 进「需要处理」；`connecting` 不进动态条 |
+| 「需要你」一行 | [`AttentionRow.tsx`](../src/ui/AttentionRow.tsx) · [`session-attention.ts`](../src/modules/session/session-attention.ts) | 只计 agent 等待确认与运行中；SSH 连接状态走会话卡片，不进这一行 |
 | 分组 | [`sidebar-groups.ts`](../src/modules/session/sidebar-groups.ts) | 本地 `local:<dir>`，SSH `ssh:<user>@<host>:<port>`；OSC 7 只改卡片副标题 |
 | 组头 | [`SidebarDirGroupHeader.tsx`](../src/ui/SidebarDirGroupHeader.tsx) | SSH 组显示主机身份 +「SSH」；「+」走 `duplicateOnHost` |
 | 组菜单 | [`sidebar-dir-group-menu.ts`](../src/ui/sidebar-dir-group-menu.ts) | SSH 组无本地新建/编辑器；关闭全组走 `closeSessionsInGroup` |
@@ -268,8 +268,8 @@ Known hosts 编辑继续留在设置 → SSH，不进侧栏。
 - 连一台一次性 SSH 主机，开两个壳，分别 `cd` 到不同目录：侧栏仍一组，两张卡片副标题不同。
 - 同时开本地 `/tmp` 与远端 `/tmp`：两组，本地组「+」开本地壳，SSH 组「+」再开远程壳。
 - 断开连接：动态条出现重连；折叠该主机组后动态条仍在。
-- 窄窗口侧栏改抽屉：组头与主机折叠仍可用，见 [VISUAL_QA.md](./VISUAL_QA.md)。
-- 屏幕阅读器：组名含主机身份，卡片含远程/本地，见 [ACCESSIBILITY_MANUAL_QA.md](./ACCESSIBILITY_MANUAL_QA.md) 侧栏项。
+- 窄窗口侧栏改抽屉：组头与主机折叠仍可用，见 [VISUAL_QA.md](./archive/VISUAL_QA.md)。
+- 屏幕阅读器：组名含主机身份，卡片含远程/本地，见 [ACCESSIBILITY_MANUAL_QA.md](./archive/ACCESSIBILITY_MANUAL_QA.md) 侧栏项。
 
 不把真实 SSH 主机写进单测；用 session fixture 即可。性能门仍是列表 memo、分组与渲染拆开，见 ROADMAP。
 
