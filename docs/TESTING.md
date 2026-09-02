@@ -95,6 +95,24 @@ A few tests don't import any source — they `readFileSync` the source (or shell
 
 Use this style **only** when the thing under test is text/structure that has no callable surface: shell scripts, escape-sequence emission, release-metadata alignment, capability manifests, "this file must not come back." For anything with a real function boundary, import and call it instead — regex-over-source tests are brittle and should be the exception.
 
+## i18n dead-key audit
+
+`scripts/i18n-audit.mjs` compares the flat keys in `src/modules/i18n/locales/en.json` and `zh-CN.json` against references in `src/` (and any matching string literals in `src-tauri/src`). Tunara's `t()` looks up the key as a single dictionary entry — nested objects in JSON would still flatten to dotted keys, but the shipped files are already flat. Interpolation is `{{name}}` in the *value*, not in the key; there is no pluralization API.
+
+The scanner finds:
+
+- Direct calls: `t("a.b.c")`, `t('a.b.c')`, `t(\`a.b.c\`)`, including `t as staticT` aliases and `const t = useT()`.
+- Indirect key literals such as `titleKey: "diff.title"` (counted as used if they match a locale key).
+- Dynamic templates such as `` t(`pure.cue.${kind}`) `` or `` t(`workspace.${kind}_error.title`) ``. Matching locale keys are classified as **dynamic** (not dead) and listed for human review.
+
+```bash
+pnpm i18n:audit                 # human-readable report
+pnpm i18n:audit -- --json       # machine-readable buckets
+pnpm i18n:audit -- --fail-on-dead
+```
+
+`--fail-on-dead` exits non-zero when unused keys remain. `tests/i18n-audit.test.mjs` always fails on locale-set drift and on referenced-but-missing keys. Dead keys are printed but do **not** fail `pnpm test:node` unless `I18N_FAIL_ON_DEAD=1` is set — other workstreams are still deleting features, and the integrator will tighten this after a single cleanup pass.
+
 ## Rust side
 
 Rust tests are in-module: a `#[cfg(test)] mod tests { ... }` block at the bottom of the file under test, run by `cargo test --manifest-path src-tauri/Cargo.toml`.

@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:node": "node --experimental-strip-types --test tests/*.test.mjs",
+    "i18n:audit": "node scripts/i18n-audit.mjs",
     "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
     "test:ui": "pnpm typecheck:ui && vitest run --config vitest.config.ts",
     "test": "pnpm test:node && pnpm test:ui && cargo test --manifest-path src-tauri/Cargo.toml",
