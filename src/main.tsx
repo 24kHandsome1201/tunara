@@ -7,6 +7,7 @@ import "@fontsource/jetbrains-mono/700.css";
 import "./styles/tokens.css";
 import "@xterm/xterm/css/xterm.css";
 import "./styles/globals.css";
+import "./styles/files.css";
 
 import ReactDOM from "react-dom/client";
 

@@ -1,0 +1,179 @@
+/* File-tree and reader-preview color. Tokens live in tokens.css; this file
+   owns the surfaces that should feel a little more alive than app chrome. */
+
+.file-icon {
+  color: var(--c-text-5);
+  flex-shrink: 0;
+}
+
+.reader-file-icon {
+  flex-shrink: 0;
+}
+
+.reader-dirty-marker {
+  color: var(--c-accent);
+  font-size: 9px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.explorer-state-shell .panel-state[data-state="empty"] .panel-state-icon {
+  color: var(--c-file-doc);
+  background: color-mix(in oklch, var(--c-file-doc) 16%, var(--c-bg-2));
+}
+
+.preview-message {
+  padding: 28px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 140px;
+  text-align: center;
+}
+
+.preview-message-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-pill);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--c-file-doc);
+  background: color-mix(in oklch, var(--c-file-doc) 16%, var(--c-bg-2));
+}
+
+.preview-message-text {
+  font-size: var(--fs-secondary);
+  color: var(--c-text-5);
+  max-width: 36ch;
+}
+
+.tabular-preview {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  box-shadow: inset 3px 0 0 var(--c-file-data);
+}
+
+.tabular-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--fs-meta);
+  font-family: var(--font-ui);
+}
+
+.tabular-table caption {
+  text-align: left;
+  padding: 8px 12px 8px 14px;
+  color: var(--c-text-5);
+  caption-side: top;
+}
+
+.tabular-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 6px 12px;
+  color: var(--c-text-3);
+  font-weight: 650;
+  background: color-mix(in oklch, var(--c-file-data) 14%, var(--c-bg-1));
+  box-shadow: inset 0 -1px var(--c-border-1);
+}
+
+.tabular-table tbody td {
+  padding: 4px 12px;
+  color: var(--c-text-2);
+  white-space: pre-wrap;
+  border-bottom: 1px solid var(--c-border-3);
+}
+
+.tabular-table tbody tr:nth-child(even) td {
+  background: color-mix(in oklch, var(--c-file-data) 8%, var(--c-bg-white));
+}
+
+.tabular-cell--numeric {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.notebook-cell[data-cell-kind="markdown"] {
+  box-shadow: inset 3px 0 0 var(--c-file-doc);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: color-mix(in oklch, var(--c-file-doc) 8%, var(--c-bg-white));
+}
+
+.notebook-cell[data-cell-kind="markdown"] .notebook-cell-code {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+}
+
+.notebook-cell[data-cell-kind="code"] {
+  box-shadow: inset 3px 0 0 var(--c-file-code), inset 0 0 0 1px var(--c-border-1);
+  background: color-mix(in oklch, var(--c-file-code) 7%, var(--c-bg-1));
+}
+
+.notebook-cell[data-cell-kind="raw"] {
+  box-shadow: inset 3px 0 0 var(--c-file-config), inset 0 0 0 1px var(--c-border-1);
+  background: color-mix(in oklch, var(--c-file-config) 7%, var(--c-bg-1));
+}
+
+.notebook-cell-gutter {
+  color: var(--c-text-6);
+  font: var(--fs-meta) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.notebook-cell[data-cell-kind="markdown"] .notebook-markdown-cell {
+  padding: 12px 14px;
+}
+
+.notebook-cell[data-cell-kind="markdown"] .notebook-cell-gutter {
+  color: var(--c-file-doc);
+}
+
+.notebook-cell[data-cell-kind="code"] .notebook-cell-gutter {
+  color: var(--c-text-6);
+}
+
+.notebook-output.notebook-output-error,
+.notebook-output + .notebook-output.notebook-output-error {
+  box-shadow: inset 3px 0 0 var(--c-error), inset 0 1px var(--c-border-1);
+}
+
+.notebook-output-omitted {
+  margin: 8px 14px 10px 80px;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  color: var(--c-text-5);
+  background: color-mix(in oklch, var(--c-file-image) 8%, var(--c-bg-white));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--c-file-image) 28%, var(--c-border-1));
+}
+
+.image-preview-surface {
+  background-color: var(--c-bg-2);
+  background-image:
+    linear-gradient(45deg, var(--c-bg-3) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--c-bg-3) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--c-bg-3) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--c-bg-3) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-preview-toolbar button:last-of-type {
+  margin-left: auto;
+}
+
+.image-preview-caption {
+  margin: 0;
+  padding: 8px 12px 12px;
+  color: var(--c-text-5);
+  font: var(--fs-meta) var(--font-mono);
+  text-align: center;
+}

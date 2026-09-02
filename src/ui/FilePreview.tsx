@@ -30,6 +30,7 @@ import {
 import { parseMarkdownDocument, safeMarkdownLanguage, type MarkdownBlock as MarkdownReaderBlock } from "@/modules/editor/markdown-reader";
 import { highlightMarkdownSource } from "@/modules/editor/markdown-syntax";
 import { parseTabularPreview, tabularKindFromName, type TabularPreview } from "@/modules/editor/tabular-preview";
+import { isNumericTableColumn } from "@/ui/file-explorer/file-kind";
 import { parentDirectoryPath, siblingPreviewPaths } from "@/modules/editor/sibling-files";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import {
@@ -367,15 +368,20 @@ function NotebookCellView({ cell, index }: { cell: NotebookCell; index: number }
   if (cell.kind === "markdown") {
     return (
       <article className="notebook-cell" data-cell-kind="markdown" aria-label={t("preview.notebook.markdown_cell", { index: index + 1 })}>
-        <NotebookMarkdownCell source={cell.source} />
+        <div className="notebook-cell-code">
+          <div className="notebook-cell-gutter">{t("preview.notebook.md_gutter")}</div>
+          <NotebookMarkdownCell source={cell.source} />
+        </div>
       </article>
     );
   }
   if (cell.kind === "raw") {
     return (
       <article className="notebook-cell" data-cell-kind="raw" aria-label={t("preview.notebook.raw_cell", { index: index + 1 })}>
-        <div className="notebook-cell-gutter">{t("preview.notebook.raw_gutter")}</div>
-        <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
+        <div className="notebook-cell-code">
+          <div className="notebook-cell-gutter">{t("preview.notebook.raw_gutter")}</div>
+          <pre className="notebook-cell-source"><code>{cell.source}</code></pre>
+        </div>
       </article>
     );
   }
@@ -405,7 +411,7 @@ function NotebookCellView({ cell, index }: { cell: NotebookCell; index: number }
   );
 }
 
-function NotebookPreview({ content }: { content: string }) {
+export function NotebookPreview({ content }: { content: string }) {
   const t = useT();
   const parsed = useMemo(() => parseNotebook(content), [content]);
   if (!parsed.ok) {
@@ -433,9 +439,9 @@ function NotebookPreview({ content }: { content: string }) {
 
 function PreviewMessage({ icon, text }: { icon: string; text: string }) {
   return (
-    <div style={{ padding: 12, display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ fontSize: 14, color: "var(--c-text-6)", flexShrink: 0 }}>{icon}</span>
-      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)" }}>{text}</span>
+    <div className="preview-message">
+      <span className="preview-message-icon" aria-hidden="true">{icon}</span>
+      <span className="preview-message-text">{text}</span>
     </div>
   );
 }
@@ -490,7 +496,6 @@ function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, 
       <button type="button" onClick={() => changeZoom(zoom - 25)} disabled={zoom <= 25} aria-label={t("preview.image.zoom_out")}>−</button>
       <button type="button" onClick={() => setZoom(100)} aria-label={t("preview.image.reset_zoom")}>{zoom}%</button>
       <button type="button" onClick={() => changeZoom(zoom + 25)} disabled={zoom >= 400} aria-label={t("preview.image.zoom_in")}>+</button>
-      <span>{result.width} × {result.height} · {formatSize(result.size)}</span>
       <button type="button" onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("preview.image.exit_fullscreen") : t("preview.image.fullscreen")}>{fullscreen ? "↙" : "↗"}</button>
     </div>
   );
@@ -518,6 +523,7 @@ function ImagePreview({ result, fileName, fill }: { result: Extract<ReadResult, 
     >
       {controls}
       {surface}
+      <p className="image-preview-caption">{result.width} × {result.height} · {formatSize(result.size)}</p>
     </div>
   );
 }
@@ -606,19 +612,23 @@ function LargeFileHeadControls({
   );
 }
 
-function TabularTable({ table }: { table: TabularPreview }) {
+export function TabularTable({ table }: { table: TabularPreview }) {
   const t = useT();
+  const numericColumns = useMemo(
+    () => table.columns.map((_, index) => isNumericTableColumn(table.rows, index)),
+    [table.columns, table.rows],
+  );
   return (
-    <div style={{ overflow: "auto", minHeight: 0, flex: 1 }}>
-      <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)" }}>
-        <caption style={{ textAlign: "left", padding: "8px 12px", color: "var(--c-text-5)" }}>
+    <div className="tabular-preview">
+      <table className="tabular-table">
+        <caption>
           {t("preview.table.caption", { kind: table.kind.toUpperCase() })}
           {table.truncated ? ` · ${t("preview.table.truncated", { shown: table.rows.length, total: table.rowCount })}` : ""}
         </caption>
         <thead>
           <tr>
-            {table.columns.map((column) => (
-              <th key={column} style={{ textAlign: "left", padding: "4px 12px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-3)" }}>{column}</th>
+            {table.columns.map((column, index) => (
+              <th key={column} className={numericColumns[index] ? "tabular-cell--numeric" : undefined}>{column}</th>
             ))}
           </tr>
         </thead>
@@ -626,7 +636,7 @@ function TabularTable({ table }: { table: TabularPreview }) {
           {table.rows.map((row, index) => (
             <tr key={index}>
               {row.map((cell, cellIndex) => (
-                <td key={cellIndex} style={{ padding: "3px 12px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-2)", whiteSpace: "pre-wrap" }}>{cell}</td>
+                <td key={cellIndex} className={numericColumns[cellIndex] ? "tabular-cell--numeric" : undefined}>{cell}</td>
               ))}
             </tr>
           ))}

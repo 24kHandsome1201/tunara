@@ -735,6 +735,7 @@
   "preview.notebook.markdown_cell": "Markdown 单元格 {{index}}",
   "preview.notebook.code_cell": "代码单元格 {{index}}",
   "preview.notebook.raw_cell": "原始单元格 {{index}}",
+  "preview.notebook.md_gutter": "Md",
   "preview.notebook.raw_gutter": "Raw",
   "preview.notebook.in_gutter": "In [{{count}}]",
   "preview.notebook.rich_output_omitted": "为安全起见，已省略富媒体输出",

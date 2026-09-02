@@ -9,6 +9,7 @@ import { useTransferStore } from "@/modules/ssh/transfer-store";
 import type { DirEntry } from "@/modules/fs/fs-bridge";
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
+import "@/styles/files.css";
 
 const ROOT = "/opt/wfs/repo";
 const params = new URLSearchParams(window.location.search);

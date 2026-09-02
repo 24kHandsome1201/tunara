@@ -735,6 +735,7 @@
   "preview.notebook.markdown_cell": "Markdown cell {{index}}",
   "preview.notebook.code_cell": "Code cell {{index}}",
   "preview.notebook.raw_cell": "Raw cell {{index}}",
+  "preview.notebook.md_gutter": "Md",
   "preview.notebook.raw_gutter": "Raw",
   "preview.notebook.in_gutter": "In [{{count}}]",
   "preview.notebook.rich_output_omitted": "Rich output omitted for safety",

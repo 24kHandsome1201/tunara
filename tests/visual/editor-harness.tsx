@@ -6,6 +6,7 @@ import { setLanguage } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { editorDraftKey, retainEditorDraft } from "@/modules/editor/editor-draft-registry";
 import "@/styles/globals.css";
+import "@/styles/files.css";
 
 const params = new URLSearchParams(window.location.search);
 const language = params.get("lang") === "zh" ? "zh" : "en";

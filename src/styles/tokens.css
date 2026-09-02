@@ -36,6 +36,15 @@
   /* Interactive control boundary: >= 3:1 against every neutral surface. */
   --c-control-border: oklch(60% 0.009 55);
 
+  /* ── File-kind families (icon tint only; chroma ≤ 0.08) ── */
+  --c-file-code: oklch(48% 0.07 250);
+  --c-file-data: oklch(48% 0.07 195);
+  --c-file-doc: oklch(48% 0.07 75);
+  --c-file-image: oklch(48% 0.07 330);
+  --c-file-config: oklch(48% 0.07 280);
+  --c-file-script: oklch(48% 0.07 145);
+  --c-file-log: oklch(48% 0.07 55);
+
   /* ── 语义色 ── */
   --c-success: #187257;
   --c-success-bg: #dff2ea;
@@ -225,6 +234,14 @@
   --c-text-5: oklch(67% 0.008 55);
   --c-text-6: oklch(65.5% 0.008 55);
   --c-text-7: oklch(65% 0.008 55);
+
+  --c-file-code: oklch(72% 0.07 250);
+  --c-file-data: oklch(72% 0.07 195);
+  --c-file-doc: oklch(72% 0.07 75);
+  --c-file-image: oklch(72% 0.07 330);
+  --c-file-config: oklch(72% 0.07 280);
+  --c-file-script: oklch(72% 0.07 145);
+  --c-file-log: oklch(72% 0.07 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);
   --c-bg-white-glass: var(--c-bg-white);

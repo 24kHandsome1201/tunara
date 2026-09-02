@@ -8,6 +8,8 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { PanelLoadingState } from "./shared";
+import { FileIcon } from "./file-explorer/icons";
+import { fileKindTint } from "./file-explorer/file-kind";
 import type { Session } from "./types";
 
 const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
@@ -193,6 +195,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
             borderRadius: "var(--r-btn)",
           }}
         >
+          <FileIcon className="reader-file-icon" tint={fileKindTint(current.fileName)} />
           <span style={{
             fontSize: "var(--fs-secondary)",
             fontWeight: 600,
@@ -204,8 +207,8 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
             minWidth: 0,
           }}>
             {current.fileName}
-            {dirty ? " •" : ""}
           </span>
+          {dirty ? <span className="reader-dirty-marker" aria-hidden="true">●</span> : null}
           <span aria-hidden="true" style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>▾</span>
         </button>
         <button

@@ -49,6 +49,7 @@ import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
 import { Modal, useModalBehavior } from "./overlays/Modal";
 import { FileIcon, FolderIcon, folderEmptyIcon, TreeChevron } from "./file-explorer/icons";
+import { fileKindTint } from "./file-explorer/file-kind";
 import {
   compactRelativePath,
   formatModifiedTime,
@@ -1089,7 +1090,7 @@ export function FileExplorer({
               <TreeChevron expanded={expanded} />
             </button>
           ) : (
-            <span aria-hidden="true" style={{ display: "flex", pointerEvents: "none" }}><FileIcon /></span>
+            <span aria-hidden="true" style={{ display: "flex", pointerEvents: "none" }}><FileIcon tint={fileKindTint(node.entry.name)} /></span>
           )}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)", pointerEvents: "none" }}>{node.entry.name}</span>
         </span>
@@ -1331,7 +1332,7 @@ export function FileExplorer({
                 {grepHits.map((group) => (
                   <div key={group.path} style={{ marginBottom: 6 }}>
                     <div style={{ padding: "3px var(--sp-2)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <FileIcon />
+                      <FileIcon tint={fileKindTint(group.rel)} />
                       <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={group.rel}>{compactRelativePath(group.rel)}</span>
                       <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center", flexShrink: 0 }}>{group.lines.length}</span>
                     </div>
@@ -1386,7 +1387,7 @@ export function FileExplorer({
                         cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2,
                       }}
                     >
-                      {hit.isDir ? <FolderIcon /> : <FileIcon />}
+                      {hit.isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(hit.name)} />}
                       <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
                       {hit.isDir && <TreeChevron />}
                     </button>

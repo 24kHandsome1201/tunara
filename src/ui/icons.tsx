@@ -142,8 +142,15 @@ export function FolderIcon({ size = 16, color = "var(--c-text-4)" }: { size?: nu
   return <Icon icon={FolderSimple} size={size} color={color} />;
 }
 
-export function FileIcon({ size = 16, color = "var(--c-text-5)" }: { size?: number; color?: string }) {
-  return <Icon icon={File} size={size} color={color} />;
+export function FileIcon({ size = 16, color, tint, className }: { size?: number; color?: string; tint?: string; className?: string }) {
+  return (
+    <Icon
+      icon={File}
+      size={size}
+      color={tint ?? color ?? "var(--c-text-5)"}
+      className={["file-icon", className].filter(Boolean).join(" ")}
+    />
+  );
 }
 
 export function FileNameIcon({ size = 13 }: { size?: number }) {
