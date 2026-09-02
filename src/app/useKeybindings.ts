@@ -111,7 +111,6 @@ export function useKeybindings() {
         case "focusLatestAttention": {
           const target = nextAttentionSessionId(st.sessions, st.activeSessionId);
           if (!target) break;
-          const previous = st.activeSessionId;
           st.setActive(target);
           ui.showTerminal();
           break;

@@ -65,9 +65,6 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      - name: Check frontend bundle budget
-        run: node --experimental-strip-types --test tests/bundle-budget.test.mjs
-
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 

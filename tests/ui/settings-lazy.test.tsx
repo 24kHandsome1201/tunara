@@ -43,7 +43,6 @@ beforeEach(() => {
   useUIStore.setState({
     configLoaded: false,
     overlay: null,
-    presentationMode: "workspace",
     keybindings: defaultKeybindingsForPlatform("linux"),
   });
 });

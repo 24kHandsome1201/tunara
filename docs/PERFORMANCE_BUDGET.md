@@ -14,7 +14,7 @@ That is `pnpm build && node --experimental-strip-types --test tests/bundle-budge
 
 `pnpm test` / `pnpm test:node` do **not** rebuild. If `dist/` is missing, the budget file skips and tells you to build first; if `dist/` is present (CI already runs `pnpm build` before Node tests), the same assertions run against that tree.
 
-CI (`.github/workflows/ci.yml`) runs the budget file **without** a second `pnpm build`, reusing `dist/` from the preceding frontend build step.
+CI (`.github/workflows/ci.yml`) runs the budget file via `pnpm test:node` after the frontend build step, reusing that `dist/`.
 
 Gzip in the test matches Vite's reporter: `promisify(gzip)` from `node:zlib`.
 
@@ -124,14 +124,4 @@ A follow-up can split `TERMINAL_BENCHMARK_MODE` into a tiny module so `terminal-
 
 ## CI
 
-`.github/workflows/ci.yml` runs `pnpm build` then the budget file without a second Vite pass:
-
-```yaml
-      - name: Build frontend
-        run: pnpm build
-
-      - name: Check frontend bundle budget
-        run: node --experimental-strip-types --test tests/bundle-budget.test.mjs
-```
-
-Using `pnpm test:bundle` here would rebuild. Keep the budget file off the default `pnpm test` chain so local `test:node` without `dist/` stays a skip, not a 3s Vite build.
+`.github/workflows/ci.yml` runs `pnpm build` before `pnpm test:node`, and `tests/bundle-budget.test.mjs` is part of the `tests/*.test.mjs` glob, so the budget already runs in CI against the fresh `dist/` with no extra step and no second Vite pass. Locally, `pnpm test:node` without `dist/` skips the file; `pnpm test:bundle` builds then checks.
