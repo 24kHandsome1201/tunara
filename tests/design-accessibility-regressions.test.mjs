@@ -22,11 +22,12 @@ const readSettingsSources = () => [
 test("waiting confirmation uses a dedicated readable text token", () => {
   const tokens = read("src/styles/tokens.css");
   const card = read("src/ui/SessionCard.tsx");
-  const global = read("src/ui/GlobalAgentBar.tsx");
+  const row = read("src/ui/AttentionRow.tsx");
   assert.match(tokens, /--c-warning-text:\s*oklch\(43%/);
   assert.match(tokens, /--c-warning-bg:/);
   assert.match(card, /data-confirm=\{confirmClose \? "true" : undefined\}/);
-  assert.match(global, /var\(--c-warning-text\)/);
+  assert.match(row, /var\(--c-accent\)/);
+  assert.match(row, /attention\.row\.needs_you/);
 });
 
 test("settings shortcuts and terminal interaction controls define every visual state", () => {
@@ -115,12 +116,13 @@ test("folder-based terminal creation stays visible in empty and compact shells",
 
 test("session and activity rows do not nest action buttons inside button roles", () => {
   const card = read("src/ui/SessionCard.tsx");
-  const global = read("src/ui/GlobalAgentBar.tsx");
+  const row = read("src/ui/AttentionRow.tsx");
   assert.match(card, /data-session-card-id=[\s\S]*className="session-card-select"/);
   assert.doesNotMatch(card, /role="button"/);
-  assert.match(global, /role="group"[\s\S]*className="gbar-row-select"/);
+  assert.match(row, /type="button"/);
   assert.doesNotMatch(card, /role="listitem"/);
-  assert.doesNotMatch(global, /role="button"/);
+  assert.doesNotMatch(row, /role="button"/);
+  assert.doesNotMatch(row, /gbar-row-select|AccentActionButton/);
 });
 
 test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted glyphs", () => {
@@ -134,6 +136,7 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
 
   assert.doesNotMatch(tokens, /\.session-card:active \{ transform:/);
   assert.doesNotMatch(tokens, /\.gbar-row:active \{ transform:/);
+  assert.doesNotMatch(tokens, /\.gbar-head/);
   assert.doesNotMatch(tokens, /\.inspector-tab:active \{ transform:/);
   assert.doesNotMatch(tokens, /\.inspector-tab\[data-active="true"\] \{ background:/);
   assert.doesNotMatch(inspector, /background: "var\(--c-bg-2\)"/);

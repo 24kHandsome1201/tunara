@@ -1,6 +1,8 @@
 import type { KeyboardEvent, MouseEvent } from "react";
 import { CloseIcon, SearchIcon } from "./shared";
 import { useT } from "@/modules/i18n";
+import type { SessionCue } from "@/modules/session/session-attention";
+import { SessionCueDot } from "./SessionCueDot";
 
 function FolderIcon() {
   return (
@@ -32,6 +34,7 @@ export function DirGroupHeader({
   count,
   workspace,
   agentCount = 0,
+  cue = null,
   collapsed,
   onToggleCollapse,
   onNewTerminal,
@@ -56,6 +59,7 @@ export function DirGroupHeader({
     transport: "local" | "ssh";
   };
   agentCount?: number;
+  cue?: SessionCue | null;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onNewTerminal?: () => void;
@@ -127,6 +131,7 @@ export function DirGroupHeader({
           </span>
         )}
       </span>
+      <SessionCueDot cue={cue} />
       <span
         title={t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}
         style={{

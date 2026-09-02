@@ -1,8 +1,10 @@
 import { memo, useEffect, useState, useRef, useCallback } from "react";
-import { type Session, type RunState, type TerminalProgress, deriveTitle } from "./types";
+import { type Session, type TerminalProgress, deriveTitle } from "./types";
 import { getAgentCircleStyle, getAgentIcon } from "./agents";
 import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
+import { sessionCue } from "@/modules/session/session-attention";
 import { sidebarCwdLabel, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
+import { SessionCueDot } from "./SessionCueDot";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
@@ -13,34 +15,9 @@ import { formatElapsed } from "./lib/elapsed";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
-function StatusDot({ runState, unread }: { runState: RunState; unread?: boolean }) {
-  const showDone = (runState === "done" || runState === "failed") && unread;
-  if (runState === "idle" || ((runState === "done" || runState === "failed") && !unread)) return null;
-  const color = runState === "running"
-    ? "var(--c-text-4)"
-    : showDone && runState === "done"
-      ? "var(--c-success)"
-      : "var(--c-error)";
-  return (
-    <span
-      style={{
-        position: "absolute",
-        bottom: -1,
-        right: -1,
-        width: 8,
-        height: 8,
-        borderRadius: "50%",
-        background: color,
-        border: "2px solid var(--c-bg-white)",
-        animation: "scaleIn var(--duration-fast) var(--ease-out-expo)",
-      }}
-    />
-  );
-}
-
 function SessionIcon({ session }: { session: Session }) {
   const size = 24;
-  const displayRunState = sessionDisplayRunState(session);
+  const cue = sessionCue(session);
 
   if (session.agent) {
     const style = getAgentCircleStyle(session.agent);
@@ -66,7 +43,7 @@ function SessionIcon({ session }: { session: Session }) {
             </span>
           )}
         </div>
-        <StatusDot runState={displayRunState} unread={session.unread} />
+        <SessionCueDot cue={cue} overlay />
       </div>
     );
   }
@@ -90,49 +67,10 @@ function SessionIcon({ session }: { session: Session }) {
           <line x1="12" y1="19" x2="20" y2="19" />
         </svg>
       </div>
-      <StatusDot runState={displayRunState} unread={session.unread} />
+      <SessionCueDot cue={cue} overlay />
     </div>
   );
 }
-
-function StatusMark({ runState, exitCode }: { runState: RunState; exitCode?: number }) {
-  if (runState === "done") {
-    return (
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    );
-  }
-  if (runState === "running") {
-    return (
-      <span style={{ width: 13, height: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-4)" }} />
-      </span>
-    );
-  }
-  if (runState === "failed") {
-    return <CloseIcon size={13} strokeWidth={2.8} color="var(--c-error)" />;
-  }
-  if (runState === "idle" && exitCode !== undefined && exitCode !== 0) {
-    return (
-      <span style={{
-        fontSize: "var(--fs-badge)",
-        fontFamily: "var(--font-mono)",
-        fontWeight: 700,
-        color: "var(--c-error)",
-        background: "var(--c-error-bg)",
-        borderRadius: "var(--r-badge-sm)",
-        padding: "0 3px",
-        lineHeight: "14px",
-        flexShrink: 0,
-      }}>
-        {exitCode}
-      </span>
-    );
-  }
-  return null;
-}
-
 
 function BusyProgress() {
   return (
@@ -468,11 +406,10 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         <SessionIcon session={session} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* 行1: 状态标记 + 标题 */}
+          {/* 行1: 标题；置顶是用户意图不是状态，视觉降到最低 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatusMark runState={displayRunState} exitCode={session.lastExitCode} />
             {session.pinned && (
-              <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-accent)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>★</span>
+              <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-text-6)", fontSize: "var(--fs-meta)", flexShrink: 0, opacity: 0.7 }}>★</span>
             )}
             {editing ? (
               <input
@@ -522,11 +459,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 }}
               >
                 {primary}
-              </span>
-            )}
-            {session.agentActivity === "waiting_confirmation" && (
-              <span style={{ flexShrink: 0, borderRadius: "var(--r-badge-sm)", padding: "0 5px", color: "var(--c-warning-text)", background: "var(--c-warning-bg)", fontSize: "var(--fs-meta)", fontWeight: 700, lineHeight: "16px" }}>
-                {t("gbar.tag.confirmation")}
               </span>
             )}
             {connectionPhase && connectionTone && (

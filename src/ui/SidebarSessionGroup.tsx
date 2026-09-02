@@ -6,6 +6,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { getNumberRecordValue } from "@/state/record-keys";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
+import { groupCue } from "@/modules/session/session-attention";
 import {
   localDirFromGroup,
   representativeSession,
@@ -93,6 +94,7 @@ export function SidebarSessionGroup({
         count={groupSessions.length}
         workspace={workspace}
         agentCount={agentCount}
+        cue={groupCue(groupSessions)}
         collapsed={collapsed}
         onToggleCollapse={onToggleCollapse}
         onNewTerminal={kind === "ssh"

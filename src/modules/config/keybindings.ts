@@ -88,7 +88,7 @@ const COMMON_DEFAULT_KEYBINDINGS: KeybindingConfig = {
   cyclePrevSession: "Mod+Shift+Tab",
   navigatePrevBlock: "Mod+Shift+ArrowUp",
   navigateNextBlock: "Mod+Shift+ArrowDown",
-  focusLatestAttention: "Mod+Shift+U",
+  focusLatestAttention: "Mod+Enter",
 };
 
 /** Defaults are explicit by platform so terminal-hostile bare Ctrl sequences are never introduced. */

@@ -21,7 +21,18 @@ describe("flow 2 keybindings", () => {
     expect([mac.terminalMenu, mac.copySelection, mac.safePaste]).toEqual(["", "Mod+C", "Mod+V"]);
     expect([mac.newTerminalAlt, mac.closeSession, mac.splitHorizontal, mac.commandPalette])
       .toEqual(["Mod+N", "Mod+W", "Mod+D", "Mod+K"]);
-    expect(mac.focusLatestAttention).toBe("Mod+Shift+U");
+    expect(mac.focusLatestAttention).toBe("Mod+Enter");
+    expect(isFixedTerminalMenuEvent({ key: "Enter", shiftKey: false, ctrlKey: false, metaKey: true, altKey: false })).toBe(false);
+    expect(matchesKeybinding(
+      { key: "Enter", metaKey: true, ctrlKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+      "Mod+Enter",
+      true,
+    )).toBe(true);
+    expect(matchesKeybinding(
+      { key: "Enter", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+      "Mod+Enter",
+      true,
+    )).toBe(false);
     expect(new Set(Object.values(mac)).size).toBe(Object.values(mac).length);
     for (const platform of ["windows", "linux"] as const) {
       const defaults = defaultKeybindingsForPlatform(platform);

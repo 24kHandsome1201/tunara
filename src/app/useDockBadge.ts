@@ -2,20 +2,20 @@ import { useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { setDockBadge } from "@/ui/dock-badge";
 import { resetBackgroundAttention } from "@/ui/lib/background-attention-state";
-import { countUnread } from "./lib/unread-count";
+import { dockBadgeCount } from "@/modules/session/session-attention";
 
 export function useDockBadge() {
   useEffect(() => {
     const sync = () => {
-      // Only badge when the window doesn't have focus — once the user looks at the app,
-      // the unread state will clear naturally via markRead and the badge follows.
+      // Only badge when the window doesn't have focus. N is the same waiting
+      // count as the sidebar attention row (session-attention.dockBadgeCount).
       if (document.hasFocus()) {
         setDockBadge(0);
         resetBackgroundAttention();
         return;
       }
       const sessions = useSessionsStore.getState().sessions;
-      setDockBadge(countUnread(sessions));
+      setDockBadge(dockBadgeCount(sessions));
     };
 
     sync();

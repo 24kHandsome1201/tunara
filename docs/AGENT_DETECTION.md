@@ -201,6 +201,16 @@ Transitions (via the store handlers and the
 `isAgentActivityBusy` (`"starting"` or `"running"`) and `isSessionBusy` gate the
 sidebar busy indicator and close-confirmation.
 
+Waiting confirmation is the product spine. [`session-attention.ts`](../src/modules/session/session-attention.ts)
+derives one count (`dockBadgeCount`) shared by the sidebar [`AttentionRow`](../src/ui/AttentionRow.tsx)
+and the Dock badge. The row shows `Needs you · N` (terracotta, the only sidebar
+emphasis) or a muted running count; a click (and `Mod+Enter` /
+`focusLatestAttention`) jumps to the earliest waiter, else the latest unread
+session. Session cards and directory headers keep a single cue slot:
+needs-you (accent dot) > unread (neutral dot) > none. Running identity stays on
+the monochrome AgentBadge. Dock bounce remains one-shot via
+`requestInformationalAttention`.
+
 `PROMPT_READY_AGENTS` is paired with screen-state heuristics in the same
 file, driven by
 [`terminal-prompt-agent-state.ts`](../src/modules/terminal/lib/terminal-prompt-agent-state.ts):

@@ -1,4 +1,4 @@
-import { GlobalAgentBar } from "./GlobalAgentBar";
+import { AttentionRow } from "./AttentionRow";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { deriveTitle, type Session } from "./types";
 import { SidebarSearchIcon } from "./SidebarDirGroupHeader";
@@ -278,7 +278,7 @@ export function Sidebar({
         {q && <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", padding: "2px 12px 0", lineHeight: 1.4 }}>{t("sidebar.search.no_drag")}</div>}
       </div>}
 
-      <GlobalAgentBar sessions={sessions} onSelectSession={onSelectSession} />
+      <AttentionRow sessions={sessions} onSelectSession={onSelectSession} />
 
       <div
         style={{

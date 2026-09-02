@@ -1,95 +1,102 @@
 import type { Session } from "../../ui/types.ts";
 import { isAgentActivityBusy } from "../terminal/lib/agent-lifecycle.ts";
-import { buildAgentResumeLaunchCommand } from "../terminal/lib/agent-resume.ts";
 
-export type SessionAttentionKind =
-  | "ssh-failed"
-  | "ssh-disconnected"
-  | "agent-confirmation"
-  | "agent-ready"
-  | "command-failed";
+export type SessionCue = "needs-you" | "unread";
 
-export interface SessionAttentionItem {
-  session: Session;
-  kind: SessionAttentionKind;
+export type AttentionRowModel =
+  | { kind: "needs-you"; count: number }
+  | { kind: "running"; count: number }
+  | { kind: null; count: 0 };
+
+function isWaitingForYou(session: Session): boolean {
+  return Boolean(session.agent && session.agentActivity === "waiting_confirmation");
 }
 
-export interface SessionAttentionGroups {
-  attention: SessionAttentionItem[];
-  running: Session[];
-  resumable: Array<{ session: Session; resumeCommand: string }>;
-  quiet: Session[];
-  total: number;
+function isAgentRunning(session: Session): boolean {
+  return Boolean(session.agent && isAgentActivityBusy(session.agentActivity));
 }
 
-function attentionKind(session: Session): SessionAttentionKind | null {
-  if (session.remote && session.connection?.phase === "failed") return "ssh-failed";
-  if (session.remote && session.connection?.phase === "disconnected") return "ssh-disconnected";
-  if (session.agent && session.agentActivity === "waiting_confirmation") return "agent-confirmation";
-  if (session.agent && session.unread && !isAgentActivityBusy(session.agentActivity)) return "agent-ready";
-  if (!session.agent && session.unread && session.runState === "failed" && session.lastCommand) {
-    return "command-failed";
-  }
+function sessionIndex(sessions: readonly Session[], session: Session): number {
+  const index = sessions.indexOf(session);
+  return index === -1 ? sessions.findIndex((item) => item.id === session.id) : index;
+}
+
+function compareByAttentionTime(
+  left: Session,
+  right: Session,
+  sessions: readonly Session[],
+  direction: "fifo" | "recent",
+): number {
+  const delta = direction === "fifo"
+    ? left.updatedAt - right.updatedAt
+    : right.updatedAt - left.updatedAt;
+  if (delta !== 0) return delta;
+  return sessionIndex(sessions, left) - sessionIndex(sessions, right);
+}
+
+/**
+ * One status slot per session: waiting for confirmation outranks unread
+ * output. Running is identity (AgentBadge), not a second cue.
+ */
+export function sessionCue(session: Session): SessionCue | null {
+  if (isWaitingForYou(session)) return "needs-you";
+  if (session.unread) return "unread";
   return null;
 }
 
-/**
- * Derive the sidebar's operational view from canonical session state. Nothing
- * here is persisted, so attention cannot drift away from transport, command,
- * agent, unread, or resume evidence.
- */
-export function deriveSessionAttention(sessions: readonly Session[]): SessionAttentionGroups {
-  const attention: SessionAttentionItem[] = [];
-  const running: Session[] = [];
-  const resumable: SessionAttentionGroups["resumable"] = [];
-  const quiet: Session[] = [];
-
+/** Same one-slot rule, rolled up for a directory/host group. */
+export function groupCue(sessions: readonly Session[]): SessionCue | null {
+  let unread = false;
   for (const session of sessions) {
-    const kind = attentionKind(session);
-    if (kind) {
-      attention.push({ session, kind });
-      continue;
-    }
-    if (session.runState === "running" || (session.agent && isAgentActivityBusy(session.agentActivity))) {
-      running.push(session);
-      continue;
-    }
-    const resumeCommand = !session.agent ? buildAgentResumeLaunchCommand(session.agentResume, session) : null;
-    if (resumeCommand) {
-      resumable.push({ session, resumeCommand });
-      continue;
-    }
-    quiet.push(session);
+    const cue = sessionCue(session);
+    if (cue === "needs-you") return "needs-you";
+    if (cue === "unread") unread = true;
   }
+  return unread ? "unread" : null;
+}
 
-  return {
-    attention,
-    running,
-    resumable,
-    quiet,
-    total: attention.length + running.length + resumable.length,
-  };
+/** Dock badge N — identical to the sidebar "needs you" count. */
+export function dockBadgeCount(sessions: readonly Session[]): number {
+  let count = 0;
+  for (const session of sessions) {
+    if (isWaitingForYou(session)) count += 1;
+  }
+  return count;
 }
 
 /**
- * Most recently updated attention session, cycling when the caller is already
- * focused on one. Actions only return an id — callers focus, they never run
- * commands.
+ * Sidebar first row: at most one fact. Waiting confirmation uses the
+ * terracotta count; otherwise a muted running count; otherwise nothing.
+ */
+export function deriveAttentionRow(sessions: readonly Session[]): AttentionRowModel {
+  const needsYou = dockBadgeCount(sessions);
+  if (needsYou > 0) return { kind: "needs-you", count: needsYou };
+  let running = 0;
+  for (const session of sessions) {
+    if (isAgentRunning(session)) running += 1;
+  }
+  if (running > 0) return { kind: "running", count: running };
+  return { kind: null, count: 0 };
+}
+
+/**
+ * Jump target for the attention row and focusLatestAttention.
+ * Earliest waiter (attention time FIFO) wins; if nobody is waiting,
+ * the most recently unread session. Actions only return an id.
  */
 export function nextAttentionSessionId(
   sessions: readonly Session[],
-  activeSessionId: string | null,
+  _activeSessionId: string | null = null,
 ): string | null {
-  const { attention } = deriveSessionAttention(sessions);
-  if (attention.length === 0) return null;
-  const ordered = [...attention].sort((left, right) => {
-    const delta = right.session.updatedAt - left.session.updatedAt;
-    if (delta !== 0) return delta;
-    return sessions.indexOf(left.session) - sessions.indexOf(right.session);
-  });
-  const ids = ordered.map((item) => item.session.id);
-  if (!activeSessionId) return ids[0];
-  const index = ids.indexOf(activeSessionId);
-  if (index === -1) return ids[0];
-  return ids[(index + 1) % ids.length];
+  const waiting = sessions.filter(isWaitingForYou);
+  if (waiting.length > 0) {
+    waiting.sort((left, right) => compareByAttentionTime(left, right, sessions, "fifo"));
+    return waiting[0].id;
+  }
+  const unread = sessions.filter((session) => Boolean(session.unread));
+  if (unread.length > 0) {
+    unread.sort((left, right) => compareByAttentionTime(left, right, sessions, "recent"));
+    return unread[0].id;
+  }
+  return null;
 }

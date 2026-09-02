@@ -55,7 +55,7 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   const terminal = read("src/ui/TerminalView.tsx");
   const chrome = read("src/ui/TerminalViewChrome.tsx");
   const main = read("src/ui/MainArea.tsx");
-  const globalAgentBar = read("src/ui/GlobalAgentBar.tsx");
+  const attentionRow = read("src/ui/AttentionRow.tsx");
 
   for (const path of [
     "src/ui/AgentStatusBar.tsx",
@@ -78,13 +78,13 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.match(main, /!pure && <SshSuggestionBar session=\{session\} \/>/);
   assert.match(main, /!pure && <PreviewSuggestionBar session=\{session\} \/>/);
   assert.match(main, /!pure && <ReviewChangesBar session=\{session\} \/>/);
-  assert.match(globalAgentBar, /agentResumePendingInput\(resumeCommand\)/);
+  assert.match(attentionRow, /deriveAttentionRow\(sessions\)/);
   assert.match(chrome, /\{search\.searchOpen &&/);
   assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
   assert.match(chrome, /!pure && menu &&/);
   assert.match(chrome, /formatDroppedTerminalPaths\(paths\)/);
   assert.match(chrome, /insertTerminalText\(sessionId, inserted\)/);
-  assert.match(globalAgentBar, /gbar\.action\.review/);
+  assert.doesNotMatch(attentionRow, /gbar\.action\.review|agentResumePendingInput/);
 });
 
 test("discovery flows keep empty-state recents and preview prompts", () => {
@@ -1580,14 +1580,14 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(commandPalette, /nextAttentionSessionId\(/);
   assert.match(commandPalette, /id: "export-scrollback"/);
   assert.match(commandPalette, /requestTerminalScrollbackExport\(activeSession\.id\)/);
-  assert.match(zhDict, /"palette\.cmd\.focus_latest_attention": "跳到最近需要处理的会话"/);
+  assert.match(zhDict, /"palette\.cmd\.focus_latest_attention": "跳到需要你的会话"/);
   assert.match(zhDict, /"palette\.cmd\.export_scrollback": "导出终端滚屏…"/);
   assert.match(terminalChrome, /formatDroppedTerminalPaths\(paths\)/);
   assert.match(terminalChrome, /insertTerminalText\(sessionId, inserted\)/);
   assert.match(terminalChrome, /term\.drop\.ssh_not_ready/);
   assert.match(terminalChrome, /exportTerminalBufferToFile/);
   assert.doesNotMatch(terminalChrome, /invoke</);
-  assert.match(keybindings, /focusLatestAttention: "Mod\+Shift\+U"/);
+  assert.match(keybindings, /focusLatestAttention: "Mod\+Enter"/);
   assert.match(appKeybindings, /case "focusLatestAttention"/);
   assert.doesNotMatch(keybindings, /"quickSelect"/);
   assert.doesNotMatch(appKeybindings, /case "quickSelect"/);

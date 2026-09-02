@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { decideBadge, createDockBadgeController } from "../src/ui/lib/dock-badge-state.ts";
-import { countUnread } from "../src/app/lib/unread-count.ts";
+import { deriveAttentionRow, dockBadgeCount } from "../src/modules/session/session-attention.ts";
 
 test("decideBadge reports unchanged when count matches the previously committed value", () => {
   assert.deepEqual(decideBadge(3, 3), { changed: false, value: 3 });
@@ -50,17 +50,19 @@ test("createDockBadgeController.reset clears the cached previous so the next set
   assert.equal(decision.changed, true);
 });
 
-test("countUnread sums sessions whose unread flag is truthy", () => {
+test("dockBadgeCount equals the sidebar needs-you N, not unread or running", () => {
   const sessions = [
-    { unread: true },
-    { unread: false },
-    { unread: true },
-    {},
-    { unread: undefined },
+    { id: "a", agent: "CC", agentActivity: "waiting_confirmation", unread: true, updatedAt: 1 },
+    { id: "b", agent: "CX", agentActivity: "waiting_confirmation", updatedAt: 2 },
+    { id: "c", unread: true, updatedAt: 3 },
+    { id: "d", agent: "CC", agentActivity: "running", updatedAt: 4 },
   ];
-  assert.equal(countUnread(sessions), 2);
+  const row = deriveAttentionRow(sessions);
+  assert.equal(row.kind, "needs-you");
+  assert.equal(dockBadgeCount(sessions), 2);
+  assert.equal(dockBadgeCount(sessions), row.count);
 });
 
-test("countUnread returns 0 for an empty list", () => {
-  assert.equal(countUnread([]), 0);
+test("dockBadgeCount returns 0 for an empty list", () => {
+  assert.equal(dockBadgeCount([]), 0);
 });

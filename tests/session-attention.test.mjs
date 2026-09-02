@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deriveSessionAttention, nextAttentionSessionId } from "../src/modules/session/session-attention.ts";
+import {
+  deriveAttentionRow,
+  dockBadgeCount,
+  groupCue,
+  nextAttentionSessionId,
+  sessionCue,
+} from "../src/modules/session/session-attention.ts";
 
 function session(id, patch = {}) {
   return {
@@ -15,101 +21,90 @@ function session(id, patch = {}) {
   };
 }
 
-test("connecting SSH sessions stay quiet instead of becoming attention", () => {
-  const groups = deriveSessionAttention([
-    session("connecting", {
-      remote: { host: "a", port: 22, user: "root" },
-      connection: { transport: "ssh", phase: "connecting", source: "backend", updatedAt: 2 },
-    }),
-  ]);
-  assert.equal(groups.attention.length, 0);
-  assert.deepEqual(groups.quiet.map((item) => item.id), ["connecting"]);
+test("sessionCue is one slot: needs-you outranks unread, running is not a cue", () => {
+  assert.equal(sessionCue(session("wait", { agent: "CC", agentActivity: "waiting_confirmation", unread: true })), "needs-you");
+  assert.equal(sessionCue(session("unread", { unread: true, agent: "CC", agentActivity: "idle" })), "unread");
+  assert.equal(sessionCue(session("running", { agent: "CC", agentActivity: "running" })), null);
+  assert.equal(sessionCue(session("quiet")), null);
 });
 
-test("SSH failures and disconnects are derived as attention", () => {
-  const groups = deriveSessionAttention([
-    session("failed", { remote: { host: "a", port: 22, user: "root" }, connection: { transport: "ssh", phase: "failed", source: "backend", updatedAt: 2 } }),
-    session("lost", { remote: { host: "b", port: 22, user: "root" }, connection: { transport: "ssh", phase: "disconnected", source: "transport", updatedAt: 3 } }),
-  ]);
-  assert.deepEqual(groups.attention.map((item) => item.kind), ["ssh-failed", "ssh-disconnected"]);
+test("groupCue rolls the same one-slot priority up to a directory header", () => {
+  assert.equal(groupCue([
+    session("unread", { unread: true }),
+    session("wait", { agent: "CC", agentActivity: "waiting_confirmation" }),
+  ]), "needs-you");
+  assert.equal(groupCue([
+    session("quiet"),
+    session("unread", { unread: true }),
+  ]), "unread");
+  assert.equal(groupCue([
+    session("running", { agent: "CC", agentActivity: "starting" }),
+  ]), null);
 });
 
-test("only unread completed work asks for attention", () => {
-  const groups = deriveSessionAttention([
-    session("agent-ready", { agent: "CC", agentActivity: "idle", unread: true }),
-    session("agent-seen", { agent: "CX", agentActivity: "idle", unread: false }),
-    session("command-failed", { runState: "failed", unread: true, lastCommand: "pnpm test" }),
-    session("failure-seen", { runState: "failed", unread: false, lastCommand: "pnpm test" }),
-  ]);
-  assert.deepEqual(groups.attention.map((item) => item.kind), ["agent-ready", "command-failed"]);
-  assert.deepEqual(groups.quiet.map((item) => item.id), ["agent-seen", "failure-seen"]);
-});
-
-test("agent confirmation always asks for attention below SSH failures and above completed work", () => {
-  const groups = deriveSessionAttention([
-    session("failed", { agent: "CC", agentActivity: "waiting_confirmation", remote: { host: "a", port: 22, user: "root" }, connection: { transport: "ssh", phase: "failed", source: "backend", updatedAt: 2 } }),
-    session("confirm", { agent: "CX", agentActivity: "waiting_confirmation", unread: false }),
-    session("ready", { agent: "CC", agentActivity: "idle", unread: true }),
-  ]);
-  assert.deepEqual(groups.attention.map((item) => item.kind), ["ssh-failed", "agent-confirmation", "agent-ready"]);
-  assert.equal(groups.running.length, 0);
-  assert.equal(groups.quiet.length, 0);
-});
-
-test("running and resumable sessions are mutually exclusive derived groups", () => {
-  const groups = deriveSessionAttention([
-    session("shell", { runState: "running" }),
-    session("agent", { agent: "CC", agentActivity: "starting" }),
-    session("resume", { agentResume: { agent: "CX", command: "codex", cwd: "/repo", provenance: { transport: "local" }, resumeId: "abc", lastSeenAt: 1, confidence: "exact" } }),
-  ]);
-  assert.deepEqual(groups.running.map((item) => item.id), ["shell", "agent"]);
-  assert.equal(groups.resumable.length, 1);
-  assert.match(groups.resumable[0].resumeCommand, /codex resume abc/);
-  assert.match(groups.resumable[0].resumeCommand, /^cd -- \/repo &&/);
-  assert.equal(groups.total, 3);
-});
-
-test("global attention uses cwd-aware commands and hides cross-transport resume intents", () => {
-  const claudeResume = {
-    agent: "CC",
-    command: "claude --resume session-id",
-    cwd: "/root/original repo",
-    provenance: { transport: "ssh", host: "de-netcup", port: 22, user: "root" },
-    resumeId: "session-id",
-    lastSeenAt: 1,
-    confidence: "exact",
-  };
-  const groups = deriveSessionAttention([
-    session("same-host", {
-      dir: "/tmp",
-      remote: { host: "de-netcup", port: 22, user: "root" },
-      connection: { phase: "ready" },
-      agentResume: claudeResume,
-    }),
-    session("other-host", {
-      dir: "/tmp",
-      remote: { host: "other", port: 22, user: "root" },
-      connection: { phase: "ready" },
-      agentResume: claudeResume,
-    }),
-  ]);
-  assert.equal(groups.resumable.length, 1);
-  assert.equal(
-    groups.resumable[0].resumeCommand,
-    "cd -- '/root/original repo' && claude --resume session-id",
+test("attention row shows needs-you over running, and hides when neither exists", () => {
+  assert.deepEqual(
+    deriveAttentionRow([
+      session("wait", { agent: "CC", agentActivity: "waiting_confirmation" }),
+      session("run", { agent: "CX", agentActivity: "running" }),
+    ]),
+    { kind: "needs-you", count: 1 },
   );
-  assert.deepEqual(groups.quiet.map((item) => item.id), ["other-host"]);
+  assert.deepEqual(
+    deriveAttentionRow([
+      session("run", { agent: "CC", agentActivity: "starting" }),
+      session("shell", { runState: "running" }),
+    ]),
+    { kind: "running", count: 1 },
+  );
+  assert.deepEqual(
+    deriveAttentionRow([
+      session("unread", { unread: true }),
+      session("resume", { agentResume: { agent: "CX", command: "codex", cwd: "/repo" } }),
+    ]),
+    { kind: null, count: 0 },
+  );
 });
 
-test("nextAttentionSessionId prefers the most recently updated attention session and cycles", () => {
+test("dock badge N matches the sidebar needs-you count and ignores unread/running", () => {
+  const sessions = [
+    session("wait-a", { agent: "CC", agentActivity: "waiting_confirmation" }),
+    session("wait-b", { agent: "CX", agentActivity: "waiting_confirmation", unread: true }),
+    session("unread", { unread: true }),
+    session("run", { agent: "CC", agentActivity: "running" }),
+  ];
+  const row = deriveAttentionRow(sessions);
+  assert.equal(row.kind, "needs-you");
+  assert.equal(row.count, 2);
+  assert.equal(dockBadgeCount(sessions), row.count);
+  assert.equal(dockBadgeCount([]), 0);
+});
+
+test("nextAttentionSessionId picks the earliest waiter FIFO, then latest unread", () => {
   const sessions = [
     session("quiet"),
-    session("older", { unread: true, runState: "failed", lastCommand: "pnpm test", updatedAt: 10 }),
-    session("newer", { unread: true, runState: "failed", lastCommand: "pnpm lint", updatedAt: 20 }),
+    session("wait-later", { agent: "CC", agentActivity: "waiting_confirmation", updatedAt: 30 }),
+    session("wait-earlier", { agent: "CX", agentActivity: "waiting_confirmation", updatedAt: 10 }),
+    session("unread-old", { unread: true, updatedAt: 5 }),
+    session("unread-new", { unread: true, updatedAt: 40 }),
   ];
   assert.equal(nextAttentionSessionId([], null), null);
-  assert.equal(nextAttentionSessionId(sessions, null), "newer");
-  assert.equal(nextAttentionSessionId(sessions, "quiet"), "newer");
-  assert.equal(nextAttentionSessionId(sessions, "newer"), "older");
-  assert.equal(nextAttentionSessionId(sessions, "older"), "newer");
+  assert.equal(nextAttentionSessionId(sessions, null), "wait-earlier");
+  assert.equal(nextAttentionSessionId(sessions, "wait-later"), "wait-earlier");
+  assert.equal(
+    nextAttentionSessionId([
+      session("unread-old", { unread: true, updatedAt: 5 }),
+      session("unread-new", { unread: true, updatedAt: 40 }),
+      session("quiet"),
+    ], null),
+    "unread-new",
+  );
+});
+
+test("FIFO waiting ties break by session list order", () => {
+  const sessions = [
+    session("second", { agent: "CC", agentActivity: "waiting_confirmation", updatedAt: 7 }),
+    session("first", { agent: "CX", agentActivity: "waiting_confirmation", updatedAt: 7 }),
+  ];
+  assert.equal(nextAttentionSessionId(sessions, null), "second");
 });
