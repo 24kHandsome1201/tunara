@@ -23,6 +23,7 @@
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
     "test:ui": "pnpm typecheck:ui && vitest run --config vitest.config.ts",
+    "test:bundle": "pnpm build && node --experimental-strip-types --test tests/bundle-budget.test.mjs",
     "test": "pnpm test:node && pnpm test:ui && cargo test --manifest-path src-tauri/Cargo.toml",
     "preview": "vite preview",
     "tauri": "tauri",
