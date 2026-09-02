@@ -9,7 +9,7 @@ import {
   TOGGLE_ROW,
 } from "./controls";
 
-/** Accessibility tab: screen reader and OS privacy affordances. */
+/** Screen reader and OS privacy affordances. */
 export function AccessibilitySettings() {
   const t = useT();
   const terminalScreenReaderMode = useUIStore((s) => s.terminalScreenReaderMode);

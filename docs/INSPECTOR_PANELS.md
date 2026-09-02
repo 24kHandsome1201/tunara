@@ -21,18 +21,13 @@ Priority is that ordered list. Detecting a localhost URL is not enough for Previ
 
 Auto-switch is restrained:
 
-- It never runs while the view is **Locked**.
+- It never runs after the user has chosen a view by hand.
 - It never yanks the Inspector away from a workspace file the user is reading. In that case it shows a quiet “Show” hint instead of forcing the jump.
-- Unlocking / returning to Auto, or switching sessions, resumes follow.
+- Switching sessions resumes follow.
 
-### Lock
+### Manual hold
 
-Choosing a view from the switcher, ⌘K, hint bars, or Files transfer entry **locks** the Inspector on that view. Lock lasts until:
-
-- the user switches sessions, or
-- the user clicks **Locked** (or the command palette “Follow Inspector automatically”).
-
-A quiet **Auto** / **Locked** pill sits next to the current view title. Auto is a label; Locked is a control that returns to Auto.
+Choosing a view from the switcher, ⌘K, hint bars, or Files transfer entry holds the Inspector on that view. The hold lasts until the user switches sessions. There is no Auto / Locked chrome or command-palette toggle; the hold is silent.
 
 ## Views
 
@@ -56,4 +51,4 @@ Remote file properties remain a Files context action. Connection diagnostics rem
 - Transfers and Forwarding are hidden without an SSH context and reject stale transport generations.
 - The Inspector does not keep per-session notes, activity timelines, or a fixed overview/dashboard.
 
-Legacy snapshots may still contain retired Inspector tab names or a session `note` field. Snapshot sanitization ignores unknown session fields and maps invalid tabs to Changes; there is no user-visible migration or cleanup action. Auto / Locked and “Preview opened” are runtime UI and are not persisted.
+Legacy snapshots may still contain retired Inspector tab names or a session `note` field. Snapshot sanitization ignores unknown session fields and maps invalid tabs to Changes; there is no user-visible migration or cleanup action. The silent manual hold and “Preview opened” are runtime UI and are not persisted.

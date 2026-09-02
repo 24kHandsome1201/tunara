@@ -207,7 +207,6 @@ html[data-chrome="borderless"] {
 .ui-control,
 .ui-button,
 .settings-control,
-.settings-shortcut-input,
 .settings-action-button {
   box-sizing: border-box;
   border: 1px solid var(--c-control-border);
@@ -222,8 +221,7 @@ html[data-chrome="borderless"] {
     transform var(--duration-fast) var(--ease-out-expo),
     box-shadow var(--duration-fast) var(--ease-smooth);
 }
-.ui-control,
-.settings-shortcut-input { min-height: 30px; }
+.ui-control { min-height: 30px; }
 .ui-control,
 .settings-control {
   padding: 0 8px;
@@ -244,13 +242,6 @@ select.ui-control {
   background-repeat: no-repeat;
   background-size: 5px 5px, 5px 5px;
 }
-.settings-shortcut-input {
-  width: 100%;
-  padding: 5px 8px;
-  caret-color: transparent;
-  font-family: var(--font-mono);
-}
-.settings-shortcut-input::placeholder { color: var(--c-text-5); opacity: 1; }
 .ui-button,
 .settings-action-button {
   appearance: none;
@@ -261,15 +252,13 @@ select.ui-control {
 .ui-control:hover:not(:disabled),
 .ui-button:hover:not(:disabled),
 .settings-control:hover:not(:disabled),
-.settings-shortcut-input:hover:not(:disabled),
 .settings-action-button:hover:not(:disabled) {
   border-color: var(--c-text-3);
   background: var(--c-bg-hover);
   color: var(--c-text-primary);
 }
 .ui-control:active:not(:disabled),
-.settings-control:active:not(:disabled),
-.settings-shortcut-input:active:not(:disabled) { background: var(--c-bg-2); }
+.settings-control:active:not(:disabled) { background: var(--c-bg-2); }
 .ui-button:active:not(:disabled),
 .settings-action-button:active:not(:disabled) {
   background: var(--c-bg-3);
@@ -280,7 +269,6 @@ select.ui-control {
 .ui-button:focus-visible,
 .ui-choice:focus-visible,
 .settings-control:focus-visible,
-.settings-shortcut-input:focus-visible,
 .settings-action-button:focus-visible {
   outline: 2px solid var(--c-text-primary);
   outline-offset: 2px;
@@ -291,7 +279,6 @@ select.ui-control {
 .ui-button:disabled,
 .ui-choice:disabled,
 .settings-control:disabled,
-.settings-shortcut-input:disabled,
 .settings-action-button:disabled {
   background: var(--c-bg-2);
   color: var(--c-text-6);
@@ -430,26 +417,6 @@ select.ui-control {
   background: color-mix(in srgb, var(--c-text-primary) 4%, transparent);
 }
 
-.settings-tab-pill {
-  position: relative;
-}
-.settings-tab-pill::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  background: transparent;
-  transition: background var(--duration-fast) var(--ease-smooth);
-}
-.settings-tab-pill[data-active="true"]::after {
-  background: var(--c-accent);
-}
-.settings-tab-pill[data-active="false"]:hover {
-  color: var(--c-text-2);
-}
-
 /* Shared compact icon actions use a larger hit target than their glyphs.
    Keeping this geometry global prevents panel headers from drifting apart. */
 .panel-icon-button {
@@ -552,9 +519,6 @@ select.ui-control {
   .settings-dialog-footer > div { justify-content: flex-end; }
   .settings-interaction-row { grid-template-columns: minmax(0, 1fr) !important; align-items: stretch !important; gap: 6px !important; }
   .settings-interaction-row > .settings-control { width: 100%; }
-  .settings-keybinding-row { grid-template-columns: minmax(0, 1fr) auto auto !important; }
-  .settings-keybinding-row > label { grid-column: 1 / -1; }
-  .settings-keybinding-row > .settings-action-button[style] { grid-column: 1 / -1 !important; }
 }
 
 /* The sidebar is user-resizable down to 200px. Keep the primary action on one

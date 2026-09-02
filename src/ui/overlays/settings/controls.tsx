@@ -2,7 +2,7 @@ import type { ThemeType } from "../../types";
 import { getTerminalTheme } from "@/styles/terminalTheme";
 import { platform } from "@tauri-apps/plugin-os";
 
-/** Shared section / row styles for all settings tabs. */
+/** Shared section / row styles for the settings page. */
 export const SECTION_LABEL: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)", marginBottom: 10 };
 export const SECTION_LABEL_INLINE: React.CSSProperties = { fontSize: "var(--fs-body)", fontWeight: 600, color: "var(--c-text-3)" };
 export const SECTION_HINT: React.CSSProperties = { fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: 6 };

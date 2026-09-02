@@ -56,7 +56,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const usage = useUIStore((s) => s.commandUsage);
   const keybindings = useUIStore((s) => s.keybindings);
   const presentationMode = useUIStore((s) => s.presentationMode);
-  const inspectorLocked = useUIStore((s) => s.inspectorLocked);
 
   // Stable identity so the commands useMemo below can list it as a dependency
   // without invalidating on every render; it only reads store state at call
@@ -406,22 +405,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       }
 
       cmds.push({
-        id: inspectorLocked ? "inspector-follow-auto" : "inspector-lock-view",
-        label: inspectorLocked ? t("palette.cmd.inspector_follow_auto") : t("palette.cmd.inspector_lock_view"),
-        icon: <CmdIcon d="M12 3v18M5 8h14" />,
-        section: t("palette.section.action"),
-        scopes: ["action", "app"],
-        originalIndex: idx++,
-        action: () => {
-          const ui = uiStore.getState();
-          ui.recordCommandUse(inspectorLocked ? "inspector-follow-auto" : "inspector-lock-view");
-          if (inspectorLocked) ui.unlockInspectorView();
-          else ui.lockInspectorView(activeSession.id);
-          onClose();
-        },
-      });
-
-      cmds.push({
         id: activeSession.pinned ? "unpin-current-session" : "pin-current-session",
         label: activeSession.pinned ? t("palette.cmd.unpin_current_session") : t("palette.cmd.pin_current_session"),
         icon: <CmdIcon d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" />,
@@ -586,7 +569,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     }
 
     return cmds;
-  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, presentationMode, inspectorLocked, t]);
+  }, [sessions, activeSessionId, activeSession, recentDirs, recentCommands, setActive, onClose, uiStore, keybindings, presentationMode, t]);
 
   const parsedQuery = parseCommandPaletteQuery(query);
   const filtered = filterCommandPaletteItems(commands, parsedQuery);

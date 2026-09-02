@@ -12,7 +12,6 @@ const readSettingsSources = () => [
   "src/ui/overlays/settings/AppearanceSettings.tsx",
   "src/ui/overlays/settings/TerminalSettings.tsx",
   "src/ui/overlays/settings/AccessibilitySettings.tsx",
-  "src/ui/overlays/settings/ShortcutsSettings.tsx",
   "src/ui/overlays/settings/CliSettings.tsx",
   "src/ui/overlays/settings/AppSettings.tsx",
   "src/ui/overlays/settings/useCliStatus.ts",
@@ -37,8 +36,7 @@ test("settings shortcuts and terminal interaction controls define every visual s
 
   assert.match(settings, /className="settings-terminal-interactions"/);
   assert.match(settings, /className="settings-control"/);
-  assert.match(settings, /className="settings-shortcut-input"/);
-  assert.match(settings, /className="settings-action-button"/);
+  assert.match(settings, /className="[^"]*settings-action-button[^"]*"/);
   assert.match(settings, /<kbd className="settings-key-hint"/);
   assert.match(styles, /\.settings-action-button:hover:not\(:disabled\)/);
   assert.match(styles, /\.settings-action-button:active:not\(:disabled\)/);

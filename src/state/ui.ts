@@ -200,21 +200,6 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
 
 export type InspectorTab = "changes" | "files" | "transfers" | "forwarding" | "preview";
 
-export type SettingsTab = "general" | "shortcuts" | "ssh" | "app";
-
-const SETTINGS_TABS: readonly SettingsTab[] = ["general", "shortcuts", "ssh", "app"];
-const REMOVED_SETTINGS_TABS = ["appearance", "terminal", "accessibility"] as const;
-
-function sanitizeSettingsTab(tab: unknown): SettingsTab {
-  if (typeof tab === "string" && (SETTINGS_TABS as readonly string[]).includes(tab)) {
-    return tab as SettingsTab;
-  }
-  if (typeof tab === "string" && (REMOVED_SETTINGS_TABS as readonly string[]).includes(tab)) {
-    return "general";
-  }
-  return "general";
-}
-
 export type ExternalEditor = "vscode" | "cursor" | "zed" | "sublime";
 
 export const EXTERNAL_EDITORS: ExternalEditor[] = ["vscode", "cursor", "zed", "sublime"];
@@ -236,7 +221,7 @@ export interface Toast {
   agentCode?: string;
   action?: {
     kind: "open-settings";
-    tab: SettingsTab;
+    tab: string;
     label: string;
   } | {
     kind: "open-remote-preview";
@@ -307,12 +292,11 @@ interface UIState extends AppearanceSettings {
   viewportWidth: number;
   split: SplitState;
   inspectorTab: InspectorTab;
-  /** Manual Inspector view lock. Session switch or explicit Auto restores follow. */
+  /** Manual Inspector view hold. Session switch restores follow. */
   inspectorLocked: boolean;
   inspectorLockSessionId: string | null;
   /** Sessions where the user has opened Preview; drives auto-select, not persisted. */
   inspectorPreviewOpenedSessionIds: Record<string, true>;
-  settingsTab: SettingsTab;
   fileTabs: WorkspaceFileTab[];
   activeFileTabId: string | null;
   toasts: Toast[];
@@ -352,14 +336,13 @@ interface UIState extends AppearanceSettings {
   syncInspectorLockForSession: (sessionId: string | null) => void;
   markInspectorPreviewOpened: (sessionId: string) => void;
   clearInspectorPreviewOpened: (sessionId: string) => void;
-  setSettingsTab: (t: SettingsTab) => void;
   openFileTab: (tab: Omit<WorkspaceFileTab, "id" | "dirty">) => void;
   setActiveFileTab: (id: string) => void;
   activateTerminal: () => void;
   closeFileTab: (id: string) => void;
   closeFileTabsForSession: (sessionId: string) => void;
   setFileTabDirty: (id: string, dirty: boolean) => void;
-  openSettings: (tab?: SettingsTab) => void;
+  openSettings: (section?: string) => void;
   setTheme: (t: ThemeType) => void;
   setCursorStyle: (c: CursorStyle) => void;
   setCursorBlink: (b: boolean) => void;
@@ -403,6 +386,29 @@ interface UIState extends AppearanceSettings {
   setLanguage: (lang: Language) => void;
 }
 
+const SETTINGS_SECTION_ALIASES: Record<string, string> = {
+  general: "appearance",
+  appearance: "appearance",
+  shortcuts: "terminal",
+  terminal: "terminal",
+  ssh: "ssh",
+  app: "about",
+  about: "about",
+};
+
+let pendingSettingsSection: string | null = null;
+
+function normalizeSettingsSection(section: unknown): string | null {
+  if (typeof section !== "string" || !section) return null;
+  return SETTINGS_SECTION_ALIASES[section] ?? section;
+}
+
+export function consumePendingSettingsSection(): string | null {
+  const section = pendingSettingsSection;
+  pendingSettingsSection = null;
+  return section;
+}
+
 export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
   return {
     ready: false,
@@ -423,7 +429,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     inspectorLocked: false,
     inspectorLockSessionId: null,
     inspectorPreviewOpenedSessionIds: {},
-    settingsTab: "general" as SettingsTab,
     fileTabs: [],
     activeFileTabId: null,
     toasts: [],
@@ -513,7 +518,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       delete inspectorPreviewOpenedSessionIds[sessionId];
       return { inspectorPreviewOpenedSessionIds };
     }),
-    setSettingsTab: (settingsTab) => set({ settingsTab: sanitizeSettingsTab(settingsTab) }),
     openFileTab: (tab) => set((state) => {
       const id = workspaceFileTabId(tab.sessionId, tab.filePath);
       if (state.fileTabs.some((candidate) => candidate.id === id)) {
@@ -549,11 +553,10 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       if (!tab || tab.dirty === dirty) return state;
       return { fileTabs: state.fileTabs.map((candidate) => candidate.id === id ? { ...candidate, dirty } : candidate) };
     }),
-    openSettings: (settingsTab) => set((state) => ({
-      overlay: "settings",
-      settingsTab: settingsTab === undefined ? sanitizeSettingsTab(state.settingsTab) : sanitizeSettingsTab(settingsTab),
-      sshPrefill: null,
-    })),
+    openSettings: (section) => {
+      pendingSettingsSection = normalizeSettingsSection(section);
+      set({ overlay: "settings", sshPrefill: null });
+    },
     setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
     setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
     setCursorBlink: (cursorBlink) => set({ cursorBlink: typeof cursorBlink === "boolean" ? cursorBlink : DEFAULT_SETTINGS.cursorBlink }),

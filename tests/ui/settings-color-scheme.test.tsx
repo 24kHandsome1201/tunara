@@ -1,3 +1,4 @@
+import { mockIPC } from "@tauri-apps/api/mocks";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { setLanguage } from "@/modules/i18n";
@@ -9,6 +10,7 @@ import { DARK_THEME, LIGHT_THEME } from "@/styles/terminalTheme";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
 vi.mock("@/ui/overlays/useAppUpdate", () => ({
   useAppUpdate: () => ({
     appVersion: "2.0.1",
@@ -42,10 +44,10 @@ beforeEach(() => {
   });
   useUIStore.setState({
     configLoaded: false,
-    settingsTab: "general",
     theme: "dark",
     language: "en",
   });
+  mockIPC((command) => command === "resolve_all_bins" ? [] : undefined);
 });
 
 afterEach(() => {

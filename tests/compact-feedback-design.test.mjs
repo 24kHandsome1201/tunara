@@ -14,12 +14,12 @@ test("error feedback remains readable and is not an interactive-role container",
   assert.match(toast, /aria-label=\{t\("common\.close"\)\}/);
 });
 
-test("settings tabs remain navigable at narrow widths", () => {
+test("settings is a single scrollable page without tabs", () => {
   const settings = read("src/ui/overlays/Settings.tsx");
-  assert.match(settings, /role="tablist"/);
-  assert.match(settings, /overflowX: "auto"/);
-  assert.match(settings, /whiteSpace: "nowrap"/);
-  assert.match(settings, /aria-selected=\{activeTab === tab\}/);
+  assert.doesNotMatch(settings, /role="tablist"/);
+  assert.match(settings, /id="settings-tabpanel"/);
+  assert.match(settings, /settings-section-/);
+  assert.match(settings, /scrollIntoView/);
 });
 
 test("mouse and keyboard drawer entry points share compact exclusivity", () => {

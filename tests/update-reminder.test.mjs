@@ -17,7 +17,7 @@ test("background update checks wait for a usable workspace and stay non-blocking
   assert.match(appServices, /useUpdateReminder\(ready\)/);
 });
 
-test("update reminders route directly to the App settings tab", () => {
+test("update reminders route directly to the About settings section", () => {
   const hook = read("src/app/useUpdateReminder.ts");
   const ui = read("src/state/ui.ts");
   const toast = read("src/ui/Toast.tsx");
@@ -25,10 +25,11 @@ test("update reminders route directly to the App settings tab", () => {
   const appUpdate = read("src/ui/overlays/useAppUpdate.ts");
   assert.match(hook, /kind: "open-settings"/);
   assert.match(hook, /tab: "app"/);
-  assert.match(ui, /openSettings: \(tab\?: SettingsTab\)/);
+  assert.match(ui, /openSettings: \(section\?: string\)/);
+  assert.match(ui, /app: "about"/);
   assert.match(toast, /openSettings\(toast\.action\.tab\)/);
-  assert.match(settings, /useAppUpdate\(activeTab\)/);
-  assert.match(appUpdate, /activeTab !== "app" \|\| appTabCheckStartedRef\.current/);
+  assert.match(settings, /useAppUpdate\(\)/);
+  assert.match(appUpdate, /if \(checkStartedRef\.current\) return/);
   assert.match(appUpdate, /void checkForUpdates\(\)/);
   assert.doesNotMatch(toast, /borderLeft: `3px solid/);
   assert.match(toast, /animationPlayState: paused \? "paused" : "running"/);

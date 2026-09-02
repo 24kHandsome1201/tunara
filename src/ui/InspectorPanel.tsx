@@ -120,7 +120,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
   const inspectorLocked = useUIStore((s) => s.inspectorLocked);
-  const unlockInspectorView = useUIStore((s) => s.unlockInspectorView);
   const previewOpened = useUIStore((s) => Boolean(s.inspectorPreviewOpenedSessionIds[session.id]));
   const markInspectorPreviewOpened = useUIStore((s) => s.markInspectorPreviewOpened);
   const activeFileTabId = useUIStore((s) => s.activeFileTabId);
@@ -288,50 +287,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
         >
           {t(descriptor.titleKey)}
         </span>
-
-        {!filesOnly && (
-          inspectorLocked ? (
-            <button
-              type="button"
-              onClick={unlockInspectorView}
-              title={t("inspector.mode.locked_hint")}
-              aria-label={t("inspector.mode.locked_hint")}
-              className="hover-bg"
-              style={{
-                flexShrink: 0,
-                height: 18,
-                padding: "0 6px",
-                border: "none",
-                borderRadius: "var(--r-pill)",
-                background: "var(--c-bg-3)",
-                color: "var(--c-text-5)",
-                fontSize: "var(--fs-meta)",
-                fontFamily: "var(--font-mono)",
-                cursor: "pointer",
-              }}
-            >
-              {t("inspector.mode.locked")}
-            </button>
-          ) : (
-            <span
-              title={t("inspector.mode.auto_hint")}
-              style={{
-                flexShrink: 0,
-                height: 18,
-                padding: "0 6px",
-                borderRadius: "var(--r-pill)",
-                background: "transparent",
-                color: "var(--c-text-5)",
-                fontSize: "var(--fs-meta)",
-                fontFamily: "var(--font-mono)",
-                display: "inline-flex",
-                alignItems: "center",
-              }}
-            >
-              {t("inspector.mode.auto")}
-            </span>
-          )
-        )}
 
         <div style={{ flex: 1, minWidth: 0 }} />
 

@@ -15,7 +15,7 @@ const SOURCE_LABEL_KEYS: Record<ResolveSource, string> = {
   notFound: "settings.cli.source.not_found",
 };
 
-/** CLI tab: resolved agent CLI paths, login preflights, and path overrides. */
+/** About: resolved agent CLI paths, login preflights, and path overrides. */
 export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus, applyOverride }: CliStatus) {
   const t = useT();
   const [editingOverride, setEditingOverride] = useState<string | null>(null);

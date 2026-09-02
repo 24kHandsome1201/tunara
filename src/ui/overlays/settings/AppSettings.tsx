@@ -5,10 +5,10 @@ import type { useAppUpdate } from "../useAppUpdate";
 import { SECTION_LABEL, SECTION_HINT, Stepper } from "./controls";
 
 /** The update flow state stays in the dialog shell (useAppUpdate) so an
- * in-progress download survives tab switches; this tab only renders it. */
+ * in-progress download survives while Settings stays open; About only renders it. */
 type AppUpdateState = ReturnType<typeof useAppUpdate>;
 
-/** App tab: version and signed updater flow. */
+/** About: version and signed updater flow. */
 export function AppSettings({ appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate }: AppUpdateState) {
   const t = useT();
   const downloadMaxFiles = useUIStore((s) => s.downloadMaxFiles);

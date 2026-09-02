@@ -91,13 +91,14 @@ test("mounts only the active Inspector panel and keeps every view in the compact
     "Transfers",
     "Forwarding",
   ]);
-  expect(screen.getByText("Auto")).toBeTruthy();
+  expect(screen.queryByText("Auto")).toBeNull();
+  expect(screen.queryByText("Locked")).toBeNull();
   expect(screen.queryByRole("button", { name: "More inspector tools" })).toBeNull();
 
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(screen.getByTestId("changes-panel")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Return Inspector to automatic follow" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Return Inspector to automatic follow" })).toBeNull();
   expect(useUIStore.getState().inspectorLocked).toBe(true);
 
   fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
@@ -152,6 +153,7 @@ test("projects only Files controls in Pure Mode", () => {
   expect(screen.getByTestId("files-panel")).toBeTruthy();
   expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Files"]);
   expect(screen.queryByText("Auto")).toBeNull();
+  expect(screen.queryByText("Locked")).toBeNull();
   expect(screen.queryByRole("button", { name: "Return Inspector to automatic follow" })).toBeNull();
   expect(useUIStore.getState().inspectorTab).toBe("changes");
 });
@@ -183,10 +185,8 @@ test("auto-follows unreviewed changes unless the view is locked", async () => {
   expect(useUIStore.getState()).toMatchObject({ inspectorTab: "files", inspectorLocked: true });
   view.rerender(<InspectorPanel session={dirty} filesOnly={false} />);
   expect(screen.getByTestId("files-panel")).toBeTruthy();
-
-  fireEvent.click(screen.getByRole("button", { name: "Return Inspector to automatic follow" }));
-  await waitFor(() => expect(useUIStore.getState().inspectorTab).toBe("changes"));
-  expect(useUIStore.getState().inspectorLocked).toBe(false);
+  expect(screen.queryByRole("button", { name: "Return Inspector to automatic follow" })).toBeNull();
+  expect(useUIStore.getState().inspectorTab).toBe("files");
 });
 
 test("defers auto-switch with a quiet hint while a workspace file tab is open", async () => {

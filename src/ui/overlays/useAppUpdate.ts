@@ -6,7 +6,7 @@ import { requestSafeAppRelaunch } from "@/app/app-lifecycle";
 
 export type UpdateStatus = "idle" | "checking" | "current" | "available" | "downloading" | "restartReady" | "restarting" | "error";
 
-export function useAppUpdate(activeTab: string): {
+export function useAppUpdate(): {
   appVersion: string;
   updateStatus: UpdateStatus;
   updateVersion: string;
@@ -20,7 +20,7 @@ export function useAppUpdate(activeTab: string): {
   const [updateVersion, setUpdateVersion] = useState("");
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const updateRef = useRef<Update | null>(null);
-  const appTabCheckStartedRef = useRef(false);
+  const checkStartedRef = useRef(false);
   const restartInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -101,10 +101,10 @@ export function useAppUpdate(activeTab: string): {
   };
 
   useEffect(() => {
-    if (activeTab !== "app" || appTabCheckStartedRef.current) return;
-    appTabCheckStartedRef.current = true;
+    if (checkStartedRef.current) return;
+    checkStartedRef.current = true;
     void checkForUpdates();
-  }, [activeTab, checkForUpdates]);
+  }, [checkForUpdates]);
 
   const canInstallUpdate = updateStatus === "available" || updateStatus === "restartReady" || (updateStatus === "error" && !!updateRef.current);
   return { appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate };

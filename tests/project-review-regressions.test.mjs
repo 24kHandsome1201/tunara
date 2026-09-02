@@ -14,7 +14,6 @@ const readSettingsSources = () => [
   "src/ui/overlays/settings/AppearanceSettings.tsx",
   "src/ui/overlays/settings/TerminalSettings.tsx",
   "src/ui/overlays/settings/AccessibilitySettings.tsx",
-  "src/ui/overlays/settings/ShortcutsSettings.tsx",
   "src/ui/overlays/settings/CliSettings.tsx",
   "src/ui/overlays/settings/AppSettings.tsx",
   "src/ui/overlays/settings/useCliStatus.ts",
@@ -472,7 +471,7 @@ test("settings exposes the signed updater flow and restart permission", () => {
   const defaultCapability = JSON.parse(read("src-tauri/capabilities/default.json"));
   const capability = JSON.parse(read("src-tauri/capabilities/desktop.json"));
 
-  assert.match(settings, /useAppUpdate\(activeTab\)/);
+  assert.match(settings, /useAppUpdate\(\)/);
   assert.match(appUpdate, /check\(\{ timeout: 15_000 \}\)/);
   assert.match(appUpdate, /update\.downloadAndInstall/);
   assert.match(appUpdate, /requestSafeAppRelaunch\(relaunch/);
@@ -485,11 +484,11 @@ test("settings exposes the signed updater flow and restart permission", () => {
   assert.ok(capability.permissions.includes("process:allow-restart"));
 });
 
-test("settings defers expensive CLI probes until Advanced is opened", () => {
+test("settings runs expensive CLI probes once when the dialog opens", () => {
   const settings = readSettingsSources();
 
   assert.match(settings, /const cliLoadStartedRef = useRef\(false\)/);
-  assert.match(settings, /if \(activeTab !== "app" \|\| cliLoadStartedRef\.current\) return;/);
+  assert.match(settings, /if \(cliLoadStartedRef\.current\) return;/);
   assert.match(settings, /cliLoadStartedRef\.current = true;[\s\S]*?loadCliStatus\(\)/);
 });
 
@@ -1200,7 +1199,6 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /t\("settings\.cli\.found", \{ count: installedCliCount, total: CLI_LIST\.length \}\)/);
   assert.match(settings, /t\("settings\.cli\.not_on_path"\)/);
   assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
-  assert.match(settings, /activeTab === "general"/);
   assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
   assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
   assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language \}\)\)/);

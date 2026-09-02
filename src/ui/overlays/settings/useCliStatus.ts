@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { SettingsTab } from "@/state/ui";
 
 export type ResolveSource = "userOverride" | "loginShellPath" | "systemPath" | "notFound";
 export interface ResolvedCommand {
@@ -25,10 +24,10 @@ export interface CliStatus {
 
 /**
  * CLI resolution state for the settings dialog. Lives in the dialog shell
- * (not the App panel) so results survive tab switches: expensive PATH probes
- * run once per dialog opening, deferred until the advanced App panel is opened.
+ * (not the About section) so results survive while the overlay is open:
+ * expensive PATH probes run once per dialog opening.
  */
-export function useCliStatus(activeTab: SettingsTab): CliStatus {
+export function useCliStatus(): CliStatus {
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
   const [cliError, setCliError] = useState(false);
   const [preflights, setPreflights] = useState<Record<string, Preflight>>({});
@@ -63,10 +62,10 @@ export function useCliStatus(activeTab: SettingsTab): CliStatus {
   }, [loadPreflights]);
 
   useEffect(() => {
-    if (activeTab !== "app" || cliLoadStartedRef.current) return;
+    if (cliLoadStartedRef.current) return;
     cliLoadStartedRef.current = true;
     loadCliStatus();
-  }, [activeTab, loadCliStatus]);
+  }, [loadCliStatus]);
 
   const applyOverride = useCallback((code: string, cliBin: string, path: string) => {
     const trimmed = path.trim();
