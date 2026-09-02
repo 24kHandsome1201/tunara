@@ -101,5 +101,5 @@ Use this checklist whenever bumping **Tauri**, **russh**, or running a broad `ca
 | 3 | `pnpm audit --prod --audit-level high` — no new high/critical npm issues |
 | 4 | `cargo test` + `pnpm test:node` |
 | 5 | macOS: `cargo build --release --bin tunara` (CI macOS job) or full `pnpm tauri build` for bundle/signing changes |
-| 6 | macOS titlebar / vibrancy: visual check per [VISUAL_QA.md](./VISUAL_QA.md) |
+| 6 | macOS titlebar / vibrancy: visual check per [VISUAL_QA.md](./archive/VISUAL_QA.md) |
 | 7 | Update this doc, `CHANGELOG.md` Known security advisories, and `audit.toml` if ignore rationale changes |

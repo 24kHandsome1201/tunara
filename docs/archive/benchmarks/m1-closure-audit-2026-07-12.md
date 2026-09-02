@@ -4,7 +4,7 @@
 
 M1 按 [实施规格](../M1_TERMINAL_SSH_PERFORMANCE.md) 关闭。冷启动与 12 PTY、本地/SSH 50/200 MiB 高输出、输入字节预算、Close/Resize 控制面、100/200ms RTT、断线原位恢复、WebGL/DOM fallback、38 分钟长压和 Agent/TUI 终端语义均有可复跑或真实 bundle 证据，未留下 M1 产品缺陷。
 
-Agent 外部 provider 的账号、凭据、组织策略与真实模型响应不是 M1 完成门。[GOAL](../GOAL.md) 明确不做内置模型 API、模型路由、计费或云端对话服务；M1 只要求 Tunara 在 provider 成功、失败或不可用时保持真实 PTY、安全降级和诚实状态。这些环境格继续保留在 [Agent / TUI 兼容性基线](./m1-agent-tui-compatibility-2026-07-11.md) 中，不伪报为 provider 成功，也不再阻塞 Phase 2。
+Agent 外部 provider 的账号、凭据、组织策略与真实模型响应不是 M1 完成门。[GOAL](../../GOAL.md) 明确不做内置模型 API、模型路由、计费或云端对话服务；M1 只要求 Tunara 在 provider 成功、失败或不可用时保持真实 PTY、安全降级和诚实状态。这些环境格继续保留在 [Agent / TUI 兼容性基线](./m1-agent-tui-compatibility-2026-07-11.md) 中，不伪报为 provider 成功，也不再阻塞 Phase 2。
 
 ## 合同对照
 

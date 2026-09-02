@@ -3,7 +3,7 @@
 调研日期：2026-08-16。对照的是 Tunara 当前主线（`FEATURES.md` / 代码），不是发版宣传口径。
 
 这份文档只回答一件事：**别的终端每天在用的能力，Tunara 缺哪些，以及缺了该不该补。**  
-功能入口仍以 [FEATURES.md](./FEATURES.md) 为准；产品边界以 [GOAL.md](./GOAL.md) 为准。
+功能入口仍以 [FEATURES.md](../FEATURES.md) 为准；产品边界以 [GOAL.md](../GOAL.md) 为准。
 
 ## 对比对象
 
@@ -169,7 +169,7 @@ Tunara 的 SSH 已经超过「在 PTY 里跑 `ssh`」：自有连接、SFTP、�
 | Kitty transfer kitten（走 TTY 传文件） | Kitty | Tunara 用 SFTP 更稳；嵌套 SSH 场景才需要 TTY 传输 |
 | WezTerm 远程 mux 服务 | WezTerm | 接近自建 tmux；与「真实 PTY」重叠，不优先 |
 
-SSH 下一阶段仍应是 [ROADMAP.md](./ROADMAP.md) 里的真实环境回归（认证方式、host key、被动断开、大目录搜索），而不是再铺协议。
+SSH 下一阶段仍应是 [ROADMAP.md](../ROADMAP.md) 里的真实环境回归（认证方式、host key、被动断开、大目录搜索），而不是再铺协议。
 
 ---
 
@@ -179,7 +179,7 @@ SSH 下一阶段仍应是 [ROADMAP.md](./ROADMAP.md) 里的真实环境回归（
 
 | 项 | 记录在 | 原因 |
 |----|--------|------|
-| 拖选即复制 | [TERMINAL_SELECTION_COPY.md](./TERMINAL_SELECTION_COPY.md) | 静默覆盖系统剪贴板，不符合 macOS |
+| 拖选即复制 | [TERMINAL_SELECTION_COPY.md](../TERMINAL_SELECTION_COPY.md) | 静默覆盖系统剪贴板，不符合 macOS |
 | tmux 风格 copy mode | 同上 | GUI 用鼠标；工作量大且偏题 |
 | 中键粘贴 | 同上 | X11 primary selection，macOS 无此范式 |
 | Kitty graphics protocol | `terminal-image.ts` | 更重、仍在变，SIXEL/IIP 已够预览 |

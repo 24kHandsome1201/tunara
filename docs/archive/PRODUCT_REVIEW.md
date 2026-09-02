@@ -8,7 +8,7 @@
 2. **哪些功能对用户的成本高于价值**，适合删除、降级或收口
 3. **主路径上缺什么、哪里值得优化**
 
-产品原则仍以 [GOAL.md](./GOAL.md) 为准：terminal-first，不替代 shell / Git / 浏览器 / 编辑器 / Agent。右侧栏页签级取舍见已落地的 [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md)。用户可见能力与代码入口见 [FEATURES.md](./FEATURES.md)。
+产品原则仍以 [GOAL.md](../GOAL.md) 为准：terminal-first，不替代 shell / Git / 浏览器 / 编辑器 / Agent。右侧栏页签级取舍见已落地的 [INSPECTOR_PANELS.md](../INSPECTOR_PANELS.md)。用户可见能力与代码入口见 [FEATURES.md](../FEATURES.md)。
 
 ---
 
@@ -314,7 +314,7 @@ D. 看前端效果
 
 - 明确规则并写在 UI 上：检查器 = 浏览/搜索；主区标签 = 阅读/轻编辑。
 - Changes 文件行增加「在工作区打开」（受 256 KiB 边界限制）。
-- 标题栏收成当前设备工作面：侧栏打开时只显示该设备文件；SSH 标签用来源与 ARIA 区分传输。见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)。
+- 标题栏收成当前设备工作面：侧栏打开时只显示该设备文件；SSH 标签用来源与 ARIA 区分传输。见 [TITLEBAR_DEVICE_TABS.md](../TITLEBAR_DEVICE_TABS.md)。
 
 ### 4.6 检查器信息架构（与已落地盘点对齐）
 
@@ -371,9 +371,9 @@ D. 看前端效果
 
 | 文档 | 关系 |
 |------|------|
-| [GOAL.md](./GOAL.md) | 原则与“明确不做”；本文不改原则 |
-| [FEATURES.md](./FEATURES.md) | 当前用户能力与代码入口的来源事实 |
-| [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 检查器自动选择与锁定交互模型，本文默认那些已落地切割成立 |
-| [ROADMAP.md](./ROADMAP.md) | 已落地叙事；“下一阶段”目前只有真实环境回归。本文补充产品收口，不替代回归矩阵 |
+| [GOAL.md](../GOAL.md) | 原则与“明确不做”；本文不改原则 |
+| [FEATURES.md](../FEATURES.md) | 当前用户能力与代码入口的来源事实 |
+| [INSPECTOR_PANELS.md](../INSPECTOR_PANELS.md) | 检查器自动选择与锁定交互模型，本文默认那些已落地切割成立 |
+| [ROADMAP.md](../ROADMAP.md) | 已落地叙事；“下一阶段”目前只有真实环境回归。本文补充产品收口，不替代回归矩阵 |
 
 若只做一件事：把 **Preview 和最近目录** 接到用户已经在走的路上，比再做一个新检查器页签更有用。

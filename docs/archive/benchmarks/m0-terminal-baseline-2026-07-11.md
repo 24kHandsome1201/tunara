@@ -47,7 +47,7 @@ benchmark bundle 使用独立 identifier 和 Application Support，不读写正�
 
 - [result.json](./raw/m0-terminal-baseline-2026-07-11/result.json)
 - [process-samples.csv](./raw/m0-terminal-baseline-2026-07-11/process-samples.csv)
-- 可复跑入口：[benchmark-m0-terminals.sh](../../scripts/benchmark-m0-terminals.sh)
+- 可复跑入口：[benchmark-m0-terminals.sh](../../../scripts/benchmark-m0-terminals.sh)
 
 采样只记录时长、帧间隔、资源数值和失败原因，不记录终端正文，不上传遥测。
 

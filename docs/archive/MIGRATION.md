@@ -44,7 +44,7 @@ migration.
    longer be updated.
 4. Optional: search your workspace snapshot for Conduit-only keys. After a
    normal save cycle, new state should be written through the Tunara snapshot
-   path documented in [`STATE_AND_PERSISTENCE.md`](./STATE_AND_PERSISTENCE.md).
+   path documented in [`STATE_AND_PERSISTENCE.md`](../STATE_AND_PERSISTENCE.md).
 
 If anything still appears to load only from Conduit paths, file an issue with
 the on-disk store filenames and your Tunara version.

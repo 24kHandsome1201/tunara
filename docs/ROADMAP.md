@@ -76,7 +76,7 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 22. 统一界面与终端配色
 
-九套配色互斥选择：命名方案同时染终端和外壳；浅色 / 深色 / 跟随系统使用 Tunara 默认 palette。Accent 与配色正交。规范见 [THEME_SHELL_TINTING.md](./THEME_SHELL_TINTING.md)。
+九套配色互斥选择：命名方案同时染终端和外壳；浅色 / 深色 / 跟随系统使用 Tunara 默认 palette。Accent 与配色正交。规范见 [THEME_SHELL_TINTING.md](./archive/THEME_SHELL_TINTING.md)。
 
 ### 23. 安全图片预览与大文本开头查看
 
@@ -88,7 +88,7 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ## 下一阶段建议
 
-当前主线没有自动进入的下一产品阶段。功能取舍与主路径缺口见 [PRODUCT_REVIEW.md](./PRODUCT_REVIEW.md)：优先把 Preview 和最近目录接到已有流程上，而不是再铺新面。
+当前主线没有自动进入的下一产品阶段。功能取舍与主路径缺口见 [PRODUCT_REVIEW.md](./archive/PRODUCT_REVIEW.md)：优先把 Preview 和最近目录接到已有流程上，而不是再铺新面。
 
 侧栏已按主机分组之后，标题栏展示当前设备工作面，见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)。不要再把全部终端和跨设备文件平铺成第二条会话列表，也不要做成第二行设备页签。
 
@@ -98,7 +98,7 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 2. 终端本职缺口（对标其他终端）
 
-对照 iTerm2 / Ghostty / Warp / Wave / cmux / Kitty / Tabby 的优先项里，拖文件插入路径、OSC 99、跳到最近 Attention、有上限的滚屏/命令块导出已经落地。下一批仍是 Unicode grapheme 宽度、Kitty keyboard（等 xterm.js 上游）和跨会话搜索。完整矩阵与明确不抄的厨房水槽见 [TERMINAL_COMPETITIVE_GAPS.md](./TERMINAL_COMPETITIVE_GAPS.md)。
+对照 iTerm2 / Ghostty / Warp / Wave / cmux / Kitty / Tabby 的优先项里，拖文件插入路径、OSC 99、跳到最近 Attention、有上限的滚屏/命令块导出已经落地。下一批仍是 Unicode grapheme 宽度、Kitty keyboard（等 xterm.js 上游）和跨会话搜索。完整矩阵与明确不抄的厨房水槽见 [TERMINAL_COMPETITIVE_GAPS.md](./archive/TERMINAL_COMPETITIVE_GAPS.md)。
 
 ## 性能方向
 

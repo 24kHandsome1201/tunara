@@ -46,6 +46,6 @@ optimized 前端产物为：入口 `main-C-mw283s.js` 2,960 bytes、首屏 `App-
 
 ## Phase 2 关闭判断
 
-`docs/GOAL_STATUS.md` 的 Phase 2 required gates 在本批前除首 PTY 性能外均已有真实证据。本轮补齐唯一未完成项并通过硬预算，因此 **Phase 2 正式完成**。Phase 3 Preview 保持未开始，本批不自动启动 Phase 3，也未重复原生关闭、本地保存、SSH/Linux 完整性、签名、公证或发布验收。
+`docs/archive/GOAL_STATUS.md` 的 Phase 2 required gates 在本批前除首 PTY 性能外均已有真实证据。本轮补齐唯一未完成项并通过硬预算，因此 **Phase 2 正式完成**。Phase 3 Preview 保持未开始，本批不自动启动 Phase 3，也未重复原生关闭、本地保存、SSH/Linux 完整性、签名、公证或发布验收。
 
 原始固化汇总见 [result-summary.json](./raw/m2-terminal-startup-macos-2026-07-13/result-summary.json)。

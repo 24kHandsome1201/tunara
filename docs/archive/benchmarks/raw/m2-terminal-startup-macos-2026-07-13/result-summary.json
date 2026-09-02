@@ -8,7 +8,7 @@
     "realPtyInputProbeRequired": true
   },
   "baseline": {
-    "source": "docs/benchmarks/m1-terminal-startup-2026-07-11.md",
+    "source": "docs/archive/benchmarks/m1-terminal-startup-2026-07-11.md",
     "firstInputReadyMedianMs": 1639,
     "m2Multiplier": 1.1
   },

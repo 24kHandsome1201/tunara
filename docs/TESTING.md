@@ -164,7 +164,7 @@ meaningful runtime surface is still the Tauri webview inside a signed macOS
 bundle.
 
 Until a lightweight visual runner exists, treat the release bundle as the manual
-smoke gate. See also [`VISUAL_QA.md`](./VISUAL_QA.md).
+smoke gate. See also [`VISUAL_QA.md`](./archive/VISUAL_QA.md).
 
 ### macOS bundle verification checklist
 

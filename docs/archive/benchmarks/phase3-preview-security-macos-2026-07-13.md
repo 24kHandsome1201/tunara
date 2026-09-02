@@ -8,8 +8,8 @@
 
 - 基线：`a7b898f9befb0e0e3780b04c15417e727fe371b7`，开始时等于 `origin/main`。
 - 构建：复用 `/Volumes/2TB/codex-build-cache/rail/target` 的 release optimized target，没有清理 target 或改变 symlink。
-- 为避免正式 `dev.tunara.app` single-instance 把验收启动转交给用户已有 Tunara，使用仅覆盖 product name/identifier 的 [`phase3-preview-tauri.conf.json`](../../scripts/fixtures/phase3-preview-tauri.conf.json) 生成 `Tunara Preview Security.app`。正式配置、用户已有窗口和 PTY 未被退出。
-- 两个只监听 loopback 的受控 server：`127.0.0.1:41731` 与 `127.0.0.1:41732`，代码见 [`phase3-preview-security-server.mjs`](../../scripts/fixtures/phase3-preview-security-server.mjs)。主 checkout 与 detached linked worktree 分别输出两个 URL。
+- 为避免正式 `dev.tunara.app` single-instance 把验收启动转交给用户已有 Tunara，使用仅覆盖 product name/identifier 的 [`phase3-preview-tauri.conf.json`](../../../scripts/fixtures/phase3-preview-tauri.conf.json) 生成 `Tunara Preview Security.app`。正式配置、用户已有窗口和 PTY 未被退出。
+- 两个只监听 loopback 的受控 server：`127.0.0.1:41731` 与 `127.0.0.1:41732`，代码见 [`phase3-preview-security-server.mjs`](../../../scripts/fixtures/phase3-preview-security-server.mjs)。主 checkout 与 detached linked worktree 分别输出两个 URL。
 
 ## 安全证据
 
