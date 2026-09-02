@@ -18,9 +18,16 @@ import {
 import {
   emptySplitState,
   sanitizeSplitLayout,
+  splitLayoutLeafIds,
   splitLayoutSessionIds,
   type SplitState,
 } from "../modules/session/split-layout.ts";
+import {
+  migrateFileTabsToReaders,
+  persistableReaders,
+  sanitizeReaders,
+  type SessionReaderState,
+} from "../modules/session/reader-state.ts";
 
 export type PersistedSession = Pick<
   Session,
@@ -100,6 +107,7 @@ export interface PersistedUILayoutV2 {
   split: SplitState;
   inspectorTab: "changes" | "files" | "transfers" | "forwarding" | "preview";
   explorerFollowCwd?: boolean;
+  readers?: Record<string, Omit<SessionReaderState, "dirty">>;
 }
 
 export interface PersistedTerminalSnapshot {
@@ -407,17 +415,25 @@ export function sanitizeSnapshot(raw: unknown): WorkspaceSnapshotV1 | null {
     const split = sanitizePersistedSplit(uiRaw.split, sessionIds);
 
     const inspectorTab = coerceInspectorTab(uiRaw.inspectorTab);
+    const readersFromLayout = sanitizeReaders(uiRaw.readers, sessionIds);
+    const readersFromLegacyTabs = Object.keys(readersFromLayout).length === 0
+      ? migrateFileTabsToReaders(uiRaw.fileTabs, uiRaw.activeFileTabId, sessionIds)
+      : {};
+    const readers = Object.keys(readersFromLayout).length > 0 ? readersFromLayout : readersFromLegacyTabs;
 
     ui = { sidebarVisible, panelVisible, collapsedDirs, collapsedDiffSections, split, inspectorTab,
       explorerFollowCwd: uiRaw.explorerFollowCwd !== false,
+      ...(Object.keys(readers).length > 0 ? { readers: persistableReaders(readers) } : {}),
     };
   } else {
     ui = { ...DEFAULT_UI_LAYOUT_V2 };
   }
 
   const splitSessionIds = splitLayoutSessionIds(ui.split);
-  if (splitSessionIds.length > 0 && (!activeSessionId || !splitSessionIds.includes(activeSessionId))) {
-    activeSessionId = splitSessionIds[splitSessionIds.length - 1] ?? activeSessionId;
+  const splitLeafIds = splitLayoutLeafIds(ui.split);
+  if (splitLeafIds.length > 0 && (!activeSessionId || !splitSessionIds.includes(activeSessionId))) {
+    const lastSession = [...splitSessionIds].pop();
+    activeSessionId = lastSession ?? activeSessionId;
   }
 
   const terminals: Record<string, PersistedTerminalSnapshot> = {};

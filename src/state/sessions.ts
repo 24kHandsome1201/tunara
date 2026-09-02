@@ -50,6 +50,7 @@ import {
 import { clearSshCredentials } from "@/modules/ssh/pending-credentials";
 import { closeRemoteExternalEdits, interruptRemoteExternalEdit } from "@/modules/ssh/remote-external-edit";
 import {
+  sessionIdFromPaneId,
   splitLayoutHasSession,
   splitLayoutSessionIds,
   type SplitDirection,
@@ -338,7 +339,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     clearSshCredentials(id);
     closeRemoteExternalEdits(id);
     forgetBackgroundAttention(agentConfirmationAttentionKey(id));
-    useUIStore.getState().closeFileTabsForSession(id);
+    useUIStore.getState().closeReaderForSession(id);
     const wasActive = get().activeSessionId === id;
     const splitFocusSessionId = useUIStore.getState().removeSplitPane(id);
     set((state) => {
@@ -378,6 +379,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     if (!get().sessions.some((session) => session.id === id)) return;
     const currentId = get().activeSessionId;
     setLogicalActiveTerminalPane(id);
+    const ui = useUIStore.getState();
+    if (sessionIdFromPaneId(ui.focusedPaneId ?? "") !== id) {
+      ui.setFocusedPaneId(id);
+    }
     let accepted = false;
     set((state) => {
       if (!state.sessions.some((s) => s.id === id)) return {};
@@ -395,7 +400,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       };
     });
     if (accepted) {
-      useUIStore.getState().activateTerminal();
+      const focused = useUIStore.getState().focusedPaneId;
+      if (!focused || sessionIdFromPaneId(focused) !== id) {
+        useUIStore.getState().activateTerminal();
+      }
       ensureSessionVisibleInSplit(id, currentId);
     }
   },

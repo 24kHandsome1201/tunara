@@ -25,6 +25,7 @@ import {
 } from "./lib/sync-watches";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
+import { persistableReaders, sanitizeReaders } from "@/modules/session/reader-state";
 import { splitLayoutSessionIds } from "@/modules/session/split-layout";
 import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 import { registerWorkspaceFlush } from "./app-lifecycle";
@@ -49,6 +50,7 @@ function buildWorkspaceProjection(): WorkspaceProjectionV1 {
       split: ui.split,
       inspectorTab: ui.inspectorTab,
       explorerFollowCwd: ui.explorerFollowCwd,
+      readers: persistableReaders(ui.readers),
     },
     terminals: getAllTerminalSnapshots(),
     agentResume,
@@ -158,6 +160,8 @@ export function useInit() {
         inspectorTab: snapshot.ui.inspectorTab,
         commandUsage: snapshot.commandUsage ?? {},
         explorerFollowCwd: snapshot.ui.explorerFollowCwd !== false,
+        readers: sanitizeReaders(snapshot.ui.readers ?? {}, new Set(merged.map((session) => session.id))),
+        focusedPaneId: snapshot.activeSessionId,
       });
 
       if (snapshot.terminals && Object.keys(snapshot.terminals).length > 0) {
@@ -314,7 +318,7 @@ export function useInit() {
     });
 
     const unsubUI = useUIStore.subscribe(
-      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.explorerFollowCwd] as const,
+      (s) => [s.collapsedDirs, s.collapsedDiffSections, s.split, s.inspectorTab, s.sidebarVisible, s.panelVisible, s.commandUsage, s.explorerFollowCwd, s.readers] as const,
       () => {
         if (workspaceHydrated) scheduleSave();
       },

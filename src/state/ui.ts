@@ -7,15 +7,29 @@ import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/mo
 import { toggleTrueRecordKey } from "@/state/record-keys";
 import { persistBootAppearance } from "@/styles/shell-tint-boot";
 import {
+  canSplitLayout,
   emptySplitState,
+  insertReaderPane as insertReaderPaneLayout,
   insertSplitPane as insertSplitPaneLayout,
+  readerPaneId,
+  removeReaderPane as removeReaderPaneLayout,
   removeSplitPane as removeSplitPaneLayout,
   replaceSplitPane as replaceSplitPaneLayout,
+  sessionIdFromPaneId,
   setSplitRatioAt,
+  splitLayoutHasReader,
   type SplitDirection,
   type SplitPath,
   type SplitState,
 } from "@/modules/session/split-layout";
+import {
+  openReaderFileInState,
+  readerHistoryBack as readerHistoryBackState,
+  readerHistoryForward as readerHistoryForwardState,
+  readerSelectHistoryIndex,
+  type ReaderFileRef,
+  type SessionReaderState,
+} from "@/modules/session/reader-state";
 import { DEFAULT_ACCENT } from "@/styles/shell-tint-boot";
 import type { TerminalHostModifier } from "@/modules/terminal/lib/terminal-input-router";
 
@@ -261,19 +275,7 @@ export interface KeyboardInteractivePrompt {
   prompts: Array<{ prompt: string; echo: boolean }>;
 }
 
-export interface WorkspaceFileTab {
-  id: string;
-  sessionId: string;
-  filePath: string;
-  fileName: string;
-  line?: number;
-  column?: number;
-  dirty: boolean;
-}
-
-function workspaceFileTabId(sessionId: string, filePath: string): string {
-  return `${sessionId}\0${filePath}`;
-}
+export type { ReaderFileRef, SessionReaderState };
 
 interface UIState extends AppearanceSettings {
   ready: boolean;
@@ -291,14 +293,15 @@ interface UIState extends AppearanceSettings {
   trafficLightWidth: number;
   viewportWidth: number;
   split: SplitState;
+  /** Terminal session id or `reader:<sessionId>` for the focused split leaf. */
+  focusedPaneId: string | null;
+  readers: Record<string, SessionReaderState>;
   inspectorTab: InspectorTab;
   /** Manual Inspector view hold. Session switch restores follow. */
   inspectorLocked: boolean;
   inspectorLockSessionId: string | null;
   /** Sessions where the user has opened Preview; drives auto-select, not persisted. */
   inspectorPreviewOpenedSessionIds: Record<string, true>;
-  fileTabs: WorkspaceFileTab[];
-  activeFileTabId: string | null;
   toasts: Toast[];
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
    *  so two SSH connections that both hit an unknown/unverifiable host key
@@ -336,12 +339,15 @@ interface UIState extends AppearanceSettings {
   syncInspectorLockForSession: (sessionId: string | null) => void;
   markInspectorPreviewOpened: (sessionId: string) => void;
   clearInspectorPreviewOpened: (sessionId: string) => void;
-  openFileTab: (tab: Omit<WorkspaceFileTab, "id" | "dirty">) => void;
-  setActiveFileTab: (id: string) => void;
+  openReader: (file: ReaderFileRef & { sessionId: string }) => boolean;
+  closeReaderPane: (sessionId: string) => void;
+  closeReaderForSession: (sessionId: string) => void;
+  setReaderDirty: (sessionId: string, dirty: boolean) => void;
+  readerHistoryBack: (sessionId: string) => void;
+  readerHistoryForward: (sessionId: string) => void;
+  selectReaderHistory: (sessionId: string, index: number) => void;
+  setFocusedPaneId: (paneId: string | null) => void;
   activateTerminal: () => void;
-  closeFileTab: (id: string) => void;
-  closeFileTabsForSession: (sessionId: string) => void;
-  setFileTabDirty: (id: string, dirty: boolean) => void;
   openSettings: (section?: string) => void;
   setTheme: (t: ThemeType) => void;
   setCursorStyle: (c: CursorStyle) => void;
@@ -425,12 +431,12 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     trafficLightWidth: 0,
     viewportWidth: typeof window === "undefined" ? 1200 : window.innerWidth,
     split: emptySplitState(),
+    focusedPaneId: null,
+    readers: {},
     inspectorTab: "changes" as InspectorTab,
     inspectorLocked: false,
     inspectorLockSessionId: null,
     inspectorPreviewOpenedSessionIds: {},
-    fileTabs: [],
-    activeFileTabId: null,
     toasts: [],
     hostKeyPrompts: [],
     keyboardInteractivePrompts: [],
@@ -518,41 +524,88 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       delete inspectorPreviewOpenedSessionIds[sessionId];
       return { inspectorPreviewOpenedSessionIds };
     }),
-    openFileTab: (tab) => set((state) => {
-      const id = workspaceFileTabId(tab.sessionId, tab.filePath);
-      if (state.fileTabs.some((candidate) => candidate.id === id)) {
-        return { activeFileTabId: id, mainSurface: "terminal" };
-      }
+    openReader: (file) => {
+      let opened = false;
+      set((state) => {
+        const existing = state.readers[file.sessionId];
+        const alreadyOpen = splitLayoutHasReader(state.split, file.sessionId);
+        if (!alreadyOpen && !canSplitLayout(state.split)) return {};
+        const nextReaders = {
+          ...state.readers,
+          [file.sessionId]: openReaderFileInState(existing, file),
+        };
+        if (alreadyOpen) {
+          opened = true;
+          return {
+            readers: nextReaders,
+            focusedPaneId: readerPaneId(file.sessionId),
+            mainSurface: "terminal",
+          };
+        }
+        const split = insertReaderPaneLayout(state.split, file.sessionId);
+        if (!split) return {};
+        opened = true;
+        return {
+          readers: nextReaders,
+          split,
+          focusedPaneId: readerPaneId(file.sessionId),
+          mainSurface: "terminal",
+        };
+      });
+      return opened;
+    },
+    closeReaderPane: (sessionId) => set((state) => {
+      const result = removeReaderPaneLayout(state.split, sessionId);
+      if (!result.removed) return {};
+      const focusedOnThis = state.focusedPaneId === readerPaneId(sessionId);
       return {
-        fileTabs: [...state.fileTabs, { ...tab, id, dirty: false }],
-        activeFileTabId: id,
-        mainSurface: "terminal",
+        split: result.split,
+        focusedPaneId: focusedOnThis
+          ? (result.focusPaneId ?? sessionId)
+          : state.focusedPaneId,
       };
     }),
-    setActiveFileTab: (id) => set((state) =>
-      state.fileTabs.some((tab) => tab.id === id) ? { activeFileTabId: id, mainSurface: "terminal" } : {},
-    ),
-    activateTerminal: () => set({ activeFileTabId: null, mainSurface: "terminal" }),
-    closeFileTab: (id) => set((state) => {
-      const index = state.fileTabs.findIndex((tab) => tab.id === id);
-      if (index < 0) return {};
-      const fileTabs = state.fileTabs.filter((tab) => tab.id !== id);
-      if (state.activeFileTabId !== id) return { fileTabs };
-      const adjacent = fileTabs[Math.min(index, fileTabs.length - 1)];
-      return { fileTabs, activeFileTabId: adjacent?.id ?? null };
+    closeReaderForSession: (sessionId) => set((state) => {
+      const result = removeReaderPaneLayout(state.split, sessionId);
+      const { [sessionId]: _removed, ...readers } = state.readers;
+      const focusedOnThis = state.focusedPaneId === readerPaneId(sessionId)
+        || sessionIdFromPaneId(state.focusedPaneId ?? "") === sessionId;
+      return {
+        readers,
+        ...(result.removed ? { split: result.split } : {}),
+        focusedPaneId: focusedOnThis
+          ? (result.focusPaneId ?? null)
+          : state.focusedPaneId,
+      };
     }),
-    closeFileTabsForSession: (sessionId) => set((state) => {
-      const fileTabs = state.fileTabs.filter((tab) => tab.sessionId !== sessionId);
-      const activeRemoved = state.fileTabs.some((tab) =>
-        tab.id === state.activeFileTabId && tab.sessionId === sessionId,
-      );
-      return activeRemoved ? { fileTabs, activeFileTabId: null } : { fileTabs };
+    setReaderDirty: (sessionId, dirty) => set((state) => {
+      const reader = state.readers[sessionId];
+      if (!reader || reader.dirty === dirty) return {};
+      return { readers: { ...state.readers, [sessionId]: { ...reader, dirty } } };
     }),
-    setFileTabDirty: (id, dirty) => set((state) => {
-      const tab = state.fileTabs.find((candidate) => candidate.id === id);
-      if (!tab || tab.dirty === dirty) return state;
-      return { fileTabs: state.fileTabs.map((candidate) => candidate.id === id ? { ...candidate, dirty } : candidate) };
+    readerHistoryBack: (sessionId) => set((state) => {
+      const reader = state.readers[sessionId];
+      if (!reader) return {};
+      const next = readerHistoryBackState(reader);
+      if (next === reader) return {};
+      return { readers: { ...state.readers, [sessionId]: next } };
     }),
+    readerHistoryForward: (sessionId) => set((state) => {
+      const reader = state.readers[sessionId];
+      if (!reader) return {};
+      const next = readerHistoryForwardState(reader);
+      if (next === reader) return {};
+      return { readers: { ...state.readers, [sessionId]: next } };
+    }),
+    selectReaderHistory: (sessionId, index) => set((state) => {
+      const reader = state.readers[sessionId];
+      if (!reader) return {};
+      const next = readerSelectHistoryIndex(reader, index);
+      if (next === reader) return {};
+      return { readers: { ...state.readers, [sessionId]: next } };
+    }),
+    setFocusedPaneId: (focusedPaneId) => set({ focusedPaneId }),
+    activateTerminal: () => set({ mainSurface: "terminal" }),
     openSettings: (section) => {
       pendingSettingsSection = normalizeSettingsSection(section);
       set({ overlay: "settings", sshPrefill: null });
@@ -579,23 +632,33 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
         const split = insertSplitPaneLayout(state.split, targetSessionId, newSessionId, direction);
         if (!split) return {};
         inserted = true;
-        return { split };
+        return { split, focusedPaneId: newSessionId };
       });
       return inserted;
     },
     replaceSplitPane: (targetSessionId, newSessionId) =>
-      set((state) => ({ split: replaceSplitPaneLayout(state.split, targetSessionId, newSessionId) })),
+      set((state) => ({
+        split: replaceSplitPaneLayout(state.split, targetSessionId, newSessionId),
+        focusedPaneId: state.focusedPaneId === targetSessionId ? newSessionId : state.focusedPaneId,
+      })),
     removeSplitPane: (sessionId) => {
       let focusSessionId: string | null = null;
       set((state) => {
         const result = removeSplitPaneLayout(state.split, sessionId);
         if (!result.removed) return {};
         focusSessionId = result.focusSessionId;
-        return { split: result.split };
+        const { [sessionId]: _removed, ...readers } = state.readers;
+        const focusedOnRemoved = state.focusedPaneId === sessionId
+          || state.focusedPaneId === readerPaneId(sessionId);
+        return {
+          split: result.split,
+          readers,
+          focusedPaneId: focusedOnRemoved ? (result.focusSessionId ?? null) : state.focusedPaneId,
+        };
       });
       return focusSessionId;
     },
-    closeSplit: () => set({ split: emptySplitState() }),
+    closeSplit: () => set({ split: emptySplitState(), focusedPaneId: null }),
     setSplitRatio: (path, ratio) =>
       set((state) => ({ split: setSplitRatioAt(state.split, path, ratio) })),
     addToast: (toast) => {

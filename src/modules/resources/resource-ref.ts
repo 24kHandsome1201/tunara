@@ -1,5 +1,7 @@
 import type { Session } from "@/ui/types";
 import { openInEditor } from "@/modules/editor/open";
+import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
+import { t } from "@/modules/i18n";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -42,11 +44,27 @@ export async function openResource(ref: ResourceRef, localDisposition: "editor" 
     throw new Error("stale SSH resource binding");
   }
   useSessionsStore.getState().setActive(ref.logicalSessionId);
-  useUIStore.getState().openFileTab({
-    sessionId: ref.logicalSessionId,
-    filePath: ref.path,
-    fileName: ref.path.split("/").filter(Boolean).pop() ?? ref.path,
-    line: ref.line,
-    column: ref.column,
-  });
+  const apply = () => {
+    const opened = useUIStore.getState().openReader({
+      sessionId: ref.logicalSessionId,
+      filePath: ref.path,
+      fileName: ref.path.split("/").filter(Boolean).pop() ?? ref.path,
+      line: ref.line,
+      column: ref.column,
+    });
+    if (!opened) {
+      useUIStore.getState().addToast({
+        sessionId: ref.logicalSessionId,
+        title: t("reader.split_full"),
+        subtitle: "",
+        variant: "warning",
+      });
+    }
+  };
+  const current = useUIStore.getState().readers[ref.logicalSessionId]?.current;
+  if (current && current.filePath !== ref.path) {
+    if (requestDirtyDraftFileAction(ref.logicalSessionId, current.filePath, apply)) apply();
+    return;
+  }
+  apply();
 }
