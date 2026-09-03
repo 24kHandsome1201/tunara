@@ -14,7 +14,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ### 产品与体验
 - 阅读器给常见源码和日志上色：TypeScript / JS / JSON / YAML / TOML / Rust / Python / Go / shell / CSS / HTML / SQL / Dockerfile 走 Shiki（JS 正则引擎，按语法懒加载），`.log` 与长得像日志的 `.txt` 走行内分词。颜色来自纸面 token，不跟 Shiki 主题走。Markdown 编辑器仍用原来的 heading / marker / link 高亮。
-- 全面收敛应用界面与交互层级，并启用新的 macOS 应用图标；macOS 26+ 提供浅色、深色 Icon Composer 外观，旧系统继续使用标准 ICNS 图标。
+- 全面收敛应用界面与交互层级，并启用符合 macOS 标准尺寸与安全边距的新 ICNS 应用图标。
 
 ## [2.0.1] - 2026-08-18
 
