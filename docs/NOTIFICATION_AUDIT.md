@@ -298,8 +298,10 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 
 ## 计数核对
 
-Toast `addToast` 生产调用：73。  
-其中建议删除 24、保留 28、并入「需要你」4、改内联 9、需要设计 2（关闭确认两处）、已在处理 0。  
+Toast `addToast` 生产调用：73。
+
+其中建议删除 24、保留 28、并入「需要你」4、改内联 9、需要设计 2（关闭确认两处）、已在处理 0。
+
 （`sessions.ts:699/746` 按「并入需要你」计，成功分支在理由里要求删。）
 
 非 toast 行 39：已在处理 4、并入「需要你」12、改内联 13、删除 3、保留模态 6、需要设计 2（退出横幅、BEL）。

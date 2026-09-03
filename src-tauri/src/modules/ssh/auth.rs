@@ -19,12 +19,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use russh::client::{AuthResult, Handle, KeyboardInteractiveAuthResponse};
-use russh::{MethodKind, MethodSet};
 #[cfg(unix)]
 use russh::keys::agent::client::AgentClient;
 #[cfg(unix)]
 use russh::keys::agent::AgentIdentity;
 use russh::keys::{load_openssh_certificate, load_secret_key, Algorithm, PrivateKeyWithHashAlg};
+use russh::{MethodKind, MethodSet};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
@@ -285,11 +285,7 @@ async fn authenticate_keyboard_interactive(
     }
 }
 
-const DEFAULT_IDENTITY_FILES: &[&str] = &[
-    "~/.ssh/id_ed25519",
-    "~/.ssh/id_ecdsa",
-    "~/.ssh/id_rsa",
-];
+const DEFAULT_IDENTITY_FILES: &[&str] = &["~/.ssh/id_ed25519", "~/.ssh/id_ecdsa", "~/.ssh/id_rsa"];
 const MAX_AUTO_AUTH_ATTEMPTS: usize = 5;
 
 fn remaining_allows(remaining: &MethodSet, kind: MethodKind) -> bool {
@@ -339,10 +335,7 @@ fn summarize_auto_attempts(attempts: &[String]) -> String {
     if attempts.is_empty() {
         "automatic authentication failed: no methods were attempted".into()
     } else {
-        format!(
-            "automatic authentication failed: {}",
-            attempts.join("; ")
-        )
+        format!("automatic authentication failed: {}", attempts.join("; "))
     }
 }
 
@@ -394,11 +387,7 @@ async fn authenticate_auto(
             {
                 Ok(true) => return Ok(()),
                 Ok(false) => {
-                    if spend(
-                        &mut spent,
-                        &mut attempts,
-                        format!("key {path}: rejected"),
-                    ) {
+                    if spend(&mut spent, &mut attempts, format!("key {path}: rejected")) {
                         return Err(summarize_auto_attempts(&attempts));
                     }
                 }
@@ -412,7 +401,11 @@ async fn authenticate_auto(
     }
 
     if remaining_allows(&remaining, MethodKind::Password) {
-        let prompted = if opts.password.as_deref().is_some_and(|value| !value.is_empty()) {
+        let prompted = if opts
+            .password
+            .as_deref()
+            .is_some_and(|value| !value.is_empty())
+        {
             None
         } else {
             match prompt_password(&on_event, &origin, &opts.user).await {
@@ -454,9 +447,7 @@ async fn authenticate_auto(
 
 fn looks_like_encrypted_key_error(error: &str) -> bool {
     let lowered = error.to_ascii_lowercase();
-    lowered.contains("passphrase")
-        || lowered.contains("encrypted")
-        || lowered.contains("password")
+    lowered.contains("passphrase") || lowered.contains("encrypted") || lowered.contains("password")
 }
 
 async fn prompt_password(
