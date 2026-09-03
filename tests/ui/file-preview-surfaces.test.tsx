@@ -68,7 +68,9 @@ describe("file preview surface tints", () => {
   test("FileIcon applies the family tint to currentColor without coloring the name", () => {
     const { container } = render(<FileIcon tint={fileKindTint("index.ts")} />);
     const svg = container.querySelector("svg");
-    expect(svg?.getAttribute("stroke")).toBe("currentColor");
-    expect((svg as SVGElement | null)?.style.color).toBe("var(--c-file-code)");
+    // Phosphor glyphs are filled paths; the tint is applied as the svg fill.
+    expect(svg?.classList.contains("file-icon")).toBe(true);
+    expect(svg?.getAttribute("fill")).toBe("var(--c-file-code)");
+    expect(container.textContent).toBe("");
   });
 });
