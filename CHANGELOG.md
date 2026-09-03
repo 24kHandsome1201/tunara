@@ -10,6 +10,11 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-09-03
+
+### 产品与体验
+- 设置中的 SSH 已知主机列表支持折叠，并在标题中显示当前主机数量。
+
 ## [3.0.1] - 2026-09-03
 
 ### 修复
