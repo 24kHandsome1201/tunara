@@ -10,6 +10,11 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-09-03
+
+### 修复
+- macOS 发布恢复使用标准 ICNS 图标，避免 Icon Composer 资源触发 `actool` / `Assets.car` 打包失败。
+
 ## [3.0.0] - 2026-09-03
 
 ### 产品与体验
