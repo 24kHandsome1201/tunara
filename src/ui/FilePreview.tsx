@@ -28,7 +28,8 @@ import {
   updateDirtyDraft,
 } from "@/modules/editor/dirty-draft-guard";
 import { parseMarkdownDocument, safeMarkdownLanguage, type MarkdownBlock as MarkdownReaderBlock } from "@/modules/editor/markdown-reader";
-import { highlightMarkdownSource } from "@/modules/editor/markdown-syntax";
+import { detectLanguage } from "@/modules/editor/language-detect";
+import { highlightSource, OVERLAY_MAX_LINES, type SyntaxSegment } from "@/modules/editor/syntax-highlight";
 import { parseTabularPreview, tabularKindFromName, type TabularPreview } from "@/modules/editor/tabular-preview";
 import { isNumericTableColumn } from "@/ui/file-explorer/file-kind";
 import { parentDirectoryPath, siblingPreviewPaths } from "@/modules/editor/sibling-files";
@@ -315,18 +316,59 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
   }
 }
 
+function renderSyntaxLines(lines: SyntaxSegment[][]) {
+  return lines.map((line, lineIndex) => (
+    <span className="file-editor-syntax-line" key={lineIndex}>
+      {line.map((segment, segmentIndex) => (
+        <span data-syntax={segment.kind} key={`${segmentIndex}:${segment.text}`}>{segment.text}</span>
+      ))}
+      {lineIndex < lines.length - 1 ? "\n" : null}
+    </span>
+  ));
+}
+
+function useHighlightedLines(fileName: string, content: string): SyntaxSegment[][] | null {
+  const debouncedContent = useDebouncedValue(content, 200);
+  const [settled, setSettled] = useState<{ fileName: string; content: string; lines: SyntaxSegment[][] | null }>({
+    fileName: "",
+    content: "",
+    lines: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (debouncedContent.split("\n").length > OVERLAY_MAX_LINES) {
+      setSettled({ fileName, content: debouncedContent, lines: null });
+      return;
+    }
+    void highlightSource(fileName, debouncedContent).then((lines) => {
+      if (!cancelled) setSettled({ fileName, content: debouncedContent, lines });
+    });
+    return () => { cancelled = true; };
+  }, [debouncedContent, fileName]);
+
+  const language = detectLanguage(fileName, content);
+  if (!language) return settled.fileName === fileName && settled.content === content ? settled.lines : null;
+  if (content.split("\n").length > OVERLAY_MAX_LINES) return null;
+  if (settled.fileName === fileName && settled.content === content) return settled.lines;
+  return content.split("\n").map((line) => [{ kind: "text" as const, text: line }]);
+}
+
 function TextPreview({
   content,
+  fileName,
   fill = false,
   followTail = false,
   onUserScrollAway,
 }: {
   content: string;
+  fileName?: string;
   fill?: boolean;
   followTail?: boolean;
   onUserScrollAway?: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const highlightedLines = useHighlightedLines(fileName ?? "", content);
   useEffect(() => {
     if (!followTail) return;
     const root = rootRef.current;
@@ -344,8 +386,11 @@ function TextPreview({
       style={{ padding: "12px 14px 24px", overflow: "auto", maxHeight: fill ? undefined : 240, flex: fill ? 1 : undefined, minHeight: fill ? 0 : undefined }}
       className="no-scrollbar scroll-fade-y"
     >
-      <pre style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}>
-        {content}
+      <pre
+        className={highlightedLines ? "file-preview-syntax syntax-tokens" : undefined}
+        style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}
+      >
+        {highlightedLines ? renderSyntaxLines(highlightedLines) : content}
       </pre>
     </div>
   );
@@ -693,7 +738,7 @@ function InertTextOrTable({
 }) {
   const table = parseTabularPreview(fileName, content);
   if (table) return <TabularTable table={table} />;
-  return <TextPreview content={content} fill={fill} followTail={followTail} onUserScrollAway={onUserScrollAway} />;
+  return <TextPreview content={content} fileName={fileName} fill={fill} followTail={followTail} onUserScrollAway={onUserScrollAway} />;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -888,13 +933,7 @@ function EditorSurface({
   // textarea 后面的可见内容落后于输入。行号列同样保持实时。
   const debouncedContent = useDebouncedValue(content, 200);
   const debouncedFindQuery = useDebouncedValue(findQuery, 150);
-  const debouncedHighlightedLines = useMemo(
-    () => isMarkdown ? highlightMarkdownSource(debouncedContent) : null,
-    [debouncedContent, isMarkdown],
-  );
-  const highlightedLines = isMarkdown && debouncedContent !== content
-    ? lines.map((line) => [{ kind: "text" as const, text: line }])
-    : debouncedHighlightedLines;
+  const highlightedLines = useHighlightedLines(fileName, content);
   const tabularPreview = useMemo(
     () => (tabularKindFromName(fileName) ? parseTabularPreview(fileName, debouncedContent) : null),
     [debouncedContent, fileName],
@@ -1354,7 +1393,7 @@ function EditorSurface({
         ) : mode === "preview" && tabularPreview ? (
           <TabularTable table={tabularPreview} />
         ) : mode === "preview" ? (
-          <TextPreview content={content} fill />
+          <TextPreview content={content} fileName={fileName} fill />
         ) : (
           <div className="file-editor-code">
             <div ref={lineNumbersRef} className="file-editor-lines" aria-hidden="true">
@@ -1362,15 +1401,8 @@ function EditorSurface({
             </div>
             <div className="file-editor-input" data-highlighted={highlightedLines !== null}>
               {highlightedLines && (
-                <pre ref={syntaxRef} className="file-editor-syntax" aria-hidden="true">
-                  {highlightedLines.map((line, lineIndex) => (
-                    <span className="file-editor-syntax-line" key={lineIndex}>
-                      {line.map((segment, segmentIndex) => (
-                        <span data-syntax={segment.kind} key={`${segmentIndex}:${segment.text}`}>{segment.text}</span>
-                      ))}
-                      {lineIndex < highlightedLines.length - 1 ? "\n" : null}
-                    </span>
-                  ))}
+                <pre ref={syntaxRef} className="file-editor-syntax syntax-tokens" aria-hidden="true">
+                  {renderSyntaxLines(highlightedLines)}
                 </pre>
               )}
               <textarea

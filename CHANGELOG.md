@@ -10,6 +10,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 产品与体验
+- 阅读器给常见源码和日志上色：TypeScript / JS / JSON / YAML / TOML / Rust / Python / Go / shell / CSS / HTML / SQL / Dockerfile 走 Shiki（JS 正则引擎，按语法懒加载），`.log` 与长得像日志的 `.txt` 走行内分词。颜色来自纸面 token，不跟 Shiki 主题走。Markdown 编辑器仍用原来的 heading / marker / link 高亮。
+
 ## [2.0.1] - 2026-08-18
 
 ### 产品与体验

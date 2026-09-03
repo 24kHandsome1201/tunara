@@ -21,6 +21,7 @@ import { ArrowSquareOut, CaretRight, Check, CopySimple, Icon } from "@/ui/icons"
 import { copyText } from "./lib/clipboard";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
 import { computeVirtualSlice } from "./lib/diff-virtual";
+import { highlightDiffBodies, type SyntaxSegment } from "@/modules/editor/syntax-highlight";
 
 interface DiffPanelProps {
   session: Session;
@@ -77,18 +78,26 @@ function renderHighlighted(line: string, query: string): React.ReactNode {
   return parts.length === 0 ? line || " " : parts;
 }
 
+function isDiffCodeRow(row: { line: string; isAdd: boolean; isDel: boolean; isHunk: boolean }): boolean {
+  if (row.isHunk) return false;
+  if (row.isAdd || row.isDel) return true;
+  return row.line.startsWith(" ");
+}
+
 function MiniDiff({
   diff,
   error,
   searchQuery,
   onCopyHunk,
   onRetry,
+  filePath,
 }: {
   diff?: FileDiff;
   error?: string;
   searchQuery: string;
   onCopyHunk: (hunkText: string) => void;
   onRetry: () => void;
+  filePath: string;
 }) {
   const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -137,6 +146,24 @@ function MiniDiff({
   const hunkTexts = useMemo(() => collectHunkTexts(allRows), [allRows]);
   const q = searchQuery.trim();
   const rows = useMemo(() => filterRowsByQuery(allRows, q), [allRows, q]);
+  const [syntaxByKey, setSyntaxByKey] = useState<Map<string, SyntaxSegment[]> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const codeRows = allRows.filter(isDiffCodeRow);
+    const bodies = codeRows.map((row) => row.line.slice(1));
+    void highlightDiffBodies(filePath, bodies).then((lines) => {
+      if (cancelled) return;
+      if (!lines || lines.length !== bodies.length) {
+        setSyntaxByKey(null);
+        return;
+      }
+      const next = new Map<string, SyntaxSegment[]>();
+      codeRows.forEach((row, index) => { next.set(row.key, lines[index]); });
+      setSyntaxByKey(next);
+    });
+    return () => { cancelled = true; };
+  }, [allRows, filePath]);
 
   if (error) {
     return (
@@ -232,9 +259,11 @@ function MiniDiff({
             </div>
           );
         }
+        const highlighted = syntaxByKey?.get(key);
         return (
           <div
             key={key}
+            className={highlighted && highlighted.length > 0 ? "syntax-tokens" : undefined}
             style={{
               padding: "1px 8px",
               background: isAdd ? "var(--c-diff-add-bg)" : isDel ? "var(--c-diff-del-bg)" : "transparent",
@@ -242,7 +271,11 @@ function MiniDiff({
               whiteSpace: "pre",
             }}
           >
-            {renderHighlighted(line, q)}
+            {highlighted && highlighted.length > 0 && !q
+              ? <>{line.charAt(0)}{highlighted.map((segment, segmentIndex) => (
+                <span data-syntax={segment.kind} key={`${segmentIndex}:${segment.text}`}>{segment.text}</span>
+              ))}</>
+              : renderHighlighted(line, q)}
           </div>
         );
       })}
@@ -473,6 +506,7 @@ function DiffFileRow({
             searchQuery={searchQuery}
             onCopyHunk={onCopyHunk}
             onRetry={() => loadFileDiff(file)}
+            filePath={file.path}
           />
         </div>
       )}

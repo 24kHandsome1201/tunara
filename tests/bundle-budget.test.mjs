@@ -23,6 +23,10 @@ const ENTRY_CHUNK_GZIP_BASELINE = 170_176;
 const TOTAL_JS_GZIP_BASELINE = 420_242;
 const GROWTH_FACTOR = 1.05;
 
+// On-demand TextMate grammars and the Shiki JS-regex engine. They must stay
+// out of App / FilePreview / DiffPanel; the first-load total ignores them.
+const HIGHLIGHTER_CHUNK = /^(?:shiki-highlight|typescript|tsx|javascript|jsx|json|yaml|toml|rust|python|go|bash|css|html|sql|dockerfile)-.*\.js$/;
+
 const entryBudget = Math.floor(ENTRY_CHUNK_GZIP_BASELINE * GROWTH_FACTOR);
 const totalBudget = Math.floor(TOTAL_JS_GZIP_BASELINE * GROWTH_FACTOR);
 
@@ -69,6 +73,23 @@ test("frontend JS gzip stays within the measured production budget", async (t) =
     /Benchmark/,
     `entry chunk ${entryName} still contains Benchmark identifiers`,
   );
+  for (const name of [entryName, findNamedChunk(names, "FilePreview"), diffName]) {
+    const source = name === entryName ? entrySource : readFileSync(path.join(assetsDir, name), "utf8");
+    assert.doesNotMatch(
+      source,
+      /oniguruma/,
+      `${name} must not embed the Oniguruma / WASM engine`,
+    );
+  }
+  assert.doesNotMatch(
+    entrySource,
+    /shiki/,
+    `entry chunk ${entryName} must not contain shiki`,
+  );
+  assert.ok(
+    names.some((name) => name.startsWith("shiki-highlight-")),
+    "expected a lazy shiki-highlight-*.js chunk",
+  );
 
   const html = readFileSync(path.join(distDir, "index.html"), "utf8");
   const preloaded = [...html.matchAll(/rel="modulepreload"[^>]*href="([^"]+)"/g)].map((match) => match[1]);
@@ -83,7 +104,9 @@ test("frontend JS gzip stays within the measured production budget", async (t) =
   }
 
   const entry = sizes.find((row) => row.name === entryName);
-  const totalGzip = sizes.reduce((sum, row) => sum + row.gzip, 0);
+  const totalGzip = sizes
+    .filter((row) => !HIGHLIGHTER_CHUNK.test(row.name))
+    .reduce((sum, row) => sum + row.gzip, 0);
 
   assert.ok(
     entry.gzip <= entryBudget,

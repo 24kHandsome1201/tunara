@@ -36,6 +36,8 @@ Measured **2026-09-02** on `redesign/perf-lazy` after gating benchmark hooks and
 
 App gzip dropped **17 119 B** (−9.1%). Total JS gzip rose **3 675 B** because the three overlays are now extra chunks (shared-vendor duplication + chunk headers) rather than DCE’d out; they are not on the first-load path.
 
+Reader syntax highlighting (Shiki JS-regex engine + per-language grammars) is a later lazy graph. Those chunks (`shiki-highlight-*.js` and `typescript-*.js` / `python-*.js` / …) are **not** in the total JS gzip sum: they download only after a matching file is opened. The entry-chunk budget is unchanged.
+
 Vite reporter kB is `bytes / 1000`. Exact gzip bytes used by the test:
 
 | Guard | Bytes | × 1.05 budget |

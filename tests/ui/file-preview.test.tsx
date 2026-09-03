@@ -860,4 +860,40 @@ describe("FilePreview editor behavior", () => {
     fireEvent.keyDown(window, { key: "ArrowLeft" });
     await waitFor(() => expect(useUIStore.getState().readers["local-preview"]?.current?.filePath).toBe("/tmp/a.txt"));
   });
+
+  test("colors TypeScript keywords in the editor overlay", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") {
+        return {
+          kind: "text",
+          content: "export function greet() {\n  return 1;\n}\n",
+          size: 40,
+          fingerprint: "d".repeat(64),
+        };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilePreview filePath="/tmp/greet.ts" fileName="greet.ts" fill onClose={() => {}} />);
+    await screen.findByRole("textbox", { name: "Edit greet.ts" });
+    await waitFor(() => expect(document.querySelector('[data-syntax="keyword"]')).toBeTruthy());
+  });
+
+  test("colors log error levels in the editor overlay", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") {
+        return {
+          kind: "text",
+          content: "2026-01-01T00:00:00Z ERROR boom\n",
+          size: 32,
+          fingerprint: "e".repeat(64),
+        };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilePreview filePath="/tmp/app.log" fileName="app.log" fill onClose={() => {}} />);
+    await screen.findByRole("textbox", { name: "Edit app.log" });
+    await waitFor(() => expect(document.querySelector('[data-syntax="log-error"]')).toBeTruthy());
+  });
 });

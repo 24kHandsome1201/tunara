@@ -1341,12 +1341,34 @@ button.explorer-listing-action {
 }
 .file-editor-syntax::-webkit-scrollbar { display: none; }
 .file-editor-syntax-line { display: inline; }
-.file-editor-syntax [data-syntax="heading"] { color: var(--c-accent); font-weight: 700; }
-.file-editor-syntax [data-syntax="marker"] { color: var(--c-text-6); }
-.file-editor-syntax [data-syntax="code"] { color: var(--c-warning-text); }
-.file-editor-syntax [data-syntax="link"] { color: var(--c-accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--c-accent) 35%, transparent); text-underline-offset: 2px; }
-.file-editor-syntax [data-syntax="tag"] { color: var(--c-success); }
-.file-editor-syntax [data-syntax="value"] { color: var(--c-text-4); font-style: italic; }
+.syntax-tokens [data-syntax="heading"] { color: var(--c-accent); font-weight: 700; }
+.syntax-tokens [data-syntax="marker"] { color: var(--c-text-6); }
+.syntax-tokens [data-syntax="code"] { color: var(--c-warning-text); }
+.syntax-tokens [data-syntax="link"] { color: var(--c-accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--c-accent) 35%, transparent); text-underline-offset: 2px; }
+.syntax-tokens [data-syntax="tag"] { color: var(--c-success); }
+.syntax-tokens [data-syntax="value"] { color: var(--c-text-4); font-style: italic; }
+/* Kind colors mix existing paper tokens instead of Shiki hex. Saturation stays
+   low so the overlay reads as warm ink, not a neon theme. Light and .dark both
+   inherit because the mixes reference semantic variables from tokens.css. */
+.syntax-tokens [data-syntax="keyword"] { color: color-mix(in oklch, var(--c-accent) 78%, var(--c-text-2)); }
+.syntax-tokens [data-syntax="string"] { color: color-mix(in oklch, var(--c-success) 72%, var(--c-text-3)); }
+.syntax-tokens [data-syntax="number"] { color: var(--c-warning-text); }
+.syntax-tokens [data-syntax="comment"] { color: var(--c-text-6); }
+.syntax-tokens [data-syntax="function"] { color: color-mix(in oklch, var(--c-info) 68%, var(--c-text-2)); }
+.syntax-tokens [data-syntax="type"] { color: color-mix(in oklch, var(--c-info) 52%, var(--c-text-3)); }
+.syntax-tokens [data-syntax="variable"] { color: var(--c-text-2); }
+.syntax-tokens [data-syntax="property"] { color: color-mix(in oklch, var(--c-accent) 42%, var(--c-text-3)); }
+.syntax-tokens [data-syntax="operator"] { color: var(--c-text-5); }
+.syntax-tokens [data-syntax="punctuation"] { color: var(--c-text-6); }
+.syntax-tokens [data-syntax="attribute"] { color: color-mix(in oklch, var(--c-warning-text) 64%, var(--c-text-4)); }
+.syntax-tokens [data-syntax="log-timestamp"],
+.syntax-tokens [data-syntax="log-debug"] { color: var(--c-text-6); }
+.syntax-tokens [data-syntax="log-error"] { color: var(--c-error); }
+.syntax-tokens [data-syntax="log-warn"] { color: var(--c-warning-text); }
+.syntax-tokens [data-syntax="log-ip"] { color: color-mix(in oklch, var(--c-info) 55%, var(--c-text-4)); }
+.syntax-tokens [data-syntax="log-url"] { color: var(--c-accent); }
+.syntax-tokens [data-syntax="log-string"] { color: color-mix(in oklch, var(--c-success) 68%, var(--c-text-3)); }
+.syntax-tokens [data-syntax="log-number"] { color: var(--c-warning-text); }
 .file-editor-code textarea::selection { background: var(--c-accent-bg-light); color: var(--c-text-primary); }
 
 .notebook-preview {

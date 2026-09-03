@@ -53,6 +53,7 @@
     "@xterm/xterm": "^6.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "shiki": "^4.4.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

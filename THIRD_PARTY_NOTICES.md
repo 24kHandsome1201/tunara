@@ -29,3 +29,11 @@
 - **包**：`@phosphor-icons/react`
 - **许可证**：MIT License
 - **当前复用范围**：UI chrome 图标（标题栏、侧栏、命令面板、Inspector、文件浏览器、Toast 等）。Agent 品牌标志仍使用 `src/ui/agents/icons.tsx`，不经过 Phosphor。
+
+## Shiki
+
+- **来源**：https://github.com/shikijs/shiki
+- **来源版本**：`4.4.3`
+- **许可证**：MIT License
+- **当前复用范围**：阅读器 / 编辑器源码高亮。通过 `shiki/core`、`shiki/engine/javascript` 与按需 `shiki/langs/*.mjs` 懒加载语法；用 `codeToTokens` 取 TextMate scopes，再映射到项目内 `data-syntax` 种类，不采用 Shiki 主题的 inline hex。
+- **版权声明**：Copyright (c) 2021 Pine Wu; Copyright (c) 2023 Anthony Fu
