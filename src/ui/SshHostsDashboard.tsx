@@ -7,6 +7,7 @@ import { readyBindingForSession } from "@/modules/terminal/lib/connection-state"
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "./shared";
+import { HardDrives, Icon } from "@/ui/icons";
 import type { Session } from "./types";
 
 type HostFilter = "all" | "online" | "offline";
@@ -26,13 +27,7 @@ const EMPTY_PANEL: SshProfilesPanelModelV1 = {
 };
 
 function ServerIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="7" rx="2" />
-      <rect x="3" y="13" width="18" height="7" rx="2" />
-      <path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6" />
-    </svg>
-  );
+  return <Icon icon={HardDrives} size={18} />;
 }
 
 function connectionState(live: Session[]) {

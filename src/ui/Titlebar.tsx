@@ -6,6 +6,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { Icon, Minus, Plus, SidebarSimple, Square, X } from "@/ui/icons";
 import {
   groupSessionsForSidebar,
   representativeSession,
@@ -40,10 +41,11 @@ interface TitlebarProps {
 
 function PanelLeftIcon({ active }: { active: boolean }) {
   return (
-    <svg style={TITLEBAR_ICON_STYLE} viewBox="0 0 16 16" fill="none">
-      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.2" />
-      <rect x="1.5" y="1.5" width="4.5" height="13" rx="2" fill={active ? "var(--c-accent)" : "currentColor"} fillOpacity={active ? 0.3 : 0.1} />
-    </svg>
+    <Icon
+      icon={SidebarSimple}
+      size={16}
+      style={{ ...TITLEBAR_ICON_STYLE, color: active ? "var(--c-accent)" : "currentColor" }}
+    />
   );
 }
 
@@ -118,9 +120,7 @@ function WindowControls() {
         className="hover-bg"
         style={btnBase}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-          <line x1="2" y1="6" x2="10" y2="6" />
-        </svg>
+        <Icon icon={Minus} size={12} weight="bold" />
       </button>
       <button
         onClick={() => win.toggleMaximize()}
@@ -128,9 +128,7 @@ function WindowControls() {
         className="hover-bg"
         style={btnBase}
       >
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
-          <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
-        </svg>
+        <Icon icon={Square} size={11} />
       </button>
       <button
         onClick={() => win.close()}
@@ -138,10 +136,7 @@ function WindowControls() {
         className="hover-close"
         style={btnBase}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-          <line x1="3" y1="3" x2="9" y2="9" />
-          <line x1="9" y1="3" x2="3" y2="9" />
-        </svg>
+        <Icon icon={X} size={12} weight="bold" />
       </button>
     </div>
   );
@@ -338,10 +333,7 @@ function TitlebarImpl({
           }}
           className="hover-bg"
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+          <Icon icon={Plus} size={13} weight="bold" />
         </button>
       </div>
 

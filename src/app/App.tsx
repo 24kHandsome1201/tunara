@@ -26,6 +26,7 @@ import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { useAppServices } from "./useAppServices";
 import { useChromeFade } from "./useChromeFade";
+import { Icon, Terminal } from "@/ui/icons";
 
 const Settings = lazy(() => import("@/ui/overlays/Settings").then((module) => ({ default: module.Settings })));
 const SshConnect = lazy(() => import("@/ui/overlays/SshConnect").then((module) => ({ default: module.SshConnect })));
@@ -263,10 +264,7 @@ function AppSplash() {
           opacity: 0.9,
         }}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="4 17 10 11 4 5" />
-          <line x1="12" y1="19" x2="20" y2="19" />
-        </svg>
+        <Icon icon={Terminal} size={20} color="var(--c-accent)" weight="bold" />
       </div>
       <span
         style={{

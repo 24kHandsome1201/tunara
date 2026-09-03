@@ -3,6 +3,7 @@ import { CloseIcon, DownloadIcon, PanelIconButton, RefreshIcon, SearchIcon, Uplo
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { breadcrumbSegments } from "../lib/breadcrumbs";
 import { FileContentIcon, FileNameIcon } from "./icons";
+import { ArrowsDownUp, BookmarkSimple, CaretLeft, Icon } from "@/ui/icons";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -37,11 +38,7 @@ function ExplorerChipButton({
 }
 
 function PlacesIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M7 3h10a1.5 1.5 0 0 1 1.5 1.5V21l-6.5-3.2L5.5 21V4.5A1.5 1.5 0 0 1 7 3z" />
-    </svg>
-  );
+  return <Icon icon={BookmarkSimple} size={14} />;
 }
 
 export function ExplorerNav({
@@ -70,9 +67,7 @@ export function ExplorerNav({
         title={t("explorer.go_up")}
         aria-label={t("explorer.go_up")}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
+        <Icon icon={CaretLeft} size={14} />
       </PanelIconButton>
       <div className="explorer-breadcrumbs" title={currentPath}>
         {breadcrumbSegments(currentPath, breadcrumbRoot).map((seg, idx, arr) => {
@@ -361,12 +356,7 @@ export function ExplorerRemoteTools({
             title={t("explorer.transfers_open")}
             aria-label={t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M7 7h11" />
-              <path d="m15 4 3 3-3 3" />
-              <path d="M17 17H6" />
-              <path d="m9 14-3 3 3 3" />
-            </svg>
+            <Icon icon={ArrowsDownUp} size={14} />
             <span aria-hidden="true" className="explorer-transfer-count">
               {activeTransferNotice > 99 ? "99+" : activeTransferNotice}
             </span>

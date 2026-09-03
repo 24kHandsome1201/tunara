@@ -1,26 +1,16 @@
 import type { KeyboardEvent, MouseEvent } from "react";
 import { CloseIcon, SearchIcon } from "./shared";
+import { CaretRight, FolderSimple, HardDrives, Icon, Plus } from "@/ui/icons";
 import { useT } from "@/modules/i18n";
 import type { SessionCue } from "@/modules/session/session-attention";
 import { SessionCueDot } from "./SessionCueDot";
 
 function FolderIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  );
+  return <Icon icon={FolderSimple} size={13} color="var(--c-text-6)" />;
 }
 
 function HostIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="7" rx="1.5" />
-      <rect x="3" y="13" width="18" height="7" rx="1.5" />
-      <circle cx="7" cy="7.5" r="0.8" fill="currentColor" stroke="none" />
-      <circle cx="7" cy="16.5" r="0.8" fill="currentColor" stroke="none" />
-    </svg>
-  );
+  return <Icon icon={HardDrives} size={13} color="var(--c-text-6)" />;
 }
 
 export function SidebarSearchIcon() {
@@ -79,24 +69,16 @@ export function DirGroupHeader({
   const headerContent = (
     <>
       {onToggleCollapse && (
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--c-text-5)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
+        <Icon
+          icon={CaretRight}
+          size={10}
+          weight="bold"
+          color="var(--c-text-5)"
           style={{
             transform: collapsed ? "none" : "rotate(90deg)",
             transition: "transform var(--duration-normal) var(--ease-out-back)",
-            flexShrink: 0,
           }}
-        >
-          <polyline points="9 6 15 12 9 18" />
-        </svg>
+        />
       )}
       {kind === "ssh" ? <HostIcon /> : <FolderIcon />}
       <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={pathTitle}>
@@ -215,10 +197,7 @@ export function DirGroupHeader({
             padding: 0,
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+          <Icon icon={Plus} size={12} weight="bold" />
         </button>
       )}
       {onCloseAll && (

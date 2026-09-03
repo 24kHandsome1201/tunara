@@ -87,6 +87,15 @@ Both locale JSON files (`en.json` ~72 kB, `zh-CN.json` ~71 kB source) are inline
 
 ## Budget rule
 
+Phosphor Icons (`@phosphor-icons/react`, imported per-icon from `/dist/ssr`) landed on `redesign/icons` **2026-09-03**. Unused weights (`thin` / `light` / `fill` / `duotone`) are stripped at build time by `phosphorWeightTrimPlugin` in `vite.config.ts`. `manualChunks` must not match `@phosphor-icons/react` into the `react` vendor chunk (`/react/` is too broad). Measured after that trim:
+
+| Guard | Before icons | After icons |
+| --- | ---: | ---: |
+| `App-*.js` gzip | 170 176 | **172 218** (+2 042) |
+| Total `dist/assets/*.js` gzip | 420 242 | **422 077** (+1 835) |
+
+Still under the 5% cap; baseline constants were **not** raised.
+
 - After a production `pnpm build`, `App-*.js` gzip ≤ **170 176 × 1.05**.
 - Sum of gzip of every `dist/assets/*.js` ≤ **420 242 × 1.05**.
 - `App-*.js` must not contain the string `Benchmark` (the GUI harness lives in a dynamic `benchmarks/` chunk that a normal production build never emits).

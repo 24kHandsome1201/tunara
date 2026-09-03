@@ -154,10 +154,12 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
   assert.match(explorerChrome, /<UploadIcon/);
   assert.match(explorerChrome, /<UploadFolderIcon/);
   assert.match(explorerChrome, /<DownloadIcon/);
-  assert.match(explorerIcons, /className="explorer-tree-chevron"/);
-  assert.match(shared, /export function UploadIcon/);
-  assert.match(shared, /export function UploadFolderIcon/);
-  assert.match(shared, /export function DownloadIcon/);
+  const icons = read("src/ui/icons.tsx");
+  assert.match(icons, /className="explorer-tree-chevron"/);
+  assert.match(shared, /export \{\n  CloseIcon,\n  DownloadIcon,\n  RefreshIcon,\n  SearchIcon,\n  UploadFolderIcon,\n  UploadIcon,\n\} from "@\/ui\/icons"/);
+  assert.match(icons, /export function UploadIcon/);
+  assert.match(icons, /export function UploadFolderIcon/);
+  assert.match(icons, /export function DownloadIcon/);
 });
 
 test("Files keeps aligned action-aware columns and a non-wrapping compact SSH toolbar", () => {

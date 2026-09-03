@@ -17,6 +17,7 @@ import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelIconButton, PanelLoadingState } from "./shared";
+import { ArrowSquareOut, CaretRight, Check, CopySimple, Icon } from "@/ui/icons";
 import { copyText } from "./lib/clipboard";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
 import { computeVirtualSlice } from "./lib/diff-virtual";
@@ -226,10 +227,7 @@ function MiniDiff({
                   alignItems: "center",
                 }}
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
+                <Icon icon={CopySimple} size={11} />
               </button>
             </div>
           );
@@ -270,12 +268,16 @@ function FileStatusBadge({ status }: { status: string }) {
   );
 }
 
-const checkIcon = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>;
+const checkIcon = <Icon icon={Check} size={16} color="var(--c-success)" weight="bold" />;
 
 const chevronIcon = (expanded: boolean) => (
-  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-normal) var(--ease-out-back)", flexShrink: 0 }}>
-    <polyline points="9 6 15 12 9 18" />
-  </svg>
+  <Icon
+    icon={CaretRight}
+    size={10}
+    weight="bold"
+    color="var(--c-text-5)"
+    style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-normal) var(--ease-out-back)" }}
+  />
 );
 
 interface SectionHeaderProps {
@@ -421,11 +423,7 @@ function DiffFileRow({
               padding: 0,
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
+            <Icon icon={ArrowSquareOut} size={12} />
           </button>
         )}
         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>

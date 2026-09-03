@@ -2,6 +2,20 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { returnTerminalFocus, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import type { ModalFocusReturnToken } from "./overlays/Modal";
+import {
+  ClipboardText,
+  CopySimple,
+  DownloadSimple,
+  FolderSimple,
+  Icon,
+  MagnifyingGlass,
+  NotePencil,
+  PencilSimple,
+  PushPin,
+  Terminal,
+  TerminalWindow,
+  TrashSimple,
+} from "@/ui/icons";
 
 export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin";
 
@@ -40,110 +54,20 @@ interface ContextMenuProps {
 }
 
 function MenuIcon({ name }: { name: MenuIconName }) {
-  const common = {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-
-  if (name === "terminal") {
-    return (
-      <svg {...common}>
-        <polyline points="4 7 10 12 4 17" />
-        <line x1="12" y1="17" x2="20" y2="17" />
-      </svg>
-    );
-  }
-  if (name === "ssh") {
-    return (
-      <svg {...common}>
-        <rect x="2.5" y="4" width="19" height="16" rx="2" />
-        <path d="m6 9 3 3-3 3" />
-        <path d="M12 15h5" />
-      </svg>
-    );
-  }
-  if (name === "folder") {
-    return (
-      <svg {...common}>
-        <path d="M3 6.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-        <path d="M3 9h18" />
-      </svg>
-    );
-  }
-  if (name === "editor") {
-    return (
-      <svg {...common}>
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-      </svg>
-    );
-  }
-  if (name === "copy") {
-    return (
-      <svg {...common}>
-        <rect x="8" y="8" width="11" height="11" rx="2" />
-        <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-      </svg>
-    );
-  }
-  if (name === "paste") {
-    return (
-      <svg {...common}>
-        <rect x="6" y="7" width="12" height="14" rx="2" />
-        <rect x="9" y="4" width="6" height="4" rx="1" />
-        <path d="M9 12h6" />
-        <path d="M9 16h4" />
-      </svg>
-    );
-  }
-  if (name === "download") {
-    return (
-      <svg {...common}>
-        <path d="M12 3v12" />
-        <path d="m7 10 5 5 5-5" />
-        <path d="M5 21h14" />
-      </svg>
-    );
-  }
-  if (name === "rename") {
-    return (
-      <svg {...common}>
-        <path d="M4 7h10" />
-        <path d="M4 17h8" />
-        <path d="M16 15l3 3 3-7Z" />
-      </svg>
-    );
-  }
-  if (name === "search") {
-    return (
-      <svg {...common}>
-        <circle cx="11" cy="11" r="7" />
-        <path d="m20 20-4-4" />
-      </svg>
-    );
-  }
-  if (name === "pin") {
-    return (
-      <svg {...common}>
-        <path d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.1L12 17.4 6.4 20.3l1.1-6.1L3 9.9 9 9z" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...common}>
-      <path d="M4 7h16" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-      <path d="M6 7l1 13h10l1-13" />
-      <path d="M9 7V4h6v3" />
-    </svg>
-  );
+  const glyph = {
+    terminal: Terminal,
+    ssh: TerminalWindow,
+    folder: FolderSimple,
+    editor: PencilSimple,
+    copy: CopySimple,
+    paste: ClipboardText,
+    download: DownloadSimple,
+    rename: NotePencil,
+    search: MagnifyingGlass,
+    pin: PushPin,
+    close: TrashSimple,
+  }[name];
+  return <Icon icon={glyph} size={14} />;
 }
 
 function menuEntryKey(items: MenuEntry[], entry: MenuEntry, index: number): string {

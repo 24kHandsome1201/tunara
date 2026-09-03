@@ -56,20 +56,4 @@ export function AccentActionButton({
   );
 }
 
-/** Refresh icon used by retry/restart/reconnect action buttons. */
-export function RestartIcon({ size = 10 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
-    </svg>
-  );
-}
-
-/** Play/triangle icon used by resume action buttons. */
-export function ResumeIcon({ size = 9 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="5 3 19 12 5 21 5 3" />
-    </svg>
-  );
-}
+export { RestartIcon, ResumeIcon } from "@/ui/icons";

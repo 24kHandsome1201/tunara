@@ -2,6 +2,7 @@ import { useT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { useState } from "react";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { CaretDown, Icon, Plus } from "@/ui/icons";
 
 interface SidebarNewTerminalControlProps {
   onNewTerminal: () => void;
@@ -58,14 +59,9 @@ export function SidebarNewTerminalControl({
             fontWeight: 600,
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+          <Icon icon={Plus} size={12} weight="bold" />
           <span>{t("sidebar.new_compact")}</span>
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginLeft: "auto" }}>
-            <path d="m3 4.5 3 3 3-3" />
-          </svg>
+          <Icon icon={CaretDown} size={10} weight="bold" style={{ marginLeft: "auto" }} />
         </button>
       </div>
       {menu && <ContextMenu items={menu.items} position={menu.position} onClose={() => setMenu(null)} />}

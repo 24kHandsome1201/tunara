@@ -1184,10 +1184,12 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(contextMenu, /function menuEntryKey/);
   assert.match(contextMenu, /function MenuIcon/);
   assert.match(contextMenu, /aria-hidden="true"/);
-  assert.match(shared, /export function SearchIcon/);
-  assert.match(shared, /export function CloseIcon/);
-  assert.match(shared, /export function UploadIcon/);
-  assert.match(shared, /export function DownloadIcon/);
+  const icons = read("src/ui/icons.tsx");
+  assert.match(shared, /export \{\n  CloseIcon,\n  DownloadIcon,\n  RefreshIcon,\n  SearchIcon,\n  UploadFolderIcon,\n  UploadIcon,\n\} from "@\/ui\/icons"/);
+  assert.match(icons, /export function SearchIcon/);
+  assert.match(icons, /export function CloseIcon/);
+  assert.match(icons, /export function UploadIcon/);
+  assert.match(icons, /export function DownloadIcon/);
 
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(settings, /t\("settings\.cli\.error"\)/);

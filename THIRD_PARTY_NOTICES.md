@@ -22,3 +22,10 @@
 - **许可证**：MIT License
 - **当前复用范围**：`src/assets/mascots/` 中 8 个 Flat 风格动物 SVG，用作可选会话吉祥物。
 - **许可证副本**：`src/assets/mascots/LICENSE.md`
+
+## Phosphor Icons
+
+- **来源**：https://phosphoricons.com / https://github.com/phosphor-icons/react
+- **包**：`@phosphor-icons/react`
+- **许可证**：MIT License
+- **当前复用范围**：UI chrome 图标（标题栏、侧栏、命令面板、Inspector、文件浏览器、Toast 等）。Agent 品牌标志仍使用 `src/ui/agents/icons.tsx`，不经过 Phosphor。

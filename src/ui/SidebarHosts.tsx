@@ -7,6 +7,7 @@ import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import type { Session } from "./types";
 import { useSshProfilesPanel } from "./useSshProfilesPanel";
+import { CaretRight, HardDrives, Icon } from "@/ui/icons";
 
 interface SidebarHostsProps {
   sessions: Session[];
@@ -55,24 +56,15 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
         }}
       >
         <span>{t("sidebar.hosts.count", { count: profiles.length })}</span>
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
+        <Icon
+          icon={CaretRight}
+          size={10}
+          weight="bold"
           style={{
             transform: expanded ? "rotate(90deg)" : "none",
             transition: "transform var(--duration-normal) var(--ease-out-back)",
-            flexShrink: 0,
           }}
-        >
-          <polyline points="9 6 15 12 9 18" />
-        </svg>
+        />
       </button>
       {expanded && (
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -83,10 +75,7 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
             onClick={() => useUIStore.getState().openSshHosts()}
           >
             <span className="sidebar-hosts-manage-icon" aria-hidden="true">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" />
-                <path d="M7 7.5h.01M7 16.5h.01" />
-              </svg>
+              <Icon icon={HardDrives} size={13} />
             </span>
             <span>{t("sidebar.hosts.manage")}</span>
             <span aria-hidden="true" style={{ marginLeft: "auto" }}>›</span>

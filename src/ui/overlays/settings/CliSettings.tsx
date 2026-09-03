@@ -3,6 +3,7 @@ import { AgentBadge } from "@/ui/agents";
 import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { useT } from "@/modules/i18n";
 import { RefreshIcon } from "../../shared";
+import { Icon, PencilSimple } from "@/ui/icons";
 import { SECTION_LABEL } from "./controls";
 import type { CliStatus, ResolveSource } from "./useCliStatus";
 
@@ -107,10 +108,7 @@ export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus,
                     aria-label={t("settings.cli.override")}
                     style={{ width: 24, height: 24, borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: isEditing ? "var(--c-accent)" : "var(--c-text-5)" }}
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
+                    <Icon icon={PencilSimple} size={13} />
                   </button>
                 </div>
                 {isEditing && (

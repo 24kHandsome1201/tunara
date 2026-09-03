@@ -1,70 +1,15 @@
 import type { ButtonHTMLAttributes, ComponentPropsWithRef, ReactNode } from "react";
 import { useT } from "@/modules/i18n";
+import { PanelEmptyGlyph, PanelErrorGlyph } from "@/ui/icons";
 
-export function RefreshIcon({ size = 13 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-      <path d="M3 12A9 9 0 0 1 18.5 5.8" />
-      <polyline points="18 2 18.5 5.8 14.8 6.2" />
-      <polyline points="6 22 5.5 18.2 9.2 17.8" />
-    </svg>
-  );
-}
-
-export function UploadIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 19V5" />
-      <polyline points="6 11 12 5 18 11" />
-    </svg>
-  );
-}
-
-export function UploadFolderIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-      <path d="M12 17v-6" />
-      <polyline points="9 13 12 10 15 13" />
-    </svg>
-  );
-}
-
-export function DownloadIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 5v14" />
-      <polyline points="6 13 12 19 18 13" />
-    </svg>
-  );
-}
-
-export function SearchIcon({ size = 13, color = "var(--c-text-5)" }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
-export function CloseIcon({
-  size = 13,
-  strokeWidth = 2.3,
-  color = "currentColor",
-}: {
-  size?: number;
-  strokeWidth?: number;
-  color?: string;
-}) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
+export {
+  CloseIcon,
+  DownloadIcon,
+  RefreshIcon,
+  SearchIcon,
+  UploadFolderIcon,
+  UploadIcon,
+} from "@/ui/icons";
 
 export type PanelAsyncState =
   | { kind: "loading"; label: string }
@@ -129,13 +74,9 @@ export function PanelIconButton({
   );
 }
 
-export function PanelState({ state, icon, compact = false }: { state: PanelAsyncState; icon?: React.ReactNode; compact?: boolean }) {
+export function PanelState({ state, icon, compact = false }: { state: PanelAsyncState; icon?: ReactNode; compact?: boolean }) {
   const t = useT();
-  const defaultIcon = (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      {state.kind === "error" ? <><path d="M12 3 2.8 20h18.4Z" /><path d="M12 9v5" /><path d="M12 17h.01" /></> : <><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></>}
-    </svg>
-  );
+  const defaultIcon = state.kind === "error" ? <PanelErrorGlyph /> : <PanelEmptyGlyph />;
   return (
     <div
       role={state.kind === "error" ? "alert" : "status"}
@@ -160,7 +101,7 @@ export function PanelState({ state, icon, compact = false }: { state: PanelAsync
   );
 }
 
-export function PanelEmptyState({ icon, label, sublabel, compact = true }: { icon?: React.ReactNode; label: string; sublabel?: string; compact?: boolean }) {
+export function PanelEmptyState({ icon, label, sublabel, compact = true }: { icon?: ReactNode; label: string; sublabel?: string; compact?: boolean }) {
   return <PanelState state={{ kind: "empty", label, detail: sublabel }} icon={icon} compact={compact} />;
 }
 

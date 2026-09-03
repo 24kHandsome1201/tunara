@@ -12,6 +12,7 @@ import {
 } from "@/modules/ssh/ssh-write-reconcile";
 import { formatSize, reconnectPrefillFromSession } from "./types";
 import { CloseIcon } from "./shared";
+import { File as FileGlyph, Icon } from "@/ui/icons";
 import { useT, t as staticT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
@@ -1721,10 +1722,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
       {!embedded && (
       <div style={{ height: fill ? 40 : 34, borderBottom: "1px solid var(--c-border-1)", background: fill ? "var(--c-bg-1)" : "transparent", display: "flex", alignItems: "center", gap: 8, padding: fill ? "0 12px" : "0 10px", flexShrink: 0 }}>
         {fill && (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--c-text-5)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-            <path d="M14 2v6h6" />
-          </svg>
+          <Icon icon={FileGlyph} size={14} color="var(--c-text-5)" />
         )}
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{fileName}</span>
         <SiblingNav sessionId={sessionId} filePath={filePath} previous={siblings.previous} next={siblings.next} />

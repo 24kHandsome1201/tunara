@@ -4,6 +4,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useT } from "@/modules/i18n";
 import { AgentBadge } from "./agents";
 import { CloseIcon } from "./shared";
+import { Check, CopySimple, Icon, Warning } from "@/ui/icons";
 import { copyText } from "./lib/clipboard";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 
@@ -138,15 +139,9 @@ function ToastItem({ toast }: { toast: Toast }) {
       {toast.agentCode ? (
         <AgentBadge agent={toast.agentCode} size={22} />
       ) : toast.variant === "success" ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
+        <Icon icon={Check} size={14} color={accentColor} weight="bold" />
       ) : toast.variant === "warning" ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
+        <Icon icon={Warning} size={14} color={accentColor} weight="bold" />
       ) : (
         <CloseIcon size={14} strokeWidth={2.5} color={accentColor} />
       )}
@@ -222,14 +217,9 @@ function ToastItem({ toast }: { toast: Toast }) {
           className="hover-bg"
         >
           {copied ? (
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
+            <Icon icon={Check} size={11} weight="bold" />
           ) : (
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
+            <Icon icon={CopySimple} size={11} />
           )}
         </button>
       )}

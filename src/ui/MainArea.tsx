@@ -19,6 +19,7 @@ import {
 } from "@/modules/session/split-layout";
 import { recordTerminalFocusIntent } from "@/modules/terminal/lib/binding-aware-async-action";
 import { ReaderPane } from "./ReaderPane";
+import { Icon, SquareSplitHorizontal, SquareSplitVertical, X } from "@/ui/icons";
 
 function clearPendingInput(id: string) {
   useSessionsStore.getState().updateSession(id, { pendingInput: undefined, pendingInputSubmit: undefined });
@@ -52,43 +53,12 @@ interface MainAreaProps {
 }
 
 function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) {
-  const common = {
-    width: 16,
-    height: 16,
-    viewBox: "0 0 16 16",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.35,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-
-  if (direction === "rows") {
-    return (
-      <svg {...common}>
-        <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-        <path d="M1.5 8h13" />
-        <path d="M3.5 3.5h9v3h-9Z" fill="currentColor" opacity="0.16" stroke="none" />
-      </svg>
-    );
-  }
-
-  if (direction === "columns") {
-    return (
-      <svg {...common}>
-        <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-        <path d="M8 1.5v13" />
-        <path d="M3.5 3.5h3v9h-3Z" fill="currentColor" opacity="0.16" stroke="none" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg {...common}>
-      <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
-      <path d="M5 5l6 6M11 5l-6 6" />
-    </svg>
-  );
+  const glyph = direction === "rows"
+    ? SquareSplitVertical
+    : direction === "columns"
+      ? SquareSplitHorizontal
+      : X;
+  return <Icon icon={glyph} size={16} />;
 }
 
 function paneRectStyle(
