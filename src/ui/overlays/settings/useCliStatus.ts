@@ -14,20 +14,12 @@ export interface Preflight {
   hint: string | null;
 }
 
-export interface CliStatus {
-  resolvedClis: ResolvedCommand[] | null;
-  cliError: boolean;
-  preflights: Record<string, Preflight>;
-  loadCliStatus: () => void;
-  applyOverride: (code: string, cliBin: string, path: string) => void;
-}
-
 /**
  * CLI resolution state for the settings dialog. Lives in the dialog shell
  * (not the About section) so results survive while the overlay is open:
  * expensive PATH probes run once per dialog opening.
  */
-export function useCliStatus(): CliStatus {
+export function useCliStatus() {
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
   const [cliError, setCliError] = useState(false);
   const [preflights, setPreflights] = useState<Record<string, Preflight>>({});

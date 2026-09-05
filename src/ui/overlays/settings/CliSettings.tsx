@@ -5,9 +5,7 @@ import { useT } from "@/modules/i18n";
 import { RefreshIcon } from "../../shared";
 import { Icon, PencilSimple } from "@/ui/icons";
 import { SECTION_LABEL } from "./controls";
-import type { CliStatus, ResolveSource } from "./useCliStatus";
-
-export const CLI_LIST = AGENT_REGISTRY.map(({ code, name, cliBin }) => ({ code, name, cliBin }));
+import type { useCliStatus, ResolveSource } from "./useCliStatus";
 
 const SOURCE_LABEL_KEYS: Record<ResolveSource, string> = {
   userOverride: "settings.cli.source.user_override",
@@ -17,13 +15,13 @@ const SOURCE_LABEL_KEYS: Record<ResolveSource, string> = {
 };
 
 /** About: resolved agent CLI paths, login preflights, and path overrides. */
-export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus, applyOverride }: CliStatus) {
+export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus, applyOverride }: ReturnType<typeof useCliStatus>) {
   const t = useT();
   const [editingOverride, setEditingOverride] = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState("");
 
   const resolvedByCode = new Map((resolvedClis ?? []).map((cli) => [cli.name, cli]));
-  const installedCliCount = CLI_LIST.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
+  const installedCliCount = AGENT_REGISTRY.filter(({ code }) => !!resolvedByCode.get(code)?.path).length;
 
   const saveOverride = (code: string, cliBin: string, path: string) => {
     setEditingOverride(null);
@@ -36,7 +34,7 @@ export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus,
         <div style={{ minWidth: 0 }}>
           <div style={{ ...SECTION_LABEL, marginBottom: 4 }}>{t("settings.cli.path_label")}</div>
           <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
-            {resolvedClis === null ? t("settings.cli.scanning") : t("settings.cli.found", { count: installedCliCount, total: CLI_LIST.length })}
+            {resolvedClis === null ? t("settings.cli.scanning") : t("settings.cli.found", { count: installedCliCount, total: AGENT_REGISTRY.length })}
           </div>
         </div>
         <button
@@ -72,7 +70,7 @@ export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus,
       )}
       {resolvedClis !== null && (
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {CLI_LIST.map(({ code, name, cliBin }) => {
+          {AGENT_REGISTRY.map(({ code, name, cliBin }) => {
             const cli = resolvedByCode.get(code);
             const installed = !!cli?.path;
             const source = cli?.source ?? "notFound";

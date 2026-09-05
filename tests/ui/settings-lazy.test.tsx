@@ -1,12 +1,14 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { lazy, Suspense } from "react";
+import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { defaultKeybindingsForPlatform } from "@/modules/config/keybindings";
 import { useKeybindings } from "@/app/useKeybindings";
 import { consumePendingSettingsSection, useUIStore } from "@/state/ui";
 import { PanelLoadingState } from "@/ui/shared";
 import { isMac } from "@/ui/lib/platform";
+import { CliSettings } from "@/ui/overlays/settings/CliSettings";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
@@ -49,6 +51,28 @@ beforeEach(() => {
 
 afterEach(() => {
   consumePendingSettingsSection();
+});
+
+test("CLI settings renders the registry and preserves override identifiers", () => {
+  const applyOverride = vi.fn();
+  render(<CliSettings
+    resolvedClis={[{ name: "CR", path: "/usr/bin/cursor-agent", source: "systemPath" }]}
+    cliError={false}
+    preflights={{}}
+    loadCliStatus={vi.fn()}
+    applyOverride={applyOverride}
+  />);
+
+  for (const { name } of AGENT_REGISTRY) expect(screen.getByText(name)).toBeTruthy();
+  expect(screen.getByText(`Found 1/${AGENT_REGISTRY.length}`)).toBeTruthy();
+  const buttons = screen.getAllByRole("button", { name: "Set custom path" });
+  expect(buttons).toHaveLength(AGENT_REGISTRY.length);
+  fireEvent.click(buttons[AGENT_REGISTRY.findIndex(({ code }) => code === "CR")]);
+  expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("/usr/bin/cursor-agent");
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "/opt/cursor-agent" } });
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+  expect(applyOverride).toHaveBeenCalledWith("CR", "cursor-agent", "/opt/cursor-agent");
+  expect(screen.queryByRole("textbox")).toBeNull();
 });
 
 test("⌘, opens the lazy Settings overlay", async () => {

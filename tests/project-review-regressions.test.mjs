@@ -1197,7 +1197,6 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /<RefreshIcon size=\{12\} \/>/);
   assert.match(settings, /t\("settings\.cli\.path_label"\)/);
   assert.match(zhDict, /"settings\.cli\.path_label": "CLI 路径"/);
-  assert.match(settings, /t\("settings\.cli\.found", \{ count: installedCliCount, total: CLI_LIST\.length \}\)/);
   assert.match(settings, /t\("settings\.cli\.not_on_path"\)/);
   assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
   assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
@@ -1242,7 +1241,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.doesNotMatch(registryData, /"commands": \["agent"\]/);
   assert.match(lifecycle, /from "\.\.\/\.\.\/agent\/registry\.ts"/);
   assert.doesNotMatch(lifecycle, /const AGENT_COMMANDS: Record/);
-  assert.match(settings, /const CLI_LIST = AGENT_REGISTRY\.map/);
+  assert.match(settings, /AGENT_REGISTRY\.map/);
   assert.match(resolver, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/src\/modules\/agent\/registry-data\.json"\)/);
   assert.match(resolver, /fn resolver_uses_shared_agent_registry_data/);
   const preflight = read("src-tauri/src/modules/agent/preflight.rs");
