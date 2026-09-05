@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { type OverlayType, type ThemeType, type SshConnectPrefill } from "@/ui/types";
-import { loadTunaraConfig, saveTunaraConfig, type RawAppearanceConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
+import { loadTunaraConfig, saveTunaraConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
 import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, TERMINAL_KEYBINDING_ACTIONS, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
@@ -130,10 +130,6 @@ function sanitizeTheme(theme: unknown, terminalTheme: unknown): ThemeType {
   return isTheme(theme) ? theme : DEFAULT_SETTINGS.theme;
 }
 
-function sanitizeAccent(_value: unknown): string {
-  return DEFAULT_SETTINGS.accent;
-}
-
 function sanitizeFontFamily(value: unknown): string {
   if (typeof value !== "string") return DEFAULT_SETTINGS.fontFamily;
   const trimmed = value.trim();
@@ -142,18 +138,17 @@ function sanitizeFontFamily(value: unknown): string {
     : DEFAULT_SETTINGS.fontFamily;
 }
 
-function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): AppearanceSettings {
+function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
+  const raw = config?.appearance;
   return {
     ...DEFAULT_SETTINGS,
     theme: sanitizeTheme(raw?.theme, raw?.terminal_theme),
-    accent: sanitizeAccent(raw?.accent),
     cursorStyle: isCursorStyle(raw?.cursor_style) ? raw.cursor_style : DEFAULT_SETTINGS.cursorStyle,
     cursorBlink: typeof raw?.cursor_blink === "boolean" ? raw.cursor_blink : DEFAULT_SETTINGS.cursorBlink,
     fontSize: clampNumber(raw?.font_size, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
     fontFamily: sanitizeFontFamily(raw?.font_family),
     fontLigatures: typeof raw?.font_ligatures === "boolean" ? raw.font_ligatures : DEFAULT_SETTINGS.fontLigatures,
     nerdFontFallback: typeof raw?.nerd_font_fallback === "boolean" ? raw.nerd_font_fallback : DEFAULT_SETTINGS.nerdFontFallback,
-    scrollback: DEFAULT_SCROLLBACK,
     sidebarWidth: clampNumber(raw?.sidebar_width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SETTINGS.sidebarWidth),
     panelWidth: clampNumber(raw?.panel_width, MIN_PANEL_WIDTH, maxPanelWidth(), DEFAULT_SETTINGS.panelWidth),
     externalEditor: isExternalEditor(raw?.external_editor) ? raw.external_editor : DEFAULT_SETTINGS.externalEditor,
@@ -161,17 +156,9 @@ function sanitizeRawAppearance(raw: Partial<RawAppearanceConfig> | undefined): A
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
     terminalScreenReaderMode: typeof raw?.terminal_screen_reader_mode === "boolean" ? raw.terminal_screen_reader_mode : DEFAULT_SETTINGS.terminalScreenReaderMode,
     terminalHostModifier: raw?.terminal_host_modifier === "meta" || raw?.terminal_host_modifier === "alt" || raw?.terminal_host_modifier === "shift" ? raw.terminal_host_modifier : DEFAULT_SETTINGS.terminalHostModifier,
-    keybindings: { ...DEFAULT_KEYBINDINGS },
+    keybindings: sanitizeKeybindings(config?.keybindings),
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
     globalShortcut: typeof raw?.global_shortcut === "string" ? raw.global_shortcut : DEFAULT_SETTINGS.globalShortcut,
-  };
-}
-
-function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
-  const appearance = sanitizeRawAppearance(config?.appearance);
-  return {
-    ...appearance,
-    keybindings: sanitizeKeybindings(config?.keybindings),
   };
 }
 

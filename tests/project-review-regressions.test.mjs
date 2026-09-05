@@ -1069,8 +1069,6 @@ test("appearance settings are sanitized and command palette exposes useful actio
   const useTheme = read("src/app/useTheme.ts");
 
   assert.match(ui, /function clampNumber\(value: unknown/);
-  assert.match(ui, /function sanitizeAccent\(_value: unknown\)/);
-  assert.match(ui, /return DEFAULT_SETTINGS\.accent/);
   assert.match(ui, /setSidebarVisible: \(sidebarVisible\) => set\(\{ sidebarVisible \}\)/);
   assert.match(ui, /setPanelVisible: \(panelVisible\) => set\(\{ panelVisible \}\)/);
   assert.match(ui, /setExternalEditor: \(externalEditor\) => set\(\{ externalEditor: isExternalEditor\(externalEditor\)/);

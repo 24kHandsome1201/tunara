@@ -61,12 +61,15 @@ test("legacy Pure Mode config fields load without becoming settings", async () =
   useUIStore.setState({ configLoaded: false });
 });
 
-test("removed named themes fall back to System and a fixed terracotta accent", async () => {
+test.each([
+  ["catppuccin", "system"],
+  ["default", "dark"],
+])("theme %s loads with a fixed accent and scrollback", async (terminalTheme, expectedTheme) => {
   mockIPC((command) => {
     if (command === "load_config") {
       return {
         path: "/tmp/tunara-config.toml",
-        config: { appearance: { theme: "dark", terminal_theme: "catppuccin", accent: "#4f6ef0", scrollback: 2000 } },
+        config: { appearance: { theme: "dark", terminal_theme: terminalTheme, accent: "#4f6ef0", scrollback: 2000 } },
         error: null,
       };
     }
@@ -78,9 +81,10 @@ test("removed named themes fall back to System and a fixed terracotta accent", a
 
   expect(useUIStore.getState()).toMatchObject({
     configLoaded: true,
-    theme: "system",
+    theme: expectedTheme,
     accent: "#c2683c",
     scrollback: 10_000,
+    keybindings: DEFAULT_SETTINGS.keybindings,
   });
   useUIStore.setState({ configLoaded: false, theme: "light" });
 });
